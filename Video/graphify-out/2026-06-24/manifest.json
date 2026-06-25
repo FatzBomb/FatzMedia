@@ -1,0 +1,347 @@
+{
+  "FatzBombMedia.MediaControl/Adapters/Archives/SharpArchiveAdapter.cs": {
+    "mtime": 1782072252.0,
+    "ast_hash": "cb20d4e9ebc3d29cb6258a81ee2936dc",
+    "semantic_hash": "cb20d4e9ebc3d29cb6258a81ee2936dc"
+  },
+  "FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs": {
+    "mtime": 1782334715.0,
+    "ast_hash": "1b98ef94dc7cb4af1dfa77ff6951138b",
+    "semantic_hash": "1b98ef94dc7cb4af1dfa77ff6951138b"
+  },
+  "FatzBombMedia.MediaControl/Adapters/Wpf/MediaPresentationMode.cs": {
+    "mtime": 1782285554.0,
+    "ast_hash": "2d867ac39a42d411fb1582156b4f3b23",
+    "semantic_hash": "2d867ac39a42d411fb1582156b4f3b23"
+  },
+  "FatzBombMedia.MediaControl/Adapters/Wpf/NativeMethods.cs": {
+    "mtime": 1782286466.0,
+    "ast_hash": "e688b97e6ac088502a22e71bc0c7cfe9",
+    "semantic_hash": "e688b97e6ac088502a22e71bc0c7cfe9"
+  },
+  "FatzBombMedia.MediaControl/Adapters/Wpf/RenderSurface.cs": {
+    "mtime": 1782288463.0,
+    "ast_hash": "4bf788c1b5ea91d506a4b4847b8ed3ce",
+    "semantic_hash": "4bf788c1b5ea91d506a4b4847b8ed3ce"
+  },
+  "FatzBombMedia.MediaControl/Api/AcceptedMediaTypes.cs": {
+    "mtime": 1782034520.0,
+    "ast_hash": "2b43a6c5f2077943177ed2b1486c453f",
+    "semantic_hash": "2b43a6c5f2077943177ed2b1486c453f"
+  },
+  "FatzBombMedia.MediaControl/Api/DLLPath.cs": {
+    "mtime": 1782034206.0,
+    "ast_hash": "532a149484279f02104e61d449a693aa",
+    "semantic_hash": "532a149484279f02104e61d449a693aa"
+  },
+  "FatzBombMedia.MediaControl/Api/MediaFileFilter.cs": {
+    "mtime": 1782034520.0,
+    "ast_hash": "31c255f8da900387ec3b4c6d8a5ef1e9",
+    "semantic_hash": "31c255f8da900387ec3b4c6d8a5ef1e9"
+  },
+  "FatzBombMedia.MediaControl/Api/MediaPlayer.cs": {
+    "mtime": 1782284880.0,
+    "ast_hash": "8447bf6a96c5ed98323280dcde9a0ff4",
+    "semantic_hash": "8447bf6a96c5ed98323280dcde9a0ff4"
+  },
+  "FatzBombMedia.MediaControl/AssemblyInfo.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "247a810704ef0f20c5f67aad65f75a51",
+    "semantic_hash": "247a810704ef0f20c5f67aad65f75a51"
+  },
+  "FatzBombMedia.MediaControl/Controllers/BackgroundVideoRenderer.cs": {
+    "mtime": 1782331963.0,
+    "ast_hash": "deab90e3d89c1d72339b44175a680fed",
+    "semantic_hash": "deab90e3d89c1d72339b44175a680fed"
+  },
+  "FatzBombMedia.MediaControl/Controllers/CdgVisuals.cs": {
+    "mtime": 1782037848.0,
+    "ast_hash": "701970770f29f4bd797ffb52a94331b0",
+    "semantic_hash": "701970770f29f4bd797ffb52a94331b0"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaBackgroundCandidate.cs": {
+    "mtime": 1782080422.0,
+    "ast_hash": "634d49cab1614af4a234eb2d54dcb2b8",
+    "semantic_hash": "634d49cab1614af4a234eb2d54dcb2b8"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaBackgroundResolver.cs": {
+    "mtime": 1782080432.0,
+    "ast_hash": "e963644b5523c50fe624c18b0de3bf50",
+    "semantic_hash": "e963644b5523c50fe624c18b0de3bf50"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaControls.cs": {
+    "mtime": 1782223068.0,
+    "ast_hash": "581d4224b4633d205bfaa45d507753e2",
+    "semantic_hash": "581d4224b4633d205bfaa45d507753e2"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaEffects.cs": {
+    "mtime": 1782071040.0,
+    "ast_hash": "6e33ad49098de5e3dd9b8ec16a601852",
+    "semantic_hash": "6e33ad49098de5e3dd9b8ec16a601852"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaFile.cs": {
+    "mtime": 1782083014.0,
+    "ast_hash": "3636830d48df2d9bad53e40ed6e27e23",
+    "semantic_hash": "3636830d48df2d9bad53e40ed6e27e23"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaMetadata.cs": {
+    "mtime": 1782155008.0,
+    "ast_hash": "6c77eebc97c37689947f38049cc4f7bf",
+    "semantic_hash": "6c77eebc97c37689947f38049cc4f7bf"
+  },
+  "FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs": {
+    "mtime": 1782334204.0,
+    "ast_hash": "80a5eeb4dc59304ee0aeb116e4d746ed",
+    "semantic_hash": "80a5eeb4dc59304ee0aeb116e4d746ed"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/IArchiveService.cs": {
+    "mtime": 1782072250.0,
+    "ast_hash": "ac201a240c7a1c543b821f3709ae8bf1",
+    "semantic_hash": "ac201a240c7a1c543b821f3709ae8bf1"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/IAudioEngine.cs": {
+    "mtime": 1782156326.0,
+    "ast_hash": "53fe819fa00646343cf7764c53193527",
+    "semantic_hash": "53fe819fa00646343cf7764c53193527"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/ICdgEngine.cs": {
+    "mtime": 1782127298.0,
+    "ast_hash": "317bdd453bbaf1d850d5a39f31fdb304",
+    "semantic_hash": "317bdd453bbaf1d850d5a39f31fdb304"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/IMediaEngine.cs": {
+    "mtime": 1782223068.0,
+    "ast_hash": "04f1e9673bdb4ce31af5e19fc6877b0b",
+    "semantic_hash": "04f1e9673bdb4ce31af5e19fc6877b0b"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/IVideoEngine.cs": {
+    "mtime": 1782282991.0,
+    "ast_hash": "aacdb60b84c375902cad6bd82e18243d",
+    "semantic_hash": "aacdb60b84c375902cad6bd82e18243d"
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/MediaPlayerState.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "4177fc175fa2791c2cb820339ea9cd4c",
+    "semantic_hash": "4177fc175fa2791c2cb820339ea9cd4c"
+  },
+  "FatzBombMedia.MediaControl/Core/Audio/AudioEngine.cs": {
+    "mtime": 1782156442.0,
+    "ast_hash": "06d5f679b7088aaf8fb3ca3ca56de768",
+    "semantic_hash": "06d5f679b7088aaf8fb3ca3ca56de768"
+  },
+  "FatzBombMedia.MediaControl/Core/Audio/AudioNormalizer.cs": {
+    "mtime": 1782083626.0,
+    "ast_hash": "29f229159b9447ba2d0af6703dbe9e1c",
+    "semantic_hash": "29f229159b9447ba2d0af6703dbe9e1c"
+  },
+  "FatzBombMedia.MediaControl/Core/Audio/AudioStreamManager.cs": {
+    "mtime": 1782072038.0,
+    "ast_hash": "4fdcec698c1ec950a0b4ff0924512fcc",
+    "semantic_hash": "4fdcec698c1ec950a0b4ff0924512fcc"
+  },
+  "FatzBombMedia.MediaControl/Core/Audio/VideoAudioEngine.cs": {
+    "mtime": 1782185820.0,
+    "ast_hash": "c7faaf59338da1e065a848b4a6adc6b5",
+    "semantic_hash": "c7faaf59338da1e065a848b4a6adc6b5"
+  },
+  "FatzBombMedia.MediaControl/Core/Cdg/CdgColorManager.cs": {
+    "mtime": 1782352749.0,
+    "ast_hash": "baf0dcaa0d4e264e6423c9640b2130a7",
+    "semantic_hash": "baf0dcaa0d4e264e6423c9640b2130a7"
+  },
+  "FatzBombMedia.MediaControl/Core/Cdg/CdgConstants.cs": {
+    "mtime": 1782037846.0,
+    "ast_hash": "2a4d7a27cc149bfa0b6f5dc3a2c51b1c",
+    "semantic_hash": "2a4d7a27cc149bfa0b6f5dc3a2c51b1c"
+  },
+  "FatzBombMedia.MediaControl/Core/Cdg/CdgEngine.cs": {
+    "mtime": 1782127364.0,
+    "ast_hash": "82f56a6b2788f297cef0a9e02374c598",
+    "semantic_hash": "82f56a6b2788f297cef0a9e02374c598"
+  },
+  "FatzBombMedia.MediaControl/Core/Cdg/CdgEngineState.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "d05310b0be21749c260c31fb3a2fbec6",
+    "semantic_hash": "d05310b0be21749c260c31fb3a2fbec6"
+  },
+  "FatzBombMedia.MediaControl/Core/Cdg/CdgPacketProcessor.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "ab6a9eb6c17009653f8ccc66cc4f7f9a",
+    "semantic_hash": "ab6a9eb6c17009653f8ccc66cc4f7f9a"
+  },
+  "FatzBombMedia.MediaControl/Core/Configuration/MediaPlayerConfiguration.cs": {
+    "mtime": 1782284674.0,
+    "ast_hash": "6aad281452bca490a75ec6ffc552671e",
+    "semantic_hash": "6aad281452bca490a75ec6ffc552671e"
+  },
+  "FatzBombMedia.MediaControl/Core/Files/BinaryCompatibility.cs": {
+    "mtime": 1782071180.0,
+    "ast_hash": "b3e29de8bb8a89c7034bd2165ca4dd25",
+    "semantic_hash": "b3e29de8bb8a89c7034bd2165ca4dd25"
+  },
+  "FatzBombMedia.MediaControl/Core/Files/DirectoryScanner.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "68612b40ffe9d81ccb2f959ad0d08361",
+    "semantic_hash": "68612b40ffe9d81ccb2f959ad0d08361"
+  },
+  "FatzBombMedia.MediaControl/Core/Files/FileTree.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "f0c730179cf4c9909cbf6fbd48120f9f",
+    "semantic_hash": "f0c730179cf4c9909cbf6fbd48120f9f"
+  },
+  "FatzBombMedia.MediaControl/Core/Files/Filetypes.cs": {
+    "mtime": 1782155048.0,
+    "ast_hash": "07f2d4fd2cb5c45467ff726a3f7a9e1e",
+    "semantic_hash": "07f2d4fd2cb5c45467ff726a3f7a9e1e"
+  },
+  "FatzBombMedia.MediaControl/Core/Graphics/D3D/D3D9InteropSurface.cs": {
+    "mtime": 1782283754.0,
+    "ast_hash": "af673c8ab28e031967d353bde39aa83e",
+    "semantic_hash": "af673c8ab28e031967d353bde39aa83e"
+  },
+  "FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs": {
+    "mtime": 1782356375.0,
+    "ast_hash": "37e4fad51a32eaab4169b8591f7b991c",
+    "semantic_hash": "37e4fad51a32eaab4169b8591f7b991c"
+  },
+  "FatzBombMedia.MediaControl/Core/Graphics/GpuRenderingCapabilities.cs": {
+    "mtime": 1782088018.0,
+    "ast_hash": "79c5e3e81de0d0869359d4db5a1d489b",
+    "semantic_hash": "79c5e3e81de0d0869359d4db5a1d489b"
+  },
+  "FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs": {
+    "mtime": 1782356350.0,
+    "ast_hash": "7a9cc732926356a3103bfccf79ee02c1",
+    "semantic_hash": "7a9cc732926356a3103bfccf79ee02c1"
+  },
+  "FatzBombMedia.MediaControl/Core/Metadata/MediaMetadata.cs": {
+    "mtime": 1782158426.0,
+    "ast_hash": "95d0c4fc382399b9c2edab621a0c57df",
+    "semantic_hash": "95d0c4fc382399b9c2edab621a0c57df"
+  },
+  "FatzBombMedia.MediaControl/Core/Video/VideoDecoder.cs": {
+    "mtime": 1782284811.0,
+    "ast_hash": "e91b1183b2b4d5cde6d6ea1840cf1bd9",
+    "semantic_hash": "e91b1183b2b4d5cde6d6ea1840cf1bd9"
+  },
+  "FatzBombMedia.MediaControl/Core/Video/VideoEngineState.cs": {
+    "mtime": 1782000376.0,
+    "ast_hash": "78667759a2c042f2977f2667b03e1857",
+    "semantic_hash": "78667759a2c042f2977f2667b03e1857"
+  },
+  "FatzBombMedia.MediaControl/Core/Video/VideoPresentationTiming.cs": {
+    "mtime": 1782331963.0,
+    "ast_hash": "fab96f261a94f98ee3789a1dc9aaf6d7",
+    "semantic_hash": "fab96f261a94f98ee3789a1dc9aaf6d7"
+  },
+  "FatzBombMedia.MediaControl/FatzBombMedia.MediaControl.csproj": {
+    "mtime": 1782333228.0,
+    "ast_hash": "f2d3e804bc95ce0a25d398b54490d1a3",
+    "semantic_hash": "f2d3e804bc95ce0a25d398b54490d1a3"
+  },
+  "FatzBombMedia.MediaControl/MediaPlayerServiceProvider.cs": {
+    "mtime": 1782087474.0,
+    "ast_hash": "67933e83c95c97d071a1c8bbbcaa7847",
+    "semantic_hash": "67933e83c95c97d071a1c8bbbcaa7847"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/AudioPipeline.cs": {
+    "mtime": 1782156354.0,
+    "ast_hash": "3211ae5e904ede09588112c7d234766a",
+    "semantic_hash": "3211ae5e904ede09588112c7d234766a"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/AudioPresentationClock.cs": {
+    "mtime": 1782089886.0,
+    "ast_hash": "6a9b37c23b36f71e9da5c12ffa5a84b6",
+    "semantic_hash": "6a9b37c23b36f71e9da5c12ffa5a84b6"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/CdgPipeline.cs": {
+    "mtime": 1782223110.0,
+    "ast_hash": "7b060ad59821b539e2296d4bed47c662",
+    "semantic_hash": "7b060ad59821b539e2296d4bed47c662"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/ClockAudioEngine.cs": {
+    "mtime": 1782156978.0,
+    "ast_hash": "5c233d951e5ea2c4c0bbf5085cd285d0",
+    "semantic_hash": "5c233d951e5ea2c4c0bbf5085cd285d0"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/MediaSession.cs": {
+    "mtime": 1782072892.0,
+    "ast_hash": "e8a1b3a7072e2b5162dacb0ba82d3d50",
+    "semantic_hash": "e8a1b3a7072e2b5162dacb0ba82d3d50"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/MediaState.cs": {
+    "mtime": 1782069446.0,
+    "ast_hash": "9196699ed3d5db514869e48562047f4d",
+    "semantic_hash": "9196699ed3d5db514869e48562047f4d"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/PipelineMediaEngine.cs": {
+    "mtime": 1782223068.0,
+    "ast_hash": "55e8354ca6475279849bae5526494005",
+    "semantic_hash": "55e8354ca6475279849bae5526494005"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/PlaybackClock.cs": {
+    "mtime": 1782069448.0,
+    "ast_hash": "02474c218b4d7340fa1230fc34e9953c",
+    "semantic_hash": "02474c218b4d7340fa1230fc34e9953c"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/PlaybackCoordinator.cs": {
+    "mtime": 1782223068.0,
+    "ast_hash": "84037f3e738dbb38df7b2b6d1b2d0ea7",
+    "semantic_hash": "84037f3e738dbb38df7b2b6d1b2d0ea7"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/PlaybackScheduler.cs": {
+    "mtime": 1782259862.0,
+    "ast_hash": "2fddc3e91226d26c0bf61e5908efb154",
+    "semantic_hash": "2fddc3e91226d26c0bf61e5908efb154"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/RenderPipeline.cs": {
+    "mtime": 1782283042.0,
+    "ast_hash": "92bf8d020446e7579474ea8ad3ae1e33",
+    "semantic_hash": "92bf8d020446e7579474ea8ad3ae1e33"
+  },
+  "FatzBombMedia.MediaControl/Pipeline/VideoPipeline.cs": {
+    "mtime": 1782284752.0,
+    "ast_hash": "176585059fb0e3459ee254fd7fce3b57",
+    "semantic_hash": "176585059fb0e3459ee254fd7fce3b57"
+  },
+  "FatzBombMedia.MediaControl/Runtime/Bootstrap.LibraryLoader.cs": {
+    "mtime": 1782034756.0,
+    "ast_hash": "9fe29797de5db2d3acef8b6b115565be",
+    "semantic_hash": "9fe29797de5db2d3acef8b6b115565be"
+  },
+  "FatzBombMedia.MediaControl/Runtime/Bootstrap.cs": {
+    "mtime": 1782034736.0,
+    "ast_hash": "f19f2baeb0f0a2bff3f7c25e50d65676",
+    "semantic_hash": "f19f2baeb0f0a2bff3f7c25e50d65676"
+  },
+  "FatzBombMedia.Player/App.xaml.cs": {
+    "mtime": 1782014776.0,
+    "ast_hash": "4a49172b135cb155267b60ab358256b1",
+    "semantic_hash": "4a49172b135cb155267b60ab358256b1"
+  },
+  "FatzBombMedia.Player/Configuration/PlayerNativeLibraries.cs": {
+    "mtime": 1782048064.0,
+    "ast_hash": "b6418969e0faaf0c46b471715698eded",
+    "semantic_hash": "b6418969e0faaf0c46b471715698eded"
+  },
+  "FatzBombMedia.Player/FatzBombMedia.Player.csproj": {
+    "mtime": 1782223264.0,
+    "ast_hash": "a99d5e5c3bb2cd14082099661fdca29d",
+    "semantic_hash": "a99d5e5c3bb2cd14082099661fdca29d"
+  },
+  "FatzBombMedia.Player/MainWindow.xaml.cs": {
+    "mtime": 1782247183.0,
+    "ast_hash": "b1a5cad813fb9ff03649f79d2417099c",
+    "semantic_hash": "b1a5cad813fb9ff03649f79d2417099c"
+  },
+  "FatzBombMedia.Player/ViewModels/MainWindowViewModel.cs": {
+    "mtime": 1782289566.0,
+    "ast_hash": "028b8f667e0cd8a18d37042a1de4a0de",
+    "semantic_hash": "028b8f667e0cd8a18d37042a1de4a0de"
+  },
+  "FatzBombMedia.sln": {
+    "mtime": 1782097330.0,
+    "ast_hash": "cc61eb33cad8e1ad90bba3fe6601aab8",
+    "semantic_hash": "cc61eb33cad8e1ad90bba3fe6601aab8"
+  }
+}

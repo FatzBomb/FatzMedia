@@ -1,0 +1,44 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.7.11903.348 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FatzBombMedia.MediaControl", "FatzBombMedia.MediaControl\FatzBombMedia.MediaControl.csproj", "{F5070180-4D55-47D7-A61C-0F70B8C46870}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FatzBombMedia.Player", "FatzBombMedia.Player\FatzBombMedia.Player.csproj", "{14B7FDA7-45D2-4B64-8169-FA2D902B59ED}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{247A7564-E684-407C-8EAC-79DDB07D9146}"
+	ProjectSection(SolutionItems) = preProject
+		docs\00-START-HERE.md = docs\00-START-HERE.md
+		docs\01-Architecture-And-Usage.md = docs\01-Architecture-And-Usage.md
+		docs\02-Features-And-Backlog.md = docs\02-Features-And-Backlog.md
+		docs\03-CDG-Protection.md = docs\03-CDG-Protection.md
+		docs\04-Audio-Video-Rendering.md = docs\04-Audio-Video-Rendering.md
+		docs\05-Native-Libraries-And-NuGet.md = docs\05-Native-Libraries-And-NuGet.md
+		docs\06-Validation-And-Agent-Safety.md = docs\06-Validation-And-Agent-Safety.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F5070180-4D55-47D7-A61C-0F70B8C46870}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5070180-4D55-47D7-A61C-0F70B8C46870}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5070180-4D55-47D7-A61C-0F70B8C46870}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5070180-4D55-47D7-A61C-0F70B8C46870}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14B7FDA7-45D2-4B64-8169-FA2D902B59ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14B7FDA7-45D2-4B64-8169-FA2D902B59ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14B7FDA7-45D2-4B64-8169-FA2D902B59ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14B7FDA7-45D2-4B64-8169-FA2D902B59ED}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {48149C96-CBDA-43E8-B43C-90BECF14B3FE}
+	EndGlobalSection
+	GlobalSection(StartupProject) = preSolution
+		StartupProject = FatzBombMedia.Player\FatzBombMedia.Player.csproj
+	EndGlobalSection
+EndGlobal

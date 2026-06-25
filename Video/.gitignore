@@ -1,0 +1,25 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.nupkg
+*.snupkg
+/legacy/
+
+# Ignore the massive sea of root-level architectural notes
+/*-NOTES.md
+
+# Ignore local AI configurations
+graphify_out/
+
+/*.zip
+
+# Exclude all standalone build reports and HTML logs recursively
+*.htm
+*.html
+
+TestResults/
+artifacts/
+**/native/win-x64/*.dll
+**/native/*.dll
