@@ -13,6 +13,9 @@ obj/
 # Ignore local AI configurations
 graphify_out/
 
+# OpenCode local data / cache
+.opencode/
+
 /*.zip
 
 # Exclude all standalone build reports and HTML logs recursively
