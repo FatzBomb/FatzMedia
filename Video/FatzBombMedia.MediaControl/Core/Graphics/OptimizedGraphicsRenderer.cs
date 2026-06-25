@@ -131,6 +131,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 }
 
                 _nativePresentationHwnd = hwnd;
+                _nativeDirectCompositionLayersRequested = false;
 
                 // Force the next frame to rebuild presentation resources. This is intentionally
                 // not a media clear: the decoder/audio clock remain active; only the output target
@@ -201,7 +202,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             _pendingNativePresentationWidth = Math.Max(0, pixelWidth);
             _pendingNativePresentationHeight = Math.Max(0, pixelHeight);
-            return;
+            if (!_nativeDirectCompositionLayersRequested)
+            {
+                return;
+            }
         }
 
         pixelWidth = Math.Max(0, pixelWidth);
@@ -230,7 +234,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
             if (ShouldFreezeNativePresentationDuringResize())
             {
-                return;
+                if (!_nativeDirectCompositionLayersRequested)
+                {
+                    return;
+                }
             }
 
             var pixelWidth = Math.Max(0, _pendingNativePresentationWidth);
@@ -396,10 +403,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         if (isVideoBase && IsNativePresentationRequested)
         {
-            // Experimental single-swap-chain GPU compositor path.  Do not route background video +
-            // CDG through DirectComposition anymore: that produced separate layer timing/scaling
-            // artifacts during resize.  Keep the proven NativeHwndSwapChain backend, upload the CDG
-            // overlay as a retained texture, and draw video+CDG into one presentation surface/present.
+            // Experimental single-swap-chain GPU compositor path.  Keep the proven
+            // NativeHwndSwapChain backend, upload the CDG overlay as a retained texture,
+            // and draw video+CDG into one presentation surface/present.
             _nativeDirectCompositionLayersRequested = false;
             lock (_lock)
             {
@@ -667,7 +673,6 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     public void RenderCdgFrame(ReadOnlySpan<int> argbData, int width, int height)
     {
         if (_disposed || argbData.IsEmpty || width <= 0 || height <= 0) return;
-        if (ShouldFreezeNativePresentationDuringResize()) return;
 
         if (IsNativePresentationRequested)
         {
@@ -1387,10 +1392,21 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 }
             }
 
-            // Background video + CDG now uses a single native HWND swap-chain compositor.  CDG
-            // updates refresh only the retained overlay texture; the next background-video frame
-            // performs the one final GPU composite/present.
-            TryUploadNativeGpuCdgOverlay();
+            if (_nativeDirectCompositionLayersRequested)
+            {
+                TryUploadDirectCompositionCdgOverlay();
+                return;
+            }
+
+            // During live resize, defer the CDG GPU texture upload to the background-video
+            // frame path (RenderNativeGpuCompositedVideoFrame) to eliminate CDG-driven lock
+            // contention and GPU upload storms that cause drag slowdown and post-drag catchup.
+            // CDG data is already stored and dirty flags are set; the video frame will upload
+            // before compositing via DrawCachedCdgOverlayQuad.
+            if (Volatile.Read(ref _nativeResizeInProgress) == 0)
+            {
+                TryUploadNativeGpuCdgOverlay();
+            }
 
             // If a looping video is the compositor base, the background-video presentation loop owns
             // the final present cadence.  This CDG update is retained and blended on the next video
@@ -1481,10 +1497,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             InitializeRenderingResources(width, height);
         }
 
-        // Upload or refresh the retained source-sized CDG overlay texture after the native HWND
-        // renderer exists. During live resize this intentionally returns without uploading; the
-        // renderer keeps drawing the last cached CDG alpha texture over the live video.
-        TryUploadNativeGpuCdgOverlay();
+        if (_nativeDirectCompositionLayersRequested)
+        {
+            _d3d11Renderer?.UploadFrame(pixelData, width, height, stride);
+            return;
+        }
+
+        // CDG overlay texture is updated only when pixel data changes (_nativeCachedCdgOverlayDirty).
+        // Upload before compositing so DrawCachedCdgOverlayQuad always references current content.
+        // During resize this also picks up the deferred upload from RenderCdgWithNativeComposite.
+        if (_nativeCachedCdgOverlayDirty)
+        {
+            TryUploadNativeGpuCdgOverlay();
+        }
 
         var useFallbackComposite = false;
         var uploadPlainFrame = false;
@@ -1507,7 +1532,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     // Do not call the fallback compositor while holding _lock.  The fallback path
                     // takes _nativeCompositeRenderLock and then _lock, so calling it here can
                     // self-deadlock the player as soon as a CDG frame starts.
-                    if (Volatile.Read(ref _nativeResizeInProgress) == 0 && HasRetainedNativeCdgFrameUnsafe())
+                    if (HasRetainedNativeCdgFrameUnsafe())
                     {
                         useFallbackComposite = true;
                     }
@@ -1541,17 +1566,6 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         if (_disposed || !IsNativePresentationRequested)
         {
             return false;
-        }
-
-        // During manual resize, CDG is intentionally static.  If a cached alpha texture
-        // already exists, keep using it and do not upload newer CDG packets until resize
-        // settles.  If resize starts before the first cached texture has been uploaded,
-        // allow exactly the initial source-sized upload so the CDG does not disappear
-        // while the live video continues to present.
-        var resizeInProgress = Volatile.Read(ref _nativeResizeInProgress) != 0;
-        if (resizeInProgress && _d3d11Renderer?.HasCdgOverlayTexture == true)
-        {
-            return true;
         }
 
         try
@@ -1622,8 +1636,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     {
         if (_disposed || !_nativeDirectCompositionLayersRequested)
         {
+            if (_configuration.EnableVerboseLogging)
+            {
+                Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> false (_disposed={_disposed}, _layersRequested={_nativeDirectCompositionLayersRequested})");
+            }
             return false;
         }
+
+        var resizeInProgress = Volatile.Read(ref _nativeResizeInProgress) != 0;
 
         try
         {
@@ -1633,6 +1653,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 {
                     if (_d3d11Renderer?.IsDirectCompositionActive != true)
                     {
+                        if (_configuration.EnableVerboseLogging)
+                        {
+                            Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> false (IsDirectCompositionActive != true, resize={resizeInProgress})");
+                        }
                         return false;
                     }
 
@@ -1640,6 +1664,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         || _nativeCompositeCdgWidth <= 0
                         || _nativeCompositeCdgHeight <= 0)
                     {
+                        if (_configuration.EnableVerboseLogging)
+                        {
+                            Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> false (no CDG data: Argb={(object?)_nativeCompositeCdgArgb}, w={_nativeCompositeCdgWidth}, h={_nativeCompositeCdgHeight}, resize={resizeInProgress})");
+                        }
                         return false;
                     }
 
@@ -1652,11 +1680,16 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
                     if (destinationWidth <= 0 || destinationHeight <= 0)
                     {
+                        if (_configuration.EnableVerboseLogging)
+                        {
+                            Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> false (no dest: _lastW={_lastWidth}, _lastH={_lastHeight}, baseW={_nativeCompositeBaseWidth}, baseH={_nativeCompositeBaseHeight}, resize={resizeInProgress})");
+                        }
                         return false;
                     }
 
                     var destinationStride = checked(destinationWidth * 4);
                     var required = checked(destinationStride * destinationHeight);
+                    var scaled = false;
                     if (_directCompositionCdgOverlayBgra == null
                         || _directCompositionCdgOverlayBgra.Length != required
                         || _directCompositionCdgOverlayWidth != destinationWidth
@@ -1664,6 +1697,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         || _directCompositionCdgOverlayStride != destinationStride
                         || _nativeCompositeScaledCdgDirty)
                     {
+                        scaled = true;
                         if (_directCompositionCdgOverlayBgra == null || _directCompositionCdgOverlayBgra.Length != required)
                         {
                             _directCompositionCdgOverlayBgra = new byte[required];
@@ -1684,11 +1718,18 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         _nativeCompositeScaledCdgDirty = false;
                     }
 
-                    return _d3d11Renderer.UploadDirectCompositionOverlayFrame(
+                    var result = _d3d11Renderer.UploadDirectCompositionOverlayFrame(
                         _directCompositionCdgOverlayBgra.AsSpan(0, required),
                         destinationWidth,
                         destinationHeight,
                         destinationStride);
+
+                    if (_configuration.EnableVerboseLogging)
+                    {
+                        Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> {result} (dest={destinationWidth}x{destinationHeight}, scaled={scaled}, resize={resizeInProgress})");
+                    }
+
+                    return result;
                 }
             }
         }
@@ -1697,6 +1738,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             if (_configuration.EnableLogging)
             {
                 Debug.WriteLine($"[OptimizedRenderer] DirectComposition CDG overlay upload failed: {ex.Message}");
+            }
+            if (_configuration.EnableVerboseLogging)
+            {
+                Debug.WriteLine($"[CDG-DC-TRACE] TryUploadDirectCompositionCdgOverlay -> exception: {ex.Message}, resize={resizeInProgress}");
             }
             return false;
         }

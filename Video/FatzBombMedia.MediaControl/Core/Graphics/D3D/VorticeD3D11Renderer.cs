@@ -573,6 +573,12 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                 return;
             }
 
+            var liveResize = Volatile.Read(ref _nativeLiveResizeInProgress) != 0;
+            if (_configuration.EnableVerboseLogging)
+            {
+                Debug.WriteLine($"[CDG-DC-TRACE] SetDirectCompositionOutputSize: {_compositionOutputWidth}x{_compositionOutputHeight} -> {width}x{height}, content={_currentWidth}x{_currentHeight}, resize={liveResize}");
+            }
+
             _compositionOutputWidth = width;
             _compositionOutputHeight = height;
             ApplyDirectCompositionTransforms();
@@ -626,7 +632,17 @@ internal sealed class VorticeD3D11Renderer : IDisposable
             || stride < width * 4
             || pixelData.IsEmpty)
         {
+            if (_configuration.EnableVerboseLogging)
+            {
+                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (early: disposed={_disposed}, active={_directCompositionActive}, ctx={_context != null}, swapChain={_compositionOverlaySwapChain != null}, {width}x{height} stride={stride}, data={!pixelData.IsEmpty})");
+            }
             return false;
+        }
+
+        var liveResize = Volatile.Read(ref _nativeLiveResizeInProgress) != 0;
+        if (_configuration.EnableVerboseLogging)
+        {
+            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame entering: {width}x{height} into {_currentWidth}x{_currentHeight}, resize={liveResize}");
         }
 
         lock (_lock)
@@ -646,6 +662,10 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                     ReacquireDirectCompositionOverlayBackBuffer();
                     if (_compositionOverlayTexture == null)
                     {
+                        if (_configuration.EnableVerboseLogging)
+                        {
+                            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (null overlay texture at bufferIndex={bufferIndex}, resize={liveResize})");
+                        }
                         return false;
                     }
 
@@ -658,21 +678,33 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                     {
                         if (!EnsureCpuUploadTexture(width, height) || _cpuUploadTexture == null)
                         {
+                            if (_configuration.EnableVerboseLogging)
+                            {
+                                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit path failed, bufferIndex={bufferIndex}, resize={liveResize})");
+                            }
                             return false;
                         }
 
                         _context.UpdateSubresource(pixelData, _cpuUploadTexture, 0, (uint)stride, 0, null);
                         if (!BlitTextureToDirectCompositionOverlay(_cpuUploadTexture, width, height, 60.0))
                         {
+                            if (_configuration.EnableVerboseLogging)
+                            {
+                                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit failed, bufferIndex={bufferIndex}, resize={liveResize})");
+                            }
                             return false;
                         }
                     }
 
-                    var syncInterval = bufferIndex == DirectCompositionBufferCount - 1 ? 1u : 0u;
+                    var syncInterval = (bufferIndex == DirectCompositionBufferCount - 1 && !liveResize) ? 1u : 0u;
                     var result = _compositionOverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
                     if (result.Failure)
                     {
                         Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
+                        if (_configuration.EnableVerboseLogging)
+                        {
+                            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (Present failed at bufferIndex={bufferIndex}, resize={liveResize})");
+                        }
                         return false;
                     }
                 }
@@ -680,11 +712,19 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                 ReacquireDirectCompositionOverlayBackBuffer();
                 _compositionDevice?.Commit();
                 RecordUploadDiagnostics(GetElapsedMilliseconds(uploadStart), width, height);
+                if (_configuration.EnableVerboseLogging)
+                {
+                    Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> true (commit done, {width}x{height}, resize={liveResize})");
+                }
                 return true;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay upload failed: {ex.Message}");
+                if (_configuration.EnableVerboseLogging)
+                {
+                    Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> exception: {ex.Message}, resize={liveResize}");
+                }
                 return false;
             }
         }
@@ -1910,10 +1950,13 @@ float4 PSMain(VertexOut input) : SV_TARGET
             uint syncInterval = syncImmediate || liveResize || _configuration.NativeSwapChainPresentMode == NativeSwapChainPresentMode.Immediate ? 0u : 1u;
             var presentStart = Stopwatch.GetTimestamp();
             var result = swapChain.Present(syncInterval, (int)PresentFlags.None);
-            if (_directCompositionActive)
-            {
-                _compositionDevice?.Commit();
-            }
+            // During DirectComposition mode, do not commit the device from the video-frame
+            // present path. This intermediate commit can force DWM to sample the overlay
+            // swap-chain between CDG frame uploads, which makes the CDG lyrics disappear
+            // during live resize.  The overlay upload path (UploadDirectCompositionOverlayFrame)
+            // and the resize path (SetDirectCompositionOutputSize) own their own commits.
+            // For CreateSwapChainForComposition swap-chains, Present() alone makes the
+            // updated surface available to DWM without an explicit device Commit().
             RecordNativePresentDiagnostics(GetElapsedMilliseconds(presentStart), (int)syncInterval);
             if (result.Failure)
             {

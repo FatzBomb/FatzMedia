@@ -392,15 +392,13 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return;
         }
 
-        if (_nativeResizeInProgress)
-        {
-            QueueOverlayBoundsUpdate();
-            return;
-        }
-
         var renderer = Player?.Renderer;
         renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
-        QueueOverlayBoundsUpdate();
+
+        if (!_nativeResizeInProgress)
+        {
+            QueueOverlayBoundsUpdate();
+        }
     }
 
     private void AttachNativeResizeHook()
@@ -771,10 +769,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
             renderer?.SetNativePresentationStretch(Stretch);
 
-            if (!_nativeResizeInProgress)
-            {
-                renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
-            }
+            renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
 
             QueueOverlayBoundsUpdate();
             return;
