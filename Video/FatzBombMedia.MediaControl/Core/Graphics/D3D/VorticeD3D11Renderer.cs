@@ -954,6 +954,9 @@ internal sealed class VorticeD3D11Renderer : IDisposable
             _currentWidth = width;
             _currentHeight = height;
             _nativeHwndResizePending = false;
+            // Surface changed — reset any transient pipeline failure so the next
+            // CDG draw reinitialises shaders and render-target against the new backbuffer.
+            _cdgOverlayPipelineFailed = false;
 
             // Do not clear/present here. Presenting black during live resize is the flicker.
             // The caller will immediately draw real video/CDG/image content into the new

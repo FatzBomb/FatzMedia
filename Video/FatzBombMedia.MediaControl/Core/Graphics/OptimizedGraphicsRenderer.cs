@@ -172,6 +172,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             QueueNativeCompositePresent(TimeSpan.Zero);
         }
+
+        // CDG texture uploads were frozen for the entire resize drag.  Refresh the GPU
+        // texture now so the very next background-video frame draws CDG on top of video
+        // instead of presenting a video-only frame while waiting for the next CDG packet.
+        if (wasResizing && !isResizing && HasRetainedNativeCdgFrameUnsafe())
+        {
+            TryUploadNativeGpuCdgOverlay();
+        }
     }
 
     public void SetNativePresentationStretch(Stretch stretch)
@@ -676,6 +684,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         if (IsNativePresentationRequested)
         {
+            if (Volatile.Read(ref _nativeResizeInProgress) != 0)
+            {
+                return;
+            }
             RenderCdgWithNativeComposite(argbData, width, height);
             return;
         }
@@ -1398,15 +1410,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 return;
             }
 
-            // During live resize, defer the CDG GPU texture upload to the background-video
-            // frame path (RenderNativeGpuCompositedVideoFrame) to eliminate CDG-driven lock
-            // contention and GPU upload storms that cause drag slowdown and post-drag catchup.
-            // CDG data is already stored and dirty flags are set; the video frame will upload
-            // before compositing via DrawCachedCdgOverlayQuad.
-            if (Volatile.Read(ref _nativeResizeInProgress) == 0)
-            {
-                TryUploadNativeGpuCdgOverlay();
-            }
+            // Background video + CDG uses a single native HWND swap-chain compositor.  CDG
+            // updates refresh the retained overlay texture; the next background-video frame
+            // performs the one final GPU composite/present.
+            TryUploadNativeGpuCdgOverlay();
 
             // If a looping video is the compositor base, the background-video presentation loop owns
             // the final present cadence.  This CDG update is retained and blended on the next video
@@ -1501,14 +1508,6 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             _d3d11Renderer?.UploadFrame(pixelData, width, height, stride);
             return;
-        }
-
-        // CDG overlay texture is updated only when pixel data changes (_nativeCachedCdgOverlayDirty).
-        // Upload before compositing so DrawCachedCdgOverlayQuad always references current content.
-        // During resize this also picks up the deferred upload from RenderCdgWithNativeComposite.
-        if (_nativeCachedCdgOverlayDirty)
-        {
-            TryUploadNativeGpuCdgOverlay();
         }
 
         var useFallbackComposite = false;
@@ -1612,13 +1611,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         _directCompositionCdgOverlayHeight = overlayHeight;
                         _directCompositionCdgOverlayStride = overlayStride;
                         _nativeCachedCdgOverlayDirty = false;
+
+                        return _d3d11Renderer.UploadCdgOverlayTexture(
+                            _directCompositionCdgOverlayBgra.AsSpan(0, required),
+                            overlayWidth,
+                            overlayHeight,
+                            overlayStride);
                     }
 
-                    return _d3d11Renderer.UploadCdgOverlayTexture(
-                        _directCompositionCdgOverlayBgra.AsSpan(0, required),
-                        overlayWidth,
-                        overlayHeight,
-                        overlayStride);
+                    return true;
                 }
             }
         }
