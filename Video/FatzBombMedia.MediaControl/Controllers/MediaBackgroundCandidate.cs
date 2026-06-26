@@ -5,8 +5,9 @@ namespace FatzBombMedia.MediaControl.Controllers;
 
 internal enum MediaBackgroundKind
 {
-    Image,
-    Video
+    None = 0,
+    Image = 1,
+    Video = 2
 }
 
 internal sealed class MediaBackgroundCandidate

@@ -37,6 +37,12 @@ public sealed class CdgVisuals
         }
     }
 
+    /// <summary>
+    /// Gets the current cached CDG wash color in ARGB format. This is the color Layer 2
+    /// draws across the full viewport behind transparent CDG lyrics.
+    /// </summary>
+    public uint BackgroundWashArgb => _mediaEngine.Cdg?.BackgroundWashArgb ?? 0;
+
     internal void Apply()
     {
         var cdg = _mediaEngine.Cdg;

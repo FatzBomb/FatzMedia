@@ -38,7 +38,7 @@ For this test app, D3DImage is intentionally bypassed so the checkbox compares o
 
 ```xml
 <fbm:FatzBombMediaSurface Player="{Binding Player}"
-                          Stretch="{Binding MediaStretch}"
+                          VideoDisplayMode="{Binding VideoDisplayMode}"
                           BitmapScalingMode="{Binding BitmapScalingMode}"
                           PresentationMode="{Binding PresentationMode}"
                           OverlayHitTestVisible="False">

@@ -232,6 +232,7 @@ public partial class MainWindow : Window
 
         PlayerControlsPanel.Background = (System.Windows.Media.Brush)FindResource("PanelOverlayBrush");
         ShowFullScreenChrome(restartTimer: true);
+        QueueMediaSurfaceLayoutRefresh();
     }
 
     private void ExitFullScreen()
@@ -266,6 +267,13 @@ public partial class MainWindow : Window
         ResizeMode = _restoreResizeMode;
         Topmost = _restoreTopmost;
         WindowState = _restoreWindowState;
+        QueueMediaSurfaceLayoutRefresh();
+    }
+
+    private void QueueMediaSurfaceLayoutRefresh()
+    {
+        Dispatcher.BeginInvoke(new Action(() => MediaSurface.RefreshPresentationLayout()), DispatcherPriority.Render);
+        Dispatcher.BeginInvoke(new Action(() => MediaSurface.RefreshPresentationLayout()), DispatcherPriority.ApplicationIdle);
     }
 
     private void ShowFullScreenChrome(bool restartTimer)

@@ -285,6 +285,17 @@ public sealed class MediaPlayer : IDisposable
     }
 
     /// <summary>
+    /// Gets or sets how primary video content is displayed inside the viewport.
+    /// Defaults to <see cref="VideoDisplayMode.Zoom"/>, matching the previous aspect-preserving behavior.
+    /// Background media behind CDG/future overlays always uses zoom-to-fill regardless of this setting.
+    /// </summary>
+    public VideoDisplayMode VideoDisplayMode
+    {
+        get => Renderer.VideoDisplayMode;
+        set => Renderer.VideoDisplayMode = value;
+    }
+
+    /// <summary>
     /// Gets or sets whether karaoke backgrounds should be detected from sidecar or archive media.
     /// Defaults to true.
     /// </summary>

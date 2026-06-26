@@ -14,11 +14,11 @@ public interface ICdgEngine : IDisposable
     ReadOnlyMemory<int> FrameArgb { get; }
 
     /// <summary>
-    /// The CDG background tint color (premultiplied ARGB) used for the full-rectangle
-    /// GPU tint pass behind the CDG graphics.  Updated when background color or opacity
-    /// changes via CDG packet commands.
+    /// Cached full-viewport CDG background wash color in ARGB format. This value changes
+    /// only when the decoded CDG background color, background override, or presentation
+    /// opacity changes; lyric frame invalidations alone must not recalculate it.
     /// </summary>
-    uint TintArgb { get; }
+    uint BackgroundWashArgb { get; }
 
     /// <summary>
     /// Copies the current rendered ARGB frame into the supplied destination.
@@ -62,8 +62,11 @@ public interface ICdgEngine : IDisposable
     byte BackgroundOpacity { get; set; }
     uint? BackgroundOverrideArgb { get; set; }
 
-    // Notify UI layers that a new frame is available to present
+    // Notify UI layers that a new lyric frame is available to present.
     event EventHandler? FrameInvalidated;
+
+    // Notify renderers that the cached full-viewport wash color changed.
+    event EventHandler? BackgroundWashChanged;
 
     event EventHandler<CdgEngineState>? StateChanged;
     event EventHandler? Opened;

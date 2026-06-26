@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 
 namespace FatzBombMedia.MediaControl.Core.Cdg;
@@ -20,6 +19,8 @@ internal sealed class CdgColorManager
     private byte _backgroundOpacity = 255; // 0..255
     private uint? _backgroundOverrideArgb;
     private bool _lutNeedsUpdate = true;
+    private bool _backgroundWashNeedsUpdate = true;
+    private uint _backgroundWashArgb;
     
     #endregion
 
@@ -43,29 +44,33 @@ internal sealed class CdgColorManager
     public int BackgroundColorIndex => _backgroundColorIndex;
 
     /// <summary>
-    /// The full-opacity background tint ARGB (before transparency is baked into the bitmap).
-    /// When CDG is active this color is drawn as a full-rectangle tint pass behind the
-    /// CDG graphics so the native-aspect centered CDG frame blends over a matching background.
+    /// Cached full-viewport background wash ARGB.  Recomputed only when background color,
+    /// background override, color table, or presentation opacity changes.
     /// </summary>
-    public uint TintArgb
+    public uint BackgroundWashArgb
     {
         get
         {
-            UpdateLutIfNeeded();
-            var bgIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
-            var baseColor = _colorTable[bgIndex];
-            if (_backgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == _backgroundColorIndex))
-                baseColor = FromArgb(_backgroundOverrideArgb.Value);
-
-            var sourceA = _backgroundOverrideArgb.HasValue
-                ? FromArgb(_backgroundOverrideArgb.Value).A
-                : (byte)255;
-            var finalA = (byte)Math.Clamp((sourceA * _backgroundOpacity) / 255, 0, 255);
-
-            var result = (uint)((finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B);
-            Debug.WriteLine($"[CDG-TINT] TintArgb: bgIdx={bgIndex} override={_backgroundOverrideArgb.HasValue} opacity={_backgroundOpacity} sourceA={sourceA} finalA={finalA} R={baseColor.R} G={baseColor.G} B={baseColor.B} → 0x{result:X8}");
-            return result;
+            UpdateBackgroundWashIfNeeded();
+            return _backgroundWashArgb;
         }
+    }
+
+    /// <summary>
+    /// Refreshes the cached wash color if invalidated. Returns true only when the
+    /// ARGB value actually changed.
+    /// </summary>
+    public bool UpdateBackgroundWashIfNeeded()
+    {
+        if (!_backgroundWashNeedsUpdate)
+        {
+            return false;
+        }
+
+        var old = _backgroundWashArgb;
+        _backgroundWashArgb = CalculateBackgroundWashArgb();
+        _backgroundWashNeedsUpdate = false;
+        return old != _backgroundWashArgb;
     }
     
     /// <summary>
@@ -83,7 +88,7 @@ internal sealed class CdgColorManager
             if (scaled == _backgroundOpacity) return;
             
             _backgroundOpacity = scaled;
-            _lutNeedsUpdate = true;
+            InvalidateColorState(invalidateWash: true);
         }
     }
     
@@ -98,7 +103,7 @@ internal sealed class CdgColorManager
             if (_backgroundOverrideArgb == value) return;
             
             _backgroundOverrideArgb = value;
-            _lutNeedsUpdate = true;
+            InvalidateColorState(invalidateWash: true);
         }
     }
 
@@ -131,7 +136,7 @@ internal sealed class CdgColorManager
         
         _borderColorIndex = -1;
         _backgroundColorIndex = -1;
-        _lutNeedsUpdate = true;
+        InvalidateColorState(invalidateWash: true);
         
         UpdateLutIfNeeded();
     }
@@ -179,7 +184,7 @@ internal sealed class CdgColorManager
         if (_borderColorIndex == colorIndex) return;
         
         _borderColorIndex = colorIndex;
-        _lutNeedsUpdate = true;
+        InvalidateColorState(invalidateWash: false);
     }
     
     /// <summary>
@@ -191,7 +196,7 @@ internal sealed class CdgColorManager
         if (_backgroundColorIndex == colorIndex) return;
         
         _backgroundColorIndex = colorIndex;
-        _lutNeedsUpdate = true;
+        InvalidateColorState(invalidateWash: true);
     }
     
     /// <summary>
@@ -221,7 +226,7 @@ internal sealed class CdgColorManager
         if (colorIndex < 0 || colorIndex >= CdgConstants.ColorCount) return;
         // Host-controlled background opacity handles visual transparency.
         // CDG transparent-color packets are intentionally not mapped to WPF alpha here.
-        _lutNeedsUpdate = true;
+        InvalidateColorState(invalidateWash: false);
     }
     
     #endregion
@@ -251,7 +256,34 @@ internal sealed class CdgColorManager
             _colorTable[i + offset] = Color.FromArgb(255, (byte)r, (byte)g, (byte)b);
         }
         
+        InvalidateColorState(invalidateWash: true);
+    }
+
+    private void InvalidateColorState(bool invalidateWash)
+    {
         _lutNeedsUpdate = true;
+        if (invalidateWash)
+        {
+            _backgroundWashNeedsUpdate = true;
+        }
+    }
+
+    private uint CalculateBackgroundWashArgb()
+    {
+        var bgIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
+        var baseColor = _colorTable[bgIndex];
+
+        if (_backgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == _backgroundColorIndex))
+        {
+            baseColor = FromArgb(_backgroundOverrideArgb.Value);
+        }
+
+        var sourceA = _backgroundOverrideArgb.HasValue
+            ? FromArgb(_backgroundOverrideArgb.Value).A
+            : (byte)255;
+        var finalA = (byte)Math.Clamp((sourceA * _backgroundOpacity) / 255, 0, 255);
+
+        return (uint)((finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B);
     }
     
     private static Color FromArgb(uint argb) =>

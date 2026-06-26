@@ -7,6 +7,7 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Graphics;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Pipeline;
+using FatzBombMedia.MediaControl.Controllers.Layering;
 using System.IO;
 
 namespace FatzBombMedia.MediaControl.Controllers;
@@ -20,7 +21,7 @@ public sealed class MediaRenderer : IDisposable
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly OptimizedGraphicsRenderer _graphicsRenderer;
-    private readonly BackgroundVideoRenderer _backgroundVideoRenderer;
+    private readonly BackgroundMediaRenderer _backgroundMediaRenderer;
     private readonly RenderPipeline _renderPipeline;
     private readonly MediaPlayerConfiguration _configuration;
     private readonly bool _enableLogging;
@@ -28,20 +29,14 @@ public sealed class MediaRenderer : IDisposable
     private IVideoEngine? _attachedVideo;
     private ICdgEngine? _attachedCdg;
     private ImageSource? _stillImageSource;
-    private ImageSource? _autoBackgroundSource;
     private bool _nativeCompositeBaseIsBackgroundVideo;
+    private MediaLayerState _layerState = MediaLayerState.Empty;
 
     // Natural window refresh rendering
     private bool _isRenderingActive;
     private int _lastCdgPresentLogSecond = -1;
     private bool _nativePresentationRequested;
     private bool _wpfCompositionDrivenVideo;
-
-    // DIAGNOSTIC: disables Layer 3 CDG lyric rendering while keeping the CDG session
-    // attached. This lets us verify Layer 1 background video/image zoom-to-fill behavior
-    // without CDG frame invalidation/upload/presentation noise. Set to false or remove
-    // this guard when re-enabling the CDG lyric layer.
-    private const bool DisableCdgLyricLayerForBackgroundZoomTest = false;
 
     private bool _disposed;
 
@@ -56,7 +51,7 @@ public sealed class MediaRenderer : IDisposable
         _mediaEngine = mediaEngine;
         _graphicsRenderer = new OptimizedGraphicsRenderer(configuration);
         _configuration = configuration;
-        _backgroundVideoRenderer = new BackgroundVideoRenderer(configuration);
+        _backgroundMediaRenderer = new BackgroundMediaRenderer(configuration);
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _enableLogging = configuration.EnableLogging;
         _enableVerboseLogging = configuration.EnableVerboseLogging;
@@ -64,9 +59,9 @@ public sealed class MediaRenderer : IDisposable
         // Forward graphics renderer events
         _graphicsRenderer.ImageSourceChanged += (s, e) => ImageSourceChanged?.Invoke(this, EventArgs.Empty);
         _graphicsRenderer.FramePresented += (s, e) => FramePresented?.Invoke(this, EventArgs.Empty);
-        _backgroundVideoRenderer.ImageSourceChanged += (_, __) => BackgroundChanged?.Invoke(this, EventArgs.Empty);
-        _backgroundVideoRenderer.FramePresented += (_, __) => FramePresented?.Invoke(this, EventArgs.Empty);
-        _backgroundVideoRenderer.FrameReady += OnBackgroundVideoFrameReady;
+        _backgroundMediaRenderer.BackgroundChanged += OnBackgroundMediaChanged;
+        _backgroundMediaRenderer.FramePresented += (_, __) => FramePresented?.Invoke(this, EventArgs.Empty);
+        _backgroundMediaRenderer.VideoFrameReady += OnBackgroundVideoFrameReady;
 
         AttachVideoIfAvailable();
         AttachCdgIfAvailable();
@@ -83,6 +78,7 @@ public sealed class MediaRenderer : IDisposable
     private ImageSource? _backgroundSource;
     private Color _backgroundColor = Colors.Transparent;
     private Stretch _backgroundStretch = Stretch.Uniform;
+    private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
     private bool _backgroundAutoDetect = true;
     private bool _backgroundVisibleWhenStopped = true;
 
@@ -97,6 +93,7 @@ public sealed class MediaRenderer : IDisposable
             if (ReferenceEquals(_backgroundSource, value)) return;
 
             _backgroundSource = value;
+            UpdateLayerState("manual background source changed");
             RefreshNativeCompositeBaseLayer();
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -133,6 +130,24 @@ public sealed class MediaRenderer : IDisposable
     }
 
     /// <summary>
+    /// Gets or sets how primary video content is displayed inside the viewport.
+    /// Defaults to <see cref="VideoDisplayMode.Zoom"/>, matching the previous video-only behavior.
+    /// Background media behind overlays ignores this setting and always uses zoom-to-fill.
+    /// </summary>
+    public VideoDisplayMode VideoDisplayMode
+    {
+        get => _videoDisplayMode;
+        set
+        {
+            if (_videoDisplayMode == value) return;
+
+            _videoDisplayMode = value;
+            _graphicsRenderer.SetNativePresentationStretch(VideoDisplayModeMapper.ToStretch(_videoDisplayMode));
+            VideoDisplayModeChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// Gets or sets whether karaoke backgrounds should be detected from sidecar or archive media.
     /// </summary>
     public bool BackgroundAutoDetect
@@ -164,7 +179,7 @@ public sealed class MediaRenderer : IDisposable
             _backgroundVisibleWhenStopped = value;
             if (!_isRenderingActive)
             {
-                _backgroundVideoRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+                _backgroundMediaRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
             }
         }
     }
@@ -173,32 +188,50 @@ public sealed class MediaRenderer : IDisposable
     /// Gets the currently displayed background image source after auto-detection is applied.
     /// </summary>
     public ImageSource? EffectiveBackgroundSource =>
-        _backgroundVideoRenderer.ImageSource ?? _autoBackgroundSource ?? _backgroundSource;
+        _backgroundMediaRenderer.ImageSource ?? _backgroundSource;
 
     /// <summary>
     /// Gets whether a CDG layer is currently attached. Background media uses
     /// CDG layering rules when this is true.
     /// </summary>
-    public bool HasCdgContent => _attachedCdg != null;
+    public bool HasCdgContent => _layerState.ForegroundOverlay == ForegroundOverlayKind.Cdg;
 
     /// <summary>
-    /// Gets whether CDG is layered over a separate background visual. In this mode,
-    /// the native/WPF presentation surface must use the full viewport as its output
-    /// target; the CDG layer is aspect-fitted inside that viewport later.
+    /// Gets the stable layer role classification for the current media session. This is
+    /// decided from media/background roles and must not depend on CDG frame invalidations.
     /// </summary>
-    public bool HasCdgBackgroundLayer => HasCdgContent
-        && (_nativeCompositeBaseIsBackgroundVideo
-            || _stillImageSource != null
-            || _autoBackgroundSource != null
-            || _backgroundSource != null
-            || _backgroundVideoRenderer.ImageSource != null);
+    internal MediaLayerState LayerState => _layerState;
 
     /// <summary>
-    /// Gets the background stretch mode after applying CDG layering rules.
-    /// Background images/videos fill the viewport when a CDG layer is present;
-    /// video-only playback continues to use the normal media stretch path.
+    /// Gets whether the current media session has a foreground overlay such as CDG.
     /// </summary>
-    public Stretch EffectiveBackgroundStretch => HasCdgContent ? Stretch.UniformToFill : _backgroundStretch;
+    public bool HasOverlaySession => _layerState.HasOverlaySession;
+
+    /// <summary>
+    /// Gets whether the current media session has background media assigned by role.
+    /// </summary>
+    public bool HasBackgroundMedia => _layerState.HasBackgroundMedia;
+
+    /// <summary>
+    /// Diagnostic string for verifying media/layer classification during refactor testing.
+    /// </summary>
+    public string LayerStateDebug => _layerState.ToString();
+
+    /// <summary>
+    /// Gets whether foreground overlay content is layered over separate background media.
+    /// In this mode the native/WPF presentation surface must use the full viewport as its
+    /// output target; overlay layers are aspect-fitted inside that viewport later.
+    /// </summary>
+    public bool HasOverlayBackgroundLayer => _layerState.UsesBackgroundPresentation;
+
+    /// <summary>
+    /// Gets the background stretch mode after applying overlay layering rules.
+    /// Background images/videos fill the viewport for overlay sessions; video-only
+    /// playback continues to use the normal media stretch path.
+    /// </summary>
+    public Stretch EffectiveBackgroundStretch => _layerState.UsesBackgroundPresentation
+        ? Stretch.UniformToFill
+        : _backgroundStretch;
 
     /// <summary>
     /// Event raised when the ImageSource changes (new video frame, CDG update, etc.).
@@ -209,6 +242,11 @@ public sealed class MediaRenderer : IDisposable
     /// Event raised when the background source or stretch mode changes.
     /// </summary>
     public event EventHandler? BackgroundChanged;
+
+    /// <summary>
+    /// Event raised when the primary video display mode changes.
+    /// </summary>
+    public event EventHandler? VideoDisplayModeChanged;
 
     /// <summary>
     /// Raised immediately after a video frame has been presented. Hosts should invalidate
@@ -263,7 +301,7 @@ public sealed class MediaRenderer : IDisposable
     public void SetNativePresentationWindow(IntPtr hwnd)
     {
         _nativePresentationRequested = hwnd != IntPtr.Zero;
-        _backgroundVideoRenderer.UseOwnPresentation = !_nativePresentationRequested;
+        _backgroundMediaRenderer.UseOwnVideoPresentation = !_nativePresentationRequested;
         _graphicsRenderer.SetNativePresentationWindow(hwnd);
         ApplyVideoPresentationSchedulingMode();
         if (_nativePresentationRequested)
@@ -336,33 +374,56 @@ public sealed class MediaRenderer : IDisposable
         _mediaEngine.SetDisplayRefreshRate(refreshHz);
     }
 
+    private void OnBackgroundMediaChanged(object? sender, EventArgs e)
+    {
+        UpdateLayerState("background media changed");
+        RefreshNativeCompositeBaseLayer();
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateLayerState(string reason)
+    {
+        var backgroundKind = _backgroundMediaRenderer.Kind;
+        if (backgroundKind == MediaBackgroundKind.None && _backgroundSource != null)
+        {
+            backgroundKind = MediaBackgroundKind.Image;
+        }
+
+        var newState = MediaLayerState.From(_mediaEngine.Content, backgroundKind);
+        if (newState.Equals(_layerState))
+        {
+            return;
+        }
+
+        _layerState = newState;
+        _graphicsRenderer.SetNativeCompositeCdgLayeringActive(newState.ForegroundOverlay == ForegroundOverlayKind.Cdg);
+
+        if (_enableLogging)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Layer state ({reason}): {newState}");
+        }
+    }
+
     internal void ApplyAutoBackground(MediaBackgroundCandidate? background)
     {
-        ClearAutoBackground();
         if (!_backgroundAutoDetect || background == null)
         {
-            BackgroundChanged?.Invoke(this, EventArgs.Empty);
+            ClearAutoBackground();
             return;
         }
 
         try
         {
-            if (background.Kind == MediaBackgroundKind.Video)
-            {
-                _backgroundVideoRenderer.Open(background);
-                _nativeCompositeBaseIsBackgroundVideo = true;
-            }
-            else
-            {
-                _autoBackgroundSource = LoadBackgroundImage(background);
-                _nativeCompositeBaseIsBackgroundVideo = false;
-                RefreshNativeCompositeBaseLayer();
-            }
+            var applied = _backgroundMediaRenderer.Apply(background);
+            _nativeCompositeBaseIsBackgroundVideo = applied && background.Kind == MediaBackgroundKind.Video;
+            UpdateLayerState($"auto background applied: {(applied ? background.Kind.ToString() : "none")}");
+            RefreshNativeCompositeBaseLayer();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Failed to apply auto background '{background.DisplayName}': {ex.Message}");
             ClearAutoBackground();
+            return;
         }
 
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
@@ -370,9 +431,9 @@ public sealed class MediaRenderer : IDisposable
 
     internal void ClearAutoBackground()
     {
-        _backgroundVideoRenderer.Clear();
-        _autoBackgroundSource = null;
+        _backgroundMediaRenderer.Clear();
         _nativeCompositeBaseIsBackgroundVideo = false;
+        UpdateLayerState("auto background cleared");
         RefreshNativeCompositeBaseLayer();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -406,34 +467,32 @@ public sealed class MediaRenderer : IDisposable
         // Clean up previous CDG attachment
         if (_attachedCdg != null)
         {
-            try { _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated; } catch { }
+            try
+            {
+                _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated;
+                _attachedCdg.BackgroundWashChanged -= OnCdgBackgroundWashChanged;
+            }
+            catch { }
             _attachedCdg = null;
         }
 
-        _graphicsRenderer.SetNativeCompositeCdgLayeringActive(_mediaEngine.Cdg != null);
-
-        // Attach to CDG if available. During the background zoom diagnostic, keep the
-        // CDG session attached so Layer 1 still enters CDG-background mode, but do not
-        // subscribe to CDG invalidations or upload the CDG lyric layer.
+        // Attach to CDG if available. CDG lyrics and the background wash are now
+        // separate renderer layers; subscribing here only drives the lyric layer.
         if (_mediaEngine.Cdg != null)
         {
             _attachedCdg = _mediaEngine.Cdg;
 
-            if (!DisableCdgLyricLayerForBackgroundZoomTest)
-            {
-                _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
+            _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
+            _attachedCdg.BackgroundWashChanged += OnCdgBackgroundWashChanged;
+            ApplyCdgBackgroundWash();
 
-                // Set initial CDG image if available and force the zero-time frame into the renderer.
-                _renderPipeline.Attach(_attachedVideo, _attachedCdg);
-                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
-            }
+            // Set initial CDG image if available and force the zero-time frame into the renderer.
+            _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
 
             if (_enableLogging)
             {
-                var diagnosticSuffix = DisableCdgLyricLayerForBackgroundZoomTest
-                    ? " (DIAGNOSTIC: lyric layer disabled)"
-                    : string.Empty;
-                System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}{diagnosticSuffix}");
+                System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}");
             }
         }
         else
@@ -441,7 +500,7 @@ public sealed class MediaRenderer : IDisposable
             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] No CDG content available");
         }
 
-        // CDG changes the background-image stretch rule to UniformToFill.
+        UpdateLayerState("CDG attachment refreshed");
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -490,7 +549,7 @@ public sealed class MediaRenderer : IDisposable
         // presentation is handled by VideoPipeline; in native HWND mode these ticks are diagnostic
         // only and are not the video swap-chain cadence.
         CompositionTarget.Rendering += OnWindowRefresh;
-        _backgroundVideoRenderer.Start();
+        _backgroundMediaRenderer.Start();
         _isRenderingActive = true;
 
         var method = _graphicsRenderer.CurrentRenderingMethod;
@@ -505,7 +564,7 @@ public sealed class MediaRenderer : IDisposable
         if (!_isRenderingActive) return;
 
         CompositionTarget.Rendering -= OnWindowRefresh;
-        _backgroundVideoRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+        _backgroundMediaRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
         _isRenderingActive = false;
 
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Stopped natural window refresh rendering");
@@ -542,10 +601,7 @@ public sealed class MediaRenderer : IDisposable
                 _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
             }
 
-            if (!DisableCdgLyricLayerForBackgroundZoomTest)
-            {
-                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
-            }
+            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
         }
         catch (Exception ex)
         {
@@ -591,15 +647,22 @@ public sealed class MediaRenderer : IDisposable
         }
     }
 
-    private void OnCdgFrameInvalidated(object? sender, EventArgs e)
+    private void OnCdgBackgroundWashChanged(object? sender, EventArgs e) => ApplyCdgBackgroundWash();
+
+    private void ApplyCdgBackgroundWash()
     {
-        if (DisableCdgLyricLayerForBackgroundZoomTest)
+        var cdg = _attachedCdg;
+        if (cdg == null)
         {
-            // DIAGNOSTIC: ignore CDG frame invalidations entirely so this test isolates
-            // Layer 1 background video/image sizing and flicker behavior.
+            _graphicsRenderer.SetCdgBackgroundWash(0);
             return;
         }
 
+        _graphicsRenderer.SetCdgBackgroundWash(cdg.BackgroundWashArgb);
+    }
+
+    private void OnCdgFrameInvalidated(object? sender, EventArgs e)
+    {
         try
         {
             // Check if the dispatcher is shutting down before attempting to invoke
@@ -626,12 +689,6 @@ public sealed class MediaRenderer : IDisposable
 
     private void RenderCurrentCdgFrame(bool force)
     {
-        if (DisableCdgLyricLayerForBackgroundZoomTest)
-        {
-            // DIAGNOSTIC: do not upload or present the CDG lyric layer.
-            return;
-        }
-
         if (_attachedCdg == null) return;
 
         try
@@ -652,11 +709,6 @@ public sealed class MediaRenderer : IDisposable
             {
                 var frameData = frameBuffer.AsSpan(0, pixelCount);
                 _attachedCdg.CopyFrameArgb(frameData);
-
-                // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
-                // Restore the original line below when re-enabling Layer 2:
-                // _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
-                _graphicsRenderer.SetCdgBackgroundTint(0);
 
                 _graphicsRenderer.RenderCdgFrame(frameData, width, height);
             }
@@ -704,13 +756,15 @@ public sealed class MediaRenderer : IDisposable
             return;
         }
 
-        if (_nativeCompositeBaseIsBackgroundVideo)
+        if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaRenderer.HasVideo)
         {
-            // BackgroundVideoRenderer will push frames through OnBackgroundVideoFrameReady.
+            // BackgroundMediaRenderer/BackgroundVideoRenderer will push video frames through
+            // OnBackgroundVideoFrameReady.  The background-video role is stable even before the
+            // first frame arrives, so do not clear/reclassify the native base here.
             return;
         }
 
-        if ((_autoBackgroundSource ?? _backgroundSource) is BitmapSource backgroundImage)
+        if ((_backgroundMediaRenderer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
         {
             _graphicsRenderer.SetNativeCompositeBase(backgroundImage);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: background image {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
@@ -755,6 +809,8 @@ public sealed class MediaRenderer : IDisposable
         AttachCdgIfAvailable();
         AttachImageIfAvailable();
         _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+        UpdateLayerState("attachments refreshed");
+        RefreshNativeCompositeBaseLayer();
 
         if (wasRenderingActive || _mediaEngine.State == MediaPlayerState.Playing)
         {
@@ -788,10 +844,16 @@ public sealed class MediaRenderer : IDisposable
 
         if (_attachedCdg != null)
         {
-            try { _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated; } catch { }
+            try
+            {
+                _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated;
+                _attachedCdg.BackgroundWashChanged -= OnCdgBackgroundWashChanged;
+            }
+            catch { }
             _attachedCdg = null;
-            _graphicsRenderer.SetNativeCompositeCdgLayeringActive(false);
+            _graphicsRenderer.SetCdgBackgroundWash(0);
             _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+            UpdateLayerState("CDG engine detached");
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] CDG engine detached");
         }
@@ -816,36 +878,12 @@ public sealed class MediaRenderer : IDisposable
 
         DetachAllEngines();
 
-        _backgroundVideoRenderer.FrameReady -= OnBackgroundVideoFrameReady;
+        _backgroundMediaRenderer.VideoFrameReady -= OnBackgroundVideoFrameReady;
         _graphicsRenderer?.Dispose();
-        _backgroundVideoRenderer.Dispose();
+        _backgroundMediaRenderer.Dispose();
 
         _disposed = true;
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Disposed with GPU acceleration support");
     }
 
-    private static BitmapImage? LoadBackgroundImage(MediaBackgroundCandidate background)
-    {
-        if (background.Kind != MediaBackgroundKind.Image)
-            return null;
-
-        using var stream = background.Data is { Length: > 0 } data
-            ? new MemoryStream(data)
-            : null;
-
-        var image = new BitmapImage();
-        image.BeginInit();
-        image.CacheOption = BitmapCacheOption.OnLoad;
-
-        if (!string.IsNullOrWhiteSpace(background.Path))
-            image.UriSource = new Uri(Path.GetFullPath(background.Path), UriKind.Absolute);
-        else if (stream != null)
-            image.StreamSource = stream;
-        else
-            return null;
-
-        image.EndInit();
-        image.Freeze();
-        return image;
-    }
 }

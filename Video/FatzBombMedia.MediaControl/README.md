@@ -31,9 +31,9 @@ assign an `ImageSource` or keep an attachment object:
 
 ```xml
 <media:FatzBombMediaSurface Player="{Binding Player}"
-                            Stretch="Uniform"
+                            VideoDisplayMode="Zoom"
                             BitmapScalingMode="HighQuality"
-                            UseNativeHwnd="False" />
+                            PresentationMode="D3DImage" />
 ```
 
 Create and configure the player from the host/view-model:
@@ -59,7 +59,7 @@ await player.LoadAsync(path);
 
 `FatzBombMediaSurface` owns the WPF presentation details. Its default path is WPF `D3DImage`,
 which keeps D3D11 hardware frames on the GPU where possible while avoiding WPF airspace issues.
-`UseNativeHwnd`/`PresentationMode=NativeHwnd` requests the strict child-HWND DXGI swap-chain target.
+`PresentationMode=NativeHwnd` requests the strict child-HWND DXGI swap-chain target.
 Use it to A/B test WPF `D3DImage` versus native presentation. When active, logs should show
 `Presentation backend: NativeHwndSwapChain` and should not create a new `D3DImage shared presentation surface`
 for the active video target.
@@ -231,7 +231,7 @@ For high-performance WPF playback with overlay controls, use `NativeHwndOverlay`
 ```xml
 <media:FatzBombMediaSurface Player="{Binding Player}"
                             PresentationMode="NativeHwndOverlay"
-                            Stretch="Uniform">
+                            VideoDisplayMode="Zoom">
     <media:FatzBombMediaSurface.OverlayContent>
         <Grid>
             <!-- host-owned overlay controls -->

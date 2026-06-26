@@ -148,7 +148,7 @@
                 MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
             <fbm:FatzBombMediaSurface x:Name="MediaSurface"
                                       Player="{Binding Player}"
-                                      Stretch="{Binding MediaStretch}"
+                                      VideoDisplayMode="{Binding VideoDisplayMode}"
                                       BitmapScalingMode="{Binding BitmapScalingMode}"
                                       PresentationMode="{Binding PresentationMode}"
                                       OverlayHitTestVisible="False"
@@ -394,10 +394,12 @@
                                 <CheckBox Grid.Column="0"
                                       Content="Normalize"
                                       IsChecked="{Binding Normalize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox Grid.Column="2"
-                                      Content="Aspect"
-                                      ToolTip="Maintain aspect ratio. When off, video fills the viewport."
-                                      IsChecked="{Binding MaintainAspect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Grid.Column="2"
+                                      MinWidth="92"
+                                      Foreground="Black"
+                                      ToolTip="Primary video display mode. Background videos behind overlays always use ZoomToFill."
+                                      ItemsSource="{Binding VideoDisplayModes}"
+                                      SelectedItem="{Binding VideoDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Column="4"
                                            Text="Native Overlay"
                                            ToolTip="The sample app always uses the native HWND + transparent overlay window path."

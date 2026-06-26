@@ -22,10 +22,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool _normalize = true;
     private bool _autoPlay = true;
     private bool _loopPlayback;
-    private bool _maintainAspect = true;
+    private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
     private BitmapScalingMode _bitmapScalingMode = BitmapScalingMode.HighQuality;
     private int _cdgBackgroundOpacity = 100;
-    private bool _enableOverlay = true; // kept for compatibility; sample app always uses native overlay.
     private double _positionSeconds;
     private double _seekPositionSeconds;
     private double _durationSeconds;
@@ -64,7 +63,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
             var player = new FatzMediaPlayer(diagnosticsConfig, NativeLibraryPaths)
             {
-                Normalize = _normalize
+                Normalize = _normalize,
+                VideoDisplayMode = _videoDisplayMode
             };
             player.Effects.Volume = _volume;
             player.Effects.Pitch = _pitch;
@@ -100,6 +100,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         BitmapScalingMode.Linear,
         BitmapScalingMode.LowQuality,
         BitmapScalingMode.NearestNeighbor
+    ];
+
+    public IReadOnlyList<VideoDisplayMode> VideoDisplayModes { get; } =
+    [
+        VideoDisplayMode.Original,
+        VideoDisplayMode.Zoom,
+        VideoDisplayMode.Stretch,
+        VideoDisplayMode.ZoomToFill
     ];
 
     public AsyncRelayCommand<string?> LoadMediaCommand { get; }
@@ -199,17 +207,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool MaintainAspect
+    public VideoDisplayMode VideoDisplayMode
     {
-        get => _maintainAspect;
+        get => _videoDisplayMode;
         set
         {
-            if (!SetProperty(ref _maintainAspect, value)) return;
-            OnPropertyChanged(nameof(MediaStretch));
+            if (!SetProperty(ref _videoDisplayMode, value)) return;
+            if (Player is { } player)
+                player.VideoDisplayMode = _videoDisplayMode;
         }
     }
-
-    public Stretch MediaStretch => MaintainAspect ? Stretch.Uniform : Stretch.Fill;
 
     public BitmapScalingMode BitmapScalingMode
     {
@@ -226,20 +233,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _cdgBackgroundOpacity, clamped)) return;
             if (Player is { } player)
                 player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
-        }
-    }
-
-    /// <summary>
-    /// Legacy compatibility property. The sample player no longer exposes renderer mode selection;
-    /// it always uses NativeHwndOverlay so the test path matches the product path.
-    /// </summary>
-    public bool EnableOverlay
-    {
-        get => true;
-        set
-        {
-            if (!SetProperty(ref _enableOverlay, true)) return;
-            OnPropertyChanged(nameof(PresentationMode));
         }
     }
 

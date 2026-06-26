@@ -19,6 +19,7 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     private readonly byte[] _tempPixelColors = new byte[CdgConstants.TotalPixels];
     private readonly CdgColorManager _colorManager = new();
     private readonly CdgPacketProcessor _packetProcessor;
+    private uint _backgroundWashArgb;
     private readonly Lock _renderLock = new();
     
     // Packet processing state
@@ -72,6 +73,7 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     {
         // Initialize the packet processor with our buffers and color manager
         _packetProcessor = new CdgPacketProcessor(_pixelColors, _tempPixelColors, _colorManager);
+        _backgroundWashArgb = _colorManager.BackgroundWashArgb;
     }
     
     #endregion
@@ -88,7 +90,16 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     public ReadOnlyMemory<int> FrameArgb => _frameArgb;
 
     /// <inheritdoc/>
-    public uint TintArgb => (uint)_colorManager.TintArgb;
+    public uint BackgroundWashArgb
+    {
+        get
+        {
+            lock (_renderLock)
+            {
+                return _backgroundWashArgb;
+            }
+        }
+    }
 
     /// <inheritdoc/>
     public byte BackgroundOpacity
@@ -96,12 +107,14 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         get => _colorManager.BackgroundOpacity;
         set
         {
+            bool washChanged;
             lock (_renderLock)
             {
                 _colorManager.BackgroundOpacity = value;
-                RenderFrameBuffer();
+                washChanged = RenderFrameBuffer();
             }
 
+            NotifyBackgroundWashChangedIfNeeded(washChanged);
             InvalidateFrame();
         }
     }
@@ -112,12 +125,14 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         get => _colorManager.BackgroundOverrideArgb;
         set
         {
+            bool washChanged;
             lock (_renderLock)
             {
                 _colorManager.BackgroundOverrideArgb = value;
-                RenderFrameBuffer();
+                washChanged = RenderFrameBuffer();
             }
 
+            NotifyBackgroundWashChangedIfNeeded(washChanged);
             InvalidateFrame();
         }
     }
@@ -127,6 +142,9 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     
     /// <inheritdoc/>
     public event EventHandler? FrameInvalidated;
+
+    /// <inheritdoc/>
+    public event EventHandler? BackgroundWashChanged;
     
     #endregion
 
@@ -216,6 +234,7 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     public void RenderAtSeconds(double seconds, bool forceRebuild)
     {
         var shouldInvalidate = false;
+        var washChanged = false;
 
         lock (_renderLock)
         {
@@ -245,9 +264,8 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
             // CRITICAL: Only update UI if packets actually changed pixels (like old implementation)
             if (hasChanges || rebuiltFromStart || (endIndex == 0 && _packets.Length > 0)) // Always render first/rebuilt frame
             {
-                // Update color LUT and render frame
-                _colorManager.UpdateLutIfNeeded();
-                RenderFrameBuffer();
+                // Update color/LUT caches and render frame.
+                washChanged = RenderFrameBuffer();
                 var logSecond = (int)seconds;
                 if (logSecond != _lastRenderLogSecond)
                 {
@@ -260,6 +278,7 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         }
 
         PositionSeconds = seconds;
+        NotifyBackgroundWashChangedIfNeeded(washChanged);
 
         if (shouldInvalidate)
         {
@@ -273,14 +292,16 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     
     private void ResetInternal()
     {
+        bool washChanged;
         lock (_renderLock)
         {
             ResetPacketStateForReplay();
             _lastRenderLogSecond = -1;
-            RenderFrameBuffer();
+            washChanged = RenderFrameBuffer();
         }
 
         PositionSeconds = 0;
+        NotifyBackgroundWashChangedIfNeeded(washChanged);
     }
 
     private void ResetPacketStateForReplay()
@@ -293,8 +314,10 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     
     private void InvalidateFrame() => FrameInvalidated?.Invoke(this, EventArgs.Empty);
     
-    private void RenderFrameBuffer()
+    private bool RenderFrameBuffer()
     {
+        _colorManager.UpdateLutIfNeeded();
+        var washChanged = RefreshBackgroundWashCacheUnsafe();
         var colorLut = _colorManager.ColorLut;
         var frameSpan = _frameArgb.AsSpan();
         var pixelSpan = _pixelColors.AsSpan();
@@ -304,12 +327,34 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         for (int i = 0; i < frameSpan.Length; i++)
         {
             var index = pixelSpan[i];
-            // Erase background pixels. The background tint is drawn as a full-rectangle
-            // GPU pass; keeping background opaque in the bitmap creates visible seams
-            // when the CDG is centred at native aspect inside the video output rect.
+            // Erase background pixels. The background wash is drawn as a full-viewport
+            // layer; keeping background opaque in the lyric bitmap creates visible seams
+            // when the CDG is centred at native aspect over background media.
             frameSpan[i] = (index == 0 || index == backgroundColorIndex) ? 0 : colorLut[index];
         }
 
+        return washChanged;
+    }
+
+    private bool RefreshBackgroundWashCacheUnsafe()
+    {
+        _colorManager.UpdateBackgroundWashIfNeeded();
+        var newWashArgb = _colorManager.BackgroundWashArgb;
+        if (newWashArgb == _backgroundWashArgb)
+        {
+            return false;
+        }
+
+        _backgroundWashArgb = newWashArgb;
+        return true;
+    }
+
+    private void NotifyBackgroundWashChangedIfNeeded(bool changed)
+    {
+        if (changed)
+        {
+            BackgroundWashChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
     
     #endregion
