@@ -15,7 +15,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     
     // Core rendering components
     private readonly int[] _frameArgb = new int[CdgConstants.TotalPixels];
-    private readonly int[] _widescreenFrameArgb = new int[CdgConstants.WidescreenFrameWidth * CdgConstants.FrameHeight];
     private readonly byte[] _pixelColors = new byte[CdgConstants.TotalPixels];
     private readonly byte[] _tempPixelColors = new byte[CdgConstants.TotalPixels];
     private readonly CdgColorManager _colorManager = new();
@@ -26,7 +25,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     private int _startPacketIndex;
     private int _lastRenderLogSecond = -1;
     private CdgPacket[] _packets = [];
-    private bool _useWidescreenPresentation = true;
     private bool _disposed;
     
     // Event declarations for state and lifecycle
@@ -92,19 +90,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     /// <inheritdoc/>
     public uint TintArgb => (uint)_colorManager.TintArgb;
 
-    /// <inheritdoc/>
-    public bool UseWidescreenPresentation
-    {
-        get => _useWidescreenPresentation;
-        set
-        {
-            lock (_renderLock)
-            {
-                _useWidescreenPresentation = value;
-            }
-        }
-    }
-    
     /// <inheritdoc/>
     public byte BackgroundOpacity
     {
@@ -325,20 +310,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
             frameSpan[i] = (index == 0 || index == backgroundColorIndex) ? 0 : colorLut[index];
         }
 
-        RenderWidescreenFrameBuffer();
-    }
-
-    private void RenderWidescreenFrameBuffer()
-    {
-        Array.Fill(_widescreenFrameArgb, 0);
-
-        const int leftPadding = (CdgConstants.WidescreenFrameWidth - CdgConstants.FrameWidth) / 2;
-        for (var row = 0; row < CdgConstants.FrameHeight; row++)
-        {
-            var sourceOffset = row * CdgConstants.FrameWidth;
-            var destinationOffset = row * CdgConstants.WidescreenFrameWidth + leftPadding;
-            Array.Copy(_frameArgb, sourceOffset, _widescreenFrameArgb, destinationOffset, CdgConstants.FrameWidth);
-        }
     }
     
     #endregion

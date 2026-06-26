@@ -1,0 +1,485 @@
+diff --git a/FatzBombMedia.MediaControl/Controllers/CdgVisuals.cs b/FatzBombMedia.MediaControl/Controllers/CdgVisuals.cs
+index 74297b4..b2e62d4 100644
+--- a/FatzBombMedia.MediaControl/Controllers/CdgVisuals.cs
++++ b/FatzBombMedia.MediaControl/Controllers/CdgVisuals.cs
+@@ -10,7 +10,6 @@ public sealed class CdgVisuals
+     private readonly IMediaEngine _mediaEngine;
+     private byte _backgroundOpacity = 100;
+     private uint? _backgroundOverrideArgb;
+-    private bool _useWidescreenPresentation = true;
+ 
+     internal CdgVisuals(IMediaEngine mediaEngine)
+     {
+@@ -38,16 +37,6 @@ public sealed class CdgVisuals
+         }
+     }
+ 
+-    public bool UseWidescreenPresentation
+-    {
+-        get => _useWidescreenPresentation;
+-        set
+-        {
+-            _useWidescreenPresentation = value;
+-            Apply();
+-        }
+-    }
+-
+     internal void Apply()
+     {
+         var cdg = _mediaEngine.Cdg;
+@@ -55,6 +44,5 @@ public sealed class CdgVisuals
+ 
+         cdg.BackgroundOpacity = _backgroundOpacity;
+         cdg.BackgroundOverrideArgb = _backgroundOverrideArgb;
+-        cdg.UseWidescreenPresentation = _useWidescreenPresentation;
+     }
+ }
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index d62fb2f..2dd96e3 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -205,19 +205,21 @@ public sealed class MediaRenderer : IDisposable
+     /// </summary>
+     public string PresentationBackend => _graphicsRenderer.PresentationBackend;
+     /// <summary>
+-    /// Gets the current primary video width, when video content is attached.
+-    /// Used by host surfaces that need to preserve aspect ratio outside WPF Image layout.
++    /// Gets the current primary visual width. For CDG-only content this is the
++    /// native CDG frame width, so host/native presentation layout preserves CDG aspect.
+     /// </summary>
+     public int VideoWidth => _attachedVideo?.Width
+         ?? (_stillImageSource as BitmapSource)?.PixelWidth
++        ?? _attachedCdg?.FrameWidth
+         ?? 0;
+ 
+     /// <summary>
+-    /// Gets the current primary video height, when video content is attached.
+-    /// Used by host surfaces that need to preserve aspect ratio outside WPF Image layout.
++    /// Gets the current primary visual height. For CDG-only content this is the
++    /// native CDG frame height, so host/native presentation layout preserves CDG aspect.
+     /// </summary>
+     public int VideoHeight => _attachedVideo?.Height
+         ?? (_stillImageSource as BitmapSource)?.PixelHeight
++        ?? _attachedCdg?.FrameHeight
+         ?? 0;
+ 
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Abstractions/ICdgEngine.cs b/FatzBombMedia.MediaControl/Core/Abstractions/ICdgEngine.cs
+index e02f027..dad6a48 100644
+--- a/FatzBombMedia.MediaControl/Core/Abstractions/ICdgEngine.cs
++++ b/FatzBombMedia.MediaControl/Core/Abstractions/ICdgEngine.cs
+@@ -12,7 +12,6 @@ public interface ICdgEngine : IDisposable
+     int FrameWidth { get; }
+     int FrameHeight { get; }
+     ReadOnlyMemory<int> FrameArgb { get; }
+-    bool UseWidescreenPresentation { get; set; }
+ 
+     /// <summary>
+     /// The CDG background tint color (premultiplied ARGB) used for the full-rectangle
+diff --git a/FatzBombMedia.MediaControl/Core/Cdg/CdgConstants.cs b/FatzBombMedia.MediaControl/Core/Cdg/CdgConstants.cs
+index 72b1ee9..3480d1c 100644
+--- a/FatzBombMedia.MediaControl/Core/Cdg/CdgConstants.cs
++++ b/FatzBombMedia.MediaControl/Core/Cdg/CdgConstants.cs
+@@ -15,11 +15,6 @@ internal static class CdgConstants
+     /// </summary>
+     public const int FrameWidth = 300;
+ 
+-    /// <summary>
+-    /// 16:9 presentation width for CDG content centered inside a widescreen canvas.
+-    /// </summary>
+-    public const int WidescreenFrameWidth = 384;
+-    
+     /// <summary>
+     /// CDG frame height in pixels (CD+G specification).
+     /// </summary>
+diff --git a/FatzBombMedia.MediaControl/Core/Cdg/CdgEngine.cs b/FatzBombMedia.MediaControl/Core/Cdg/CdgEngine.cs
+index 7a56da6..5dff7b2 100644
+--- a/FatzBombMedia.MediaControl/Core/Cdg/CdgEngine.cs
++++ b/FatzBombMedia.MediaControl/Core/Cdg/CdgEngine.cs
+@@ -15,7 +15,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
+     
+     // Core rendering components
+     private readonly int[] _frameArgb = new int[CdgConstants.TotalPixels];
+-    private readonly int[] _widescreenFrameArgb = new int[CdgConstants.WidescreenFrameWidth * CdgConstants.FrameHeight];
+     private readonly byte[] _pixelColors = new byte[CdgConstants.TotalPixels];
+     private readonly byte[] _tempPixelColors = new byte[CdgConstants.TotalPixels];
+     private readonly CdgColorManager _colorManager = new();
+@@ -26,7 +25,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
+     private int _startPacketIndex;
+     private int _lastRenderLogSecond = -1;
+     private CdgPacket[] _packets = [];
+-    private bool _useWidescreenPresentation = true;
+     private bool _disposed;
+     
+     // Event declarations for state and lifecycle
+@@ -92,19 +90,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
+     /// <inheritdoc/>
+     public uint TintArgb => (uint)_colorManager.TintArgb;
+ 
+-    /// <inheritdoc/>
+-    public bool UseWidescreenPresentation
+-    {
+-        get => _useWidescreenPresentation;
+-        set
+-        {
+-            lock (_renderLock)
+-            {
+-                _useWidescreenPresentation = value;
+-            }
+-        }
+-    }
+-    
+     /// <inheritdoc/>
+     public byte BackgroundOpacity
+     {
+@@ -325,20 +310,6 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
+             frameSpan[i] = (index == 0 || index == backgroundColorIndex) ? 0 : colorLut[index];
+         }
+ 
+-        RenderWidescreenFrameBuffer();
+-    }
+-
+-    private void RenderWidescreenFrameBuffer()
+-    {
+-        Array.Fill(_widescreenFrameArgb, 0);
+-
+-        const int leftPadding = (CdgConstants.WidescreenFrameWidth - CdgConstants.FrameWidth) / 2;
+-        for (var row = 0; row < CdgConstants.FrameHeight; row++)
+-        {
+-            var sourceOffset = row * CdgConstants.FrameWidth;
+-            var destinationOffset = row * CdgConstants.WidescreenFrameWidth + leftPadding;
+-            Array.Copy(_frameArgb, sourceOffset, _widescreenFrameArgb, destinationOffset, CdgConstants.FrameWidth);
+-        }
+     }
+     
+     #endregion
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index e1cd997..5bb93c8 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -1469,6 +1469,26 @@ float4 PSMain(VertexOut input) : SV_TARGET
+             var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
+             var surfaceWidth = Math.Max(1, _currentWidth);
+             var surfaceHeight = Math.Max(1, _currentHeight);
++            var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
++            var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
++            var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
++            var outputAspect = (double)outputW / outputH;
++            int cdgDisplayW, cdgDisplayH;
++            if (cdgAspect > outputAspect)
++            {
++                cdgDisplayW = outputW;
++                cdgDisplayH = Math.Max(1, (int)Math.Round(outputW / cdgAspect));
++            }
++            else
++            {
++                cdgDisplayH = outputH;
++                cdgDisplayW = Math.Max(1, (int)Math.Round(outputH * cdgAspect));
++            }
++
++            var cdgLeft = outputRect.Left + (outputW - cdgDisplayW) / 2;
++            var cdgTop = outputRect.Top + (outputH - cdgDisplayH) / 2;
++            var cdgRight = cdgLeft + cdgDisplayW;
++            var cdgBottom = cdgTop + cdgDisplayH;
+ 
+             // Tint color: unpack straight ARGB → normalised float4 RGBA.
+             // The D3D11 blend state (SourceAlpha / InvSourceAlpha) handles premultiplication.
+@@ -1478,7 +1498,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
+             var tb = (int)(tintArgb & 0xFF);
+             var tintColor = new Vector4(tr / 255f, tg / 255f, tb / 255f, ta / 255f);
+ 
+-            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) surface={surfaceWidth}x{surfaceHeight}");
++            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
+ 
+             // Common state
+             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+@@ -1490,7 +1510,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
+ 
+             Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
+ 
+-            // Pass 1 — tint rectangle over the video output rect.
++            // Pass 1 — tint rectangle over the native-aspect CDG layer only.
+             // Upload the tint colour into a 1×1 texture and draw it with the same
+             // pixel shader used for CDG — avoids a separate PSMainTint / D3DCompile call.
+             if (ta > 0 && _cdgTintTexture != null)
+@@ -1502,10 +1522,10 @@ float4 PSMain(VertexOut input) : SV_TARGET
+                 var tintConstants = new CdgOverlayShaderConstants
+                 {
+                     DestinationRect = new Vector4(
+-                        (float)((outputRect.Left / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - (outputRect.Top / (double)surfaceHeight) * 2.0),
+-                        (float)((outputRect.Right / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - (outputRect.Bottom / (double)surfaceHeight) * 2.0)),
++                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
++                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
++                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
++                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
+                     TextureRect = new Vector4(0f, 0f, 1f, 1f)
+                 };
+                 MemoryMarshal.Write(constantBytes, ref tintConstants);
+@@ -1518,33 +1538,15 @@ float4 PSMain(VertexOut input) : SV_TARGET
+                 _context.Draw(4, 0);
+             }
+ 
+-            // Pass 2 — CDG graphics centred at native aspect inside the video output rect
++            // Pass 2 — CDG graphics centred at native aspect inside the video output rect.
+             {
+-                var outputW = outputRect.Right - outputRect.Left;
+-                var outputH = outputRect.Bottom - outputRect.Top;
+-                var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+-                var outputAspect = (double)outputW / outputH;
+-                int displayW, displayH;
+-                if (cdgAspect > outputAspect)
+-                {
+-                    displayW = (int)outputW;
+-                    displayH = (int)(outputW / cdgAspect);
+-                }
+-                else
+-                {
+-                    displayH = (int)outputH;
+-                    displayW = (int)(outputH * cdgAspect);
+-                }
+-                var centerX = outputRect.Left + (outputW - displayW) / 2;
+-                var centerY = outputRect.Top + (outputH - displayH) / 2;
+-
+                 var cdgConstants = new CdgOverlayShaderConstants
+                 {
+                     DestinationRect = new Vector4(
+-                        (float)((centerX / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - (centerY / (double)surfaceHeight) * 2.0),
+-                        (float)(((centerX + displayW) / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - ((centerY + displayH) / (double)surfaceHeight) * 2.0)),
++                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
++                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
++                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
++                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
+                     TextureRect = new Vector4(0f, 0f, 1f, 1f)
+                 };
+                 MemoryMarshal.Write(constantBytes, ref cdgConstants);
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index aff0094..6b57a19 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -1729,6 +1729,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                             _directCompositionCdgOverlayBgra = new byte[required];
+                         }
+ 
++                        Array.Clear(_directCompositionCdgOverlayBgra, 0, required);
++                        var cdgRect = CalculateAspectFitRect(
++                            destinationWidth,
++                            destinationHeight,
++                            _nativeCompositeCdgWidth,
++                            _nativeCompositeCdgHeight);
++
+                         ScaleArgbToPremultipliedBgraOverlay(
+                             _nativeCompositeCdgArgb,
+                             _nativeCompositeCdgWidth,
+@@ -1736,7 +1743,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                             _directCompositionCdgOverlayBgra,
+                             destinationWidth,
+                             destinationHeight,
+-                            destinationStride);
++                            destinationStride,
++                            cdgRect.x,
++                            cdgRect.y,
++                            cdgRect.width,
++                            cdgRect.height);
+ 
+                         _directCompositionCdgOverlayWidth = destinationWidth;
+                         _directCompositionCdgOverlayHeight = destinationHeight;
+@@ -1961,6 +1972,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                 _nativeCompositeScaledCdgBgra = new byte[required];
+             }
+ 
++            Array.Clear(_nativeCompositeScaledCdgBgra, 0, required);
++            var cdgRect = CalculateAspectFitRect(destinationWidth, destinationHeight, sourceWidth, sourceHeight);
++
+             ScaleArgbToBgraOverlay(
+                 sourceArgb,
+                 sourceWidth,
+@@ -1968,7 +1982,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                 _nativeCompositeScaledCdgBgra,
+                 destinationWidth,
+                 destinationHeight,
+-                destinationStride);
++                destinationStride,
++                cdgRect.x,
++                cdgRect.y,
++                cdgRect.width,
++                cdgRect.height);
+ 
+             _nativeCompositeScaledCdgWidth = destinationWidth;
+             _nativeCompositeScaledCdgHeight = destinationHeight;
+@@ -2014,6 +2032,28 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+     }
+ 
++    private static (int x, int y, int width, int height) CalculateAspectFitRect(
++        int destinationWidth,
++        int destinationHeight,
++        int sourceWidth,
++        int sourceHeight)
++    {
++        destinationWidth = Math.Max(1, destinationWidth);
++        destinationHeight = Math.Max(1, destinationHeight);
++        sourceWidth = Math.Max(1, sourceWidth);
++        sourceHeight = Math.Max(1, sourceHeight);
++
++        var scale = Math.Min(
++            destinationWidth / (double)sourceWidth,
++            destinationHeight / (double)sourceHeight);
++
++        var width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
++        var height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
++        var x = Math.Max(0, (destinationWidth - width) / 2);
++        var y = Math.Max(0, (destinationHeight - height) / 2);
++        return (x, y, width, height);
++    }
++
+     private static void ScaleArgbToBgraOverlay(
+         int[] sourceArgb,
+         int sourceWidth,
+@@ -2021,23 +2061,37 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         byte[] destinationBgra,
+         int destinationWidth,
+         int destinationHeight,
+-        int destinationStride)
+-    {
+-        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
++        int destinationStride,
++        int destinationX,
++        int destinationY,
++        int scaledWidth,
++        int scaledHeight)
++    {
++        if (sourceWidth <= 0
++            || sourceHeight <= 0
++            || destinationWidth <= 0
++            || destinationHeight <= 0
++            || scaledWidth <= 0
++            || scaledHeight <= 0)
+         {
+             return;
+         }
+ 
+-        for (var y = 0; y < destinationHeight; y++)
++        destinationX = Math.Clamp(destinationX, 0, destinationWidth - 1);
++        destinationY = Math.Clamp(destinationY, 0, destinationHeight - 1);
++        scaledWidth = Math.Min(scaledWidth, destinationWidth - destinationX);
++        scaledHeight = Math.Min(scaledHeight, destinationHeight - destinationY);
++
++        for (var y = 0; y < scaledHeight; y++)
+         {
+-            var sy = Math.Clamp((int)((long)y * sourceHeight / destinationHeight), 0, sourceHeight - 1);
+-            var destinationRow = y * destinationStride;
++            var sy = Math.Clamp((int)((long)y * sourceHeight / scaledHeight), 0, sourceHeight - 1);
++            var destinationRow = (destinationY + y) * destinationStride;
+             var sourceRow = sy * sourceWidth;
+-            for (var x = 0; x < destinationWidth; x++)
++            for (var x = 0; x < scaledWidth; x++)
+             {
+-                var sx = Math.Clamp((int)((long)x * sourceWidth / destinationWidth), 0, sourceWidth - 1);
++                var sx = Math.Clamp((int)((long)x * sourceWidth / scaledWidth), 0, sourceWidth - 1);
+                 var argb = sourceArgb[sourceRow + sx];
+-                var di = destinationRow + x * 4;
++                var di = destinationRow + (destinationX + x) * 4;
+ 
+                 destinationBgra[di] = (byte)(argb & 0xFF);
+                 destinationBgra[di + 1] = (byte)((argb >> 8) & 0xFF);
+@@ -2055,27 +2109,41 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         byte[] destinationBgra,
+         int destinationWidth,
+         int destinationHeight,
+-        int destinationStride)
+-    {
+-        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
++        int destinationStride,
++        int destinationX,
++        int destinationY,
++        int scaledWidth,
++        int scaledHeight)
++    {
++        if (sourceWidth <= 0
++            || sourceHeight <= 0
++            || destinationWidth <= 0
++            || destinationHeight <= 0
++            || scaledWidth <= 0
++            || scaledHeight <= 0)
+         {
+             return;
+         }
+ 
+-        for (var y = 0; y < destinationHeight; y++)
++        destinationX = Math.Clamp(destinationX, 0, destinationWidth - 1);
++        destinationY = Math.Clamp(destinationY, 0, destinationHeight - 1);
++        scaledWidth = Math.Min(scaledWidth, destinationWidth - destinationX);
++        scaledHeight = Math.Min(scaledHeight, destinationHeight - destinationY);
++
++        for (var y = 0; y < scaledHeight; y++)
+         {
+-            var sy = Math.Clamp((int)((long)y * sourceHeight / destinationHeight), 0, sourceHeight - 1);
+-            var destinationRow = y * destinationStride;
++            var sy = Math.Clamp((int)((long)y * sourceHeight / scaledHeight), 0, sourceHeight - 1);
++            var destinationRow = (destinationY + y) * destinationStride;
+             var sourceRow = sy * sourceWidth;
+-            for (var x = 0; x < destinationWidth; x++)
++            for (var x = 0; x < scaledWidth; x++)
+             {
+-                var sx = Math.Clamp((int)((long)x * sourceWidth / destinationWidth), 0, sourceWidth - 1);
++                var sx = Math.Clamp((int)((long)x * sourceWidth / scaledWidth), 0, sourceWidth - 1);
+                 var argb = sourceArgb[sourceRow + sx];
+                 var a = (byte)((argb >> 24) & 0xFF);
+                 var r = (byte)((argb >> 16) & 0xFF);
+                 var g = (byte)((argb >> 8) & 0xFF);
+                 var b = (byte)(argb & 0xFF);
+-                var di = destinationRow + x * 4;
++                var di = destinationRow + (destinationX + x) * 4;
+ 
+                 // DirectComposition expects premultiplied alpha for the overlay swap-chain.
+                 destinationBgra[di] = (byte)((b * a + 127) / 255);
+@@ -2086,6 +2154,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+     }
+ 
++
+     private static void BlendPreScaledBgraOverBgra(byte[] overlayBgra, byte[] destinationBgra, int byteCount)
+     {
+         var limit = Math.Min(byteCount, Math.Min(overlayBgra.Length, destinationBgra.Length));
+diff --git a/FatzBombMedia.Player/ViewModels/MainWindowViewModel.cs b/FatzBombMedia.Player/ViewModels/MainWindowViewModel.cs
+index 554d759..fec7b63 100644
+--- a/FatzBombMedia.Player/ViewModels/MainWindowViewModel.cs
++++ b/FatzBombMedia.Player/ViewModels/MainWindowViewModel.cs
+@@ -25,7 +25,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
+     private bool _maintainAspect = true;
+     private BitmapScalingMode _bitmapScalingMode = BitmapScalingMode.HighQuality;
+     private int _cdgBackgroundOpacity = 100;
+-    private bool _cdgWidescreen = true;
+     private bool _enableOverlay = true; // kept for compatibility; sample app always uses native overlay.
+     private double _positionSeconds;
+     private double _seekPositionSeconds;
+@@ -73,7 +72,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
+             player.PlayOnLoad = _autoPlay;
+             player.LoopMedia = _loopPlayback;
+             player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
+-            player.CdgVisuals.UseWidescreenPresentation = _cdgWidescreen;
+             Player = player;
+             StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
+         }
+@@ -231,17 +229,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
+         }
+     }
+ 
+-    public bool CdgWidescreen
+-    {
+-        get => _cdgWidescreen;
+-        set
+-        {
+-            if (!SetProperty(ref _cdgWidescreen, value)) return;
+-            if (Player is { } player)
+-                player.CdgVisuals.UseWidescreenPresentation = _cdgWidescreen;
+-        }
+-    }
+-
+     /// <summary>
+     /// Legacy compatibility property. The sample player no longer exposes renderer mode selection;
+     /// it always uses NativeHwndOverlay so the test path matches the product path.

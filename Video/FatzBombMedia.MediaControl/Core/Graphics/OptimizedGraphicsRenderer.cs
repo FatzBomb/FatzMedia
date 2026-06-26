@@ -1729,6 +1729,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                             _directCompositionCdgOverlayBgra = new byte[required];
                         }
 
+                        Array.Clear(_directCompositionCdgOverlayBgra, 0, required);
+                        var cdgRect = CalculateAspectFitRect(
+                            destinationWidth,
+                            destinationHeight,
+                            _nativeCompositeCdgWidth,
+                            _nativeCompositeCdgHeight);
+
                         ScaleArgbToPremultipliedBgraOverlay(
                             _nativeCompositeCdgArgb,
                             _nativeCompositeCdgWidth,
@@ -1736,7 +1743,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                             _directCompositionCdgOverlayBgra,
                             destinationWidth,
                             destinationHeight,
-                            destinationStride);
+                            destinationStride,
+                            cdgRect.x,
+                            cdgRect.y,
+                            cdgRect.width,
+                            cdgRect.height);
 
                         _directCompositionCdgOverlayWidth = destinationWidth;
                         _directCompositionCdgOverlayHeight = destinationHeight;
@@ -1961,6 +1972,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 _nativeCompositeScaledCdgBgra = new byte[required];
             }
 
+            Array.Clear(_nativeCompositeScaledCdgBgra, 0, required);
+            var cdgRect = CalculateAspectFitRect(destinationWidth, destinationHeight, sourceWidth, sourceHeight);
+
             ScaleArgbToBgraOverlay(
                 sourceArgb,
                 sourceWidth,
@@ -1968,7 +1982,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 _nativeCompositeScaledCdgBgra,
                 destinationWidth,
                 destinationHeight,
-                destinationStride);
+                destinationStride,
+                cdgRect.x,
+                cdgRect.y,
+                cdgRect.width,
+                cdgRect.height);
 
             _nativeCompositeScaledCdgWidth = destinationWidth;
             _nativeCompositeScaledCdgHeight = destinationHeight;
@@ -2014,6 +2032,28 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
     }
 
+    private static (int x, int y, int width, int height) CalculateAspectFitRect(
+        int destinationWidth,
+        int destinationHeight,
+        int sourceWidth,
+        int sourceHeight)
+    {
+        destinationWidth = Math.Max(1, destinationWidth);
+        destinationHeight = Math.Max(1, destinationHeight);
+        sourceWidth = Math.Max(1, sourceWidth);
+        sourceHeight = Math.Max(1, sourceHeight);
+
+        var scale = Math.Min(
+            destinationWidth / (double)sourceWidth,
+            destinationHeight / (double)sourceHeight);
+
+        var width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
+        var height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+        var x = Math.Max(0, (destinationWidth - width) / 2);
+        var y = Math.Max(0, (destinationHeight - height) / 2);
+        return (x, y, width, height);
+    }
+
     private static void ScaleArgbToBgraOverlay(
         int[] sourceArgb,
         int sourceWidth,
@@ -2021,23 +2061,37 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         byte[] destinationBgra,
         int destinationWidth,
         int destinationHeight,
-        int destinationStride)
+        int destinationStride,
+        int destinationX,
+        int destinationY,
+        int scaledWidth,
+        int scaledHeight)
     {
-        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
+        if (sourceWidth <= 0
+            || sourceHeight <= 0
+            || destinationWidth <= 0
+            || destinationHeight <= 0
+            || scaledWidth <= 0
+            || scaledHeight <= 0)
         {
             return;
         }
 
-        for (var y = 0; y < destinationHeight; y++)
+        destinationX = Math.Clamp(destinationX, 0, destinationWidth - 1);
+        destinationY = Math.Clamp(destinationY, 0, destinationHeight - 1);
+        scaledWidth = Math.Min(scaledWidth, destinationWidth - destinationX);
+        scaledHeight = Math.Min(scaledHeight, destinationHeight - destinationY);
+
+        for (var y = 0; y < scaledHeight; y++)
         {
-            var sy = Math.Clamp((int)((long)y * sourceHeight / destinationHeight), 0, sourceHeight - 1);
-            var destinationRow = y * destinationStride;
+            var sy = Math.Clamp((int)((long)y * sourceHeight / scaledHeight), 0, sourceHeight - 1);
+            var destinationRow = (destinationY + y) * destinationStride;
             var sourceRow = sy * sourceWidth;
-            for (var x = 0; x < destinationWidth; x++)
+            for (var x = 0; x < scaledWidth; x++)
             {
-                var sx = Math.Clamp((int)((long)x * sourceWidth / destinationWidth), 0, sourceWidth - 1);
+                var sx = Math.Clamp((int)((long)x * sourceWidth / scaledWidth), 0, sourceWidth - 1);
                 var argb = sourceArgb[sourceRow + sx];
-                var di = destinationRow + x * 4;
+                var di = destinationRow + (destinationX + x) * 4;
 
                 destinationBgra[di] = (byte)(argb & 0xFF);
                 destinationBgra[di + 1] = (byte)((argb >> 8) & 0xFF);
@@ -2055,27 +2109,41 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         byte[] destinationBgra,
         int destinationWidth,
         int destinationHeight,
-        int destinationStride)
+        int destinationStride,
+        int destinationX,
+        int destinationY,
+        int scaledWidth,
+        int scaledHeight)
     {
-        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
+        if (sourceWidth <= 0
+            || sourceHeight <= 0
+            || destinationWidth <= 0
+            || destinationHeight <= 0
+            || scaledWidth <= 0
+            || scaledHeight <= 0)
         {
             return;
         }
 
-        for (var y = 0; y < destinationHeight; y++)
+        destinationX = Math.Clamp(destinationX, 0, destinationWidth - 1);
+        destinationY = Math.Clamp(destinationY, 0, destinationHeight - 1);
+        scaledWidth = Math.Min(scaledWidth, destinationWidth - destinationX);
+        scaledHeight = Math.Min(scaledHeight, destinationHeight - destinationY);
+
+        for (var y = 0; y < scaledHeight; y++)
         {
-            var sy = Math.Clamp((int)((long)y * sourceHeight / destinationHeight), 0, sourceHeight - 1);
-            var destinationRow = y * destinationStride;
+            var sy = Math.Clamp((int)((long)y * sourceHeight / scaledHeight), 0, sourceHeight - 1);
+            var destinationRow = (destinationY + y) * destinationStride;
             var sourceRow = sy * sourceWidth;
-            for (var x = 0; x < destinationWidth; x++)
+            for (var x = 0; x < scaledWidth; x++)
             {
-                var sx = Math.Clamp((int)((long)x * sourceWidth / destinationWidth), 0, sourceWidth - 1);
+                var sx = Math.Clamp((int)((long)x * sourceWidth / scaledWidth), 0, sourceWidth - 1);
                 var argb = sourceArgb[sourceRow + sx];
                 var a = (byte)((argb >> 24) & 0xFF);
                 var r = (byte)((argb >> 16) & 0xFF);
                 var g = (byte)((argb >> 8) & 0xFF);
                 var b = (byte)(argb & 0xFF);
-                var di = destinationRow + x * 4;
+                var di = destinationRow + (destinationX + x) * 4;
 
                 // DirectComposition expects premultiplied alpha for the overlay swap-chain.
                 destinationBgra[di] = (byte)((b * a + 127) / 255);
@@ -2085,6 +2153,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             }
         }
     }
+
 
     private static void BlendPreScaledBgraOverBgra(byte[] overlayBgra, byte[] destinationBgra, int byteCount)
     {

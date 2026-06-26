@@ -16,11 +16,6 @@ internal static class CdgConstants
     public const int FrameWidth = 300;
 
     /// <summary>
-    /// 16:9 presentation width for CDG content centered inside a widescreen canvas.
-    /// </summary>
-    public const int WidescreenFrameWidth = 384;
-    
-    /// <summary>
     /// CDG frame height in pixels (CD+G specification).
     /// </summary>
     public const int FrameHeight = 216;

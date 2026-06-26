@@ -12,7 +12,6 @@ public interface ICdgEngine : IDisposable
     int FrameWidth { get; }
     int FrameHeight { get; }
     ReadOnlyMemory<int> FrameArgb { get; }
-    bool UseWidescreenPresentation { get; set; }
 
     /// <summary>
     /// The CDG background tint color (premultiplied ARGB) used for the full-rectangle

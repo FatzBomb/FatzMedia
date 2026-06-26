@@ -1469,6 +1469,26 @@ float4 PSMain(VertexOut input) : SV_TARGET
             var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
             var surfaceWidth = Math.Max(1, _currentWidth);
             var surfaceHeight = Math.Max(1, _currentHeight);
+            var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
+            var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
+            var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+            var outputAspect = (double)outputW / outputH;
+            int cdgDisplayW, cdgDisplayH;
+            if (cdgAspect > outputAspect)
+            {
+                cdgDisplayW = outputW;
+                cdgDisplayH = Math.Max(1, (int)Math.Round(outputW / cdgAspect));
+            }
+            else
+            {
+                cdgDisplayH = outputH;
+                cdgDisplayW = Math.Max(1, (int)Math.Round(outputH * cdgAspect));
+            }
+
+            var cdgLeft = outputRect.Left + (outputW - cdgDisplayW) / 2;
+            var cdgTop = outputRect.Top + (outputH - cdgDisplayH) / 2;
+            var cdgRight = cdgLeft + cdgDisplayW;
+            var cdgBottom = cdgTop + cdgDisplayH;
 
             // Tint color: unpack straight ARGB → normalised float4 RGBA.
             // The D3D11 blend state (SourceAlpha / InvSourceAlpha) handles premultiplication.
@@ -1478,7 +1498,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
             var tb = (int)(tintArgb & 0xFF);
             var tintColor = new Vector4(tr / 255f, tg / 255f, tb / 255f, ta / 255f);
 
-            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) surface={surfaceWidth}x{surfaceHeight}");
+            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
 
             // Common state
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
@@ -1490,7 +1510,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
 
             Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
 
-            // Pass 1 — tint rectangle over the video output rect.
+            // Pass 1 — tint rectangle over the native-aspect CDG layer only.
             // Upload the tint colour into a 1×1 texture and draw it with the same
             // pixel shader used for CDG — avoids a separate PSMainTint / D3DCompile call.
             if (ta > 0 && _cdgTintTexture != null)
@@ -1502,10 +1522,10 @@ float4 PSMain(VertexOut input) : SV_TARGET
                 var tintConstants = new CdgOverlayShaderConstants
                 {
                     DestinationRect = new Vector4(
-                        (float)((outputRect.Left / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - (outputRect.Top / (double)surfaceHeight) * 2.0),
-                        (float)((outputRect.Right / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - (outputRect.Bottom / (double)surfaceHeight) * 2.0)),
+                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
+                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
                     TextureRect = new Vector4(0f, 0f, 1f, 1f)
                 };
                 MemoryMarshal.Write(constantBytes, ref tintConstants);
@@ -1518,33 +1538,15 @@ float4 PSMain(VertexOut input) : SV_TARGET
                 _context.Draw(4, 0);
             }
 
-            // Pass 2 — CDG graphics centred at native aspect inside the video output rect
+            // Pass 2 — CDG graphics centred at native aspect inside the video output rect.
             {
-                var outputW = outputRect.Right - outputRect.Left;
-                var outputH = outputRect.Bottom - outputRect.Top;
-                var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
-                var outputAspect = (double)outputW / outputH;
-                int displayW, displayH;
-                if (cdgAspect > outputAspect)
-                {
-                    displayW = (int)outputW;
-                    displayH = (int)(outputW / cdgAspect);
-                }
-                else
-                {
-                    displayH = (int)outputH;
-                    displayW = (int)(outputH * cdgAspect);
-                }
-                var centerX = outputRect.Left + (outputW - displayW) / 2;
-                var centerY = outputRect.Top + (outputH - displayH) / 2;
-
                 var cdgConstants = new CdgOverlayShaderConstants
                 {
                     DestinationRect = new Vector4(
-                        (float)((centerX / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - (centerY / (double)surfaceHeight) * 2.0),
-                        (float)(((centerX + displayW) / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - ((centerY + displayH) / (double)surfaceHeight) * 2.0)),
+                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
+                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
                     TextureRect = new Vector4(0f, 0f, 1f, 1f)
                 };
                 MemoryMarshal.Write(constantBytes, ref cdgConstants);

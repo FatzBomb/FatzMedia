@@ -10,7 +10,6 @@ public sealed class CdgVisuals
     private readonly IMediaEngine _mediaEngine;
     private byte _backgroundOpacity = 100;
     private uint? _backgroundOverrideArgb;
-    private bool _useWidescreenPresentation = true;
 
     internal CdgVisuals(IMediaEngine mediaEngine)
     {
@@ -38,16 +37,6 @@ public sealed class CdgVisuals
         }
     }
 
-    public bool UseWidescreenPresentation
-    {
-        get => _useWidescreenPresentation;
-        set
-        {
-            _useWidescreenPresentation = value;
-            Apply();
-        }
-    }
-
     internal void Apply()
     {
         var cdg = _mediaEngine.Cdg;
@@ -55,6 +44,5 @@ public sealed class CdgVisuals
 
         cdg.BackgroundOpacity = _backgroundOpacity;
         cdg.BackgroundOverrideArgb = _backgroundOverrideArgb;
-        cdg.UseWidescreenPresentation = _useWidescreenPresentation;
     }
 }

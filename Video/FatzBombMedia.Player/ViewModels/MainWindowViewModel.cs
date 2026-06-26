@@ -25,7 +25,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool _maintainAspect = true;
     private BitmapScalingMode _bitmapScalingMode = BitmapScalingMode.HighQuality;
     private int _cdgBackgroundOpacity = 100;
-    private bool _cdgWidescreen = true;
     private bool _enableOverlay = true; // kept for compatibility; sample app always uses native overlay.
     private double _positionSeconds;
     private double _seekPositionSeconds;
@@ -73,7 +72,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             player.PlayOnLoad = _autoPlay;
             player.LoopMedia = _loopPlayback;
             player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
-            player.CdgVisuals.UseWidescreenPresentation = _cdgWidescreen;
             Player = player;
             StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
         }
@@ -228,17 +226,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _cdgBackgroundOpacity, clamped)) return;
             if (Player is { } player)
                 player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
-        }
-    }
-
-    public bool CdgWidescreen
-    {
-        get => _cdgWidescreen;
-        set
-        {
-            if (!SetProperty(ref _cdgWidescreen, value)) return;
-            if (Player is { } player)
-                player.CdgVisuals.UseWidescreenPresentation = _cdgWidescreen;
         }
     }
 

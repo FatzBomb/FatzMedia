@@ -205,19 +205,21 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public string PresentationBackend => _graphicsRenderer.PresentationBackend;
     /// <summary>
-    /// Gets the current primary video width, when video content is attached.
-    /// Used by host surfaces that need to preserve aspect ratio outside WPF Image layout.
+    /// Gets the current primary visual width. For CDG-only content this is the
+    /// native CDG frame width, so host/native presentation layout preserves CDG aspect.
     /// </summary>
     public int VideoWidth => _attachedVideo?.Width
         ?? (_stillImageSource as BitmapSource)?.PixelWidth
+        ?? _attachedCdg?.FrameWidth
         ?? 0;
 
     /// <summary>
-    /// Gets the current primary video height, when video content is attached.
-    /// Used by host surfaces that need to preserve aspect ratio outside WPF Image layout.
+    /// Gets the current primary visual height. For CDG-only content this is the
+    /// native CDG frame height, so host/native presentation layout preserves CDG aspect.
     /// </summary>
     public int VideoHeight => _attachedVideo?.Height
         ?? (_stillImageSource as BitmapSource)?.PixelHeight
+        ?? _attachedCdg?.FrameHeight
         ?? 0;
 
 
