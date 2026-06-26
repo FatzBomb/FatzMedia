@@ -171,7 +171,7 @@ public static partial class RenderSurface
             }
 
             _backgroundImage.Source = backgroundSource;
-            _backgroundImage.Stretch = _renderer.BackgroundStretch;
+            _backgroundImage.Stretch = _renderer.EffectiveBackgroundStretch;
             _backgroundImage.Visibility = System.Windows.Visibility.Visible;
         }
 

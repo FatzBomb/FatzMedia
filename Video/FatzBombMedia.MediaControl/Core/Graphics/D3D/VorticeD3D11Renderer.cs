@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Graphics.Geometry;
 using Vortice.Direct3D11;
 using Vortice.DirectComposition;
 using System.Diagnostics;
@@ -982,7 +983,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     /// CDG alpha texture as one lightweight GPU quad over the same aspect-correct output rect.
     /// This keeps CDG out of the video upload/compositor path, especially during WPF live resize.
     /// </summary>
-    public bool UploadFrameWithCachedCdgOverlay(ReadOnlySpan<byte> pixelData, int width, int height, int stride, double framesPerSecond = 60.0, uint tintArgb = 0)
+    public bool UploadFrameWithCachedCdgOverlay(ReadOnlySpan<byte> pixelData, int width, int height, int stride, double framesPerSecond = 60.0, uint tintArgb = 0, bool forceBaseUniformToFill = false)
     {
         if (_disposed || _context == null || _presentationTexture == null) return false;
         if (pixelData.IsEmpty || width <= 0 || height <= 0 || stride < width * 4) return false;
@@ -998,6 +999,12 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                     return false;
                 }
 
+                // If this frame is the CDG background-video layer, only the base/video
+                // blit should zoom-to-fill. Do not change the native HWND size or the CDG
+                // overlay geometry; that keeps live resize on the existing fast path.
+                var overlayExpected = HasCdgOverlayTexture;
+                var baseStretchOverride = forceBaseUniformToFill ? Stretch.UniformToFill : (Stretch?)null;
+
                 if (width == _currentWidth && height == _currentHeight)
                 {
                     _context.UpdateSubresource(pixelData, _presentationTexture, 0, (uint)stride, 0, null);
@@ -1011,7 +1018,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                     }
 
                     _context.UpdateSubresource(pixelData, _cpuUploadTexture, 0, (uint)stride, 0, null);
-                    if (!BlitTextureToPresentation(_cpuUploadTexture, 0, width, height, framesPerSecond))
+                    if (!BlitTextureToPresentation(_cpuUploadTexture, 0, width, height, framesPerSecond, baseStretchOverride))
                     {
                         return false;
                     }
@@ -1021,9 +1028,8 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                 // the shader draw path fails, report failure so the caller can fall back to the
                 // proven CDG presentation path during normal playback instead of silently dropping
                 // the lyrics.
-                var overlayExpected = HasCdgOverlayTexture;
-                Debug.WriteLine($"[CDG-TINT] UploadFrameWithCachedCdgOverlay: overlayExpected={overlayExpected} tintArgb=0x{tintArgb:X8}");
-                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb))
+                Debug.WriteLine($"[CDG-TINT] UploadFrameWithCachedCdgOverlay: overlayExpected={overlayExpected} forceBaseUniformToFill={forceBaseUniformToFill} tintArgb=0x{tintArgb:X8}");
+                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb, forceBaseUniformToFill))
                 {
                     // Important: do NOT present the video-only back buffer here. The caller may
                     // fall back to the proven CDG compositor for this same video frame. Presenting
@@ -1243,7 +1249,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
         return _cpuUploadTexture != null;
     }
 
-    private bool BlitTextureToPresentation(ID3D11Texture2D sourceTexture, int sourceArraySlice, int width, int height, double framesPerSecond)
+    private bool BlitTextureToPresentation(ID3D11Texture2D sourceTexture, int sourceArraySlice, int width, int height, double framesPerSecond, Stretch? stretchOverride = null)
     {
         if (_videoDevice == null || _videoContext == null || _context == null || _presentationTexture == null)
         {
@@ -1276,7 +1282,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
 
         _videoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         _videoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
-        var outputRect = CalculateVideoOutputRect(width, height);
+        var outputRect = CalculateVideoOutputRect(width, height, stretchOverride);
         ApplyVideoProcessorOutputRect(streamIndex: 0, outputRect);
         ClearPresentationTextureToBlack(flush: false);
 
@@ -1445,7 +1451,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
 }
 ";
 
-    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb)
+    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb, bool useFullViewportForCdgOverlay = false)
     {
         if (_device == null
             || _context == null
@@ -1466,29 +1472,24 @@ float4 PSMain(VertexOut input) : SV_TARGET
                 return false;
             }
 
-            var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
             var surfaceWidth = Math.Max(1, _currentWidth);
             var surfaceHeight = Math.Max(1, _currentHeight);
+
+            // In CDG layered mode the background/video layer is full-control and CDG-unaware.
+            // The CDG lyric overlay must therefore be positioned against the same full viewport,
+            // not against the normal video output rectangle. If we use the normal video rect here,
+            // the fast GPU overlay path and the fallback compositor only agree at exact 16:9,
+            // which shows up as aspect-ratio flicker everywhere else.
+            var outputRect = useFullViewportForCdgOverlay
+                ? ToRawRect(ViewportGeometry.FullViewport(surfaceWidth, surfaceHeight))
+                : CalculateVideoOutputRect(videoWidth, videoHeight);
             var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
             var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
-            var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
-            var outputAspect = (double)outputW / outputH;
-            int cdgDisplayW, cdgDisplayH;
-            if (cdgAspect > outputAspect)
-            {
-                cdgDisplayW = outputW;
-                cdgDisplayH = Math.Max(1, (int)Math.Round(outputW / cdgAspect));
-            }
-            else
-            {
-                cdgDisplayH = outputH;
-                cdgDisplayW = Math.Max(1, (int)Math.Round(outputH * cdgAspect));
-            }
-
-            var cdgLeft = outputRect.Left + (outputW - cdgDisplayW) / 2;
-            var cdgTop = outputRect.Top + (outputH - cdgDisplayH) / 2;
-            var cdgRight = cdgLeft + cdgDisplayW;
-            var cdgBottom = cdgTop + cdgDisplayH;
+            var cdgRect = ViewportGeometry.UniformFit(_cdgOverlayWidth, _cdgOverlayHeight, outputW, outputH);
+            var cdgLeft = outputRect.Left + (int)Math.Round(cdgRect.Left);
+            var cdgTop = outputRect.Top + (int)Math.Round(cdgRect.Top);
+            var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
+            var cdgBottom = cdgTop + Math.Max(1, (int)Math.Round(cdgRect.Height));
 
             // Tint color: unpack straight ARGB → normalised float4 RGBA.
             // The D3D11 blend state (SourceAlpha / InvSourceAlpha) handles premultiplication.
@@ -1498,7 +1499,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
             var tb = (int)(tintArgb & 0xFF);
             var tintColor = new Vector4(tr / 255f, tg / 255f, tb / 255f, ta / 255f);
 
-            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
+            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) fullViewportOverlay={useFullViewportForCdgOverlay} outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
 
             // Common state
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
@@ -1510,33 +1511,35 @@ float4 PSMain(VertexOut input) : SV_TARGET
 
             Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
 
-            // Pass 1 — tint rectangle over the native-aspect CDG layer only.
-            // Upload the tint colour into a 1×1 texture and draw it with the same
-            // pixel shader used for CDG — avoids a separate PSMainTint / D3DCompile call.
-            if (ta > 0 && _cdgTintTexture != null)
-            {
-                Span<byte> tintPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
-                _context.UpdateSubresource(tintPixel, _cdgTintTexture, 0, 4, 0, null);
-                _context.Flush();
-
-                var tintConstants = new CdgOverlayShaderConstants
-                {
-                    DestinationRect = new Vector4(
-                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
-                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
-                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
-                    TextureRect = new Vector4(0f, 0f, 1f, 1f)
-                };
-                MemoryMarshal.Write(constantBytes, ref tintConstants);
-                _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
-
-                _context.PSSetShaderResource(0, _cdgTintShaderResourceView);
-                _context.PSSetSampler(0, _cdgOverlaySamplerState);
-                _context.PSSetShader(_cdgOverlayPixelShader);
-                _context.OMSetBlendState(_cdgOverlayBlendState);
-                _context.Draw(4, 0);
-            }
+            // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
+            // Pass 1 used to draw the tint rectangle. Keep this block commented so it is
+            // easy to restore when we re-enable Layer 2 after the test.
+            //
+            // Original Pass 1:
+            // if (ta > 0 && _cdgTintTexture != null)
+            // {
+            //     Span<byte> tintPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
+            //     _context.UpdateSubresource(tintPixel, _cdgTintTexture, 0, 4, 0, null);
+            //     _context.Flush();
+            //
+            //     var tintConstants = new CdgOverlayShaderConstants
+            //     {
+            //         DestinationRect = new Vector4(
+            //             (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
+            //             (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
+            //             (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
+            //             (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
+            //         TextureRect = new Vector4(0f, 0f, 1f, 1f)
+            //     };
+            //     MemoryMarshal.Write(constantBytes, ref tintConstants);
+            //     _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
+            //
+            //     _context.PSSetShaderResource(0, _cdgTintShaderResourceView);
+            //     _context.PSSetSampler(0, _cdgOverlaySamplerState);
+            //     _context.PSSetShader(_cdgOverlayPixelShader);
+            //     _context.OMSetBlendState(_cdgOverlayBlendState);
+            //     _context.Draw(4, 0);
+            // }
 
             // Pass 2 — CDG graphics centred at native aspect inside the video output rect.
             {
@@ -1800,35 +1803,25 @@ float4 PSMain(VertexOut input) : SV_TARGET
         out IntPtr code,
         out IntPtr errorMessages);
 
-    private Vortice.RawRect CalculateVideoOutputRect(int sourceWidth, int sourceHeight)
+    private Vortice.RawRect CalculateVideoOutputRect(int sourceWidth, int sourceHeight, Stretch? stretchOverride = null)
     {
-        var outputWidth = Math.Max(1, _currentWidth);
-        var outputHeight = Math.Max(1, _currentHeight);
-        var inputWidth = Math.Max(1, sourceWidth);
-        var inputHeight = Math.Max(1, sourceHeight);
+        var stretch = stretchOverride ?? _nativePresentationStretch;
+        var rect = ViewportGeometry.DestinationRect(
+            sourceWidth,
+            sourceHeight,
+            Math.Max(1, _currentWidth),
+            Math.Max(1, _currentHeight),
+            stretch);
 
-        if (_nativePresentationStretch == Stretch.Fill)
-        {
-            return new Vortice.RawRect(0, 0, outputWidth, outputHeight);
-        }
+        return ToRawRect(rect);
+    }
 
-        double scaleX = outputWidth / (double)inputWidth;
-        double scaleY = outputHeight / (double)inputHeight;
-        double scale = _nativePresentationStretch switch
-        {
-            Stretch.None => 1.0,
-            Stretch.UniformToFill => Math.Max(scaleX, scaleY),
-            Stretch.Uniform => Math.Min(scaleX, scaleY),
-            _ => Math.Min(scaleX, scaleY)
-        };
-
-        var displayWidth = Math.Max(1, (int)Math.Round(inputWidth * scale));
-        var displayHeight = Math.Max(1, (int)Math.Round(inputHeight * scale));
-        var left = (outputWidth - displayWidth) / 2;
-        var top = (outputHeight - displayHeight) / 2;
-        var right = left + displayWidth;
-        var bottom = top + displayHeight;
-
+    private static Vortice.RawRect ToRawRect(RectD rect)
+    {
+        var left = (int)Math.Round(rect.Left);
+        var top = (int)Math.Round(rect.Top);
+        var right = left + Math.Max(1, (int)Math.Round(rect.Width));
+        var bottom = top + Math.Max(1, (int)Math.Round(rect.Height));
         return new Vortice.RawRect(left, top, right, bottom);
     }
 

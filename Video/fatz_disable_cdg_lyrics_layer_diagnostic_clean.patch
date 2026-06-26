@@ -1,0 +1,92 @@
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 97f6de1..baeda7e 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -37,6 +37,12 @@ public sealed class MediaRenderer : IDisposable
+     private bool _nativePresentationRequested;
+     private bool _wpfCompositionDrivenVideo;
+ 
++    // DIAGNOSTIC: disables Layer 3 CDG lyric rendering while keeping the CDG session
++    // attached. This lets us verify Layer 1 background video/image zoom-to-fill behavior
++    // without CDG frame invalidation/upload/presentation noise. Set to false or remove
++    // this guard when re-enabling the CDG lyric layer.
++    private const bool DisableCdgLyricLayerForBackgroundZoomTest = true;
++
+     private bool _disposed;
+ 
+     internal MediaRenderer(IMediaEngine mediaEngine)
+@@ -406,17 +412,29 @@ public sealed class MediaRenderer : IDisposable
+ 
+         _graphicsRenderer.SetNativeCompositeCdgLayeringActive(_mediaEngine.Cdg != null);
+ 
+-        // Attach to CDG if available
++        // Attach to CDG if available. During the background zoom diagnostic, keep the
++        // CDG session attached so Layer 1 still enters CDG-background mode, but do not
++        // subscribe to CDG invalidations or upload the CDG lyric layer.
+         if (_mediaEngine.Cdg != null)
+         {
+             _attachedCdg = _mediaEngine.Cdg;
+-            _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
+ 
+-            // Set initial CDG image if available and force the zero-time frame into the renderer.
+-            _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+-            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
++            if (!DisableCdgLyricLayerForBackgroundZoomTest)
++            {
++                _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
++
++                // Set initial CDG image if available and force the zero-time frame into the renderer.
++                _renderPipeline.Attach(_attachedVideo, _attachedCdg);
++                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
++            }
+ 
+-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}");
++            if (_enableLogging)
++            {
++                var diagnosticSuffix = DisableCdgLyricLayerForBackgroundZoomTest
++                    ? " (DIAGNOSTIC: lyric layer disabled)"
++                    : string.Empty;
++                System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}{diagnosticSuffix}");
++            }
+         }
+         else
+         {
+@@ -524,7 +542,10 @@ public sealed class MediaRenderer : IDisposable
+                 _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
+             }
+ 
+-            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
++            if (!DisableCdgLyricLayerForBackgroundZoomTest)
++            {
++                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
++            }
+         }
+         catch (Exception ex)
+         {
+@@ -572,6 +593,13 @@ public sealed class MediaRenderer : IDisposable
+ 
+     private void OnCdgFrameInvalidated(object? sender, EventArgs e)
+     {
++        if (DisableCdgLyricLayerForBackgroundZoomTest)
++        {
++            // DIAGNOSTIC: ignore CDG frame invalidations entirely so this test isolates
++            // Layer 1 background video/image sizing and flicker behavior.
++            return;
++        }
++
+         try
+         {
+             // Check if the dispatcher is shutting down before attempting to invoke
+@@ -598,6 +626,12 @@ public sealed class MediaRenderer : IDisposable
+ 
+     private void RenderCurrentCdgFrame(bool force)
+     {
++        if (DisableCdgLyricLayerForBackgroundZoomTest)
++        {
++            // DIAGNOSTIC: do not upload or present the CDG lyric layer.
++            return;
++        }
++
+         if (_attachedCdg == null) return;
+ 
+         try

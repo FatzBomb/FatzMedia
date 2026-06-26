@@ -51,6 +51,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     private int _nativeCompositeBaseWidth;
     private int _nativeCompositeBaseHeight;
     private int _nativeCompositeBaseStride;
+    private bool _nativeCompositeBaseUseCdgLayering;
     private int[]? _nativeCompositeCdgArgb;
     private int _nativeCompositeCdgWidth;
     private int _nativeCompositeCdgHeight;
@@ -336,6 +337,30 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     }
 
     public bool IsNativePresentationRequested => _nativePresentationHwnd != IntPtr.Zero;
+
+    /// <summary>
+    /// Tells the native compositor whether the current session has a CDG layer.
+    /// This is session state, not frame state: background media must keep using
+    /// CDG layer rules even between CDG packet invalidations or before the first
+    /// CDG overlay texture has been uploaded.
+    /// </summary>
+    public void SetNativeCompositeCdgLayeringActive(bool active)
+    {
+        var changed = false;
+        lock (_lock)
+        {
+            if (_nativeCompositeBaseUseCdgLayering != active)
+            {
+                _nativeCompositeBaseUseCdgLayering = active;
+                changed = true;
+            }
+        }
+
+        if (changed && IsNativePresentationRequested)
+        {
+            RequestNativeCompositePresent(forceImmediate: true);
+        }
+    }
 
     /// <summary>
     /// Sets the base visual for native composition from a WPF BitmapSource. This is used for
@@ -681,8 +706,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// <param name="height">Frame height</param>
     public void SetCdgBackgroundTint(uint tintArgb)
     {
-        _cdgBackgroundTintArgb = tintArgb;
-        Debug.WriteLine($"[CDG-TINT] SetCdgBackgroundTint: 0x{tintArgb:X8}");
+        // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
+        // Restore the original assignment below when re-enabling Layer 2:
+        // _cdgBackgroundTintArgb = tintArgb;
+        _cdgBackgroundTintArgb = 0;
+        Debug.WriteLine($"[CDG-TINT] Layer 2 disabled; ignored SetCdgBackgroundTint: 0x{tintArgb:X8}");
     }
 
     public void RenderCdgFrame(ReadOnlySpan<int> argbData, int width, int height)
@@ -1541,17 +1569,20 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     return;
                 }
 
-                var tintArgb = Volatile.Read(ref _cdgBackgroundTintArgb);
-                // If the CDG thread hasn't written the tint yet, default to opaque black so the
-                // CDG background covers the video instead of showing through transparent.
+                // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
+                // Original behavior read _cdgBackgroundTintArgb and defaulted to opaque black
+                // while CDG layering was active. Keep the background wash transparent for now.
+                var tintArgb = 0u;
+                var cdgLayeringActive = _nativeCompositeBaseUseCdgLayering;
                 var fallbackUsed = false;
-                if (tintArgb == 0 && HasRetainedNativeCdgFrameUnsafe())
-                {
-                    tintArgb = 0xFF000000u;
-                    fallbackUsed = true;
-                }
-                Debug.WriteLine($"[CDG-TINT] RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} hasCdg={HasRetainedNativeCdgFrameUnsafe()}");
-                if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0, tintArgb))
+                // Restore this original fallback when re-enabling Layer 2:
+                // if (tintArgb == 0 && cdgLayeringActive)
+                // {
+                //     tintArgb = 0xFF000000u;
+                //     fallbackUsed = true;
+                // }
+                Debug.WriteLine($"[CDG-TINT] Layer 2 disabled; RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} cdgLayering={cdgLayeringActive} hasCdgFrame={HasRetainedNativeCdgFrameUnsafe()}");
+                if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0, tintArgb, cdgLayeringActive))
                 {
                     // Do not call the fallback compositor while holding _lock.  The fallback path
                     // takes _nativeCompositeRenderLock and then _lock, so calling it here can
@@ -1883,6 +1914,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         int[]? cdgArgb;
         int cdgWidth;
         int cdgHeight;
+        bool cdgLayeringActive;
 
         lock (_lock)
         {
@@ -1893,6 +1925,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             cdgArgb = _nativeCompositeCdgArgb;
             cdgWidth = _nativeCompositeCdgWidth;
             cdgHeight = _nativeCompositeCdgHeight;
+            cdgLayeringActive = _nativeCompositeBaseUseCdgLayering;
 
             if (baseBgra == null && cdgArgb == null)
             {
@@ -1902,6 +1935,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         var outputWidth = baseBgra != null ? baseWidth : cdgWidth;
         var outputHeight = baseBgra != null ? baseHeight : cdgHeight;
+        var hasCdgOverlay = cdgArgb != null && cdgWidth > 0 && cdgHeight > 0;
+        var shouldZoomStaticBaseForCdg = baseBgra != null && cdgLayeringActive && !baseBgra.AsSpan().IsEmpty;
+        if (shouldZoomStaticBaseForCdg)
+        {
+            (outputWidth, outputHeight) = GetNativeOutputSize(outputWidth, outputHeight);
+        }
+
         if (outputWidth <= 0 || outputHeight <= 0)
         {
             return;
@@ -1922,7 +1962,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         if (baseBgra != null)
         {
-            CopyBgraFrame(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
+            if (shouldZoomStaticBaseForCdg)
+            {
+                CopyBgraFrameUniformToFill(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
+            }
+            else
+            {
+                CopyBgraFrame(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
+            }
         }
         else
         {
@@ -2022,6 +2069,49 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             for (var x = 0; x < destinationWidth; x++)
             {
                 var sx = Math.Clamp((int)((long)x * sourceWidth / destinationWidth), 0, sourceWidth - 1);
+                var si = sourceRow + sx * 4;
+                var di = destinationRow + x * 4;
+                destination[di] = source[si];
+                destination[di + 1] = source[si + 1];
+                destination[di + 2] = source[si + 2];
+                destination[di + 3] = 255;
+            }
+        }
+    }
+
+
+    private static void CopyBgraFrameUniformToFill(
+        byte[] source,
+        int sourceWidth,
+        int sourceHeight,
+        int sourceStride,
+        byte[] destination,
+        int destinationWidth,
+        int destinationHeight,
+        int destinationStride)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
+        {
+            return;
+        }
+
+        var scale = Math.Max(
+            destinationWidth / (double)sourceWidth,
+            destinationHeight / (double)sourceHeight);
+
+        var scaledWidth = Math.Max(1.0, sourceWidth * scale);
+        var scaledHeight = Math.Max(1.0, sourceHeight * scale);
+        var cropX = Math.Max(0.0, (scaledWidth - destinationWidth) / 2.0);
+        var cropY = Math.Max(0.0, (scaledHeight - destinationHeight) / 2.0);
+
+        for (var y = 0; y < destinationHeight; y++)
+        {
+            var sy = Math.Clamp((int)Math.Floor((y + cropY) / scale), 0, sourceHeight - 1);
+            var sourceRow = sy * sourceStride;
+            var destinationRow = y * destinationStride;
+            for (var x = 0; x < destinationWidth; x++)
+            {
+                var sx = Math.Clamp((int)Math.Floor((x + cropX) / scale), 0, sourceWidth - 1);
                 var si = sourceRow + sx * 4;
                 var di = destinationRow + x * 4;
                 destination[di] = source[si];
@@ -2190,6 +2280,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         _nativeCompositeBaseHeight = 0;
         _nativeCompositeBaseStride = 0;
         _nativeCompositeBaseIsVideo = false;
+        _nativeCompositeBaseUseCdgLayering = false;
         _nativeCompositeCdgArgb = null;
         _nativeCompositeCdgWidth = 0;
         _nativeCompositeCdgHeight = 0;

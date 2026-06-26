@@ -1,0 +1,132 @@
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 7282726..97f6de1 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -618,7 +618,12 @@ public sealed class MediaRenderer : IDisposable
+             {
+                 var frameData = frameBuffer.AsSpan(0, pixelCount);
+                 _attachedCdg.CopyFrameArgb(frameData);
+-                _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
++
++                // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
++                // Restore the original line below when re-enabling Layer 2:
++                // _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
++                _graphicsRenderer.SetCdgBackgroundTint(0);
++
+                 _graphicsRenderer.RenderCdgFrame(frameData, width, height);
+             }
+             finally
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index f286444..62f99a4 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -1515,33 +1515,35 @@ float4 PSMain(VertexOut input) : SV_TARGET
+ 
+             Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
+ 
+-            // Pass 1 — tint rectangle over the native-aspect CDG layer only.
+-            // Upload the tint colour into a 1×1 texture and draw it with the same
+-            // pixel shader used for CDG — avoids a separate PSMainTint / D3DCompile call.
+-            if (ta > 0 && _cdgTintTexture != null)
+-            {
+-                Span<byte> tintPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
+-                _context.UpdateSubresource(tintPixel, _cdgTintTexture, 0, 4, 0, null);
+-                _context.Flush();
+-
+-                var tintConstants = new CdgOverlayShaderConstants
+-                {
+-                    DestinationRect = new Vector4(
+-                        (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
+-                        (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
+-                        (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
+-                    TextureRect = new Vector4(0f, 0f, 1f, 1f)
+-                };
+-                MemoryMarshal.Write(constantBytes, ref tintConstants);
+-                _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
+-
+-                _context.PSSetShaderResource(0, _cdgTintShaderResourceView);
+-                _context.PSSetSampler(0, _cdgOverlaySamplerState);
+-                _context.PSSetShader(_cdgOverlayPixelShader);
+-                _context.OMSetBlendState(_cdgOverlayBlendState);
+-                _context.Draw(4, 0);
+-            }
++            // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
++            // Pass 1 used to draw the tint rectangle. Keep this block commented so it is
++            // easy to restore when we re-enable Layer 2 after the test.
++            //
++            // Original Pass 1:
++            // if (ta > 0 && _cdgTintTexture != null)
++            // {
++            //     Span<byte> tintPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
++            //     _context.UpdateSubresource(tintPixel, _cdgTintTexture, 0, 4, 0, null);
++            //     _context.Flush();
++            //
++            //     var tintConstants = new CdgOverlayShaderConstants
++            //     {
++            //         DestinationRect = new Vector4(
++            //             (float)((cdgLeft / (double)surfaceWidth) * 2.0 - 1.0),
++            //             (float)(1.0 - (cdgTop / (double)surfaceHeight) * 2.0),
++            //             (float)((cdgRight / (double)surfaceWidth) * 2.0 - 1.0),
++            //             (float)(1.0 - (cdgBottom / (double)surfaceHeight) * 2.0)),
++            //         TextureRect = new Vector4(0f, 0f, 1f, 1f)
++            //     };
++            //     MemoryMarshal.Write(constantBytes, ref tintConstants);
++            //     _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
++            //
++            //     _context.PSSetShaderResource(0, _cdgTintShaderResourceView);
++            //     _context.PSSetSampler(0, _cdgOverlaySamplerState);
++            //     _context.PSSetShader(_cdgOverlayPixelShader);
++            //     _context.OMSetBlendState(_cdgOverlayBlendState);
++            //     _context.Draw(4, 0);
++            // }
+ 
+             // Pass 2 — CDG graphics centred at native aspect inside the video output rect.
+             {
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 520b388..f486b95 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -706,8 +706,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     /// <param name="height">Frame height</param>
+     public void SetCdgBackgroundTint(uint tintArgb)
+     {
+-        _cdgBackgroundTintArgb = tintArgb;
+-        Debug.WriteLine($"[CDG-TINT] SetCdgBackgroundTint: 0x{tintArgb:X8}");
++        // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
++        // Restore the original assignment below when re-enabling Layer 2:
++        // _cdgBackgroundTintArgb = tintArgb;
++        _cdgBackgroundTintArgb = 0;
++        Debug.WriteLine($"[CDG-TINT] Layer 2 disabled; ignored SetCdgBackgroundTint: 0x{tintArgb:X8}");
+     }
+ 
+     public void RenderCdgFrame(ReadOnlySpan<int> argbData, int width, int height)
+@@ -1566,17 +1569,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                     return;
+                 }
+ 
+-                var tintArgb = Volatile.Read(ref _cdgBackgroundTintArgb);
++                // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
++                // Original behavior read _cdgBackgroundTintArgb and defaulted to opaque black
++                // while CDG layering was active. Keep the background wash transparent for now.
++                var tintArgb = 0u;
+                 var cdgLayeringActive = _nativeCompositeBaseUseCdgLayering;
+-                // If the CDG thread hasn't written the tint yet, default to opaque black so the
+-                // CDG background covers the video instead of showing through transparent.
+                 var fallbackUsed = false;
+-                if (tintArgb == 0 && cdgLayeringActive)
+-                {
+-                    tintArgb = 0xFF000000u;
+-                    fallbackUsed = true;
+-                }
+-                Debug.WriteLine($"[CDG-TINT] RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} cdgLayering={cdgLayeringActive} hasCdgFrame={HasRetainedNativeCdgFrameUnsafe()}");
++                // Restore this original fallback when re-enabling Layer 2:
++                // if (tintArgb == 0 && cdgLayeringActive)
++                // {
++                //     tintArgb = 0xFF000000u;
++                //     fallbackUsed = true;
++                // }
++                Debug.WriteLine($"[CDG-TINT] Layer 2 disabled; RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} cdgLayering={cdgLayeringActive} hasCdgFrame={HasRetainedNativeCdgFrameUnsafe()}");
+                 if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0, tintArgb, cdgLayeringActive))
+                 {
+                     // Do not call the fallback compositor while holding _lock.  The fallback path

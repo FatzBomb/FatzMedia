@@ -1,0 +1,323 @@
+diff --git a/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs b/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
+index 6999e5e..29e2258 100644
+--- a/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
++++ b/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
+@@ -765,7 +765,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+ 
+         if (ShouldUseNativePresentation())
+         {
+-            ApplyNativeSurfaceHostLayout(mediaWidth, mediaHeight);
++            ApplyNativeSurfaceHostLayout(renderer, mediaWidth, mediaHeight);
+             _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
+             renderer?.SetNativePresentationStretch(Stretch);
+ 
+@@ -778,7 +778,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+         ApplyWpfSurfaceLayout(renderer, mediaWidth, mediaHeight);
+     }
+ 
+-    private void ApplyNativeSurfaceHostLayout(int mediaWidth, int mediaHeight)
++    private void ApplyNativeSurfaceHostLayout(MediaRenderer? renderer, int mediaWidth, int mediaHeight)
+     {
+         if (ActualWidth <= 0 || ActualHeight <= 0 || mediaWidth <= 0 || mediaHeight <= 0)
+         {
+@@ -786,6 +786,15 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+             return;
+         }
+ 
++        if (renderer?.HasCdgContent == true)
++        {
++            // CDG presentation is layered: background image/video and the later CDG
++            // background-color wash must cover the entire viewport. Keep the child HWND
++            // full-control and let the compositor scale the CDG lyrics Uniform inside it.
++            ResetNativeSurfaceHostLayout();
++            return;
++        }
++
+         // During resize freeze, the renderer intentionally does not redraw every intermediate
+         // size. If the native HWND continues to fill the whole control, Windows/DWM stretches
+         // the last presented swap-chain frame to the transient window shape, which visibly
+diff --git a/FatzBombMedia.MediaControl/Adapters/Wpf/RenderSurface.cs b/FatzBombMedia.MediaControl/Adapters/Wpf/RenderSurface.cs
+index d864092..7a3f363 100644
+--- a/FatzBombMedia.MediaControl/Adapters/Wpf/RenderSurface.cs
++++ b/FatzBombMedia.MediaControl/Adapters/Wpf/RenderSurface.cs
+@@ -171,7 +171,7 @@ public static partial class RenderSurface
+             }
+ 
+             _backgroundImage.Source = backgroundSource;
+-            _backgroundImage.Stretch = _renderer.BackgroundStretch;
++            _backgroundImage.Stretch = _renderer.EffectiveBackgroundStretch;
+             _backgroundImage.Visibility = System.Windows.Visibility.Visible;
+         }
+ 
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 2dd96e3..10b9366 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -169,6 +169,19 @@ public sealed class MediaRenderer : IDisposable
+     public ImageSource? EffectiveBackgroundSource =>
+         _backgroundVideoRenderer.ImageSource ?? _autoBackgroundSource ?? _backgroundSource;
+ 
++    /// <summary>
++    /// Gets whether a CDG layer is currently attached. When true, host/background
++    /// presentation uses the CDG layering rules instead of normal video-only layout.
++    /// </summary>
++    public bool HasCdgContent => _attachedCdg != null;
++
++    /// <summary>
++    /// Gets the background stretch mode after applying CDG layering rules. Background
++    /// images/videos must fill the viewport when a CDG layer is present; video-only
++    /// playback continues to use the normal media stretch path.
++    /// </summary>
++    public Stretch EffectiveBackgroundStretch => HasCdgContent ? Stretch.UniformToFill : _backgroundStretch;
++
+     /// <summary>
+     /// Event raised when the ImageSource changes (new video frame, CDG update, etc.).
+     /// </summary>
+@@ -233,6 +246,7 @@ public sealed class MediaRenderer : IDisposable
+     {
+         _nativePresentationRequested = hwnd != IntPtr.Zero;
+         _backgroundVideoRenderer.UseOwnPresentation = !_nativePresentationRequested;
++        UpdateCdgLayeringMode();
+         _graphicsRenderer.SetNativePresentationWindow(hwnd);
+         ApplyVideoPresentationSchedulingMode();
+         if (_nativePresentationRequested)
+@@ -395,6 +409,14 @@ public sealed class MediaRenderer : IDisposable
+         {
+             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] No CDG content available");
+         }
++
++        UpdateCdgLayeringMode();
++        BackgroundChanged?.Invoke(this, EventArgs.Empty);
++    }
++
++    private void UpdateCdgLayeringMode()
++    {
++        _graphicsRenderer.SetCdgLayeringActive(_attachedCdg != null);
+     }
+ 
+     private void AttachImageIfAvailable()
+@@ -722,6 +744,8 @@ public sealed class MediaRenderer : IDisposable
+             try { _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated; } catch { }
+             _attachedCdg = null;
+             _renderPipeline.Attach(_attachedVideo, _attachedCdg);
++            UpdateCdgLayeringMode();
++            BackgroundChanged?.Invoke(this, EventArgs.Empty);
+             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] CDG engine detached");
+         }
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 5bb93c8..4c18cb6 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -64,6 +64,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+     private bool _nativeSwapChain;
+     private int _nativeLiveResizeInProgress;
+     private Stretch _nativePresentationStretch = Stretch.Uniform;
++    private bool _cdgLayeringActive;
+     private bool _disposed;
+     private int _currentWidth, _currentHeight;
+     private int _videoProcessorWidth, _videoProcessorHeight;
+@@ -154,6 +155,20 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+         }
+     }
+ 
++    public void SetCdgLayeringActive(bool isActive)
++    {
++        lock (_lock)
++        {
++            if (_cdgLayeringActive == isActive)
++            {
++                return;
++            }
++
++            _cdgLayeringActive = isActive;
++            CleanupVideoProcessor();
++        }
++    }
++
+     /// <summary>
+     /// Initialize D3D11 device for GPU-accelerated pixel operations.
+     /// </summary>
+@@ -1469,8 +1484,12 @@ float4 PSMain(VertexOut input) : SV_TARGET
+             var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
+             var surfaceWidth = Math.Max(1, _currentWidth);
+             var surfaceHeight = Math.Max(1, _currentHeight);
+-            var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
+-            var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
++            var cdgTargetLeft = _cdgLayeringActive ? 0 : outputRect.Left;
++            var cdgTargetTop = _cdgLayeringActive ? 0 : outputRect.Top;
++            var cdgTargetRight = _cdgLayeringActive ? surfaceWidth : outputRect.Right;
++            var cdgTargetBottom = _cdgLayeringActive ? surfaceHeight : outputRect.Bottom;
++            var outputW = Math.Max(1, cdgTargetRight - cdgTargetLeft);
++            var outputH = Math.Max(1, cdgTargetBottom - cdgTargetTop);
+             var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+             var outputAspect = (double)outputW / outputH;
+             int cdgDisplayW, cdgDisplayH;
+@@ -1485,8 +1504,8 @@ float4 PSMain(VertexOut input) : SV_TARGET
+                 cdgDisplayW = Math.Max(1, (int)Math.Round(outputH * cdgAspect));
+             }
+ 
+-            var cdgLeft = outputRect.Left + (outputW - cdgDisplayW) / 2;
+-            var cdgTop = outputRect.Top + (outputH - cdgDisplayH) / 2;
++            var cdgLeft = cdgTargetLeft + (outputW - cdgDisplayW) / 2;
++            var cdgTop = cdgTargetTop + (outputH - cdgDisplayH) / 2;
+             var cdgRight = cdgLeft + cdgDisplayW;
+             var cdgBottom = cdgTop + cdgDisplayH;
+ 
+@@ -1807,14 +1826,15 @@ float4 PSMain(VertexOut input) : SV_TARGET
+         var inputWidth = Math.Max(1, sourceWidth);
+         var inputHeight = Math.Max(1, sourceHeight);
+ 
+-        if (_nativePresentationStretch == Stretch.Fill)
++        var stretch = _cdgLayeringActive ? Stretch.UniformToFill : _nativePresentationStretch;
++        if (stretch == Stretch.Fill)
+         {
+             return new Vortice.RawRect(0, 0, outputWidth, outputHeight);
+         }
+ 
+         double scaleX = outputWidth / (double)inputWidth;
+         double scaleY = outputHeight / (double)inputHeight;
+-        double scale = _nativePresentationStretch switch
++        double scale = stretch switch
+         {
+             Stretch.None => 1.0,
+             Stretch.UniformToFill => Math.Max(scaleX, scaleY),
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 6b57a19..66e763a 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -67,6 +67,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     private bool _nativeCachedCdgOverlayDirty = true;
+     private bool _nativeDirectCompositionLayersRequested;
+     private uint _cdgBackgroundTintArgb;
++    private bool _cdgLayeringActive;
+ 
+     // CDG packet updates can arrive much faster than the display cadence.  When the base layer is
+     // a looping background video, the compositor is driven by the background video's frame cadence;
+@@ -190,6 +191,25 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         _d3d11Renderer?.SetNativePresentationStretch(stretch);
+     }
+ 
++    public void SetCdgLayeringActive(bool isActive)
++    {
++        if (_disposed) return;
++
++        lock (_lock)
++        {
++            if (_cdgLayeringActive == isActive)
++            {
++                return;
++            }
++
++            _cdgLayeringActive = isActive;
++            _nativeCompositeScaledCdgDirty = true;
++            _nativeCachedCdgOverlayDirty = true;
++        }
++
++        _d3d11Renderer?.SetCdgLayeringActive(isActive);
++    }
++
+     private bool ShouldFreezeNativePresentationDuringResize()
+     {
+         // During a user drag resize, do not feed every intermediate WPF/HWND size into DXGI
+@@ -885,6 +905,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+ 
+         _d3d11Renderer.SetNativePresentationStretch(_nativePresentationStretch);
++        _d3d11Renderer.SetCdgLayeringActive(_cdgLayeringActive);
+ 
+         if (!CreateActiveD3D11Surfaces(_d3d11Renderer, width, height))
+         {
+@@ -1883,6 +1904,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         int[]? cdgArgb;
+         int cdgWidth;
+         int cdgHeight;
++        bool cdgLayeringActive;
+ 
+         lock (_lock)
+         {
+@@ -1893,6 +1915,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             cdgArgb = _nativeCompositeCdgArgb;
+             cdgWidth = _nativeCompositeCdgWidth;
+             cdgHeight = _nativeCompositeCdgHeight;
++            cdgLayeringActive = _cdgLayeringActive;
+ 
+             if (baseBgra == null && cdgArgb == null)
+             {
+@@ -1902,6 +1925,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+         var outputWidth = baseBgra != null ? baseWidth : cdgWidth;
+         var outputHeight = baseBgra != null ? baseHeight : cdgHeight;
++        if (cdgLayeringActive)
++        {
++            (outputWidth, outputHeight) = GetNativeOutputSize(outputWidth, outputHeight);
++        }
++
+         if (outputWidth <= 0 || outputHeight <= 0)
+         {
+             return;
+@@ -1922,7 +1950,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+         if (baseBgra != null)
+         {
+-            CopyBgraFrame(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
++            if (cdgLayeringActive)
++            {
++                CopyBgraFrameUniformToFill(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
++            }
++            else
++            {
++                CopyBgraFrame(baseBgra, baseWidth, baseHeight, baseStride, output, outputWidth, outputHeight, outputStride);
++            }
+         }
+         else
+         {
+@@ -2032,6 +2067,48 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+     }
+ 
++    private static void CopyBgraFrameUniformToFill(
++        byte[] source,
++        int sourceWidth,
++        int sourceHeight,
++        int sourceStride,
++        byte[] destination,
++        int destinationWidth,
++        int destinationHeight,
++        int destinationStride)
++    {
++        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
++        {
++            return;
++        }
++
++        var scale = Math.Max(
++            destinationWidth / (double)sourceWidth,
++            destinationHeight / (double)sourceHeight);
++
++        var scaledWidth = Math.Max(1.0, sourceWidth * scale);
++        var scaledHeight = Math.Max(1.0, sourceHeight * scale);
++        var cropX = Math.Max(0.0, (scaledWidth - destinationWidth) / 2.0);
++        var cropY = Math.Max(0.0, (scaledHeight - destinationHeight) / 2.0);
++
++        for (var y = 0; y < destinationHeight; y++)
++        {
++            var sy = Math.Clamp((int)Math.Floor((y + cropY) / scale), 0, sourceHeight - 1);
++            var sourceRow = sy * sourceStride;
++            var destinationRow = y * destinationStride;
++            for (var x = 0; x < destinationWidth; x++)
++            {
++                var sx = Math.Clamp((int)Math.Floor((x + cropX) / scale), 0, sourceWidth - 1);
++                var si = sourceRow + sx * 4;
++                var di = destinationRow + x * 4;
++                destination[di] = source[si];
++                destination[di + 1] = source[si + 1];
++                destination[di + 2] = source[si + 2];
++                destination[di + 3] = 255;
++            }
++        }
++    }
++
+     private static (int x, int y, int width, int height) CalculateAspectFitRect(
+         int destinationWidth,
+         int destinationHeight,

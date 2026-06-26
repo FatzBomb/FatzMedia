@@ -1,0 +1,88 @@
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 4c18cb6..db5f7d0 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -585,12 +585,20 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+                 return;
+             }
+ 
++            var liveResize = Volatile.Read(ref _nativeLiveResizeInProgress) != 0;
++            if (liveResize)
++            {
++                // Avoid committing DirectComposition transforms for every transient WPF
++                // drag size. The existing composition content is cheap for DWM to stretch;
++                // the final transform is applied after live resize ends.
++                return;
++            }
++
+             if (_compositionOutputWidth == width && _compositionOutputHeight == height)
+             {
+                 return;
+             }
+ 
+-            var liveResize = Volatile.Read(ref _nativeLiveResizeInProgress) != 0;
+             if (_configuration.EnableVerboseLogging)
+             {
+                 Debug.WriteLine($"[CDG-DC-TRACE] SetDirectCompositionOutputSize: {_compositionOutputWidth}x{_compositionOutputHeight} -> {width}x{height}, content={_currentWidth}x{_currentHeight}, resize={liveResize}");
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 66e763a..5f80f6d 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -175,12 +175,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             QueueNativeCompositePresent(TimeSpan.Zero);
+         }
+ 
+-        // CDG texture uploads were frozen for the entire resize drag.  Refresh the GPU
+-        // texture now so the very next background-video frame draws CDG on top of video
+-        // instead of presenting a video-only frame while waiting for the next CDG packet.
++        // CDG texture uploads were frozen for the entire resize drag. Refresh the active
++        // native overlay now so the very next frame has the latest lyrics instead of
++        // waiting for another CDG packet.
+         if (wasResizing && !isResizing && HasRetainedNativeCdgFrameUnsafe())
+         {
+-            TryUploadNativeGpuCdgOverlay();
++            if (_nativeDirectCompositionLayersRequested)
++            {
++                TryUploadDirectCompositionCdgOverlay();
++            }
++            else
++            {
++                TryUploadNativeGpuCdgOverlay();
++            }
+         }
+     }
+ 
+@@ -229,12 +236,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+         if (ShouldFreezeNativePresentationDuringResize())
+         {
++            // Keep only the latest requested size while the user is dragging.
++            // Do not update DirectComposition transforms or native swap-chain sizing during
++            // live resize; DWM can stretch the existing composed content cheaply, and we
++            // apply one final size after the resize settles.
+             _pendingNativePresentationWidth = Math.Max(0, pixelWidth);
+             _pendingNativePresentationHeight = Math.Max(0, pixelHeight);
+-            if (!_nativeDirectCompositionLayersRequested)
+-            {
+-                return;
+-            }
++            return;
+         }
+ 
+         pixelWidth = Math.Max(0, pixelWidth);
+@@ -1434,7 +1442,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+             if (_nativeDirectCompositionLayersRequested)
+             {
+-                TryUploadDirectCompositionCdgOverlay();
++                // During live resize, keep the retained CDG frame dirty but do not rescale
++                // or upload the DirectComposition overlay on every CDG packet. That was the
++                // main resize/flicker cost for CDG+background-video. One upload happens
++                // when the resize settles.
++                if (!ShouldFreezeNativePresentationDuringResize())
++                {
++                    TryUploadDirectCompositionCdgOverlay();
++                }
+                 return;
+             }
+ 

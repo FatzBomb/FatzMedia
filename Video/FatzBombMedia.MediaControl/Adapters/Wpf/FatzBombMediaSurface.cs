@@ -639,6 +639,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         renderer.FramePresented += OnRendererFramePresented;
         renderer.ImageSourceChanged += OnRendererImageSourceChanged;
         renderer.AttachmentsChanged += OnRendererAttachmentsChanged;
+        renderer.BackgroundChanged += OnRendererBackgroundChanged;
     }
 
     private void UnsubscribeSurfaceLayout()
@@ -648,6 +649,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             _layoutSubscribedRenderer.FramePresented -= OnRendererFramePresented;
             _layoutSubscribedRenderer.ImageSourceChanged -= OnRendererImageSourceChanged;
             _layoutSubscribedRenderer.AttachmentsChanged -= OnRendererAttachmentsChanged;
+            _layoutSubscribedRenderer.BackgroundChanged -= OnRendererBackgroundChanged;
             _layoutSubscribedRenderer = null;
         }
 
@@ -673,6 +675,18 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         {
             _nativeSurfaceHost.SetPresenterOwnsPixels(false);
         }
+    }
+
+    private void OnRendererBackgroundChanged(object? sender, EventArgs e)
+    {
+        if (!_nativePresentationActive)
+        {
+            return;
+        }
+
+        // Background image/video availability can change after the CDG attachment is already
+        // known. Re-evaluate whether the native host should be viewport-sized or CDG-sized.
+        QueuePresentationSurfaceLayoutUpdate();
     }
 
     private void OnRendererAttachmentsChanged(object? sender, EventArgs e)
@@ -765,10 +779,22 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         if (ShouldUseNativePresentation())
         {
-            ApplyNativeSurfaceHostLayout(mediaWidth, mediaHeight);
-            _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
-            renderer?.SetNativePresentationStretch(Stretch);
+            var fillViewportForCdgBackground = renderer?.HasCdgBackgroundLayer == true;
+            if (fillViewportForCdgBackground)
+            {
+                // Layer 1 rule: CDG background media is the full viewport base layer.
+                // Do not size the native host to the CDG lyric rectangle; the renderer
+                // will aspect-fit the CDG layer inside this full-control output later.
+                ResetNativeSurfaceHostLayout();
+                _nativeSurfaceHost.SetMediaLayout(0, 0, Stretch.Fill);
+            }
+            else
+            {
+                ApplyNativeSurfaceHostLayout(mediaWidth, mediaHeight);
+                _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
+            }
 
+            renderer?.SetNativePresentationStretch(Stretch);
             renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
 
             QueueOverlayBoundsUpdate();

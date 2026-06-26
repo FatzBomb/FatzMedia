@@ -1,0 +1,109 @@
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 62f99a4..4256731 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -1004,7 +1004,12 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+                 var overlayExpected = HasCdgOverlayTexture;
+                 var baseStretchOverride = forceBaseUniformToFill ? Stretch.UniformToFill : (Stretch?)null;
+ 
+-                if (width == _currentWidth && height == _currentHeight)
++                // In CDG layering mode the base/background video must always run through
++                // the blit path so UniformToFill is applied consistently. A direct
++                // UpdateSubresource() bypasses CalculateVideoOutputRect(), which makes the
++                // frame use a different rectangle whenever the source happens to match the
++                // swap-chain size. That shows up as aspect-flashing during CDG playback.
++                if (width == _currentWidth && height == _currentHeight && !forceBaseUniformToFill)
+                 {
+                     _context.UpdateSubresource(pixelData, _presentationTexture, 0, (uint)stride, 0, null);
+                     _context.Flush();
+@@ -1028,14 +1033,19 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+                 // proven CDG presentation path during normal playback instead of silently dropping
+                 // the lyrics.
+                 Debug.WriteLine($"[CDG-TINT] UploadFrameWithCachedCdgOverlay: overlayExpected={overlayExpected} forceBaseUniformToFill={forceBaseUniformToFill} tintArgb=0x{tintArgb:X8}");
+-                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb))
++                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb, forceBaseUniformToFill))
+                 {
+-                    // Important: do NOT present the video-only back buffer here. The caller may
+-                    // fall back to the proven CDG compositor for this same video frame. Presenting
+-                    // here first creates an alternating video-only / video+CDG sequence, which
+-                    // appears as high-speed CDG flicker and also doubles the present cost.
+-                    RecordUploadDiagnostics(GetElapsedMilliseconds(uploadStart), width, height);
+-                    return false;
++                    // Diagnostic/flicker fix: do not fall back to a second presentation path
++                    // for this video frame. The base/background video has already been drawn
++                    // using the correct CDG-layer rectangle. Returning false here allowed the
++                    // caller to alternate between UniformToFill and normal Uniform paths, which
++                    // is visible as flashing whenever the viewport is not the same aspect as
++                    // the source video. Keep the frame and present it without the CDG overlay
++                    // for this tick rather than switching geometry paths.
++                    if (_configuration.EnableLogging)
++                    {
++                        Debug.WriteLine("[VorticeD3D11] Cached CDG overlay draw failed; presenting stable base frame without fallback path.");
++                    }
+                 }
+ 
+                 RecordUploadDiagnostics(GetElapsedMilliseconds(uploadStart), width, height);
+@@ -1136,7 +1146,12 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+                     return;
+                 }
+ 
+-                if (width == _currentWidth && height == _currentHeight)
++                // In CDG layering mode the base/background video must always run through
++                // the blit path so UniformToFill is applied consistently. A direct
++                // UpdateSubresource() bypasses CalculateVideoOutputRect(), which makes the
++                // frame use a different rectangle whenever the source happens to match the
++                // swap-chain size. That shows up as aspect-flashing during CDG playback.
++                if (width == _currentWidth && height == _currentHeight && !forceBaseUniformToFill)
+                 {
+                     _context.UpdateSubresource(pixelData, _presentationTexture, 0, (uint)stride, 0, null);
+                     _context.Flush();
+@@ -1450,7 +1465,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
+ }
+ ";
+ 
+-    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb)
++    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb, bool useFullViewportForCdgLayer)
+     {
+         if (_device == null
+             || _context == null
+@@ -1471,9 +1486,11 @@ float4 PSMain(VertexOut input) : SV_TARGET
+                 return false;
+             }
+ 
+-            var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
+             var surfaceWidth = Math.Max(1, _currentWidth);
+             var surfaceHeight = Math.Max(1, _currentHeight);
++            var outputRect = useFullViewportForCdgLayer
++                ? new Vortice.RawRect(0, 0, surfaceWidth, surfaceHeight)
++                : CalculateVideoOutputRect(videoWidth, videoHeight);
+             var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
+             var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
+             var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index f486b95..889d2d6 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -1584,10 +1584,22 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+                 Debug.WriteLine($"[CDG-TINT] Layer 2 disabled; RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} cdgLayering={cdgLayeringActive} hasCdgFrame={HasRetainedNativeCdgFrameUnsafe()}");
+                 if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0, tintArgb, cdgLayeringActive))
+                 {
++                    // In a CDG session, never recover by presenting the background video through
++                    // the plain video path. The plain path uses normal video Stretch, while the
++                    // CDG background path uses UniformToFill. Alternating between those paths is
++                    // exactly the aspect-flash seen off the 16:9 sweet spot. Keep the last stable
++                    // frame instead and wait for the next video tick.
++                    if (cdgLayeringActive)
++                    {
++                        if (_configuration.EnableLogging)
++                        {
++                            Debug.WriteLine("[OptimizedRenderer] CDG-layer video upload failed; skipped plain fallback to avoid geometry flicker.");
++                        }
++                    }
+                     // Do not call the fallback compositor while holding _lock.  The fallback path
+                     // takes _nativeCompositeRenderLock and then _lock, so calling it here can
+                     // self-deadlock the player as soon as a CDG frame starts.
+-                    if (HasRetainedNativeCdgFrameUnsafe())
++                    else if (HasRetainedNativeCdgFrameUnsafe())
+                     {
+                         useFallbackComposite = true;
+                     }

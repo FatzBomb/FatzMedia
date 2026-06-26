@@ -1,0 +1,50 @@
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 62f99a4..f856a53 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -1028,7 +1028,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+                 // proven CDG presentation path during normal playback instead of silently dropping
+                 // the lyrics.
+                 Debug.WriteLine($"[CDG-TINT] UploadFrameWithCachedCdgOverlay: overlayExpected={overlayExpected} forceBaseUniformToFill={forceBaseUniformToFill} tintArgb=0x{tintArgb:X8}");
+-                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb))
++                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb, forceBaseUniformToFill))
+                 {
+                     // Important: do NOT present the video-only back buffer here. The caller may
+                     // fall back to the proven CDG compositor for this same video frame. Presenting
+@@ -1450,7 +1450,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
+ }
+ ";
+ 
+-    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb)
++    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb, bool useFullViewportForCdgOverlay = false)
+     {
+         if (_device == null
+             || _context == null
+@@ -1471,9 +1471,17 @@ float4 PSMain(VertexOut input) : SV_TARGET
+                 return false;
+             }
+ 
+-            var outputRect = CalculateVideoOutputRect(videoWidth, videoHeight);
+             var surfaceWidth = Math.Max(1, _currentWidth);
+             var surfaceHeight = Math.Max(1, _currentHeight);
++
++            // In CDG layered mode the background/video layer is full-control and CDG-unaware.
++            // The CDG lyric overlay must therefore be positioned against the same full viewport,
++            // not against the normal video output rectangle. If we use the normal video rect here,
++            // the fast GPU overlay path and the fallback compositor only agree at exact 16:9,
++            // which shows up as aspect-ratio flicker everywhere else.
++            var outputRect = useFullViewportForCdgOverlay
++                ? new Vortice.RawRect(0, 0, surfaceWidth, surfaceHeight)
++                : CalculateVideoOutputRect(videoWidth, videoHeight);
+             var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
+             var outputH = Math.Max(1, outputRect.Bottom - outputRect.Top);
+             var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+@@ -1503,7 +1511,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
+             var tb = (int)(tintArgb & 0xFF);
+             var tintColor = new Vector4(tr / 255f, tg / 255f, tb / 255f, ta / 255f);
+ 
+-            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
++            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) fullViewportOverlay={useFullViewportForCdgOverlay} outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) cdgRect=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}) surface={surfaceWidth}x{surfaceHeight}");
+ 
+             // Common state
+             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);

@@ -37,6 +37,12 @@ public sealed class MediaRenderer : IDisposable
     private bool _nativePresentationRequested;
     private bool _wpfCompositionDrivenVideo;
 
+    // DIAGNOSTIC: disables Layer 3 CDG lyric rendering while keeping the CDG session
+    // attached. This lets us verify Layer 1 background video/image zoom-to-fill behavior
+    // without CDG frame invalidation/upload/presentation noise. Set to false or remove
+    // this guard when re-enabling the CDG lyric layer.
+    private const bool DisableCdgLyricLayerForBackgroundZoomTest = false;
+
     private bool _disposed;
 
     internal MediaRenderer(IMediaEngine mediaEngine)
@@ -168,6 +174,31 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public ImageSource? EffectiveBackgroundSource =>
         _backgroundVideoRenderer.ImageSource ?? _autoBackgroundSource ?? _backgroundSource;
+
+    /// <summary>
+    /// Gets whether a CDG layer is currently attached. Background media uses
+    /// CDG layering rules when this is true.
+    /// </summary>
+    public bool HasCdgContent => _attachedCdg != null;
+
+    /// <summary>
+    /// Gets whether CDG is layered over a separate background visual. In this mode,
+    /// the native/WPF presentation surface must use the full viewport as its output
+    /// target; the CDG layer is aspect-fitted inside that viewport later.
+    /// </summary>
+    public bool HasCdgBackgroundLayer => HasCdgContent
+        && (_nativeCompositeBaseIsBackgroundVideo
+            || _stillImageSource != null
+            || _autoBackgroundSource != null
+            || _backgroundSource != null
+            || _backgroundVideoRenderer.ImageSource != null);
+
+    /// <summary>
+    /// Gets the background stretch mode after applying CDG layering rules.
+    /// Background images/videos fill the viewport when a CDG layer is present;
+    /// video-only playback continues to use the normal media stretch path.
+    /// </summary>
+    public Stretch EffectiveBackgroundStretch => HasCdgContent ? Stretch.UniformToFill : _backgroundStretch;
 
     /// <summary>
     /// Event raised when the ImageSource changes (new video frame, CDG update, etc.).
@@ -379,22 +410,39 @@ public sealed class MediaRenderer : IDisposable
             _attachedCdg = null;
         }
 
-        // Attach to CDG if available
+        _graphicsRenderer.SetNativeCompositeCdgLayeringActive(_mediaEngine.Cdg != null);
+
+        // Attach to CDG if available. During the background zoom diagnostic, keep the
+        // CDG session attached so Layer 1 still enters CDG-background mode, but do not
+        // subscribe to CDG invalidations or upload the CDG lyric layer.
         if (_mediaEngine.Cdg != null)
         {
             _attachedCdg = _mediaEngine.Cdg;
-            _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
 
-            // Set initial CDG image if available and force the zero-time frame into the renderer.
-            _renderPipeline.Attach(_attachedVideo, _attachedCdg);
-            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
+            if (!DisableCdgLyricLayerForBackgroundZoomTest)
+            {
+                _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;
 
-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}");
+                // Set initial CDG image if available and force the zero-time frame into the renderer.
+                _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo(), force: true);
+            }
+
+            if (_enableLogging)
+            {
+                var diagnosticSuffix = DisableCdgLyricLayerForBackgroundZoomTest
+                    ? " (DIAGNOSTIC: lyric layer disabled)"
+                    : string.Empty;
+                System.Diagnostics.Debug.WriteLine($"[MediaRenderer] CDG attached: {_attachedCdg.FrameWidth}x{_attachedCdg.FrameHeight}{diagnosticSuffix}");
+            }
         }
         else
         {
             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] No CDG content available");
         }
+
+        // CDG changes the background-image stretch rule to UniformToFill.
+        BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void AttachImageIfAvailable()
@@ -494,7 +542,10 @@ public sealed class MediaRenderer : IDisposable
                 _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
             }
 
-            _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
+            if (!DisableCdgLyricLayerForBackgroundZoomTest)
+            {
+                _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
+            }
         }
         catch (Exception ex)
         {
@@ -542,6 +593,13 @@ public sealed class MediaRenderer : IDisposable
 
     private void OnCdgFrameInvalidated(object? sender, EventArgs e)
     {
+        if (DisableCdgLyricLayerForBackgroundZoomTest)
+        {
+            // DIAGNOSTIC: ignore CDG frame invalidations entirely so this test isolates
+            // Layer 1 background video/image sizing and flicker behavior.
+            return;
+        }
+
         try
         {
             // Check if the dispatcher is shutting down before attempting to invoke
@@ -568,6 +626,12 @@ public sealed class MediaRenderer : IDisposable
 
     private void RenderCurrentCdgFrame(bool force)
     {
+        if (DisableCdgLyricLayerForBackgroundZoomTest)
+        {
+            // DIAGNOSTIC: do not upload or present the CDG lyric layer.
+            return;
+        }
+
         if (_attachedCdg == null) return;
 
         try
@@ -588,7 +652,12 @@ public sealed class MediaRenderer : IDisposable
             {
                 var frameData = frameBuffer.AsSpan(0, pixelCount);
                 _attachedCdg.CopyFrameArgb(frameData);
-                _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
+
+                // DIAGNOSTIC: Layer 2 (CDG background/color wash) is disabled for flicker testing.
+                // Restore the original line below when re-enabling Layer 2:
+                // _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
+                _graphicsRenderer.SetCdgBackgroundTint(0);
+
                 _graphicsRenderer.RenderCdgFrame(frameData, width, height);
             }
             finally
@@ -721,7 +790,9 @@ public sealed class MediaRenderer : IDisposable
         {
             try { _attachedCdg.FrameInvalidated -= OnCdgFrameInvalidated; } catch { }
             _attachedCdg = null;
+            _graphicsRenderer.SetNativeCompositeCdgLayeringActive(false);
             _renderPipeline.Attach(_attachedVideo, _attachedCdg);
+            BackgroundChanged?.Invoke(this, EventArgs.Empty);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] CDG engine detached");
         }
 

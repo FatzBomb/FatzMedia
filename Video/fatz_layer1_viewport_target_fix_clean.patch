@@ -1,0 +1,88 @@
+diff --git a/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs b/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
+index 6999e5e..b39a650 100644
+--- a/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
++++ b/FatzBombMedia.MediaControl/Adapters/Wpf/FatzBombMediaSurface.cs
+@@ -639,6 +639,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+         renderer.FramePresented += OnRendererFramePresented;
+         renderer.ImageSourceChanged += OnRendererImageSourceChanged;
+         renderer.AttachmentsChanged += OnRendererAttachmentsChanged;
++        renderer.BackgroundChanged += OnRendererBackgroundChanged;
+     }
+ 
+     private void UnsubscribeSurfaceLayout()
+@@ -648,6 +649,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+             _layoutSubscribedRenderer.FramePresented -= OnRendererFramePresented;
+             _layoutSubscribedRenderer.ImageSourceChanged -= OnRendererImageSourceChanged;
+             _layoutSubscribedRenderer.AttachmentsChanged -= OnRendererAttachmentsChanged;
++            _layoutSubscribedRenderer.BackgroundChanged -= OnRendererBackgroundChanged;
+             _layoutSubscribedRenderer = null;
+         }
+ 
+@@ -675,6 +677,18 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+         }
+     }
+ 
++    private void OnRendererBackgroundChanged(object? sender, EventArgs e)
++    {
++        if (!_nativePresentationActive)
++        {
++            return;
++        }
++
++        // Background image/video availability can change after the CDG attachment is already
++        // known. Re-evaluate whether the native host should be viewport-sized or CDG-sized.
++        QueuePresentationSurfaceLayoutUpdate();
++    }
++
+     private void OnRendererAttachmentsChanged(object? sender, EventArgs e)
+     {
+         if (_nativePresentationActive)
+@@ -765,10 +779,22 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
+ 
+         if (ShouldUseNativePresentation())
+         {
+-            ApplyNativeSurfaceHostLayout(mediaWidth, mediaHeight);
+-            _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
+-            renderer?.SetNativePresentationStretch(Stretch);
++            var fillViewportForCdgBackground = renderer?.HasCdgBackgroundLayer == true;
++            if (fillViewportForCdgBackground)
++            {
++                // Layer 1 rule: CDG background media is the full viewport base layer.
++                // Do not size the native host to the CDG lyric rectangle; the renderer
++                // will aspect-fit the CDG layer inside this full-control output later.
++                ResetNativeSurfaceHostLayout();
++                _nativeSurfaceHost.SetMediaLayout(0, 0, Stretch.Fill);
++            }
++            else
++            {
++                ApplyNativeSurfaceHostLayout(mediaWidth, mediaHeight);
++                _nativeSurfaceHost.SetMediaLayout(mediaWidth, mediaHeight, Stretch);
++            }
+ 
++            renderer?.SetNativePresentationStretch(Stretch);
+             renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
+ 
+             QueueOverlayBoundsUpdate();
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 8f9fad2..90cda98 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -175,6 +175,18 @@ public sealed class MediaRenderer : IDisposable
+     /// </summary>
+     public bool HasCdgContent => _attachedCdg != null;
+ 
++    /// <summary>
++    /// Gets whether CDG is layered over a separate background visual. In this mode,
++    /// the native/WPF presentation surface must use the full viewport as its output
++    /// target; the CDG layer is aspect-fitted inside that viewport later.
++    /// </summary>
++    public bool HasCdgBackgroundLayer => HasCdgContent
++        && (_nativeCompositeBaseIsBackgroundVideo
++            || _stillImageSource != null
++            || _autoBackgroundSource != null
++            || _backgroundSource != null
++            || _backgroundVideoRenderer.ImageSource != null);
++
+     /// <summary>
+     /// Gets the background stretch mode after applying CDG layering rules.
+     /// Background images/videos fill the viewport when a CDG layer is present;
