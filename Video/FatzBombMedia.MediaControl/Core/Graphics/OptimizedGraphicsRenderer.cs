@@ -66,6 +66,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     private int _directCompositionCdgOverlayStride;
     private bool _nativeCachedCdgOverlayDirty = true;
     private bool _nativeDirectCompositionLayersRequested;
+    private uint _cdgBackgroundTintArgb;
 
     // CDG packet updates can arrive much faster than the display cadence.  When the base layer is
     // a looping background video, the compositor is driven by the background video's frame cadence;
@@ -678,6 +679,12 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// <param name="argbData">CDG frame data in ARGB format</param>
     /// <param name="width">Frame width</param>
     /// <param name="height">Frame height</param>
+    public void SetCdgBackgroundTint(uint tintArgb)
+    {
+        _cdgBackgroundTintArgb = tintArgb;
+        Debug.WriteLine($"[CDG-TINT] SetCdgBackgroundTint: 0x{tintArgb:X8}");
+    }
+
     public void RenderCdgFrame(ReadOnlySpan<int> argbData, int width, int height)
     {
         if (_disposed || argbData.IsEmpty || width <= 0 || height <= 0) return;
@@ -1513,6 +1520,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         var useFallbackComposite = false;
         var uploadPlainFrame = false;
 
+        // Ensure the CDG GPU texture exists before compositing — otherwise
+        // UploadFrameWithCachedCdgOverlay silently skips the CDG+etint draw pass
+        // and returns true, producing a video-only frame.
+        if (_d3d11Renderer?.HasCdgOverlayTexture != true && HasRetainedNativeCdgFrameUnsafe())
+        {
+            TryUploadNativeGpuCdgOverlay();
+        }
+
         try
         {
             lock (_lock)
@@ -1526,7 +1541,17 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     return;
                 }
 
-                if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0))
+                var tintArgb = Volatile.Read(ref _cdgBackgroundTintArgb);
+                // If the CDG thread hasn't written the tint yet, default to opaque black so the
+                // CDG background covers the video instead of showing through transparent.
+                var fallbackUsed = false;
+                if (tintArgb == 0 && HasRetainedNativeCdgFrameUnsafe())
+                {
+                    tintArgb = 0xFF000000u;
+                    fallbackUsed = true;
+                }
+                Debug.WriteLine($"[CDG-TINT] RenderNativeCompositedVideo: tint=0x{tintArgb:X8} fallback={fallbackUsed} hasCdg={HasRetainedNativeCdgFrameUnsafe()}");
+                if (!_d3d11Renderer.UploadFrameWithCachedCdgOverlay(pixelData, width, height, stride, 60.0, tintArgb))
                 {
                     // Do not call the fallback compositor while holding _lock.  The fallback path
                     // takes _nativeCompositeRenderLock and then _lock, so calling it here can

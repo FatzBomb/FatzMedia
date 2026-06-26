@@ -43,6 +43,8 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     private ID3D11RenderTargetView? _presentationRenderTargetView;
     private ID3D11VertexShader? _cdgOverlayVertexShader;
     private ID3D11PixelShader? _cdgOverlayPixelShader;
+    private ID3D11Texture2D? _cdgTintTexture;
+    private ID3D11ShaderResourceView? _cdgTintShaderResourceView;
     private ID3D11Buffer? _cdgOverlayConstantBuffer;
     private ID3D11SamplerState? _cdgOverlaySamplerState;
     private ID3D11BlendState? _cdgOverlayBlendState;
@@ -980,7 +982,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     /// CDG alpha texture as one lightweight GPU quad over the same aspect-correct output rect.
     /// This keeps CDG out of the video upload/compositor path, especially during WPF live resize.
     /// </summary>
-    public bool UploadFrameWithCachedCdgOverlay(ReadOnlySpan<byte> pixelData, int width, int height, int stride, double framesPerSecond = 60.0)
+    public bool UploadFrameWithCachedCdgOverlay(ReadOnlySpan<byte> pixelData, int width, int height, int stride, double framesPerSecond = 60.0, uint tintArgb = 0)
     {
         if (_disposed || _context == null || _presentationTexture == null) return false;
         if (pixelData.IsEmpty || width <= 0 || height <= 0 || stride < width * 4) return false;
@@ -1020,7 +1022,8 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                 // proven CDG presentation path during normal playback instead of silently dropping
                 // the lyrics.
                 var overlayExpected = HasCdgOverlayTexture;
-                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height))
+                Debug.WriteLine($"[CDG-TINT] UploadFrameWithCachedCdgOverlay: overlayExpected={overlayExpected} tintArgb=0x{tintArgb:X8}");
+                if (overlayExpected && !DrawCachedCdgOverlayQuad(width, height, tintArgb))
                 {
                     // Important: do NOT present the video-only back buffer here. The caller may
                     // fall back to the proven CDG compositor for this same video frame. Presenting
@@ -1442,7 +1445,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
 }
 ";
 
-    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight)
+    private bool DrawCachedCdgOverlayQuad(int videoWidth, int videoHeight, uint tintArgb)
     {
         if (_device == null
             || _context == null
@@ -1451,6 +1454,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
             || _cdgOverlayWidth <= 0
             || _cdgOverlayHeight <= 0)
         {
+            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad -> false (guard): dev={_device == null} ctx={_context == null} presTex={_presentationTexture == null} srv={_cdgOverlayShaderResourceView == null} cdgW={_cdgOverlayWidth} cdgH={_cdgOverlayHeight}");
             return false;
         }
 
@@ -1458,6 +1462,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
         {
             if (!EnsureCdgOverlayPipeline())
             {
+                Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad -> false (pipeline failed)");
                 return false;
             }
 
@@ -1465,31 +1470,92 @@ float4 PSMain(VertexOut input) : SV_TARGET
             var surfaceWidth = Math.Max(1, _currentWidth);
             var surfaceHeight = Math.Max(1, _currentHeight);
 
-            var constants = new CdgOverlayShaderConstants
-            {
-                DestinationRect = new Vector4(
-                    (float)((outputRect.Left / (double)surfaceWidth) * 2.0 - 1.0),
-                    (float)(1.0 - (outputRect.Top / (double)surfaceHeight) * 2.0),
-                    (float)((outputRect.Right / (double)surfaceWidth) * 2.0 - 1.0),
-                    (float)(1.0 - (outputRect.Bottom / (double)surfaceHeight) * 2.0)),
-                TextureRect = new Vector4(0f, 0f, 1f, 1f)
-            };
+            // Tint color: unpack straight ARGB → normalised float4 RGBA.
+            // The D3D11 blend state (SourceAlpha / InvSourceAlpha) handles premultiplication.
+            var ta = (int)((tintArgb >> 24) & 0xFF);
+            var tr = (int)((tintArgb >> 16) & 0xFF);
+            var tg = (int)((tintArgb >> 8) & 0xFF);
+            var tb = (int)(tintArgb & 0xFF);
+            var tintColor = new Vector4(tr / 255f, tg / 255f, tb / 255f, ta / 255f);
 
-            Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
-            MemoryMarshal.Write(constantBytes, ref constants);
-            _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
+            Debug.WriteLine($"[CDG-TINT] DrawCachedCdgOverlayQuad: tintArgb=0x{tintArgb:X8} → A={ta} R={tr} G={tg} B={tb} → ({tintColor.X:F3},{tintColor.Y:F3},{tintColor.Z:F3},{tintColor.W:F3}) outputRect=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}) surface={surfaceWidth}x{surfaceHeight}");
 
+            // Common state
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
             _context.IASetInputLayout(null);
             _context.VSSetShader(_cdgOverlayVertexShader);
             _context.VSSetConstantBuffer(0, _cdgOverlayConstantBuffer);
-            _context.PSSetShader(_cdgOverlayPixelShader);
-            _context.PSSetShaderResource(0, _cdgOverlayShaderResourceView);
-            _context.PSSetSampler(0, _cdgOverlaySamplerState);
             _context.RSSetViewport(new Viewport(0, 0, surfaceWidth, surfaceHeight));
             _context.OMSetRenderTargets(_presentationRenderTargetView);
-            _context.OMSetBlendState(_cdgOverlayBlendState);
-            _context.Draw(4, 0);
+
+            Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
+
+            // Pass 1 — tint rectangle over the video output rect.
+            // Upload the tint colour into a 1×1 texture and draw it with the same
+            // pixel shader used for CDG — avoids a separate PSMainTint / D3DCompile call.
+            if (ta > 0 && _cdgTintTexture != null)
+            {
+                Span<byte> tintPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
+                _context.UpdateSubresource(tintPixel, _cdgTintTexture, 0, 4, 0, null);
+                _context.Flush();
+
+                var tintConstants = new CdgOverlayShaderConstants
+                {
+                    DestinationRect = new Vector4(
+                        (float)((outputRect.Left / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (outputRect.Top / (double)surfaceHeight) * 2.0),
+                        (float)((outputRect.Right / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (outputRect.Bottom / (double)surfaceHeight) * 2.0)),
+                    TextureRect = new Vector4(0f, 0f, 1f, 1f)
+                };
+                MemoryMarshal.Write(constantBytes, ref tintConstants);
+                _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
+
+                _context.PSSetShaderResource(0, _cdgTintShaderResourceView);
+                _context.PSSetSampler(0, _cdgOverlaySamplerState);
+                _context.PSSetShader(_cdgOverlayPixelShader);
+                _context.OMSetBlendState(_cdgOverlayBlendState);
+                _context.Draw(4, 0);
+            }
+
+            // Pass 2 — CDG graphics centred at native aspect inside the video output rect
+            {
+                var outputW = outputRect.Right - outputRect.Left;
+                var outputH = outputRect.Bottom - outputRect.Top;
+                var cdgAspect = (double)_cdgOverlayWidth / _cdgOverlayHeight;
+                var outputAspect = (double)outputW / outputH;
+                int displayW, displayH;
+                if (cdgAspect > outputAspect)
+                {
+                    displayW = (int)outputW;
+                    displayH = (int)(outputW / cdgAspect);
+                }
+                else
+                {
+                    displayH = (int)outputH;
+                    displayW = (int)(outputH * cdgAspect);
+                }
+                var centerX = outputRect.Left + (outputW - displayW) / 2;
+                var centerY = outputRect.Top + (outputH - displayH) / 2;
+
+                var cdgConstants = new CdgOverlayShaderConstants
+                {
+                    DestinationRect = new Vector4(
+                        (float)((centerX / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - (centerY / (double)surfaceHeight) * 2.0),
+                        (float)(((centerX + displayW) / (double)surfaceWidth) * 2.0 - 1.0),
+                        (float)(1.0 - ((centerY + displayH) / (double)surfaceHeight) * 2.0)),
+                    TextureRect = new Vector4(0f, 0f, 1f, 1f)
+                };
+                MemoryMarshal.Write(constantBytes, ref cdgConstants);
+                _context.UpdateSubresource(constantBytes, _cdgOverlayConstantBuffer, 0, 0, 0, null);
+
+                _context.PSSetShaderResource(0, _cdgOverlayShaderResourceView);
+                _context.PSSetSampler(0, _cdgOverlaySamplerState);
+                _context.PSSetShader(_cdgOverlayPixelShader);
+                _context.OMSetBlendState(_cdgOverlayBlendState);
+                _context.Draw(4, 0);
+            }
 
             // Prevent D3D11 warning/resource hazard when the overlay texture is later updated.
             _context.PSSetShaderResource(0, null);
@@ -1508,25 +1574,30 @@ float4 PSMain(VertexOut input) : SV_TARGET
 
     private bool EnsureCdgOverlayPipeline()
     {
-        if (_device == null || _presentationTexture == null || _cdgOverlayPipelineFailed)
+        if (_device == null || _presentationTexture == null)
         {
             return false;
         }
 
         try
         {
+            Debug.WriteLine("[CDG-TINT] Pipeline: step RTV");
             _presentationRenderTargetView ??= _device.CreateRenderTargetView(_presentationTexture);
 
             if (_cdgOverlayVertexShader == null || _cdgOverlayPixelShader == null)
             {
+                Debug.WriteLine("[CDG-TINT] Pipeline: compiling VSMain");
                 var vertexShaderBytecode = CompileShaderBytecode(CdgOverlayShaderSource, "VSMain", "vs_5_0");
+                Debug.WriteLine("[CDG-TINT] Pipeline: compiling PSMain");
                 var pixelShaderBytecode = CompileShaderBytecode(CdgOverlayShaderSource, "PSMain", "ps_5_0");
+                Debug.WriteLine("[CDG-TINT] Pipeline: creating shaders");
                 _cdgOverlayVertexShader = _device.CreateVertexShader(vertexShaderBytecode);
                 _cdgOverlayPixelShader = _device.CreatePixelShader(pixelShaderBytecode);
             }
 
             if (_cdgOverlayConstantBuffer == null)
             {
+                Debug.WriteLine("[CDG-TINT] Pipeline: creating CB");
                 var constantBufferDescription = new BufferDescription
                 {
                     ByteWidth = (uint)Marshal.SizeOf<CdgOverlayShaderConstants>(),
@@ -1578,17 +1649,31 @@ float4 PSMain(VertexOut input) : SV_TARGET
                 _cdgOverlayBlendState = _device.CreateBlendState(blendDescription);
             }
 
+            if (_cdgTintTexture == null)
+            {
+                var tintTextureDesc = new Texture2DDescription(
+                    Format.B8G8R8A8_UNorm, 1, 1,
+                    arraySize: 1, mipLevels: 1,
+                    BindFlags.ShaderResource,
+                    ResourceUsage.Default,
+                    CpuAccessFlags.None,
+                    sampleCount: 1, sampleQuality: 0,
+                    ResourceOptionFlags.None);
+                _cdgTintTexture = _device.CreateTexture2D(in tintTextureDesc);
+                _cdgTintShaderResourceView = _device.CreateShaderResourceView(_cdgTintTexture);
+            }
+
             return _presentationRenderTargetView != null
                 && _cdgOverlayVertexShader != null
                 && _cdgOverlayPixelShader != null
                 && _cdgOverlayConstantBuffer != null
                 && _cdgOverlaySamplerState != null
-                && _cdgOverlayBlendState != null;
+                && _cdgOverlayBlendState != null
+                && _cdgTintShaderResourceView != null;
         }
         catch (Exception ex)
         {
-            _cdgOverlayPipelineFailed = true;
-            Debug.WriteLine($"[VorticeD3D11] Cached CDG overlay pipeline unavailable: {ex.Message}");
+            Debug.WriteLine($"[CDG-TINT] EnsureCdgOverlayPipeline FAILED: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             return false;
         }
     }
@@ -1625,10 +1710,10 @@ float4 PSMain(VertexOut input) : SV_TARGET
                 throw new InvalidOperationException($"D3DCompile returned no bytecode for {entryPoint}/{targetProfile}.");
             }
 
-            var codeBlob = (ID3DBlob)Marshal.GetObjectForIUnknown(codeBlobPointer);
-            var byteLength = checked((int)codeBlob.GetBufferSize());
+            var blobBufferPointer = GetD3DBlobBufferPointer(codeBlobPointer);
+            var byteLength = checked((int)GetD3DBlobBufferSize(codeBlobPointer));
             var bytecode = new byte[byteLength];
-            Marshal.Copy(codeBlob.GetBufferPointer(), bytecode, 0, byteLength);
+            Marshal.Copy(blobBufferPointer, bytecode, 0, byteLength);
             return bytecode;
         }
         finally
@@ -1652,22 +1737,52 @@ float4 PSMain(VertexOut input) : SV_TARGET
             return string.Empty;
         }
 
-        var blob = (ID3DBlob)Marshal.GetObjectForIUnknown(blobPointer);
         try
         {
-            var byteLength = checked((int)blob.GetBufferSize());
-            if (byteLength <= 0 || blob.GetBufferPointer() == IntPtr.Zero)
+            var byteLength = checked((int)GetD3DBlobBufferSize(blobPointer));
+            if (byteLength <= 0)
             {
                 return string.Empty;
             }
 
-            return Marshal.PtrToStringAnsi(blob.GetBufferPointer(), byteLength)?.TrimEnd('\0', '\r', '\n') ?? string.Empty;
+            var bufferPointer = GetD3DBlobBufferPointer(blobPointer);
+            if (bufferPointer == IntPtr.Zero)
+            {
+                return string.Empty;
+            }
+
+            return Marshal.PtrToStringAnsi(bufferPointer, byteLength)?.TrimEnd('\0', '\r', '\n') ?? string.Empty;
         }
         finally
         {
-            Marshal.ReleaseComObject(blob);
+            Marshal.Release(blobPointer);
         }
     }
+
+    // ID3DBlob / ID3D10Blob COM vtable layout (standard IUnknown + 2 methods):
+    //   Slot 0: QueryInterface
+    //   Slot 1: AddRef
+    //   Slot 2: Release
+    //   Slot 3: GetBufferPointer() → IntPtr
+    //   Slot 4: GetBufferSize() → nuint
+    private static IntPtr GetD3DBlobBufferPointer(IntPtr pBlob)
+    {
+        var vtable = Marshal.ReadIntPtr(pBlob);
+        var funcPtr = Marshal.ReadIntPtr(vtable + 3 * IntPtr.Size);
+        return ((GetBufferPointerDelegate)Marshal.GetDelegateForFunctionPointer(
+            funcPtr, typeof(GetBufferPointerDelegate)))(pBlob);
+    }
+
+    private static nuint GetD3DBlobBufferSize(IntPtr pBlob)
+    {
+        var vtable = Marshal.ReadIntPtr(pBlob);
+        var funcPtr = Marshal.ReadIntPtr(vtable + 4 * IntPtr.Size);
+        return ((GetBufferSizeDelegate)Marshal.GetDelegateForFunctionPointer(
+            funcPtr, typeof(GetBufferSizeDelegate)))(pBlob);
+    }
+
+    private delegate IntPtr GetBufferPointerDelegate(IntPtr pThis);
+    private delegate nuint GetBufferSizeDelegate(IntPtr pThis);
 
     [DllImport("d3dcompiler_47.dll", EntryPoint = "D3DCompile", ExactSpelling = true, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
     private static extern int D3DCompile(
@@ -1682,15 +1797,6 @@ float4 PSMain(VertexOut input) : SV_TARGET
         uint flags2,
         out IntPtr code,
         out IntPtr errorMessages);
-
-    [ComImport]
-    [Guid("8BA5FB08-5195-40e2-AC58-0D989C3A0102")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface ID3DBlob
-    {
-        IntPtr GetBufferPointer();
-        nuint GetBufferSize();
-    }
 
     private Vortice.RawRect CalculateVideoOutputRect(int sourceWidth, int sourceHeight)
     {
@@ -2102,6 +2208,10 @@ float4 PSMain(VertexOut input) : SV_TARGET
         _cdgOverlayVertexShader = null;
         _cdgOverlayPixelShader?.Dispose();
         _cdgOverlayPixelShader = null;
+        _cdgTintShaderResourceView?.Dispose();
+        _cdgTintShaderResourceView = null;
+        _cdgTintTexture?.Dispose();
+        _cdgTintTexture = null;
         _cdgOverlayConstantBuffer?.Dispose();
         _cdgOverlayConstantBuffer = null;
         _cdgOverlaySamplerState?.Dispose();

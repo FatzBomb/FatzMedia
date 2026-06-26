@@ -210,7 +210,6 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public int VideoWidth => _attachedVideo?.Width
         ?? (_stillImageSource as BitmapSource)?.PixelWidth
-        ?? _attachedCdg?.FrameWidth
         ?? 0;
 
     /// <summary>
@@ -219,7 +218,6 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public int VideoHeight => _attachedVideo?.Height
         ?? (_stillImageSource as BitmapSource)?.PixelHeight
-        ?? _attachedCdg?.FrameHeight
         ?? 0;
 
 
@@ -588,6 +586,7 @@ public sealed class MediaRenderer : IDisposable
             {
                 var frameData = frameBuffer.AsSpan(0, pixelCount);
                 _attachedCdg.CopyFrameArgb(frameData);
+                _graphicsRenderer.SetCdgBackgroundTint(_attachedCdg.TintArgb);
                 _graphicsRenderer.RenderCdgFrame(frameData, width, height);
             }
             finally

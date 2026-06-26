@@ -15,6 +15,13 @@ public interface ICdgEngine : IDisposable
     bool UseWidescreenPresentation { get; set; }
 
     /// <summary>
+    /// The CDG background tint color (premultiplied ARGB) used for the full-rectangle
+    /// GPU tint pass behind the CDG graphics.  Updated when background color or opacity
+    /// changes via CDG packet commands.
+    /// </summary>
+    uint TintArgb { get; }
+
+    /// <summary>
     /// Copies the current rendered ARGB frame into the supplied destination.
     /// Implementations should make this copy atomic with packet replay.
     /// </summary>

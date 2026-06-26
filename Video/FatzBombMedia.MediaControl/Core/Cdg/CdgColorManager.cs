@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 
 namespace FatzBombMedia.MediaControl.Core.Cdg;
@@ -36,6 +37,34 @@ internal sealed class CdgColorManager
             UpdateLutIfNeeded();
             var backgroundIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
             return _colorArgbLut[backgroundIndex];
+        }
+    }
+
+    public int BackgroundColorIndex => _backgroundColorIndex;
+
+    /// <summary>
+    /// The full-opacity background tint ARGB (before transparency is baked into the bitmap).
+    /// When CDG is active this color is drawn as a full-rectangle tint pass behind the
+    /// CDG graphics so the native-aspect centered CDG frame blends over a matching background.
+    /// </summary>
+    public uint TintArgb
+    {
+        get
+        {
+            UpdateLutIfNeeded();
+            var bgIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
+            var baseColor = _colorTable[bgIndex];
+            if (_backgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == _backgroundColorIndex))
+                baseColor = FromArgb(_backgroundOverrideArgb.Value);
+
+            var sourceA = _backgroundOverrideArgb.HasValue
+                ? FromArgb(_backgroundOverrideArgb.Value).A
+                : (byte)255;
+            var finalA = (byte)Math.Clamp((sourceA * _backgroundOpacity) / 255, 0, 255);
+
+            var result = (uint)((finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B);
+            Debug.WriteLine($"[CDG-TINT] TintArgb: bgIdx={bgIndex} override={_backgroundOverrideArgb.HasValue} opacity={_backgroundOpacity} sourceA={sourceA} finalA={finalA} R={baseColor.R} G={baseColor.G} B={baseColor.B} → 0x{result:X8}");
+            return result;
         }
     }
     

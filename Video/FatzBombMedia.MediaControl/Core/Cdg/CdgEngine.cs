@@ -81,13 +81,16 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     #region Public Properties (ICdgEngine Implementation)
     
     /// <inheritdoc/>
-    public int FrameWidth => UseWidescreenPresentation ? CdgConstants.WidescreenFrameWidth : CdgConstants.FrameWidth;
+    public int FrameWidth => CdgConstants.FrameWidth;
     
     /// <inheritdoc/>
     public int FrameHeight => CdgConstants.FrameHeight;
     
     /// <inheritdoc/>
-    public ReadOnlyMemory<int> FrameArgb => UseWidescreenPresentation ? _widescreenFrameArgb : _frameArgb;
+    public ReadOnlyMemory<int> FrameArgb => _frameArgb;
+
+    /// <inheritdoc/>
+    public uint TintArgb => (uint)_colorManager.TintArgb;
 
     /// <inheritdoc/>
     public bool UseWidescreenPresentation
@@ -97,12 +100,8 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         {
             lock (_renderLock)
             {
-                if (_useWidescreenPresentation == value) return;
                 _useWidescreenPresentation = value;
-                RenderFrameBuffer();
             }
-
-            InvalidateFrame();
         }
     }
     
@@ -151,8 +150,7 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
     {
         lock (_renderLock)
         {
-            var source = UseWidescreenPresentation ? _widescreenFrameArgb : _frameArgb;
-            source.AsSpan().CopyTo(destination);
+            _frameArgb.AsSpan().CopyTo(destination);
         }
     }
 
@@ -315,18 +313,24 @@ public sealed class CdgEngine : ICdgEngine, IDisposable
         var colorLut = _colorManager.ColorLut;
         var frameSpan = _frameArgb.AsSpan();
         var pixelSpan = _pixelColors.AsSpan();
+        var backgroundColorIndex = _colorManager.BackgroundColorIndex;
         
         // Optimized pixel rendering using spans
         for (int i = 0; i < frameSpan.Length; i++)
-            frameSpan[i] = colorLut[pixelSpan[i]];
+        {
+            var index = pixelSpan[i];
+            // Erase background pixels. The background tint is drawn as a full-rectangle
+            // GPU pass; keeping background opaque in the bitmap creates visible seams
+            // when the CDG is centred at native aspect inside the video output rect.
+            frameSpan[i] = (index == 0 || index == backgroundColorIndex) ? 0 : colorLut[index];
+        }
 
         RenderWidescreenFrameBuffer();
     }
 
     private void RenderWidescreenFrameBuffer()
     {
-        var background = _colorManager.CurrentBackgroundArgb;
-        Array.Fill(_widescreenFrameArgb, background);
+        Array.Fill(_widescreenFrameArgb, 0);
 
         const int leftPadding = (CdgConstants.WidescreenFrameWidth - CdgConstants.FrameWidth) / 2;
         for (var row = 0; row < CdgConstants.FrameHeight; row++)
