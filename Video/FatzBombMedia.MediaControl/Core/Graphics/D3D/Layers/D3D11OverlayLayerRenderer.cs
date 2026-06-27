@@ -10,14 +10,15 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 
-namespace FatzBombMedia.MediaControl.Core.Graphics.D3D;
+namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Layers;
 
 /// <summary>
-/// Owns the D3D11 resources for the CDG overlay layers.
-/// Layer 2 is a cached full-viewport wash color; Layer 3 is the retained native-size
-/// transparent-background CDG lyrics texture.
+/// Owns the D3D11 resources for foreground overlay layers.
+/// Layer 2 is a cached full-viewport wash color; Layer 3 is a retained native-size
+/// transparent-background overlay texture. CDG is the current producer, but the
+/// renderer policy is generic: wash fills the viewport and overlay graphics Uniform-fit.
 /// </summary>
-internal sealed class D3D11CdgLayerRenderer : IDisposable
+internal sealed class D3D11OverlayLayerRenderer : IDisposable
 {
     private readonly MediaPlayerConfiguration _configuration;
 
@@ -35,7 +36,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
     private int _lyricsHeight;
     private int _lyricsStride;
 
-    public D3D11CdgLayerRenderer(MediaPlayerConfiguration configuration)
+    public D3D11OverlayLayerRenderer(MediaPlayerConfiguration configuration)
     {
         _configuration = configuration;
     }
@@ -88,7 +89,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[D3D11CdgLayerRenderer] Lyrics texture upload failed: {ex.Message}");
+            Debug.WriteLine($"[D3D11OverlayLayerRenderer] Lyrics texture upload failed: {ex.Message}");
             ClearLyricsTexture();
             return false;
         }
@@ -133,9 +134,10 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
                 return false;
             }
 
-            // CDG overlay policy is fixed: the wash covers the full control and lyrics
-            // are Uniform-fitted inside that same full viewport.  Primary video display
-            // modes (Original/Zoom/Stretch/ZoomToFill) must not affect CDG layers.
+            // Overlay policy is fixed: the wash covers the full control and overlay
+            // graphics are Uniform-fitted inside that same full viewport.  Primary
+            // video display modes (Original/Zoom/Stretch/ZoomToFill) must not affect
+            // foreground overlay layers.
             var outputRect = new Vortice.RawRect(0, 0, Math.Max(1, surfaceWidth), Math.Max(1, surfaceHeight));
 
             var outputW = Math.Max(1, outputRect.Right - outputRect.Left);
@@ -153,7 +155,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
 
             if (_configuration.EnableVerboseLogging)
             {
-                Debug.WriteLine($"[D3D11CdgLayerRenderer] Draw wash=0x{washArgb:X8}, output=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}), cdg=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}), surface={surfaceWidth}x{surfaceHeight}");
+                Debug.WriteLine($"[D3D11OverlayLayerRenderer] Draw wash=0x{washArgb:X8}, output=({outputRect.Left},{outputRect.Top},{outputRect.Right},{outputRect.Bottom}), cdg=({cdgLeft},{cdgTop},{cdgRight},{cdgBottom}), surface={surfaceWidth}x{surfaceHeight}");
             }
 
             context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
@@ -163,10 +165,10 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
             context.RSSetViewport(new Viewport(0, 0, surfaceWidth, surfaceHeight));
             context.OMSetRenderTargets(presentationRenderTargetView);
 
-            Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgOverlayShaderConstants>()];
+            Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<OverlayLayerShaderConstants>()];
 
-            // Layer 2: full-viewport CDG background wash. This is intentionally not clipped
-            // to the CDG lyric rect; the lyric texture has a transparent background.
+            // Layer 2: full-viewport color wash. This is intentionally not clipped
+            // to the overlay graphics rect; the overlay texture has a transparent background.
             if (ta > 0 && _washTexture != null && _washShaderResourceView != null)
             {
                 Span<byte> washPixel = stackalloc byte[4] { (byte)tb, (byte)tg, (byte)tr, (byte)ta };
@@ -181,7 +183,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
                     surfaceHeight);
             }
 
-            // Layer 3: native-aspect CDG lyrics Uniform-fitted inside the full viewport.
+            // Layer 3: native-aspect overlay graphics Uniform-fitted inside the full viewport.
             DrawTexturedQuad(
                 context,
                 _lyricsShaderResourceView,
@@ -198,7 +200,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         {
             if (_configuration.EnableLogging)
             {
-                Debug.WriteLine($"[D3D11CdgLayerRenderer] Draw failed: {ex.Message}");
+                Debug.WriteLine($"[D3D11OverlayLayerRenderer] Draw failed: {ex.Message}");
             }
             return false;
         }
@@ -212,7 +214,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         int surfaceWidth,
         int surfaceHeight)
     {
-        var constants = new CdgOverlayShaderConstants
+        var constants = new OverlayLayerShaderConstants
         {
             DestinationRect = new Vector4(
                 (float)((destinationRect.Left / (double)surfaceWidth) * 2.0 - 1.0),
@@ -222,7 +224,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
             TextureRect = new Vector4(0f, 0f, 1f, 1f)
         };
 
-        MemoryMarshal.Write(constantBytes, ref constants);
+        MemoryMarshal.Write(constantBytes, in constants);
         context.UpdateSubresource(constantBytes, _constantBuffer, 0, 0, 0, null);
         context.PSSetShaderResource(0, shaderResourceView);
         context.PSSetSampler(0, _samplerState);
@@ -242,8 +244,8 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         {
             if (_vertexShader == null || _pixelShader == null)
             {
-                var vertexShaderBytecode = CompileShaderBytecode(CdgOverlayShaderSource, "VSMain", "vs_5_0");
-                var pixelShaderBytecode = CompileShaderBytecode(CdgOverlayShaderSource, "PSMain", "ps_5_0");
+                var vertexShaderBytecode = CompileShaderBytecode(OverlayLayerShaderSource, "VSMain", "vs_5_0");
+                var pixelShaderBytecode = CompileShaderBytecode(OverlayLayerShaderSource, "PSMain", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
             }
@@ -252,7 +254,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
             {
                 var constantBufferDescription = new BufferDescription
                 {
-                    ByteWidth = (uint)Marshal.SizeOf<CdgOverlayShaderConstants>(),
+                    ByteWidth = (uint)Marshal.SizeOf<OverlayLayerShaderConstants>(),
                     Usage = ResourceUsage.Default,
                     BindFlags = BindFlags.ConstantBuffer,
                     CPUAccessFlags = CpuAccessFlags.None,
@@ -325,7 +327,7 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         catch (Exception ex)
         {
             _pipelineFailed = true;
-            Debug.WriteLine($"[D3D11CdgLayerRenderer] Pipeline initialization failed: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[D3D11OverlayLayerRenderer] Pipeline initialization failed: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -414,13 +416,13 @@ internal sealed class D3D11CdgLayerRenderer : IDisposable
         out IntPtr errorMessages);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct CdgOverlayShaderConstants
+    private struct OverlayLayerShaderConstants
     {
         public Vector4 DestinationRect;
         public Vector4 TextureRect;
     }
 
-    private const string CdgOverlayShaderSource = @"
+    private const string OverlayLayerShaderSource = @"
 cbuffer OverlayConstants : register(b0)
 {
     float4 DestinationRect;

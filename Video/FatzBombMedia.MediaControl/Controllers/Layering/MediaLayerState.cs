@@ -51,6 +51,27 @@ internal readonly record struct MediaLayerState(
     /// </summary>
     public bool UsesBackgroundPresentation => HasOverlaySession && HasBackgroundMedia;
 
+    /// <summary>
+    /// Converts the decoded media content flags into renderer layer roles. Keep this
+    /// as the single source of truth for future renderer work.
+    ///
+    /// Layer map used by the current renderer:
+    /// - Normal video file: Primary=Video. Uses the primary video path only and obeys
+    ///   VideoDisplayMode: Original, Zoom, Stretch, or ZoomToFill. No wash/overlay layers.
+    /// - Normal image file: Primary=Image. Uses the still-image primary/static path and
+    ///   obeys VideoDisplayMode. No wash/overlay layers.
+    /// - Audio-only file: Primary=Audio. No visual layer unless the host/manual background
+    ///   feature is enabled separately.
+    /// - CDG-only file: Primary=CdgOnly, Overlay=Cdg. Layer 2 is WashLayer full viewport;
+    ///   Layer 3 is OverlayLayer Uniform-fitted to the viewport. No background-media layer
+    ///   unless a companion/manual image or video is assigned.
+    /// - Audio+CDG file: Primary=AudioCdg, Overlay=Cdg. Same CDG wash/overlay rules as
+    ///   CDG-only; audio remains the primary timed media.
+    /// - CDG/audio+CDG with companion background image/video: Background=Image/Video and
+    ///   Overlay=Cdg. Layer 1 is BackgroundMediaLayer and always ZoomToFill/full viewport;
+    ///   Layer 2 is WashLayer full viewport; Layer 3 is OverlayLayer Uniform-fitted. The
+    ///   primary VideoDisplayMode must not affect these overlay-session layers.
+    /// </summary>
     public static MediaLayerState From(MediaContent content, MediaBackgroundKind background)
     {
         var hasAudio = content.HasFlag(MediaContent.Audio);

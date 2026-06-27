@@ -153,32 +153,7 @@
                                       PresentationMode="{Binding PresentationMode}"
                                       OverlayHitTestVisible="False"
                                       HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch">
-                <fbm:FatzBombMediaSurface.OverlayContent>
-                    <!-- Passive diagnostic overlay used to prove the Flyleaf-style owned overlay window is active.
-                         OverlayHitTestVisible=False keeps double-click/fullscreen gestures reaching the media surface. -->
-                    <Grid IsHitTestVisible="False">
-                        <Border HorizontalAlignment="Left"
-                                VerticalAlignment="Top"
-                                Margin="16"
-                                Background="#AA10151B"
-                                BorderBrush="#773EA6FF"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="10,6">
-                            <StackPanel>
-                                <TextBlock Text="Native HWND Overlay"
-                                           Foreground="#F2F5F8"
-                                           FontWeight="SemiBold"
-                                           FontSize="12" />
-                                <TextBlock Text="Transparent overlay window active"
-                                           Foreground="#9CA8B6"
-                                           FontSize="11" />
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </fbm:FatzBombMediaSurface.OverlayContent>
-            </fbm:FatzBombMediaSurface>
+                                      VerticalAlignment="Stretch" />
         </Border>
 
         <Grid x:Name="BottomChrome"

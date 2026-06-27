@@ -360,7 +360,7 @@ Recommended location:
 FatzBombMedia.MediaControl/Core/Graphics/Layers/PrimaryVideoRenderer.cs
 ```
 
-### 7. `BackgroundMediaRenderer`
+### 7. `BackgroundMediaLayer`
 
 Policy wrapper for background image/video playback.
 
@@ -377,7 +377,7 @@ Independent from overlay/CDG dirty state
 Recommended location:
 
 ```text
-FatzBombMedia.MediaControl/Core/Graphics/Layers/BackgroundMediaRenderer.cs
+FatzBombMedia.MediaControl/Core/Graphics/Layers/BackgroundMediaLayer.cs
 ```
 
 This is the key piece for the current bug.
@@ -571,13 +571,13 @@ Debug/log output or debugger confirms:
 
 ---
 
-### Stage 3: Create `BackgroundMediaRenderer` path
+### Stage 3: Create `BackgroundMediaLayer` path
 
 Goal: route companion/manual background video/image through a dedicated background path.
 
 Tasks:
 
-- Create `BackgroundMediaRenderer`.
+- Create `BackgroundMediaLayer`.
 - It should use shared upload/draw helpers where practical.
 - For video background:
 
@@ -708,7 +708,7 @@ public sealed class VorticeD3D11Renderer
     private readonly NativePresentationTarget _presentationTarget;
     private readonly LayerCompositor _compositor;
     private readonly PrimaryVideoRenderer _primaryVideo;
-    private readonly BackgroundMediaRenderer _backgroundMedia;
+    private readonly BackgroundMediaLayer _backgroundMedia;
     private readonly CdgWashRenderer _cdgWash;
     private readonly CdgLyricsRenderer _cdgLyrics;
 }
@@ -930,7 +930,7 @@ Expected:
 ```text
 Audio plays.
 No video surface flicker.
-No background renderer accidentally active.
+No background layer accidentally active.
 ```
 
 ### Image-only
@@ -1018,9 +1018,9 @@ Use small commits so each change can be reverted independently.
 1. Renderer baseline cleanup / remove failed diagnostics
 2. Extract ViewportGeometry
 3. Add media layer role model
-4. Add BackgroundMediaRenderer shell
-5. Route background image through BackgroundMediaRenderer
-6. Route background video through BackgroundMediaRenderer silent/loop/UniformToFill
+4. Add BackgroundMediaLayer shell
+5. Route background image through BackgroundMediaLayer
+6. Route background video through BackgroundMediaLayer silent/loop/UniformToFill
 7. Add CdgLyricsRenderer shell and route CDG texture through it
 8. Add CdgWashRenderer shell and re-enable Layer 2
 9. Move D3D resource/presentation code into smaller classes
@@ -1062,7 +1062,7 @@ Introduce explicit media layer role state above the renderer: primary media, bac
 Good third agent task:
 
 ```text
-Create a BackgroundMediaRenderer that renders image/video backgrounds to the full viewport using UniformToFill. Background video must be silent and looped. Route only CDG/overlay-session companion background media through it. Do not affect normal video-only playback.
+Create a BackgroundMediaLayer that renders image/video backgrounds to the full viewport using UniformToFill. Background video must be silent and looped. Route only CDG/overlay-session companion background media through it. Do not affect normal video-only playback.
 ```
 
 ---
@@ -1102,3 +1102,501 @@ CDG lyrics:
 ```
 
 This should remove the current flicker/aspect dependency and make future overlay features much easier to implement.
+
+---
+
+# Addendum: Presentation Backend Split and Future DirectComposition Plan
+
+## Why This Addendum Exists
+
+After Stage 4/5 and the CDG layer-policy cleanup, the renderer is much cleaner than the original starting point, but CDG + background video can still flicker when CDG graphics update.
+
+The important findings are now:
+
+```text
+Layer 2 wash disabled -> flicker still occurred.
+CDG lyrics disabled -> background video behavior changed, proving old state coupling.
+CDG lyrics now render Uniform/Zoom correctly.
+Background image behaves better than background video.
+Background video ZoomToFill + CDG updates can still flicker.
+Exact 16:9 viewport can hide the problem.
+```
+
+This points to a deeper presentation/composition issue, not another simple CDG wash or aspect calculation bug. Do not keep stacking ad-hoc `is CDG` / `force fill` patches inside the current video path.
+
+The next refactor goal is to create a **presentation backend boundary** so the current single-target renderer can coexist with a future DirectComposition layered backend.
+
+---
+
+## Current Recommended Baseline
+
+Before continuing, use a buildable checkpoint with these properties:
+
+```text
+Normal video works.
+VideoDisplayMode works: Original / Zoom / Stretch / ZoomToFill.
+Fullscreen preserves the selected VideoDisplayMode.
+Manual resize preserves aspect except for Stretch mode.
+Compatibility shims are removed.
+CDG lyrics render as Uniform/Zoom.
+CDG wash is represented as its own full-viewport layer.
+CDG wash color is cached as BackgroundWashArgb.
+CDG + background video may still flicker during CDG updates.
+```
+
+The CDG/background flicker is now considered a **known presentation-backend limitation** until the backend split is complete.
+
+If an experimental patch did not improve flicker, do not preserve it merely because it builds. Keep only changes that improve architecture, correctness, or confirmed behavior.
+
+---
+
+## Updated Refactor Direction
+
+The renderer refactor should now continue in two tracks:
+
+```text
+Track A: Finish the current single-target renderer cleanup.
+Track B: Prepare for a future DirectComposition layered backend.
+```
+
+Track A is still required. Do not jump directly to a multi-swap-chain rewrite while the current renderer still has unclear ownership boundaries.
+
+Track B should be planned now, but implemented only after the backend interface exists.
+
+---
+
+# Stage 6: Introduce Presentation Backend Boundary
+
+## Goal
+
+Separate **what layers exist** from **how they are presented**.
+
+The renderer should know the scene/layers:
+
+```text
+Primary video layer
+Background media layer
+CDG wash layer
+CDG lyrics layer
+Future overlay layers
+```
+
+The presentation backend should own:
+
+```text
+native target / swap chain / DirectComposition target
+viewport size
+resize handling
+present timing
+backend-specific resource lifetime
+```
+
+## Proposed Interfaces
+
+Names can change, but the idea should remain.
+
+```csharp
+public interface IPresentationBackend : IDisposable
+{
+    bool IsAvailable { get; }
+    int ViewportWidth { get; }
+    int ViewportHeight { get; }
+
+    void Attach(IntPtr hwnd);
+    void Detach();
+
+    void SetViewportSize(int width, int height);
+    void BeginResize();
+    void EndResize();
+
+    void Present(RenderScene scene);
+    void Refresh();
+}
+```
+
+```csharp
+public sealed class RenderScene
+{
+    public BackgroundLayerState? Background { get; init; }
+    public WashLayerState? CdgWash { get; init; }
+    public OverlayLayerState? CdgLyrics { get; init; }
+    public PrimaryVideoLayerState? PrimaryVideo { get; init; }
+}
+```
+
+The exact DTOs should be small and should not expose old renderer internals.
+
+## Current Backend
+
+First implementation:
+
+```text
+SingleTargetD3D11PresentationBackend
+```
+
+This backend represents the current implementation style:
+
+```text
+one native target / one composed frame / present complete frame
+```
+
+It is allowed to use existing Vortice code internally, but the public boundary should not expose CDG-specific or video-specific presentation decisions.
+
+## Acceptance
+
+```text
+Build succeeds.
+Normal video still works.
+CDG still works.
+CDG + background image/video behavior does not regress.
+Renderer can call backend.Present(scene) instead of directly mixing all layer/present logic.
+No DirectComposition rewrite yet.
+```
+
+---
+
+# Stage 7: Finish Current Single-Target Renderer Cleanup
+
+## Goal
+
+Shrink the existing D3D renderer without moving old/dead/obsolete code forward.
+
+## Rules
+
+### Do not move dead code
+
+Before moving any method into a new class, verify:
+
+```text
+It has live call sites.
+It is part of the current selected presentation mode.
+It is not a diagnostic-only branch.
+It is not an old compatibility path.
+It is not an obsolete pre-refactor CDG/video composite path.
+```
+
+If a method is unused and represents old behavior, remove it instead of relocating it.
+
+### Do not optimize obsolete paths
+
+Only optimize code that is part of the active rendering path.
+
+Wrong:
+
+```text
+Move old overlay blit method to a new class and optimize it.
+```
+
+Right:
+
+```text
+Delete the old overlay blit method if no live path uses it.
+Extract only the active layer draw path.
+```
+
+## Candidate Classes
+
+### `D3DDeviceResources`
+
+Owns:
+
+```text
+D3D11 device
+DXGI device/factory
+device context
+samplers
+blend states
+common shaders
+device lost/recovery
+```
+
+### `D3DTextureUploader`
+
+Owns:
+
+```text
+video frame texture upload
+image texture upload
+CDG ARGB texture upload
+small solid/wash texture upload if needed
+```
+
+### `D3DQuadRenderer`
+
+Owns:
+
+```text
+textured quad drawing
+source/destination rect conversion
+blend mode selection
+```
+
+### `SingleTargetLayerCompositor`
+
+Owns draw order for the current backend:
+
+```text
+clear/backbuffer
+background media
+primary video if applicable
+CDG wash
+CDG lyrics
+present complete frame
+```
+
+## Acceptance
+
+```text
+VorticeD3D11Renderer is smaller and mostly coordinates.
+Dead diagnostic/compatibility methods are removed.
+No behavior change except removal of unreachable code.
+Normal video modes still work.
+CDG layers still work.
+Known CDG + background video flicker may still remain.
+```
+
+---
+
+# Phase 2 Option: DirectComposition Layered Backend
+
+## When To Consider This
+
+Only after Stage 6/7 establish a clean backend boundary.
+
+Do not begin this as a giant rewrite inside `VorticeD3D11Renderer`.
+
+## Why Consider It
+
+CDG and background video have different update cadences:
+
+```text
+background video: video frame cadence
+CDG lyrics: packet/dirty-frame cadence
+CDG wash: rarely changes
+```
+
+The current single-target backend can still couple these paths. A layered DirectComposition backend may allow each layer to update independently while DWM/DirectComposition composites them efficiently.
+
+## Important Constraint
+
+Do **not** implement this as multiple overlapping HWND swap chains.
+
+Preferred future shape:
+
+```text
+Native HWND / DirectComposition target
+  Root visual
+    Background media visual
+    CDG wash visual
+    CDG lyrics visual
+    Optional native/WPF overlay visual/window
+```
+
+Use DirectComposition visuals/composition surfaces/swap chains, not several child HWNDs fighting each other.
+
+## Possible Backend Shape
+
+```text
+DirectCompositionLayeredPresentationBackend
+```
+
+Visual tree:
+
+```text
+Root visual
+  Background visual
+    content: background video/image surface or composition swap chain
+    bounds: full viewport
+    transform/crop: ZoomToFill
+    update cadence: video frame cadence
+
+  CDG wash visual
+    content: solid color/opacity surface or tiny texture stretched to viewport
+    bounds: full viewport
+    update cadence: only when BackgroundWashArgb changes
+
+  CDG lyrics visual
+    content: 300x216 premultiplied-alpha CDG lyric surface/texture
+    bounds/transform: Uniform fit inside viewport
+    update cadence: only when CDG lyric frame changes
+```
+
+## Possible Surface Strategy
+
+Start with the least complex implementation:
+
+```text
+Background video/image: one composition swap chain or retained surface.
+CDG wash: solid color visual/surface if possible; otherwise tiny texture stretched.
+CDG lyrics: retained premultiplied-alpha texture/surface.
+```
+
+Do not start with three independent swap chains unless there is a clear need. The goal is independent layer ownership, not maximum swap-chain count.
+
+## Success Criteria
+
+```text
+Background video remains ZoomToFill at all sizes.
+CDG lyrics remain Uniform at all sizes.
+CDG wash covers full viewport.
+CDG lyric updates do not resize/re-present background video.
+Background video updates do not recreate CDG resources.
+Manual resize does not distort aspect except in Stretch mode for primary video.
+Exact 16:9 is no longer a special no-flicker sweet spot.
+```
+
+## Risks
+
+```text
+DirectComposition device/resource lifetime complexity.
+Device-lost handling.
+Alpha mode and premultiplied-alpha mistakes.
+Resize and transform synchronization.
+Present ordering / frame latency.
+More complex debugging.
+Potential WPF/native overlay focus and hit-test issues.
+```
+
+## DirectComposition Spike Plan
+
+Do this in a separate branch after Stage 6/7.
+
+### Spike 1: Static layered proof
+
+```text
+Background: static test texture, ZoomToFill.
+CDG wash: translucent full-viewport color.
+CDG lyrics: static 300x216 transparent texture, Uniform.
+Resize: verify transforms remain correct.
+```
+
+No video decoding yet.
+
+### Spike 2: Background video only
+
+```text
+Route background video frames into background visual.
+Silent/looped.
+ZoomToFill.
+No CDG yet.
+```
+
+### Spike 3: Add CDG lyrics
+
+```text
+Add retained CDG lyric visual.
+Update only when CDG frame changes.
+Verify video frame cadence and CDG cadence do not fight.
+```
+
+### Spike 4: Add wash
+
+```text
+Add cached full-viewport wash visual.
+Update only when BackgroundWashArgb changes.
+```
+
+### Spike 5: Compare backends
+
+```text
+SingleTargetD3D11PresentationBackend
+DirectCompositionLayeredPresentationBackend
+```
+
+The public renderer/layer model should remain the same for both.
+
+---
+
+# Updated Bug Policy: CDG + Background Video Flicker
+
+## Status
+
+Known issue. Do not keep applying speculative fixes inside the current compositor unless they also improve the architecture.
+
+## Likely Cause
+
+The most likely cause is still presentation/composition coupling:
+
+```text
+background video present cadence
+CDG lyric update cadence
+single-target composite/present timing
+aspect rect recalculation
+native/D3D presentation refresh
+```
+
+The fact that exact 16:9 can hide flicker strongly suggests geometry/presentation path disagreement still exists somewhere in the active video-background path.
+
+## What Not To Do
+
+Do not add more patches like:
+
+```text
+if cdgDirty then force background fill
+if cdgTextureExists then change video stretch
+if overlay present then mutate primary video display mode
+```
+
+Do not use CDG frame activity as a proxy for media/session role.
+
+## What To Do Instead
+
+Continue toward:
+
+```text
+stable layer state
+clean presentation backend boundary
+single-target backend cleanup
+optional DirectComposition layered backend
+```
+
+---
+
+# Updated Next Steps
+
+## Immediate next step
+
+Create Stage 6 backend boundary.
+
+Suggested agent prompt:
+
+```text
+Introduce a presentation backend boundary for the renderer. Add an IPresentationBackend-style abstraction and a SingleTargetD3D11PresentationBackend implementation that wraps the current active presentation path. Preserve current behavior. Do not implement DirectComposition layered visuals yet. Do not move unused/dead/diagnostic renderer methods. Build and report every method moved or deleted.
+```
+
+## Next after that
+
+Shrink current D3D renderer by moving only active live responsibilities into smaller classes:
+
+```text
+D3DDeviceResources
+D3DTextureUploader
+D3DQuadRenderer
+SingleTargetLayerCompositor
+```
+
+## Later
+
+Create a separate spike branch for:
+
+```text
+DirectCompositionLayeredPresentationBackend
+```
+
+This is where the multiple-swap-chain/composition idea should be tested.
+
+---
+
+# Updated Guardrail Summary
+
+```text
+Keep VideoDisplayMode for primary video only.
+Background media behind overlays is always ZoomToFill.
+CDG wash is always full viewport.
+CDG lyrics are always Uniform.
+Do not mutate global/native stretch to force one layer’s policy.
+Do not use CDG update activity as a session flag.
+Do not move dead code into new refactor classes.
+Do not optimize obsolete code paths.
+Prefer backend abstraction before DirectComposition rewrite.
+```

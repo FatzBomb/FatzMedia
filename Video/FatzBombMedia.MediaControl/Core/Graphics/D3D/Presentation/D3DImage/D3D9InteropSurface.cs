@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace FatzBombMedia.MediaControl.Core.Graphics.D3D;
+namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
 
 internal sealed class D3D9InteropSurface : IDisposable
 {

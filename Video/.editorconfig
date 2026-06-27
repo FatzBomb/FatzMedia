@@ -10,6 +10,62 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
+# ==========================================
+# 1. Global Analyzer Severity Configuration
+# ==========================================
+# Forces all code style diagnostics to appear as Messages/Suggestions instead of Errors or Warnings
+dotnet_analyzer_diagnostic.category-Style.severity = suggestion
+
+# ==========================================
+# 2. Modern Code Simplification Rules
+# ==========================================
+# Prefer omitting braces for single-line control flow (if, foreach, while, etc.)
+csharp_prefer_braces = false:suggestion
+
+# Prefer expression-bodied (arrow =>) members wherever possible
+csharp_style_expression_bodied_methods = true:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_local_functions = true:suggestion
+csharp_style_expression_bodied_constructors = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+
+# ==========================================
+# 3. Advanced Modern C# Feature Rules
+# ==========================================
+# Suggests using modern "Pattern Matching" instead of old "as/is" type casts
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+
+# Suggests modern C# new() expression (e.g., List<string> list = new();)
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+
+# Suggests using modern deconstruction for tuples
+csharp_style_prefer_tuple_cradle = true:suggestion
+
+# Suggests simplifying "out" variable declarations inline
+csharp_style_inlined_variable_declaration = true:suggestion
+
+# Suggests modern "throw" expressions instead of standard throw blocks
+csharp_style_throw_expression = true:suggestion
+
+# ==========================================
+# 4. Null-Safety & Quality Rules
+# ==========================================
+# Suggests using the conditional operator (?.) for null checks
+csharp_style_conditional_delegate_call = true:suggestion
+csharp_style_coalesce_expression = true:suggestion
+csharp_style_null_propagation = true:suggestion
+
+# ==========================================
+# 5. Spacing & Clean Formatting
+# ==========================================
+# Standard personal preferences for clean spacing
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
 [*.xaml]
 indent_style = space
 indent_size = 4

@@ -21,7 +21,7 @@ public sealed class MediaRenderer : IDisposable
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly OptimizedGraphicsRenderer _graphicsRenderer;
-    private readonly BackgroundMediaRenderer _backgroundMediaRenderer;
+    private readonly BackgroundMediaLayer _backgroundMediaLayer;
     private readonly RenderPipeline _renderPipeline;
     private readonly MediaPlayerConfiguration _configuration;
     private readonly bool _enableLogging;
@@ -51,7 +51,7 @@ public sealed class MediaRenderer : IDisposable
         _mediaEngine = mediaEngine;
         _graphicsRenderer = new OptimizedGraphicsRenderer(configuration);
         _configuration = configuration;
-        _backgroundMediaRenderer = new BackgroundMediaRenderer(configuration);
+        _backgroundMediaLayer = new BackgroundMediaLayer(configuration);
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _enableLogging = configuration.EnableLogging;
         _enableVerboseLogging = configuration.EnableVerboseLogging;
@@ -59,9 +59,9 @@ public sealed class MediaRenderer : IDisposable
         // Forward graphics renderer events
         _graphicsRenderer.ImageSourceChanged += (s, e) => ImageSourceChanged?.Invoke(this, EventArgs.Empty);
         _graphicsRenderer.FramePresented += (s, e) => FramePresented?.Invoke(this, EventArgs.Empty);
-        _backgroundMediaRenderer.BackgroundChanged += OnBackgroundMediaChanged;
-        _backgroundMediaRenderer.FramePresented += (_, __) => FramePresented?.Invoke(this, EventArgs.Empty);
-        _backgroundMediaRenderer.VideoFrameReady += OnBackgroundVideoFrameReady;
+        _backgroundMediaLayer.BackgroundChanged += OnBackgroundMediaChanged;
+        _backgroundMediaLayer.FramePresented += (_, __) => FramePresented?.Invoke(this, EventArgs.Empty);
+        _backgroundMediaLayer.VideoFrameReady += OnBackgroundVideoFrameReady;
 
         AttachVideoIfAvailable();
         AttachCdgIfAvailable();
@@ -179,7 +179,7 @@ public sealed class MediaRenderer : IDisposable
             _backgroundVisibleWhenStopped = value;
             if (!_isRenderingActive)
             {
-                _backgroundMediaRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+                _backgroundMediaLayer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
             }
         }
     }
@@ -188,7 +188,7 @@ public sealed class MediaRenderer : IDisposable
     /// Gets the currently displayed background image source after auto-detection is applied.
     /// </summary>
     public ImageSource? EffectiveBackgroundSource =>
-        _backgroundMediaRenderer.ImageSource ?? _backgroundSource;
+        _backgroundMediaLayer.ImageSource ?? _backgroundSource;
 
     /// <summary>
     /// Gets whether a CDG layer is currently attached. Background media uses
@@ -301,7 +301,7 @@ public sealed class MediaRenderer : IDisposable
     public void SetNativePresentationWindow(IntPtr hwnd)
     {
         _nativePresentationRequested = hwnd != IntPtr.Zero;
-        _backgroundMediaRenderer.UseOwnVideoPresentation = !_nativePresentationRequested;
+        _backgroundMediaLayer.UseOwnVideoPresentation = !_nativePresentationRequested;
         _graphicsRenderer.SetNativePresentationWindow(hwnd);
         ApplyVideoPresentationSchedulingMode();
         if (_nativePresentationRequested)
@@ -383,7 +383,7 @@ public sealed class MediaRenderer : IDisposable
 
     private void UpdateLayerState(string reason)
     {
-        var backgroundKind = _backgroundMediaRenderer.Kind;
+        var backgroundKind = _backgroundMediaLayer.Kind;
         if (backgroundKind == MediaBackgroundKind.None && _backgroundSource != null)
         {
             backgroundKind = MediaBackgroundKind.Image;
@@ -414,7 +414,7 @@ public sealed class MediaRenderer : IDisposable
 
         try
         {
-            var applied = _backgroundMediaRenderer.Apply(background);
+            var applied = _backgroundMediaLayer.Apply(background);
             _nativeCompositeBaseIsBackgroundVideo = applied && background.Kind == MediaBackgroundKind.Video;
             UpdateLayerState($"auto background applied: {(applied ? background.Kind.ToString() : "none")}");
             RefreshNativeCompositeBaseLayer();
@@ -431,7 +431,7 @@ public sealed class MediaRenderer : IDisposable
 
     internal void ClearAutoBackground()
     {
-        _backgroundMediaRenderer.Clear();
+        _backgroundMediaLayer.Clear();
         _nativeCompositeBaseIsBackgroundVideo = false;
         UpdateLayerState("auto background cleared");
         RefreshNativeCompositeBaseLayer();
@@ -452,7 +452,10 @@ public sealed class MediaRenderer : IDisposable
             _attachedVideo = null;
         }
 
-        // Attach to new video if available
+        // Attach to new primary video if available. This is only Layer 1 primary media for
+        // video-only files. Companion/background videos for CDG or future overlays are routed
+        // through BackgroundMediaLayer so they stay silent, looped, full-viewport, and
+        // ZoomToFill regardless of the primary VideoDisplayMode.
         if (_mediaEngine.Video != null)
         {
             _attachedVideo = _mediaEngine.Video;
@@ -476,8 +479,9 @@ public sealed class MediaRenderer : IDisposable
             _attachedCdg = null;
         }
 
-        // Attach to CDG if available. CDG lyrics and the background wash are now
-        // separate renderer layers; subscribing here only drives the lyric layer.
+        // Attach to CDG if available. CDG currently produces two generic overlay-session
+        // layers: WashLayer for the cached full-viewport color wash and OverlayLayer for
+        // the transparent native-size lyric/graphics frame.
         if (_mediaEngine.Cdg != null)
         {
             _attachedCdg = _mediaEngine.Cdg;
@@ -549,7 +553,7 @@ public sealed class MediaRenderer : IDisposable
         // presentation is handled by VideoPipeline; in native HWND mode these ticks are diagnostic
         // only and are not the video swap-chain cadence.
         CompositionTarget.Rendering += OnWindowRefresh;
-        _backgroundMediaRenderer.Start();
+        _backgroundMediaLayer.Start();
         _isRenderingActive = true;
 
         var method = _graphicsRenderer.CurrentRenderingMethod;
@@ -564,7 +568,7 @@ public sealed class MediaRenderer : IDisposable
         if (!_isRenderingActive) return;
 
         CompositionTarget.Rendering -= OnWindowRefresh;
-        _backgroundMediaRenderer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+        _backgroundMediaLayer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
         _isRenderingActive = false;
 
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Stopped natural window refresh rendering");
@@ -733,7 +737,12 @@ public sealed class MediaRenderer : IDisposable
         try
         {
             _nativeCompositeBaseIsBackgroundVideo = true;
-            _graphicsRenderer.SetNativeCompositeVideoBase(e.PixelData.Span, e.Width, e.Height, e.Stride);
+            _graphicsRenderer.SetNativeCompositeVideoBase(
+                e.PixelData.Span,
+                e.Width,
+                e.Height,
+                e.Stride,
+                forceZoomToFill: HasOverlayBackgroundLayer);
         }
         catch (Exception ex)
         {
@@ -751,22 +760,22 @@ public sealed class MediaRenderer : IDisposable
         if (_stillImageSource is BitmapSource stillImage)
         {
             _nativeCompositeBaseIsBackgroundVideo = false;
-            _graphicsRenderer.SetNativeCompositeBase(stillImage);
+            _graphicsRenderer.SetNativeCompositeBase(stillImage, forceZoomToFill: HasOverlayBackgroundLayer);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: still image {stillImage.PixelWidth}x{stillImage.PixelHeight}");
             return;
         }
 
-        if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaRenderer.HasVideo)
+        if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaLayer.HasVideo)
         {
-            // BackgroundMediaRenderer/BackgroundVideoRenderer will push video frames through
+            // BackgroundMediaLayer/BackgroundVideoRenderer will push video frames through
             // OnBackgroundVideoFrameReady.  The background-video role is stable even before the
             // first frame arrives, so do not clear/reclassify the native base here.
             return;
         }
 
-        if ((_backgroundMediaRenderer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
         {
-            _graphicsRenderer.SetNativeCompositeBase(backgroundImage);
+            _graphicsRenderer.SetNativeCompositeBase(backgroundImage, forceZoomToFill: HasOverlayBackgroundLayer);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: background image {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
             return;
         }
@@ -804,7 +813,13 @@ public sealed class MediaRenderer : IDisposable
         // Force cleanup of previous attachments
         DetachAllEngines();
 
-        // Reattach engines
+        // Reattach engines.  Layer policy notes for future renderer work:
+        // - Video-only: uses the primary video layer and obeys VideoDisplayMode.
+        // - Image-only: uses the primary still-image/static layer and obeys VideoDisplayMode.
+        // - Audio+CDG/CDG-only: uses WashLayer full viewport plus OverlayLayer Uniform-fit.
+        // - CDG with companion/manual image/video: uses BackgroundMediaLayer ZoomToFill,
+        //   WashLayer full viewport, and OverlayLayer Uniform-fit; VideoDisplayMode does not
+        //   affect these overlay-session layers.
         AttachVideoIfAvailable();
         AttachCdgIfAvailable();
         AttachImageIfAvailable();
@@ -878,9 +893,9 @@ public sealed class MediaRenderer : IDisposable
 
         DetachAllEngines();
 
-        _backgroundMediaRenderer.VideoFrameReady -= OnBackgroundVideoFrameReady;
+        _backgroundMediaLayer.VideoFrameReady -= OnBackgroundVideoFrameReady;
         _graphicsRenderer?.Dispose();
-        _backgroundMediaRenderer.Dispose();
+        _backgroundMediaLayer.Dispose();
 
         _disposed = true;
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Disposed with GPU acceleration support");

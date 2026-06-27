@@ -1,11 +1,12 @@
 namespace FatzBombMedia.MediaControl.Core.Graphics.Layers;
 
 /// <summary>
-/// Retains the latest native-size transparent-background CDG lyric frame.
-/// The CDG engine owns packet decoding; this layer only caches the current
-/// 300x216-ish ARGB overlay and tracks whether the GPU texture needs refresh.
+/// Retains the latest transparent foreground overlay frame.
+/// CDG currently supplies a native 300x216-ish ARGB lyric/graphics frame; future
+/// overlay sources can reuse the same layer contract as long as they provide
+/// transparent-background pixels and their own source size.
 /// </summary>
-internal sealed class CdgLyricsLayer
+internal sealed class OverlayLayer
 {
     private int[]? _argb;
 

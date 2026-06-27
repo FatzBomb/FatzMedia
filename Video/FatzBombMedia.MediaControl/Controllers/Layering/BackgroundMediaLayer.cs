@@ -4,22 +4,23 @@ using FatzBombMedia.MediaControl.Core.Video;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using FatzBombMedia.MediaControl.Controllers;
 
-namespace FatzBombMedia.MediaControl.Controllers;
+namespace FatzBombMedia.MediaControl.Controllers.Layering;
 
 /// <summary>
-/// Owns media that is used as a background layer behind an overlay such as CDG.
+/// Layer 1 for overlay sessions: owns image/video media that sits behind a foreground overlay.
 /// Background media is role-driven, not frame-driven: video backgrounds are silent,
 /// looped, full-viewport, and UniformToFill regardless of overlay invalidation cadence.
 /// </summary>
-internal sealed class BackgroundMediaRenderer : IDisposable
+internal sealed class BackgroundMediaLayer : IDisposable
 {
     private readonly BackgroundVideoRenderer _videoRenderer;
     private ImageSource? _imageSource;
     private MediaBackgroundKind _kind = MediaBackgroundKind.None;
     private bool _disposed;
 
-    public BackgroundMediaRenderer(MediaPlayerConfiguration configuration)
+    public BackgroundMediaLayer(MediaPlayerConfiguration configuration)
     {
         _videoRenderer = new BackgroundVideoRenderer(configuration);
         _videoRenderer.ImageSourceChanged += (_, __) => BackgroundChanged?.Invoke(this, EventArgs.Empty);

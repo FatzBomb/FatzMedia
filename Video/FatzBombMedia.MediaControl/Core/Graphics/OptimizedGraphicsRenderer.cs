@@ -53,8 +53,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     private int _nativeCompositeBaseHeight;
     private int _nativeCompositeBaseStride;
     private bool _nativeCompositeBaseUseCdgLayering;
-    private readonly CdgLyricsLayer _cdgLyricsLayer = new();
-    private readonly CdgWashLayer _cdgWashLayer = new();
+    private bool _nativeCompositeBaseForceZoomToFill;
+    private readonly OverlayLayer _overlayLayer = new();
+    private readonly WashLayer _washLayer = new();
     private byte[]? _nativeCompositeScaledCdgBgra;
     private int _nativeCompositeScaledCdgWidth;
     private int _nativeCompositeScaledCdgHeight;
@@ -75,6 +76,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     private long _nativeCompositeLastPresentTimestamp;
     private int _nativeCompositePresentQueued;
     private int _nativeCompositeDirty;
+    private int _nativeCompositePresentAllowDuringResize;
     private bool _nativeCompositeBaseIsVideo;
 
     // Track content type for proper rendering priority
@@ -185,8 +187,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     public void SetNativePresentationStretch(Stretch stretch)
     {
         if (_disposed) return;
+
+        var changed = _nativePresentationStretch != stretch;
         _nativePresentationStretch = stretch;
         _d3d11Renderer?.SetNativePresentationStretch(stretch);
+
+        if (changed && HasNativeStaticCompositeContent())
+        {
+            // Standard still images and CDG+image composites are retained static native
+            // composites.  Unlike video, they do not receive another frame after the
+            // display mode changes, so re-present immediately instead of waiting for a
+            // resize/other invalidation to apply Original/Zoom/Stretch/ZoomToFill.
+            RequestNativeCompositePresent(forceImmediate: true, allowDuringResize: true);
+        }
     }
 
     private bool ShouldFreezeNativePresentationDuringResize()
@@ -281,6 +294,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     }
                 }
             }
+
+            // Static native composites have no video frame cadence to naturally redraw
+            // when only the viewport changes. Keep their full-viewport/ZoomToFill math
+            // live during manual resize by re-presenting the retained composite at the
+            // latest native size. Video-driven composites still present on video frames.
+            if (IsNativePresentationRequested && HasNativeStaticCompositeContent())
+            {
+                RequestNativeCompositePresent(forceImmediate: true, allowDuringResize: true);
+            }
         }
         finally
         {
@@ -300,16 +322,23 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
     public void RefreshNativePresentation()
     {
-        if (_disposed || _nativePresentationHwnd == IntPtr.Zero || ShouldFreezeNativePresentationDuringResize())
+        if (_disposed || _nativePresentationHwnd == IntPtr.Zero)
         {
             return;
         }
 
         // CDG-only and CDG+image backgrounds do not have a video cadence to naturally
         // repaint after resize. Re-present the retained static composite explicitly.
+        // This is allowed during live resize so static background images keep their
+        // ZoomToFill mapping instead of letting USER32/DWM stretch an old frame.
         if (HasNativeStaticCompositeContent())
         {
-            RequestNativeCompositePresent(forceImmediate: true);
+            RequestNativeCompositePresent(forceImmediate: true, allowDuringResize: true);
+            return;
+        }
+
+        if (ShouldFreezeNativePresentationDuringResize())
+        {
             return;
         }
 
@@ -321,7 +350,16 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         lock (_lock)
         {
             return !_nativeCompositeBaseIsVideo
-                && (_nativeCompositeBaseBgra != null || _cdgLyricsLayer.HasFrame);
+                && (_nativeCompositeBaseBgra != null || _overlayLayer.HasFrame);
+        }
+    }
+
+
+    private bool IsNativeCompositeCdgOverlayDirtyUnsafe()
+    {
+        lock (_lock)
+        {
+            return _nativeCompositeScaledCdgDirty;
         }
     }
 
@@ -356,7 +394,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// still images and CDG background images while native HWND presentation is active. The pixels
     /// are copied once to BGRA and then uploaded/composited through D3D11, not shown through WPF.
     /// </summary>
-    public void SetNativeCompositeBase(BitmapSource? source)
+    public void SetNativeCompositeBase(BitmapSource? source, bool forceZoomToFill = false)
     {
         if (_disposed || source == null)
         {
@@ -381,7 +419,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             var stride = checked(width * 4);
             var buffer = new byte[checked(stride * height)];
             bgraSource.CopyPixels(buffer, stride, 0);
-            SetNativeCompositeBase(buffer, width, height, stride);
+            SetNativeCompositeBase(buffer, width, height, stride, forceZoomToFill);
         }
         catch (Exception ex)
         {
@@ -399,17 +437,17 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// uses <see cref="SetNativeCompositeVideoBase"/> so the final native present remains driven by
     /// the actual video frame cadence instead of a separate compositor timer.
     /// </summary>
-    public void SetNativeCompositeBase(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
-        => SetNativeCompositeBaseCore(bgraPixels, width, height, stride, isVideoBase: false);
+    public void SetNativeCompositeBase(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = false)
+        => SetNativeCompositeBaseCore(bgraPixels, width, height, stride, isVideoBase: false, forceZoomToFill: forceZoomToFill);
 
     /// <summary>
     /// Sets the looping background-video base layer.  CDG updates are retained separately and are
     /// blended on the next background-video present instead of forcing their own full-frame present.
     /// </summary>
-    public void SetNativeCompositeVideoBase(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
-        => SetNativeCompositeBaseCore(bgraPixels, width, height, stride, isVideoBase: true);
+    public void SetNativeCompositeVideoBase(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = false)
+        => SetNativeCompositeBaseCore(bgraPixels, width, height, stride, isVideoBase: true, forceZoomToFill: forceZoomToFill);
 
-    private void SetNativeCompositeBaseCore(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool isVideoBase)
+    private void SetNativeCompositeBaseCore(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool isVideoBase, bool forceZoomToFill)
     {
         if (_disposed || width <= 0 || height <= 0 || stride < width * 4 || bgraPixels.IsEmpty)
         {
@@ -441,6 +479,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 _nativeCompositeBaseHeight = height;
                 _nativeCompositeBaseStride = stride;
                 _nativeCompositeBaseIsVideo = true;
+                _nativeCompositeBaseForceZoomToFill = forceZoomToFill;
             }
 
             RenderNativeGpuCompositedVideoFrame(bgraPixels.Slice(0, required), width, height, stride);
@@ -465,6 +504,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 }
                 bgraPixels.Slice(0, required).CopyTo(_nativeCompositeBaseBgra);
                 _nativeCompositeBaseIsVideo = isVideoBase;
+                _nativeCompositeBaseForceZoomToFill = forceZoomToFill;
             }
         }
 
@@ -487,6 +527,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 _nativeCompositeBaseHeight = 0;
                 _nativeCompositeBaseStride = 0;
                 _nativeCompositeBaseIsVideo = false;
+                _nativeCompositeBaseForceZoomToFill = false;
             }
         }
     }
@@ -698,7 +739,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         var changed = false;
         lock (_lock)
         {
-            changed = _cdgWashLayer.SetWash(washArgb);
+            changed = _washLayer.SetWash(washArgb);
         }
 
         if (changed && IsNativePresentationRequested && HasNativeStaticCompositeContent())
@@ -797,6 +838,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             lock (_lock)
             {
+                // Native swap-chain and DirectComposition targets can visually retain the
+                // last presented frame after their resources are released.  Explicitly present
+                // a black frame before cleanup when switching to audio-only/no-visual media.
+                _d3d11Renderer?.ClearPresentedFrame();
                 CleanupCurrentMethod();
                 _lastWidth = 0;
                 _lastHeight = 0;
@@ -1424,7 +1469,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             {
                 lock (_lock)
                 {
-                    _cdgLyricsLayer.SetFrame(argbData, width, height);
+                    _overlayLayer.SetFrame(argbData, width, height);
                     _nativeCompositeScaledCdgDirty = true;
                 }
             }
@@ -1435,14 +1480,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 return;
             }
 
-            // Background video + CDG uses a single native HWND swap-chain compositor.  CDG
-            // updates refresh the retained overlay texture; the next background-video frame
-            // performs the one final GPU composite/present.
-            TryUploadNativeGpuCdgOverlay();
-
             // If a looping video is the compositor base, the background-video presentation loop owns
             // the final present cadence.  This CDG update is retained and blended on the next video
-            // frame, preventing CDG invalidations from changing the apparent background-video FPS.
+            // frame, preventing CDG invalidations from changing the apparent background-video FPS
+            // or re-entering the D3D overlay upload path between video presents.
             bool videoDriven;
             lock (_lock)
             {
@@ -1477,7 +1518,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
     private bool HasRetainedNativeCdgFrameUnsafe()
     {
-        return _cdgLyricsLayer.HasFrame;
+        return _overlayLayer.HasFrame;
     }
 
     private void PresentNativeCompositeVideoFallback(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
@@ -1536,10 +1577,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         var useFallbackComposite = false;
         var uploadPlainFrame = false;
 
-        // Ensure the CDG GPU texture exists before compositing — otherwise
-        // UploadFrameWithCachedCdgOverlay silently skips the CDG+wash draw pass
-        // and returns true, producing a video-only frame.
-        if (_d3d11Renderer?.HasCdgOverlayTexture != true && HasRetainedNativeCdgFrameUnsafe())
+        // Keep CDG overlay uploads video-driven for background-video sessions.
+        // CDG packet invalidations only mark the retained lyric layer dirty; the next
+        // background-video frame uploads the latest 300x216 texture and performs the
+        // single video+wash+lyrics present. This prevents CDG update frequency from
+        // racing the video present path or briefly presenting mismatched geometry.
+        if (HasRetainedNativeCdgFrameUnsafe()
+            && (_d3d11Renderer?.HasOverlayTexture != true || IsNativeCompositeCdgOverlayDirtyUnsafe()))
         {
             TryUploadNativeGpuCdgOverlay();
         }
@@ -1557,8 +1601,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     return;
                 }
 
-                var washArgb = _cdgWashLayer.WashArgb;
-                var cdgLayeringActive = _nativeCompositeBaseUseCdgLayering;
+                var washArgb = _washLayer.WashArgb;
+                var cdgLayeringActive = _nativeCompositeBaseForceZoomToFill || _nativeCompositeBaseUseCdgLayering;
                 if (_configuration.EnableVerboseLogging)
                 {
                     Debug.WriteLine($"[OptimizedRenderer] RenderNativeCompositedVideo: wash=0x{washArgb:X8} cdgLayering={cdgLayeringActive} hasCdgFrame={HasRetainedNativeCdgFrameUnsafe()}");
@@ -1615,9 +1659,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         return false;
                     }
 
-                    if (!_cdgLyricsLayer.TryGetFrame(out var cdgArgb, out var overlayWidth, out var overlayHeight))
+                    if (!_overlayLayer.TryGetFrame(out var cdgArgb, out var overlayWidth, out var overlayHeight))
                     {
-                        _d3d11Renderer.ClearCdgOverlayTexture();
+                        _d3d11Renderer.ClearOverlayTexture();
                         return false;
                     }
 
@@ -1632,7 +1676,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         || _directCompositionCdgOverlayWidth != overlayWidth
                         || _directCompositionCdgOverlayHeight != overlayHeight
                         || _directCompositionCdgOverlayStride != overlayStride
-                        || _cdgLyricsLayer.IsGpuUploadDirty)
+                        || _overlayLayer.IsGpuUploadDirty)
                     {
                         if (_directCompositionCdgOverlayBgra == null || _directCompositionCdgOverlayBgra.Length != required)
                         {
@@ -1643,14 +1687,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         _directCompositionCdgOverlayWidth = overlayWidth;
                         _directCompositionCdgOverlayHeight = overlayHeight;
                         _directCompositionCdgOverlayStride = overlayStride;
-                        var uploaded = _d3d11Renderer.UploadCdgOverlayTexture(
+                        var uploaded = _d3d11Renderer.UploadOverlayTexture(
                             _directCompositionCdgOverlayBgra.AsSpan(0, required),
                             overlayWidth,
                             overlayHeight,
                             overlayStride);
                         if (uploaded)
                         {
-                            _cdgLyricsLayer.MarkGpuUploadClean();
+                            _overlayLayer.MarkGpuUploadClean();
                         }
 
                         return uploaded;
@@ -1698,7 +1742,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                         return false;
                     }
 
-                    if (!_cdgLyricsLayer.TryGetFrame(out var cdgArgb, out var cdgWidth, out var cdgHeight))
+                    if (!_overlayLayer.TryGetFrame(out var cdgArgb, out var cdgWidth, out var cdgHeight))
                     {
                         if (_configuration.EnableVerboseLogging)
                         {
@@ -1794,7 +1838,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
     }
 
-    private void RequestNativeCompositePresent(bool forceImmediate = false)
+    private void RequestNativeCompositePresent(bool forceImmediate = false, bool allowDuringResize = false)
     {
         if (_disposed || !IsNativePresentationRequested)
         {
@@ -1802,15 +1846,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
 
         Volatile.Write(ref _nativeCompositeDirty, 1);
+        if (allowDuringResize)
+        {
+            Volatile.Write(ref _nativeCompositePresentAllowDuringResize, 1);
+        }
 
-        if (ShouldFreezeNativePresentationDuringResize())
+        if (ShouldFreezeNativePresentationDuringResize() && !allowDuringResize)
         {
             return;
         }
 
         if (forceImmediate)
         {
-            QueueNativeCompositePresent(TimeSpan.Zero);
+            QueueNativeCompositePresent(TimeSpan.Zero, allowDuringResize);
             return;
         }
 
@@ -1821,17 +1869,22 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         if (elapsed >= minTicks)
         {
-            QueueNativeCompositePresent(TimeSpan.Zero);
+            QueueNativeCompositePresent(TimeSpan.Zero, allowDuringResize);
             return;
         }
 
         var delayTicks = minTicks - elapsed;
         var delay = TimeSpan.FromSeconds(delayTicks / (double)Stopwatch.Frequency);
-        QueueNativeCompositePresent(delay);
+        QueueNativeCompositePresent(delay, allowDuringResize);
     }
 
-    private void QueueNativeCompositePresent(TimeSpan delay)
+    private void QueueNativeCompositePresent(TimeSpan delay, bool allowDuringResize = false)
     {
+        if (allowDuringResize)
+        {
+            Volatile.Write(ref _nativeCompositePresentAllowDuringResize, 1);
+        }
+
         if (Interlocked.CompareExchange(ref _nativeCompositePresentQueued, 1, 0) != 0)
         {
             return;
@@ -1854,12 +1907,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     {
         try
         {
-            if (_disposed || !IsNativePresentationRequested || ShouldFreezeNativePresentationDuringResize())
+            var allowDuringResize = Volatile.Read(ref _nativeCompositePresentAllowDuringResize) != 0;
+            if (_disposed || !IsNativePresentationRequested || (ShouldFreezeNativePresentationDuringResize() && !allowDuringResize))
             {
                 return;
             }
 
             Volatile.Write(ref _nativeCompositeDirty, 0);
+            Volatile.Write(ref _nativeCompositePresentAllowDuringResize, 0);
             PresentNativeComposite();
             Volatile.Write(ref _nativeCompositeLastPresentTimestamp, Stopwatch.GetTimestamp());
         }
@@ -1895,6 +1950,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         int cdgHeight = 0;
         uint washArgb;
         bool cdgLayeringActive;
+        bool forceBaseZoomToFill;
 
         lock (_lock)
         {
@@ -1902,14 +1958,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             baseWidth = _nativeCompositeBaseWidth;
             baseHeight = _nativeCompositeBaseHeight;
             baseStride = _nativeCompositeBaseStride;
-            if (_cdgLyricsLayer.TryGetFrame(out var retainedCdgArgb, out var retainedCdgWidth, out var retainedCdgHeight))
+            if (_overlayLayer.TryGetFrame(out var retainedCdgArgb, out var retainedCdgWidth, out var retainedCdgHeight))
             {
                 cdgArgb = retainedCdgArgb;
                 cdgWidth = retainedCdgWidth;
                 cdgHeight = retainedCdgHeight;
             }
-            washArgb = _cdgWashLayer.WashArgb;
+            washArgb = _washLayer.WashArgb;
             cdgLayeringActive = _nativeCompositeBaseUseCdgLayering;
+            forceBaseZoomToFill = _nativeCompositeBaseForceZoomToFill;
 
             if (baseBgra == null && cdgArgb == null && ((washArgb >> 24) & 0xFF) == 0)
             {
@@ -1919,7 +1976,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         var outputWidth = baseBgra != null ? baseWidth : cdgWidth;
         var outputHeight = baseBgra != null ? baseHeight : cdgHeight;
-        var shouldZoomStaticBaseForCdg = baseBgra != null && cdgLayeringActive && !baseBgra.AsSpan().IsEmpty;
+        var shouldZoomStaticBaseForCdg = baseBgra != null && (forceBaseZoomToFill || cdgLayeringActive) && !baseBgra.AsSpan().IsEmpty;
         if (shouldZoomStaticBaseForCdg)
         {
             (outputWidth, outputHeight) = GetNativeOutputSize(outputWidth, outputHeight);
@@ -2311,8 +2368,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         _nativeCompositeBaseStride = 0;
         _nativeCompositeBaseIsVideo = false;
         _nativeCompositeBaseUseCdgLayering = false;
-        _cdgLyricsLayer.Clear();
-        _cdgWashLayer.Clear();
+        _nativeCompositeBaseForceZoomToFill = false;
+        _overlayLayer.Clear();
+        _washLayer.Clear();
         _nativeCompositeScaledCdgBgra = null;
         _nativeCompositeScaledCdgWidth = 0;
         _nativeCompositeScaledCdgHeight = 0;

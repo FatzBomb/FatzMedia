@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using FatzBombMedia.Player.ViewModels;
 
@@ -27,6 +28,9 @@ public partial class MainWindow : Window
     private readonly CornerRadius _standardMediaCornerRadius;
     private readonly Thickness _standardBottomChromeMargin;
     private readonly VerticalAlignment _standardBottomChromeVerticalAlignment;
+    private readonly Panel _bottomChromeWindowedParent;
+    private readonly int _bottomChromeWindowedIndex;
+    private Grid? _fullScreenOverlayRoot;
 
     public MainWindow()
     {
@@ -38,6 +42,8 @@ public partial class MainWindow : Window
         _standardMediaCornerRadius = MediaViewportBorder.CornerRadius;
         _standardBottomChromeMargin = BottomChrome.Margin;
         _standardBottomChromeVerticalAlignment = BottomChrome.VerticalAlignment;
+        _bottomChromeWindowedParent = (Panel)BottomChrome.Parent;
+        _bottomChromeWindowedIndex = _bottomChromeWindowedParent.Children.IndexOf(BottomChrome);
 
         _fullScreenChromeTimer = new DispatcherTimer
         {
@@ -225,12 +231,13 @@ public partial class MainWindow : Window
         MediaViewportBorder.CornerRadius = new CornerRadius(0);
 
         Grid.SetRow(BottomChrome, 0);
-        Grid.SetRowSpan(BottomChrome, 2);
+        Grid.SetRowSpan(BottomChrome, 1);
         BottomChrome.VerticalAlignment = VerticalAlignment.Bottom;
         BottomChrome.Margin = new Thickness(18, 0, 18, 16);
         Panel.SetZIndex(BottomChrome, 50);
 
         PlayerControlsPanel.Background = (System.Windows.Media.Brush)FindResource("PanelOverlayBrush");
+        AttachBottomChromeToFullScreenOverlay();
         ShowFullScreenChrome(restartTimer: true);
         QueueMediaSurfaceLayoutRefresh();
     }
@@ -246,6 +253,7 @@ public partial class MainWindow : Window
         BottomChrome.Visibility = Visibility.Visible;
         BottomChrome.Opacity = 1;
         BottomChrome.IsHitTestVisible = true;
+        DetachBottomChromeFromFullScreenOverlay();
 
         Grid.SetRow(MediaViewportBorder, 0);
         Grid.SetRowSpan(MediaViewportBorder, 1);
@@ -268,6 +276,87 @@ public partial class MainWindow : Window
         Topmost = _restoreTopmost;
         WindowState = _restoreWindowState;
         QueueMediaSurfaceLayoutRefresh();
+    }
+
+
+    private void AttachBottomChromeToFullScreenOverlay()
+    {
+        // Native HWND presentation is above the normal WPF visual tree. In full screen, the
+        // controls must move into FatzBombMediaSurface's owned transparent overlay window;
+        // otherwise they are still present but hidden behind the native renderer.
+        _fullScreenOverlayRoot ??= CreateFullScreenOverlayRoot();
+        _fullScreenOverlayRoot.DataContext = DataContext;
+
+        if (BottomChrome.Parent is Panel currentPanel)
+        {
+            currentPanel.Children.Remove(BottomChrome);
+        }
+
+        if (!_fullScreenOverlayRoot.Children.Contains(BottomChrome))
+        {
+            _fullScreenOverlayRoot.Children.Add(BottomChrome);
+        }
+
+        MediaSurface.OverlayContent = _fullScreenOverlayRoot;
+        MediaSurface.OverlayHitTestVisible = true;
+    }
+
+    private void DetachBottomChromeFromFullScreenOverlay()
+    {
+        MediaSurface.OverlayContent = null;
+        MediaSurface.OverlayHitTestVisible = false;
+
+        if (_fullScreenOverlayRoot?.Children.Contains(BottomChrome) == true)
+        {
+            _fullScreenOverlayRoot.Children.Remove(BottomChrome);
+        }
+
+        if (!_bottomChromeWindowedParent.Children.Contains(BottomChrome))
+        {
+            var insertIndex = Math.Clamp(_bottomChromeWindowedIndex, 0, _bottomChromeWindowedParent.Children.Count);
+            _bottomChromeWindowedParent.Children.Insert(insertIndex, BottomChrome);
+        }
+    }
+
+    private Grid CreateFullScreenOverlayRoot()
+    {
+        var root = new Grid
+        {
+            Background = Brushes.Transparent,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            ClipToBounds = true
+        };
+
+        root.MouseMove += FullScreenOverlayRoot_MouseMove;
+        root.MouseLeftButtonDown += FullScreenOverlayRoot_MouseLeftButtonDown;
+        return root;
+    }
+
+    private void FullScreenOverlayRoot_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isFullScreen) return;
+        ShowFullScreenChrome(restartTimer: true);
+    }
+
+    private void FullScreenOverlayRoot_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isFullScreen || e.ClickCount != 2) return;
+        if (IsDescendantOf(e.OriginalSource as DependencyObject, BottomChrome)) return;
+
+        ToggleFullScreen();
+        e.Handled = true;
+    }
+
+    private static bool IsDescendantOf(DependencyObject? current, DependencyObject ancestor)
+    {
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor)) return true;
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void QueueMediaSurfaceLayoutRefresh()
