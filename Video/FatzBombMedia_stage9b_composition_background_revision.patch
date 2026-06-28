@@ -1,0 +1,520 @@
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 849e809..df9bf79 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -408,7 +408,7 @@ public sealed class MediaRenderer : IDisposable
+         }
+         else
+         {
+-            _graphicsRenderer.ClearDxCdgLayer0Frame();
++            _graphicsRenderer.ClearCompositionLayer0Frame();
+         }
+ 
+         if (_enableLogging)
+@@ -672,7 +672,7 @@ public sealed class MediaRenderer : IDisposable
+ 
+                 if (!e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0)
+                 {
+-                    _graphicsRenderer.SetDxCdgLayer0Frame(
++                    _graphicsRenderer.SetCompositionLayer0Frame(
+                         e.PixelData.Span,
+                         e.Width,
+                         e.Height,
+@@ -819,7 +819,7 @@ public sealed class MediaRenderer : IDisposable
+ 
+             if (HasCdgContent)
+             {
+-                _graphicsRenderer.SetDxCdgLayer0Frame(
++                _graphicsRenderer.SetCompositionLayer0Frame(
+                     e.PixelData.Span,
+                     e.Width,
+                     e.Height,
+@@ -889,14 +889,14 @@ public sealed class MediaRenderer : IDisposable
+     {
+         if (!HasCdgContent)
+         {
+-            _graphicsRenderer.ClearDxCdgLayer0Frame();
++            _graphicsRenderer.ClearCompositionLayer0Frame();
+             return;
+         }
+ 
+         if (_stillImageSource is BitmapSource stillImage)
+         {
+             _nativeCompositeBaseIsBackgroundVideo = false;
+-            _graphicsRenderer.SetDxCdgLayer0Frame(stillImage, forceZoomToFill: true);
++            _graphicsRenderer.SetCompositionLayer0Frame(stillImage, forceZoomToFill: true);
+             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): still {stillImage.PixelWidth}x{stillImage.PixelHeight}");
+             return;
+         }
+@@ -904,7 +904,7 @@ public sealed class MediaRenderer : IDisposable
+         if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+         {
+             _nativeCompositeBaseIsBackgroundVideo = false;
+-            _graphicsRenderer.SetDxCdgLayer0Frame(backgroundImage, forceZoomToFill: true);
++            _graphicsRenderer.SetCompositionLayer0Frame(backgroundImage, forceZoomToFill: true);
+             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): background {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
+             return;
+         }
+@@ -917,7 +917,7 @@ public sealed class MediaRenderer : IDisposable
+             return;
+         }
+ 
+-        _graphicsRenderer.ClearDxCdgLayer0Frame();
++        _graphicsRenderer.ClearCompositionLayer0Frame();
+         if (_enableVerboseLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 cleared ({reason}).");
+     }
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+index 6f5c77e..008d32d 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+@@ -31,6 +31,7 @@ internal sealed class D3D11MediaCompositionPresenter
+     private int _backgroundWidth;
+     private int _backgroundHeight;
+     private int _backgroundStride;
++    private long _lastBackgroundRevision = -1;
+ 
+     private ID3D11Texture2D? _indexTexture;
+     private ID3D11ShaderResourceView? _indexShaderResourceView;
+@@ -58,6 +59,7 @@ internal sealed class D3D11MediaCompositionPresenter
+         _lastPresentedRevision = -1;
+         _lastPaletteRevision = -1;
+         _lastDrawnRevision = -1;
++        _lastBackgroundRevision = -1;
+         _lastLoggedRevisionSecond = -1;
+         _pipelineFailed = false;
+         ReleaseResources();
+@@ -118,6 +120,7 @@ internal sealed class D3D11MediaCompositionPresenter
+         _backgroundWidth = 0;
+         _backgroundHeight = 0;
+         _backgroundStride = 0;
++        _lastBackgroundRevision = -1;
+         ReleaseBackgroundResources();
+     }
+ 
+@@ -170,13 +173,7 @@ internal sealed class D3D11MediaCompositionPresenter
+         {
+             if (frame.HasBackground)
+             {
+-                SetBackgroundFrame(
+-                    deviceResources,
+-                    frame.BackgroundBgra.Span,
+-                    frame.BackgroundWidth,
+-                    frame.BackgroundHeight,
+-                    frame.BackgroundStride,
+-                    frame.BackgroundUniformToFill);
++                EnsureCompositionBackgroundFrame(deviceResources, frame);
+             }
+             else
+             {
+@@ -236,6 +233,41 @@ internal sealed class D3D11MediaCompositionPresenter
+         }
+     }
+ 
++
++    private void EnsureCompositionBackgroundFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame)
++    {
++        if (!frame.HasBackground)
++        {
++            ClearBackgroundFrame();
++            return;
++        }
++
++        var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == _lastBackgroundRevision;
++        var dimensionsMatch = _hasBackgroundFrame
++            && _backgroundWidth == frame.BackgroundWidth
++            && _backgroundHeight == frame.BackgroundHeight
++            && _backgroundStride == frame.BackgroundStride
++            && _backgroundForceZoomToFill == frame.BackgroundUniformToFill;
++
++        if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
++        {
++            return;
++        }
++
++        SetBackgroundFrame(
++            deviceResources,
++            frame.BackgroundBgra.Span,
++            frame.BackgroundWidth,
++            frame.BackgroundHeight,
++            frame.BackgroundStride,
++            frame.BackgroundUniformToFill);
++
++        if (_hasBackgroundFrame)
++        {
++            _lastBackgroundRevision = frame.BackgroundRevision;
++        }
++    }
++
+     private void EnsureResources(ID3D11Device device)
+     {
+         if (_indexTexture != null && _paletteTexture != null)
+@@ -630,7 +662,7 @@ internal sealed class D3D11MediaCompositionPresenter
+             Debug.WriteLine(
+                 $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
+                 $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasBackground} " +
+-                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
++                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
+             return;
+         }
+ 
+@@ -639,7 +671,7 @@ internal sealed class D3D11MediaCompositionPresenter
+             $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
+             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
+             $"clear={frame.ClearMode} bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
+-            $"backgroundFrame={frame.HasBackground} background={frame.BackgroundWidth}x{frame.BackgroundHeight} " +
++            $"backgroundFrame={frame.HasBackground} background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} " +
+             $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
+             $"hist=[{stats.Histogram}]");
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+index 4f60fe7..b186fe8 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+@@ -17,6 +17,7 @@ public readonly record struct MediaCompositionFrame
+     public int BackgroundHeight { get; init; }
+     public int BackgroundStride { get; init; }
+     public bool BackgroundUniformToFill { get; init; }
++    public long BackgroundRevision { get; init; }
+ 
+     public uint WashArgb { get; init; }
+     public DxCdgRenderSnapshot? CdgOverlay { get; init; }
+@@ -54,6 +55,7 @@ public readonly record struct MediaCompositionFrame
+             BackgroundHeight = 0,
+             BackgroundStride = 0,
+             BackgroundUniformToFill = false,
++            BackgroundRevision = -1,
+             WashArgb = 0,
+             CdgOverlay = null,
+             RetainedRefresh = false,
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
+index e01ac71..8c97955 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
+@@ -257,7 +257,7 @@ internal sealed class D3D11RendererPresentationServices
+             raiseFramePresented);
+     }
+ 
+-    public void SetDxCdgBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
++    public void SetCompositionBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+     {
+         if (isDisposed || !_deviceResources.HasDevice)
+         {
+@@ -267,7 +267,7 @@ internal sealed class D3D11RendererPresentationServices
+         MediaCompositor.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
+     }
+ 
+-    public void ClearDxCdgBackgroundFrame()
++    public void ClearCompositionBackgroundFrame()
+     {
+         MediaCompositor.ClearBackgroundFrame();
+     }
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 0b2116b..e182e7a 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -255,19 +255,19 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+         }
+     }
+ 
+-    public void SetDxCdgBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
++    public void SetCompositionBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+     {
+         lock (_lock)
+         {
+-            _presentation.SetDxCdgBackgroundFrame(_disposed, bgraPixels, width, height, stride, forceZoomToFill);
++            _presentation.SetCompositionBackgroundFrame(_disposed, bgraPixels, width, height, stride, forceZoomToFill);
+         }
+     }
+ 
+-    public void ClearDxCdgBackgroundFrame()
++    public void ClearCompositionBackgroundFrame()
+     {
+         lock (_lock)
+         {
+-            _presentation.ClearDxCdgBackgroundFrame();
++            _presentation.ClearCompositionBackgroundFrame();
+         }
+     }
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 01d3ede..c99ef76 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -47,13 +47,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+     // Native base state remains only for non-CDG native static presentation. When a CDG
+     // overlay session is active, Layer 0 is retained separately and consumed only by
+-    // the DXCDG compositor so video/image/background cannot present through a competing path.
++    // the media compositor so video/image/background cannot present through a competing path.
+     private readonly NativeCompositeBaseState _nativeCompositeBase = new();
+-    private byte[]? _dxCdgLayer0Bgra;
+-    private int _dxCdgLayer0Width;
+-    private int _dxCdgLayer0Height;
+-    private int _dxCdgLayer0Stride;
+-    private bool _dxCdgLayer0ForceZoomToFill;
++    private byte[]? _compositionBackgroundBgra;
++    private int _compositionBackgroundWidth;
++    private int _compositionBackgroundHeight;
++    private int _compositionBackgroundStride;
++    private bool _compositionBackgroundForceZoomToFill;
++    private long _compositionBackgroundRevision;
+     private readonly WashLayer _washLayer = new();
+     private readonly CpuWriteableBitmapRenderer _cpuRenderer = new();
+     private bool _nativeDirectCompositionLayersRequested;
+@@ -362,7 +363,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             {
+                 // DXCDG now owns the visible CDG presentation target. Do not let the
+                 // retired native composite scheduler present a static/image background
+-                // over the DXCDG frame when a CDG layer becomes active.
++                // over the composition frame when a CDG layer becomes active.
+                 _nativeCompositePresentationScheduler.Clear();
+             }
+             else
+@@ -372,11 +373,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+     }
+ 
+-    public void SetDxCdgLayer0Frame(BitmapSource? source, bool forceZoomToFill = true)
++    public void SetCompositionLayer0Frame(BitmapSource? source, bool forceZoomToFill = true)
+     {
+         if (_disposed || source == null)
+         {
+-            ClearDxCdgLayer0Frame();
++            ClearCompositionLayer0Frame();
+             return;
+         }
+ 
+@@ -390,14 +391,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             var height = bgraSource.PixelHeight;
+             if (width <= 0 || height <= 0)
+             {
+-                ClearDxCdgLayer0Frame();
++                ClearCompositionLayer0Frame();
+                 return;
+             }
+ 
+             var stride = checked(width * 4);
+             var buffer = new byte[checked(stride * height)];
+             bgraSource.CopyPixels(buffer, stride, 0);
+-            SetDxCdgLayer0Frame(buffer, width, height, stride, forceZoomToFill);
++            SetCompositionLayer0Frame(buffer, width, height, stride, forceZoomToFill);
+         }
+         catch (Exception ex)
+         {
+@@ -405,69 +406,63 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             {
+                 Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image conversion failed: {ex.GetType().Name}: {ex.Message}");
+             }
+-            ClearDxCdgLayer0Frame();
++            ClearCompositionLayer0Frame();
+         }
+     }
+ 
+-    public void SetDxCdgLayer0Frame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = true)
++    public void SetCompositionLayer0Frame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = true)
+     {
+         if (_disposed || bgraPixels.IsEmpty || width <= 0 || height <= 0 || stride < width * 4)
+         {
+-            ClearDxCdgLayer0Frame();
++            ClearCompositionLayer0Frame();
+             return;
+         }
+ 
+         var required = checked(stride * height);
+         if (bgraPixels.Length < required)
+         {
+-            ClearDxCdgLayer0Frame();
++            ClearCompositionLayer0Frame();
+             return;
+         }
+ 
+-        byte[] frame;
+         lock (_lock)
+         {
+-            if (_dxCdgLayer0Bgra == null || _dxCdgLayer0Bgra.Length != required)
++            if (_compositionBackgroundBgra == null || _compositionBackgroundBgra.Length != required)
+             {
+-                _dxCdgLayer0Bgra = new byte[required];
++                _compositionBackgroundBgra = new byte[required];
+             }
+ 
+-            bgraPixels.Slice(0, required).CopyTo(_dxCdgLayer0Bgra);
+-            _dxCdgLayer0Width = width;
+-            _dxCdgLayer0Height = height;
+-            _dxCdgLayer0Stride = stride;
+-            _dxCdgLayer0ForceZoomToFill = forceZoomToFill;
+-            frame = _dxCdgLayer0Bgra!;
+-        }
+-
+-        var renderer = _d3d11Renderer;
+-        if (renderer?.IsReady == true)
+-        {
+-            renderer.SetDxCdgBackgroundFrame(frame.AsSpan(), width, height, stride, forceZoomToFill);
++            bgraPixels.Slice(0, required).CopyTo(_compositionBackgroundBgra);
++            _compositionBackgroundWidth = width;
++            _compositionBackgroundHeight = height;
++            _compositionBackgroundStride = stride;
++            _compositionBackgroundForceZoomToFill = forceZoomToFill;
++            _compositionBackgroundRevision++;
+         }
+     }
+ 
+-    public void ClearDxCdgLayer0Frame()
++    public void ClearCompositionLayer0Frame()
+     {
+         lock (_lock)
+         {
+-            _dxCdgLayer0Bgra = null;
+-            _dxCdgLayer0Width = 0;
+-            _dxCdgLayer0Height = 0;
+-            _dxCdgLayer0Stride = 0;
+-            _dxCdgLayer0ForceZoomToFill = false;
++            _compositionBackgroundBgra = null;
++            _compositionBackgroundWidth = 0;
++            _compositionBackgroundHeight = 0;
++            _compositionBackgroundStride = 0;
++            _compositionBackgroundForceZoomToFill = false;
++            _compositionBackgroundRevision++;
+         }
+ 
+-        _d3d11Renderer?.ClearDxCdgBackgroundFrame();
++        _d3d11Renderer?.ClearCompositionBackgroundFrame();
+     }
+ 
+     public void SetCompositionBackgroundFrame(BitmapSource? source, bool forceZoomToFill = false)
+-        => SetDxCdgLayer0Frame(source, forceZoomToFill);
++        => SetCompositionLayer0Frame(source, forceZoomToFill);
+ 
+     public void SetCompositionBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = false)
+-        => SetDxCdgLayer0Frame(bgraPixels, width, height, stride, forceZoomToFill);
++        => SetCompositionLayer0Frame(bgraPixels, width, height, stride, forceZoomToFill);
+ 
+-    public void ClearCompositionBackgroundFrame() => ClearDxCdgLayer0Frame();
++    public void ClearCompositionBackgroundFrame() => ClearCompositionLayer0Frame();
+ 
+     public void PresentEmptyComposition(MediaCompositionClearMode clearMode = MediaCompositionClearMode.Black, uint clearArgb = 0xFF000000, string reason = "empty")
+         => PresentMediaComposition(MediaCompositionFrame.Empty(clearMode, clearArgb, reason));
+@@ -592,10 +587,10 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+         if (cdgLayeringActive)
+         {
+-            // The static image/background is now an input to the DXCDG presenter,
++            // The static image/background is now an input to the media compositor,
+             // not a standalone native composite present. Presenting it here would
+             // overwrite the DXCDG surface and cause image flashes.
+-            SetDxCdgLayer0Frame(bgraPixels.Slice(0, required), width, height, stride, forceZoomToFill);
++            SetCompositionLayer0Frame(bgraPixels.Slice(0, required), width, height, stride, forceZoomToFill);
+             _nativeCompositePresentationScheduler.Clear();
+             return;
+         }
+@@ -618,7 +613,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             }
+         }
+ 
+-        _d3d11Renderer?.ClearDxCdgBackgroundFrame();
++        _d3d11Renderer?.ClearCompositionBackgroundFrame();
+     }
+ 
+     /// <summary>
+@@ -843,7 +838,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     }
+ 
+     /// <summary>
+-    /// Presents the current DXCDG indexed/palette snapshot through the D3D11 DXCDG presenter.
++    /// Presents the current DXCDG indexed/palette snapshot through the D3D11 media compositor.
+     /// This is now the only active CDG visual path; legacy bitmap CDG code is quarantined.
+     /// </summary>
+     public void RenderDxCdgSnapshot(DxCdgRenderSnapshot snapshot, bool retainedRefresh = false)
+@@ -915,14 +910,16 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         int backgroundHeight;
+         int backgroundStride;
+         bool backgroundUniformToFill;
++        long backgroundRevision;
+ 
+         lock (_lock)
+         {
+-            backgroundBgra = _dxCdgLayer0Bgra;
+-            backgroundWidth = _dxCdgLayer0Width;
+-            backgroundHeight = _dxCdgLayer0Height;
+-            backgroundStride = _dxCdgLayer0Stride;
+-            backgroundUniformToFill = forceBackgroundZoomToFill || _dxCdgLayer0ForceZoomToFill;
++            backgroundBgra = _compositionBackgroundBgra;
++            backgroundWidth = _compositionBackgroundWidth;
++            backgroundHeight = _compositionBackgroundHeight;
++            backgroundStride = _compositionBackgroundStride;
++            backgroundUniformToFill = forceBackgroundZoomToFill || _compositionBackgroundForceZoomToFill;
++            backgroundRevision = _compositionBackgroundRevision;
+         }
+ 
+         var hasBackground = backgroundBgra != null
+@@ -939,6 +936,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             BackgroundHeight = hasBackground ? backgroundHeight : 0,
+             BackgroundStride = hasBackground ? backgroundStride : 0,
+             BackgroundUniformToFill = hasBackground && backgroundUniformToFill,
++            BackgroundRevision = hasBackground ? backgroundRevision : -1,
+             WashArgb = washArgb,
+             CdgOverlay = cdgOverlay,
+             RetainedRefresh = retainedRefresh,
+@@ -984,34 +982,6 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         return (Math.Max(1, sourceWidth), Math.Max(1, sourceHeight));
+     }
+ 
+-    private void PushDxCdgBackgroundFrame(VorticeD3D11Renderer renderer)
+-    {
+-        byte[]? backgroundBgra;
+-        int backgroundWidth;
+-        int backgroundHeight;
+-        int backgroundStride;
+-        bool forceZoomToFill;
+-
+-        lock (_lock)
+-        {
+-            backgroundBgra = _dxCdgLayer0Bgra;
+-            backgroundWidth = _dxCdgLayer0Width;
+-            backgroundHeight = _dxCdgLayer0Height;
+-            backgroundStride = _dxCdgLayer0Stride;
+-            forceZoomToFill = _dxCdgLayer0ForceZoomToFill;
+-        }
+-
+-        if (backgroundBgra == null
+-            || backgroundWidth <= 0
+-            || backgroundHeight <= 0
+-            || backgroundStride < backgroundWidth * 4)
+-        {
+-            renderer.ClearDxCdgBackgroundFrame();
+-            return;
+-        }
+-
+-        renderer.SetDxCdgBackgroundFrame(backgroundBgra.AsSpan(), backgroundWidth, backgroundHeight, backgroundStride, forceZoomToFill);
+-    }
+ 
+     public void SetCdgBackgroundWash(uint washArgb)
+     {
+@@ -1550,7 +1520,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         if (IsDxCdgLayeringActive)
+         {
+             // DXCDG owns the visible target while a CDG layer is active. Any queued native
+-            // composite/base present would race the DXCDG presenter on the same swap-chain.
++            // composite/base present would race the media compositor on the same swap-chain.
+             _nativeCompositePresentationScheduler.Clear();
+             return;
+         }
+@@ -1604,11 +1574,12 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     private void ClearNativeCompositeStateUnsafe()
+     {
+         _nativeCompositeBase.ClearAll();
+-        _dxCdgLayer0Bgra = null;
+-        _dxCdgLayer0Width = 0;
+-        _dxCdgLayer0Height = 0;
+-        _dxCdgLayer0Stride = 0;
+-        _dxCdgLayer0ForceZoomToFill = false;
++        _compositionBackgroundBgra = null;
++        _compositionBackgroundWidth = 0;
++        _compositionBackgroundHeight = 0;
++        _compositionBackgroundStride = 0;
++        _compositionBackgroundForceZoomToFill = false;
++        _compositionBackgroundRevision++;
+         _washLayer.Clear();
+         _nativeDirectCompositionLayersRequested = false;
+         _nativeCompositePresentationScheduler.Clear();

@@ -1,5 +1,6 @@
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
@@ -35,7 +36,7 @@ internal sealed class D3D11RendererPresentationServices
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
         State = new D3D11PresentationState();
         RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
-        DxCdgPresenter = new DxCdgD3D11TexturePresenter();
+        MediaCompositor = new D3D11MediaCompositionPresenter();
 
         var nativeHwndBackend = new D3D11NativeHwndSwapChainBackend(
             configuration,
@@ -256,19 +257,77 @@ internal sealed class D3D11RendererPresentationServices
             raiseFramePresented);
     }
 
-    public void SetDxCdgBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+    public void SetCompositionBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
     {
         if (isDisposed || !_deviceResources.HasDevice)
         {
             return;
         }
 
-        DxCdgPresenter.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
+        MediaCompositor.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
     }
 
-    public void ClearDxCdgBackgroundFrame()
+    public void ClearCompositionBackgroundFrame()
     {
-        DxCdgPresenter.ClearBackgroundFrame();
+        MediaCompositor.ClearBackgroundFrame();
+    }
+
+    public bool PresentMediaCompositionVisible(
+        bool isDisposed,
+        MediaCompositionFrame frame,
+        int outputWidth,
+        int outputHeight,
+        Action<int, int> framePresented)
+    {
+        if (isDisposed || !_deviceResources.HasDevice)
+        {
+            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: renderer disposed or D3D11 device unavailable.");
+            return false;
+        }
+
+        if (!Surfaces.TryGetActiveTargetSnapshot(
+                applyPendingNativeResize: true,
+                reason: "media composition presentation",
+                out var target))
+        {
+            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: no active D3D11 presentation target.");
+            return false;
+        }
+
+        if (!frame.RetainedRefresh)
+        {
+            Debug.WriteLine(
+                $"[COMPOSITION-TRACE] Present active target reason={frame.Reason} target={target.Width}x{target.Height} " +
+                $"backend={target.BackendName} targetRevision={target.Revision}");
+        }
+
+        if (!MediaCompositor.PresentToTarget(
+                _deviceResources,
+                frame,
+                target.Texture,
+                target.Width,
+                target.Height,
+                target.BackendName,
+                target.Revision))
+        {
+            Debug.WriteLine($"[COMPOSITION-TRACE] Visible present failed in media compositor reason={frame.Reason}.");
+            return false;
+        }
+
+        if (!frame.RetainedRefresh)
+        {
+            Debug.WriteLine(
+                $"[COMPOSITION-TRACE] Compositor draw succeeded; notifying backend reason={frame.Reason} " +
+                $"backend={target.BackendName} target={target.Width}x{target.Height}.");
+        }
+
+        Surfaces.NotifyFramePresented(
+            State.IsNativeLiveResizeInProgress,
+            syncImmediate: true,
+            () => isDisposed,
+            () => framePresented(target.Width, target.Height));
+
+        return true;
     }
 
     public bool PresentDxCdgSnapshotVisible(
@@ -301,7 +360,7 @@ internal sealed class D3D11RendererPresentationServices
                 $"target={target.Width}x{target.Height} backend={target.BackendName} targetRevision={target.Revision}");
         }
 
-        if (!DxCdgPresenter.PresentToTarget(
+        if (!MediaCompositor.PresentToTarget(
                 _deviceResources,
                 snapshot,
                 target.Texture,
@@ -333,7 +392,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public void CleanupResources()
     {
-        DxCdgPresenter.Reset();
+        MediaCompositor.Reset();
         ResourceCleaner.CleanupResources();
     }
 
@@ -352,7 +411,7 @@ internal sealed class D3D11RendererPresentationServices
     public D3D11PresentationRenderTargetViewCache RenderTargetViewCache { get; }
 
 
-    public DxCdgD3D11TexturePresenter DxCdgPresenter { get; }
+    public D3D11MediaCompositionPresenter MediaCompositor { get; }
 
     public D3D11FrameUploadResources UploadResources { get; }
 

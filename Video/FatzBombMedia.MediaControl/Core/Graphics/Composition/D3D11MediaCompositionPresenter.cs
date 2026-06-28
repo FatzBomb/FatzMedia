@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.Geometry;
 using SharpGen.Runtime;
@@ -11,13 +12,13 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 
-namespace FatzBombMedia.MediaControl.Core.DxCdg;
+namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
 /// <summary>
-/// DX11-side DXCDG presenter. It consumes indexed CDG state as GPU resources and
-/// renders through a palette shader directly into the active presentation target. The presenter is the live CDG visual path.
+/// D3D11 implementation of the single media compositor. It draws an optional
+/// background/base layer, optional wash layer, optional DXCDG foreground overlay, then presents once.
 /// </summary>
-internal sealed class DxCdgD3D11TexturePresenter
+internal sealed class D3D11MediaCompositionPresenter
 {
     private readonly byte[] _paletteBgra = new byte[DxCdgConstants.ColorCount * 4];
 
@@ -30,6 +31,7 @@ internal sealed class DxCdgD3D11TexturePresenter
     private int _backgroundWidth;
     private int _backgroundHeight;
     private int _backgroundStride;
+    private long _lastBackgroundRevision = -1;
 
     private ID3D11Texture2D? _indexTexture;
     private ID3D11ShaderResourceView? _indexShaderResourceView;
@@ -57,6 +59,7 @@ internal sealed class DxCdgD3D11TexturePresenter
         _lastPresentedRevision = -1;
         _lastPaletteRevision = -1;
         _lastDrawnRevision = -1;
+        _lastBackgroundRevision = -1;
         _lastLoggedRevisionSecond = -1;
         _pipelineFailed = false;
         ReleaseResources();
@@ -117,6 +120,7 @@ internal sealed class DxCdgD3D11TexturePresenter
         _backgroundWidth = 0;
         _backgroundHeight = 0;
         _backgroundStride = 0;
+        _lastBackgroundRevision = -1;
         ReleaseBackgroundResources();
     }
 
@@ -129,66 +133,138 @@ internal sealed class DxCdgD3D11TexturePresenter
         string backendName,
         long targetRevision,
         bool retainedRefresh = false)
+        => PresentToTarget(
+            deviceResources,
+            new MediaCompositionFrame
+            {
+                ClearMode = MediaCompositionClearMode.Black,
+                ClearArgb = 0xFF000000,
+                WashArgb = snapshot.BackgroundWashArgb,
+                CdgOverlay = snapshot,
+                RetainedRefresh = retainedRefresh,
+                Reason = retainedRefresh ? "retained-dxcdg" : "dxcdg"
+            },
+            targetTexture,
+            targetWidth,
+            targetHeight,
+            backendName,
+            targetRevision);
+
+    public bool PresentToTarget(
+        D3D11DeviceResources deviceResources,
+        MediaCompositionFrame frame,
+        ID3D11Texture2D targetTexture,
+        int targetWidth,
+        int targetHeight,
+        string backendName,
+        long targetRevision)
     {
         if (deviceResources.Device == null
             || deviceResources.Context == null
             || targetTexture == null
-            || snapshot.ColorIndices.IsEmpty
-            || snapshot.PaletteArgb.IsEmpty
             || targetWidth <= 0
             || targetHeight <= 0)
         {
-            Debug.WriteLine($"[DXCDG-D3D11] Visible present skipped: invalid device/target/snapshot target={targetWidth}x{targetHeight} revision={snapshot.Revision}.");
+            Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: invalid device/target target={targetWidth}x{targetHeight} reason={frame.Reason}.");
             return false;
         }
 
         try
         {
-            EnsureResources(deviceResources.Device);
-            if (_indexTexture == null || _paletteTexture == null)
+            if (frame.HasBackground)
             {
-                Debug.WriteLine("[DXCDG-D3D11] Visible present skipped: index/palette resources were not created.");
-                return false;
+                EnsureCompositionBackgroundFrame(deviceResources, frame);
+            }
+            else
+            {
+                ClearBackgroundFrame();
             }
 
-            if (snapshot.Revision != _lastPresentedRevision)
+            var snapshot = frame.CdgOverlay;
+            if (frame.HasCdgOverlay && snapshot != null)
             {
-                UploadIndexTexture(deviceResources.Context, snapshot);
-                UploadPaletteTextureIfNeeded(deviceResources.Context, snapshot);
-                _lastPresentedRevision = snapshot.Revision;
+                EnsureResources(deviceResources.Device);
+                if (_indexTexture == null || _paletteTexture == null)
+                {
+                    Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: DXCDG index/palette resources were not created.");
+                    return false;
+                }
+
+                if (snapshot.Revision != _lastPresentedRevision)
+                {
+                    UploadIndexTexture(deviceResources.Context, snapshot);
+                    UploadPaletteTextureIfNeeded(deviceResources.Context, snapshot);
+                    _lastPresentedRevision = snapshot.Revision;
+                }
             }
 
-            if (!EnsureDrawPipeline(deviceResources.Device))
+            if (frame.HasAnyVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
             {
-                Debug.WriteLine("[DXCDG-D3D11] Visible present skipped: shader pipeline is unavailable.");
+                Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: shader pipeline is unavailable.");
                 return false;
             }
 
             using var targetRenderView = deviceResources.Device.CreateRenderTargetView(targetTexture);
-            if (!retainedRefresh)
+            if (!frame.RetainedRefresh)
             {
-                LogVisibleAttempt(snapshot, targetWidth, targetHeight, backendName, targetRevision);
+                LogVisibleAttempt(frame, targetWidth, targetHeight, backendName, targetRevision);
             }
+
             var drew = DrawToRenderTarget(
                 deviceResources.Context,
-                snapshot,
+                frame,
                 targetWidth,
                 targetHeight,
                 targetRenderView,
-                clearTarget: true);
+                clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious);
 
-            if (drew && !retainedRefresh)
+            if (drew && !frame.RetainedRefresh)
             {
-                LogVisiblePresent(snapshot, targetWidth, targetHeight, backendName, targetRevision);
+                LogVisiblePresent(frame, targetWidth, targetHeight, backendName, targetRevision);
             }
 
             return drew;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[DXCDG-D3D11] Visible target present failed: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[COMPOSITION-D3D11] Visible target present failed: {ex.GetType().Name}: {ex.Message}");
             Reset();
             return false;
+        }
+    }
+
+
+    private void EnsureCompositionBackgroundFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame)
+    {
+        if (!frame.HasBackground)
+        {
+            ClearBackgroundFrame();
+            return;
+        }
+
+        var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == _lastBackgroundRevision;
+        var dimensionsMatch = _hasBackgroundFrame
+            && _backgroundWidth == frame.BackgroundWidth
+            && _backgroundHeight == frame.BackgroundHeight
+            && _backgroundStride == frame.BackgroundStride
+            && _backgroundForceZoomToFill == frame.BackgroundUniformToFill;
+
+        if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
+        {
+            return;
+        }
+
+        SetBackgroundFrame(
+            deviceResources,
+            frame.BackgroundBgra.Span,
+            frame.BackgroundWidth,
+            frame.BackgroundHeight,
+            frame.BackgroundStride,
+            frame.BackgroundUniformToFill);
+
+        if (_hasBackgroundFrame)
+        {
+            _lastBackgroundRevision = frame.BackgroundRevision;
         }
     }
 
@@ -304,65 +380,83 @@ internal sealed class DxCdgD3D11TexturePresenter
 
     private bool DrawToRenderTarget(
         ID3D11DeviceContext context,
-        DxCdgRenderSnapshot snapshot,
+        MediaCompositionFrame frame,
         int outputWidth,
         int outputHeight,
         ID3D11RenderTargetView renderTargetView,
         bool clearTarget)
     {
-        if (_indexShaderResourceView == null
-            || _paletteShaderResourceView == null
-            || _constantBuffer == null
-            || _vertexShader == null
-            || _pixelShader == null
-            || _samplerState == null
-            || _blendState == null
-            || _rasterizerState == null)
+        if (frame.HasAnyVisibleLayer
+            && (_constantBuffer == null
+                || _vertexShader == null
+                || _samplerState == null
+                || _blendState == null
+                || _rasterizerState == null))
         {
             return false;
         }
 
-        var cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
-        var cdgLeft = (int)Math.Round(cdgRect.Left);
-        var cdgTop = (int)Math.Round(cdgRect.Top);
-        var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
-        var cdgBottom = cdgTop + Math.Max(1, (int)Math.Round(cdgRect.Height));
-
-        var cdgDestination = new RectD(cdgLeft, cdgTop, cdgRight - cdgLeft, cdgBottom - cdgTop);
-
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
         context.IASetInputLayout(null);
-        context.VSSetShader(_vertexShader);
         context.RSSetViewport(new Viewport(0, 0, outputWidth, outputHeight));
-        context.RSSetState(_rasterizerState);
         context.OMSetRenderTargets(renderTargetView);
-        context.OMSetBlendState(_blendState);
-        context.PSSetSampler(0, _samplerState);
 
         if (clearTarget)
         {
-            // Layer 0 defaults to black/blank. Background image/video, when present, is
-            // drawn next. The CDG background wash is always a separate full-viewport
-            // layer so its opacity behaves the same for CDG-only, CDG+image, and CDG+video.
-            context.ClearRenderTargetView(renderTargetView, new Color4(0, 0, 0, 1));
+            context.ClearRenderTargetView(renderTargetView, ResolveClearColor(frame));
         }
 
-        if (_hasBackgroundFrame
+        if (frame.HasAnyVisibleLayer)
+        {
+            context.VSSetShader(_vertexShader);
+            context.RSSetState(_rasterizerState);
+            context.OMSetBlendState(_blendState);
+            context.PSSetSampler(0, _samplerState);
+        }
+
+        if (frame.HasBackground
+            && _hasBackgroundFrame
             && _backgroundShaderResourceView != null
             && _backgroundPixelShader != null)
         {
             DrawBackgroundLayer(context, outputWidth, outputHeight);
         }
 
-        DrawWashLayer(context, outputWidth, outputHeight, snapshot.BackgroundWashArgb);
+        if (frame.HasWash)
+        {
+            DrawWashLayer(context, outputWidth, outputHeight, frame.WashArgb);
+        }
 
-        SetQuadConstants(
-            context,
-            cdgDestination,
-            outputWidth,
-            outputHeight,
-            new Vector4(DxCdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
-        DrawCdgForegroundLayer(context);
+        var snapshot = frame.CdgOverlay;
+        if (frame.HasCdgOverlay && snapshot != null)
+        {
+            if (_indexShaderResourceView == null
+                || _paletteShaderResourceView == null
+                || _pixelShader == null)
+            {
+                return false;
+            }
+
+            var cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
+            var cdgLeft = (int)Math.Round(cdgRect.Left);
+            var cdgTop = (int)Math.Round(cdgRect.Top);
+            var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
+            var cdgBottom = cdgTop + Math.Max(1, (int)Math.Round(cdgRect.Height));
+            var cdgDestination = new RectD(cdgLeft, cdgTop, cdgRight - cdgLeft, cdgBottom - cdgTop);
+
+            SetQuadConstants(
+                context,
+                cdgDestination,
+                outputWidth,
+                outputHeight,
+                new Vector4(DxCdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
+            DrawCdgForegroundLayer(context);
+            _lastDrawnRevision = snapshot.Revision;
+        }
+        else
+        {
+            _lastDrawnRevision = -1;
+        }
 
         context.PSSetShaderResource(0, null);
         context.PSSetShaderResource(1, null);
@@ -372,8 +466,18 @@ internal sealed class DxCdgD3D11TexturePresenter
         context.RSSetState(null);
         context.OMSetRenderTargets((ID3D11RenderTargetView?)null);
         context.Flush();
-        _lastDrawnRevision = snapshot.Revision;
         return true;
+    }
+
+    private static Color4 ResolveClearColor(MediaCompositionFrame frame)
+    {
+        return frame.ClearMode switch
+        {
+            MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
+            MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
+            MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
+            _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
+        };
     }
 
     private void DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight)
@@ -550,22 +654,31 @@ internal sealed class DxCdgD3D11TexturePresenter
 
 
 
-    private void LogVisibleAttempt(DxCdgRenderSnapshot snapshot, int outputWidth, int outputHeight, string backendName, long targetRevision)
+    private void LogVisibleAttempt(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
     {
+        var snapshot = frame.CdgOverlay;
+        if (snapshot == null)
+        {
+            Debug.WriteLine(
+                $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
+                $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasBackground} " +
+                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
+            return;
+        }
+
         var stats = CountIndexStats(snapshot);
         Debug.WriteLine(
-            $"[DXCDG-D3D11] Drawing active target revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
+            $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
-            $"bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
-            $"backgroundFrame={_hasBackgroundFrame} background={_backgroundWidth}x{_backgroundHeight} " +
-            $"nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
+            $"clear={frame.ClearMode} bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
+            $"backgroundFrame={frame.HasBackground} background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} " +
+            $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
             $"hist=[{stats.Histogram}]");
 
         if (stats.Foreground == 0)
         {
             Debug.WriteLine(
-                $"[DXCDG-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering. " +
-                $"If lyrics are expected here, the DXCDG state machine/background-index rule is hiding them before the shader draws.");
+                $"[COMPOSITION-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering.");
         }
     }
 
@@ -616,8 +729,17 @@ internal sealed class DxCdgD3D11TexturePresenter
         return new Color4(r, g, b, a);
     }
 
-    private void LogVisiblePresent(DxCdgRenderSnapshot snapshot, int outputWidth, int outputHeight, string backendName, long targetRevision)
+    private void LogVisiblePresent(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
     {
+        var snapshot = frame.CdgOverlay;
+        if (snapshot == null)
+        {
+            Debug.WriteLine(
+                $"[COMPOSITION-D3D11] Presented composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
+                $"backend={backendName} targetRevision={targetRevision}");
+            return;
+        }
+
         var logBucket = (int)(snapshot.Revision / 300);
         if (logBucket == _lastLoggedRevisionSecond)
         {
@@ -626,7 +748,7 @@ internal sealed class DxCdgD3D11TexturePresenter
 
         _lastLoggedRevisionSecond = logBucket;
         Debug.WriteLine(
-            $"[DXCDG-D3D11] Presented active target revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
+            $"[COMPOSITION-D3D11] Presented composition revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} drawRevision={_lastDrawnRevision}");
     }
 

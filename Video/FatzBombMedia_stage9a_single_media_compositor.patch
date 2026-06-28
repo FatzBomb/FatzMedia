@@ -1,0 +1,969 @@
+diff --git a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+index 05ee58f..849e809 100644
+--- a/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
++++ b/FatzBombMedia.MediaControl/Controllers/MediaRenderer.cs
+@@ -5,6 +5,7 @@ using System.Windows;
+ using FatzBombMedia.MediaControl.Core.Abstractions;
+ using FatzBombMedia.MediaControl.Core.DxCdg;
+ using FatzBombMedia.MediaControl.Core.Graphics;
++using FatzBombMedia.MediaControl.Core.Graphics.Composition;
+ using FatzBombMedia.MediaControl.Core.Configuration;
+ using FatzBombMedia.MediaControl.Pipeline;
+ using FatzBombMedia.MediaControl.Controllers.Layering;
+@@ -336,13 +337,7 @@ public sealed class MediaRenderer : IDisposable
+ 
+     public void RefreshNativePresentation()
+     {
+-        if (HasCdgContent)
+-        {
+-            PresentRetainedDxCdgFrame();
+-            return;
+-        }
+-
+-        _graphicsRenderer.RefreshNativePresentation();
++        PresentCurrentComposition("native refresh");
+     }
+ 
+ 
+@@ -385,7 +380,8 @@ public sealed class MediaRenderer : IDisposable
+     private void OnBackgroundMediaChanged(object? sender, EventArgs e)
+     {
+         UpdateLayerState("background media changed");
+-        RefreshNativeCompositeBaseLayer();
++        RefreshLayer0BaseFrame("background media changed");
++        PresentCurrentComposition("background media changed");
+         BackgroundChanged?.Invoke(this, EventArgs.Empty);
+     }
+ 
+@@ -435,7 +431,7 @@ public sealed class MediaRenderer : IDisposable
+             _nativeCompositeBaseIsBackgroundVideo = applied && background.Kind == MediaBackgroundKind.Video;
+             UpdateLayerState($"auto background applied: {(applied ? background.Kind.ToString() : "none")}");
+             RefreshLayer0BaseFrame("auto background applied");
+-            RefreshNativeCompositeBaseLayer();
++            PresentCurrentComposition("auto background applied");
+         }
+         catch (Exception ex)
+         {
+@@ -453,7 +449,7 @@ public sealed class MediaRenderer : IDisposable
+         _nativeCompositeBaseIsBackgroundVideo = false;
+         UpdateLayerState("auto background cleared");
+         RefreshLayer0BaseFrame("auto background cleared");
+-        RefreshNativeCompositeBaseLayer();
++        PresentCurrentComposition("auto background cleared");
+         BackgroundChanged?.Invoke(this, EventArgs.Empty);
+     }
+ 
+@@ -547,7 +543,7 @@ public sealed class MediaRenderer : IDisposable
+ 
+             _stillImageSource = image;
+             RefreshLayer0BaseFrame("still image attached");
+-            RefreshNativeCompositeBaseLayer();
++            PresentCurrentComposition("still image attached");
+             ImageSourceChanged?.Invoke(this, EventArgs.Empty);
+             FramePresented?.Invoke(this, EventArgs.Empty);
+             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Still image attached: {_mediaEngine.ImagePath}");
+@@ -699,6 +695,21 @@ public sealed class MediaRenderer : IDisposable
+                 return;
+             }
+ 
++            if (!e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0)
++            {
++                _graphicsRenderer.SetCompositionBackgroundFrame(
++                    e.PixelData.Span,
++                    e.Width,
++                    e.Height,
++                    e.Stride,
++                    forceZoomToFill: false);
++                _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: false, reason: "primary video frame");
++                return;
++            }
++
++            // Temporary adapter until D3D11 texture-backed Layer 0 lands: hardware-only
++            // video frames still use the existing GPU presenter. BGRA video, images, CDG,
++            // and blank/audio-only now go through the composition path.
+             _graphicsRenderer.RenderVideoFrame(e);
+         }
+         catch (Exception ex) when (ex is TaskCanceledException || ex is InvalidOperationException)
+@@ -818,17 +829,13 @@ public sealed class MediaRenderer : IDisposable
+                 return;
+             }
+ 
+-            if (!_nativePresentationRequested)
+-            {
+-                return;
+-            }
+-
+-            _graphicsRenderer.SetNativeCompositeVideoBase(
++            _graphicsRenderer.SetCompositionBackgroundFrame(
+                 e.PixelData.Span,
+                 e.Width,
+                 e.Height,
+                 e.Stride,
+-                forceZoomToFill: HasOverlayBackgroundLayer);
++                forceZoomToFill: true);
++            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: "background video frame");
+         }
+         catch (Exception ex)
+         {
+@@ -836,46 +843,46 @@ public sealed class MediaRenderer : IDisposable
+         }
+     }
+ 
+-    private void RefreshNativeCompositeBaseLayer()
++    private void PresentCurrentComposition(string reason)
+     {
+         if (HasCdgContent)
+         {
+-            // CDG overlay sessions use the DXCDG compositor as the only visible presenter.
+-            // Layer 0 is pushed through RefreshLayer0BaseFrame; the old native composite
+-            // presenter must not draw an image/video background independently.
+-            RefreshLayer0BaseFrame("native composite refresh during CDG");
+-            return;
+-        }
+-
+-        if (!_nativePresentationRequested)
+-        {
++            PresentRetainedDxCdgFrame();
+             return;
+         }
+ 
+         if (_stillImageSource is BitmapSource stillImage)
+         {
+-            _nativeCompositeBaseIsBackgroundVideo = false;
+-            _graphicsRenderer.SetNativeCompositeBase(stillImage, forceZoomToFill: false);
+-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: still image {stillImage.PixelWidth}x{stillImage.PixelHeight}");
++            _graphicsRenderer.SetCompositionBackgroundFrame(stillImage, forceZoomToFill: false);
++            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: false, reason: reason);
+             return;
+         }
+ 
+-        if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaLayer.HasVideo)
++        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+         {
+-            // BackgroundMediaLayer/BackgroundVideoRenderer will push video frames through
+-            // OnBackgroundVideoFrameReady. The background-video role is stable even before the
+-            // first frame arrives, so do not clear/reclassify the native base here.
++            _graphicsRenderer.SetCompositionBackgroundFrame(backgroundImage, forceZoomToFill: true);
++            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: reason);
+             return;
+         }
+ 
+-        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
++        if (_backgroundMediaLayer.HasVideo || _nativeCompositeBaseIsBackgroundVideo)
+         {
+-            _graphicsRenderer.SetNativeCompositeBase(backgroundImage, forceZoomToFill: HasOverlayBackgroundLayer);
+-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: background image {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
++            // Background video will present on its next decoded frame. Keep the last
++            // composition frame rather than clearing between video frames.
+             return;
+         }
+ 
+-        _graphicsRenderer.ClearNativeCompositeBase();
++        _graphicsRenderer.ClearCompositionBackgroundFrame();
++        _graphicsRenderer.PresentEmptyComposition(MediaCompositionClearMode.Black, 0xFF000000, reason);
++    }
++
++    private void RefreshNativeCompositeBaseLayer()
++    {
++        // Legacy name retained for callers during the transition. The implementation now
++        // rebuilds/presents the single composition frame instead of using a separate native
++        // static-composite presenter.
++        RefreshLayer0BaseFrame("legacy native composite refresh routed to composition");
++        PresentCurrentComposition("legacy native composite refresh routed to composition");
+     }
+ 
+     private void RefreshLayer0BaseFrame(string reason)
+diff --git a/FatzBombMedia.MediaControl/Core/DxCdg/DxCdgD3D11TexturePresenter.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+similarity index 77%
+rename from FatzBombMedia.MediaControl/Core/DxCdg/DxCdgD3D11TexturePresenter.cs
+rename to FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+index 0c2258b..6f5c77e 100644
+--- a/FatzBombMedia.MediaControl/Core/DxCdg/DxCdgD3D11TexturePresenter.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+@@ -3,6 +3,7 @@ using System.Linq;
+ using System.Numerics;
+ using System.Runtime.InteropServices;
+ using System.Text;
++using FatzBombMedia.MediaControl.Core.DxCdg;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
+ using FatzBombMedia.MediaControl.Core.Graphics.Geometry;
+ using SharpGen.Runtime;
+@@ -11,13 +12,13 @@ using Vortice.Direct3D11;
+ using Vortice.DXGI;
+ using Vortice.Mathematics;
+ 
+-namespace FatzBombMedia.MediaControl.Core.DxCdg;
++namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
+ 
+ /// <summary>
+-/// DX11-side DXCDG presenter. It consumes indexed CDG state as GPU resources and
+-/// renders through a palette shader directly into the active presentation target. The presenter is the live CDG visual path.
++/// D3D11 implementation of the single media compositor. It draws an optional
++/// background/base layer, optional wash layer, optional DXCDG foreground overlay, then presents once.
+ /// </summary>
+-internal sealed class DxCdgD3D11TexturePresenter
++internal sealed class D3D11MediaCompositionPresenter
+ {
+     private readonly byte[] _paletteBgra = new byte[DxCdgConstants.ColorCount * 4];
+ 
+@@ -129,64 +130,107 @@ internal sealed class DxCdgD3D11TexturePresenter
+         string backendName,
+         long targetRevision,
+         bool retainedRefresh = false)
++        => PresentToTarget(
++            deviceResources,
++            new MediaCompositionFrame
++            {
++                ClearMode = MediaCompositionClearMode.Black,
++                ClearArgb = 0xFF000000,
++                WashArgb = snapshot.BackgroundWashArgb,
++                CdgOverlay = snapshot,
++                RetainedRefresh = retainedRefresh,
++                Reason = retainedRefresh ? "retained-dxcdg" : "dxcdg"
++            },
++            targetTexture,
++            targetWidth,
++            targetHeight,
++            backendName,
++            targetRevision);
++
++    public bool PresentToTarget(
++        D3D11DeviceResources deviceResources,
++        MediaCompositionFrame frame,
++        ID3D11Texture2D targetTexture,
++        int targetWidth,
++        int targetHeight,
++        string backendName,
++        long targetRevision)
+     {
+         if (deviceResources.Device == null
+             || deviceResources.Context == null
+             || targetTexture == null
+-            || snapshot.ColorIndices.IsEmpty
+-            || snapshot.PaletteArgb.IsEmpty
+             || targetWidth <= 0
+             || targetHeight <= 0)
+         {
+-            Debug.WriteLine($"[DXCDG-D3D11] Visible present skipped: invalid device/target/snapshot target={targetWidth}x{targetHeight} revision={snapshot.Revision}.");
++            Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: invalid device/target target={targetWidth}x{targetHeight} reason={frame.Reason}.");
+             return false;
+         }
+ 
+         try
+         {
+-            EnsureResources(deviceResources.Device);
+-            if (_indexTexture == null || _paletteTexture == null)
++            if (frame.HasBackground)
+             {
+-                Debug.WriteLine("[DXCDG-D3D11] Visible present skipped: index/palette resources were not created.");
+-                return false;
++                SetBackgroundFrame(
++                    deviceResources,
++                    frame.BackgroundBgra.Span,
++                    frame.BackgroundWidth,
++                    frame.BackgroundHeight,
++                    frame.BackgroundStride,
++                    frame.BackgroundUniformToFill);
++            }
++            else
++            {
++                ClearBackgroundFrame();
+             }
+ 
+-            if (snapshot.Revision != _lastPresentedRevision)
++            var snapshot = frame.CdgOverlay;
++            if (frame.HasCdgOverlay && snapshot != null)
+             {
+-                UploadIndexTexture(deviceResources.Context, snapshot);
+-                UploadPaletteTextureIfNeeded(deviceResources.Context, snapshot);
+-                _lastPresentedRevision = snapshot.Revision;
++                EnsureResources(deviceResources.Device);
++                if (_indexTexture == null || _paletteTexture == null)
++                {
++                    Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: DXCDG index/palette resources were not created.");
++                    return false;
++                }
++
++                if (snapshot.Revision != _lastPresentedRevision)
++                {
++                    UploadIndexTexture(deviceResources.Context, snapshot);
++                    UploadPaletteTextureIfNeeded(deviceResources.Context, snapshot);
++                    _lastPresentedRevision = snapshot.Revision;
++                }
+             }
+ 
+-            if (!EnsureDrawPipeline(deviceResources.Device))
++            if (frame.HasAnyVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
+             {
+-                Debug.WriteLine("[DXCDG-D3D11] Visible present skipped: shader pipeline is unavailable.");
++                Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: shader pipeline is unavailable.");
+                 return false;
+             }
+ 
+             using var targetRenderView = deviceResources.Device.CreateRenderTargetView(targetTexture);
+-            if (!retainedRefresh)
++            if (!frame.RetainedRefresh)
+             {
+-                LogVisibleAttempt(snapshot, targetWidth, targetHeight, backendName, targetRevision);
++                LogVisibleAttempt(frame, targetWidth, targetHeight, backendName, targetRevision);
+             }
++
+             var drew = DrawToRenderTarget(
+                 deviceResources.Context,
+-                snapshot,
++                frame,
+                 targetWidth,
+                 targetHeight,
+                 targetRenderView,
+-                clearTarget: true);
++                clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious);
+ 
+-            if (drew && !retainedRefresh)
++            if (drew && !frame.RetainedRefresh)
+             {
+-                LogVisiblePresent(snapshot, targetWidth, targetHeight, backendName, targetRevision);
++                LogVisiblePresent(frame, targetWidth, targetHeight, backendName, targetRevision);
+             }
+ 
+             return drew;
+         }
+         catch (Exception ex)
+         {
+-            Debug.WriteLine($"[DXCDG-D3D11] Visible target present failed: {ex.GetType().Name}: {ex.Message}");
++            Debug.WriteLine($"[COMPOSITION-D3D11] Visible target present failed: {ex.GetType().Name}: {ex.Message}");
+             Reset();
+             return false;
+         }
+@@ -304,65 +348,83 @@ internal sealed class DxCdgD3D11TexturePresenter
+ 
+     private bool DrawToRenderTarget(
+         ID3D11DeviceContext context,
+-        DxCdgRenderSnapshot snapshot,
++        MediaCompositionFrame frame,
+         int outputWidth,
+         int outputHeight,
+         ID3D11RenderTargetView renderTargetView,
+         bool clearTarget)
+     {
+-        if (_indexShaderResourceView == null
+-            || _paletteShaderResourceView == null
+-            || _constantBuffer == null
+-            || _vertexShader == null
+-            || _pixelShader == null
+-            || _samplerState == null
+-            || _blendState == null
+-            || _rasterizerState == null)
++        if (frame.HasAnyVisibleLayer
++            && (_constantBuffer == null
++                || _vertexShader == null
++                || _samplerState == null
++                || _blendState == null
++                || _rasterizerState == null))
+         {
+             return false;
+         }
+ 
+-        var cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
+-        var cdgLeft = (int)Math.Round(cdgRect.Left);
+-        var cdgTop = (int)Math.Round(cdgRect.Top);
+-        var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
+-        var cdgBottom = cdgTop + Math.Max(1, (int)Math.Round(cdgRect.Height));
+-
+-        var cdgDestination = new RectD(cdgLeft, cdgTop, cdgRight - cdgLeft, cdgBottom - cdgTop);
+-
+         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+         context.IASetInputLayout(null);
+-        context.VSSetShader(_vertexShader);
+         context.RSSetViewport(new Viewport(0, 0, outputWidth, outputHeight));
+-        context.RSSetState(_rasterizerState);
+         context.OMSetRenderTargets(renderTargetView);
+-        context.OMSetBlendState(_blendState);
+-        context.PSSetSampler(0, _samplerState);
+ 
+         if (clearTarget)
+         {
+-            // Layer 0 defaults to black/blank. Background image/video, when present, is
+-            // drawn next. The CDG background wash is always a separate full-viewport
+-            // layer so its opacity behaves the same for CDG-only, CDG+image, and CDG+video.
+-            context.ClearRenderTargetView(renderTargetView, new Color4(0, 0, 0, 1));
++            context.ClearRenderTargetView(renderTargetView, ResolveClearColor(frame));
+         }
+ 
+-        if (_hasBackgroundFrame
++        if (frame.HasAnyVisibleLayer)
++        {
++            context.VSSetShader(_vertexShader);
++            context.RSSetState(_rasterizerState);
++            context.OMSetBlendState(_blendState);
++            context.PSSetSampler(0, _samplerState);
++        }
++
++        if (frame.HasBackground
++            && _hasBackgroundFrame
+             && _backgroundShaderResourceView != null
+             && _backgroundPixelShader != null)
+         {
+             DrawBackgroundLayer(context, outputWidth, outputHeight);
+         }
+ 
+-        DrawWashLayer(context, outputWidth, outputHeight, snapshot.BackgroundWashArgb);
++        if (frame.HasWash)
++        {
++            DrawWashLayer(context, outputWidth, outputHeight, frame.WashArgb);
++        }
++
++        var snapshot = frame.CdgOverlay;
++        if (frame.HasCdgOverlay && snapshot != null)
++        {
++            if (_indexShaderResourceView == null
++                || _paletteShaderResourceView == null
++                || _pixelShader == null)
++            {
++                return false;
++            }
+ 
+-        SetQuadConstants(
+-            context,
+-            cdgDestination,
+-            outputWidth,
+-            outputHeight,
+-            new Vector4(DxCdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
+-        DrawCdgForegroundLayer(context);
++            var cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
++            var cdgLeft = (int)Math.Round(cdgRect.Left);
++            var cdgTop = (int)Math.Round(cdgRect.Top);
++            var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
++            var cdgBottom = cdgTop + Math.Max(1, (int)Math.Round(cdgRect.Height));
++            var cdgDestination = new RectD(cdgLeft, cdgTop, cdgRight - cdgLeft, cdgBottom - cdgTop);
++
++            SetQuadConstants(
++                context,
++                cdgDestination,
++                outputWidth,
++                outputHeight,
++                new Vector4(DxCdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
++            DrawCdgForegroundLayer(context);
++            _lastDrawnRevision = snapshot.Revision;
++        }
++        else
++        {
++            _lastDrawnRevision = -1;
++        }
+ 
+         context.PSSetShaderResource(0, null);
+         context.PSSetShaderResource(1, null);
+@@ -372,10 +434,20 @@ internal sealed class DxCdgD3D11TexturePresenter
+         context.RSSetState(null);
+         context.OMSetRenderTargets((ID3D11RenderTargetView?)null);
+         context.Flush();
+-        _lastDrawnRevision = snapshot.Revision;
+         return true;
+     }
+ 
++    private static Color4 ResolveClearColor(MediaCompositionFrame frame)
++    {
++        return frame.ClearMode switch
++        {
++            MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
++            MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
++            MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
++            _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
++        };
++    }
++
+     private void DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight)
+     {
+         var backgroundRect = _backgroundForceZoomToFill
+@@ -550,22 +622,31 @@ internal sealed class DxCdgD3D11TexturePresenter
+ 
+ 
+ 
+-    private void LogVisibleAttempt(DxCdgRenderSnapshot snapshot, int outputWidth, int outputHeight, string backendName, long targetRevision)
++    private void LogVisibleAttempt(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
+     {
++        var snapshot = frame.CdgOverlay;
++        if (snapshot == null)
++        {
++            Debug.WriteLine(
++                $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
++                $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasBackground} " +
++                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
++            return;
++        }
++
+         var stats = CountIndexStats(snapshot);
+         Debug.WriteLine(
+-            $"[DXCDG-D3D11] Drawing active target revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
++            $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
+             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
+-            $"bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
+-            $"backgroundFrame={_hasBackgroundFrame} background={_backgroundWidth}x{_backgroundHeight} " +
+-            $"nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
++            $"clear={frame.ClearMode} bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
++            $"backgroundFrame={frame.HasBackground} background={frame.BackgroundWidth}x{frame.BackgroundHeight} " +
++            $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
+             $"hist=[{stats.Histogram}]");
+ 
+         if (stats.Foreground == 0)
+         {
+             Debug.WriteLine(
+-                $"[DXCDG-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering. " +
+-                $"If lyrics are expected here, the DXCDG state machine/background-index rule is hiding them before the shader draws.");
++                $"[COMPOSITION-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering.");
+         }
+     }
+ 
+@@ -616,8 +697,17 @@ internal sealed class DxCdgD3D11TexturePresenter
+         return new Color4(r, g, b, a);
+     }
+ 
+-    private void LogVisiblePresent(DxCdgRenderSnapshot snapshot, int outputWidth, int outputHeight, string backendName, long targetRevision)
++    private void LogVisiblePresent(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
+     {
++        var snapshot = frame.CdgOverlay;
++        if (snapshot == null)
++        {
++            Debug.WriteLine(
++                $"[COMPOSITION-D3D11] Presented composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
++                $"backend={backendName} targetRevision={targetRevision}");
++            return;
++        }
++
+         var logBucket = (int)(snapshot.Revision / 300);
+         if (logBucket == _lastLoggedRevisionSecond)
+         {
+@@ -626,7 +716,7 @@ internal sealed class DxCdgD3D11TexturePresenter
+ 
+         _lastLoggedRevisionSecond = logBucket;
+         Debug.WriteLine(
+-            $"[DXCDG-D3D11] Presented active target revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
++            $"[COMPOSITION-D3D11] Presented composition revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
+             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} drawRevision={_lastDrawnRevision}");
+     }
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionClearMode.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionClearMode.cs
+new file mode 100644
+index 0000000..563c1c1
+--- /dev/null
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionClearMode.cs
+@@ -0,0 +1,12 @@
++namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
++
++/// <summary>
++/// Clear behavior for a composition frame when no layer supplies pixels for part or all of the target.
++/// </summary>
++public enum MediaCompositionClearMode
++{
++    Black,
++    Transparent,
++    ConfiguredColor,
++    PreservePrevious
++}
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+new file mode 100644
+index 0000000..4f60fe7
+--- /dev/null
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+@@ -0,0 +1,62 @@
++using FatzBombMedia.MediaControl.Core.DxCdg;
++
++namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
++
++/// <summary>
++/// Generic visual-frame description consumed by the single media compositor.
++/// All media modes build one of these frames: video/image/audio background, optional wash,
++/// optional overlay graphics, then one final present.
++/// </summary>
++public readonly record struct MediaCompositionFrame
++{
++    public MediaCompositionClearMode ClearMode { get; init; }
++    public uint ClearArgb { get; init; }
++
++    public ReadOnlyMemory<byte> BackgroundBgra { get; init; }
++    public int BackgroundWidth { get; init; }
++    public int BackgroundHeight { get; init; }
++    public int BackgroundStride { get; init; }
++    public bool BackgroundUniformToFill { get; init; }
++
++    public uint WashArgb { get; init; }
++    public DxCdgRenderSnapshot? CdgOverlay { get; init; }
++
++    public bool RetainedRefresh { get; init; }
++    public string Reason { get; init; }
++
++    public bool HasBackground => !BackgroundBgra.IsEmpty
++        && BackgroundWidth > 0
++        && BackgroundHeight > 0
++        && BackgroundStride >= BackgroundWidth * 4;
++
++    public bool HasWash => ((WashArgb >> 24) & 0xFF) != 0;
++
++    public bool HasCdgOverlay
++    {
++        get
++        {
++            var overlay = CdgOverlay;
++            return overlay != null
++                && !overlay.ColorIndices.IsEmpty
++                && !overlay.PaletteArgb.IsEmpty;
++        }
++    }
++
++    public bool HasAnyVisibleLayer => HasBackground || HasWash || HasCdgOverlay;
++
++    public static MediaCompositionFrame Empty(MediaCompositionClearMode clearMode = MediaCompositionClearMode.Black, uint clearArgb = 0xFF000000, string reason = "empty")
++        => new()
++        {
++            ClearMode = clearMode,
++            ClearArgb = clearArgb,
++            BackgroundBgra = ReadOnlyMemory<byte>.Empty,
++            BackgroundWidth = 0,
++            BackgroundHeight = 0,
++            BackgroundStride = 0,
++            BackgroundUniformToFill = false,
++            WashArgb = 0,
++            CdgOverlay = null,
++            RetainedRefresh = false,
++            Reason = reason
++        };
++}
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
+index 84226bb..e01ac71 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs
+@@ -1,5 +1,6 @@
+ using FatzBombMedia.MediaControl.Core.Configuration;
+ using FatzBombMedia.MediaControl.Core.DxCdg;
++using FatzBombMedia.MediaControl.Core.Graphics.Composition;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
+@@ -35,7 +36,7 @@ internal sealed class D3D11RendererPresentationServices
+         Diagnostics = new D3D11PresentationDiagnostics(configuration);
+         State = new D3D11PresentationState();
+         RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
+-        DxCdgPresenter = new DxCdgD3D11TexturePresenter();
++        MediaCompositor = new D3D11MediaCompositionPresenter();
+ 
+         var nativeHwndBackend = new D3D11NativeHwndSwapChainBackend(
+             configuration,
+@@ -263,12 +264,70 @@ internal sealed class D3D11RendererPresentationServices
+             return;
+         }
+ 
+-        DxCdgPresenter.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
++        MediaCompositor.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
+     }
+ 
+     public void ClearDxCdgBackgroundFrame()
+     {
+-        DxCdgPresenter.ClearBackgroundFrame();
++        MediaCompositor.ClearBackgroundFrame();
++    }
++
++    public bool PresentMediaCompositionVisible(
++        bool isDisposed,
++        MediaCompositionFrame frame,
++        int outputWidth,
++        int outputHeight,
++        Action<int, int> framePresented)
++    {
++        if (isDisposed || !_deviceResources.HasDevice)
++        {
++            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: renderer disposed or D3D11 device unavailable.");
++            return false;
++        }
++
++        if (!Surfaces.TryGetActiveTargetSnapshot(
++                applyPendingNativeResize: true,
++                reason: "media composition presentation",
++                out var target))
++        {
++            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: no active D3D11 presentation target.");
++            return false;
++        }
++
++        if (!frame.RetainedRefresh)
++        {
++            Debug.WriteLine(
++                $"[COMPOSITION-TRACE] Present active target reason={frame.Reason} target={target.Width}x{target.Height} " +
++                $"backend={target.BackendName} targetRevision={target.Revision}");
++        }
++
++        if (!MediaCompositor.PresentToTarget(
++                _deviceResources,
++                frame,
++                target.Texture,
++                target.Width,
++                target.Height,
++                target.BackendName,
++                target.Revision))
++        {
++            Debug.WriteLine($"[COMPOSITION-TRACE] Visible present failed in media compositor reason={frame.Reason}.");
++            return false;
++        }
++
++        if (!frame.RetainedRefresh)
++        {
++            Debug.WriteLine(
++                $"[COMPOSITION-TRACE] Compositor draw succeeded; notifying backend reason={frame.Reason} " +
++                $"backend={target.BackendName} target={target.Width}x{target.Height}.");
++        }
++
++        Surfaces.NotifyFramePresented(
++            State.IsNativeLiveResizeInProgress,
++            syncImmediate: true,
++            () => isDisposed,
++            () => framePresented(target.Width, target.Height));
++
++        return true;
+     }
+ 
+     public bool PresentDxCdgSnapshotVisible(
+@@ -301,7 +360,7 @@ internal sealed class D3D11RendererPresentationServices
+                 $"target={target.Width}x{target.Height} backend={target.BackendName} targetRevision={target.Revision}");
+         }
+ 
+-        if (!DxCdgPresenter.PresentToTarget(
++        if (!MediaCompositor.PresentToTarget(
+                 _deviceResources,
+                 snapshot,
+                 target.Texture,
+@@ -333,7 +392,7 @@ internal sealed class D3D11RendererPresentationServices
+ 
+     public void CleanupResources()
+     {
+-        DxCdgPresenter.Reset();
++        MediaCompositor.Reset();
+         ResourceCleaner.CleanupResources();
+     }
+ 
+@@ -352,7 +411,7 @@ internal sealed class D3D11RendererPresentationServices
+     public D3D11PresentationRenderTargetViewCache RenderTargetViewCache { get; }
+ 
+ 
+-    public DxCdgD3D11TexturePresenter DxCdgPresenter { get; }
++    public D3D11MediaCompositionPresenter MediaCompositor { get; }
+ 
+     public D3D11FrameUploadResources UploadResources { get; }
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+index 659664b..0b2116b 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/D3D/VorticeD3D11Renderer.cs
+@@ -1,6 +1,7 @@
+ using System.Windows.Media;
+ using FatzBombMedia.MediaControl.Core.Configuration;
+ using FatzBombMedia.MediaControl.Core.DxCdg;
++using FatzBombMedia.MediaControl.Core.Graphics.Composition;
+ using System.Diagnostics;
+ using System.Threading;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
+@@ -282,6 +283,14 @@ internal sealed class VorticeD3D11Renderer : IDisposable
+         }
+     }
+ 
++    public bool PresentMediaCompositionVisible(MediaCompositionFrame frame, int outputWidth, int outputHeight)
++    {
++        lock (_lock)
++        {
++            return _presentation.PresentMediaCompositionVisible(_disposed, frame, outputWidth, outputHeight, RaisePresentedEvent);
++        }
++    }
++
+     private void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
+ 
+     private void NotifyPresented(int _width, int _height) => NotifyPresented();
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 2b599bd..01d3ede 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -1,6 +1,7 @@
+ using FatzBombMedia.MediaControl.Core.Configuration;
+ using FatzBombMedia.MediaControl.Core.DxCdg;
+ using FatzBombMedia.MediaControl.Core.Abstractions;
++using FatzBombMedia.MediaControl.Core.Graphics.Composition;
+ using FatzBombMedia.MediaControl.Core.Graphics.D3D;
+ using FatzBombMedia.MediaControl.Core.Graphics.Layers;
+ using System.Diagnostics;
+@@ -460,6 +461,20 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         _d3d11Renderer?.ClearDxCdgBackgroundFrame();
+     }
+ 
++    public void SetCompositionBackgroundFrame(BitmapSource? source, bool forceZoomToFill = false)
++        => SetDxCdgLayer0Frame(source, forceZoomToFill);
++
++    public void SetCompositionBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill = false)
++        => SetDxCdgLayer0Frame(bgraPixels, width, height, stride, forceZoomToFill);
++
++    public void ClearCompositionBackgroundFrame() => ClearDxCdgLayer0Frame();
++
++    public void PresentEmptyComposition(MediaCompositionClearMode clearMode = MediaCompositionClearMode.Black, uint clearArgb = 0xFF000000, string reason = "empty")
++        => PresentMediaComposition(MediaCompositionFrame.Empty(clearMode, clearArgb, reason));
++
++    public void PresentBackgroundComposition(bool forceZoomToFill = false, string reason = "background")
++        => PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, reason, forceZoomToFill));
++
+     /// <summary>
+     /// Sets the base visual for native composition from a WPF BitmapSource. This is used for
+     /// still images and CDG background images while native HWND presentation is active. The pixels
+@@ -838,41 +853,137 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             return;
+         }
+ 
+-        if (!EnsureD3D11ForDxCdg(snapshot.Width, snapshot.Height))
++        PresentMediaComposition(BuildCompositionFrame(
++            snapshot,
++            snapshot.BackgroundWashArgb,
++            retainedRefresh,
++            retainedRefresh ? "retained-dxcdg" : "dxcdg",
++            forceBackgroundZoomToFill: true));
++    }
++
++    public void PresentMediaComposition(MediaCompositionFrame frame)
++    {
++        if (_disposed)
+         {
+-            Debug.WriteLine($"[DXCDG-TRACE] OptimizedRenderer skipped revision={snapshot.Revision}: D3D11 renderer could not be initialized.");
++            return;
++        }
++
++        var (sourceWidth, sourceHeight) = GetCompositionSourceSize(frame);
++        if (!EnsureD3D11ForComposition(sourceWidth, sourceHeight))
++        {
++            Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer skipped reason={frame.Reason}: D3D11 renderer could not be initialized.");
+             return;
+         }
+ 
+         var renderer = _d3d11Renderer;
+         if (renderer == null || !renderer.IsReady)
+         {
+-            Debug.WriteLine($"[DXCDG-TRACE] OptimizedRenderer skipped revision={snapshot.Revision}: D3D11 renderer is null/not ready.");
++            Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer skipped reason={frame.Reason}: D3D11 renderer is null/not ready.");
+             return;
+         }
+ 
+-        var (outputWidth, outputHeight) = GetDxCdgOutputSize(snapshot);
+-        if (!retainedRefresh)
++        var (outputWidth, outputHeight) = GetCompositionOutputSize(frame, sourceWidth, sourceHeight);
++        if (!frame.RetainedRefresh)
+         {
+             Debug.WriteLine(
+-                $"[DXCDG-TRACE] OptimizedRenderer present request revision={snapshot.Revision} " +
+-                $"snapshot={snapshot.Width}x{snapshot.Height} output={outputWidth}x{outputHeight} backend={renderer.PresentationBackend}");
++                $"[COMPOSITION-TRACE] OptimizedRenderer present request reason={frame.Reason} " +
++                $"source={sourceWidth}x{sourceHeight} output={outputWidth}x{outputHeight} backend={renderer.PresentationBackend} " +
++                $"background={frame.HasBackground} wash={frame.HasWash} overlay={frame.HasCdgOverlay}");
+         }
+ 
+-        PushDxCdgBackgroundFrame(renderer);
+-
+-        if (!renderer.PresentDxCdgSnapshotVisible(snapshot, outputWidth, outputHeight, retainedRefresh))
++        if (!renderer.PresentMediaCompositionVisible(frame, outputWidth, outputHeight))
+         {
+-            Debug.WriteLine($"[DXCDG-TRACE] OptimizedRenderer present failed revision={snapshot.Revision}.");
++            Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer present failed reason={frame.Reason}.");
+             return;
+         }
+ 
+-        if (!retainedRefresh)
++        if (!frame.RetainedRefresh)
+         {
+-            Debug.WriteLine($"[DXCDG-TRACE] OptimizedRenderer present succeeded revision={snapshot.Revision}.");
++            Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer present succeeded reason={frame.Reason}.");
+         }
+     }
+ 
++    private MediaCompositionFrame BuildCompositionFrame(
++        DxCdgRenderSnapshot? cdgOverlay,
++        uint washArgb,
++        bool retainedRefresh,
++        string reason,
++        bool forceBackgroundZoomToFill)
++    {
++        byte[]? backgroundBgra;
++        int backgroundWidth;
++        int backgroundHeight;
++        int backgroundStride;
++        bool backgroundUniformToFill;
++
++        lock (_lock)
++        {
++            backgroundBgra = _dxCdgLayer0Bgra;
++            backgroundWidth = _dxCdgLayer0Width;
++            backgroundHeight = _dxCdgLayer0Height;
++            backgroundStride = _dxCdgLayer0Stride;
++            backgroundUniformToFill = forceBackgroundZoomToFill || _dxCdgLayer0ForceZoomToFill;
++        }
++
++        var hasBackground = backgroundBgra != null
++            && backgroundWidth > 0
++            && backgroundHeight > 0
++            && backgroundStride >= backgroundWidth * 4;
++
++        return new MediaCompositionFrame
++        {
++            ClearMode = MediaCompositionClearMode.Black,
++            ClearArgb = 0xFF000000,
++            BackgroundBgra = hasBackground ? backgroundBgra! : ReadOnlyMemory<byte>.Empty,
++            BackgroundWidth = hasBackground ? backgroundWidth : 0,
++            BackgroundHeight = hasBackground ? backgroundHeight : 0,
++            BackgroundStride = hasBackground ? backgroundStride : 0,
++            BackgroundUniformToFill = hasBackground && backgroundUniformToFill,
++            WashArgb = washArgb,
++            CdgOverlay = cdgOverlay,
++            RetainedRefresh = retainedRefresh,
++            Reason = reason
++        };
++    }
++
++    private static (int Width, int Height) GetCompositionSourceSize(MediaCompositionFrame frame)
++    {
++        if (frame.CdgOverlay != null)
++        {
++            return (Math.Max(1, frame.CdgOverlay.Width), Math.Max(1, frame.CdgOverlay.Height));
++        }
++
++        if (frame.HasBackground)
++        {
++            return (Math.Max(1, frame.BackgroundWidth), Math.Max(1, frame.BackgroundHeight));
++        }
++
++        return (1, 1);
++    }
++
++    private (int Width, int Height) GetCompositionOutputSize(MediaCompositionFrame frame, int sourceWidth, int sourceHeight)
++    {
++        lock (_lock)
++        {
++            if (_lastPresentationWidth > 0 && _lastPresentationHeight > 0)
++            {
++                return (_lastPresentationWidth, _lastPresentationHeight);
++            }
++
++            if (_requestedNativePresentationWidth > 0 && _requestedNativePresentationHeight > 0)
++            {
++                return (_requestedNativePresentationWidth, _requestedNativePresentationHeight);
++            }
++
++            if (_requestedWpfPresentationWidth > 0 && _requestedWpfPresentationHeight > 0)
++            {
++                return (_requestedWpfPresentationWidth, _requestedWpfPresentationHeight);
++            }
++        }
++
++        return (Math.Max(1, sourceWidth), Math.Max(1, sourceHeight));
++    }
++
+     private void PushDxCdgBackgroundFrame(VorticeD3D11Renderer renderer)
+     {
+         byte[]? backgroundBgra;
+@@ -1062,7 +1173,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+ 
+     #region D3D11 Rendering Implementation
+ 
+-    private bool EnsureD3D11ForDxCdg(int width, int height)
++    private bool EnsureD3D11ForComposition(int width, int height)
+     {
+         if (_disposed || width <= 0 || height <= 0)
+         {

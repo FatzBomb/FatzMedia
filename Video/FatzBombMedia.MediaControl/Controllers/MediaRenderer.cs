@@ -5,6 +5,7 @@ using System.Windows;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Pipeline;
 using FatzBombMedia.MediaControl.Controllers.Layering;
@@ -336,13 +337,7 @@ public sealed class MediaRenderer : IDisposable
 
     public void RefreshNativePresentation()
     {
-        if (HasCdgContent)
-        {
-            PresentRetainedDxCdgFrame();
-            return;
-        }
-
-        _graphicsRenderer.RefreshNativePresentation();
+        PresentCurrentComposition("native refresh");
     }
 
 
@@ -385,7 +380,8 @@ public sealed class MediaRenderer : IDisposable
     private void OnBackgroundMediaChanged(object? sender, EventArgs e)
     {
         UpdateLayerState("background media changed");
-        RefreshNativeCompositeBaseLayer();
+        RefreshLayer0BaseFrame("background media changed");
+        PresentCurrentComposition("background media changed");
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -412,7 +408,7 @@ public sealed class MediaRenderer : IDisposable
         }
         else
         {
-            _graphicsRenderer.ClearDxCdgLayer0Frame();
+            _graphicsRenderer.ClearCompositionLayer0Frame();
         }
 
         if (_enableLogging)
@@ -435,7 +431,7 @@ public sealed class MediaRenderer : IDisposable
             _nativeCompositeBaseIsBackgroundVideo = applied && background.Kind == MediaBackgroundKind.Video;
             UpdateLayerState($"auto background applied: {(applied ? background.Kind.ToString() : "none")}");
             RefreshLayer0BaseFrame("auto background applied");
-            RefreshNativeCompositeBaseLayer();
+            PresentCurrentComposition("auto background applied");
         }
         catch (Exception ex)
         {
@@ -453,7 +449,7 @@ public sealed class MediaRenderer : IDisposable
         _nativeCompositeBaseIsBackgroundVideo = false;
         UpdateLayerState("auto background cleared");
         RefreshLayer0BaseFrame("auto background cleared");
-        RefreshNativeCompositeBaseLayer();
+        PresentCurrentComposition("auto background cleared");
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -547,7 +543,7 @@ public sealed class MediaRenderer : IDisposable
 
             _stillImageSource = image;
             RefreshLayer0BaseFrame("still image attached");
-            RefreshNativeCompositeBaseLayer();
+            PresentCurrentComposition("still image attached");
             ImageSourceChanged?.Invoke(this, EventArgs.Empty);
             FramePresented?.Invoke(this, EventArgs.Empty);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Still image attached: {_mediaEngine.ImagePath}");
@@ -676,7 +672,7 @@ public sealed class MediaRenderer : IDisposable
 
                 if (!e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0)
                 {
-                    _graphicsRenderer.SetDxCdgLayer0Frame(
+                    _graphicsRenderer.SetCompositionLayer0Frame(
                         e.PixelData.Span,
                         e.Width,
                         e.Height,
@@ -699,6 +695,21 @@ public sealed class MediaRenderer : IDisposable
                 return;
             }
 
+            if (!e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0)
+            {
+                _graphicsRenderer.SetCompositionBackgroundFrame(
+                    e.PixelData.Span,
+                    e.Width,
+                    e.Height,
+                    e.Stride,
+                    forceZoomToFill: false);
+                _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: false, reason: "primary video frame");
+                return;
+            }
+
+            // Temporary adapter until D3D11 texture-backed Layer 0 lands: hardware-only
+            // video frames still use the existing GPU presenter. BGRA video, images, CDG,
+            // and blank/audio-only now go through the composition path.
             _graphicsRenderer.RenderVideoFrame(e);
         }
         catch (Exception ex) when (ex is TaskCanceledException || ex is InvalidOperationException)
@@ -808,7 +819,7 @@ public sealed class MediaRenderer : IDisposable
 
             if (HasCdgContent)
             {
-                _graphicsRenderer.SetDxCdgLayer0Frame(
+                _graphicsRenderer.SetCompositionLayer0Frame(
                     e.PixelData.Span,
                     e.Width,
                     e.Height,
@@ -818,17 +829,13 @@ public sealed class MediaRenderer : IDisposable
                 return;
             }
 
-            if (!_nativePresentationRequested)
-            {
-                return;
-            }
-
-            _graphicsRenderer.SetNativeCompositeVideoBase(
+            _graphicsRenderer.SetCompositionBackgroundFrame(
                 e.PixelData.Span,
                 e.Width,
                 e.Height,
                 e.Stride,
-                forceZoomToFill: HasOverlayBackgroundLayer);
+                forceZoomToFill: true);
+            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: "background video frame");
         }
         catch (Exception ex)
         {
@@ -836,60 +843,60 @@ public sealed class MediaRenderer : IDisposable
         }
     }
 
-    private void RefreshNativeCompositeBaseLayer()
+    private void PresentCurrentComposition(string reason)
     {
         if (HasCdgContent)
         {
-            // CDG overlay sessions use the DXCDG compositor as the only visible presenter.
-            // Layer 0 is pushed through RefreshLayer0BaseFrame; the old native composite
-            // presenter must not draw an image/video background independently.
-            RefreshLayer0BaseFrame("native composite refresh during CDG");
-            return;
-        }
-
-        if (!_nativePresentationRequested)
-        {
+            PresentRetainedDxCdgFrame();
             return;
         }
 
         if (_stillImageSource is BitmapSource stillImage)
         {
-            _nativeCompositeBaseIsBackgroundVideo = false;
-            _graphicsRenderer.SetNativeCompositeBase(stillImage, forceZoomToFill: false);
-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: still image {stillImage.PixelWidth}x{stillImage.PixelHeight}");
-            return;
-        }
-
-        if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaLayer.HasVideo)
-        {
-            // BackgroundMediaLayer/BackgroundVideoRenderer will push video frames through
-            // OnBackgroundVideoFrameReady. The background-video role is stable even before the
-            // first frame arrives, so do not clear/reclassify the native base here.
+            _graphicsRenderer.SetCompositionBackgroundFrame(stillImage, forceZoomToFill: false);
+            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: false, reason: reason);
             return;
         }
 
         if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
         {
-            _graphicsRenderer.SetNativeCompositeBase(backgroundImage, forceZoomToFill: HasOverlayBackgroundLayer);
-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: background image {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
+            _graphicsRenderer.SetCompositionBackgroundFrame(backgroundImage, forceZoomToFill: true);
+            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: reason);
             return;
         }
 
-        _graphicsRenderer.ClearNativeCompositeBase();
+        if (_backgroundMediaLayer.HasVideo || _nativeCompositeBaseIsBackgroundVideo)
+        {
+            // Background video will present on its next decoded frame. Keep the last
+            // composition frame rather than clearing between video frames.
+            return;
+        }
+
+        _graphicsRenderer.ClearCompositionBackgroundFrame();
+        _graphicsRenderer.PresentEmptyComposition(MediaCompositionClearMode.Black, 0xFF000000, reason);
+    }
+
+    private void RefreshNativeCompositeBaseLayer()
+    {
+        // Legacy name retained for callers during the transition. The implementation now
+        // rebuilds/presents the single composition frame instead of using a separate native
+        // static-composite presenter.
+        RefreshLayer0BaseFrame("legacy native composite refresh routed to composition");
+        PresentCurrentComposition("legacy native composite refresh routed to composition");
     }
 
     private void RefreshLayer0BaseFrame(string reason)
     {
         if (!HasCdgContent)
         {
-            _graphicsRenderer.ClearDxCdgLayer0Frame();
+            _graphicsRenderer.ClearCompositionLayer0Frame();
             return;
         }
 
         if (_stillImageSource is BitmapSource stillImage)
         {
             _nativeCompositeBaseIsBackgroundVideo = false;
-            _graphicsRenderer.SetDxCdgLayer0Frame(stillImage, forceZoomToFill: true);
+            _graphicsRenderer.SetCompositionLayer0Frame(stillImage, forceZoomToFill: true);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): still {stillImage.PixelWidth}x{stillImage.PixelHeight}");
             return;
         }
@@ -897,7 +904,7 @@ public sealed class MediaRenderer : IDisposable
         if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
         {
             _nativeCompositeBaseIsBackgroundVideo = false;
-            _graphicsRenderer.SetDxCdgLayer0Frame(backgroundImage, forceZoomToFill: true);
+            _graphicsRenderer.SetCompositionLayer0Frame(backgroundImage, forceZoomToFill: true);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): background {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
             return;
         }
@@ -910,7 +917,7 @@ public sealed class MediaRenderer : IDisposable
             return;
         }
 
-        _graphicsRenderer.ClearDxCdgLayer0Frame();
+        _graphicsRenderer.ClearCompositionLayer0Frame();
         if (_enableVerboseLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 cleared ({reason}).");
     }
 

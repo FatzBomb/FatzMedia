@@ -66,6 +66,14 @@ indent_size = 4
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# Unused internal/private types and members
+dotnet_diagnostic.CA1812.severity = warning
+dotnet_diagnostic.CA1823.severity = warning
+dotnet_diagnostic.CA1801.severity = warning
+
+# Prefer file-scoped namespaces
+csharp_style_namespace_declarations = file_scoped:suggestion
+
 [*.xaml]
 indent_style = space
 indent_size = 4

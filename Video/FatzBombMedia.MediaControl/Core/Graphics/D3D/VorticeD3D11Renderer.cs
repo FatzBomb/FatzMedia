@@ -1,6 +1,7 @@
 using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using System.Diagnostics;
 using System.Threading;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
@@ -254,19 +255,19 @@ internal sealed class VorticeD3D11Renderer : IDisposable
         }
     }
 
-    public void SetDxCdgBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+    public void SetCompositionBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
     {
         lock (_lock)
         {
-            _presentation.SetDxCdgBackgroundFrame(_disposed, bgraPixels, width, height, stride, forceZoomToFill);
+            _presentation.SetCompositionBackgroundFrame(_disposed, bgraPixels, width, height, stride, forceZoomToFill);
         }
     }
 
-    public void ClearDxCdgBackgroundFrame()
+    public void ClearCompositionBackgroundFrame()
     {
         lock (_lock)
         {
-            _presentation.ClearDxCdgBackgroundFrame();
+            _presentation.ClearCompositionBackgroundFrame();
         }
     }
 
@@ -279,6 +280,14 @@ internal sealed class VorticeD3D11Renderer : IDisposable
             // NotifyPresented would cause a second native swap-chain Present with no redraw, which
             // flickers/blanks alternating buffers.
             return _presentation.PresentDxCdgSnapshotVisible(_disposed, snapshot, outputWidth, outputHeight, RaisePresentedEvent, retainedRefresh);
+        }
+    }
+
+    public bool PresentMediaCompositionVisible(MediaCompositionFrame frame, int outputWidth, int outputHeight)
+    {
+        lock (_lock)
+        {
+            return _presentation.PresentMediaCompositionVisible(_disposed, frame, outputWidth, outputHeight, RaisePresentedEvent);
         }
     }
 
