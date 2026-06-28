@@ -39,12 +39,12 @@ internal sealed class D3D11PresentationFramePresenter(
         if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "CPU frame upload",
-                out var target))
+                out D3D11PresentationTargetSnapshot target))
         {
             return;
         }
 
-        framePresenter.UploadCpuFrame(
+        _ = framePresenter.UploadCpuFrame(
             deviceResources,
             static () => true,
             target.Texture,
@@ -68,27 +68,16 @@ internal sealed class D3D11PresentationFramePresenter(
         int width,
         int height,
         double framesPerSecond,
-        Action<int, int> notifyPresented)
-    {
-        if (isDisposed
-            || deviceResources.Context == null
-            || !deviceResources.HasVideoProcessorSupport
-            || sourceTexturePointer == IntPtr.Zero
-            || width <= 0
-            || height <= 0)
-        {
-            return false;
-        }
-
-        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
+        Action<int, int> notifyPresented) =>
+        !isDisposed
+            && deviceResources.Context != null
+            && deviceResources.HasVideoProcessorSupport
+            && sourceTexturePointer != IntPtr.Zero
+            && width > 0
+            && height > 0 && presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "hardware frame presentation",
-                out var target))
-        {
-            return false;
-        }
-
-        return framePresenter.PresentHardwareFrame(
+                out D3D11PresentationTargetSnapshot target) && framePresenter.PresentHardwareFrame(
             deviceResources,
             static () => true,
             target.Texture,
@@ -101,7 +90,6 @@ internal sealed class D3D11PresentationFramePresenter(
             target.Height,
             presentationState.NativePresentationStretch,
             notifyPresented);
-    }
 
     public bool PresentTextureFrame(
         D3D11DeviceResources deviceResources,
@@ -125,7 +113,7 @@ internal sealed class D3D11PresentationFramePresenter(
         if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "DXCDG texture presentation",
-                out var target))
+                out D3D11PresentationTargetSnapshot target))
         {
             return false;
         }
@@ -150,18 +138,15 @@ internal sealed class D3D11PresentationFramePresenter(
 
 
     private D3D11FrameUploadPipeline.BlitToPresentationCallback CreateSnapshotBlitCallback(
-        D3D11PresentationTargetSnapshot target)
-    {
-        return (sourceTexture, sourceArraySlice, sourceWidth, sourceHeight, framesPerSecond, stretchOverride) =>
-            presentationBlitter.BlitToTarget(
-                target.Texture,
-                target.Width,
-                target.Height,
-                sourceTexture,
-                sourceArraySlice,
-                sourceWidth,
-                sourceHeight,
-                framesPerSecond,
-                stretchOverride ?? presentationState.NativePresentationStretch);
-    }
+        D3D11PresentationTargetSnapshot target) => (sourceTexture, sourceArraySlice, sourceWidth, sourceHeight, framesPerSecond, stretchOverride) =>
+                                                            presentationBlitter.BlitToTarget(
+                                                                target.Texture,
+                                                                target.Width,
+                                                                target.Height,
+                                                                sourceTexture,
+                                                                sourceArraySlice,
+                                                                sourceWidth,
+                                                                sourceHeight,
+                                                                framesPerSecond,
+                                                                stretchOverride ?? presentationState.NativePresentationStretch);
 }

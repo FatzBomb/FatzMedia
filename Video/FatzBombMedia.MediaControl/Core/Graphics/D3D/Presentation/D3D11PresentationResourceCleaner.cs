@@ -1,6 +1,7 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
+using Vortice.Direct3D11;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -18,7 +19,7 @@ internal sealed class D3D11PresentationResourceCleaner(
     public void CleanupSurfaces()
     {
         videoProcessorPresenter.Reset();
-        var activeTarget = presentationSurfaces.TargetTexture;
+        ID3D11Texture2D? activeTarget = presentationSurfaces.TargetTexture;
         var backendOwnsPresentationTexture = presentationSurfaces.OwnsTexture(activeTarget);
 
         renderTargetViewCache.Release();

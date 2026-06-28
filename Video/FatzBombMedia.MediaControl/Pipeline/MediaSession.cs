@@ -20,20 +20,11 @@ internal sealed class MediaSession : IDisposable
         ClockAudio = new ClockAudioEngine(Clock);
     }
 
-    public void AttachAudio(AudioPipeline audio)
-    {
-        Audio = audio ?? throw new ArgumentNullException(nameof(audio));
-    }
+    public void AttachAudio(AudioPipeline audio) => Audio = audio ?? throw new ArgumentNullException(nameof(audio));
 
-    public void AttachCdg(CdgPipeline cdg)
-    {
-        Cdg = cdg ?? throw new ArgumentNullException(nameof(cdg));
-    }
+    public void AttachCdg(CdgPipeline cdg) => Cdg = cdg ?? throw new ArgumentNullException(nameof(cdg));
 
-    public void AttachVideo(VideoPipeline video)
-    {
-        Video = video ?? throw new ArgumentNullException(nameof(video));
-    }
+    public void AttachVideo(VideoPipeline video) => Video = video ?? throw new ArgumentNullException(nameof(video));
 
     public void Clear()
     {

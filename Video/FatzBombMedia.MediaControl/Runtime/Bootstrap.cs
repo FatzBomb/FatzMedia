@@ -1,5 +1,4 @@
 //#pragma warning disable IDE0130
-using FatzBombMedia.MediaControl.Core.Files;
 using System.Diagnostics;
 using System.IO;
 
@@ -52,7 +51,7 @@ internal static partial class Bootstrap
                 }
 
                 searchPaths = candidatePaths;
-                
+
 
                 IsBassLoaded = LoadBass();
                 IsFfmpegLoaded = LoadFfmpeg();
@@ -61,7 +60,7 @@ internal static partial class Bootstrap
                 if (!_isInitialized)
                 {
                     Message = BuildFailureMessage();
-                    Interlocked.Exchange(ref _initOnce, 0);
+                    _ = Interlocked.Exchange(ref _initOnce, 0);
                 }
             }
             catch (Exception ex)
@@ -69,7 +68,7 @@ internal static partial class Bootstrap
                 Message = $"[Bootstrap] ❌ Exception during initialization: {ex.Message}";
                 Debug.WriteLine(Message);
                 _isInitialized = false;
-                Interlocked.Exchange(ref _initOnce, 0);
+                _ = Interlocked.Exchange(ref _initOnce, 0);
                 return IsInitialized;
             }
             return IsInitialized;
@@ -98,7 +97,7 @@ internal static partial class Bootstrap
     }
 
     private static string? GetUserPath(string? path)
-    {        
+    {
         if (string.IsNullOrWhiteSpace(path)) return null;
         if (Path.IsPathRooted(path))
         {
@@ -109,7 +108,7 @@ internal static partial class Bootstrap
             return null;
         }
 
-        string candidate = Path.Combine(AppContext.BaseDirectory, path.Trim());
+        var candidate = Path.Combine(AppContext.BaseDirectory, path.Trim());
 
         if (!Directory.Exists(candidate))
         {
@@ -120,10 +119,7 @@ internal static partial class Bootstrap
         return Path.GetFullPath(candidate);
     }
 
-    private static string[] ToNativeLibraryPathArray(string? nativeLibraryPath)
-    {
-        return string.IsNullOrWhiteSpace(nativeLibraryPath)
+    private static string[] ToNativeLibraryPathArray(string? nativeLibraryPath) => string.IsNullOrWhiteSpace(nativeLibraryPath)
             ? []
             : [nativeLibraryPath];
-    }
 }

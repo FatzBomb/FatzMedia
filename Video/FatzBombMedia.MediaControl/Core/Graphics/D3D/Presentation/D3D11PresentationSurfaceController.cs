@@ -1,6 +1,4 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
@@ -16,12 +14,10 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// </summary>
 internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends)
 {
-    private long _targetRevision;
-
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public long TargetRevision => _targetRevision;
+    public long TargetRevision { get; private set; }
     public IntPtr NativeHwnd { get; private set; }
     public bool LastActivationCreated { get; private set; }
     public ImageSource? ImageSource => backends.D3DImage.ImageSource;
@@ -50,14 +46,14 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             return false;
         }
 
-        var active = backends.Active;
+        ID3D11PresentationBackend? active = backends.Active;
         if (active == null)
         {
             LogInvalidTarget(reason, "no active backend");
             return false;
         }
 
-        var texture = active.TargetTexture;
+        ID3D11Texture2D? texture = active.TargetTexture;
         var width = active.Width;
         var height = active.Height;
         if (texture == null || width <= 0 || height <= 0)
@@ -78,7 +74,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             NativeHwnd,
             active.Kind,
             PresentationBackend,
-            _targetRevision);
+            TargetRevision);
         return snapshot.IsValid;
     }
 
@@ -92,15 +88,9 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         Debug.WriteLine($"[D3D11PresentationSurfaceController] Skipping {reason}: {detail}.");
     }
 
-    public bool OwnsTexture(ID3D11Texture2D? texture)
-    {
-        return backends.OwnsTexture(texture);
-    }
+    public bool OwnsTexture(ID3D11Texture2D? texture) => backends.OwnsTexture(texture);
 
-    public void CleanupBackends()
-    {
-        backends.Cleanup();
-    }
+    public void CleanupBackends() => backends.Cleanup();
 
     public void Reset()
     {
@@ -109,7 +99,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         Height = 0;
         NativeHwnd = IntPtr.Zero;
         LastActivationCreated = false;
-        _targetRevision++;
+        TargetRevision++;
     }
 
     public bool ActivatePresentationSurface(
@@ -122,26 +112,17 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         string description,
         string backendName,
         bool enableLogging,
-        Action<int, int, bool> notifyPresented)
-    {
-        if (isDisposed || !isValidTarget || !deviceResources.HasDevice || width <= 0 || height <= 0)
-        {
-            return false;
-        }
-
-        return activateSurface(() =>
+        Action<int, int, bool> notifyPresented) =>
+        !isDisposed && isValidTarget && deviceResources.HasDevice && width > 0 && height > 0 && activateSurface(() =>
         {
             notifyPresented(Width, Height, true);
 
             if (!enableLogging)
-            {
                 return;
-            }
 
             Debug.WriteLine($"[VorticeD3D11] Created {description} for {width}x{height}");
             Debug.WriteLine($"[VorticeD3D11] Presentation backend: {backendName}");
         });
-    }
 
     public bool CreateD3DImageSurface(
         bool isDisposed,
@@ -150,9 +131,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         int height,
         Action cleanupBeforeCreate,
         bool enableLogging,
-        Action<int, int, bool> notifyPresented)
-    {
-        return ActivatePresentationSurface(
+        Action<int, int, bool> notifyPresented) => ActivatePresentationSurface(
             isDisposed,
             true,
             deviceResources,
@@ -168,7 +147,6 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             "D3DImage",
             enableLogging,
             notifyPresented);
-    }
 
     public bool CreateNativeHwndSurface(
         bool isDisposed,
@@ -178,9 +156,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         int height,
         Action cleanupBeforeCreate,
         bool enableLogging,
-        Action<int, int, bool> notifyPresented)
-    {
-        return ActivatePresentationSurface(
+        Action<int, int, bool> notifyPresented) => ActivatePresentationSurface(
             isDisposed,
             hwnd != IntPtr.Zero,
             deviceResources,
@@ -197,7 +173,6 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             "NativeHwndSwapChain",
             enableLogging,
             notifyPresented);
-    }
 
     public bool CreateDirectCompositionSurface(
         bool isDisposed,
@@ -207,9 +182,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         int height,
         Action cleanupBeforeCreate,
         bool enableLogging,
-        Action<int, int, bool> notifyPresented)
-    {
-        return ActivatePresentationSurface(
+        Action<int, int, bool> notifyPresented) => ActivatePresentationSurface(
             isDisposed,
             hwnd != IntPtr.Zero,
             deviceResources,
@@ -226,7 +199,6 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             "DirectCompositionNativeLayers",
             enableLogging,
             notifyPresented);
-    }
 
     public bool ActivateD3DImageSurface(
         D3D11DeviceResources deviceResources,
@@ -242,7 +214,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
 
         if (LastActivationCreated)
         {
-            backends.ClearActiveTargetToBlack(deviceResources);
+            _ = backends.ClearActiveTargetToBlack(deviceResources);
             onCreated();
         }
 
@@ -264,7 +236,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
 
         if (LastActivationCreated)
         {
-            backends.ClearActiveTargetToBlack(deviceResources);
+            _ = backends.ClearActiveTargetToBlack(deviceResources);
             onCreated();
         }
 
@@ -286,7 +258,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
 
         if (LastActivationCreated)
         {
-            backends.ClearActiveTargetToBlack(deviceResources);
+            _ = backends.ClearActiveTargetToBlack(deviceResources);
             backends.DirectComposition.ClearOverlayToTransparent(deviceResources);
             onCreated();
             backends.DirectComposition.PresentOverlayAndCommit();
@@ -399,24 +371,17 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         int width,
         int height,
         int stride,
-        bool liveResize)
-    {
-        if (isDisposed || !backends.DirectComposition.IsActive || width <= 0 || height <= 0)
-        {
-            return false;
-        }
-
-        return backends.DirectComposition.UploadOverlayFrame(
-            deviceResources,
-            uploadResources.TextureCache,
-            videoProcessorPresenter,
-            pixelData,
-            width,
-            height,
-            stride,
-            liveResize,
-            uploadResources.RecordUploadWithCurrentTarget);
-    }
+        bool liveResize) =>
+            !isDisposed && backends.DirectComposition.IsActive && width > 0 && height > 0 && backends.DirectComposition.UploadOverlayFrame(
+                deviceResources,
+                uploadResources.TextureCache,
+                videoProcessorPresenter,
+                pixelData,
+                width,
+                height,
+                stride,
+                liveResize,
+                uploadResources.RecordUploadWithCurrentTarget);
 
     public void ClearPresentedFrame(
         D3D11DeviceResources deviceResources,
@@ -441,14 +406,11 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         bool liveResize,
         bool syncImmediate,
         Func<bool> isDisposed,
-        Action raiseFramePresented)
-    {
-        backends.NotifyFramePresented(
+        Action raiseFramePresented) => backends.NotifyFramePresented(
             liveResize ? 1 : 0,
             syncImmediate,
             isDisposed,
             raiseFramePresented);
-    }
 
     public void QueueNativeHwndResize(bool isDisposed, int width, int height)
     {
@@ -498,6 +460,6 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         Width = backend.Width;
         Height = backend.Height;
         NativeHwnd = nativeHwnd;
-        _targetRevision++;
+        TargetRevision++;
     }
 }

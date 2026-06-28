@@ -10,10 +10,7 @@ public sealed class MediaEffects
 {
     private readonly IMediaEngine _mediaEngine;
     private IAudioEngine? _subscribedAudioEngine;
-    private double _volume = 1.0;
-    private int _pitch = 0;
     private int _tempo = 100;
-    private bool _normalize = true;
 
     internal MediaEffects(IMediaEngine mediaEngine)
     {
@@ -33,17 +30,17 @@ public sealed class MediaEffects
 
     private void EnsureActiveAudioSubscription()
     {
-        var current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
+        IAudioEngine current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
         if (ReferenceEquals(_subscribedAudioEngine, current)) return;
 
         _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
 
         _subscribedAudioEngine = current;
         _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
-        _subscribedAudioEngine.Normalize = _normalize;
-        _subscribedAudioEngine.SetVolume(_volume);
-        _subscribedAudioEngine.SetPitch(_pitch);
-        _subscribedAudioEngine.SetTempo(_tempo - 100);
+        _subscribedAudioEngine.Normalize = Normalize;
+        _ = _subscribedAudioEngine.SetVolume(Volume);
+        _ = _subscribedAudioEngine.SetPitch(Pitch);
+        _ = _subscribedAudioEngine.SetTempo(_tempo - 100);
     }
 
     internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
@@ -53,26 +50,26 @@ public sealed class MediaEffects
     /// </summary>
     public double Volume
     {
-        get => _volume;
+        get;
         set
         {
-            _volume = Math.Clamp(value, 0.0, 1.0);
-            Audio.SetVolume(_volume);
+            field = Math.Clamp(value, 0.0, 1.0);
+            _ = Audio.SetVolume(field);
         }
-    }
+    } = 1.0;
 
     /// <summary>
     /// Gets or sets the pitch in semitones (-60 to +60).
     /// </summary>
     public int Pitch
     {
-        get => _pitch;
+        get;
         set
         {
-            _pitch = Math.Clamp(value, -60, 60);
-            Audio.SetPitch(_pitch);
+            field = Math.Clamp(value, -60, 60);
+            _ = Audio.SetPitch(field);
         }
-    }
+    } = 0;
 
     /// <summary>
     /// Gets or sets the tempo as a percentage (5 to 5000, where 100 = normal speed).
@@ -87,7 +84,7 @@ public sealed class MediaEffects
             // UI: 100 = normal, 200 = 2x speed, 50 = half speed
             // BASS: 0 = normal, 100 = 2x speed, -50 = half speed
             var bassTempoPercent = _tempo - 100;
-            Audio.SetTempo(bassTempoPercent);            
+            _ = Audio.SetTempo(bassTempoPercent);
         }
     }
 
@@ -98,16 +95,16 @@ public sealed class MediaEffects
     /// </summary>
     public bool Normalize
     {
-        get => _normalize;
+        get;
         set
         {
-            if (_normalize == value) return;
-            _normalize = value;
+            if (field == value) return;
+            field = value;
             Audio.Normalize = value;
-            
+
             Debug.WriteLine($"[MediaEffects] Normalization {(value ? "enabled" : "disabled")} by user");
         }
-    }
+    } = true;
 
     /// <summary>
     /// Gets the current normalization gain value in dB.
@@ -119,8 +116,5 @@ public sealed class MediaEffects
     /// </summary>
     public event EventHandler<double>? NormalizationGainChanged;
 
-    private void OnNormalizationGainChanged(object? sender, double gain)
-    {
-        NormalizationGainChanged?.Invoke(this, gain);
-    }
+    private void OnNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
 }

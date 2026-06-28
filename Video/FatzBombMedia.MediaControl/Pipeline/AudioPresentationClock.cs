@@ -1,6 +1,7 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using System.Diagnostics;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class AudioPresentationClock
 {
@@ -40,10 +41,7 @@ internal sealed class AudioPresentationClock
         _isRunning = true;
     }
 
-    public void Pause(double audioPositionSeconds)
-    {
-        Reset(audioPositionSeconds);
-    }
+    public void Pause(double audioPositionSeconds) => Reset(audioPositionSeconds);
 
     public double GetPosition(double audioPositionSeconds, double durationSeconds)
     {
@@ -90,10 +88,7 @@ internal sealed class AudioPresentationClock
         }
     }
 
-    private double EstimatePosition(long now)
-    {
-        return _anchorPositionSeconds + (GetElapsedSeconds(_anchorTimestamp, now) * _rate);
-    }
+    private double EstimatePosition(long now) => _anchorPositionSeconds + (GetElapsedSeconds(_anchorTimestamp, now) * _rate);
 
     private void Reanchor(double positionSeconds, long now)
     {
@@ -119,13 +114,7 @@ internal sealed class AudioPresentationClock
         return durationSeconds > 0 ? Math.Clamp(clean, 0, durationSeconds) : clean;
     }
 
-    private static double Clean(double seconds)
-    {
-        return double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
-    }
+    private static double Clean(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 
-    private static double GetElapsedSeconds(long startTimestamp, long endTimestamp)
-    {
-        return (endTimestamp - startTimestamp) / (double)Stopwatch.Frequency;
-    }
+    private static double GetElapsedSeconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) / (double)Stopwatch.Frequency;
 }

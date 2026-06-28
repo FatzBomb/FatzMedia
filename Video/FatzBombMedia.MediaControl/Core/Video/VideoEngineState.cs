@@ -1,13 +1,12 @@
-namespace FatzBombMedia.MediaControl.Core.Video
+namespace FatzBombMedia.MediaControl.Core.Video;
+
+public enum VideoEngineState
 {
-    public enum VideoEngineState
-    {
-        Null = 0,
-        Ready,
-        Playing,
-        Paused,
-        Stopped,
-        Closed,
-        Error
-    }
+    Null = 0,
+    Ready,
+    Playing,
+    Paused,
+    Stopped,
+    Closed,
+    Error
 }

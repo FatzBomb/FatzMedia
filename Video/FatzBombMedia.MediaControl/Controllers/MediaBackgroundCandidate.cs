@@ -25,14 +25,11 @@ internal sealed class MediaBackgroundCandidate
     public string? Path { get; }
     public byte[]? Data { get; }
 
-    public static MediaBackgroundCandidate FromPath(MediaBackgroundKind kind, string path)
-    {
-        return new MediaBackgroundCandidate(kind, System.IO.Path.GetFileName(path), path, data: null);
-    }
+    public static MediaBackgroundCandidate FromPath(MediaBackgroundKind kind, string path) => new(kind, System.IO.Path.GetFileName(path), path, data: null);
 
     public static MediaBackgroundCandidate FromArchiveEntry(MediaBackgroundKind kind, IArchiveEntryInfo entry)
     {
-        using var stream = entry.Size is > 0 and <= int.MaxValue
+        using MemoryStream stream = entry.Size is > 0 and <= int.MaxValue
             ? new MemoryStream((int)entry.Size.Value)
             : new MemoryStream();
 

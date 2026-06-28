@@ -4,7 +4,6 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.SwapChain;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
@@ -22,23 +21,18 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     Action resetOverlayTransientFailure) : ID3D11PresentationBackend
 {
     private IDXGISwapChain? _swapChain;
-    private ID3D11Texture2D? _targetTexture;
-    private IntPtr _hwnd;
     private int _pendingWidth;
     private int _pendingHeight;
     private bool _resizePending;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
-    public bool IsActive => _swapChain != null && _targetTexture != null && _hwnd != IntPtr.Zero;
+    public bool IsActive => _swapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public ID3D11Texture2D? TargetTexture => _targetTexture;
-    public IntPtr Hwnd => _hwnd;
+    public ID3D11Texture2D? TargetTexture { get; private set; }
+    public IntPtr Hwnd { get; private set; }
 
-    public bool Matches(IntPtr hwnd, int width, int height)
-    {
-        return IsActive && hwnd == _hwnd && width == Width && height == Height;
-    }
+    public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
     public bool Create(D3D11DeviceResources deviceResources, IntPtr hwnd, int width, int height)
     {
@@ -51,9 +45,9 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
         try
         {
-            using var dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
-            using var adapter = dxgiDevice.GetAdapter();
-            using var factory = adapter.GetParent<IDXGIFactory>();
+            using IDXGIDevice dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
+            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
+            using IDXGIFactory factory = adapter.GetParent<IDXGIFactory>();
 
             _swapChain = D3D11SwapChainFactory.CreateBestNativeSwapChain(factory, deviceResources.Device, hwnd, width, height, configuration);
             if (_swapChain == null)
@@ -62,8 +56,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
                 return false;
             }
 
-            _targetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-            _hwnd = hwnd;
+            TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            Hwnd = hwnd;
             Width = width;
             Height = height;
             _resizePending = false;
@@ -92,10 +86,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         _resizePending = width != Width || height != Height;
     }
 
-    public bool Resize(int width, int height)
-    {
-        return ResizeCore(Math.Max(1, width), Math.Max(1, height));
-    }
+    public bool Resize(int width, int height) => ResizeCore(Math.Max(1, width), Math.Max(1, height));
 
     public bool ApplyPendingResizeIfNeeded()
     {
@@ -115,15 +106,12 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         return ResizeCore(width, height);
     }
 
-    public void Present(int liveResizeFlag, bool syncImmediate)
-    {
-        D3D11SwapChainPresenter.Present(
+    public void Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
             _swapChain,
             configuration,
             liveResizeFlag,
             syncImmediate,
             diagnostics);
-    }
 
     private bool ResizeCore(int width, int height)
     {
@@ -145,17 +133,17 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             // processor output view are released through callbacks before the buffer resize.
             resetVideoProcessorState();
             releasePresentationRenderTargetView();
-            _targetTexture?.Dispose();
-            _targetTexture = null;
+            TargetTexture?.Dispose();
+            TargetTexture = null;
 
-            _swapChain.ResizeBuffers(
+            _ = _swapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
 
-            _targetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
             Width = width;
             Height = height;
             _resizePending = false;
@@ -179,11 +167,11 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
     public void Cleanup()
     {
-        _targetTexture?.Dispose();
-        _targetTexture = null;
+        TargetTexture?.Dispose();
+        TargetTexture = null;
         _swapChain?.Dispose();
         _swapChain = null;
-        _hwnd = IntPtr.Zero;
+        Hwnd = IntPtr.Zero;
         Width = 0;
         Height = 0;
         _pendingWidth = 0;
@@ -191,8 +179,5 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         _resizePending = false;
     }
 
-    public void Dispose()
-    {
-        Cleanup();
-    }
+    public void Dispose() => Cleanup();
 }

@@ -12,23 +12,20 @@ internal static class D3D11SwapChainFactory
 {
     public const int DirectCompositionBufferCount = 3;
 
-    public static SwapChainDescription1 CreateCompositionSwapChainDescription(int width, int height, AlphaMode alphaMode)
+    public static SwapChainDescription1 CreateCompositionSwapChainDescription(int width, int height, AlphaMode alphaMode) => new()
     {
-        return new SwapChainDescription1
-        {
-            Width = (uint)width,
-            Height = (uint)height,
-            Format = Format.B8G8R8A8_UNorm,
-            Stereo = false,
-            SampleDescription = new SampleDescription(1, 0),
-            BufferUsage = Usage.RenderTargetOutput,
-            BufferCount = DirectCompositionBufferCount,
-            Scaling = Scaling.Stretch,
-            SwapEffect = SwapEffect.FlipSequential,
-            AlphaMode = alphaMode,
-            Flags = SwapChainFlags.None
-        };
-    }
+        Width = (uint)width,
+        Height = (uint)height,
+        Format = Format.B8G8R8A8_UNorm,
+        Stereo = false,
+        SampleDescription = new SampleDescription(1, 0),
+        BufferUsage = Usage.RenderTargetOutput,
+        BufferCount = DirectCompositionBufferCount,
+        Scaling = Scaling.Stretch,
+        SwapEffect = SwapEffect.FlipSequential,
+        AlphaMode = alphaMode,
+        Flags = SwapChainFlags.None
+    };
 
     public static IDXGISwapChain? CreateBestNativeSwapChain(
         IDXGIFactory factory,
@@ -42,10 +39,10 @@ internal static class D3D11SwapChainFactory
         // gives DXGI/DWM a cleaner cadence than the legacy one-buffer discard chain. Some wrapper or
         // driver combinations reject flip model through this older CreateSwapChain path, so fall back
         // to the legacy chain instead of disabling native mode entirely.
-        var flipDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 2, SwapEffect.FlipSequential);
+        SwapChainDescription flipDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 2, SwapEffect.FlipSequential);
         try
         {
-            var swapChain = factory.CreateSwapChain(device, flipDescription);
+            IDXGISwapChain swapChain = factory.CreateSwapChain(device, flipDescription);
             if (configuration.EnableLogging) Debug.WriteLine("[VorticeD3D11] Native HWND swap-chain mode: FlipSequential, buffers=2");
             return swapChain;
         }
@@ -54,27 +51,24 @@ internal static class D3D11SwapChainFactory
             if (configuration.EnableLogging) Debug.WriteLine($"[VorticeD3D11] FlipSequential swap-chain unavailable; falling back to legacy Discard. Reason: {ex.Message}");
         }
 
-        var legacyDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 1, SwapEffect.Discard);
-        var legacySwapChain = factory.CreateSwapChain(device, legacyDescription);
+        SwapChainDescription legacyDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 1, SwapEffect.Discard);
+        IDXGISwapChain legacySwapChain = factory.CreateSwapChain(device, legacyDescription);
         if (configuration.EnableLogging) Debug.WriteLine("[VorticeD3D11] Native HWND swap-chain mode: Discard, buffers=1");
         return legacySwapChain;
     }
 
-    private static SwapChainDescription CreateNativeSwapChainDescription(IntPtr hwnd, int width, int height, int bufferCount, SwapEffect swapEffect)
+    private static SwapChainDescription CreateNativeSwapChainDescription(IntPtr hwnd, int width, int height, int bufferCount, SwapEffect swapEffect) => new()
     {
-        return new SwapChainDescription
-        {
-            BufferCount = (uint)bufferCount,
-            BufferDescription = new ModeDescription(
+        BufferCount = (uint)bufferCount,
+        BufferDescription = new ModeDescription(
                 (uint)width,
                 (uint)height,
                 new Rational(60, 1),
                 Format.B8G8R8A8_UNorm),
-            BufferUsage = Usage.RenderTargetOutput,
-            OutputWindow = hwnd,
-            SampleDescription = new SampleDescription(1, 0),
-            Windowed = true,
-            SwapEffect = swapEffect
-        };
-    }
+        BufferUsage = Usage.RenderTargetOutput,
+        OutputWindow = hwnd,
+        SampleDescription = new SampleDescription(1, 0),
+        Windowed = true,
+        SwapEffect = swapEffect
+    };
 }

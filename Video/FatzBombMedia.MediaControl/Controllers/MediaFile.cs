@@ -46,14 +46,14 @@ public sealed class MediaFile
 
             // Refresh renderer attachments when new media is loaded
             _mediaRenderer?.RefreshAttachments();
-            
+
             // Refresh metadata when new media is loaded
             _mediaMetadata?.Refresh();
 
             // Re-apply effect settings if this media selected a different audio engine.
             _mediaEffects?.RefreshActiveEngine();
             _cdgVisuals?.Apply();
-            
+
             // Auto-play with proper normalization timing if enabled
             if (PlayOnLoad)
             {
@@ -71,31 +71,31 @@ public sealed class MediaFile
     public bool Load(string path)
     {
         System.Diagnostics.Debug.WriteLine($"[MediaFile] Loading: {path}");
-        
+
         // Force stop any currently playing media to ensure clean state
         if (_mediaEngine.IsOpen)
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
-            _mediaControls?.Stop();
+            _ = (_mediaControls?.Stop());
         }
-        
+
         var success = _mediaEngine.Open(path);
         if (success)
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] Media opened successfully, refreshing attachments");
 
             ApplyAutoBackground(path);
-            
+
             // Refresh renderer attachments when new media is loaded
             _mediaRenderer?.RefreshAttachments();
-            
+
             // Refresh metadata when new media is loaded
             _mediaMetadata?.Refresh();
 
             // Re-apply effect settings if this media selected a different audio engine.
             _mediaEffects?.RefreshActiveEngine();
             _cdgVisuals?.Apply();
-            
+
             // Auto-play with proper normalization timing if enabled
             if (PlayOnLoad)
             {
@@ -119,12 +119,12 @@ public sealed class MediaFile
         try
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Waiting for quick normalization...");
-            
+
             // Wait for quick normalization to complete (max 2 seconds)
             await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2));
-            
+
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Quick normalization complete, starting playback");
-            
+
             // Start through MediaControls so renderer coordination and loop monitoring are active.
             var playSuccess = _mediaControls?.Play() ?? _mediaEngine.Play();
             if (playSuccess)
@@ -148,11 +148,11 @@ public sealed class MediaFile
     /// </summary>
     private async Task WaitForQuickNormalizationAsync(TimeSpan timeout)
     {
-        var audioEngine = _mediaEngine.Audio;
+        IAudioEngine audioEngine = _mediaEngine.Audio;
         if (audioEngine == null || !audioEngine.Normalize) return;
         if (audioEngine.IsNormalizationReady) return;
 
-        var startTime = DateTime.UtcNow;
+        DateTime startTime = DateTime.UtcNow;
         var gainChanged = false;
 
         // Subscribe to gain change event
@@ -163,7 +163,7 @@ public sealed class MediaFile
         }
 
         audioEngine.NormalizationGainChanged += gainHandler;
-        
+
         try
         {
             // Wait for gain change or timeout
@@ -171,7 +171,7 @@ public sealed class MediaFile
             {
                 await Task.Delay(50); // Check every 50ms
             }
-            
+
             if (!gainChanged)
             {
                 System.Diagnostics.Debug.WriteLine("[MediaFile] Quick normalization timeout - proceeding with playback");
@@ -218,7 +218,7 @@ public sealed class MediaFile
             return;
         }
 
-        var background = MediaBackgroundResolver.Resolve(path, _archiveService, _mediaEngine.Content);
+        MediaBackgroundCandidate? background = MediaBackgroundResolver.Resolve(path, _archiveService, _mediaEngine.Content);
         _mediaRenderer.ApplyAutoBackground(background);
     }
 }

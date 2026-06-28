@@ -61,7 +61,7 @@ internal sealed class D3D9InteropSurface : IDisposable
                 DeviceWindowHandle = GetDesktopWindow()
             };
 
-            var createDeviceEx = GetComDelegate<CreateDeviceExDelegate>(_direct3D, 20);
+            CreateDeviceExDelegate createDeviceEx = GetComDelegate<CreateDeviceExDelegate>(_direct3D, 20);
             result = createDeviceEx(
                 _direct3D,
                 D3DAdapterDefault,
@@ -79,7 +79,7 @@ internal sealed class D3D9InteropSurface : IDisposable
                 return false;
             }
 
-            var createTexture = GetComDelegate<CreateTextureDelegate>(_device, 23);
+            CreateTextureDelegate createTexture = GetComDelegate<CreateTextureDelegate>(_device, 23);
             var sharedHandleCopy = sharedHandle;
             result = createTexture(
                 _device,
@@ -99,7 +99,7 @@ internal sealed class D3D9InteropSurface : IDisposable
                 return false;
             }
 
-            var getSurfaceLevel = GetComDelegate<GetSurfaceLevelDelegate>(_texture, 18);
+            GetSurfaceLevelDelegate getSurfaceLevel = GetComDelegate<GetSurfaceLevelDelegate>(_texture, 18);
             result = getSurfaceLevel(_texture, 0, out _surface);
             if (result < 0 || _surface == IntPtr.Zero)
             {
@@ -147,7 +147,7 @@ internal sealed class D3D9InteropSurface : IDisposable
             return;
         }
 
-        Marshal.Release(comPointer);
+        _ = Marshal.Release(comPointer);
         comPointer = IntPtr.Zero;
     }
 

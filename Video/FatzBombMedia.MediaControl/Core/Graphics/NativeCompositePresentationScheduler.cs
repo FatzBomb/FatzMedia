@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Threading;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics;
 
@@ -92,7 +91,7 @@ internal sealed class NativeCompositePresentationScheduler
 
         if (delay <= TimeSpan.Zero)
         {
-            ThreadPool.QueueUserWorkItem(_ => RunQueuedPresent(isDisposed, isNativePresentationRequested, shouldFreezeDuringResize, present));
+            _ = ThreadPool.QueueUserWorkItem(_ => RunQueuedPresent(isDisposed, isNativePresentationRequested, shouldFreezeDuringResize, present));
             return;
         }
 

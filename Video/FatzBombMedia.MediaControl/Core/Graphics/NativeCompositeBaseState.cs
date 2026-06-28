@@ -7,9 +7,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics;
 /// </summary>
 internal sealed class NativeCompositeBaseState
 {
-    private byte[]? _bgra;
-
-    public byte[]? Bgra => _bgra;
+    public byte[]? Bgra { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
     public int Stride { get; private set; }
@@ -18,7 +16,7 @@ internal sealed class NativeCompositeBaseState
     public bool ForceZoomToFill { get; private set; }
 
     public bool HasStaticCompositeContent(bool hasCdgFrame)
-        => !IsVideo && (_bgra != null || hasCdgFrame);
+        => !IsVideo && (Bgra != null || hasCdgFrame);
 
     public bool SetCdgLayeringActive(bool active)
     {
@@ -51,24 +49,24 @@ internal sealed class NativeCompositeBaseState
         IsVideo = false;
         ForceZoomToFill = forceZoomToFill;
 
-        if (_bgra == null || _bgra.Length != requiredLength)
+        if (Bgra == null || Bgra.Length != requiredLength)
         {
-            _bgra = new byte[requiredLength];
+            Bgra = new byte[requiredLength];
         }
 
-        bgraPixels[..requiredLength].CopyTo(_bgra);
+        bgraPixels[..requiredLength].CopyTo(Bgra);
         return sizeChanged;
     }
 
     public bool SetFallbackVideoPixels(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, int requiredLength)
     {
         var sizeChanged = Width != width || Height != height;
-        if (_bgra == null || _bgra.Length != requiredLength)
+        if (Bgra == null || Bgra.Length != requiredLength)
         {
-            _bgra = new byte[requiredLength];
+            Bgra = new byte[requiredLength];
         }
 
-        bgraPixels[..requiredLength].CopyTo(_bgra);
+        bgraPixels[..requiredLength].CopyTo(Bgra);
         Width = width;
         Height = height;
         Stride = stride;
@@ -78,7 +76,7 @@ internal sealed class NativeCompositeBaseState
 
     public void ClearBase()
     {
-        _bgra = null;
+        Bgra = null;
         Width = 0;
         Height = 0;
         Stride = 0;

@@ -17,8 +17,5 @@ internal sealed class D3D11PresentationRenderTargetViewCache : IDisposable
         Current = null;
     }
 
-    public void Dispose()
-    {
-        Release();
-    }
+    public void Dispose() => Release();
 }

@@ -29,24 +29,24 @@ internal sealed class D3D11DeviceResources : IDisposable
 
         try
         {
-            var creationFlagOptions = new[]
-            {
+            DeviceCreationFlags[] creationFlagOptions =
+            [
                 DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport,
                 DeviceCreationFlags.BgraSupport
-            };
+            ];
 
             SharpGen.Runtime.Result result = default;
-            Vortice.Direct3D.FeatureLevel actualFeatureLevel = default;
-            foreach (var creationFlags in creationFlagOptions)
+            FeatureLevel actualFeatureLevel = default;
+            foreach (DeviceCreationFlags creationFlags in creationFlagOptions)
             {
                 result = D3D11.D3D11CreateDevice(
                     adapter: null,
                     driverType: DriverType.Hardware,
                     flags: creationFlags,
-                    featureLevels: [Vortice.Direct3D.FeatureLevel.Level_11_0, Vortice.Direct3D.FeatureLevel.Level_10_1],
-                    device: out var device,
+                    featureLevels: [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1],
+                    device: out ID3D11Device? device,
                     featureLevel: out actualFeatureLevel,
-                    immediateContext: out var context);
+                    immediateContext: out ID3D11DeviceContext? context);
 
                 if (!result.Failure && device != null && context != null)
                 {
@@ -119,7 +119,7 @@ internal sealed class D3D11DeviceResources : IDisposable
         VideoDevice = Device.QueryInterfaceOrNull<ID3D11VideoDevice>();
         VideoContext = Context.QueryInterfaceOrNull<ID3D11VideoContext>();
         _multithreadProtection = Device.QueryInterfaceOrNull<ID3D11Multithread>();
-        _multithreadProtection?.SetMultithreadProtected(true);
+        _ = (_multithreadProtection?.SetMultithreadProtected(true));
 
         if (VideoDevice == null || VideoContext == null)
         {
@@ -155,7 +155,7 @@ internal sealed class D3D11DeviceResources : IDisposable
 
     private static T AddRefAndWrap<T>(IntPtr pointer, Func<IntPtr, T> factory)
     {
-        Marshal.AddRef(pointer);
+        _ = Marshal.AddRef(pointer);
         return factory(pointer);
     }
 }

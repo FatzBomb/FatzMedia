@@ -1,8 +1,4 @@
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
-
-using System.Threading;
-using System.Threading.Tasks;
-
 /// <summary>
 /// UI-agnostic audio playback engine abstraction.
 /// Implementations provide decode/playback, transport controls,

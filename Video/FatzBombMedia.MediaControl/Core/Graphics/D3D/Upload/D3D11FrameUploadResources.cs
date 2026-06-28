@@ -19,33 +19,21 @@ internal sealed class D3D11FrameUploadResources(
         int sourceWidth,
         int sourceHeight,
         int presentationWidth,
-        int presentationHeight)
-    {
-        diagnostics.RecordUpload(
+        int presentationHeight) => diagnostics.RecordUpload(
             D3D11PresentationDiagnostics.ElapsedMilliseconds(startTimestamp),
             sourceWidth,
             sourceHeight,
             presentationWidth,
             presentationHeight);
-    }
 
-    public void RecordUploadWithCurrentTarget(double uploadMs, int sourceWidth, int sourceHeight)
-    {
-        diagnostics.RecordUpload(
+    public void RecordUploadWithCurrentTarget(double uploadMs, int sourceWidth, int sourceHeight) => diagnostics.RecordUpload(
             uploadMs,
             sourceWidth,
             sourceHeight,
             getPresentationWidth(),
             getPresentationHeight());
-    }
 
-    public void ReleaseCache()
-    {
-        TextureCache.Dispose();
-    }
+    public void ReleaseCache() => TextureCache.Dispose();
 
-    public void Dispose()
-    {
-        ReleaseCache();
-    }
+    public void Dispose() => ReleaseCache();
 }

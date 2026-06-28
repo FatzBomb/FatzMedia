@@ -1,7 +1,7 @@
-namespace FatzBombMedia.MediaControl.Core.Abstractions;
 
 using System.IO;
 
+namespace FatzBombMedia.MediaControl.Core.Abstractions;
 /// <summary>
 /// Provides functionality to open and work with archive files.
 /// </summary>
@@ -35,7 +35,7 @@ public interface IArchiveEntryInfo
     /// Gets the key or path identifier for the archive entry.
     /// </summary>
     string Key { get; }
-    
+
     /// <summary>
     /// Gets the size of the archive entry in bytes, or null if the size is unknown.
     /// </summary>

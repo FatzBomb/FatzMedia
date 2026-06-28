@@ -1,4 +1,3 @@
-using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -6,16 +5,15 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Controllers;
 using FatzMediaPlayer = FatzBombMedia.MediaControl.MediaPlayer;
 
-namespace FatzBombMedia.MediaControl.Wpf;
+namespace FatzBombMedia.MediaControl.Adapters.Wpf;
 
 /// <summary>
 /// Drop-in WPF media surface for FatzBombMedia.
 /// <para>
-/// Hosts bind a <see cref="FatzBombMedia.MediaControl.MediaPlayer"/> to this control instead of manually wiring an
+/// Hosts bind a <see cref="FatzMediaPlayer"/> to this control instead of manually wiring an
 /// <see cref="ImageSource"/>. The control owns the WPF presentation surface and keeps the public
 /// API independent from the underlying bitmap/D3DImage implementation.
 /// </para>
@@ -80,9 +78,9 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         _nativeSurfaceHost.NativeHandleChanged += OnNativeHandleChanged;
         _nativeSurfaceHost.NativeBoundsChanged += OnNativeBoundsChanged;
 
-        _wpfSurfaceHost.Children.Add(_wpfSurface);
-        Children.Add(_wpfSurfaceHost);
-        Children.Add(_nativeSurfaceHost);
+        _ = _wpfSurfaceHost.Children.Add(_wpfSurface);
+        _ = Children.Add(_wpfSurfaceHost);
+        _ = Children.Add(_nativeSurfaceHost);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -187,10 +185,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         set => SetValue(OverlayHitTestVisibleProperty, value);
     }
 
-    private static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        ((FatzBombMediaSurface)d).ReconnectSurface();
-    }
+    private static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => ((FatzBombMediaSurface)d).ReconnectSurface();
 
     private static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -238,28 +233,18 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
     private void LogSurface(string message)
     {
         if (Player?.Configuration.EnableLogging == true)
-        {
             Debug.WriteLine($"[FatzBombMediaSurface] {message}");
-        }
     }
 
-    private bool IsNativePresentationMode(MediaPresentationMode mode)
-    {
-        return mode == MediaPresentationMode.NativeHwnd || mode == MediaPresentationMode.NativeHwndOverlay;
-    }
+    private static bool IsNativePresentationMode(MediaPresentationMode mode) => mode is MediaPresentationMode.NativeHwnd or MediaPresentationMode.NativeHwndOverlay;
 
-    private bool ShouldUseNativePresentation()
-    {
+    private bool ShouldUseNativePresentation() =>
         // Native presentation is now the normal visual path for video, CDG, still images, and
         // CDG backgrounds. The renderer's native compositor owns those pixels; WPF/D3DImage is
         // retained only when the host explicitly selects D3DImage/WPF fallback.
-        return IsNativePresentationMode(PresentationMode);
-    }
+        IsNativePresentationMode(PresentationMode);
 
-    private bool ShouldUseNativeOverlay()
-    {
-        return PresentationMode == MediaPresentationMode.NativeHwndOverlay && ShouldUseNativePresentation();
-    }
+    private bool ShouldUseNativeOverlay() => PresentationMode == MediaPresentationMode.NativeHwndOverlay && ShouldUseNativePresentation();
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -287,7 +272,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         DisconnectSurface(resetNativeTarget: false);
 
-        var renderer = Player?.Renderer;
+        MediaRenderer? renderer = Player?.Renderer;
         if (renderer == null)
         {
             _nativeSurfaceHost.SetPresenterOwnsPixels(false);
@@ -352,7 +337,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return;
         }
 
-        var renderer = Player?.Renderer;
+        MediaRenderer? renderer = Player?.Renderer;
         renderer?.SetNativePresentationSize(_nativeSurfaceHost.NativeClientWidth, _nativeSurfaceHost.NativeClientHeight);
 
         if (!_nativeResizeInProgress)
@@ -453,10 +438,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         _nativeResizeSettleTimer.Start();
     }
 
-    private void OnNativeResizeSettleTimerTick(object? sender, EventArgs e)
-    {
-        CompleteNativeResizeFreeze(force: true);
-    }
+    private void OnNativeResizeSettleTimerTick(object? sender, EventArgs e) => CompleteNativeResizeFreeze(force: true);
 
     private void CompleteNativeResizeFreeze(bool force)
     {
@@ -478,7 +460,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             // completion path and makes the window appear to keep resizing after the user lets go.
             // Let WPF apply the final HwndHost size naturally, then apply one final native size
             // and refresh for static CDG/image content.
-            Dispatcher.BeginInvoke(new Action(() =>
+            _ = Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (_disposed || _nativeResizeInProgress || !ShouldUseNativePresentation())
                 {
@@ -577,10 +559,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         }
     }
 
-    private void OnSurfaceDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        _overlayWindow?.DataContext = DataContext;
-    }
+    private void OnSurfaceDataContextChanged(object sender, DependencyPropertyChangedEventArgs e) => _overlayWindow?.DataContext = DataContext;
 
     private void SubscribeSurfaceLayout(MediaRenderer renderer)
     {
@@ -624,10 +603,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         QueuePresentationSurfaceLayoutUpdate();
     }
 
-    private void SyncVideoDisplayModeToRenderer(MediaRenderer renderer)
-    {
-        renderer.VideoDisplayMode = VideoDisplayMode;
-    }
+    private void SyncVideoDisplayModeToRenderer(MediaRenderer renderer) => renderer.VideoDisplayMode = VideoDisplayMode;
 
     private void SyncVideoDisplayModeFromRenderer(MediaRenderer renderer)
     {
@@ -651,7 +627,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         // the native host so WM_PAINT fills black instead of leaving an uninitialized
         // gray/white client area behind.  The next real D3D present flips this back
         // to true in OnRendererFramePresented.
-        var renderer = _layoutSubscribedRenderer;
+        MediaRenderer? renderer = _layoutSubscribedRenderer;
         if (renderer?.ImageSource == null
             && string.Equals(renderer.PresentationBackend, "None", StringComparison.OrdinalIgnoreCase))
         {
@@ -686,16 +662,14 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
     private void QueueReconnectSurface()
     {
         if (_disposed || _reconnectQueued)
-        {
             return;
-        }
 
         _reconnectQueued = true;
-        Dispatcher.BeginInvoke(new Action(() =>
+        _ = Dispatcher.BeginInvoke(new Action(() =>
         {
             _reconnectQueued = false;
             ReconnectSurface();
-        }), System.Windows.Threading.DispatcherPriority.Render);
+        }), DispatcherPriority.Render);
     }
 
     private void OnRendererFramePresented(object? sender, EventArgs e)
@@ -707,43 +681,35 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         }
 
         if (_nativePresentationActive)
-        {
             // Once DXGI has presented at least one real frame, the native child HWND owns
             // its pixels. From this point on WM_PAINT/WM_ERASEBKGND must not draw GDI
             // black frames between swap-chain presents during live resize.
             _nativeSurfaceHost.SetPresenterOwnsPixels(true);
-        }
 
         // FramePresented fires for every video frame. Layout only needs to update when media
         // dimensions first become known or change between files. Updating on every frame caused
         // unnecessary WPF/D3DImage size checks during playback and made resize behavior noisy.
         if (_nativeResizeInProgress)
-        {
             return;
-        }
 
-        var renderer = _layoutSubscribedRenderer;
+        MediaRenderer? renderer = _layoutSubscribedRenderer;
         var mediaWidth = renderer?.VideoWidth ?? 0;
         var mediaHeight = renderer?.VideoHeight ?? 0;
         if (mediaWidth != _lastLayoutMediaWidth || mediaHeight != _lastLayoutMediaHeight)
-        {
             QueuePresentationSurfaceLayoutUpdate();
-        }
     }
 
     private void QueuePresentationSurfaceLayoutUpdate()
     {
         if (_disposed || _layoutUpdateQueued)
-        {
             return;
-        }
 
         _layoutUpdateQueued = true;
-        Dispatcher.BeginInvoke(new Action(() =>
+        _ = Dispatcher.BeginInvoke(new Action(() =>
         {
             _layoutUpdateQueued = false;
             UpdatePresentationSurfaceLayout();
-        }), System.Windows.Threading.DispatcherPriority.Render);
+        }), DispatcherPriority.Render);
     }
 
     /// <summary>
@@ -754,9 +720,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
     public void RefreshPresentationLayout()
     {
         if (_disposed)
-        {
             return;
-        }
 
         UpdatePresentationSurfaceLayout();
         QueueOverlayBoundsUpdate();
@@ -765,11 +729,9 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
     private void UpdatePresentationSurfaceLayout()
     {
         if (_disposed)
-        {
             return;
-        }
 
-        var renderer = Player?.Renderer;
+        MediaRenderer? renderer = Player?.Renderer;
         var mediaWidth = renderer?.VideoWidth ?? 0;
         var mediaHeight = renderer?.VideoHeight ?? 0;
         _lastLayoutMediaWidth = mediaWidth;
@@ -777,7 +739,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         if (ShouldUseNativePresentation())
         {
-            var mediaStretch = GetEffectiveMediaStretch(renderer);
+            Stretch mediaStretch = GetEffectiveMediaStretch(renderer);
             var fillViewportForCdgCompositor = renderer?.HasCdgContent == true;
 
             if (fillViewportForCdgCompositor)
@@ -830,7 +792,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return;
         }
 
-        var bounds = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, mediaStretch, includeOffsets: false);
+        (double x, double y, double width, double height) bounds = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, mediaStretch, includeOffsets: false);
         var width = Math.Max(1.0, bounds.width);
         var height = Math.Max(1.0, bounds.height);
 
@@ -848,14 +810,12 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         _nativeSurfaceHost.Height = double.NaN;
     }
 
-    private Stretch GetEffectiveMediaStretch(MediaRenderer? renderer)
-    {
+    private Stretch GetEffectiveMediaStretch(MediaRenderer? renderer) =>
         // CDG foreground content is always Zoom/Uniform.  The public VideoDisplayMode applies
         // only to primary video; background media behind CDG is handled separately as ZoomToFill.
-        return renderer?.HasCdgContent == true
+        renderer?.HasCdgContent == true
             ? Stretch.Uniform
             : CurrentVideoStretch;
-    }
 
     private void ApplyWpfSurfaceLayout(MediaRenderer? renderer, int mediaWidth, int mediaHeight)
     {
@@ -870,7 +830,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return;
         }
 
-        var (_, _, width, height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        (var _, var _, var width, var height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
 
         _wpfSurface.HorizontalAlignment = HorizontalAlignment.Center;
         _wpfSurface.VerticalAlignment = VerticalAlignment.Center;
@@ -890,8 +850,8 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return 0;
         }
 
-        var (_, _, width, _) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
-        var dpi = VisualTreeHelper.GetDpi(this);
+        (var _, var _, var width, var _) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
         return Math.Max(1, (int)Math.Round(width * dpi.DpiScaleX));
     }
 
@@ -904,8 +864,8 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return 0;
         }
 
-        var (_, _, _, height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
-        var dpi = VisualTreeHelper.GetDpi(this);
+        (var _, var _, var _, var height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
         return Math.Max(1, (int)Math.Round(height * dpi.DpiScaleY));
     }
 
@@ -969,7 +929,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             _overlayOwner.Closed += OnOverlayOwnerClosed;
         }
 
-        _overlayWindow?.Owner = _overlayOwner;
+        _ = (_overlayWindow?.Owner = _overlayOwner);
     }
 
     private void DetachOverlayOwner()
@@ -992,12 +952,10 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
     private void OnOverlayOwnerActivated(object? sender, EventArgs e) => UpdateOverlayVisibility();
 
-    private void OnOverlayOwnerDeactivated(object? sender, EventArgs e)
-    {
+    private void OnOverlayOwnerDeactivated(object? sender, EventArgs e) =>
         // Keep the owned overlay visible while the owner is deactivated. Owned windows remain above
         // their owner and should not disappear just because focus moved to a menu/dialog.
         UpdateOverlayVisibility();
-    }
 
     private void OnOverlayOwnerStateChanged(object? sender, EventArgs e) => UpdateOverlayVisibility();
 
@@ -1061,7 +1019,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             exStyle |= NativeMethods.WS_EX_TRANSPARENT;
         }
 
-        NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+        _ = NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
         _overlayWindow.IsHitTestVisible = OverlayHitTestVisible;
     }
 
@@ -1142,19 +1100,17 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         }
 
         _overlayBoundsUpdateQueued = true;
-        Dispatcher.BeginInvoke(new Action(() =>
+        _ = Dispatcher.BeginInvoke(new Action(() =>
         {
             _overlayBoundsUpdateQueued = false;
             UpdateOverlayBounds();
-        }), System.Windows.Threading.DispatcherPriority.Render);
+        }), DispatcherPriority.Render);
     }
 
     private void UpdateOverlayBounds()
     {
         if (_overlayWindow == null || !_overlayWindow.IsVisible || !ShouldUseNativeOverlay())
-        {
             return;
-        }
 
         if (ActualWidth <= 0 || ActualHeight <= 0)
         {
@@ -1165,15 +1121,13 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         AttachOverlayOwner();
         var source = PresentationSource.FromVisual(this);
         if (source?.CompositionTarget == null)
-        {
             return;
-        }
 
-        var topLeftDevice = PointToScreen(new Point(0, 0));
-        var bottomRightDevice = PointToScreen(new Point(ActualWidth, ActualHeight));
-        var fromDevice = source.CompositionTarget.TransformFromDevice;
-        var topLeft = fromDevice.Transform(topLeftDevice);
-        var bottomRight = fromDevice.Transform(bottomRightDevice);
+        Point topLeftDevice = PointToScreen(new Point(0, 0));
+        Point bottomRightDevice = PointToScreen(new Point(ActualWidth, ActualHeight));
+        Matrix fromDevice = source.CompositionTarget.TransformFromDevice;
+        Point topLeft = fromDevice.Transform(topLeftDevice);
+        Point bottomRight = fromDevice.Transform(bottomRightDevice);
         var bounds = new Rect(topLeft, bottomRight);
 
         if (bounds.Width < 1 || bounds.Height < 1)
@@ -1186,9 +1140,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             && Math.Abs(bounds.Y - _lastOverlayBounds.Y) < 0.5
             && Math.Abs(bounds.Width - _lastOverlayBounds.Width) < 0.5
             && Math.Abs(bounds.Height - _lastOverlayBounds.Height) < 0.5)
-        {
             return;
-        }
 
         _lastOverlayBounds = bounds;
         _overlayWindow.Left = bounds.X;
@@ -1232,8 +1184,6 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         private const int WM_SIZE = 0x0005;
         private const int WM_SHOWWINDOW = 0x0018;
         private const int WM_WINDOWPOSCHANGED = 0x0047;
-
-        private IntPtr _hostHwnd;
         private IntPtr _videoHwnd;
         private int _lastHostWidth;
         private int _lastHostHeight;
@@ -1248,7 +1198,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         /// Aspect ratio and letterboxing are handled inside the D3D renderer, VLC-style,
         /// instead of moving an aspect-sized child HWND during live resize.
         /// </summary>
-        public IntPtr WindowHandle => _hostHwnd;
+        public IntPtr WindowHandle { get; private set; }
 
         public int NativeClientWidth => GetCurrentClientSize().width;
 
@@ -1275,8 +1225,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         {
             mediaWidth = Math.Max(0, mediaWidth);
             mediaHeight = Math.Max(0, mediaHeight);
-
-            var mediaChanged = _mediaWidth != mediaWidth || _mediaHeight != mediaHeight || _mediaStretch != stretch;
+            _ = _mediaWidth != mediaWidth || _mediaHeight != mediaHeight || _mediaStretch != stretch;
             _mediaWidth = mediaWidth;
             _mediaHeight = mediaHeight;
             _mediaStretch = stretch;
@@ -1293,7 +1242,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
             // Single native child HWND fills the full WPF allocation. The DXGI swap-chain owns
             // painting while media is active; letterbox/pillarbox black is drawn by D3D, not GDI.
-            _hostHwnd = NativeMethods.CreateWindowEx(
+            WindowHandle = NativeMethods.CreateWindowEx(
                 0,
                 "static",
                 string.Empty,
@@ -1314,23 +1263,23 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             ApplyWindowBounds(immediate: true);
             NativeHandleChanged?.Invoke(this, EventArgs.Empty);
             NativeBoundsChanged?.Invoke(this, EventArgs.Empty);
-            return new HandleRef(this, _hostHwnd);
+            return new HandleRef(this, WindowHandle);
         }
 
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
             if (_videoHwnd != IntPtr.Zero)
             {
-                NativeMethods.DestroyWindow(_videoHwnd);
+                _ = NativeMethods.DestroyWindow(_videoHwnd);
                 _videoHwnd = IntPtr.Zero;
             }
 
             if (hwnd.Handle != IntPtr.Zero)
             {
-                NativeMethods.DestroyWindow(hwnd.Handle);
+                _ = NativeMethods.DestroyWindow(hwnd.Handle);
             }
 
-            _hostHwnd = IntPtr.Zero;
+            WindowHandle = IntPtr.Zero;
             NativeHandleChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -1358,21 +1307,21 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
             if (msg == WM_PAINT)
             {
-                if (NativeMethods.BeginPaint(hwnd, out var paint) != IntPtr.Zero)
+                if (NativeMethods.BeginPaint(hwnd, out NativeMethods.PAINTSTRUCT paint) != IntPtr.Zero)
                 {
                     if (!_presenterOwnsPixels)
                     {
                         FillNativeBackground(hwnd, paint.Hdc);
                     }
 
-                    NativeMethods.EndPaint(hwnd, ref paint);
+                    _ = NativeMethods.EndPaint(hwnd, ref paint);
                 }
 
                 handled = true;
                 return IntPtr.Zero;
             }
 
-            if (msg == WM_SIZE || msg == WM_WINDOWPOSCHANGED)
+            if (msg is WM_SIZE or WM_WINDOWPOSCHANGED)
             {
                 // WPF/HwndHost owns the actual SetWindowPos call for this HWND. Use the
                 // resulting Win32 size notifications only to refresh renderer/output sizing.
@@ -1385,7 +1334,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         private void QueueApplyWindowBounds()
         {
-            if (_hostHwnd == IntPtr.Zero)
+            if (WindowHandle == IntPtr.Zero)
             {
                 return;
             }
@@ -1396,7 +1345,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             }
 
             _boundsUpdateQueued = true;
-            Dispatcher.BeginInvoke(new Action(() =>
+            _ = Dispatcher.BeginInvoke(new Action(() =>
             {
                 _boundsUpdateQueued = false;
                 ApplyWindowBounds(immediate: false);
@@ -1405,7 +1354,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         private void ApplyWindowBounds(bool immediate)
         {
-            if (_hostHwnd == IntPtr.Zero)
+            if (WindowHandle == IntPtr.Zero)
             {
                 return;
             }
@@ -1414,7 +1363,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             // WPF owns the position and size of that returned child window. Moving it to
             // (0,0) here makes it snap to the top-left of the parent/top-level window during
             // live resize, which shows as video jitter and host-window artifacts.
-            var (hostWidth, hostHeight) = GetCurrentClientSize();
+            (var hostWidth, var hostHeight) = GetCurrentClientSize();
             if (hostWidth == _lastHostWidth && hostHeight == _lastHostHeight)
             {
                 return;
@@ -1427,7 +1376,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         private (int width, int height) GetCurrentClientSize()
         {
-            if (_hostHwnd != IntPtr.Zero && NativeMethods.GetClientRect(_hostHwnd, out var rect))
+            if (WindowHandle != IntPtr.Zero && NativeMethods.GetClientRect(WindowHandle, out NativeMethods.RECT rect))
             {
                 return (
                     Math.Max(1, rect.Right - rect.Left),
@@ -1439,24 +1388,17 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
                 Math.Max(1, (int)Math.Round(ActualHeight)));
         }
 
-        private void ApplyVideoVisibility()
-        {
-            // Single-HWND native presentation: the host HWND is always visible while native
-            // presentation is active. Media visibility is controlled by renderer content, not by
-            // showing/hiding an inner child window.
-        }
-
         private void RedrawHostBackground(bool forceSynchronous = false)
         {
-            if (_hostHwnd == IntPtr.Zero || _presenterOwnsPixels)
+            if (WindowHandle == IntPtr.Zero || _presenterOwnsPixels)
             {
                 return;
             }
 
-            NativeMethods.InvalidateRect(_hostHwnd, IntPtr.Zero, true);
+            _ = NativeMethods.InvalidateRect(WindowHandle, IntPtr.Zero, true);
             if (forceSynchronous)
             {
-                NativeMethods.UpdateWindow(_hostHwnd);
+                _ = NativeMethods.UpdateWindow(WindowHandle);
             }
         }
 
@@ -1495,7 +1437,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
         private static void FillNativeBackground(IntPtr hwnd, IntPtr hdc)
         {
-            if (!NativeMethods.GetClientRect(hwnd, out var rect))
+            if (!NativeMethods.GetClientRect(hwnd, out NativeMethods.RECT rect))
             {
                 return;
             }
@@ -1508,11 +1450,11 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
             try
             {
-                NativeMethods.FillRect(hdc, ref rect, brush);
+                _ = NativeMethods.FillRect(hdc, ref rect, brush);
             }
             finally
             {
-                NativeMethods.DeleteObject(brush);
+                _ = NativeMethods.DeleteObject(brush);
             }
         }
     }

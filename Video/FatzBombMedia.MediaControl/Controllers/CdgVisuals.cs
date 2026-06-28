@@ -8,8 +8,6 @@ namespace FatzBombMedia.MediaControl.Controllers;
 public sealed class CdgVisuals
 {
     private readonly IMediaEngine _mediaEngine;
-    private byte _backgroundOpacity = 100;
-    private uint? _backgroundOverrideArgb;
 
     internal CdgVisuals(IMediaEngine mediaEngine)
     {
@@ -19,20 +17,20 @@ public sealed class CdgVisuals
 
     public byte BackgroundOpacity
     {
-        get => _backgroundOpacity;
+        get;
         set
         {
-            _backgroundOpacity = Math.Clamp(value, (byte)0, (byte)100);
+            field = Math.Clamp(value, (byte)0, (byte)100);
             Apply();
         }
-    }
+    } = 100;
 
     public uint? BackgroundOverrideArgb
     {
-        get => _backgroundOverrideArgb;
+        get;
         set
         {
-            _backgroundOverrideArgb = value;
+            field = value;
             Apply();
         }
     }
@@ -45,10 +43,10 @@ public sealed class CdgVisuals
 
     internal void Apply()
     {
-        var cdg = _mediaEngine.Cdg;
+        ICdgEngine? cdg = _mediaEngine.Cdg;
         if (cdg == null) return;
 
-        cdg.BackgroundOpacity = _backgroundOpacity;
-        cdg.BackgroundOverrideArgb = _backgroundOverrideArgb;
+        cdg.BackgroundOpacity = BackgroundOpacity;
+        cdg.BackgroundOverrideArgb = BackgroundOverrideArgb;
     }
 }

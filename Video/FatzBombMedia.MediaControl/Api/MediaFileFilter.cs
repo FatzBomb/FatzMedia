@@ -8,7 +8,7 @@ public sealed record MediaFileFilter(string Name, IReadOnlyList<string> Extensio
 {
     public string ToOpenFileDialogFilter()
     {
-        var patterns = Extensions
+        IEnumerable<string> patterns = Extensions
             .Select(extension => extension == "*" ? "*.*" : $"*{extension}")
             .Distinct(StringComparer.OrdinalIgnoreCase);
 

@@ -5,7 +5,6 @@ using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D;
 using FatzBombMedia.MediaControl.Core.Graphics.Layers;
 using System.Diagnostics;
-using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -25,7 +24,6 @@ namespace FatzBombMedia.MediaControl.Core.Graphics;
 /// <param name="configuration">Immutable configuration determining rendering behavior</param>
 public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configuration) : IDisposable
 {
-    private readonly GpuRenderingMethod _currentMethod = ResolveRenderingMethod(configuration.Rendering);
     private WriteableBitmap? _bitmap;
     private VorticeD3D11Renderer? _d3d11Renderer;
     private int _lastWidth, _lastHeight;
@@ -76,7 +74,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     {
         get
         {
-            var source = _currentMethod switch
+            ImageSource? source = CurrentRenderingMethod switch
             {
                 GpuRenderingMethod.D3D11 => _d3d11Renderer?.ImageSource ?? _bitmap,
                 _ => _bitmap
@@ -101,7 +99,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// <summary>
     /// Gets the current rendering method being used.
     /// </summary>
-    public GpuRenderingMethod CurrentRenderingMethod => _currentMethod;
+    public GpuRenderingMethod CurrentRenderingMethod { get; } = ResolveRenderingMethod(configuration.Rendering);
 
     public string PresentationBackend => _d3d11Renderer?.PresentationBackend
         ?? (_bitmap != null ? "WriteableBitmap" : "None");
@@ -179,13 +177,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
     }
 
-    private bool ShouldFreezeNativePresentationDuringResize()
-    {
+    private bool ShouldFreezeNativePresentationDuringResize() =>
         // During a user drag resize, do not feed every intermediate WPF/HWND size into DXGI
         // or the static CDG compositor. Continuous video frames are still allowed. Let Windows move/scale the last completed static native frame
         // while the user is dragging, then apply one final size/present when resize settles.
-        return Volatile.Read(ref _nativeResizeInProgress) != 0;
-    }
+        Volatile.Read(ref _nativeResizeInProgress) != 0;
 
     /// <summary>
     /// Supplies the current native child-HWND presentation size in physical pixels.
@@ -283,7 +279,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
         finally
         {
-            Interlocked.Exchange(ref _nativePresentationSizeUpdateQueued, 0);
+            _ = Interlocked.Exchange(ref _nativePresentationSizeUpdateQueued, 0);
 
             // If a newer size arrived while we were applying the previous one, queue exactly one
             // more render-priority update for the final/latest value.
@@ -387,7 +383,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         try
         {
-            var bgraSource = source.Format == PixelFormats.Bgra32
+            BitmapSource bgraSource = source.Format == PixelFormats.Bgra32
                 ? source
                 : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
 
@@ -491,7 +487,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         try
         {
-            var bgraSource = source.Format == PixelFormats.Bgra32
+            BitmapSource bgraSource = source.Format == PixelFormats.Bgra32
                 ? source
                 : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
 
@@ -561,11 +557,11 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     // While CDG is active, background video is retained as the DXCDG
                     // background layer. It must not present through the old video/native
                     // upload path because that competes with the DXCDG target and flickers.
-                    _nativeCompositeBase.SetFallbackVideoPixels(bgraPixels[..required], width, height, stride, required);
+                    _ = _nativeCompositeBase.SetFallbackVideoPixels(bgraPixels[..required], width, height, stride, required);
                 }
                 else
                 {
-                    _nativeCompositeBase.UpdateVideoMetadata(width, height, stride, forceZoomToFill);
+                    _ = _nativeCompositeBase.UpdateVideoMetadata(width, height, stride, forceZoomToFill);
                 }
             }
 
@@ -579,7 +575,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             return;
         }
 
-        var cdgLayeringActive = false;
+        bool cdgLayeringActive;
         lock (_nativeCompositeRenderLock)
         {
             lock (_lock)
@@ -663,7 +659,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     && _nativePresentationHwnd == IntPtr.Zero
                     && _d3d11Renderer != null)
                 {
-                    var (desiredWidth, desiredHeight) = _presentationRouter.GetD3DImagePresentationSize(_requestedWpfPresentationWidth, _requestedWpfPresentationHeight, _lastWidth, _lastHeight);
+                    (var desiredWidth, var desiredHeight) = _presentationRouter.GetD3DImagePresentationSize(_requestedWpfPresentationWidth, _requestedWpfPresentationHeight, _lastWidth, _lastHeight);
                     if (desiredWidth != _lastPresentationWidth || desiredHeight != _lastPresentationHeight)
                     {
                         CleanupCurrentMethod();
@@ -686,7 +682,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// </summary>
     private static GpuRenderingMethod ResolveRenderingMethod(RenderingMethod renderingMethod)
     {
-        var capabilities = GpuRenderingCapabilities.Capabilities;
+        GpuCapabilityInfo capabilities = GpuRenderingCapabilities.Capabilities;
 
         return renderingMethod switch
         {
@@ -726,7 +722,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
         else
         {
-            _dispatcher.BeginInvoke(action, priority);
+            _ = _dispatcher.BeginInvoke(action, priority);
         }
     }
 
@@ -743,16 +739,13 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         _lastPresentationHeight = 0;
     }
 
-    private bool IsCurrentCpuSurface(WriteableBitmap bitmap, int generation, int width, int height)
-    {
-        return !_disposed
+    private bool IsCurrentCpuSurface(WriteableBitmap bitmap, int generation, int width, int height) => !_disposed
             && generation == CurrentResourceGeneration
             && ReferenceEquals(_bitmap, bitmap)
             && width == _lastWidth
             && height == _lastHeight
             && bitmap.PixelWidth == width
             && bitmap.PixelHeight == height;
-    }
 
     /// <summary>
     /// Renders a decoded video frame. Hardware D3D11 frames are kept on the GPU when possible;
@@ -773,7 +766,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
 
         if (frame.IsD3D11HardwareFrame
-            && _currentMethod == GpuRenderingMethod.D3D11
+            && CurrentRenderingMethod == GpuRenderingMethod.D3D11
             && !ShouldUseCpuForContent(frame.Width, frame.Height))
         {
             RenderHardwareVideoCompositionFrame(frame, cdgOverlay: null, washArgb: 0, forceZoomToFill: false, reason: "hardware video");
@@ -809,7 +802,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         // Software configuration remains available as a fallback, but the normal D3D/native
         // path treats BGRA video/image/audio-background frames as Layer 0 input to the
         // single media compositor.
-        if (_currentMethod == GpuRenderingMethod.WriteableBitmap && !IsNativePresentationRequested)
+        if (CurrentRenderingMethod == GpuRenderingMethod.WriteableBitmap && !IsNativePresentationRequested)
         {
             if (width != _lastWidth || height != _lastHeight || PresentationSurfaceChanged(width, height))
             {
@@ -850,21 +843,21 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             return;
         }
 
-        var (sourceWidth, sourceHeight) = GetCompositionSourceSize(frame);
+        (var sourceWidth, var sourceHeight) = GetCompositionSourceSize(frame);
         if (!EnsureD3D11ForComposition(sourceWidth, sourceHeight))
         {
             Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer skipped reason={frame.Reason}: D3D11 renderer could not be initialized.");
             return;
         }
 
-        var renderer = _d3d11Renderer;
+        VorticeD3D11Renderer? renderer = _d3d11Renderer;
         if (renderer == null || !renderer.IsReady)
         {
             Debug.WriteLine($"[COMPOSITION-TRACE] OptimizedRenderer skipped reason={frame.Reason}: D3D11 renderer is null/not ready.");
             return;
         }
 
-        var (outputWidth, outputHeight) = GetCompositionOutputSize(frame, sourceWidth, sourceHeight);
+        (var outputWidth, var outputHeight) = GetCompositionOutputSize(frame, sourceWidth, sourceHeight);
         if (!frame.RetainedRefresh)
         {
             Debug.WriteLine(
@@ -924,7 +917,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             ClearMode = MediaCompositionClearMode.Black,
             ClearArgb = 0xFF000000,
-            BackgroundBgra = hasBackground ? backgroundBgra! : ReadOnlyMemory<byte>.Empty,
+            BackgroundBgra = hasBackground ? backgroundBgra : ReadOnlyMemory<byte>.Empty,
             BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
             BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,
             BackgroundStride = hasBackground ? backgroundStride : 0,
@@ -1070,7 +1063,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             {
                 // A frame at this size may already have been initialized by an earlier queued
                 // pass (several frames can enqueue before the first runs); skip redundant churn.
-                var (presentationWidth, presentationHeight) = GetPresentationSizeForActiveTarget(width, height);
+                (var presentationWidth, var presentationHeight) = GetPresentationSizeForActiveTarget(width, height);
                 if (_disposed
                     || generation != CurrentResourceGeneration
                     || (width == _lastWidth
@@ -1090,7 +1083,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 }
                 else
                 {
-                    success = InitializeRenderingMethod(_currentMethod, width, height);
+                    success = InitializeRenderingMethod(CurrentRenderingMethod, width, height);
                     if (!success && _nativePresentationHwnd == IntPtr.Zero)
                     {
                         success = InitializeRenderingMethod(GpuRenderingMethod.WriteableBitmap, width, height);
@@ -1202,9 +1195,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         return true;
     }
 
-    private bool CreateActiveD3D11Surfaces(VorticeD3D11Renderer renderer, int width, int height)
-    {
-        return _presentationRouter.CreateActiveD3D11Surfaces(
+    private bool CreateActiveD3D11Surfaces(VorticeD3D11Renderer renderer, int width, int height) => _presentationRouter.CreateActiveD3D11Surfaces(
             renderer,
             _nativePresentationHwnd,
             _nativeDirectCompositionLayersRequested,
@@ -1214,11 +1205,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             _requestedWpfPresentationHeight,
             width,
             height);
-    }
 
-    private bool PresentationSurfaceChanged(int sourceWidth, int sourceHeight)
-    {
-        return _presentationRouter.PresentationSurfaceChanged(
+    private bool PresentationSurfaceChanged(int sourceWidth, int sourceHeight) => _presentationRouter.PresentationSurfaceChanged(
             _d3d11Renderer,
             _nativePresentationHwnd,
             _nativeDirectCompositionLayersRequested,
@@ -1230,20 +1218,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             _lastPresentationHeight,
             sourceWidth,
             sourceHeight);
-    }
 
-    private (int width, int height) GetNativeOutputSize(int sourceWidth, int sourceHeight)
-    {
-        return _presentationRouter.GetNativeOutputSize(
+    private (int width, int height) GetNativeOutputSize(int sourceWidth, int sourceHeight) => _presentationRouter.GetNativeOutputSize(
             _requestedNativePresentationWidth,
             _requestedNativePresentationHeight,
             sourceWidth,
             sourceHeight);
-    }
 
-    private (int width, int height) GetPresentationSizeForActiveTarget(int sourceWidth, int sourceHeight)
-    {
-        return _presentationRouter.GetPresentationSizeForActiveTarget(
+    private (int width, int height) GetPresentationSizeForActiveTarget(int sourceWidth, int sourceHeight) => _presentationRouter.GetPresentationSizeForActiveTarget(
             _nativePresentationHwnd,
             _nativeDirectCompositionLayersRequested,
             _requestedNativePresentationWidth,
@@ -1252,12 +1234,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             _requestedWpfPresentationHeight,
             sourceWidth,
             sourceHeight);
-    }
 
-    private void OnD3D11FramePresented(object? sender, EventArgs e)
-    {
-        RaiseFramePresented();
-    }
+    private void OnD3D11FramePresented(object? sender, EventArgs e) => RaiseFramePresented();
 
     private void RaiseFramePresented()
     {
@@ -1283,7 +1261,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
         try
         {
-            _dispatcher.BeginInvoke(new Action(() =>
+            _ = _dispatcher.BeginInvoke(new Action(() =>
             {
                 if (!_disposed)
                 {
@@ -1373,14 +1351,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
     private bool InitializeCpu(int width, int height)
     {
-        _bitmap = _cpuRenderer.CreateBitmap(width, height);
+        _bitmap = CpuWriteableBitmapRenderer.CreateBitmap(width, height);
         return _bitmap != null;
     }
 
     private void RenderWithCpuAsync(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
     {
-        var bitmap = _bitmap;
-        if (bitmap == null) return;
+        WriteableBitmap? bitmap = _bitmap;
+        if (bitmap == null)
+            return;
 
         _cpuRenderer.RenderBgraAsync(
             _dispatcher,
@@ -1516,7 +1495,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         {
             lock (_lock)
             {
-                var (presentationWidth, presentationHeight) = GetPresentationSizeForActiveTarget(frame.Width, frame.Height);
+                (var presentationWidth, var presentationHeight) = GetPresentationSizeForActiveTarget(frame.Width, frame.Height);
 
                 // Skip if an earlier queued pass already initialized this exact device/source/presentation size.
                 if (_disposed
@@ -1660,11 +1639,9 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         _nativeCompositePresentationScheduler.Clear();
     }
 
-    private void FallbackToSoftwareRendering(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
-    {
+    private void FallbackToSoftwareRendering(ReadOnlySpan<byte> pixelData, int width, int height, int stride) =>
         // Don't change the configured method, just render with CPU this time
         RenderWithCpuAsync(pixelData, width, height, stride);
-    }
 
     #endregion
 
@@ -1696,7 +1673,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             _disposed = true;
 
             // Use BeginInvoke for non-blocking cleanup
-            _dispatcher.BeginInvoke(() =>
+            _ = _dispatcher.BeginInvoke(() =>
             {
                 CleanupCurrentMethod();
             }, DispatcherPriority.Background);

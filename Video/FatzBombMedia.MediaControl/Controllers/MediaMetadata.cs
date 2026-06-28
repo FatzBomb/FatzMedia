@@ -1,4 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
+using ManagedBass;
 
 namespace FatzBombMedia.MediaControl.Controllers;
 
@@ -19,15 +20,7 @@ public sealed class MediaMetadata
     /// <summary>
     /// Gets the current media metadata. Returns null if no media is loaded.
     /// </summary>
-    public Core.Metadata.MediaMetadata? Current
-    {
-        get
-        {
-            if (!_mediaEngine.IsOpen) return null;
-            
-            return _cachedMetadata;
-        }
-    }
+    public Core.Metadata.MediaMetadata? Current => !_mediaEngine.IsOpen ? null : _cachedMetadata;
 
     /// <summary>
     /// Gets a formatted summary string of the current media.
@@ -66,22 +59,20 @@ public sealed class MediaMetadata
         {
             metadata.AudioEngineUsed = "BASS";
             metadata.AudioDurationSeconds = _mediaEngine.Audio.Duration;
-            
+
             // Try to get more detailed audio information from BASS
             try
             {
-                var channelInfo = ManagedBass.Bass.ChannelGetInfo(_mediaEngine.Audio.PlayHandle);
-                metadata.AudioSampleRate = (int)channelInfo.Frequency;
+                ChannelInfo channelInfo = Bass.ChannelGetInfo(_mediaEngine.Audio.PlayHandle);
+                metadata.AudioSampleRate = channelInfo.Frequency;
                 metadata.AudioChannels = channelInfo.Channels;
-                
+
                 // Simple codec detection based on what BASS reports
                 metadata.AudioCodec = "Unknown";
 
                 // Check if resampling is occurring
-                if (ManagedBass.Bass.GetInfo(out var deviceInfo) && metadata.AudioSampleRate.HasValue)
-                {
-                    metadata.DeviceSampleRate = (int)deviceInfo.SampleRate;
-                }
+                if (Bass.GetInfo(out BassInfo deviceInfo) && metadata.AudioSampleRate.HasValue)
+                    metadata.DeviceSampleRate = deviceInfo.SampleRate;
             }
             catch (Exception ex)
             {
@@ -100,7 +91,7 @@ public sealed class MediaMetadata
             metadata.VideoCodec = _mediaEngine.Video.CodecName;
             metadata.VideoHardwareAccelerated = _mediaEngine.Video.IsHardwareAccelerated;
             metadata.VideoHardwareMethod = _mediaEngine.Video.HardwareAccelerationMethod;
-            
+
             // Calculate aspect ratio
             if (metadata.VideoWidth > 0 && metadata.VideoHeight > 0)
             {
@@ -109,7 +100,7 @@ public sealed class MediaMetadata
                 var aspectH = metadata.VideoHeight.Value / gcd;
                 metadata.AspectRatio = $"{aspectW}:{aspectH}";
             }
-            
+
             System.Diagnostics.Debug.WriteLine($"[MediaMetadata] Video: {metadata.VideoWidth}x{metadata.VideoHeight}, {metadata.VideoFrameRate:F2}fps, {metadata.VideoCodec}, {metadata.AspectRatio}");
         }
 
@@ -118,7 +109,7 @@ public sealed class MediaMetadata
         {
             metadata.HasCdg = true;
             metadata.CdgDurationSeconds = _mediaEngine.Cdg.TotalDurationSeconds;
-            
+
             // Count CDG commands/packets for complexity assessment
             // This is an approximation based on duration
             if (metadata.CdgDurationSeconds > 0)
@@ -128,25 +119,25 @@ public sealed class MediaMetadata
         }
 
         // Determine master duration (longest stream)
-        var durations = new[] 
-        { 
-            metadata.AudioDurationSeconds ?? 0, 
-            metadata.VideoDurationSeconds ?? 0, 
-            metadata.CdgDurationSeconds ?? 0 
+        var durations = new[]
+        {
+            metadata.AudioDurationSeconds ?? 0,
+            metadata.VideoDurationSeconds ?? 0,
+            metadata.CdgDurationSeconds ?? 0
         };
         metadata.TotalDurationSeconds = durations.Max();
 
         // Set content type based on loaded engines
         var contentParts = new List<string>();
         if (_mediaEngine.Content.HasFlag(MediaContent.Audio)) contentParts.Add("Audio");
-        if (_mediaEngine.Content.HasFlag(MediaContent.Video)) contentParts.Add("Video");  
+        if (_mediaEngine.Content.HasFlag(MediaContent.Video)) contentParts.Add("Video");
         if (_mediaEngine.Content.HasFlag(MediaContent.Cdg)) contentParts.Add("CDG");
-        
+
         metadata.FileFormat = contentParts.Count > 0 ? string.Join("+", contentParts) : "Unknown";
-        
+
         System.Diagnostics.Debug.WriteLine($"[MediaMetadata] Populated: {metadata.GetSummary()}");
     }
-    
+
     /// <summary>
     /// Calculates the Greatest Common Divisor for aspect ratio calculation.
     /// </summary>
@@ -154,7 +145,7 @@ public sealed class MediaMetadata
     {
         while (b != 0)
         {
-            int temp = b;
+            var temp = b;
             b = a % b;
             a = temp;
         }

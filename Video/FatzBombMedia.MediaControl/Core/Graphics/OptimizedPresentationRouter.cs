@@ -34,7 +34,7 @@ internal sealed class OptimizedPresentationRouter(MediaPlayerConfiguration confi
                 sourceHeight);
         }
 
-        var (surfaceWidth, surfaceHeight) = GetD3DImagePresentationSize(
+        (var surfaceWidth, var surfaceHeight) = GetD3DImagePresentationSize(
             requestedWpfPresentationWidth,
             requestedWpfPresentationHeight,
             sourceWidth,
@@ -76,7 +76,7 @@ internal sealed class OptimizedPresentationRouter(MediaPlayerConfiguration confi
             }
         }
 
-        var (desiredWidth, desiredHeight) = GetPresentationSizeForActiveTarget(
+        (var desiredWidth, var desiredHeight) = GetPresentationSizeForActiveTarget(
             nativePresentationHwnd,
             directCompositionLayersRequested,
             requestedNativePresentationWidth,
@@ -154,16 +154,11 @@ internal sealed class OptimizedPresentationRouter(MediaPlayerConfiguration confi
         if (configuration.WpfD3DImageSurfaceSizingMode == WpfD3DImageSurfaceSizingMode.DisplayRectangle
             && requestedWpfPresentationWidth > 0
             && requestedWpfPresentationHeight > 0)
-        {
             return (requestedWpfPresentationWidth, requestedWpfPresentationHeight);
-        }
 
-        if (configuration.WpfD3DImageSurfaceSizingMode == WpfD3DImageSurfaceSizingMode.SourceCapped)
-        {
-            return CapPresentationSize(sourceWidth, sourceHeight);
-        }
-
-        return (sourceWidth, sourceHeight);
+        return configuration.WpfD3DImageSurfaceSizingMode == WpfD3DImageSurfaceSizingMode.SourceCapped
+            ? CapPresentationSize(sourceWidth, sourceHeight)
+            : ((int width, int height))(sourceWidth, sourceHeight);
     }
 
     private bool CreateNativeSurfaces(
@@ -183,16 +178,14 @@ internal sealed class OptimizedPresentationRouter(MediaPlayerConfiguration confi
             success = renderer.CreateDirectCompositionHwndSurfaces(nativePresentationHwnd, sourceWidth, sourceHeight);
             if (success)
             {
-                var (outputWidth, outputHeight) = GetNativeOutputSize(
+                (var outputWidth, var outputHeight) = GetNativeOutputSize(
                     requestedNativePresentationWidth,
                     requestedNativePresentationHeight,
                     sourceWidth,
                     sourceHeight);
                 renderer.SetDirectCompositionOutputSize(outputWidth, outputHeight);
                 if (configuration.EnableLogging)
-                {
                     Debug.WriteLine($"[OptimizedRenderer] Active presentation backend: DirectCompositionNativeLayers, source={sourceWidth}x{sourceHeight}, surface={sourceWidth}x{sourceHeight}, output={outputWidth}x{outputHeight}");
-                }
             }
         }
 
@@ -201,7 +194,7 @@ internal sealed class OptimizedPresentationRouter(MediaPlayerConfiguration confi
             return true;
         }
 
-        var (nativeOutputWidth, nativeOutputHeight) = GetNativeOutputSize(
+        (var nativeOutputWidth, var nativeOutputHeight) = GetNativeOutputSize(
             requestedNativePresentationWidth,
             requestedNativePresentationHeight,
             sourceWidth,

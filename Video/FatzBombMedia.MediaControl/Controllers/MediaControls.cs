@@ -95,7 +95,7 @@ public sealed class MediaControls
 
             // Stop rendering when stopped
             StopRendering();
-            
+
             // Fire stopped event
             MediaStopped?.Invoke(this, EventArgs.Empty);
         }
@@ -130,10 +130,7 @@ public sealed class MediaControls
     /// </summary>
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    private void OnMediaEnded(object? sender, EventArgs e)
-    {
-        RunOnDispatcher(HandleMediaEnded, DispatcherPriority.Normal);
-    }
+    private void OnMediaEnded(object? sender, EventArgs e) => RunOnDispatcher(HandleMediaEnded, DispatcherPriority.Normal);
 
     private void HandleMediaEnded()
     {
@@ -182,7 +179,7 @@ public sealed class MediaControls
             return;
         }
 
-        _dispatcher.BeginInvoke(() => _mediaRenderer.StartRendering(), DispatcherPriority.Render);
+        _ = _dispatcher.BeginInvoke(() => _mediaRenderer.StartRendering(), DispatcherPriority.Render);
     }
 
     private void StopRendering()
@@ -195,7 +192,7 @@ public sealed class MediaControls
             return;
         }
 
-        _dispatcher.BeginInvoke(() => _mediaRenderer.StopRendering(), DispatcherPriority.Render);
+        _ = _dispatcher.BeginInvoke(() => _mediaRenderer.StopRendering(), DispatcherPriority.Render);
     }
 
     private void RunOnDispatcher(Action action, DispatcherPriority priority)
@@ -208,7 +205,7 @@ public sealed class MediaControls
 
         try
         {
-            _dispatcher.BeginInvoke(action, priority);
+            _ = _dispatcher.BeginInvoke(action, priority);
         }
         catch (InvalidOperationException)
         {
@@ -252,9 +249,7 @@ public sealed class MediaControls
     public void Dispose()
     {
         if (_disposed)
-        {
             return;
-        }
 
         _disposed = true;
         _mediaEngine.MediaEnded -= OnMediaEnded;

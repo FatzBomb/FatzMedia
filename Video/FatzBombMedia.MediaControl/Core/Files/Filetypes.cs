@@ -10,7 +10,7 @@ public enum FileType { Unsupported, FileNotFound, Audio, AudioCdg, Video, Archiv
 /// Also provides helpers to detect media kinds and classify archives.
 /// </summary>
 public static class FileTypes
-{   
+{
     public static readonly HashSet<string> Audio = new(StringComparer.OrdinalIgnoreCase);
     public static readonly HashSet<string> Video = new(StringComparer.OrdinalIgnoreCase);
     public static readonly HashSet<string> Archive = new(StringComparer.OrdinalIgnoreCase) { ".7z", ".rar", ".zip", ".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2" };
@@ -34,7 +34,7 @@ public static class FileTypes
     private static ArchiveAnalysis AnalyzeArchive(IArchiveHandle archive)
     {
         var a = new ArchiveAnalysis();
-        foreach (var entry in archive.Entries)
+        foreach (IArchiveEntryInfo entry in archive.Entries)
         {
             var key = entry.Key;
             if (string.IsNullOrEmpty(key)) continue;
@@ -72,16 +72,16 @@ public static class FileTypes
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return FileType.FileNotFound;
 
         var ext = Path.GetExtension(path);
-        if (Audio.Contains(ext)) return File.Exists(System.IO.Path.ChangeExtension(path, ".cdg")) ? FileType.AudioCdg : FileType.Audio;
+        if (Audio.Contains(ext)) return File.Exists(Path.ChangeExtension(path, ".cdg")) ? FileType.AudioCdg : FileType.Audio;
         if (Video.Contains(ext)) return FileType.Video;
         if (Image.Contains(ext)) return FileType.Image;
 
         if (Cdg.Contains(ext))
         {
             if (!searchCompanionFile) return FileType.Cdg;
-            foreach (string audioExt in Audio) // check same name with audio extension
+            foreach (var audioExt in Audio) // check same name with audio extension
             {
-                if (System.IO.File.Exists(System.IO.Path.ChangeExtension(path, audioExt)))
+                if (File.Exists(Path.ChangeExtension(path, audioExt)))
                     return FileType.AudioCdg;
             }
             return FileType.Cdg;
@@ -91,13 +91,13 @@ public static class FileTypes
         {
             if (searchArchive)
             {
-                using var h = svc.Open(path);
-                var a = AnalyzeArchive(h);
-                if (a.HasAudioCdgPair) return FileType.AudioCdgArchive;
-                if (a.HasVideo) return FileType.VideoArchive;
-                if (a.HasAudio) return FileType.AudioArchive;
-                if (a.HasCdg) return FileType.CdgArchive;
-                return FileType.UnsupportedArchive;
+                using IArchiveHandle h = svc.Open(path);
+                ArchiveAnalysis a = AnalyzeArchive(h);
+                return a.HasAudioCdgPair
+                    ? FileType.AudioCdgArchive
+                    : a.HasVideo
+                    ? FileType.VideoArchive
+                    : a.HasAudio ? FileType.AudioArchive : a.HasCdg ? FileType.CdgArchive : FileType.UnsupportedArchive;
             }
             return FileType.Archive;
         }

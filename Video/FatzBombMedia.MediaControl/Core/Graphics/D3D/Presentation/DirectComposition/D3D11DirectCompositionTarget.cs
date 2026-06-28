@@ -3,6 +3,7 @@ using FatzBombMedia.MediaControl.Core.Configuration;
 using Vortice.DirectComposition;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 
@@ -40,22 +41,22 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
             // Take ownership immediately so any failure path can cleanly release it.
             OverlaySwapChain = overlaySwapChain;
             _compositionDevice = DComp.DCompositionCreateDevice<IDCompositionDevice>(dxgiDevice);
-            _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
+            _ = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
             _rootVisual = _compositionDevice.CreateVisual();
             _baseVisual = _compositionDevice.CreateVisual();
             _overlayVisual = _compositionDevice.CreateVisual();
 
-            _baseVisual.SetContent(baseSwapChain);
-            _overlayVisual.SetContent(overlaySwapChain);
-            _rootVisual.AddVisual(_baseVisual, false, null);
-            _rootVisual.AddVisual(_overlayVisual, true, _baseVisual);
-            _compositionTarget.SetRoot(_rootVisual);
+            _ = _baseVisual.SetContent(baseSwapChain);
+            _ = _overlayVisual.SetContent(overlaySwapChain);
+            _ = _rootVisual.AddVisual(_baseVisual, false, null);
+            _ = _rootVisual.AddVisual(_overlayVisual, true, _baseVisual);
+            _ = _compositionTarget.SetRoot(_rootVisual);
 
             OverlayTexture = overlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
             _outputWidth = Math.Max(1, contentWidth);
             _outputHeight = Math.Max(1, contentHeight);
             ApplyTransforms(contentWidth, contentHeight);
-            _compositionDevice.Commit();
+            _ = _compositionDevice.Commit();
             return true;
         }
         catch (Exception ex)
@@ -88,7 +89,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         _outputWidth = width;
         _outputHeight = height;
         ApplyTransforms(contentWidth, contentHeight);
-        _compositionDevice.Commit();
+        _ = _compositionDevice.Commit();
 
         if (configuration.EnableVerboseLogging)
         {
@@ -107,10 +108,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         OverlayTexture = OverlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
-    public void Commit()
-    {
-        _compositionDevice?.Commit();
-    }
+    public void Commit() => _compositionDevice?.Commit();
 
     private void ApplyTransforms(int contentWidth, int contentHeight)
     {
@@ -124,7 +122,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         var scaleX = (float)outputWidth / contentWidth;
         var scaleY = (float)outputHeight / contentHeight;
         var matrix = System.Numerics.Matrix3x2.CreateScale(scaleX, scaleY);
-        var result = _rootVisual.SetTransform(matrix);
+        Result result = _rootVisual.SetTransform(matrix);
         if (result.Failure && configuration.EnableLogging)
         {
             Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");

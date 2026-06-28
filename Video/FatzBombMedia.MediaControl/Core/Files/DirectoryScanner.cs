@@ -1,338 +1,338 @@
-using System;
 using System.Diagnostics;
 using System.IO;
-using System.Collections.Generic;
-using System.Linq;
 
-namespace FatzBombMedia.MediaControl.Core.Files
+namespace FatzBombMedia.MediaControl.Core.Files;
+
+/// <summary>
+/// Defines compatibility levels for binary file analysis during directory scanning operations.
+/// </summary>
+public enum CompatibilityLevel
 {
     /// <summary>
-    /// Defines compatibility levels for binary file analysis during directory scanning operations.
+    /// No compatibility checking is performed. All files are considered valid.
     /// </summary>
-    public enum CompatibilityLevel
+    All,
+
+    /// <summary>
+    /// Only files with exact architecture match are considered valid.
+    /// </summary>
+    ExactMatch,
+
+    /// <summary>
+    /// Files that are compatible with the current process architecture are considered valid (e.g. AnyCPU on x64).
+    /// </summary>
+    Compatible,
+
+    /// <summary>
+    /// Only files that are not compatible with the current process architecture are considered valid (e.g. x86 on x64).
+    /// </summary>
+    Incompatible
+}
+
+/// <summary>
+/// Provides functionality for scanning directories and locating files with optional binary compatibility checking.
+/// Supports breadth-first directory traversal and various file search patterns.
+/// </summary>
+public static class DirectoryScanner
+{
+    private static readonly EnumerationOptions EnumerateFilesRecursive = new()
     {
-        /// <summary>
-        /// No compatibility checking is performed. All files are considered valid.
-        /// </summary>
-        All,
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.System | FileAttributes.Temporary | FileAttributes.ReparsePoint,
+        MatchCasing = MatchCasing.CaseInsensitive
+    };
 
-        /// <summary>
-        /// Only files with exact architecture match are considered valid.
-        /// </summary>
-        ExactMatch,
+    private static readonly EnumerationOptions EnumerateFilesNoRecurse = new()
+    {
+        RecurseSubdirectories = false,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.System | FileAttributes.Temporary,
+        MatchCasing = MatchCasing.CaseInsensitive
+    };
 
-        /// <summary>
-        /// Files that are compatible with the current process architecture are considered valid (e.g. AnyCPU on x64).
-        /// </summary>
-        Compatible,
+    private static readonly EnumerationOptions EnumerateDirsNoRecurse = new()
+    {
+        RecurseSubdirectories = false,
+        IgnoreInaccessible = true,
+        MatchCasing = MatchCasing.CaseInsensitive
+    };
 
-        /// <summary>
-        /// Only files that are not compatible with the current process architecture are considered valid (e.g. x86 on x64).
-        /// </summary>
-        Incompatible
+
+    /// <summary>
+    /// Determines the common file extension from a collection of file names.
+    /// If all files share the same extension, returns a pattern like "*.extension".
+    /// If files have different extensions or no extensions, returns "*".
+    /// </summary>
+    /// <param name="files">Collection of file names to analyze.</param>
+    /// <returns>A pattern string representing the common extension, or "*" if no common extension exists.</returns>
+    private static string CommonExtension(IEnumerable<string> files)
+    {
+        string? ext = null;
+        foreach (var file in files)
+        {
+            if (string.IsNullOrWhiteSpace(file) || !Path.HasExtension(file))
+                return "*";
+
+            var e = Path.GetExtension(file);
+            if (ext is null)
+                ext = e;
+            else if (!string.Equals(ext, e, StringComparison.OrdinalIgnoreCase))
+                return "*";
+        }
+        return ext is null ? "*" : $"*{ext}";
     }
 
     /// <summary>
-    /// Provides functionality for scanning directories and locating files with optional binary compatibility checking.
-    /// Supports breadth-first directory traversal and various file search patterns.
+    /// Finds the first directory (root or any subdirectory) that contains the specified file.
+    /// Returns the full path to that directory, or null if none match.
     /// </summary>
-    public static class DirectoryScanner
+    /// <param name="rootPath">The root directory to search in</param>
+    /// <param name="fileName">The file name to search for</param>
+    /// <param name="compatibility">The compatibility level to check for binary files</param>
+    /// <returns>The full path to the directory containing the file, or null if not found</returns>
+    public static string? LocateFile(string rootPath, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
+        LocateFile([rootPath], fileName, compatibility);
+
+    /// <summary>
+    /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
+    /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
+    /// </summary>
+    /// <param name="rootPaths">Array of directory paths to search in. Must exist and not be null or whitespace.</param>
+    /// <param name="fileName">Name of file to search for.</param>
+    /// <param name="compatibility">The compatibility level to check for binary files. 
+    /// - All: No compatibility checking
+    /// - ExactMatch: Only files with exact architecture match
+    /// - Compatible: Files that are compatible with current process
+    /// - Incompatible: Only incompatible files</param>
+    /// <returns>The full path to the directory containing the specified file, or null if not found or invalid input.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileName"/> is null.</exception>
+    public static string? LocateFile(IEnumerable<string> rootPaths, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All)
     {
-        private static readonly EnumerationOptions EnumerateFilesRecursive = new()
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System | FileAttributes.Temporary | FileAttributes.ReparsePoint,
-            MatchCasing = MatchCasing.CaseInsensitive
-        };
+        if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
+            throw new ArgumentNullException(nameof(fileName));
 
-        private static readonly EnumerationOptions EnumerateFilesNoRecurse = new()
-        {
-            RecurseSubdirectories = false,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System | FileAttributes.Temporary,
-            MatchCasing = MatchCasing.CaseInsensitive
-        };
-
-        private static readonly EnumerationOptions EnumerateDirsNoRecurse = new()
-        {
-            RecurseSubdirectories = false,
-            IgnoreInaccessible = true,
-            MatchCasing = MatchCasing.CaseInsensitive
-        };
-
-
-        /// <summary>
-        /// Determines the common file extension from a collection of file names.
-        /// If all files share the same extension, returns a pattern like "*.extension".
-        /// If files have different extensions or no extensions, returns "*".
-        /// </summary>
-        /// <param name="files">Collection of file names to analyze.</param>
-        /// <returns>A pattern string representing the common extension, or "*" if no common extension exists.</returns>
-        private static string CommonExtension(IEnumerable<string> files)
-        {
-            string? ext = null;
-            foreach (var file in files)
-            {
-                if (string.IsNullOrWhiteSpace(file) || !Path.HasExtension(file)) return "*";
-                var e = Path.GetExtension(file)!;
-                if (ext is null) ext = e;
-                else if (!string.Equals(ext, e, StringComparison.OrdinalIgnoreCase)) return "*";
-            }
-            return ext is null ? "*" : $"*{ext}";
-        }
-
-        /// <summary>
-        /// Finds the first directory (root or any subdirectory) that contains the specified file.
-        /// Returns the full path to that directory, or null if none match.
-        /// </summary>
-        /// <param name="rootPath">The root directory to search in</param>
-        /// <param name="fileName">The file name to search for</param>
-        /// <param name="compatibility">The compatibility level to check for binary files</param>
-        /// <returns>The full path to the directory containing the file, or null if not found</returns>
-        public static string? LocateFile(string rootPath, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-            LocateFile([rootPath], fileName, compatibility);
-
-        /// <summary>
-        /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
-        /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
-        /// </summary>
-        /// <param name="rootPaths">Array of directory paths to search in. Must exist and not be null or whitespace.</param>
-        /// <param name="fileName">Name of file to search for.</param>
-        /// <param name="compatibility">The compatibility level to check for binary files. 
-        /// - All: No compatibility checking
-        /// - ExactMatch: Only files with exact architecture match
-        /// - Compatible: Files that are compatible with current process
-        /// - Incompatible: Only incompatible files</param>
-        /// <returns>The full path to the directory containing the specified file, or null if not found or invalid input.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileName"/> is null.</exception>
-        public static string? LocateFile(IEnumerable<string> rootPaths, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All)
-        {
-            if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
-                throw new ArgumentNullException(nameof(fileName));
-
-            if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
-                return null;
-
-            foreach (var dir in rootPaths)
-            {
-                foreach (var foundFile in Directory.EnumerateFiles(dir, fileName, EnumerateFilesRecursive))
-                {
-
-                    if (MatchesCompatibility(foundFile, compatibility) == false)
-                        continue;
-
-                    Debug.WriteLine($"[SCANNER] Found: {foundFile}");
-                    return Path.GetDirectoryName(foundFile)!;
-                }
-            }
+        if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
             return null;
-        }
 
-        /// <summary>
-        /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
-        /// Returns the full path to that directory, or null if none match.
-        /// </summary>
-        /// <param name="rootPath">The root directory to search in</param>
-        /// <param name="fileNames">Array of file names to search for</param>
-        /// <param name="compatibility">The compatibility level to check for binary files</param>
-        /// <returns>The full path to the directory containing all files, or null if not found</returns>
-        public static string? LocateFilesDirectory(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-            LocateFilesDirectory([rootPath], fileNames, compatibility);
-
-        /// <summary>
-        /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
-        /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
-        /// </summary>
-        /// <param name="rootPaths">The root directory to search in. Must exist and not be null or whitespace.</param>
-        /// <param name="fileNames">Collection of file names to search for. All files must be found in the same directory.</param>
-        /// <param name="compatibility">The compatibility level to check for binary files. 
-        /// - All: No compatibility checking
-        /// - ExactMatch: Only files with exact architecture match
-        /// - Compatible: Files that are compatible with current process
-        /// - Incompatible: Only incompatible files</param>
-        /// <returns>The full path to the directory containing all specified files, or null if not found or invalid input.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="fileNames"/> is null.</exception>
-        public static string? LocateFilesDirectory(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All)
+        foreach (var dir in rootPaths)
         {
-            if (!rootPaths.Any() || !fileNames.Any())
-                return null;
-
-            string pattern = CommonExtension(fileNames);
-            var targets = new HashSet<string>(fileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(), StringComparer.OrdinalIgnoreCase);
-
-            if (targets.Count == 0 || !rootPaths.Any())
-                return null;
-
-            foreach (var searchPath in rootPaths)
+            foreach (var foundFile in Directory.EnumerateFiles(dir, fileName, EnumerateFilesRecursive))
             {
-                var dirQueue = new Queue<string>();
-                dirQueue.Enqueue(searchPath);
 
-                try
-                {
-                    foreach (var d in Directory.EnumerateDirectories(searchPath, "*", EnumerateDirsNoRecurse))
-                        dirQueue.Enqueue(d);
-                }
-                catch { }
+                if (!MatchesCompatibility(foundFile, compatibility))
+                    continue;
 
-                while (dirQueue.Count > 0)
-                {
-                    var dir = dirQueue.Dequeue();
-                    if (dir != searchPath)
-                        try
-                        {
-                            foreach (var child in Directory.EnumerateDirectories(dir, "*", EnumerateDirsNoRecurse))
-                                dirQueue.Enqueue(child);
-                        }
-                        catch { }
-
-                    var matched = 0;
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                    try
-                    {
-                        foreach (var full in Directory.EnumerateFiles(dir, pattern, EnumerateFilesNoRecurse))
-                        {
-                            var name = Path.GetFileName(full);
-                            if (!targets.Contains(name)) continue;
-                            if (!MatchesCompatibility(full, compatibility)) continue;
-                            if (!seen.Add(name)) continue;
-
-                            matched++;
-                            if (matched == targets.Count)
-                                return dir;
-                        }
-                    }
-                    catch { }
-                }
+                Debug.WriteLine($"[SCANNER] Found: {foundFile}");
+                return Path.GetDirectoryName(foundFile);
             }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
+    /// Returns the full path to that directory, or null if none match.
+    /// </summary>
+    /// <param name="rootPath">The root directory to search in</param>
+    /// <param name="fileNames">Array of file names to search for</param>
+    /// <param name="compatibility">The compatibility level to check for binary files</param>
+    /// <returns>The full path to the directory containing all files, or null if not found</returns>
+    public static string? LocateFilesDirectory(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
+        LocateFilesDirectory([rootPath], fileNames, compatibility);
+
+    /// <summary>
+    /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
+    /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
+    /// </summary>
+    /// <param name="rootPaths">The root directory to search in. Must exist and not be null or whitespace.</param>
+    /// <param name="fileNames">Collection of file names to search for. All files must be found in the same directory.</param>
+    /// <param name="compatibility">The compatibility level to check for binary files. 
+    /// - All: No compatibility checking
+    /// - ExactMatch: Only files with exact architecture match
+    /// - Compatible: Files that are compatible with current process
+    /// - Incompatible: Only incompatible files</param>
+    /// <returns>The full path to the directory containing all specified files, or null if not found or invalid input.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="fileNames"/> is null.</exception>
+    public static string? LocateFilesDirectory(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All)
+    {
+        if (!rootPaths.Any() || !fileNames.Any())
             return null;
-        }
 
-        /// <summary>
-        /// Locates multiple files and returns a dictionary mapping file names to their full paths.
-        /// Searches in the specified directory and optionally its subdirectories.
-        /// </summary>
-        /// <param name="rootPath">The primary directory path to search in.</param>
-        /// <param name="fileNames">Collection of file names to search for.</param>
-        /// <param name="compatibility">The compatibility level to check for binary files.</param>
-        /// <returns>A dictionary mapping found file names to their full paths.</returns>
-        public static Dictionary<string, string> LocateFiles(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-            LocateFiles([rootPath], fileNames, true, compatibility);
+        var pattern = CommonExtension(fileNames);
+        var targets = new HashSet<string>(fileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(), StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>
-        /// Locates multiple files and returns a dictionary mapping file names to their full paths.
-        /// Searches in the specified directories and optionally their subdirectories.
-        /// </summary>
-        /// <param name="rootPaths">Collection of directory paths to search in.</param>
-        /// <param name="fileNames">Collection of file names to search for.</param>
-        /// <param name="subDirectories">Whether to search subdirectories recursively. Default is true.</param>
-        /// <param name="compatibility">The compatibility level to check for binary files. 
-        /// - All: No compatibility checking
-        /// - ExactMatch: Only files with exact architecture match
-        /// - Compatible: Files that are compatible with current process
-        /// - Incompatible: Only incompatible files</param>
-        /// <returns>A dictionary mapping found file names to their full paths.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileNames"/> is null.</exception>
-        public static Dictionary<string, string> LocateFiles(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, bool subDirectories = true, CompatibilityLevel compatibility = CompatibilityLevel.All)
+        if (targets.Count == 0 || !rootPaths.Any())
+            return null;
+
+        foreach (var searchPath in rootPaths)
         {
-            if (!rootPaths.Any() || !fileNames.Any()) return new(StringComparer.OrdinalIgnoreCase);
-
-            string pattern = CommonExtension(fileNames);
-            HashSet<string> targets = CleanList(fileNames);
-
-            if (targets.Count == 0) return new(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, string> found = new(StringComparer.OrdinalIgnoreCase);
-
-            EnumerationOptions opts = subDirectories ? EnumerateFilesRecursive : EnumerateFilesNoRecurse;
-
-            foreach (var dir in rootPaths)
-            {
-                if (targets.Count == 0)
-                    break;
-
-                foreach (var full in Directory.EnumerateFiles(dir, pattern, opts))
-                {
-                    var name = Path.GetFileName(full);
-                    if (targets.Contains(name) && !found.ContainsKey(name))
-                    {
-                        if (MatchesCompatibility(full, compatibility) == false)
-                            continue;
-                        
-                        found[name] = full;
-                        targets.Remove(name);
-                        if (targets.Count == 0)
-                            break;
-                    }
-                }
-            }
-
-            return found;
-        }
-
-        public static HashSet<string> CleanList(IEnumerable<string> fileNames) => new(fileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(), StringComparer.OrdinalIgnoreCase);
-
-        public static IReadOnlyList<string> CleanPaths(IEnumerable<string> roots)
-        {
-            if (roots is null || !roots.Any()) return [];
-
-            var normalized = roots
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Select(p => Normalize(p))
-                .Where(p => p is not null && Directory.Exists(p))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(p => p!.Length) // parents first
-                .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
-                .ToArray()!;
-
-            var kept = new List<string>(normalized.Length);
-            foreach (var path in normalized)
-            {
-                if (!kept.Any(parent => IsParentOf(parent, path!)))
-                    kept.Add(path!);
-            }
-            return kept;
-        }
-
-        private static string? Normalize(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return path;
+            var dirQueue = new Queue<string>();
+            dirQueue.Enqueue(searchPath);
 
             try
             {
-                var full = Path.GetFullPath(path.Trim());
-                var root = Path.GetPathRoot(full)!;
-
-                if (!string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
-                    full = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                return full;
+                foreach (var d in Directory.EnumerateDirectories(searchPath, "*", EnumerateDirsNoRecurse))
+                    dirQueue.Enqueue(d);
             }
-            catch { return null; } // invalid path
-        }
+            catch { }
 
-        private static bool IsParentOf(string parent, string child)
+            while (dirQueue.Count > 0)
+            {
+                var dir = dirQueue.Dequeue();
+                if (dir != searchPath)
+                    try
+                    {
+                        foreach (var child in Directory.EnumerateDirectories(dir, "*", EnumerateDirsNoRecurse))
+                            dirQueue.Enqueue(child);
+                    }
+                    catch { }
+
+                var matched = 0;
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                try
+                {
+                    foreach (var full in Directory.EnumerateFiles(dir, pattern, EnumerateFilesNoRecurse))
+                    {
+                        var name = Path.GetFileName(full);
+                        if (!targets.Contains(name)) continue;
+                        if (!MatchesCompatibility(full, compatibility)) continue;
+                        if (!seen.Add(name)) continue;
+
+                        matched++;
+                        if (matched == targets.Count)
+                            return dir;
+                    }
+                }
+                catch { }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Locates multiple files and returns a dictionary mapping file names to their full paths.
+    /// Searches in the specified directory and optionally its subdirectories.
+    /// </summary>
+    /// <param name="rootPath">The primary directory path to search in.</param>
+    /// <param name="fileNames">Collection of file names to search for.</param>
+    /// <param name="compatibility">The compatibility level to check for binary files.</param>
+    /// <returns>A dictionary mapping found file names to their full paths.</returns>
+    public static Dictionary<string, string> LocateFiles(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
+        LocateFiles([rootPath], fileNames, true, compatibility);
+
+    /// <summary>
+    /// Locates multiple files and returns a dictionary mapping file names to their full paths.
+    /// Searches in the specified directories and optionally their subdirectories.
+    /// </summary>
+    /// <param name="rootPaths">Collection of directory paths to search in.</param>
+    /// <param name="fileNames">Collection of file names to search for.</param>
+    /// <param name="subDirectories">Whether to search subdirectories recursively. Default is true.</param>
+    /// <param name="compatibility">The compatibility level to check for binary files. 
+    /// - All: No compatibility checking
+    /// - ExactMatch: Only files with exact architecture match
+    /// - Compatible: Files that are compatible with current process
+    /// - Incompatible: Only incompatible files</param>
+    /// <returns>A dictionary mapping found file names to their full paths.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileNames"/> is null.</exception>
+    public static Dictionary<string, string> LocateFiles(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, bool subDirectories = true, CompatibilityLevel compatibility = CompatibilityLevel.All)
+    {
+        if (!rootPaths.Any() || !fileNames.Any()) return new(StringComparer.OrdinalIgnoreCase);
+
+        var pattern = CommonExtension(fileNames);
+        HashSet<string> targets = CleanList(fileNames);
+
+        if (targets.Count == 0) return new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> found = new(StringComparer.OrdinalIgnoreCase);
+
+        EnumerationOptions opts = subDirectories ? EnumerateFilesRecursive : EnumerateFilesNoRecurse;
+
+        foreach (var dir in rootPaths)
         {
-            if (string.Equals(parent, child, StringComparison.OrdinalIgnoreCase)) return true;      // identical -> treat as covered
-            if (!child.StartsWith(parent, StringComparison.OrdinalIgnoreCase)) return false;
+            if (targets.Count == 0)
+                break;
 
-            // Ensure boundary so "C:\path" is not parent of "C:\pathology"
-            if (child.Length == parent.Length) return true;
-            char next = child[parent.Length];
-            return next == Path.DirectorySeparatorChar || next == Path.AltDirectorySeparatorChar;
+            foreach (var full in Directory.EnumerateFiles(dir, pattern, opts))
+            {
+                var name = Path.GetFileName(full);
+                if (targets.Contains(name) && !found.ContainsKey(name))
+                {
+                    if (!MatchesCompatibility(full, compatibility))
+                        continue;
+
+                    found[name] = full;
+                    _ = targets.Remove(name);
+                    if (targets.Count == 0)
+                        break;
+                }
+            }
         }
 
-        public static bool MatchesCompatibility(string file, CompatibilityLevel compatibility)
+        return found;
+    }
+
+    public static HashSet<string> CleanList(IEnumerable<string> fileNames) => new(fileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(), StringComparer.OrdinalIgnoreCase);
+
+    public static IReadOnlyList<string> CleanPaths(IEnumerable<string> roots)
+    {
+        if (roots is null || !roots.Any()) return [];
+
+        var normalized = roots
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(Normalize)
+            .Where(p => p is not null && Directory.Exists(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p!.Length) // parents first
+            .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToArray()!;
+
+        var kept = new List<string>(normalized.Length);
+        foreach (var path in normalized)
         {
-            if (compatibility == CompatibilityLevel.All) return true;
-            
-            var compat = BinaryCompatibility.Analyze(file);
-            var isMatch = compat.IsMatch;
-            var isCompat = compat.IsCompatible;
-            return (compatibility == CompatibilityLevel.ExactMatch && isMatch) ||
-                    (compatibility == CompatibilityLevel.Compatible && isCompat) ||
-                    (compatibility == CompatibilityLevel.Incompatible && !isCompat);
+            if (!kept.Any(parent => IsParentOf(parent, path!)))
+                kept.Add(path!);
         }
+        return kept;
+    }
+
+    private static string? Normalize(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return path;
+
+        try
+        {
+            var full = Path.GetFullPath(path.Trim());
+            var root = Path.GetPathRoot(full);
+
+            if (!string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
+                full = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            return full;
+        }
+        catch { return null; } // invalid path
+    }
+
+    private static bool IsParentOf(string parent, string child)
+    {
+        if (string.Equals(parent, child, StringComparison.OrdinalIgnoreCase)) return true;      // identical -> treat as covered
+        if (!child.StartsWith(parent, StringComparison.OrdinalIgnoreCase)) return false;
+
+        // Ensure boundary so "C:\path" is not parent of "C:\pathology"
+        if (child.Length == parent.Length) return true;
+        var next = child[parent.Length];
+        return next == Path.DirectorySeparatorChar || next == Path.AltDirectorySeparatorChar;
+    }
+
+    public static bool MatchesCompatibility(string file, CompatibilityLevel compatibility)
+    {
+        if (compatibility == CompatibilityLevel.All) return true;
+
+        CompatibilityInfo compat = BinaryCompatibility.Analyze(file);
+        var isMatch = compat.IsMatch;
+        var isCompat = compat.IsCompatible;
+        return (compatibility == CompatibilityLevel.ExactMatch && isMatch) ||
+                (compatibility == CompatibilityLevel.Compatible && isCompat) ||
+                (compatibility == CompatibilityLevel.Incompatible && !isCompat);
     }
 }

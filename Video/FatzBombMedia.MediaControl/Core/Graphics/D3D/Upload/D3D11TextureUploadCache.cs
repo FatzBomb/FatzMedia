@@ -11,11 +11,10 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 /// </summary>
 internal sealed class D3D11TextureUploadCache : IDisposable
 {
-    private ID3D11Texture2D? _texture;
     private int _width;
     private int _height;
 
-    public ID3D11Texture2D? Texture => _texture;
+    public ID3D11Texture2D? Texture { get; private set; }
 
     public bool Ensure(ID3D11Device device, int width, int height)
     {
@@ -24,7 +23,7 @@ internal sealed class D3D11TextureUploadCache : IDisposable
             return false;
         }
 
-        if (_texture != null && _width == width && _height == height)
+        if (Texture != null && _width == width && _height == height)
         {
             return true;
         }
@@ -44,16 +43,16 @@ internal sealed class D3D11TextureUploadCache : IDisposable
             sampleQuality: 0,
             ResourceOptionFlags.None);
 
-        _texture = device.CreateTexture2D(in textureDescription);
+        Texture = device.CreateTexture2D(in textureDescription);
         _width = width;
         _height = height;
-        return _texture != null;
+        return Texture != null;
     }
 
     public void Dispose()
     {
-        _texture?.Dispose();
-        _texture = null;
+        Texture?.Dispose();
+        Texture = null;
         _width = 0;
         _height = 0;
     }

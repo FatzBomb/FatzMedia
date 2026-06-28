@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -20,7 +19,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 /// D3D11 implementation of the single media compositor. It draws an optional
 /// background/base layer, optional wash layer, optional DXCDG foreground overlay, then presents once.
 /// </summary>
-internal sealed class D3D11MediaCompositionPresenter
+internal sealed partial class D3D11MediaCompositionPresenter
 {
     private readonly byte[] _paletteBgra = new byte[DxCdgConstants.ColorCount * 4];
 
@@ -241,7 +240,7 @@ internal sealed class D3D11MediaCompositionPresenter
                 return false;
             }
 
-            var snapshot = frame.CdgOverlay;
+            DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
             if (frame.HasCdgOverlay && snapshot != null)
             {
                 EnsureResources(deviceResources.Device);
@@ -265,7 +264,7 @@ internal sealed class D3D11MediaCompositionPresenter
                 return false;
             }
 
-            using var targetRenderView = deviceResources.Device.CreateRenderTargetView(targetTexture);
+            using ID3D11RenderTargetView targetRenderView = deviceResources.Device.CreateRenderTargetView(targetTexture);
             if (!frame.RetainedRefresh)
             {
                 LogVisibleAttempt(frame, targetWidth, targetHeight, backendName, targetRevision);
@@ -299,12 +298,7 @@ internal sealed class D3D11MediaCompositionPresenter
     {
         if (frame.HasD3D11Background)
         {
-            if (videoProcessorPresenter == null)
-            {
-                return false;
-            }
-
-            return SetHardwareBackgroundFrame(
+            return videoProcessorPresenter != null && SetHardwareBackgroundFrame(
                 deviceResources,
                 videoProcessorPresenter,
                 frame.BackgroundD3D11TexturePointer,
@@ -326,9 +320,7 @@ internal sealed class D3D11MediaCompositionPresenter
                 && _backgroundStretchMode == frame.EffectiveBackgroundStretchMode;
 
             if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
-            {
                 return true;
-            }
 
             SetBackgroundFrame(
                 deviceResources,
@@ -373,8 +365,8 @@ internal sealed class D3D11MediaCompositionPresenter
 
         var indexDescription = new Texture2DDescription(
             Format.R8_UNorm,
-            (uint)DxCdgConstants.FrameWidth,
-            (uint)DxCdgConstants.FrameHeight,
+            DxCdgConstants.FrameWidth,
+            DxCdgConstants.FrameHeight,
             arraySize: 1,
             mipLevels: 1,
             BindFlags.ShaderResource,
@@ -389,7 +381,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
         var paletteDescription = new Texture2DDescription(
             Format.B8G8R8A8_UNorm,
-            (uint)DxCdgConstants.ColorCount,
+            DxCdgConstants.ColorCount,
             1,
             arraySize: 1,
             mipLevels: 1,
@@ -434,7 +426,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
     private void UploadIndexTexture(ID3D11DeviceContext context, DxCdgRenderSnapshot snapshot)
     {
-        var indices = snapshot.ColorIndices.Span;
+        ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
         if (indices.Length < DxCdgConstants.TotalPixels || _indexTexture == null)
         {
             return;
@@ -442,7 +434,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
         // Upload one byte per CDG pixel. Palette colors are uploaded separately and
         // resolved by the pixel shader.
-        context.UpdateSubresource(indices, _indexTexture, 0, (uint)DxCdgConstants.FrameWidth, 0, null);
+        context.UpdateSubresource(indices, _indexTexture, 0, DxCdgConstants.FrameWidth, 0, null);
     }
 
     private void UploadPaletteTextureIfNeeded(ID3D11DeviceContext context, DxCdgRenderSnapshot snapshot)
@@ -452,7 +444,7 @@ internal sealed class D3D11MediaCompositionPresenter
             return;
         }
 
-        var palette = snapshot.PaletteArgb.Span;
+        ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
         if (palette.Length < DxCdgConstants.ColorCount)
         {
             return;
@@ -468,7 +460,7 @@ internal sealed class D3D11MediaCompositionPresenter
             _paletteBgra[offset + 3] = (byte)((argb >> 24) & 0xFF);
         }
 
-        context.UpdateSubresource(_paletteBgra.AsSpan(), _paletteTexture, 0, (uint)(DxCdgConstants.ColorCount * 4), 0, null);
+        context.UpdateSubresource(_paletteBgra.AsSpan(), _paletteTexture, 0, DxCdgConstants.ColorCount * 4, 0, null);
         _lastPaletteRevision = snapshot.Revision;
     }
 
@@ -521,7 +513,7 @@ internal sealed class D3D11MediaCompositionPresenter
             DrawWashLayer(context, outputWidth, outputHeight, frame.WashArgb);
         }
 
-        var snapshot = frame.CdgOverlay;
+        DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
         if (frame.HasCdgOverlay && snapshot != null)
         {
             if (_indexShaderResourceView == null
@@ -531,7 +523,7 @@ internal sealed class D3D11MediaCompositionPresenter
                 return false;
             }
 
-            var cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
+            RectD cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
             var cdgLeft = (int)Math.Round(cdgRect.Left);
             var cdgTop = (int)Math.Round(cdgRect.Top);
             var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
@@ -563,20 +555,17 @@ internal sealed class D3D11MediaCompositionPresenter
         return true;
     }
 
-    private static Color4 ResolveClearColor(MediaCompositionFrame frame)
+    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => frame.ClearMode switch
     {
-        return frame.ClearMode switch
-        {
-            MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
-            MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
-            MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
-            _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
-        };
-    }
+        MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
+        MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
+        MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
+        _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
+    };
 
     private void DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight)
     {
-        var backgroundRect = ResolveBackgroundDestinationRect(outputWidth, outputHeight);
+        RectD backgroundRect = ResolveBackgroundDestinationRect(outputWidth, outputHeight);
 
         SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
         context.PSSetShader(_backgroundPixelShader);
@@ -586,16 +575,13 @@ internal sealed class D3D11MediaCompositionPresenter
     }
 
 
-    private RectD ResolveBackgroundDestinationRect(int outputWidth, int outputHeight)
+    private RectD ResolveBackgroundDestinationRect(int outputWidth, int outputHeight) => _backgroundStretchMode switch
     {
-        return _backgroundStretchMode switch
-        {
-            MediaCompositionStretchMode.Original => CenterOriginal(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
-            MediaCompositionStretchMode.Fill => new RectD(0, 0, outputWidth, outputHeight),
-            MediaCompositionStretchMode.UniformToFill => ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
-            _ => ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
-        };
-    }
+        MediaCompositionStretchMode.Original => CenterOriginal(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
+        MediaCompositionStretchMode.Fill => new RectD(0, 0, outputWidth, outputHeight),
+        MediaCompositionStretchMode.UniformToFill => ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
+        _ => ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
+    };
 
     private static RectD CenterOriginal(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight)
     {
@@ -642,10 +628,10 @@ internal sealed class D3D11MediaCompositionPresenter
         var constants = new DxCdgShaderConstants
         {
             DestinationRect = new Vector4(
-                (float)((left / (double)outputWidth) * 2.0 - 1.0),
-                (float)(1.0 - (top / (double)outputHeight) * 2.0),
-                (float)((right / (double)outputWidth) * 2.0 - 1.0),
-                (float)(1.0 - (bottom / (double)outputHeight) * 2.0)),
+                (float)((left / (double)outputWidth * 2.0) - 1.0),
+                (float)(1.0 - (top / (double)outputHeight * 2.0)),
+                (float)((right / (double)outputWidth * 2.0) - 1.0),
+                (float)(1.0 - (bottom / (double)outputHeight * 2.0))),
             TextureRect = new Vector4(0f, 0f, 1f, 1f),
             PaletteInfo = paletteInfo
         };
@@ -659,9 +645,7 @@ internal sealed class D3D11MediaCompositionPresenter
     private bool EnsureDrawPipeline(ID3D11Device device)
     {
         if (_pipelineFailed)
-        {
             return false;
-        }
 
         try
         {
@@ -769,7 +753,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
     private void LogVisibleAttempt(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
     {
-        var snapshot = frame.CdgOverlay;
+        DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
         if (snapshot == null)
         {
             Debug.WriteLine(
@@ -780,7 +764,7 @@ internal sealed class D3D11MediaCompositionPresenter
             return;
         }
 
-        var (NonZero, Foreground, Background, Histogram) = CountIndexStats(snapshot);
+        (var NonZero, var Foreground, var Background, var Histogram) = CountIndexStats(snapshot);
         Debug.WriteLine(
             $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
@@ -791,10 +775,8 @@ internal sealed class D3D11MediaCompositionPresenter
             $"hist=[{Histogram}]");
 
         if (Foreground == 0)
-        {
             Debug.WriteLine(
                 $"[COMPOSITION-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering.");
-        }
     }
 
     private static (int NonZero, int Foreground, int Background, string Histogram) CountIndexStats(DxCdgRenderSnapshot snapshot)
@@ -810,14 +792,10 @@ internal sealed class D3D11MediaCompositionPresenter
         foreach (var index in snapshot.ColorIndices.Span)
         {
             if (index < DxCdgConstants.ColorCount)
-            {
                 histogram[index]++;
-            }
 
             if (index != 0)
-            {
                 nonZero++;
-            }
 
             if (index == backgroundIndex)
             {
@@ -826,9 +804,7 @@ internal sealed class D3D11MediaCompositionPresenter
             }
 
             if (index < DxCdgConstants.ColorCount)
-            {
                 foreground++;
-            }
         }
 
         var histogramText = string.Join(",", histogram.Select((count, index) => $"{index}:{count}"));
@@ -846,7 +822,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
     private void LogVisiblePresent(MediaCompositionFrame frame, int outputWidth, int outputHeight, string backendName, long targetRevision)
     {
-        var snapshot = frame.CdgOverlay;
+        DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
         if (snapshot == null)
         {
             Debug.WriteLine(
@@ -857,9 +833,7 @@ internal sealed class D3D11MediaCompositionPresenter
 
         var logBucket = (int)(snapshot.Revision / 300);
         if (logBucket == _lastLoggedRevisionSecond)
-        {
             return;
-        }
 
         _lastLoggedRevisionSecond = logBucket;
         Debug.WriteLine(
@@ -938,9 +912,7 @@ internal sealed class D3D11MediaCompositionPresenter
             }
 
             if (codePtr == IntPtr.Zero)
-            {
                 throw new InvalidOperationException($"D3DCompile returned no bytecode for {entryPoint}/{targetProfile}.");
-            }
 
             var size = checked((int)GetBufferSize(codePtr));
             var bytecode = new byte[size];
@@ -950,14 +922,10 @@ internal sealed class D3D11MediaCompositionPresenter
         finally
         {
             if (codePtr != IntPtr.Zero)
-            {
-                Marshal.Release(codePtr);
-            }
+                _ = Marshal.Release(codePtr);
 
             if (errorPtr != IntPtr.Zero)
-            {
-                Marshal.Release(errorPtr);
-            }
+                _ = Marshal.Release(errorPtr);
         }
     }
 
@@ -978,8 +946,9 @@ internal sealed class D3D11MediaCompositionPresenter
     private delegate IntPtr GetBufferPointerDelegate(IntPtr pThis);
     private delegate nuint GetBufferSizeDelegate(IntPtr pThis);
 
-    [DllImport("d3dcompiler_47.dll", EntryPoint = "D3DCompile", ExactSpelling = true, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-    private static extern int D3DCompile(
+    [LibraryImport("d3dcompiler_47.dll", EntryPoint = "D3DCompile", StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+    private static partial int D3DCompile(
         [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)] byte[] sourceData,
         nuint sourceDataSize,
         string? sourceName,

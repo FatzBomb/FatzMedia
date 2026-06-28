@@ -1,5 +1,4 @@
 using Microsoft.Win32;
-using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -74,7 +73,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -100,7 +99,7 @@ public partial class MainWindow : Window
         _isSeekBarDragging = true;
         _viewModel.BeginSeekPreview();
         SetSeekPreviewFromPoint(e.GetPosition(SeekBar).X);
-        SeekBar.CaptureMouse();
+        _ = SeekBar.CaptureMouse();
         e.Handled = true;
     }
 
@@ -236,7 +235,7 @@ public partial class MainWindow : Window
         BottomChrome.Margin = new Thickness(18, 0, 18, 16);
         Panel.SetZIndex(BottomChrome, 50);
 
-        PlayerControlsPanel.Background = (System.Windows.Media.Brush)FindResource("PanelOverlayBrush");
+        PlayerControlsPanel.Background = (Brush)FindResource("PanelOverlayBrush");
         AttachBottomChromeToFullScreenOverlay();
         ShowFullScreenChrome(restartTimer: true);
         QueueMediaSurfaceLayoutRefresh();
@@ -268,7 +267,7 @@ public partial class MainWindow : Window
         BottomChrome.Margin = _standardBottomChromeMargin;
         Panel.SetZIndex(BottomChrome, 10);
 
-        PlayerControlsPanel.Background = (System.Windows.Media.Brush)FindResource("PanelBrush");
+        PlayerControlsPanel.Background = (Brush)FindResource("PanelBrush");
 
         WindowState = WindowState.Normal;
         WindowStyle = _restoreWindowStyle;
@@ -294,7 +293,7 @@ public partial class MainWindow : Window
 
         if (!_fullScreenOverlayRoot.Children.Contains(BottomChrome))
         {
-            _fullScreenOverlayRoot.Children.Add(BottomChrome);
+            _ = _fullScreenOverlayRoot.Children.Add(BottomChrome);
         }
 
         MediaSurface.OverlayContent = _fullScreenOverlayRoot;
@@ -361,8 +360,8 @@ public partial class MainWindow : Window
 
     private void QueueMediaSurfaceLayoutRefresh()
     {
-        Dispatcher.BeginInvoke(new Action(() => MediaSurface.RefreshPresentationLayout()), DispatcherPriority.Render);
-        Dispatcher.BeginInvoke(new Action(() => MediaSurface.RefreshPresentationLayout()), DispatcherPriority.ApplicationIdle);
+        _ = Dispatcher.BeginInvoke(new Action(MediaSurface.RefreshPresentationLayout), DispatcherPriority.Render);
+        _ = Dispatcher.BeginInvoke(new Action(MediaSurface.RefreshPresentationLayout), DispatcherPriority.ApplicationIdle);
     }
 
     private void ShowFullScreenChrome(bool restartTimer)

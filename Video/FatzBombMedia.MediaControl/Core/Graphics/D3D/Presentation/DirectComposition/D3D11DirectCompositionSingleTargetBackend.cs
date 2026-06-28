@@ -9,6 +9,7 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using System.Windows.Media;
+using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 
@@ -26,21 +27,16 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     private readonly D3D11DirectCompositionTarget _target = new(configuration);
 
     private IDXGISwapChain? _baseSwapChain;
-    private ID3D11Texture2D? _targetTexture;
-    private IntPtr _hwnd;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
-    public bool IsActive => _target.IsActive && _baseSwapChain != null && _targetTexture != null && _hwnd != IntPtr.Zero;
+    public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public ID3D11Texture2D? TargetTexture { get; private set; }
     public ID3D11Texture2D? OverlayTexture => _target.OverlayTexture;
-    public IntPtr Hwnd => _hwnd;
+    public IntPtr Hwnd { get; private set; }
 
-    public bool Matches(IntPtr hwnd, int width, int height)
-    {
-        return IsActive && hwnd == _hwnd && width == Width && height == Height;
-    }
+    public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
     public bool Create(D3D11DeviceResources deviceResources, IntPtr hwnd, int width, int height)
     {
@@ -53,11 +49,11 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
         try
         {
-            using var dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
-            using var adapter = dxgiDevice.GetAdapter();
-            using var factory = adapter.GetParent<IDXGIFactory2>();
+            using IDXGIDevice dxgiDevice = deviceResources.Device.QueryInterface<IDXGIDevice>();
+            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
+            using IDXGIFactory2 factory = adapter.GetParent<IDXGIFactory2>();
 
-            var baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Ignore);
+            SwapChainDescription1 baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Ignore);
             _baseSwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, baseDescription);
             if (_baseSwapChain == null)
             {
@@ -65,16 +61,16 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 return false;
             }
 
-            var overlayDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
-            var overlaySwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, overlayDescription);
+            SwapChainDescription1 overlayDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
+            IDXGISwapChain1 overlaySwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, overlayDescription);
             if (overlaySwapChain == null || !_target.Create(dxgiDevice, hwnd, _baseSwapChain, overlaySwapChain, width, height))
             {
                 Cleanup();
                 return false;
             }
 
-            _targetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
-            _hwnd = hwnd;
+            TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+            Hwnd = hwnd;
             Width = width;
             Height = height;
             return true;
@@ -87,36 +83,24 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
     }
 
-    public void SetOutputSize(int width, int height, int contentWidth, int contentHeight, bool liveResize)
-    {
-        _target.SetOutputSize(width, height, contentWidth, contentHeight, liveResize);
-    }
+    public void SetOutputSize(int width, int height, int contentWidth, int contentHeight, bool liveResize) => _target.SetOutputSize(width, height, contentWidth, contentHeight, liveResize);
 
-    public void Present(int liveResizeFlag, bool syncImmediate)
-    {
-        D3D11SwapChainPresenter.Present(
+    public void Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
             _baseSwapChain,
             configuration,
             liveResizeFlag,
             syncImmediate,
             diagnostics);
-    }
 
-    public void Commit()
-    {
-        _target.Commit();
-    }
+    public void Commit() => _target.Commit();
 
     public void PresentOverlayAndCommit(uint syncInterval = 1)
     {
-        _target.OverlaySwapChain?.Present(syncInterval, (int)PresentFlags.None);
+        _ = (_target.OverlaySwapChain?.Present(syncInterval, (int)PresentFlags.None));
         Commit();
     }
 
-    public void ReacquireOverlayBackBuffer()
-    {
-        _target.ReacquireOverlayBackBuffer();
-    }
+    public void ReacquireOverlayBackBuffer() => _target.ReacquireOverlayBackBuffer();
 
     public void ClearOverlayToTransparent(D3D11DeviceResources deviceResources)
     {
@@ -138,10 +122,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                     return;
                 }
 
-                using var renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
+                using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
                 deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));
                 deviceResources.Context.Flush();
-                _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
+                _ = _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
             }
 
             ReacquireOverlayBackBuffer();
@@ -210,7 +194,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
                 else
                 {
-                    var device = deviceResources.Device;
+                    ID3D11Device? device = deviceResources.Device;
                     if (device == null || !cpuUploadCache.Ensure(device, width, height) || cpuUploadCache.Texture == null)
                     {
                         if (configuration.EnableVerboseLogging)
@@ -232,7 +216,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
 
                 var syncInterval = (bufferIndex == D3D11SwapChainFactory.DirectCompositionBufferCount - 1 && !liveResize) ? 1u : 0u;
-                var result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
+                Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
                 if (result.Failure)
                 {
                     Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
@@ -296,18 +280,15 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
     public void Cleanup()
     {
-        _targetTexture?.Dispose();
-        _targetTexture = null;
+        TargetTexture?.Dispose();
+        TargetTexture = null;
         _baseSwapChain?.Dispose();
         _baseSwapChain = null;
         _target.Dispose();
-        _hwnd = IntPtr.Zero;
+        Hwnd = IntPtr.Zero;
         Width = 0;
         Height = 0;
     }
 
-    public void Dispose()
-    {
-        Cleanup();
-    }
+    public void Dispose() => Cleanup();
 }

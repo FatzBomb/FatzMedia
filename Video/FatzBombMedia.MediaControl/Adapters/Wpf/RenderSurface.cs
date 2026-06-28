@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,7 +6,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using FatzBombMedia.MediaControl.Controllers;
 
-namespace FatzBombMedia.MediaControl.Wpf;
+namespace FatzBombMedia.MediaControl.Adapters.Wpf;
 
 /// <summary>
 /// Connects a host-owned WPF Image surface to a MediaRenderer.
@@ -86,10 +85,7 @@ public static partial class RenderSurface
             RefreshDisplayRate();
         }
 
-        private void OnHostWindowMoved(object? sender, EventArgs e)
-        {
-            RefreshDisplayRate();
-        }
+        private void OnHostWindowMoved(object? sender, EventArgs e) => RefreshDisplayRate();
 
         /// <summary>
         /// Detects the refresh rate of the monitor currently displaying this surface's window
@@ -122,7 +118,7 @@ public static partial class RenderSurface
             }
             else
             {
-                _surface.Dispatcher.BeginInvoke(new Action(InvalidateVisuals), DispatcherPriority.Render);
+                _ = _surface.Dispatcher.BeginInvoke(new Action(InvalidateVisuals), DispatcherPriority.Render);
             }
         }
 
@@ -136,13 +132,13 @@ public static partial class RenderSurface
         private void OnImageSourceChanged(object? sender, EventArgs e)
         {
             if (_disposed) return;
-            _surface.Dispatcher.BeginInvoke(new Action(UpdateSurface), DispatcherPriority.Render);
+            _ = _surface.Dispatcher.BeginInvoke(new Action(UpdateSurface), DispatcherPriority.Render);
         }
 
         private void OnBackgroundChanged(object? sender, EventArgs e)
         {
             if (_disposed || _backgroundHost == null) return;
-            _backgroundHost.Dispatcher.BeginInvoke(new Action(UpdateBackground), DispatcherPriority.Render);
+            _ = _backgroundHost.Dispatcher.BeginInvoke(new Action(UpdateBackground), DispatcherPriority.Render);
         }
 
         private void UpdateSurface()
@@ -162,17 +158,17 @@ public static partial class RenderSurface
                 return;
             }
 
-            var backgroundSource = _renderer.EffectiveBackgroundSource;
+            ImageSource? backgroundSource = _renderer.EffectiveBackgroundSource;
             if (backgroundSource == null)
             {
                 _backgroundImage.Source = null;
-                _backgroundImage.Visibility = System.Windows.Visibility.Collapsed;
+                _backgroundImage.Visibility = Visibility.Collapsed;
                 return;
             }
 
             _backgroundImage.Source = backgroundSource;
             _backgroundImage.Stretch = _renderer.EffectiveBackgroundStretch;
-            _backgroundImage.Visibility = System.Windows.Visibility.Visible;
+            _backgroundImage.Visibility = Visibility.Visible;
         }
 
         public void Dispose()
@@ -189,20 +185,14 @@ public static partial class RenderSurface
                 _hostWindow = null;
             }
             _disposed = true;
-            _surface.Dispatcher.BeginInvoke(new Action(ClearSurfaceIfCurrent), DispatcherPriority.Render);
-            _backgroundHost?.Dispatcher.BeginInvoke(new Action(RestoreBackgroundHostIfCurrent), DispatcherPriority.Render);
+            _ = _surface.Dispatcher.BeginInvoke(new Action(ClearSurfaceIfCurrent), DispatcherPriority.Render);
+            _ = (_backgroundHost?.Dispatcher.BeginInvoke(new Action(RestoreBackgroundHostIfCurrent), DispatcherPriority.Render));
         }
 
-        private bool IsCurrentImageAttachment()
-        {
-            return ReferenceEquals(_surface.GetValue(ActiveImageAttachmentTokenProperty), _attachmentToken);
-        }
+        private bool IsCurrentImageAttachment() => ReferenceEquals(_surface.GetValue(ActiveImageAttachmentTokenProperty), _attachmentToken);
 
-        private bool IsCurrentBackgroundAttachment()
-        {
-            return _backgroundHost != null
+        private bool IsCurrentBackgroundAttachment() => _backgroundHost != null
                 && ReferenceEquals(_backgroundHost.GetValue(ActiveBackgroundAttachmentTokenProperty), _attachmentToken);
-        }
 
         private void ClearSurfaceIfCurrent()
         {
@@ -235,10 +225,10 @@ public static partial class RenderSurface
 
             var image = new Image
             {
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
-                VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
                 IsHitTestVisible = false,
-                Visibility = System.Windows.Visibility.Collapsed
+                Visibility = Visibility.Collapsed
             };
 
             backgroundHost.Children.Insert(0, image);
@@ -303,10 +293,7 @@ public static partial class RenderSurface
                     return null;
 
                 // 0 or 1 mean "use hardware default" per the Win32 docs; not a usable rate.
-                if (devMode.dmDisplayFrequency <= 1)
-                    return null;
-
-                return devMode.dmDisplayFrequency;
+                return devMode.dmDisplayFrequency <= 1 ? null : devMode.dmDisplayFrequency;
             }
             catch
             {
@@ -374,7 +361,7 @@ public static partial class RenderSurface
         [LibraryImport("user32.dll")]
         private static partial IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
 
-        #pragma warning disable SYSLIB1054 // LibraryImport does not support these Win32 structs cleanly without unsafe fixed buffers.
+#pragma warning disable SYSLIB1054 // LibraryImport does not support these Win32 structs cleanly without unsafe fixed buffers.
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -384,7 +371,7 @@ public static partial class RenderSurface
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
 
-        #pragma warning restore SYSLIB1054
+#pragma warning restore SYSLIB1054
 
     }
 }

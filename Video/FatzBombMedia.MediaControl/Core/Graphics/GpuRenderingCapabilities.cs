@@ -1,11 +1,10 @@
 using System.Windows.Media;
-using System.Windows.Interop;
-using System.Windows;
 using System.Diagnostics;
 using System.IO;
-using FatzBombMedia.MediaControl.Core.Configuration;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using SharpGen.Runtime;
+using Vortice.Direct3D;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics;
 
@@ -44,12 +43,12 @@ public static class GpuRenderingCapabilities
     public static GpuRenderingMethod GetOptimalRenderingMethod(int width, int height)
     {
         var pixelCount = width * height;
-        var capabilities = Capabilities;
+        GpuCapabilityInfo capabilities = Capabilities;
 
         // Since we simplified to always use best quality settings, use hardcoded optimal values
         // Always try GPU rendering for best quality (no minimum resolution limit)
         var gpuRenderingMinResolution = 0;
-        
+
         if (pixelCount < gpuRenderingMinResolution)
         {
             Debug.WriteLine($"[GPU] Small resolution {width}x{height}, using CPU rendering");
@@ -58,7 +57,7 @@ public static class GpuRenderingCapabilities
 
         // Always enable GPU rendering for best quality
         var enableGpuRendering = true;
-        
+
         if (enableGpuRendering)
         {
             // Check DirectX 11 support (primary method)
@@ -74,15 +73,12 @@ public static class GpuRenderingCapabilities
         return GpuRenderingMethod.WriteableBitmap;
     }
 
-    private static bool CanUseRenderingMethod(GpuRenderingMethod method, GpuCapabilityInfo capabilities)
+    private static bool CanUseRenderingMethod(GpuRenderingMethod method, GpuCapabilityInfo capabilities) => method switch
     {
-        return method switch
-        {
-            GpuRenderingMethod.D3D11 => capabilities.SupportsD3D11,
-            GpuRenderingMethod.WriteableBitmap => true,
-            _ => false
-        };
-    }
+        GpuRenderingMethod.D3D11 => capabilities.SupportsD3D11,
+        GpuRenderingMethod.WriteableBitmap => true,
+        _ => false
+    };
 
     /// <summary>
     /// Detects system GPU capabilities and DirectX support.
@@ -131,13 +127,13 @@ public static class GpuRenderingCapabilities
             }
 
             // Try to create a D3D11 device
-            var result = D3D11.D3D11CreateDevice(
+            Result result = D3D11.D3D11CreateDevice(
                 adapter: null,
-                driverType: Vortice.Direct3D.DriverType.Hardware,
+                driverType: DriverType.Hardware,
                 flags: DeviceCreationFlags.BgraSupport,
-                featureLevels: [Vortice.Direct3D.FeatureLevel.Level_11_0, Vortice.Direct3D.FeatureLevel.Level_10_1],
-                device: out var device,
-                featureLevel: out var featureLevel);
+                featureLevels: [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1],
+                device: out ID3D11Device? device,
+                featureLevel: out FeatureLevel featureLevel);
 
             if (result.Success && device != null)
             {
@@ -165,14 +161,14 @@ public static class GpuRenderingCapabilities
     {
         try
         {
-            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            var result = factory.EnumAdapters1(0, out var adapter); // Primary adapter
+            using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+            Result result = factory.EnumAdapters1(0, out IDXGIAdapter1? adapter); // Primary adapter
 
             if (result.Success && adapter != null)
             {
                 using (adapter)
                 {
-                    var desc = adapter.Description1;
+                    AdapterDescription1 desc = adapter.Description1;
 
                     // Convert dedicated video memory from bytes to MB
                     var dedicatedMemoryMB = (int)(desc.DedicatedVideoMemory.Value / (1024 * 1024));
@@ -235,10 +231,7 @@ public sealed class GpuCapabilityInfo
     /// <summary>
     /// Gets a summary string of GPU capabilities for debugging.
     /// </summary>
-    public override string ToString()
-    {
-        return $"Tier: {WpfRenderingTier}, D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}, VRAM: {EstimatedGpuMemoryMB}MB, GPU: {GpuDescription}";
-    }
+    public override string ToString() => $"Tier: {WpfRenderingTier}, D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}, VRAM: {EstimatedGpuMemoryMB}MB, GPU: {GpuDescription}";
 }
 
 /// <summary>

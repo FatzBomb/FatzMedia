@@ -1,5 +1,4 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using FatzBombMedia.MediaControl.Controllers;
 
 namespace FatzBombMedia.MediaControl.Controllers.Layering;
 
@@ -79,7 +78,7 @@ internal readonly record struct MediaLayerState(
         var hasImage = content.HasFlag(MediaContent.Image);
         var hasCdg = content.HasFlag(MediaContent.Cdg);
 
-        var primary = hasVideo
+        PrimaryMediaKind primary = hasVideo
             ? PrimaryMediaKind.Video
             : hasImage
                 ? PrimaryMediaKind.Image
@@ -91,7 +90,7 @@ internal readonly record struct MediaLayerState(
                             ? PrimaryMediaKind.Audio
                             : PrimaryMediaKind.None;
 
-        var overlay = hasCdg ? ForegroundOverlayKind.Cdg : ForegroundOverlayKind.None;
+        ForegroundOverlayKind overlay = hasCdg ? ForegroundOverlayKind.Cdg : ForegroundOverlayKind.None;
         return new MediaLayerState(primary, background, overlay);
     }
 

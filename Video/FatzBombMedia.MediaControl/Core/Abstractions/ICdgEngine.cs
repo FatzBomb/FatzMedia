@@ -1,7 +1,7 @@
-namespace FatzBombMedia.MediaControl.Core.Abstractions;
 
 using FatzBombMedia.MediaControl.Core.DxCdg;
 
+namespace FatzBombMedia.MediaControl.Core.Abstractions;
 /// <summary>
 /// UI-agnostic CDG decoding/engine abstraction.
 /// Implementations should not depend on WPF/WinUI types.

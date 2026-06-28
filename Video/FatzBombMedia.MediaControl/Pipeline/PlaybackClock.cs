@@ -1,28 +1,27 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using System.Diagnostics;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class PlaybackClock
 {
     private readonly Stopwatch _stopwatch = new();
     private double _basePositionSeconds;
-    private double _durationSeconds;
-    private double _rate = 1.0;
 
     public double DurationSeconds
     {
-        get => _durationSeconds;
+        get;
         set
         {
-            _durationSeconds = CleanSeconds(value);
+            field = CleanSeconds(value);
             _basePositionSeconds = ClampToDuration(_basePositionSeconds);
         }
     }
 
-    public double PositionSeconds => ClampToDuration(_basePositionSeconds + (_stopwatch.IsRunning ? _stopwatch.Elapsed.TotalSeconds * _rate : 0));
+    public double PositionSeconds => ClampToDuration(_basePositionSeconds + (_stopwatch.IsRunning ? _stopwatch.Elapsed.TotalSeconds * Rate : 0));
 
     public bool IsRunning => _stopwatch.IsRunning;
-    public double Rate => _rate;
+    public double Rate { get; private set; } = 1.0;
     public int TempoPercent { get; private set; }
 
     public void Start(double? positionSeconds = null)
@@ -63,7 +62,7 @@ internal sealed class PlaybackClock
     {
         var currentPosition = PositionSeconds;
         TempoPercent = Math.Clamp(tempoPercent, -95, 5000);
-        _rate = Math.Max(0.01, 1.0 + TempoPercent / 100.0);
+        Rate = Math.Max(0.01, 1.0 + (TempoPercent / 100.0));
         _basePositionSeconds = currentPosition;
 
         if (_stopwatch.IsRunning)
@@ -72,18 +71,8 @@ internal sealed class PlaybackClock
         }
     }
 
-    private double ClampToDuration(double seconds)
-    {
-        if (_durationSeconds <= 0)
-        {
-            return Math.Max(0, seconds);
-        }
+    private double ClampToDuration(double seconds) =>
+        DurationSeconds <= 0 ? Math.Max(0, seconds) : Math.Clamp(seconds, 0, DurationSeconds);
 
-        return Math.Clamp(seconds, 0, _durationSeconds);
-    }
-
-    private static double CleanSeconds(double seconds)
-    {
-        return double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
-    }
+    private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 }

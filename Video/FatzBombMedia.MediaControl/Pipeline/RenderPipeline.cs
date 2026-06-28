@@ -1,7 +1,8 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.DxCdg;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class RenderPipeline(IMediaEngine mediaEngine)
 {
@@ -11,23 +12,12 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
     private long _lastRenderedDxCdgPacketIndex = -1;
     private double _lastRenderedCdgPosition = double.NaN;
 
-    public double CurrentPosition
-    {
-        get
-        {
-            if (_mediaEngine.Content.HasFlag(MediaContent.Audio))
-            {
-                return _mediaEngine.Audio.Position;
-            }
-
-            if (_mediaEngine.Content.HasFlag(MediaContent.Video) && _mediaEngine.Video != null)
-            {
-                return _mediaEngine.Video.Position;
-            }
-
-            return _mediaEngine.Position;
-        }
-    }
+    public double CurrentPosition =>
+        _mediaEngine.Content.HasFlag(MediaContent.Audio)
+            ? _mediaEngine.Audio.Position
+            : _mediaEngine.Content.HasFlag(MediaContent.Video) && _mediaEngine.Video != null
+                ? _mediaEngine.Video.Position
+                : _mediaEngine.Position;
 
     public void Attach(IVideoEngine? video, ICdgEngine? cdg)
     {
@@ -111,8 +101,5 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
         _lastRenderedCdgPosition = double.NaN;
     }
 
-    private static bool NearlySamePosition(double currentPosition, double previousPosition)
-    {
-        return double.IsFinite(previousPosition) && Math.Abs(currentPosition - previousPosition) < 0.001;
-    }
+    private static bool NearlySamePosition(double currentPosition, double previousPosition) => double.IsFinite(previousPosition) && Math.Abs(currentPosition - previousPosition) < 0.001;
 }

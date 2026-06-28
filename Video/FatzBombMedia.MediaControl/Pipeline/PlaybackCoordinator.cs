@@ -1,7 +1,8 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class PlaybackCoordinator : IDisposable
 {
@@ -39,10 +40,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     /// whether a file is currently open, since the pipeline instance itself is stable for the
     /// coordinator's lifetime. See IVideoEngine.SetDisplayRefreshRate for details.
     /// </summary>
-    public void SetDisplayRefreshRate(double? refreshHz)
-    {
-        _session.Video?.SetDisplayRefreshRate(refreshHz);
-    }
+    public void SetDisplayRefreshRate(double? refreshHz) => _session.Video?.SetDisplayRefreshRate(refreshHz);
     public IAudioEngine ActiveAudio
     {
         get
@@ -105,15 +103,9 @@ internal sealed class PlaybackCoordinator : IDisposable
         set => Seek(value);
     }
 
-    public bool OpenAudio(string path)
-    {
-        return _session.Audio?.Open(path) == true;
-    }
+    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true;
 
-    public bool OpenAudio(IArchiveEntryInfo archiveEntry)
-    {
-        return _session.Audio?.Open(archiveEntry) == true;
-    }
+    public bool OpenAudio(IArchiveEntryInfo archiveEntry) => _session.Audio?.Open(archiveEntry) == true;
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
@@ -161,15 +153,9 @@ internal sealed class PlaybackCoordinator : IDisposable
         return true;
     }
 
-    public bool OpenVideo(string videoPath)
-    {
-        return _session.Video?.Open(videoPath) == true;
-    }
+    public bool OpenVideo(string videoPath) => _session.Video?.Open(videoPath) == true;
 
-    public bool OpenVideo(IArchiveEntryInfo videoEntry)
-    {
-        return _session.Video?.Open(videoEntry) == true;
-    }
+    public bool OpenVideo(IArchiveEntryInfo videoEntry) => _session.Video?.Open(videoEntry) == true;
 
     public bool Play()
     {
@@ -264,10 +250,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         return duration > 0 ? Math.Clamp(seconds, 0, duration) : seconds;
     }
 
-    public void Close()
-    {
-        _session.Clear();
-    }
+    public void Close() => _session.Clear();
 
     public void Dispose()
     {
@@ -278,8 +261,5 @@ internal sealed class PlaybackCoordinator : IDisposable
         _session.Dispose();
     }
 
-    private void OnPlaybackEnded(object? sender, EventArgs e)
-    {
-        PlaybackEnded?.Invoke(this, EventArgs.Empty);
-    }
+    private void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
 }

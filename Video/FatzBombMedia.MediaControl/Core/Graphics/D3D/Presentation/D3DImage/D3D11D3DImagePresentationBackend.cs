@@ -1,12 +1,10 @@
 using System.Diagnostics;
-using System.Windows;
 using System.Windows.Interop;
 using WpfD3DImage = System.Windows.Interop.D3DImage;
 using System.Windows.Media;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
 
@@ -17,23 +15,18 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
 internal sealed class D3D11D3DImagePresentationBackend : ID3D11PresentationBackend
 {
     private readonly D3DImagePresentationNotifier _notifier = new();
-
-    private ID3D11Texture2D? _targetTexture;
     private IDXGIResource? _sharedResource;
     private D3D9InteropSurface? _interopSurface;
     private WpfD3DImage? _image;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.D3DImage;
-    public bool IsActive => _targetTexture != null && _image != null;
+    public bool IsActive => TargetTexture != null && _image != null;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public ID3D11Texture2D? TargetTexture { get; private set; }
     public ImageSource? ImageSource => _image;
 
-    public bool Matches(int width, int height)
-    {
-        return IsActive && width == Width && height == Height;
-    }
+    public bool Matches(int width, int height) => IsActive && width == Width && height == Height;
 
     public bool Create(D3D11DeviceResources deviceResources, int width, int height)
     {
@@ -59,8 +52,8 @@ internal sealed class D3D11D3DImagePresentationBackend : ID3D11PresentationBacke
                 sampleQuality: 0,
                 ResourceOptionFlags.Shared);
 
-            _targetTexture = deviceResources.Device.CreateTexture2D(in textureDescription);
-            _sharedResource = _targetTexture.QueryInterface<IDXGIResource>();
+            TargetTexture = deviceResources.Device.CreateTexture2D(in textureDescription);
+            _sharedResource = TargetTexture.QueryInterface<IDXGIResource>();
             var sharedHandle = _sharedResource.SharedHandle;
             if (sharedHandle == IntPtr.Zero)
             {
@@ -107,7 +100,7 @@ internal sealed class D3D11D3DImagePresentationBackend : ID3D11PresentationBacke
             return;
         }
 
-        var currentImage = _image;
+        WpfD3DImage currentImage = _image;
         _notifier.NotifyDirty(
             currentImage,
             Width,
@@ -151,14 +144,11 @@ internal sealed class D3D11D3DImagePresentationBackend : ID3D11PresentationBacke
         _interopSurface = null;
         _sharedResource?.Dispose();
         _sharedResource = null;
-        _targetTexture?.Dispose();
-        _targetTexture = null;
+        TargetTexture?.Dispose();
+        TargetTexture = null;
         Width = 0;
         Height = 0;
     }
 
-    public void Dispose()
-    {
-        Cleanup();
-    }
+    public void Dispose() => Cleanup();
 }

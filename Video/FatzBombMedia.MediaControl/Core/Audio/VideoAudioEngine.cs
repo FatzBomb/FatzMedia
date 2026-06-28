@@ -1,4 +1,3 @@
-namespace FatzBombMedia.MediaControl.Core.Audio;
 
 using System.Buffers;
 using System.Diagnostics;
@@ -9,7 +8,9 @@ using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
 
-internal unsafe sealed class VideoAudioEngine : IAudioEngine
+namespace FatzBombMedia.MediaControl.Core.Audio;
+
+internal sealed unsafe class VideoAudioEngine : IAudioEngine
 {
     private readonly Lock _sync = new();
     private AVFormatContext* _formatContext;
@@ -21,7 +22,6 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     private byte* _audioBuffer;
     private int _audioBufferSize;
     private int _bassStream;
-    private int _tempoStream;
     private int _sampleRate;
     private int _sourceChannels;
     private int _channels;
@@ -30,14 +30,13 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     private double _positionBaseSeconds;
     private double _volume = 1.0;
     private int _pitch;
-    private int _tempo;
     private bool _normalize = true;
     private string? _tempPath;
     private long _pushedAudioFrameCount;
     private bool _disposed;
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
-    public int PlayHandle => _tempoStream;
+    public int PlayHandle { get; private set; }
     public bool Normalize
     {
         get
@@ -52,14 +51,14 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
             lock (_sync)
             {
                 _normalize = value;
-                ApplyVolume();
+                _ = ApplyVolume();
             }
         }
     }
 
     public double NormalizationGain { get; private set; } = 1.0;
     public bool IsNormalizationReady => true;
-    public int CurrentTempo => _tempo;
+    public int CurrentTempo { get; private set; }
     public double Duration { get; private set; }
     public bool IsOpen
     {
@@ -78,13 +77,13 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
         {
             lock (_sync)
             {
-                if (_tempoStream == 0)
+                if (PlayHandle == 0)
                 {
                     return _positionBaseSeconds;
                 }
 
-                var bytes = Bass.ChannelGetPosition(_tempoStream);
-                var seconds = Bass.ChannelBytes2Seconds(_tempoStream, bytes);
+                var bytes = Bass.ChannelGetPosition(PlayHandle);
+                var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
                 return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
             }
         }
@@ -106,7 +105,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
     public bool Init(int device = -1, int sampleRate = 44100) => true;
 
-    private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && _tempoStream != 0;
+    private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && PlayHandle != 0;
 
     public bool Open(string filePath)
     {
@@ -199,7 +198,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
             return false;
         }
 
-        var packet = ffmpeg.av_packet_alloc();
+        AVPacket* packet = ffmpeg.av_packet_alloc();
         if (packet == null)
         {
             return false;
@@ -236,12 +235,12 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
     private bool PlayCore()
     {
-        if (_tempoStream == 0)
+        if (PlayHandle == 0)
         {
             return false;
         }
 
-        var success = Bass.ChannelPlay(_tempoStream);
+        var success = Bass.ChannelPlay(PlayHandle);
         if (success)
         {
             SetState(AudioEngineState.Playing);
@@ -261,12 +260,12 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
     private bool PauseCore()
     {
-        if (_tempoStream == 0)
+        if (PlayHandle == 0)
         {
             return false;
         }
 
-        var success = Bass.ChannelPause(_tempoStream);
+        var success = Bass.ChannelPause(PlayHandle);
         if (success)
         {
             SetState(AudioEngineState.Paused);
@@ -286,18 +285,18 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     private bool StopCore()
     {
         _positionBaseSeconds = 0;
-        if (_tempoStream != 0)
+        if (PlayHandle != 0)
         {
-            Bass.ChannelStop(_tempoStream);
-            Bass.ChannelSetPosition(_tempoStream, 0);
+            _ = Bass.ChannelStop(PlayHandle);
+            _ = Bass.ChannelSetPosition(PlayHandle, 0);
         }
 
         if (_bassStream != 0)
         {
-            Bass.ChannelSetPosition(_bassStream, 0);
+            _ = Bass.ChannelSetPosition(_bassStream, 0);
         }
 
-        SeekDecoder(0);
+        _ = SeekDecoder(0);
         SetState(AudioEngineState.Stopped);
         PositionChanged?.Invoke(this, 0);
         return true;
@@ -322,15 +321,15 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
         var target = Duration > 0 ? Math.Clamp(seconds, 0, Duration) : Math.Max(0, seconds);
         var wasPlaying = State == AudioEngineState.Playing;
-        if (_tempoStream != 0)
+        if (PlayHandle != 0)
         {
-            Bass.ChannelPause(_tempoStream);
-            Bass.ChannelSetPosition(_tempoStream, 0);
+            _ = Bass.ChannelPause(PlayHandle);
+            _ = Bass.ChannelSetPosition(PlayHandle, 0);
         }
 
         if (_bassStream != 0)
         {
-            Bass.ChannelSetPosition(_bassStream, 0);
+            _ = Bass.ChannelSetPosition(_bassStream, 0);
         }
 
         if (!SeekDecoder(target))
@@ -339,9 +338,9 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
         }
 
         _positionBaseSeconds = target;
-        if (resumePlayback && wasPlaying && _tempoStream != 0)
+        if (resumePlayback && wasPlaying && PlayHandle != 0)
         {
-            Bass.ChannelPlay(_tempoStream);
+            _ = Bass.ChannelPlay(PlayHandle);
             SetState(AudioEngineState.Playing);
         }
 
@@ -388,16 +387,16 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
             return;
         }
 
-        if (_tempoStream != 0)
+        if (PlayHandle != 0)
         {
-            Bass.ChannelStop(_tempoStream);
-            Bass.StreamFree(_tempoStream);
-            _tempoStream = 0;
+            _ = Bass.ChannelStop(PlayHandle);
+            _ = Bass.StreamFree(PlayHandle);
+            PlayHandle = 0;
         }
 
         if (_bassStream != 0)
         {
-            Bass.StreamFree(_bassStream);
+            _ = Bass.StreamFree(_bassStream);
             _bassStream = 0;
         }
 
@@ -465,7 +464,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
         lock (_sync)
         {
             _pitch = Math.Clamp(semitones, -60, 60);
-            return _tempoStream != 0 && Bass.ChannelSetAttribute(_tempoStream, ChannelAttribute.Pitch, _pitch);
+            return PlayHandle != 0 && Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
         }
     }
 
@@ -473,8 +472,8 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     {
         lock (_sync)
         {
-            _tempo = Math.Clamp(percent, -95, 5000);
-            return _tempoStream != 0 && Bass.ChannelSetAttribute(_tempoStream, ChannelAttribute.Tempo, _tempo);
+            CurrentTempo = Math.Clamp(percent, -95, 5000);
+            return PlayHandle != 0 && Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
         }
     }
 
@@ -502,7 +501,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
     private bool InitializeDecoder()
     {
-        var codec = ffmpeg.avcodec_find_decoder(_audioStream->codecpar->codec_id);
+        AVCodec* codec = ffmpeg.avcodec_find_decoder(_audioStream->codecpar->codec_id);
         if (codec == null)
         {
             return false;
@@ -529,7 +528,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
         _sourceChannels = Math.Max(1, _codecContext->ch_layout.nb_channels);
         _channels = _sourceChannels > 2 ? 2 : _sourceChannels;
 
-        var inputLayout = _codecContext->ch_layout;
+        AVChannelLayout inputLayout = _codecContext->ch_layout;
         if (inputLayout.nb_channels <= 0 || ffmpeg.av_channel_layout_check(&inputLayout) == 0)
         {
             ffmpeg.av_channel_layout_default(&inputLayout, _sourceChannels);
@@ -566,7 +565,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
 
     private bool CreateBassStreams()
     {
-        var flags = BassFlags.Decode | BassFlags.Float;
+        BassFlags flags = BassFlags.Decode | BassFlags.Float;
         if (_channels == 1)
         {
             flags |= BassFlags.Mono;
@@ -579,16 +578,16 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
             return false;
         }
 
-        _tempoStream = BassFx.TempoCreate(_bassStream, BassFlags.Default);
-        if (_tempoStream == 0)
+        PlayHandle = BassFx.TempoCreate(_bassStream, BassFlags.Default);
+        if (PlayHandle == 0)
         {
             Debug.WriteLine($"[VideoAudioEngine] Failed to create tempo stream: {Bass.LastError}");
             return false;
         }
 
-        ApplyVolume();
-        Bass.ChannelSetAttribute(_tempoStream, ChannelAttribute.Pitch, _pitch);
-        Bass.ChannelSetAttribute(_tempoStream, ChannelAttribute.Tempo, _tempo);
+        _ = ApplyVolume();
+        _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
+        _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
         return true;
     }
 
@@ -622,7 +621,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
             _discardAudioBeforeSeconds = null;
         }
 
-        byte* output = _audioBuffer;
+        var output = _audioBuffer;
         var samples = ffmpeg.swr_convert(
             _resampler,
             &output,
@@ -676,52 +675,33 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     private double GetFramePositionSeconds(AVFrame* frame)
     {
         if (_audioStream == null || frame == null)
-        {
             return 0;
-        }
 
         var timeBase = ffmpeg.av_q2d(_audioStream->time_base);
         var timestamp = frame->best_effort_timestamp;
         if (timestamp == ffmpeg.AV_NOPTS_VALUE)
-        {
             timestamp = frame->pts;
-        }
 
-        if (timestamp == ffmpeg.AV_NOPTS_VALUE)
-        {
-            return _positionBaseSeconds;
-        }
-
-        return Math.Max(0, timestamp * timeBase - _streamStartSeconds);
+        return timestamp == ffmpeg.AV_NOPTS_VALUE ? _positionBaseSeconds : Math.Max(0, (timestamp * timeBase) - _streamStartSeconds);
     }
 
-    private static double GetStreamStartSeconds(AVStream* stream)
-    {
-        if (stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE)
-        {
-            return 0;
-        }
-
-        return Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
-    }
+    private static double GetStreamStartSeconds(AVStream* stream) => stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
+            ? 0
+            : Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
 
     private bool ApplyVolume()
     {
-        if (_tempoStream == 0)
-        {
+        if (PlayHandle == 0)
             return false;
-        }
 
         var effectiveVolume = _volume * (_normalize ? NormalizationGain : 1.0);
-        return Bass.ChannelSetAttribute(_tempoStream, ChannelAttribute.Volume, effectiveVolume);
+        return Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Volume, effectiveVolume);
     }
 
     private void SetState(AudioEngineState state)
     {
         if (State == state)
-        {
             return;
-        }
 
         State = state;
         StateChanged?.Invoke(this, state);
@@ -730,7 +710,7 @@ internal unsafe sealed class VideoAudioEngine : IAudioEngine
     private static string CreateTempMediaPath(byte[] data)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaControl");
-        Directory.CreateDirectory(tempDir);
+        _ = Directory.CreateDirectory(tempDir);
         var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".media");
         File.WriteAllBytes(tempPath, data);
         return tempPath;

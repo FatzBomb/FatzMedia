@@ -1,6 +1,7 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
 {
@@ -93,10 +94,7 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         return Task.FromResult(NormalizationGain);
     }
 
-    public void Dispose()
-    {
-        Close();
-    }
+    public void Dispose() => Close();
 
     private void SetState(AudioEngineState state)
     {

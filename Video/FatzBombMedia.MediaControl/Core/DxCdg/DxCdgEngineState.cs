@@ -1,13 +1,12 @@
-namespace FatzBombMedia.MediaControl.Core.DxCdg
+namespace FatzBombMedia.MediaControl.Core.DxCdg;
+
+public enum DxCdgEngineState
 {
-    public enum DxCdgEngineState
-    {
-        Null = 0,
-        Ready,
-        Playing,
-        Paused,
-        Stopped,
-        Closed,
-        Error
-    }
+    Null = 0,
+    Ready,
+    Playing,
+    Paused,
+    Stopped,
+    Closed,
+    Error
 }

@@ -3,7 +3,6 @@ using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using System.Diagnostics;
-using System.Threading;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -55,10 +54,7 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     public bool IsNativeSwapChainActive => _presentation.IsNativeHwndActive;
 
 
-    public void SetNativeLiveResizeInProgress(bool isResizing)
-    {
-        _presentation.SetNativeLiveResizeInProgress(isResizing);
-    }
+    public void SetNativeLiveResizeInProgress(bool isResizing) => _presentation.SetNativeLiveResizeInProgress(isResizing);
 
     public bool IsDirectCompositionActive => _presentation.IsDirectCompositionActive;
 
@@ -297,15 +293,9 @@ internal sealed class VorticeD3D11Renderer : IDisposable
 
     private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => NotifyPresented(syncImmediate);
 
-    private void NotifyPresented(bool syncImmediate = false)
-    {
-        _presentation.NotifyFramePresented(_disposed, syncImmediate, RaiseFramePresented);
-    }
+    private void NotifyPresented(bool syncImmediate = false) => _presentation.NotifyFramePresented(_disposed, syncImmediate, RaiseFramePresented);
 
-    private void RaiseFramePresented()
-    {
-        FramePresented?.Invoke(this, EventArgs.Empty);
-    }
+    private void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {

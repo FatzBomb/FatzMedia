@@ -1,4 +1,3 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
@@ -6,12 +5,13 @@ using FatzBombMedia.MediaControl.Core.Files;
 using System.Diagnostics;
 using System.IO;
 
+namespace FatzBombMedia.MediaControl.Pipeline;
+
 internal sealed class PipelineMediaEngine : IMediaEngine
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
     private readonly PlaybackCoordinator _coordinator;
-    private string? _imagePath;
     private bool _disposed;
 
     public PipelineMediaEngine(
@@ -32,11 +32,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine
     public ICdgEngine? Cdg => _coordinator.Cdg;
     public IAudioEngine Audio => _coordinator.ActiveAudio;
 
-    public void SetDisplayRefreshRate(double? refreshHz)
-    {
-        _coordinator.SetDisplayRefreshRate(refreshHz);
-    }
-    public string? ImagePath => _imagePath;
+    public void SetDisplayRefreshRate(double? refreshHz) => _coordinator.SetDisplayRefreshRate(refreshHz);
+    public string? ImagePath { get; private set; }
 
     public MediaContent Content => _coordinator.State.Content;
     public MediaPlayerState State => _coordinator.State.PlaybackState;
@@ -60,7 +57,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         {
             Close();
         }
-        _imagePath = null;
+        ImagePath = null;
 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
@@ -68,7 +65,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return false;
         }
 
-        using var fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
+        using FileTree fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
         return fileTree.Type switch
         {
             FileType.Audio when !string.IsNullOrWhiteSpace(fileTree.AudioPath) =>
@@ -119,7 +116,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         }
 
         _coordinator.Close();
-        _imagePath = null;
+        ImagePath = null;
     }
 
     public bool Seek(double seconds)
@@ -128,10 +125,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         return _coordinator.Seek(seconds);
     }
 
-    public Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null)
-    {
-        return Task.FromResult(Seek(seconds));
-    }
+    public Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null) => Task.FromResult(Seek(seconds));
 
     public void Dispose()
     {
@@ -145,10 +139,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         _disposed = true;
     }
 
-    private void OnPlaybackEnded(object? sender, EventArgs e)
-    {
-        MediaEnded?.Invoke(this, EventArgs.Empty);
-    }
+    private void OnPlaybackEnded(object? sender, EventArgs e) => MediaEnded?.Invoke(this, EventArgs.Empty);
 
     private static bool RejectUnsupported(string path, FileType fileType)
     {
@@ -158,15 +149,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine
 
     private bool OpenImage(string imagePath)
     {
-        _imagePath = imagePath;
+        ImagePath = imagePath;
         _coordinator.Close();
-        _imagePath = imagePath;
+        ImagePath = imagePath;
         _coordinator.State.SetOpened(MediaContent.Image, imagePath, 0);
         return true;
     }
 
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-    }
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

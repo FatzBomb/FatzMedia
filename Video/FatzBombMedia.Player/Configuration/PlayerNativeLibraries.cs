@@ -9,10 +9,7 @@ public static class PlayerNativeLibraries
         "native"
     ];
 
-    public static IReadOnlyList<string> ResolveSearchPaths()
-    {
-        return [.. NativeFolders.Select(ResolveFromAppBase)];
-    }
+    public static IReadOnlyList<string> ResolveSearchPaths() => [.. NativeFolders.Select(ResolveFromAppBase)];
 
     private static string ResolveFromAppBase(string path)
     {
@@ -21,7 +18,7 @@ public static class PlayerNativeLibraries
             : Path.Combine(AppContext.BaseDirectory, path);
 
         var fullPath = Path.GetFullPath(resolvedPath);
-        Directory.CreateDirectory(fullPath);
+        _ = Directory.CreateDirectory(fullPath);
         return fullPath;
     }
 }

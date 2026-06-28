@@ -22,22 +22,10 @@ internal sealed class D3D11PresentationBlitter(
         int width,
         int height,
         double framesPerSecond,
-        Stretch? stretchOverride = null)
-    {
-        if (deviceResources.Context == null)
-        {
-            return false;
-        }
-
-        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
+        Stretch? stretchOverride = null) => deviceResources.Context != null && presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "active presentation blit",
-                out var target))
-        {
-            return false;
-        }
-
-        return BlitToTarget(
+                out D3D11PresentationTargetSnapshot target) && BlitToTarget(
             target.Texture,
             targetWidth: target.Width,
             targetHeight: target.Height,
@@ -47,7 +35,6 @@ internal sealed class D3D11PresentationBlitter(
             height,
             framesPerSecond,
             stretchOverride ?? presentationState.NativePresentationStretch);
-    }
 
     public bool BlitToTarget(
         ID3D11Texture2D targetTexture,
@@ -58,14 +45,8 @@ internal sealed class D3D11PresentationBlitter(
         int sourceWidth,
         int sourceHeight,
         double framesPerSecond,
-        Stretch stretch)
-    {
-        if (deviceResources.Context == null || targetTexture == null || targetWidth <= 0 || targetHeight <= 0)
-        {
-            return false;
-        }
-
-        return videoProcessorPresenter.BlitTextureToPresentation(
+        Stretch stretch) =>
+        deviceResources.Context != null && targetTexture != null && targetWidth > 0 && targetHeight > 0 && videoProcessorPresenter.BlitTextureToPresentation(
             deviceResources,
             targetTexture,
             sourceTexture,
@@ -76,5 +57,4 @@ internal sealed class D3D11PresentationBlitter(
             targetWidth,
             targetHeight,
             stretch);
-    }
 }

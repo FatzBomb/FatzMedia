@@ -30,29 +30,22 @@ public sealed record AcceptedMediaTypes(
         .Where(filter => filter.Extensions.Count > 0)
         .Select(filter => filter.ToOpenFileDialogFilter()));
 
-    internal static AcceptedMediaTypes FromCurrentRuntime()
-    {
-        return new(
+    internal static AcceptedMediaTypes FromCurrentRuntime() => new(
             Sorted(FileTypes.Audio),
             Sorted(FileTypes.Video),
             Sorted(FileTypes.Archive),
             Sorted(FileTypes.Image),
             Sorted(FileTypes.Cdg));
-    }
 
-    private static IReadOnlyList<string> Sorted(IEnumerable<string> extensions)
-    {
-        return [.. extensions
+    private static IReadOnlyList<string> Sorted(IEnumerable<string> extensions) => [.. extensions
             .Where(extension => !string.IsNullOrWhiteSpace(extension))
             .Select(NormalizeExtension)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)];
-    }
 
     private static string NormalizeExtension(string extension)
     {
         var trimmed = extension.Trim();
-        if (trimmed == "*") return trimmed;
-        return trimmed.StartsWith('.') ? trimmed : $".{trimmed}";
+        return trimmed == "*" ? trimmed : trimmed.StartsWith('.') ? trimmed : $".{trimmed}";
     }
 }

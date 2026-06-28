@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Buffers;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FFmpeg.AutoGen;
@@ -35,7 +34,7 @@ internal unsafe sealed class VideoDecoder(
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
     private int _videoIndex = -1;
-    
+
     private AVFrame* _videoFrame;
     private AVFrame* _softwareFrame;
     private AVPacket* _packet;
@@ -43,13 +42,13 @@ internal unsafe sealed class VideoDecoder(
     private AVPixelFormat _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private AVPixelFormat _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private AVCodecContext_get_format? _getFormatCallback;
-    
+
     private int _videoLinesize;
-    
+
     private double _streamStartSeconds;
     private bool _streamStartInitialized;
     private double? _discardFramesBeforeSeconds;
-    
+
     public int Width { get; private set; }
     public int Height { get; private set; }
     public double FramesPerSecond { get; private set; }
@@ -59,7 +58,7 @@ internal unsafe sealed class VideoDecoder(
     public string? HardwareAccelerationMethod { get; private set; }
     public IntPtr D3D11DevicePointer { get; private set; }
     public IntPtr D3D11DeviceContextPointer { get; private set; }
-    
+
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
     private const int MaxFrames = 24;
@@ -86,42 +85,42 @@ internal unsafe sealed class VideoDecoder(
     public bool Open(string path)
     {
         Close();
-        
+
         fixed (AVFormatContext** pfmt = &_fmt)
         {
             if (ffmpeg.avformat_open_input(pfmt, path, null, null) < 0) return false;
         }
-        
-        if (ffmpeg.avformat_find_stream_info(_fmt, null) < 0) 
-        { 
-            Close(); 
-            return false; 
+
+        if (ffmpeg.avformat_find_stream_info(_fmt, null) < 0)
+        {
+            Close();
+            return false;
         }
-        
+
         _videoIndex = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, null, 0);
         if (_videoIndex < 0) { Close(); return false; }
-        
+
         _videoStream = _fmt->streams[_videoIndex];
-        
+
         if (!InitializeVideoDecoder())
         {
             Close();
             return false;
         }
-        
+
         _packet = ffmpeg.av_packet_alloc();
         DurationSeconds = _fmt->duration > 0 ? _fmt->duration / (double)ffmpeg.AV_TIME_BASE : 0;
-        
+
         if (_enableDiagnostics) Debug.WriteLine($"[VideoDecoder] Opened: {Width}x{Height}, {FramesPerSecond:F2}fps, {CodecName}");
         return true;
     }
-    
+
     public bool DecodeNextFrame()
     {
         if (_fmt == null || _packet == null) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
-        
-        int readResult = ffmpeg.av_read_frame(_fmt, _packet);
+
+        var readResult = ffmpeg.av_read_frame(_fmt, _packet);
         if (readResult < 0)
         {
             if (readResult == ffmpeg.AVERROR_EOF)
@@ -131,30 +130,30 @@ internal unsafe sealed class VideoDecoder(
             }
             return false; // Error
         }
-        
+
         var isVideoPacket = _packet->stream_index == _videoIndex;
-        bool frameDecoded = false;
+        var frameDecoded = false;
         if (isVideoPacket)
         {
             frameDecoded = ProcessVideoPacket();
         }
-        
+
         ffmpeg.av_packet_unref(_packet);
         return frameDecoded || !isVideoPacket;
     }
-    
-    public VideoFrameData? GetNextFrame() => _frameQueue.TryDequeue(out var frame) ? frame : null;
 
-    public VideoFrameData? PeekNextFrame() => _frameQueue.TryPeek(out var frame) ? frame : null;
-    
+    public VideoFrameData? GetNextFrame() => _frameQueue.TryDequeue(out VideoFrameData? frame) ? frame : null;
+
+    public VideoFrameData? PeekNextFrame() => _frameQueue.TryPeek(out VideoFrameData? frame) ? frame : null;
+
     public VideoFrameData[] GetQueuedFramesSnapshot() => [.. _frameQueue];
 
     public int FrameCount => _frameQueue.Count;
-    
+
     private bool InitializeVideoDecoder()
     {
-        var codecId = _videoStream->codecpar->codec_id;
-        var softwareCodec = ffmpeg.avcodec_find_decoder(codecId);
+        AVCodecID codecId = _videoStream->codecpar->codec_id;
+        AVCodec* softwareCodec = ffmpeg.avcodec_find_decoder(codecId);
         if (softwareCodec == null) return false;
 
         var allowHardware = _decodingMethod is VideoDecodingMethod.Auto or VideoDecodingMethod.Hardware;
@@ -162,7 +161,7 @@ internal unsafe sealed class VideoDecoder(
         if (allowHardware)
             hardwareCodec = FindHardwareCapableDecoder(codecId);
 
-        var preferredCodec = hardwareCodec != null ? hardwareCodec : softwareCodec;
+        AVCodec* preferredCodec = hardwareCodec != null ? hardwareCodec : softwareCodec;
 
         if (allowHardware && TryOpenCodec(preferredCodec, useHardware: true))
         {
@@ -179,7 +178,7 @@ internal unsafe sealed class VideoDecoder(
         {
             return false;
         }
-        
+
         _videoFrame = ffmpeg.av_frame_alloc();
         if (_videoFrame == null) return false;
 
@@ -188,21 +187,18 @@ internal unsafe sealed class VideoDecoder(
             _softwareFrame = ffmpeg.av_frame_alloc();
             if (_softwareFrame == null) return false;
         }
-        
+
         Width = _videoCodecCtx->width;
         Height = _videoCodecCtx->height;
 
         _videoLinesize = Width * 4;
-        
-        var avg = _videoStream->avg_frame_rate;
-        if (avg.num > 0 && avg.den > 0)
-            FramesPerSecond = avg.num / (double)avg.den;
-        else
-            FramesPerSecond = 30.0;
-            
-        var codecDescr = ffmpeg.avcodec_descriptor_get(_videoStream->codecpar->codec_id);
-        CodecName = codecDescr != null ? System.Runtime.InteropServices.Marshal.PtrToStringAnsi((IntPtr)codecDescr->name) : "Unknown";
-        
+
+        AVRational avg = _videoStream->avg_frame_rate;
+        FramesPerSecond = avg.num > 0 && avg.den > 0 ? avg.num / (double)avg.den : 30.0;
+
+        AVCodecDescriptor* codecDescr = ffmpeg.avcodec_descriptor_get(_videoStream->codecpar->codec_id);
+        CodecName = codecDescr != null ? Marshal.PtrToStringAnsi((IntPtr)codecDescr->name) : "Unknown";
+
         return true;
     }
 
@@ -214,7 +210,7 @@ internal unsafe sealed class VideoDecoder(
 
         while (true)
         {
-            var codec = ffmpeg.av_codec_iterate(&opaque);
+            AVCodec* codec = ffmpeg.av_codec_iterate(&opaque);
             if (codec == null)
             {
                 break;
@@ -265,7 +261,7 @@ internal unsafe sealed class VideoDecoder(
 
         for (var index = 0; ; index++)
         {
-            var config = ffmpeg.avcodec_get_hw_config(codec, index);
+            AVCodecHWConfig* config = ffmpeg.avcodec_get_hw_config(codec, index);
             if (config == null)
             {
                 break;
@@ -285,7 +281,7 @@ internal unsafe sealed class VideoDecoder(
     {
         for (var index = 0; ; index++)
         {
-            var config = ffmpeg.avcodec_get_hw_config(codec, index);
+            AVCodecHWConfig* config = ffmpeg.avcodec_get_hw_config(codec, index);
             if (config == null)
             {
                 return false;
@@ -298,7 +294,7 @@ internal unsafe sealed class VideoDecoder(
                 continue;
             }
 
-            foreach (var deviceType in DefaultPreferredHardwareDevices)
+            foreach (AVHWDeviceType deviceType in DefaultPreferredHardwareDevices)
             {
                 if (config->device_type == deviceType)
                 {
@@ -308,21 +304,15 @@ internal unsafe sealed class VideoDecoder(
         }
     }
 
-    private static bool IsPreferredHardwareDecoderName(string codecName)
-    {
-        return codecName.Contains("d3d11", StringComparison.OrdinalIgnoreCase)
+    private static bool IsPreferredHardwareDecoderName(string codecName) => codecName.Contains("d3d11", StringComparison.OrdinalIgnoreCase)
             || codecName.Contains("dxva", StringComparison.OrdinalIgnoreCase)
             || codecName.Equals("av1", StringComparison.OrdinalIgnoreCase)
             || codecName.Equals("hevc", StringComparison.OrdinalIgnoreCase)
             || codecName.Equals("h264", StringComparison.OrdinalIgnoreCase);
-    }
 
-    private static string GetCodecName(AVCodec* codec)
-    {
-        return codec != null && codec->name != null
+    private static string GetCodecName(AVCodec* codec) => codec != null && codec->name != null
             ? Marshal.PtrToStringAnsi((IntPtr)codec->name) ?? "unknown"
             : "unknown";
-    }
 
     private bool TryOpenCodec(AVCodec* codec, bool useHardware)
     {
@@ -369,13 +359,13 @@ internal unsafe sealed class VideoDecoder(
     {
         var codecName = GetCodecName(codec);
         var sawPreferredDevice = false;
-        foreach (var deviceType in DefaultPreferredHardwareDevices)
+        foreach (AVHWDeviceType deviceType in DefaultPreferredHardwareDevices)
         {
             for (var preferencePass = 0; preferencePass < 2; preferencePass++)
             {
                 for (var index = 0; ; index++)
                 {
-                    var config = ffmpeg.avcodec_get_hw_config(codec, index);
+                    AVCodecHWConfig* config = ffmpeg.avcodec_get_hw_config(codec, index);
                     if (config == null)
                     {
                         break;
@@ -415,16 +405,13 @@ internal unsafe sealed class VideoDecoder(
         return false;
     }
 
-    private static bool IsPreferredHardwarePixelFormat(AVHWDeviceType deviceType, AVPixelFormat pixelFormat)
+    private static bool IsPreferredHardwarePixelFormat(AVHWDeviceType deviceType, AVPixelFormat pixelFormat) => deviceType switch
     {
-        return deviceType switch
-        {
-            AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA => pixelFormat == AVPixelFormat.AV_PIX_FMT_D3D11,
-            AVHWDeviceType.AV_HWDEVICE_TYPE_D3D12VA => true,
-            AVHWDeviceType.AV_HWDEVICE_TYPE_DXVA2 => true,
-            _ => false
-        };
-    }
+        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA => pixelFormat == AVPixelFormat.AV_PIX_FMT_D3D11,
+        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D12VA => true,
+        AVHWDeviceType.AV_HWDEVICE_TYPE_DXVA2 => true,
+        _ => false
+    };
 
     private bool TryCreateHardwareDevice(AVHWDeviceType deviceType, AVPixelFormat pixelFormat)
     {
@@ -482,7 +469,7 @@ internal unsafe sealed class VideoDecoder(
             return AVPixelFormat.AV_PIX_FMT_NONE;
         }
 
-        for (var format = formats; *format != AVPixelFormat.AV_PIX_FMT_NONE; format++)
+        for (AVPixelFormat* format = formats; *format != AVPixelFormat.AV_PIX_FMT_NONE; format++)
         {
             if (*format == _hardwarePixelFormat)
             {
@@ -506,7 +493,7 @@ internal unsafe sealed class VideoDecoder(
         }
         return *formats;
     }
-    
+
     private bool ProcessVideoPacket()
     {
         if (_frameQueue.Count >= MaxFrames) return false;
@@ -561,25 +548,25 @@ internal unsafe sealed class VideoDecoder(
 
         return frameDecoded;
     }
-    
+
     private void ProcessVideoFrameFromDecoder()
     {
         double rawPts = 0;
         var timebase = ffmpeg.av_q2d(_videoStream->time_base);
-        
+
         if (_videoFrame->best_effort_timestamp != ffmpeg.AV_NOPTS_VALUE)
             rawPts = _videoFrame->best_effort_timestamp * timebase;
         else if (_videoFrame->pts != ffmpeg.AV_NOPTS_VALUE)
             rawPts = _videoFrame->pts * timebase;
         else if (_videoFrame->pkt_dts != ffmpeg.AV_NOPTS_VALUE)
             rawPts = _videoFrame->pkt_dts * timebase;
-        
+
         if (!_streamStartInitialized)
         {
             _streamStartSeconds = rawPts;
             _streamStartInitialized = true;
         }
-        
+
         var pts = Math.Max(0, rawPts - _streamStartSeconds);
 
         if (_discardFramesBeforeSeconds.HasValue)
@@ -599,7 +586,7 @@ internal unsafe sealed class VideoDecoder(
         }
 
         var transferStart = totalStart;
-        var sourceFrame = GetSoftwareFrameForProcessing();
+        AVFrame* sourceFrame = GetSoftwareFrameForProcessing();
         var transferMs = GetElapsedMilliseconds(transferStart);
         if (sourceFrame == null)
         {
@@ -631,7 +618,7 @@ internal unsafe sealed class VideoDecoder(
                 dstLinesize[0] = _videoLinesize;
 
                 var scaleStart = Stopwatch.GetTimestamp();
-                ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
+                _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
                     0, Height, dstData, dstLinesize);
                 scaleMs = GetElapsedMilliseconds(scaleStart);
             }
@@ -678,7 +665,7 @@ internal unsafe sealed class VideoDecoder(
             return false;
         }
 
-        var clonedFrame = ffmpeg.av_frame_clone(_videoFrame);
+        AVFrame* clonedFrame = ffmpeg.av_frame_clone(_videoFrame);
         if (clonedFrame == null)
         {
             return false;
@@ -731,10 +718,7 @@ internal unsafe sealed class VideoDecoder(
         _decodeDiagnosticTotalMs = 0;
     }
 
-    private static double GetElapsedMilliseconds(long startTimestamp)
-    {
-        return (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
-    }
+    private static double GetElapsedMilliseconds(long startTimestamp) => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     private static bool ShouldLogDecodeIssue(ref int count)
     {
@@ -807,11 +791,11 @@ internal unsafe sealed class VideoDecoder(
 
         return true;
     }
-    
+
     private void ProcessRemainingFrames()
     {
         if (_videoCodecCtx == null) return;
-        
+
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, null);
         if (sendResult < 0
             && sendResult != ffmpeg.AVERROR_EOF
@@ -840,7 +824,7 @@ internal unsafe sealed class VideoDecoder(
             processed++;
         }
     }
-    
+
     public void Close()
     {
         if (_swsVideo != null)
@@ -848,7 +832,7 @@ internal unsafe sealed class VideoDecoder(
             ffmpeg.sws_freeContext(_swsVideo);
             _swsVideo = null;
         }
-        
+
         if (_videoFrame != null)
         {
             fixed (AVFrame** frame = &_videoFrame)
@@ -860,24 +844,24 @@ internal unsafe sealed class VideoDecoder(
             fixed (AVFrame** frame = &_softwareFrame)
                 ffmpeg.av_frame_free(frame);
         }
-        
+
         CleanupCodecContext();
         CleanupHardwareDevice();
-        
+
         if (_packet != null)
         {
             fixed (AVPacket** pkt = &_packet)
                 ffmpeg.av_packet_free(pkt);
         }
-        
+
         if (_fmt != null)
         {
             fixed (AVFormatContext** fmt = &_fmt)
                 ffmpeg.avformat_close_input(fmt);
         }
-        
+
         ClearFrameQueue();
-        
+
         _videoStream = null;
         _videoIndex = -1;
         _streamStartSeconds = 0;
@@ -914,20 +898,20 @@ internal unsafe sealed class VideoDecoder(
             return;
         }
 
-        var deviceContext = _hardwareDeviceContext;
+        AVBufferRef* deviceContext = _hardwareDeviceContext;
         ffmpeg.av_buffer_unref(&deviceContext);
         _hardwareDeviceContext = null;
         D3D11DevicePointer = IntPtr.Zero;
         D3D11DeviceContextPointer = IntPtr.Zero;
         _getFormatCallback = null;
     }
-    
+
     public void Dispose()
     {
         Close();
         GC.SuppressFinalize(this);
     }
-    
+
     public void Flush()
     {
         if (_videoCodecCtx != null)
@@ -956,7 +940,7 @@ internal unsafe sealed class VideoDecoder(
 
     private void ClearFrameQueue()
     {
-        while (_frameQueue.TryDequeue(out var frame))
+        while (_frameQueue.TryDequeue(out VideoFrameData? frame))
         {
             ReturnFrame(frame);
         }
@@ -1024,7 +1008,7 @@ internal unsafe sealed class VideoFrameData
             return;
         }
 
-        var frame = HardwareFrame;
+        AVFrame* frame = HardwareFrame;
         ffmpeg.av_frame_free(&frame);
         HardwareFrame = null;
     }

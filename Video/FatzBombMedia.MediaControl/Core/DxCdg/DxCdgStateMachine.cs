@@ -19,10 +19,7 @@ public sealed class DxCdgStateMachine
     private long _revision;
     private uint _backgroundWashArgb;
 
-    public DxCdgStateMachine()
-    {
-        Reset();
-    }
+    public DxCdgStateMachine() => Reset();
 
     public int Width => DxCdgConstants.FrameWidth;
     public int Height => DxCdgConstants.FrameHeight;
@@ -95,15 +92,8 @@ public sealed class DxCdgStateMachine
     /// Processes one raw 24-byte CDG packet into indexed-color state.
     /// Returns true when the packet changed visual state or palette state.
     /// </summary>
-    public bool ProcessPacket(ReadOnlySpan<byte> packetBytes)
-    {
-        if (packetBytes.Length < DxCdgConstants.PacketSize)
-        {
-            return false;
-        }
-
-        return ProcessPacket(new DxCdgPacket(packetBytes[..DxCdgConstants.PacketSize]));
-    }
+    public bool ProcessPacket(ReadOnlySpan<byte> packetBytes) =>
+        packetBytes.Length >= DxCdgConstants.PacketSize && ProcessPacket(new DxCdgPacket(packetBytes[..DxCdgConstants.PacketSize]));
 
     internal bool ProcessPacket(DxCdgPacket packet)
     {
@@ -156,8 +146,8 @@ public sealed class DxCdgStateMachine
         {
             var colorCopy = _colorIndices.ToArray();
             var paletteCopy = _paletteArgb.ToArray();
-            var dirtyCopy = _dirtyRects.Count == 0
-                ? Array.Empty<DxCdgDirtyRect>()
+            DxCdgDirtyRect[] dirtyCopy = _dirtyRects.Count == 0
+                ? []
                 : [.. _dirtyRects];
 
             if (consumeDirtyRegions)
@@ -177,14 +167,14 @@ public sealed class DxCdgStateMachine
 
     private bool ProcessMemoryPresetUnsafe(DxCdgPacket packet)
     {
-        var dataSpan = packet.DataSpan;
+        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & DxCdgConstants.ColorMask);
         _colorManager.SetBackgroundColor(color);
         RefreshColorStateUnsafe(addDirtyRect: false);
-        bool changed = true;
+        var changed = true;
         if ((dataSpan[1] & DxCdgConstants.ColorMask) == 0)
         {
-            var span = _colorIndices.AsSpan();
+            Span<byte> span = _colorIndices.AsSpan();
             for (var i = 0; i < span.Length; i++)
             {
                 if (span[i] == color)
@@ -208,7 +198,7 @@ public sealed class DxCdgStateMachine
 
     private bool ProcessBorderPresetUnsafe(DxCdgPacket packet)
     {
-        var dataSpan = packet.DataSpan;
+        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & DxCdgConstants.ColorMask);
         var changed = false;
 
@@ -241,7 +231,7 @@ public sealed class DxCdgStateMachine
 
     private bool ProcessTileBlockUnsafe(DxCdgPacket packet, bool xor)
     {
-        var dataSpan = packet.DataSpan;
+        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
         var color0 = (byte)(dataSpan[0] & DxCdgConstants.ColorMask);
         var color1 = (byte)(dataSpan[1] & DxCdgConstants.ColorMask);
         var columnIndex = (dataSpan[3] & DxCdgConstants.TileBlockXMask) * DxCdgConstants.TileWidth;
@@ -292,7 +282,7 @@ public sealed class DxCdgStateMachine
 
     private bool ScrollUnsafe(DxCdgPacket packet, bool copy)
     {
-        var dataSpan = packet.DataSpan;
+        ReadOnlySpan<byte> dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & DxCdgConstants.ColorMask);
         var h = dataSpan[1];
         var v = dataSpan[2];
@@ -365,7 +355,7 @@ public sealed class DxCdgStateMachine
 
     private bool FillRangeIfChangedUnsafe(int start, int length, byte color)
     {
-        var span = _colorIndices.AsSpan(start, length);
+        Span<byte> span = _colorIndices.AsSpan(start, length);
         var changed = false;
         for (var i = 0; i < span.Length; i++)
         {
@@ -426,7 +416,7 @@ public sealed class DxCdgStateMachine
     private void RefreshColorStateUnsafe(bool addDirtyRect)
     {
         _colorManager.UpdateLutIfNeeded();
-        _colorManager.UpdateBackgroundWashIfNeeded();
+        _ = _colorManager.UpdateBackgroundWashIfNeeded();
         _colorManager.ColorLut.CopyTo(_paletteArgb);
         _backgroundWashArgb = _colorManager.BackgroundWashArgb;
 
@@ -438,7 +428,7 @@ public sealed class DxCdgStateMachine
 
     private void AddDirtyRectUnsafe(DxCdgDirtyRect rect)
     {
-        var clamped = rect.ClampToFrame();
+        DxCdgDirtyRect clamped = rect.ClampToFrame();
         if (clamped.IsEmpty)
         {
             return;

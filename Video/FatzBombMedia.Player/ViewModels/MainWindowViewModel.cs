@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Wpf;
+using FatzBombMedia.MediaControl.Adapters.Wpf;
 using FatzBombMedia.Player.Configuration;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -14,20 +14,6 @@ namespace FatzBombMedia.Player.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly DispatcherTimer _positionTimer;
-    private bool _isBusy;
-    private string _statusText = "Native DLL path is resolved by the host app.";
-    private double _volume = 1.0;
-    private int _pitch;
-    private int _tempo = 100;
-    private bool _normalize = true;
-    private bool _autoPlay = true;
-    private bool _loopPlayback;
-    private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
-    private BitmapScalingMode _bitmapScalingMode = BitmapScalingMode.HighQuality;
-    private int _cdgBackgroundOpacity = 100;
-    private double _positionSeconds;
-    private double _seekPositionSeconds;
-    private double _durationSeconds;
     private bool _isSeekPreviewActive;
     private DateTime _suppressPositionRefresh = DateTime.MinValue;
     private bool _disposed;
@@ -63,15 +49,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
             var player = new FatzMediaPlayer(diagnosticsConfig, NativeLibraryPaths)
             {
-                Normalize = _normalize,
-                VideoDisplayMode = _videoDisplayMode
+                Normalize = Normalize,
+                VideoDisplayMode = VideoDisplayMode
             };
-            player.Effects.Volume = _volume;
-            player.Effects.Pitch = _pitch;
-            player.Effects.Tempo = _tempo;
-            player.PlayOnLoad = _autoPlay;
-            player.LoopMedia = _loopPlayback;
-            player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
+            player.Effects.Volume = Volume;
+            player.Effects.Pitch = Pitch;
+            player.Effects.Tempo = Tempo;
+            player.PlayOnLoad = AutoPlay;
+            player.LoopMedia = LoopPlayback;
+            player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             Player = player;
             StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
         }
@@ -120,10 +106,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool IsBusy
     {
-        get => _isBusy;
+        get;
         private set
         {
-            if (!SetProperty(ref _isBusy, value)) return;
+            if (!SetProperty(ref field, value)) return;
             RefreshCommandStates();
         }
     }
@@ -134,116 +120,116 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public string StatusText
     {
-        get => _statusText;
-        private set => SetProperty(ref _statusText, value);
-    }
+        get;
+        private set => SetProperty(ref field, value);
+    } = "Native DLL path is resolved by the host app.";
 
     public double Volume
     {
-        get => _volume;
+        get;
         set
         {
             var clamped = Math.Clamp(value, 0.0, 1.0);
-            if (!SetProperty(ref _volume, clamped)) return;
+            if (!SetProperty(ref field, clamped)) return;
             if (Player is { } player)
-                player.Effects.Volume = _volume;
+                player.Effects.Volume = field;
         }
-    }
+    } = 1.0;
 
     public int Pitch
     {
-        get => _pitch;
+        get;
         set
         {
             var clamped = Math.Clamp(value, -12, 12);
-            if (!SetProperty(ref _pitch, clamped)) return;
+            if (!SetProperty(ref field, clamped)) return;
             if (Player is { } player)
-                player.Effects.Pitch = _pitch;
+                player.Effects.Pitch = field;
         }
     }
 
     public int Tempo
     {
-        get => _tempo;
+        get;
         set
         {
             var clamped = Math.Clamp(value, 50, 200);
-            if (!SetProperty(ref _tempo, clamped)) return;
+            if (!SetProperty(ref field, clamped)) return;
             if (Player is { } player)
-                player.Effects.Tempo = _tempo;
+                player.Effects.Tempo = field;
         }
-    }
+    } = 100;
 
     public bool Normalize
     {
-        get => _normalize;
+        get;
         set
         {
-            if (!SetProperty(ref _normalize, value)) return;
+            if (!SetProperty(ref field, value)) return;
             if (Player is { } player)
-                player.Normalize = _normalize;
+                player.Normalize = field;
         }
-    }
+    } = true;
 
     public bool AutoPlay
     {
-        get => _autoPlay;
+        get;
         set
         {
-            if (!SetProperty(ref _autoPlay, value)) return;
+            if (!SetProperty(ref field, value)) return;
             if (Player is { } player)
-                player.PlayOnLoad = _autoPlay;
+                player.PlayOnLoad = field;
         }
-    }
+    } = true;
 
     public bool LoopPlayback
     {
-        get => _loopPlayback;
+        get;
         set
         {
-            if (!SetProperty(ref _loopPlayback, value)) return;
+            if (!SetProperty(ref field, value)) return;
             if (Player is { } player)
-                player.LoopMedia = _loopPlayback;
+                player.LoopMedia = field;
         }
     }
 
     public VideoDisplayMode VideoDisplayMode
     {
-        get => _videoDisplayMode;
+        get;
         set
         {
-            if (!SetProperty(ref _videoDisplayMode, value)) return;
+            if (!SetProperty(ref field, value)) return;
             if (Player is { } player)
-                player.VideoDisplayMode = _videoDisplayMode;
+                player.VideoDisplayMode = field;
         }
-    }
+    } = VideoDisplayMode.Zoom;
 
     public BitmapScalingMode BitmapScalingMode
     {
-        get => _bitmapScalingMode;
-        set => SetProperty(ref _bitmapScalingMode, value);
-    }
+        get;
+        set => SetProperty(ref field, value);
+    } = BitmapScalingMode.HighQuality;
 
     public int CdgBackgroundOpacity
     {
-        get => _cdgBackgroundOpacity;
+        get;
         set
         {
             var clamped = Math.Clamp(value, 0, 100);
-            if (!SetProperty(ref _cdgBackgroundOpacity, clamped)) return;
+            if (!SetProperty(ref field, clamped)) return;
             if (Player is { } player)
-                player.CdgVisuals.BackgroundOpacity = (byte)_cdgBackgroundOpacity;
+                player.CdgVisuals.BackgroundOpacity = (byte)field;
         }
-    }
+    } = 100;
 
     public MediaPresentationMode PresentationMode => MediaPresentationMode.NativeHwndOverlay;
 
     public double PositionSeconds
     {
-        get => _positionSeconds;
+        get;
         private set
         {
-            if (!SetProperty(ref _positionSeconds, CleanSeconds(value))) return;
+            if (!SetProperty(ref field, CleanSeconds(value))) return;
             OnPropertyChanged(nameof(ElapsedText));
             OnPropertyChanged(nameof(RemainingText));
         }
@@ -251,26 +237,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public double SeekPositionSeconds
     {
-        get => _seekPositionSeconds;
+        get;
         set
         {
             var target = DurationSeconds > 0 ? Math.Clamp(CleanSeconds(value), 0, DurationSeconds) : CleanSeconds(value);
 
-            if (!SetProperty(ref _seekPositionSeconds, target) || !_isSeekPreviewActive)
-                return;            
+            if (!SetProperty(ref field, target) || !_isSeekPreviewActive)
+                return;
 
             PositionSeconds = target;
             SuppressPositionRefresh();
-            Player?.Controls.Seek(target);
+            _ = (Player?.Controls.Seek(target));
         }
     }
 
     public double DurationSeconds
     {
-        get => _durationSeconds;
+        get;
         private set
         {
-            if (!SetProperty(ref _durationSeconds, CleanSeconds(value))) return;
+            if (!SetProperty(ref field, CleanSeconds(value))) return;
             OnPropertyChanged(nameof(CanSeek));
             OnPropertyChanged(nameof(ElapsedText));
             OnPropertyChanged(nameof(RemainingText));
@@ -290,7 +276,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             IsBusy = true;
             StatusText = $"Loading: {mediaPath}";
-            var player = Player;
+            FatzMediaPlayer? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             RefreshPlaybackPosition();
             StatusText = loaded ? $"Loaded: {mediaPath}" : $"Could not load: {mediaPath}";
@@ -312,19 +298,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void Play()
     {
-        Player?.Play();
+        _ = (Player?.Play());
         RefreshPlaybackPosition();
     }
 
     private void Pause()
     {
-        Player?.Pause();
+        _ = (Player?.Pause());
         RefreshPlaybackPosition();
     }
 
     private void Stop()
     {
-        Player?.Stop();
+        _ = (Player?.Stop());
         RefreshPlaybackPosition();
     }
 

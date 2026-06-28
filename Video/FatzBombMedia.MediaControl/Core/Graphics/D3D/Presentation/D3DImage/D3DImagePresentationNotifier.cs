@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.Threading;
 using System.Windows;
-using System.Windows.Interop;
 using WpfD3DImage = System.Windows.Interop.D3DImage;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
@@ -14,10 +12,7 @@ internal sealed class D3DImagePresentationNotifier
 {
     private int _surfaceGeneration;
 
-    public void RetireSurfaces()
-    {
-        Interlocked.Increment(ref _surfaceGeneration);
-    }
+    public void RetireSurfaces() => Interlocked.Increment(ref _surfaceGeneration);
 
     public void NotifyDirty(
         WpfD3DImage? d3dImage,
@@ -54,7 +49,7 @@ internal sealed class D3DImagePresentationNotifier
             return;
         }
 
-        d3dImage.Dispatcher.BeginInvoke(NotifyIfCurrent, System.Windows.Threading.DispatcherPriority.Render);
+        _ = d3dImage.Dispatcher.BeginInvoke(NotifyIfCurrent, System.Windows.Threading.DispatcherPriority.Render);
     }
 
     private static void MarkSurfaceDirty(WpfD3DImage d3dImage, int width, int height)

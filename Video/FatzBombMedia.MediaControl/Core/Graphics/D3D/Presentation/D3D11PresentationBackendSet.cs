@@ -27,23 +27,8 @@ internal sealed class D3D11PresentationBackendSet(
     /// Active backend priority is intentional. DirectComposition is the most specific native
     /// layered mode, then plain native HWND, then WPF D3DImage fallback.
     /// </summary>
-    public ID3D11PresentationBackend? Active
-    {
-        get
-        {
-            if (DirectComposition.IsActive)
-            {
-                return DirectComposition;
-            }
-
-            if (NativeHwnd.IsActive)
-            {
-                return NativeHwnd;
-            }
-
-            return D3DImage.IsActive ? D3DImage : null;
-        }
-    }
+    public ID3D11PresentationBackend? Active =>
+        DirectComposition.IsActive ? DirectComposition : NativeHwnd.IsActive ? NativeHwnd : D3DImage.IsActive ? D3DImage : null;
 
     public D3D11PresentationBackendKind ActiveKind => Active?.Kind ?? D3D11PresentationBackendKind.None;
 
@@ -54,17 +39,14 @@ internal sealed class D3D11PresentationBackendSet(
 
     public bool HasD3DImageBackend => ActiveKind == D3D11PresentationBackendKind.D3DImage;
 
-    public bool OwnsTexture(ID3D11Texture2D? texture)
-    {
-        return texture != null
+    public bool OwnsTexture(ID3D11Texture2D? texture) => texture != null
             && ((NativeHwnd.IsActive && ReferenceEquals(texture, NativeHwnd.TargetTexture))
                 || (DirectComposition.IsActive && ReferenceEquals(texture, DirectComposition.TargetTexture))
                 || (D3DImage.IsActive && ReferenceEquals(texture, D3DImage.TargetTexture)));
-    }
 
     public void Present(int liveResizeFlag, bool syncImmediate)
     {
-        var active = Active;
+        ID3D11PresentationBackend? active = Active;
         if (active == null || active.Kind == D3D11PresentationBackendKind.D3DImage)
         {
             return;
@@ -84,7 +66,7 @@ internal sealed class D3D11PresentationBackendSet(
         Func<bool> isDisposed,
         Action framePresented)
     {
-        var active = Active;
+        ID3D11PresentationBackend? active = Active;
         if (active == null)
         {
             Debug.WriteLine("[DXCDG-TRACE] Backend notify skipped: no active backend.");
@@ -111,7 +93,7 @@ internal sealed class D3D11PresentationBackendSet(
     /// </summary>
     public bool ClearActiveTargetToBlack(D3D11DeviceResources deviceResources, bool flush = true)
     {
-        var target = ActiveTargetTexture;
+        ID3D11Texture2D? target = ActiveTargetTexture;
         if (deviceResources.Device == null || deviceResources.Context == null || target == null)
         {
             return false;
@@ -119,7 +101,7 @@ internal sealed class D3D11PresentationBackendSet(
 
         try
         {
-            using var renderTargetView = deviceResources.Device.CreateRenderTargetView(target);
+            using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(target);
             deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 1f));
             if (flush)
             {
@@ -152,7 +134,7 @@ internal sealed class D3D11PresentationBackendSet(
             return;
         }
 
-        ClearActiveTargetToBlack(deviceResources, flush: false);
+        _ = ClearActiveTargetToBlack(deviceResources, flush: false);
 
         if (DirectComposition.IsActive)
         {
@@ -170,8 +152,5 @@ internal sealed class D3D11PresentationBackendSet(
         D3DImage.Dispose();
     }
 
-    public void Dispose()
-    {
-        Cleanup();
-    }
+    public void Dispose() => Cleanup();
 }

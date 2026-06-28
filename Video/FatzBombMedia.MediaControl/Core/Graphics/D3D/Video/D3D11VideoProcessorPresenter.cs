@@ -7,6 +7,7 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
+using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 
@@ -49,7 +50,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             return false;
         }
 
-        using var sourceTexture = AddRefAndWrap(sourceTexturePointer, static pointer => new ID3D11Texture2D(pointer));
+        using ID3D11Texture2D sourceTexture = AddRefAndWrap(sourceTexturePointer, static pointer => new ID3D11Texture2D(pointer));
         return BlitTextureToPresentation(
             deviceResources,
             presentationTexture,
@@ -91,7 +92,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             return false;
         }
 
-        using var inputView = deviceResources.VideoDevice.CreateVideoProcessorInputView(
+        using ID3D11VideoProcessorInputView inputView = deviceResources.VideoDevice.CreateVideoProcessorInputView(
             sourceTexture,
             _videoProcessorEnumerator!,
             new VideoProcessorInputViewDescription
@@ -107,12 +108,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
-        var (Source, Destination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
+        (Vortice.RawRect Source, Vortice.RawRect Destination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
         ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, Source, Destination);
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
 
-        var streams = new[]
-        {
+        VideoProcessorStream[] streams =
+        [
             new VideoProcessorStream
             {
                 Enable = true,
@@ -120,9 +121,9 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                 InputFrameOrField = 0,
                 InputSurface = inputView
             }
-        };
+        ];
 
-        var result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, streams);
+        Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, streams);
         if (result.Failure)
         {
             Debug.WriteLine($"[VorticeD3D11] Video processor blit failed: {result}");
@@ -181,7 +182,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         Reset();
 
-        var frameRate = ToRational(normalizedFps);
+        Rational frameRate = ToRational(normalizedFps);
         var contentDescription = new VideoProcessorContentDescription
         {
             InputFrameFormat = VideoFrameFormat.Progressive,
@@ -228,7 +229,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         int presentationHeight,
         Stretch stretch)
     {
-        var mapping = ViewportGeometry.MapSourceToViewport(
+        ViewportMapping mapping = ViewportGeometry.MapSourceToViewport(
             sourceWidth,
             sourceHeight,
             Math.Max(1, presentationWidth),
@@ -273,7 +274,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             return;
         }
 
-        using var renderTargetView = deviceResources.Device.CreateRenderTargetView(presentationTexture);
+        using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(presentationTexture);
         deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 1f));
         if (flush)
         {
@@ -283,7 +284,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
     private static T AddRefAndWrap<T>(IntPtr pointer, Func<IntPtr, T> factory)
     {
-        Marshal.AddRef(pointer);
+        _ = Marshal.AddRef(pointer);
         return factory(pointer);
     }
 }

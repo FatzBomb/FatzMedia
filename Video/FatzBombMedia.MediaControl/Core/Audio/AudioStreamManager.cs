@@ -15,47 +15,44 @@ namespace FatzBombMedia.MediaControl.Core.Audio;
 internal sealed class AudioStreamManager : IDisposable
 {
     #region Constants
-    
-    private const BassFlags CreateStreamFlags = 
+
+    private const BassFlags CreateStreamFlags =
         BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
-    
-    private const BassFlags DecodeFlags = 
+
+    private const BassFlags DecodeFlags =
         BassFlags.Decode | BassFlags.Float | BassFlags.Prescan;
-    
-    private const BassFlags TempoCreateFlags = 
+
+    private const BassFlags TempoCreateFlags =
         BassFlags.Default | BassFlags.Float;
-    
+
     #endregion
 
     #region Private Fields
-    
+
     private int _sourceHandle;
-    private int _decodeHandle;
-    private int _playHandle; // tempo or source handle
-    
+
     // Cached values to avoid repeated calculations
-    private double _cachedDuration = -1;
     private volatile bool _disposed;
-    
+
     #endregion
 
     #region Public Properties
-    
+
     /// <summary>
     /// Gets the primary playback handle (tempo stream or source stream).
     /// </summary>
-    public int PlayHandle => _playHandle;
-    
+    public int PlayHandle { get; private set; }
+
     /// <summary>
     /// Gets the decode handle for analysis operations.
     /// </summary>
-    public int DecodeHandle => _decodeHandle;
-    
+    public int DecodeHandle { get; private set; }
+
     /// <summary>
     /// Gets whether any streams are currently open.
     /// </summary>
-    public bool IsOpen => _playHandle != 0 || _sourceHandle != 0 || _decodeHandle != 0;
-    
+    public bool IsOpen => PlayHandle != 0 || _sourceHandle != 0 || DecodeHandle != 0;
+
     /// <summary>
     /// Gets the cached duration in seconds, or calculates it if not cached.
     /// </summary>
@@ -64,17 +61,19 @@ internal sealed class AudioStreamManager : IDisposable
         get
         {
             // Use cached value if available and valid
-            if (_cachedDuration >= 0) return _cachedDuration;
-            
-            _cachedDuration = CalculateDuration();
-            return _cachedDuration;
+            if (field >= 0) return field;
+
+            field = CalculateDuration();
+            return field;
         }
-    }
-    
+
+        private set;
+    } = -1;
+
     #endregion
 
     #region Public Methods
-    
+
     /// <summary>
     /// Opens audio streams from a file path.
     /// Creates both decode and playback streams with tempo support.
@@ -84,24 +83,24 @@ internal sealed class AudioStreamManager : IDisposable
     public bool OpenFromPath(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-        
+
         Close();
-        
+
         try
         {
             // Create both decode and source streams
-            _decodeHandle = MBass.CreateStream(filePath, Flags: DecodeFlags);
+            DecodeHandle = MBass.CreateStream(filePath, Flags: DecodeFlags);
             _sourceHandle = MBass.CreateStream(filePath, Flags: CreateStreamFlags);
-            
+
             if (!ValidateStreamHandles())
             {
                 return false;
             }
-            
+
             AttachTempoProcessor();
             ResetState();
-            
-            return _playHandle != 0;
+
+            return PlayHandle != 0;
         }
         catch (Exception ex)
         {
@@ -120,31 +119,31 @@ internal sealed class AudioStreamManager : IDisposable
     public bool OpenFromArchive(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        
+
         Close();
-        
+
         try
         {
             // Stream archive entry to memory with proper sizing
             var estimatedSize = (int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue);
             using var memoryStream = new MemoryStream(estimatedSize);
-            
+
             archiveEntry.WriteTo(memoryStream);
             var audioData = memoryStream.ToArray();
-            
+
             // Create streams from memory buffer
-            _decodeHandle = MBass.CreateStream(audioData, 0, audioData.Length, DecodeFlags);
+            DecodeHandle = MBass.CreateStream(audioData, 0, audioData.Length, DecodeFlags);
             _sourceHandle = MBass.CreateStream(audioData, 0, audioData.Length, CreateStreamFlags);
-            
+
             if (!ValidateStreamHandles())
             {
                 return false;
             }
-            
+
             AttachTempoProcessor();
             ResetState();
-            
-            return _playHandle != 0;
+
+            return PlayHandle != 0;
         }
         catch (Exception ex)
         {
@@ -159,14 +158,14 @@ internal sealed class AudioStreamManager : IDisposable
     /// </summary>
     /// <returns>BASS handle for analysis, or 0 if none available</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetAnalysisHandle() => _decodeHandle != 0 ? _decodeHandle : _playHandle;
+    public int GetAnalysisHandle() => DecodeHandle != 0 ? DecodeHandle : PlayHandle;
 
     /// <summary>
     /// Gets the appropriate handle for position/duration operations.
     /// </summary>
     /// <returns>BASS handle for position operations, or 0 if none available</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetPositionHandle() => _playHandle != 0 ? _playHandle : _decodeHandle;
+    public int GetPositionHandle() => PlayHandle != 0 ? PlayHandle : DecodeHandle;
 
     /// <summary>
     /// Resets the position of all streams to the beginning.
@@ -174,10 +173,10 @@ internal sealed class AudioStreamManager : IDisposable
     /// </summary>
     public void ResetPosition()
     {
-        ResetPosition(_playHandle);
-        if (_decodeHandle != 0 && _decodeHandle != _playHandle)
+        ResetPosition(PlayHandle);
+        if (DecodeHandle != 0 && DecodeHandle != PlayHandle)
         {
-            ResetPosition(_decodeHandle);
+            ResetPosition(DecodeHandle);
         }
     }
 
@@ -190,10 +189,10 @@ internal sealed class AudioStreamManager : IDisposable
     {
         var handle = GetPositionHandle();
         if (handle == 0) return 0.0;
-        
+
         var position = MBass.ChannelGetPosition(handle);
         var seconds = MBass.ChannelBytes2Seconds(handle, position);
-        
+
         return double.IsFinite(seconds) ? Math.Max(0.0, seconds) : 0.0;
     }
 
@@ -206,9 +205,9 @@ internal sealed class AudioStreamManager : IDisposable
     {
         var handle = GetPositionHandle();
         if (handle == 0) return;
-        
+
         var bytes = MBass.ChannelSeconds2Bytes(handle, Math.Max(0.0, seconds));
-        MBass.ChannelSetPosition(handle, bytes);
+        _ = MBass.ChannelSetPosition(handle, bytes);
     }
 
     /// <summary>
@@ -218,33 +217,33 @@ internal sealed class AudioStreamManager : IDisposable
     public void Close()
     {
         if (_disposed) return;
-        
+
         // Stop playback first
-        if (_playHandle != 0)
+        if (PlayHandle != 0)
         {
-            SafeExecute(() => MBass.ChannelStop(_playHandle));
-            
+            SafeExecute(() => MBass.ChannelStop(PlayHandle));
+
             // Free tempo stream if it's different from source
-            if (_playHandle != _sourceHandle)
+            if (PlayHandle != _sourceHandle)
             {
-                SafeExecute(() => MBass.StreamFree(_playHandle));
+                SafeExecute(() => MBass.StreamFree(PlayHandle));
             }
         }
-        
+
         // Free source and decode streams
         if (_sourceHandle != 0)
         {
             SafeExecute(() => MBass.StreamFree(_sourceHandle));
         }
-        
-        if (_decodeHandle != 0)
+
+        if (DecodeHandle != 0)
         {
-            SafeExecute(() => MBass.StreamFree(_decodeHandle));
+            SafeExecute(() => MBass.StreamFree(DecodeHandle));
         }
-        
+
         // Reset all handles and state
-        _playHandle = _sourceHandle = _decodeHandle = 0;
-        _cachedDuration = -1;
+        PlayHandle = _sourceHandle = DecodeHandle = 0;
+        DurationSeconds = -1;
     }
 
     /// <summary>
@@ -253,7 +252,7 @@ internal sealed class AudioStreamManager : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        
+
         Close();
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -262,15 +261,15 @@ internal sealed class AudioStreamManager : IDisposable
     #endregion
 
     #region Private Methods
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool ValidateStreamHandles()
     {
-        if (_sourceHandle == 0 && _decodeHandle != 0)
+        if (_sourceHandle == 0 && DecodeHandle != 0)
         {
             // Source failed but decode succeeded - cleanup and fail
-            MBass.StreamFree(_decodeHandle);
-            _decodeHandle = 0;
+            _ = MBass.StreamFree(DecodeHandle);
+            DecodeHandle = 0;
             return false;
         }
         return _sourceHandle != 0;
@@ -280,43 +279,40 @@ internal sealed class AudioStreamManager : IDisposable
     {
         if (_sourceHandle == 0)
         {
-            _playHandle = 0;
+            PlayHandle = 0;
             return;
         }
-        
+
         // Attempt to create tempo stream for pitch/tempo control
-        _playHandle = BassFx.TempoCreate(_sourceHandle, TempoCreateFlags);
-        
+        PlayHandle = BassFx.TempoCreate(_sourceHandle, TempoCreateFlags);
+
         // Fallback to source stream if tempo creation fails
-        if (_playHandle == 0)
+        if (PlayHandle == 0)
         {
-            _playHandle = _sourceHandle;
+            PlayHandle = _sourceHandle;
             Debug.WriteLine("[AudioStreamManager] Tempo stream creation failed, using source stream");
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ResetState()
-    {
-        _cachedDuration = -1; // Invalidate duration cache
-    }
+    private void ResetState() => DurationSeconds = -1; // Invalidate duration cache
 
     private double CalculateDuration()
     {
-        if (_playHandle == 0 && _decodeHandle == 0) return 0.0;
-        
-        var handle = _playHandle != 0 ? _playHandle : _decodeHandle;
+        if (PlayHandle == 0 && DecodeHandle == 0) return 0.0;
+
+        var handle = PlayHandle != 0 ? PlayHandle : DecodeHandle;
         var length = MBass.ChannelGetLength(handle);
-        
+
         // Fallback to decode handle if play handle length is invalid
-        if (length <= 0 && _decodeHandle != 0 && _decodeHandle != handle)
+        if (length <= 0 && DecodeHandle != 0 && DecodeHandle != handle)
         {
-            length = MBass.ChannelGetLength(_decodeHandle);
-            handle = _decodeHandle;
+            length = MBass.ChannelGetLength(DecodeHandle);
+            handle = DecodeHandle;
         }
-        
+
         if (length <= 0) return 0.0;
-        
+
         var seconds = MBass.ChannelBytes2Seconds(handle, length);
         return double.IsFinite(seconds) ? Math.Max(0.0, seconds) : 0.0;
     }
@@ -326,7 +322,7 @@ internal sealed class AudioStreamManager : IDisposable
     {
         if (handle != 0)
         {
-            try { MBass.ChannelSetPosition(handle, 0); }
+            try { _ = MBass.ChannelSetPosition(handle, 0); }
             catch { /* Ignore reset failures during cleanup */ }
         }
     }
@@ -337,6 +333,6 @@ internal sealed class AudioStreamManager : IDisposable
         try { action(); }
         catch { /* Ignore cleanup failures */ }
     }
-    
+
     #endregion
 }

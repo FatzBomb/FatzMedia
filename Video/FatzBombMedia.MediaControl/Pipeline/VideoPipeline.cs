@@ -1,4 +1,3 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using System.Diagnostics;
 using System.IO;
@@ -7,6 +6,8 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Audio;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Video;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState state, MediaPlayerConfiguration configuration) : IVideoEngine
 {
@@ -142,13 +143,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     public double Position
     {
-        get
-        {
-            if (HasAudio)
-                return _audioEngine!.Position;
-
-            return _clock.PositionSeconds;
-        }
+        get => HasAudio ? _audioEngine!.Position : _clock.PositionSeconds;
         set => Seek(value);
     }
 
@@ -194,7 +189,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         lock (_decodeLock)
         {
             if (!DecodeUntilFrameAvailable())
-                TryFallbackToSoftwareVideo(path);
+                _ = TryFallbackToSoftwareVideo(path);
 
             PresentFrameForCurrentPosition();
         }
@@ -236,7 +231,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
             if (HasAudio)
             {
-                _audioEngine!.Play();
+                _ = _audioEngine!.Play();
                 _presentationClock.Start(_audioEngine.Position);
                 if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Playback started using BASS video-audio clock.");
             }
@@ -249,7 +244,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             StartDecodeLoop();
             if (!_wpfCompositionDrivenPresentation)
                 StartPresentationLoop();
-            Interlocked.Exchange(ref _playbackEndSignaled, 0);
+            _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
             _state.SetPlaybackState(MediaPlayerState.Playing);
             RaiseState(VideoEngineState.Playing);
@@ -270,7 +265,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             WaitForPresentationIdle();
             if (HasAudio)
             {
-                _audioEngine!.Pause();
+                _ = _audioEngine!.Pause();
                 _presentationClock.Pause(_audioEngine.Position);
             }
             else
@@ -293,14 +288,14 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             StopDecodeLoopAndWait();
             StopPresentationLoopAndWait();
             WaitForPresentationIdle();
-            _audioEngine?.Stop();
+            _ = (_audioEngine?.Stop());
             _clock.Stop();
             _presentationClock.Reset(0);
             lock (_decodeLock)
             {
                 ReleaseCurrentFrame();
-                _videoDecoder?.Seek(0);
-                DecodeUntilFrameAvailable();
+                _ = (_videoDecoder?.Seek(0));
+                _ = DecodeUntilFrameAvailable();
                 lock (_presentationLock)
                     PresentFrameForCurrentPosition();
             }
@@ -331,7 +326,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         lock (_seekPumpLock)
             _pendingSeekSeconds = target;
 
-        _seekSignal.Set();
+        _ = _seekSignal.Set();
         return true;
     }
 
@@ -356,7 +351,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                     SetMinimumCommittedVideoPresentationTarget(target);
 
                 if (target < Duration - 0.05)
-                    Interlocked.Exchange(ref _playbackEndSignaled, 0);
+                    _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
 
                 _generation++;
                 StopDecodeLoopAndWait();
@@ -365,7 +360,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 if (HasAudio)
                 {
-                    _audioEngine!.Seek(target, resumePlayback: false);
+                    _ = _audioEngine!.Seek(target, resumePlayback: false);
                     _presentationClock.Reset(target);
                 }
                 else
@@ -378,7 +373,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 var videoSeekProcessingStopwatch = Stopwatch.StartNew();
                 lock (_decodeLock)
-                    SeekVideoNearTarget(target, asPreview);
+                    _ = SeekVideoNearTarget(target, asPreview);
 
                 videoSeekProcessingStopwatch.Stop();
                 RecordAdaptiveVideoSeekProcessingTime(videoSeekProcessingStopwatch.Elapsed);
@@ -396,8 +391,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 if (HasAudio && wasPlaying)
                 {
-                    _audioEngine!.PrebufferAudio();
-                    _audioEngine.Play();
+                    _ = _audioEngine!.PrebufferAudio();
+                    _ = _audioEngine.Play();
                     _presentationClock.Start(_audioEngine.Position);
                 }
                 else if (!HasAudio && wasPlaying)
@@ -440,17 +435,17 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private void StopSeekWorker()
     {
-        var thread = _seekThread;
+        Thread? thread = _seekThread;
         if (thread == null)
             return;
 
         // Signal and join without holding _transportGate: an in-flight SeekCore holds that gate, so
         // joining here lets it finish, and Close re-acquires the gate afterwards before disposing.
         _seekWorkerShutdown = true;
-        _seekSignal.Set();
+        _ = _seekSignal.Set();
         try
         {
-            thread.Join(2000);
+            _ = thread.Join(2000);
         }
         catch (Exception ex)
         {
@@ -470,7 +465,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     {
         while (!_seekWorkerShutdown)
         {
-            _seekSignal.WaitOne();
+            _ = _seekSignal.WaitOne();
 
             var lastPreviewTarget = double.NaN;
             while (!_seekWorkerShutdown)
@@ -577,13 +572,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return true;
 
         lock (_seekPumpLock)
-        {
-            if (!_pendingSeekSeconds.HasValue)
-                return false;
-
-            return double.IsNaN(_activeSeekTargetSeconds)
-                || IsMeaningfullyDifferentSeekTarget(_pendingSeekSeconds.Value, _activeSeekTargetSeconds);
-        }
+            return _pendingSeekSeconds.HasValue && (double.IsNaN(_activeSeekTargetSeconds)
+                || IsMeaningfullyDifferentSeekTarget(_pendingSeekSeconds.Value, _activeSeekTargetSeconds));
     }
 
     private bool HasPendingSeekRequest()
@@ -592,13 +582,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return _pendingSeekSeconds.HasValue;
     }
 
-    private double NormalizeSeekTarget(double seconds)
-    {
-        if (!double.IsFinite(seconds) || seconds <= 0)
-            return 0;
-
-        return Duration > 0 ? Math.Clamp(seconds, 0, Duration) : seconds;
-    }
+    private double NormalizeSeekTarget(double seconds) =>
+        !double.IsFinite(seconds) || seconds <= 0 ? 0 : Duration > 0 ? Math.Clamp(seconds, 0, Duration) : seconds;
 
     private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) =>
         double.IsNaN(previousTarget) || Math.Abs(target - previousTarget) > VideoSeekTargetChangeThresholdSeconds;
@@ -611,7 +596,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         var started = Stopwatch.GetTimestamp();
         while (!_seekWorkerShutdown && GetElapsedMilliseconds(started, Stopwatch.GetTimestamp()) < intervalMilliseconds)
-            _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
+            _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
     }
 
     private int GetAdaptiveVideoSeekIntervalMilliseconds()
@@ -719,7 +704,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 if (!_isOpen || _videoDecoder == null)
                     return;
 
-                DecodeUntilFrameAvailable();
+                _ = DecodeUntilFrameAvailable();
             }
             finally
             {
@@ -839,7 +824,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 continue;
             }
 
-            cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(waitSeconds));
+            _ = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(waitSeconds));
         }
     }
 
@@ -849,13 +834,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     /// reflect any one specific monitor on multi-monitor, mixed-refresh-rate setups. Falls back
     /// to DWM auto-detection, then to 60Hz, if no override has been supplied.
     /// </summary>
-    private double GetDisplayRefreshIntervalSeconds()
-    {
-        if (_overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0)
-            return 1.0 / overrideHz;
-
-        return GetDwmDisplayRefreshIntervalSeconds();
-    }
+    private double GetDisplayRefreshIntervalSeconds() =>
+        _overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0
+            ? 1.0 / overrideHz
+            : GetDwmDisplayRefreshIntervalSeconds();
 
     /// <summary>
     /// Queries DWM's global composition refresh interval as a fallback when no explicit
@@ -883,10 +865,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             var refreshHz = (double)timingInfo.rateRefresh.uiNumerator / timingInfo.rateRefresh.uiDenominator;
 
             // Guard against bogus values from virtual displays/RDP sessions or driver quirks.
-            if (!double.IsFinite(refreshHz) || refreshHz < 23 || refreshHz > 600)
-                return fallbackSeconds;
-
-            return 1.0 / refreshHz;
+            return !double.IsFinite(refreshHz) || refreshHz < 23 || refreshHz > 600 ? fallbackSeconds : 1.0 / refreshHz;
         }
         catch
         {
@@ -959,7 +938,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (HasAudio)
                 decoded |= _audioEngine!.DecodeAndPushAudio();
 
-            cancellationToken.WaitHandle.WaitOne(decoded ? 1 : 10);
+            _ = cancellationToken.WaitHandle.WaitOne(decoded ? 1 : 10);
         }
     }
 
@@ -979,7 +958,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 decoded |= _videoDecoder.DecodeNextFrame();
             }
 
-            Thread.Yield();
+            _ = Thread.Yield();
         }
 
         return decoded;
@@ -996,7 +975,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (shouldAbort?.Invoke() == true)
                 return false;
 
-            _videoDecoder.DecodeNextFrame();
+            _ = _videoDecoder.DecodeNextFrame();
         }
 
         return _videoDecoder.FrameCount > 0;
@@ -1031,13 +1010,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         PresentFrameForPosition(targetPosition, clockPosition);
     }
 
-    private double GetPresentationPosition()
-    {
-        if (HasAudio && _isPlaying)
-            return _presentationClock.GetPosition(_audioEngine!.Position, Duration);
-
-        return Position;
-    }
+    private double GetPresentationPosition() =>
+        HasAudio && _isPlaying ? _presentationClock.GetPosition(_audioEngine!.Position, Duration) : Position;
 
     private double GetDisplayAdjustedPresentationPosition(double clockPosition)
     {
@@ -1113,8 +1087,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 : PostSeekRecoveryMilliseconds;
 
         var until = Stopwatch.GetTimestamp() + (long)(recoveryMilliseconds / 1000.0 * Stopwatch.Frequency);
-        Interlocked.Exchange(ref _postSeekRecoveryUntilTimestamp, until);
-        Interlocked.Exchange(ref _postSeekAdaptiveSuppressionWindowsRemaining, PostSeekAdaptiveSuppressionWindows);
+        _ = Interlocked.Exchange(ref _postSeekRecoveryUntilTimestamp, until);
+        _ = Interlocked.Exchange(ref _postSeekAdaptiveSuppressionWindowsRemaining, PostSeekAdaptiveSuppressionWindows);
         ResetPresentationDiagnostics();
         if (_configuration.EnableLogging)
         {
@@ -1127,7 +1101,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private void PreparePostSeekVideoRecovery(double target)
     {
-        var decoder = _videoDecoder;
+        VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return;
 
@@ -1182,7 +1156,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 continue;
             }
 
-            Thread.Yield();
+            _ = Thread.Yield();
         }
 
         return decodedFrames;
@@ -1211,7 +1185,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         if (HasAudio)
         {
-            _audioEngine!.Pause();
+            _ = _audioEngine!.Pause();
             _presentationClock.Pause(Duration);
         }
         else
@@ -1225,7 +1199,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private bool SeekVideoNearTarget(double target, bool asPreview)
     {
-        var decoder = _videoDecoder;
+        VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return false;
 
@@ -1274,7 +1248,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private bool IsTinyVideoSeek(double target)
     {
-        var currentFrame = _currentFrame;
+        VideoFrameData? currentFrame = _currentFrame;
         return currentFrame != null && Math.Abs(currentFrame.PresentationTime - target) <= TinyVideoSeekThresholdSeconds;
     }
 
@@ -1286,7 +1260,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         bool requireAtOrAfterTarget,
         bool allowSupersedingAbort)
     {
-        var decoder = _videoDecoder;
+        VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return;
 
@@ -1304,16 +1278,16 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 return;
 
             if (!decoded)
-                Thread.Yield();
+                _ = Thread.Yield();
         }
     }
 
     private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
     {
-        foreach (var frame in decoder.GetQueuedFramesSnapshot())
+        foreach (VideoFrameData frame in decoder.GetQueuedFramesSnapshot())
             if (IsSeekFrameAcceptable(frame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
                 return true;
-        
+
         return false;
     }
 
@@ -1323,7 +1297,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         bool requireAtOrAfterTarget,
         bool allowPreviewFallback)
     {
-        var decoder = _videoDecoder;
+        VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return false;
 
@@ -1431,7 +1405,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         var droppedFrames = 0;
         while (decoder.PeekNextFrame() is { } nextFrame && nextFrame.PresentationTime < threshold)
         {
-            var staleFrame = decoder.GetNextFrame();
+            VideoFrameData? staleFrame = decoder.GetNextFrame();
             if (staleFrame == null)
                 break;
 
@@ -1443,16 +1417,13 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (_configuration.EnableVerboseLogging) Debug.WriteLine($"[VideoPipeline:SmartSeek] Dropped {droppedFrames} stale post-seek video frame(s) before {minimumPresentationTime:F3}s.");
     }
 
-    private bool ShouldSuppressLateFrameDrop()
-    {
-        return IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
-    }
+    private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
 
     private void PresentFrameForPosition(double position) => PresentFrameForPosition(position, position);
 
     private void PresentFrameForPosition(double targetPosition, double clockPosition)
     {
-        var decoder = _videoDecoder;
+        VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return;
 
@@ -1467,7 +1438,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (nextFrame.PresentationTime > maxPresentationTime)
                 break;
 
-            var candidateFrame = decoder.GetNextFrame();
+            VideoFrameData? candidateFrame = decoder.GetNextFrame();
             if (candidateFrame == null)
                 break;
 
@@ -1581,10 +1552,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             active = Math.Max(MinimumPresentationLeadRefreshIntervals, active - PresentationLeadDecreaseStepRefreshIntervals);
 
         _activePresentationLeadRefreshIntervals = active;
-        if (Math.Abs(active - previous) < 0.0001)
-            return "hold";
-
-        return active > previous
+        return Math.Abs(active - previous) < 0.0001
+            ? "hold"
+            : active > previous
             ? $"increase {previous:F3}->{active:F3}"
             : $"decrease {previous:F3}->{active:F3}";
     }
@@ -1606,7 +1576,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return;
         }
 
-        var previousFrame = _currentFrame;
+        VideoFrameData? previousFrame = _currentFrame;
         _currentFrame = frame;
         try
         {
@@ -1670,7 +1640,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private static string CreateTempMediaPath(byte[] data)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaControl");
-        Directory.CreateDirectory(tempDir);
+        _ = Directory.CreateDirectory(tempDir);
         var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".media");
         File.WriteAllBytes(tempPath, data);
         return tempPath;

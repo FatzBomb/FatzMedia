@@ -103,7 +103,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
 
         if (!DecodeUntilFrameAvailable(decoder))
         {
-            var fallbackDecoder = TryFallbackToSoftware(decoder, path);
+            VideoDecoder? fallbackDecoder = TryFallbackToSoftware(decoder, path);
             if (fallbackDecoder == null || !DecodeUntilFrameAvailable(fallbackDecoder))
             {
                 fallbackDecoder?.Dispose();
@@ -266,10 +266,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         _decodeScheduler.Start(DecodeLoop);
     }
 
-    private void StopDecodeLoop()
-    {
-        _decodeScheduler.Stop();
-    }
+    private void StopDecodeLoop() => _decodeScheduler.Stop();
 
     private void StartPresentationLoop()
     {
@@ -277,10 +274,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         _presentationScheduler.Start(PresentationLoop);
     }
 
-    private void StopPresentationLoop()
-    {
-        _presentationScheduler.Stop();
-    }
+    private void StopPresentationLoop() => _presentationScheduler.Stop();
 
     private void PresentationLoop(CancellationToken cancellationToken)
     {
@@ -299,7 +293,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
                 continue;
             }
 
-            cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(waitSeconds));
+            _ = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(waitSeconds));
         }
     }
 
@@ -308,7 +302,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             var decoded = DecodeVideoBatch();
-            cancellationToken.WaitHandle.WaitOne(decoded ? 2 : 20);
+            _ = cancellationToken.WaitHandle.WaitOne(decoded ? 2 : 20);
         }
     }
 
@@ -337,7 +331,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         var attempts = 0;
         while (decoder.FrameCount == 0 && attempts++ < 240)
         {
-            decoder.DecodeNextFrame();
+            _ = decoder.DecodeNextFrame();
         }
 
         return decoder.FrameCount > 0;
@@ -359,7 +353,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
                 break;
             }
 
-            var candidateFrame = _decoder.GetNextFrame();
+            VideoFrameData? candidateFrame = _decoder.GetNextFrame();
             if (candidateFrame == null)
             {
                 break;
@@ -462,7 +456,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
     {
         lock (_decodeLock)
         {
-            _decoder?.Seek(target);
+            _ = (_decoder?.Seek(target));
             _lastPresentedPosition = double.NaN;
         }
     }
@@ -479,15 +473,9 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         return target;
     }
 
-    private double GetFrameLeadTolerance()
-    {
-        return VideoPresentationTiming.GetBackgroundFrameLeadTolerance(_decoder?.FramesPerSecond ?? 0);
-    }
+    private double GetFrameLeadTolerance() => VideoPresentationTiming.GetBackgroundFrameLeadTolerance(_decoder?.FramesPerSecond ?? 0);
 
-    private double GetPresentationIntervalSeconds()
-    {
-        return VideoPresentationTiming.GetBackgroundPresentationInterval(_decoder?.FramesPerSecond ?? 0);
-    }
+    private double GetPresentationIntervalSeconds() => VideoPresentationTiming.GetBackgroundPresentationInterval(_decoder?.FramesPerSecond ?? 0);
 
     private void CleanupTempPath()
     {
@@ -521,7 +509,7 @@ internal sealed class BackgroundVideoRenderer : IDisposable
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaControl", "Backgrounds");
-        Directory.CreateDirectory(tempDir);
+        _ = Directory.CreateDirectory(tempDir);
         var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + extension);
         File.WriteAllBytes(tempPath, data);
         return tempPath;

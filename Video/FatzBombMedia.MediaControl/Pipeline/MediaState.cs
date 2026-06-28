@@ -1,6 +1,7 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class MediaState
 {
@@ -77,13 +78,7 @@ internal sealed class MediaState
         OnChanged();
     }
 
-    private static double CleanSeconds(double seconds)
-    {
-        return double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
-    }
+    private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
 
-    private void OnChanged()
-    {
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
+    private void OnChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }

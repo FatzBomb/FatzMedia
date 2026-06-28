@@ -1,45 +1,44 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 
+namespace FatzBombMedia.MediaControl.Pipeline;
+
 internal sealed class AudioPipeline : IDisposable
 {
-    private readonly IAudioEngine _audioEngine;
     private readonly bool _ownsAudioEngine;
     private string? _sourcePath;
     private string? _pendingOpenPath;
-    private bool _isOpen;
     private bool _disposed;
 
     public AudioPipeline(IAudioEngine audioEngine, MediaState? state = null, bool ownsAudioEngine = false)
     {
-        _audioEngine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
+        Engine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
         State = state ?? new MediaState();
         _ownsAudioEngine = ownsAudioEngine;
 
-        _audioEngine.StateChanged += OnAudioStateChanged;
-        _audioEngine.Opened += OnAudioOpened;
-        _audioEngine.Closed += OnAudioClosed;
-        _audioEngine.PositionChanged += OnAudioPositionChanged;
-        _audioEngine.PlaybackEnded += OnAudioPlaybackEnded;
+        Engine.StateChanged += OnAudioStateChanged;
+        Engine.Opened += OnAudioOpened;
+        Engine.Closed += OnAudioClosed;
+        Engine.PositionChanged += OnAudioPositionChanged;
+        Engine.PlaybackEnded += OnAudioPlaybackEnded;
     }
 
     public MediaState State { get; }
-    public IAudioEngine Engine => _audioEngine;
+    public IAudioEngine Engine { get; }
     public event EventHandler? PlaybackEnded;
 
-    public bool IsOpen => _isOpen;
-    public int PlayHandle => _audioEngine.PlayHandle;
-    public double DurationSeconds => _audioEngine.Duration;
+    public bool IsOpen { get; private set; }
+    public int PlayHandle => Engine.PlayHandle;
+    public double DurationSeconds => Engine.Duration;
 
     public double PositionSeconds
     {
-        get => _audioEngine.Position;
+        get => Engine.Position;
         set
         {
             ThrowIfDisposed();
-            _audioEngine.Position = value;
-            State.SetPosition(_audioEngine.Position);
+            Engine.Position = value;
+            State.SetPosition(Engine.Position);
         }
     }
 
@@ -56,7 +55,7 @@ internal sealed class AudioPipeline : IDisposable
         Close();
 
         _pendingOpenPath = path;
-        if (!_audioEngine.Open(path))
+        if (!Engine.Open(path))
         {
             _pendingOpenPath = null;
             State.Reset();
@@ -66,8 +65,8 @@ internal sealed class AudioPipeline : IDisposable
 
         _sourcePath = path;
         _pendingOpenPath = null;
-        _isOpen = true;
-        State.SetOpened(MediaContent.Audio, path, _audioEngine.Duration);
+        IsOpen = true;
+        State.SetOpened(MediaContent.Audio, path, Engine.Duration);
         return true;
     }
 
@@ -78,7 +77,7 @@ internal sealed class AudioPipeline : IDisposable
 
         Close();
 
-        if (!_audioEngine.Open(archiveEntry))
+        if (!Engine.Open(archiveEntry))
         {
             State.Reset();
             State.SetError($"Archive audio open failed: {archiveEntry.Key}");
@@ -86,8 +85,8 @@ internal sealed class AudioPipeline : IDisposable
         }
 
         _sourcePath = archiveEntry.Key;
-        _isOpen = true;
-        State.SetOpened(MediaContent.Audio, archiveEntry.Key, _audioEngine.Duration);
+        IsOpen = true;
+        State.SetOpened(MediaContent.Audio, archiveEntry.Key, Engine.Duration);
         return true;
     }
 
@@ -95,7 +94,7 @@ internal sealed class AudioPipeline : IDisposable
     {
         ThrowIfDisposed();
 
-        if (!_audioEngine.Play())
+        if (!Engine.Play())
         {
             return false;
         }
@@ -108,7 +107,7 @@ internal sealed class AudioPipeline : IDisposable
     {
         ThrowIfDisposed();
 
-        if (!_audioEngine.Pause())
+        if (!Engine.Pause())
         {
             return false;
         }
@@ -121,12 +120,12 @@ internal sealed class AudioPipeline : IDisposable
     {
         ThrowIfDisposed();
 
-        if (!_audioEngine.Stop())
+        if (!Engine.Stop())
         {
             return false;
         }
 
-        State.SetPosition(_audioEngine.Position);
+        State.SetPosition(Engine.Position);
         State.SetPlaybackState(MediaPlayerState.Stopped);
         return true;
     }
@@ -144,8 +143,8 @@ internal sealed class AudioPipeline : IDisposable
             ? Math.Clamp(positionSeconds, 0, DurationSeconds)
             : Math.Max(0, positionSeconds);
 
-        _audioEngine.Position = targetPosition;
-        State.SetPosition(_audioEngine.Position);
+        Engine.Position = targetPosition;
+        State.SetPosition(Engine.Position);
         return true;
     }
 
@@ -156,29 +155,29 @@ internal sealed class AudioPipeline : IDisposable
             return;
         }
 
-        _audioEngine.Close();
+        Engine.Close();
         _sourcePath = null;
         _pendingOpenPath = null;
-        _isOpen = false;
+        IsOpen = false;
         State.Reset();
     }
 
     public bool SetVolume(double volume01)
     {
         ThrowIfDisposed();
-        return _audioEngine.SetVolume(Math.Clamp(volume01, 0, 1));
+        return Engine.SetVolume(Math.Clamp(volume01, 0, 1));
     }
 
     public bool SetPitch(int semitones)
     {
         ThrowIfDisposed();
-        return _audioEngine.SetPitch(semitones);
+        return Engine.SetPitch(semitones);
     }
 
     public bool SetTempo(int percent)
     {
         ThrowIfDisposed();
-        return _audioEngine.SetTempo(percent);
+        return Engine.SetTempo(percent);
     }
 
     public void Dispose()
@@ -188,44 +187,38 @@ internal sealed class AudioPipeline : IDisposable
             return;
         }
 
-        _audioEngine.StateChanged -= OnAudioStateChanged;
-        _audioEngine.Opened -= OnAudioOpened;
-        _audioEngine.Closed -= OnAudioClosed;
-        _audioEngine.PositionChanged -= OnAudioPositionChanged;
-        _audioEngine.PlaybackEnded -= OnAudioPlaybackEnded;
+        Engine.StateChanged -= OnAudioStateChanged;
+        Engine.Opened -= OnAudioOpened;
+        Engine.Closed -= OnAudioClosed;
+        Engine.PositionChanged -= OnAudioPositionChanged;
+        Engine.PlaybackEnded -= OnAudioPlaybackEnded;
 
-        _audioEngine.Close();
+        Engine.Close();
         if (_ownsAudioEngine)
         {
-            _audioEngine.Dispose();
+            Engine.Dispose();
         }
 
         _disposed = true;
     }
 
-    private void OnAudioStateChanged(object? sender, AudioEngineState state)
-    {
-        State.SetPlaybackState(MapState(state));
-    }
+    private void OnAudioStateChanged(object? sender, AudioEngineState state) => State.SetPlaybackState(MapState(state));
 
     private void OnAudioOpened(object? sender, EventArgs e)
     {
         _sourcePath = _pendingOpenPath ?? _sourcePath ?? State.SourcePath;
-        _isOpen = true;
-        State.SetOpened(MediaContent.Audio, _sourcePath, _audioEngine.Duration);
+        IsOpen = true;
+        State.SetOpened(MediaContent.Audio, _sourcePath, Engine.Duration);
     }
 
     private void OnAudioClosed(object? sender, EventArgs e)
     {
         _sourcePath = null;
-        _isOpen = false;
+        IsOpen = false;
         State.Reset();
     }
 
-    private void OnAudioPositionChanged(object? sender, double positionSeconds)
-    {
-        State.SetPosition(positionSeconds);
-    }
+    private void OnAudioPositionChanged(object? sender, double positionSeconds) => State.SetPosition(positionSeconds);
 
     private void OnAudioPlaybackEnded(object? sender, EventArgs e)
     {
@@ -239,20 +232,14 @@ internal sealed class AudioPipeline : IDisposable
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private static MediaPlayerState MapState(AudioEngineState state)
+    private static MediaPlayerState MapState(AudioEngineState state) => state switch
     {
-        return state switch
-        {
-            AudioEngineState.Playing => MediaPlayerState.Playing,
-            AudioEngineState.Paused => MediaPlayerState.Paused,
-            AudioEngineState.Stopped => MediaPlayerState.Stopped,
-            AudioEngineState.Stalled => MediaPlayerState.Buffering,
-            _ => MediaPlayerState.Null
-        };
-    }
+        AudioEngineState.Playing => MediaPlayerState.Playing,
+        AudioEngineState.Paused => MediaPlayerState.Paused,
+        AudioEngineState.Stopped => MediaPlayerState.Stopped,
+        AudioEngineState.Stalled => MediaPlayerState.Buffering,
+        _ => MediaPlayerState.Null
+    };
 
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-    }
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

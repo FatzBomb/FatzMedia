@@ -8,13 +8,13 @@ namespace FatzBombMedia.MediaControl;
 
 internal static partial class Bootstrap
 {
-        public static bool LoadBass()
-        {
-            if (IsBassLoaded) return true;
+    public static bool LoadBass()
+    {
+        if (IsBassLoaded) return true;
 
-            (string dllFile, string[] extensions, bool isRequired)[] libraryFiles =
-            [
-                ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav"], true),
+        (string dllFile, string[] extensions, bool isRequired)[] libraryFiles =
+        [
+            ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav"], true),
                 ("bass_fx.dll", [], true),
                 ("bass_aac.dll", [".aac", ".m4a", ".m4b"], false),
                 ("bass_ac3.dll", [".ac3"], false),
@@ -24,40 +24,40 @@ internal static partial class Bootstrap
                 ("bassmidi.dll", [".kar", ".mid", ".midi", ".rmi"], false),
                 ("bassopus.dll", [".opus"], false),
                 ("basswma.dll", [".wma"], false)
-            ];
+        ];
 
-            bool loadSuccess;
-            string successMessage;
-            int foundRequired = 0;
-            int foundOptional = 0;
-            int totalRequired = libraryFiles.Count(l => l.isRequired);
-            int totalOptional = libraryFiles.Count(l => !l.isRequired);
-            int totalLibraries = libraryFiles.Length;
-            List<string> missingRequired = [];
-            List<string> missingOptional = [];
-            List<string> failedRequired = [];
-            List<string> failedOptional = [];
+        bool loadSuccess;
+        string successMessage;
+        var foundRequired = 0;
+        var foundOptional = 0;
+        var totalRequired = libraryFiles.Count(l => l.isRequired);
+        var totalOptional = libraryFiles.Count(l => !l.isRequired);
+        var totalLibraries = libraryFiles.Length;
+        List<string> missingRequired = [];
+        List<string> missingOptional = [];
+        List<string> failedRequired = [];
+        List<string> failedOptional = [];
 
-        var found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
+        Dictionary<string, string> found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
 
-            Debug.WriteLine("");
+        Debug.WriteLine("");
 
-            foreach ((string dllFile, string[] extensions, bool isRequired) in libraryFiles)
-                if (found.TryGetValue(dllFile, out string? loadPath))
+        foreach ((var dllFile, var extensions, var isRequired) in libraryFiles)
+            if (found.TryGetValue(dllFile, out var loadPath))
+            {
+                if (File.Exists(loadPath))
                 {
-                    if (File.Exists(loadPath))
+                    if (LoadLibrary(loadPath) != IntPtr.Zero)
                     {
-                        if (LoadLibrary(loadPath) != IntPtr.Zero)
-                        {
-                            FileTypes.Audio.UnionWith(extensions);
-                            Debug.WriteLine($"[BASS] ✅ {dllFile}");
-                            if (isRequired)
-                                foundRequired++;
-                            else
-                                foundOptional++;
-                        }
+                        FileTypes.Audio.UnionWith(extensions);
+                        Debug.WriteLine($"[BASS] ✅ {dllFile}");
+                        if (isRequired)
+                            foundRequired++;
                         else
-                            if (isRequired)
+                            foundOptional++;
+                    }
+                    else
+                        if (isRequired)
                         {
                             failedRequired.Add(dllFile);
                             Debug.WriteLine($"[BASS] ❌ {dllFile} from {loadPath} [LOADING FAILED]");
@@ -67,120 +67,120 @@ internal static partial class Bootstrap
                             failedOptional.Add(dllFile);
                             Debug.WriteLine($"[BASS] ⚠️ {dllFile} from {loadPath} [LOADING FAILED]");
                         }
-                    }                    
+                }
+            }
+            else
+            {
+                if (isRequired)
+                {
+                    missingRequired.Add(dllFile);
+                    Debug.WriteLine($"[BASS] ❌ {dllFile} [REQUIRED: File not found!]");
                 }
                 else
                 {
-                    if (isRequired)
-                    {
-                        missingRequired.Add(dllFile);
-                        Debug.WriteLine($"[BASS] ❌ {dllFile} [REQUIRED: File not found!]");
-                    }
-                    else
-                    {
-                        missingOptional.Add(dllFile);
-                        Debug.WriteLine($"[BASS] ⚠️ {dllFile} [OPTIONAL: File not found! Supports {string.Join(',', extensions)} playback.]");
-                    }
-
+                    missingOptional.Add(dllFile);
+                    Debug.WriteLine($"[BASS] ⚠️ {dllFile} [OPTIONAL: File not found! Supports {string.Join(',', extensions)} playback.]");
                 }
+
+            }
 
         // Get Common Shared Path if all required libraries are found
         if (foundRequired == totalRequired && totalRequired > 0)
+        {
+            var commonPath = Path.GetDirectoryName(found.First().Value);
+            if (commonPath != null && found.Values.All(p => Path.GetDirectoryName(p) == commonPath))
             {
-                var commonPath = Path.GetDirectoryName(found.First().Value);
-                if (commonPath != null && found.Values.All(p => Path.GetDirectoryName(p) == commonPath))
-                {
-                    BassPath = commonPath;
-                    Debug.WriteLine($"[BASS] ✅ Common path for all required libraries: {BassPath}");
-                }
+                BassPath = commonPath;
+                Debug.WriteLine($"[BASS] ✅ Common path for all required libraries: {BassPath}");
+            }
         }
 
         loadSuccess = foundRequired >= totalRequired;
-            if (missingRequired.Count > 0)
-                AddNativeLoadMessage($"Missing required BASS DLLs: {string.Join(", ", missingRequired)}.");
-            if (failedRequired.Count > 0)
-                AddNativeLoadMessage($"Required BASS DLLs were found but did not load: {string.Join(", ", failedRequired)}.");
-            if (missingOptional.Count > 0)
-                AddNativeLoadMessage($"Optional BASS plugins not found: {string.Join(", ", missingOptional)}.");
-            if (failedOptional.Count > 0)
-                AddNativeLoadMessage($"Optional BASS plugins were found but did not load: {string.Join(", ", failedOptional)}.");
+        if (missingRequired.Count > 0)
+            AddNativeLoadMessage($"Missing required BASS DLLs: {string.Join(", ", missingRequired)}.");
+        if (failedRequired.Count > 0)
+            AddNativeLoadMessage($"Required BASS DLLs were found but did not load: {string.Join(", ", failedRequired)}.");
+        if (missingOptional.Count > 0)
+            AddNativeLoadMessage($"Optional BASS plugins not found: {string.Join(", ", missingOptional)}.");
+        if (failedOptional.Count > 0)
+            AddNativeLoadMessage($"Optional BASS plugins were found but did not load: {string.Join(", ", failedOptional)}.");
 
-            successMessage = loadSuccess ? "✅ Bass Loaded!" : "❌ Bass Failed!!!";
-            successMessage += $"  [Required: {foundRequired}/{totalRequired}]  [Optional: {foundOptional}/{totalOptional}]";
-            Debug.WriteLine($"[RESULT] {successMessage}");
+        successMessage = loadSuccess ? "✅ Bass Loaded!" : "❌ Bass Failed!!!";
+        successMessage += $"  [Required: {foundRequired}/{totalRequired}]  [Optional: {foundOptional}/{totalOptional}]";
+        Debug.WriteLine($"[RESULT] {successMessage}");
 
-            return loadSuccess;
-        }
+        return loadSuccess;
+    }
 
 
 
-        public static bool LoadFfmpeg()
-        {
-            if (IsFfmpegLoaded) return true;
+    public static bool LoadFfmpeg()
+    {
+        if (IsFfmpegLoaded) return true;
 
-            string[] supportedFileTypes = [".3g2", ".3gp", ".asf", ".avi", ".f4v", ".flv", ".m2ts", ".m2v", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg",
+        string[] supportedFileTypes = [".3g2", ".3gp", ".asf", ".avi", ".f4v", ".flv", ".m2ts", ".m2v", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg",
                                           ".mpg", ".mts", ".mxf", ".ogm", ".ogv", ".qt", ".rm", ".rmvb", ".ts", ".vob", ".webm", ".wmv"];
 
-            string[] libraryFiles =
-            [
-                $"avcodec-{ffmpeg.LIBAVCODEC_VERSION_MAJOR}.dll",
+        string[] libraryFiles =
+        [
+            $"avcodec-{ffmpeg.LIBAVCODEC_VERSION_MAJOR}.dll",
                 $"avdevice-{ffmpeg.LIBAVDEVICE_VERSION_MAJOR}.dll",
                 $"avfilter-{ffmpeg.LIBAVFILTER_VERSION_MAJOR}.dll",
                 $"avformat-{ffmpeg.LIBAVFORMAT_VERSION_MAJOR}.dll",
                 $"avutil-{ffmpeg.LIBAVUTIL_VERSION_MAJOR}.dll",
                 $"swresample-{ffmpeg.LIBSWRESAMPLE_VERSION_MAJOR}.dll",
                 $"swscale-{ffmpeg.LIBSWSCALE_VERSION_MAJOR}.dll"
-            ];
+        ];
 
-            bool ok;
-            int totalLibraries = libraryFiles.Length;
-            string foundPath = DirectoryScanner.LocateFilesDirectory(searchPaths, libraryFiles, CompatibilityLevel.Compatible) ?? string.Empty;
-            List<string> missingRequired = [];
+        bool ok;
+        var totalLibraries = libraryFiles.Length;
+        var foundPath = DirectoryScanner.LocateFilesDirectory(searchPaths, libraryFiles, CompatibilityLevel.Compatible) ?? string.Empty;
+        List<string> missingRequired = [];
 
-            if (!string.IsNullOrEmpty(foundPath))
+        if (!string.IsNullOrEmpty(foundPath))
+        {
+            Debug.WriteLine($"[FFMPEG] ✅ Path found: {foundPath}");
+            var tempPath = ffmpeg.RootPath;
+            ffmpeg.RootPath = foundPath;
+            unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
+            if (ok)
             {
-                Debug.WriteLine($"[FFMPEG] ✅ Path found: {foundPath}");
-                string tempPath = ffmpeg.RootPath;
-                ffmpeg.RootPath = foundPath;
-                unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
-                if (ok)
-                {
-                    foreach (string dllFile in libraryFiles)
-                        Debug.WriteLine($"[FFMPEG] ✅ {dllFile}");
+                foreach (var dllFile in libraryFiles)
+                    Debug.WriteLine($"[FFMPEG] ✅ {dllFile}");
 
-                    FileTypes.Video.UnionWith(supportedFileTypes);
-                    Debug.WriteLine($"✅ FFmpeg successfully loaded!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: {totalLibraries}/{totalLibraries}]");
-                    return true;
-                }
-                else
-                {
-                    foreach (string dllFile in libraryFiles)
-                        Debug.WriteLine($"[FFMPEG] ⚠️ {dllFile}");
-
-                    AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
-                    Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
-                    ffmpeg.RootPath = tempPath;
-                    return false;
-                }
+                FileTypes.Video.UnionWith(supportedFileTypes);
+                Debug.WriteLine($"✅ FFmpeg successfully loaded!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: {totalLibraries}/{totalLibraries}]");
+                return true;
             }
             else
             {
-                Debug.WriteLine($"[FFMPEG] ❌ Path not found! Make sure all files below are located in the same path!");
-                foreach (string dllFile in libraryFiles)
-                {
-                    missingRequired.Add(dllFile);
-                    Debug.WriteLine($"[FFMPEG] ❌ {dllFile}");
-                }
+                foreach (var dllFile in libraryFiles)
+                    Debug.WriteLine($"[FFMPEG] ⚠️ {dllFile}");
 
-                AddNativeLoadMessage($"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.");
-                Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
+                AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
+                Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
+                ffmpeg.RootPath = tempPath;
                 return false;
             }
         }
+        else
+        {
+            Debug.WriteLine($"[FFMPEG] ❌ Path not found! Make sure all files below are located in the same path!");
+            foreach (var dllFile in libraryFiles)
+            {
+                missingRequired.Add(dllFile);
+                Debug.WriteLine($"[FFMPEG] ❌ {dllFile}");
+            }
 
-        [LibraryImport("kernel32.dll",
-        SetLastError = true,
-        EntryPoint = "LoadLibraryW",
-        StringMarshalling = StringMarshalling.Utf16)]
-        internal static partial IntPtr LoadLibrary(string lpLibFileName);
+            AddNativeLoadMessage($"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.");
+            Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
+            return false;
+        }
+    }
+
+    [LibraryImport("kernel32.dll",
+    SetLastError = true,
+    EntryPoint = "LoadLibraryW",
+    StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial IntPtr LoadLibrary(string lpLibFileName);
 }

@@ -60,7 +60,7 @@ public readonly record struct MediaCompositionFrame
     {
         get
         {
-            var overlay = CdgOverlay;
+            DxCdgRenderSnapshot? overlay = CdgOverlay;
             return overlay != null
                 && !overlay.ColorIndices.IsEmpty
                 && !overlay.PaletteArgb.IsEmpty;

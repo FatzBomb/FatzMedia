@@ -1,6 +1,7 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using System.Diagnostics;
+
+namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class PlaybackScheduler(string name) : IDisposable
 {
@@ -36,7 +37,7 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
 
     public void Stop()
     {
-        var (cts, task) = DetachCurrentRun();
+        (CancellationTokenSource? cts, Task? task) = DetachCurrentRun();
         if (cts == null)
         {
             return;
@@ -48,7 +49,7 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
 
     public void StopAndWait(TimeSpan? timeout = null)
     {
-        var (cts, task) = DetachCurrentRun();
+        (CancellationTokenSource? cts, Task? task) = DetachCurrentRun();
         if (cts == null)
         {
             return;
@@ -70,7 +71,7 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
         var disposeCancellationSource = true;
         try
         {
-            var waitTimeout = timeout ?? TimeSpan.FromSeconds(2);
+            TimeSpan waitTimeout = timeout ?? TimeSpan.FromSeconds(2);
             if (!task.Wait(waitTimeout))
             {
                 Debug.WriteLine($"[PlaybackScheduler:{name}] Worker did not stop within {waitTimeout.TotalMilliseconds:F0}ms.");
@@ -102,8 +103,8 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
     {
         lock (_lock)
         {
-            var cts = _cts;
-            var task = _task;
+            CancellationTokenSource? cts = _cts;
+            Task? task = _task;
             _cts = null;
             _task = null;
             return (cts, task);

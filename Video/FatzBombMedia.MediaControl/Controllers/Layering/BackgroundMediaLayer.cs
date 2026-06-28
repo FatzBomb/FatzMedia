@@ -1,10 +1,8 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Core.Video;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using FatzBombMedia.MediaControl.Controllers;
 
 namespace FatzBombMedia.MediaControl.Controllers.Layering;
 
@@ -17,7 +15,6 @@ internal sealed class BackgroundMediaLayer : IDisposable
 {
     private readonly BackgroundVideoRenderer _videoRenderer;
     private ImageSource? _imageSource;
-    private MediaBackgroundKind _kind = MediaBackgroundKind.None;
     private bool _disposed;
 
     public BackgroundMediaLayer(MediaPlayerConfiguration configuration)
@@ -32,7 +29,7 @@ internal sealed class BackgroundMediaLayer : IDisposable
     public event EventHandler? FramePresented;
     public event EventHandler<VideoFrameEventArgs>? VideoFrameReady;
 
-    public MediaBackgroundKind Kind => _videoRenderer.IsOpen ? MediaBackgroundKind.Video : _kind;
+    public MediaBackgroundKind Kind { get => _videoRenderer.IsOpen ? MediaBackgroundKind.Video : field; private set; } = MediaBackgroundKind.None;
     public bool HasMedia => Kind != MediaBackgroundKind.None;
     public bool HasVideo => _videoRenderer.IsOpen;
     public ImageSource? ImageSource => _videoRenderer.ImageSource ?? _imageSource;
@@ -61,7 +58,7 @@ internal sealed class BackgroundMediaLayer : IDisposable
             case MediaBackgroundKind.Video:
                 if (_videoRenderer.Open(candidate))
                 {
-                    _kind = MediaBackgroundKind.Video;
+                    Kind = MediaBackgroundKind.Video;
                     BackgroundChanged?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
@@ -71,10 +68,14 @@ internal sealed class BackgroundMediaLayer : IDisposable
                 _imageSource = LoadBackgroundImage(candidate);
                 if (_imageSource != null)
                 {
-                    _kind = MediaBackgroundKind.Image;
+                    Kind = MediaBackgroundKind.Image;
                     BackgroundChanged?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
+                break;
+            case MediaBackgroundKind.None:
+                break;
+            default:
                 break;
         }
 
@@ -106,7 +107,7 @@ internal sealed class BackgroundMediaLayer : IDisposable
     {
         _videoRenderer.Clear();
         _imageSource = null;
-        _kind = MediaBackgroundKind.None;
+        Kind = MediaBackgroundKind.None;
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -129,7 +130,7 @@ internal sealed class BackgroundMediaLayer : IDisposable
             return null;
         }
 
-        using var stream = background.Data is { Length: > 0 } data
+        using MemoryStream? stream = background.Data is { Length: > 0 } data
             ? new MemoryStream(data)
             : null;
 

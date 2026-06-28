@@ -1,15 +1,14 @@
-namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Diagnostics;
 using System.IO;
 
+namespace FatzBombMedia.MediaControl.Pipeline;
+
 internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, MediaState state)
 {
-    private readonly ICdgEngine _cdgEngine = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private CancellationTokenSource? _completionCts;
-    private bool _isOpen;
     private bool _isPairedWithAudio;
     private int _completionGeneration;
     private int _completionSignaled;
@@ -27,16 +26,16 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     private const double CdgSeekTargetChangeThresholdSeconds = 0.025;
 
     public PlaybackClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
-    public ICdgEngine Engine => _cdgEngine;
-    public bool IsOpen => _isOpen;
-    public double DurationSeconds => _cdgEngine.TotalDurationSeconds;
+    public ICdgEngine Engine { get; } = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
+    public bool IsOpen { get; private set; }
+    public double DurationSeconds => Engine.TotalDurationSeconds;
     public event EventHandler? PlaybackEnded;
 
     public void OpenPaired(string path, int audioStreamHandle)
     {
         ThrowIfInvalidPath(path);
-        _cdgEngine.LoadPaired(path, audioStreamHandle);
-        _isOpen = true;
+        Engine.LoadPaired(path, audioStreamHandle);
+        IsOpen = true;
         _isPairedWithAudio = true;
         _state.SetDuration(Math.Max(_state.DurationSeconds, DurationSeconds));
         _state.SetPosition(0);
@@ -46,8 +45,8 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     public void OpenPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        _cdgEngine.LoadPaired(archiveEntry, audioStreamHandle);
-        _isOpen = true;
+        Engine.LoadPaired(archiveEntry, audioStreamHandle);
+        IsOpen = true;
         _isPairedWithAudio = true;
         _state.SetDuration(Math.Max(_state.DurationSeconds, DurationSeconds));
         _state.SetPosition(0);
@@ -57,10 +56,10 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     public void OpenStandalone(string path)
     {
         ThrowIfInvalidPath(path);
-        _cdgEngine.Load(path);
+        Engine.Load(path);
         Clock.Stop();
         Clock.DurationSeconds = DurationSeconds;
-        _isOpen = true;
+        IsOpen = true;
         _isPairedWithAudio = false;
         _state.SetOpened(MediaContent.Cdg, path, DurationSeconds);
         RenderAt(0);
@@ -70,10 +69,10 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     public void OpenStandalone(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        _cdgEngine.Load(archiveEntry);
+        Engine.Load(archiveEntry);
         Clock.Stop();
         Clock.DurationSeconds = DurationSeconds;
-        _isOpen = true;
+        IsOpen = true;
         _isPairedWithAudio = false;
         _state.SetOpened(MediaContent.Cdg | MediaContent.Archive, archiveEntry.Key, DurationSeconds);
         RenderAt(0);
@@ -82,7 +81,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     public bool Play()
     {
-        if (!_isOpen)
+        if (!IsOpen)
         {
             return false;
         }
@@ -92,7 +91,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
             Clock.Start(Clock.PositionSeconds);
         }
 
-        _cdgEngine.Play();
+        Engine.Play();
         _state.SetPlaybackState(MediaPlayerState.Playing);
         if (!_isPairedWithAudio)
         {
@@ -103,7 +102,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     public bool Pause()
     {
-        if (!_isOpen)
+        if (!IsOpen)
         {
             return false;
         }
@@ -113,7 +112,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
             Clock.Pause();
         }
 
-        _cdgEngine.Pause();
+        Engine.Pause();
         StopCompletionMonitor();
         _state.SetPlaybackState(MediaPlayerState.Paused);
         return true;
@@ -121,13 +120,13 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     public bool Stop()
     {
-        if (!_isOpen)
+        if (!IsOpen)
         {
             return false;
         }
 
         Clock.Stop();
-        _cdgEngine.Stop();
+        Engine.Stop();
         StopCompletionMonitor();
         _state.SetPosition(0);
         _state.SetPlaybackState(MediaPlayerState.Stopped);
@@ -136,7 +135,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     public bool Seek(double seconds)
     {
-        if (!_isOpen)
+        if (!IsOpen)
         {
             return false;
         }
@@ -147,7 +146,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
             _pendingSeekSeconds = target;
         }
 
-        _seekSignal.Set();
+        _ = _seekSignal.Set();
         return true;
     }
 
@@ -155,7 +154,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     {
         lock (_transportGate)
         {
-            if (!_isOpen)
+            if (!IsOpen)
             {
                 return false;
             }
@@ -195,17 +194,17 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     private void StopSeekWorker()
     {
-        var thread = _seekThread;
+        Thread? thread = _seekThread;
         if (thread == null)
         {
             return;
         }
 
         _seekWorkerShutdown = true;
-        _seekSignal.Set();
+        _ = _seekSignal.Set();
         try
         {
-            thread.Join(1000);
+            _ = thread.Join(1000);
         }
         catch (Exception ex)
         {
@@ -223,7 +222,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     {
         while (!_seekWorkerShutdown)
         {
-            _seekSignal.WaitOne();
+            _ = _seekSignal.WaitOne();
 
             var lastProcessedTarget = double.NaN;
             while (!_seekWorkerShutdown)
@@ -246,7 +245,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
                 try
                 {
-                    SeekCore(normalizedTarget);
+                    _ = SeekCore(normalizedTarget);
                 }
                 catch (Exception ex)
                 {
@@ -282,76 +281,60 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     private bool HasPendingSeekRequest()
     {
         lock (_seekPumpLock)
-        {
             return _pendingSeekSeconds.HasValue;
-        }
     }
 
     private void WaitForSeekPumpInterval()
     {
         var started = Stopwatch.GetTimestamp();
-        while (!_seekWorkerShutdown
-            && GetElapsedMilliseconds(started, Stopwatch.GetTimestamp()) < CdgSeekIntervalMilliseconds)
-        {
-            _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
-        }
+        while (!_seekWorkerShutdown && GetElapsedMilliseconds(started, Stopwatch.GetTimestamp()) < CdgSeekIntervalMilliseconds)
+            _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
     }
 
-    private double NormalizeSeekTarget(double seconds)
-    {
-        if (!double.IsFinite(seconds) || seconds <= 0)
-        {
-            return 0;
-        }
+    private double NormalizeSeekTarget(double seconds) =>
+        !double.IsFinite(seconds) || seconds <= 0
+            ? 0
+            : DurationSeconds > 0
+                ? Math.Clamp(seconds, 0, DurationSeconds)
+                : seconds;
 
-        return DurationSeconds > 0 ? Math.Clamp(seconds, 0, DurationSeconds) : seconds;
-    }
-
-    private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget)
-    {
-        return double.IsNaN(previousTarget)
+    private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) => double.IsNaN(previousTarget)
             || Math.Abs(target - previousTarget) > CdgSeekTargetChangeThresholdSeconds;
-    }
 
-    private static double GetElapsedMilliseconds(long startTimestamp, long endTimestamp)
-    {
-        return (endTimestamp - startTimestamp) * 1000.0 / Stopwatch.Frequency;
-    }
+    private static double GetElapsedMilliseconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     public void RenderAt(double seconds) => RenderAt(seconds, forceRebuild: false);
 
     public void RenderAt(double seconds, bool forceRebuild)
     {
-        if (_isOpen)
-        {
-            _cdgEngine.RenderAtSeconds(seconds, forceRebuild);
-        }
+        if (IsOpen)
+            Engine.RenderAtSeconds(seconds, forceRebuild);
     }
 
     public void Close()
     {
         StopSeekWorker();
-        if (!_isOpen)
+        if (!IsOpen)
         {
             return;
         }
 
         Clock.Stop();
         StopCompletionMonitor();
-        _cdgEngine.Reset();
-        _isOpen = false;
+        Engine.Reset();
+        IsOpen = false;
         _isPairedWithAudio = false;
     }
 
     private void StartCompletionMonitor()
     {
         StopCompletionMonitor();
-        if (!_isOpen || _isPairedWithAudio || DurationSeconds <= 0)
+        if (!IsOpen || _isPairedWithAudio || DurationSeconds <= 0)
         {
             return;
         }
 
-        Interlocked.Exchange(ref _completionSignaled, 0);
+        _ = Interlocked.Exchange(ref _completionSignaled, 0);
         var generation = Interlocked.Increment(ref _completionGeneration);
         var cts = new CancellationTokenSource();
         _completionCts = cts;
@@ -360,7 +343,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
 
     private void StopCompletionMonitor()
     {
-        var cts = _completionCts;
+        CancellationTokenSource? cts = _completionCts;
         _completionCts = null;
         if (cts == null)
         {
@@ -404,7 +387,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         }
 
         Clock.Pause();
-        _cdgEngine.Pause();
+        Engine.Pause();
         _state.SetPosition(DurationSeconds);
         _state.SetPlaybackState(MediaPlayerState.Stopped);
         PlaybackEnded?.Invoke(this, EventArgs.Empty);

@@ -1,10 +1,8 @@
-using System;
 using System.Runtime.InteropServices;
 
-#pragma warning disable IDE0130 // Keep the existing public WPF adapter namespace stable.
 #pragma warning disable SYSLIB1054 // DllImport is acceptable for this internal Win32 helper until a dedicated LibraryImport pass.
 
-namespace FatzBombMedia.MediaControl.Wpf;
+namespace FatzBombMedia.MediaControl.Adapters.Wpf;
 
 internal static partial class NativeMethods
 {
@@ -124,10 +122,7 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
     private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
 
-    internal static int GetWindowLong(IntPtr hWnd, int nIndex)
-    {
-        return IntPtr.Size == 8 ? (int)GetWindowLongPtr64(hWnd, nIndex).ToInt64() : GetWindowLong32(hWnd, nIndex);
-    }
+    internal static int GetWindowLong(IntPtr hWnd, int nIndex) => IntPtr.Size == 8 ? (int)GetWindowLongPtr64(hWnd, nIndex).ToInt64() : GetWindowLong32(hWnd, nIndex);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -135,14 +130,10 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
     private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 
-    internal static int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong)
-    {
-        return IntPtr.Size == 8
+    internal static int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong) => IntPtr.Size == 8
             ? (int)SetWindowLongPtr64(hWnd, nIndex, new IntPtr(dwNewLong)).ToInt64()
             : SetWindowLong32(hWnd, nIndex, dwNewLong);
-    }
 
 }
 
 #pragma warning restore SYSLIB1054
-#pragma warning restore IDE0130

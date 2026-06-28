@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 
 namespace FatzBombMedia.MediaControl.Core.Files;
@@ -44,7 +41,7 @@ public static class FileTreeBuilder
             return tree;
         }
 
-        string ext = Path.GetExtension(path);
+        var ext = Path.GetExtension(path);
         if (FileTypes.Archive.Contains(ext))
         {
             if (!searchArchive)
@@ -53,7 +50,7 @@ public static class FileTreeBuilder
                 return tree;
             }
 
-            var handle = archiveService.Open(path);
+            IArchiveHandle handle = archiveService.Open(path);
             tree.ArchiveHandle = handle;
 
             var firstAudio = (IArchiveEntryInfo?)null;
@@ -64,7 +61,7 @@ public static class FileTreeBuilder
             var audioByBase = new Dictionary<string, IArchiveEntryInfo>(StringComparer.OrdinalIgnoreCase);
             var cdgByBase = new Dictionary<string, IArchiveEntryInfo>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var e in handle.Entries)
+            foreach (IArchiveEntryInfo e in handle.Entries)
             {
                 var key = e.Key;
                 if (string.IsNullOrEmpty(key)) continue;
@@ -89,9 +86,9 @@ public static class FileTreeBuilder
             }
 
             IArchiveEntryInfo? pairedAudio = null, pairedCdg = null;
-            foreach (var (b, cdg) in cdgByBase)
+            foreach ((var b, IArchiveEntryInfo? cdg) in cdgByBase)
             {
-                if (audioByBase.TryGetValue(b, out var aud)) { pairedAudio = aud; pairedCdg = cdg; break; }
+                if (audioByBase.TryGetValue(b, out IArchiveEntryInfo? aud)) { pairedAudio = aud; pairedCdg = cdg; break; }
             }
 
             if (pairedAudio != null && pairedCdg != null)

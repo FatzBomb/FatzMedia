@@ -39,7 +39,7 @@ public static class BinaryCompatibility
 {
     public static CompatibilityInfo Analyze(string path)
     {
-        var proc = GetProcessCpu();
+        CpuType proc = GetProcessCpu();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return new(proc, FileCpuType.Unknown, isMatch: false, isCompat: false);
 
@@ -53,33 +53,32 @@ public static class BinaryCompatibility
             if (!IsLikelyPe(path))
                 return new(proc, FileCpuType.NonPe, isMatch: true, isCompat: true); // not system-dependent
 
-            using var fs = File.OpenRead(path);
+            using FileStream fs = File.OpenRead(path);
             using var pe = new PEReader(fs);
-            var h = pe.PEHeaders;
-            var machine = h.CoffHeader.Machine;
+            PEHeaders h = pe.PEHeaders;
+            Machine machine = h.CoffHeader.Machine;
             var isPE32Plus = h.PEHeader?.Magic == PEMagic.PE32Plus; // 64-bit image?
-            var cor = h.CorHeader;
+            CorHeader? cor = h.CorHeader;
 
             if (cor is not null)
             {
-                var flags = cor.Flags;
-                bool ilOnly = (flags & CorFlags.ILOnly) != 0;
-                bool req32 = (flags & CorFlags.Requires32Bit) != 0;
-                bool pref32 = (flags & CorFlags.Prefers32Bit) != 0;
+                CorFlags flags = cor.Flags;
+                var ilOnly = (flags & CorFlags.ILOnly) != 0;
+                var req32 = (flags & CorFlags.Requires32Bit) != 0;
+                var pref32 = (flags & CorFlags.Prefers32Bit) != 0;
 
-                if (ilOnly && !req32 && !isPE32Plus)
-                    fileCpu = pref32 ? FileCpuType.ManagedAnyCpuPrefer32 : FileCpuType.ManagedAnyCpu;
-                else if (req32)
-                    fileCpu = FileCpuType.ManagedX86Required;
-                else if (isPE32Plus)
-                    fileCpu = machine switch
-                    {
-                        Machine.Amd64 => FileCpuType.ManagedX64,
-                        Machine.Arm64 => FileCpuType.ManagedArm64,
-                        _ => FileCpuType.Unknown
-                    };
-                else
-                    fileCpu = FileCpuType.Unknown;
+                fileCpu = ilOnly && !req32 && !isPE32Plus
+                    ? pref32 ? FileCpuType.ManagedAnyCpuPrefer32 : FileCpuType.ManagedAnyCpu
+                    : req32
+                        ? FileCpuType.ManagedX86Required
+                        : isPE32Plus
+                            ? machine switch
+                            {
+                                Machine.Amd64 => FileCpuType.ManagedX64,
+                                Machine.Arm64 => FileCpuType.ManagedArm64,
+                                _ => FileCpuType.Unknown
+                            }
+                            : FileCpuType.Unknown;
             }
             else
             {
@@ -98,7 +97,7 @@ public static class BinaryCompatibility
         }
 
         // Decide compatibility + exact match
-        var (isCompat, isMatch) = Evaluate(proc, fileCpu);
+        (var isCompat, var isMatch) = Evaluate(proc, fileCpu);
         return new(proc, fileCpu, isMatch, isCompat);
     }
 
@@ -132,7 +131,7 @@ public static class BinaryCompatibility
     /// <summary>Cheap check for Windows PE magic ("MZ" + "PE\0\0").</summary>
     private static bool IsLikelyPe(string path)
     {
-        using var fs = File.OpenRead(path);
+        using FileStream fs = File.OpenRead(path);
         if (fs.Length < 64) return false;
 
         Span<byte> b = stackalloc byte[4];
@@ -144,7 +143,7 @@ public static class BinaryCompatibility
         // e_lfanew -> "PE\0\0"
         fs.Position = 0x3C;
         fs.ReadExactly(b);
-        int peOff = BitConverter.ToInt32(b);
+        var peOff = BitConverter.ToInt32(b);
         if (peOff < 0 || peOff > fs.Length - 4) return false;
 
         fs.Position = peOff;

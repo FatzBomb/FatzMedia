@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Threading;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using Vortice.DXGI;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
+using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.SwapChain;
 
@@ -31,14 +31,14 @@ internal static class D3D11SwapChainPresenter
             // resize loop feel like it is dragging through mud.  Keep video frames live,
             // but present them in immediate mode while the user is actively resizing.
             var liveResize = Volatile.Read(ref liveResizeFlag) != 0;
-            uint syncInterval = syncImmediate
+            var syncInterval = syncImmediate
                 || liveResize
                 || configuration.NativeSwapChainPresentMode == NativeSwapChainPresentMode.Immediate
                     ? 0u
                     : 1u;
 
             var presentStart = Stopwatch.GetTimestamp();
-            var result = swapChain.Present(syncInterval, (int)PresentFlags.None);
+            Result result = swapChain.Present(syncInterval, (int)PresentFlags.None);
             diagnostics.RecordNativePresent(D3D11PresentationDiagnostics.ElapsedMilliseconds(presentStart), (int)syncInterval);
             if (result.Failure)
             {

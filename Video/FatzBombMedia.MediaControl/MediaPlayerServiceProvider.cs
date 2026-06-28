@@ -44,47 +44,42 @@ public static class MediaPlayerServiceProvider
     /// </summary>
     private static void RegisterServices(IServiceCollection services, MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths)
     {
-        
-        // Load native libraries only once globally - pass custom path if provided
-        LoadLibraries(nativeLibraryPaths);
 
-        services.AddSingleton<IAudioEngine>(provider =>
+        // Load native libraries only once globally - pass custom path if provided
+        _ = LoadLibraries(nativeLibraryPaths);
+
+        _ = services.AddSingleton<IAudioEngine>(provider =>
         {
             var audioEngine = new Core.Audio.AudioEngine();
-            
+
             if (!audioEngine.Init(-1, 44100))
                 Debug.WriteLine("[MediaPlayerServiceProvider] ❌ Failed to initialize global BASS");
             else
                 Debug.WriteLine("[MediaPlayerServiceProvider] ✅ Global BASS initialized successfully");
-            
+
             Debug.WriteLine("[MediaPlayerServiceProvider] Created AudioEngine for pipeline audio slice");
             return audioEngine;
         });
 
-        services.AddSingleton<ICdgEngine, Core.DxCdg.DxCdgEngine>();
-        services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
-        
-        services.AddSingleton<IMediaEngine>(provider =>
+        _ = services.AddSingleton<ICdgEngine, Core.DxCdg.DxCdgEngine>();
+        _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
+
+        _ = services.AddSingleton<IMediaEngine>(provider =>
         {
-            var audioEngine = provider.GetRequiredService<IAudioEngine>();
-            var cdgEngine = provider.GetRequiredService<ICdgEngine>();
-            var archiveService = provider.GetRequiredService<IArchiveService>();
+            IAudioEngine audioEngine = provider.GetRequiredService<IAudioEngine>();
+            ICdgEngine cdgEngine = provider.GetRequiredService<ICdgEngine>();
+            IArchiveService archiveService = provider.GetRequiredService<IArchiveService>();
             return new PipelineMediaEngine(audioEngine, cdgEngine, archiveService, configuration);
         });
     }
-    
-    private static bool LoadLibraries(IReadOnlyList<string> nativeLibraryPaths)
-    {
-        if (!Bootstrap.EnsureInitialized(nativeLibraryPaths))
-            throw new InvalidOperationException(Bootstrap.Message);
 
-        return true;
-    }
+    private static bool LoadLibraries(IReadOnlyList<string> nativeLibraryPaths) =>
+        !Bootstrap.EnsureInitialized(nativeLibraryPaths)
+            ? throw new InvalidOperationException(Bootstrap.Message)
+            : true;
 
-    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath)
-    {
-        return string.IsNullOrWhiteSpace(nativeLibraryPath)
+    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
+        string.IsNullOrWhiteSpace(nativeLibraryPath)
             ? DLLPath.GetConfiguredNativeLibraryPaths()
             : [nativeLibraryPath];
-    }
 }

@@ -1,4 +1,3 @@
-using System;
 using System.Drawing;
 
 namespace FatzBombMedia.MediaControl.Core.DxCdg;
@@ -10,22 +9,20 @@ namespace FatzBombMedia.MediaControl.Core.DxCdg;
 internal sealed class DxCdgColorManager
 {
     #region Private Fields
-    
+
     private readonly Color[] _colorTable = new Color[DxCdgConstants.ColorCount];
     private readonly int[] _colorArgbLut = new int[DxCdgConstants.ColorCount];
-    
+
     private int _borderColorIndex = -1;
-    private int _backgroundColorIndex = -1;
     private byte _backgroundOpacity = 255; // 0..255
-    private uint? _backgroundOverrideArgb;
     private bool _lutNeedsUpdate = true;
     private bool _backgroundWashNeedsUpdate = true;
     private uint _backgroundWashArgb;
-    
+
     #endregion
 
     #region Public Properties
-    
+
     /// <summary>
     /// Gets the color lookup table for fast pixel rendering.
     /// </summary>
@@ -36,12 +33,12 @@ internal sealed class DxCdgColorManager
         get
         {
             UpdateLutIfNeeded();
-            var backgroundIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
+            var backgroundIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
             return _colorArgbLut[backgroundIndex];
         }
     }
 
-    public int BackgroundColorIndex => _backgroundColorIndex;
+    public int BackgroundColorIndex { get; private set; } = -1;
 
     /// <summary>
     /// Cached full-viewport background wash ARGB.  Recomputed only when background color,
@@ -51,7 +48,7 @@ internal sealed class DxCdgColorManager
     {
         get
         {
-            UpdateBackgroundWashIfNeeded();
+            _ = UpdateBackgroundWashIfNeeded();
             return _backgroundWashArgb;
         }
     }
@@ -72,7 +69,7 @@ internal sealed class DxCdgColorManager
         _backgroundWashNeedsUpdate = false;
         return old != _backgroundWashArgb;
     }
-    
+
     /// <summary>
     /// Gets or sets the background opacity (0-100 scale).
     /// </summary>
@@ -86,23 +83,22 @@ internal sealed class DxCdgColorManager
             // 100% to 254, leaving the CDG background subtly translucent over video.
             var scaled = v >= 100 ? (byte)255 : (byte)Math.Round(v * 255.0 / 100.0);
             if (scaled == _backgroundOpacity) return;
-            
+
             _backgroundOpacity = scaled;
             InvalidateColorState(invalidateWash: true);
         }
     }
-    
+
     /// <summary>
     /// Gets or sets the background color override (ARGB format).
     /// </summary>
     public uint? BackgroundOverrideArgb
     {
-        get => _backgroundOverrideArgb;
-        set
+        get; set
         {
-            if (_backgroundOverrideArgb == value) return;
-            
-            _backgroundOverrideArgb = value;
+            if (field == value) return;
+
+            field = value;
             InvalidateColorState(invalidateWash: true);
         }
     }
@@ -110,37 +106,34 @@ internal sealed class DxCdgColorManager
     #endregion
 
     #region Constructor
-    
+
     /// <summary>
     /// Initializes a new CDG color manager with default colors.
     /// </summary>
-    public DxCdgColorManager()
-    {
-        Reset();
-    }
-    
+    public DxCdgColorManager() => Reset();
+
     #endregion
 
     #region Public Methods
-    
+
     /// <summary>
     /// Resets color table to default CDG palette.
     /// </summary>
     public void Reset()
     {
         // Copy default palette
-        for (int i = 0; i < DxCdgConstants.ColorCount; i++)
+        for (var i = 0; i < DxCdgConstants.ColorCount; i++)
         {
             _colorTable[i] = DxCdgConstants.DefaultColorPalette[i];
         }
-        
+
         _borderColorIndex = -1;
-        _backgroundColorIndex = -1;
+        BackgroundColorIndex = -1;
         InvalidateColorState(invalidateWash: true);
-        
+
         UpdateLutIfNeeded();
     }
-    
+
     /// <summary>
     /// Updates the lookup table if changes have been made.
     /// This is called automatically but can be forced for immediate updates.
@@ -148,33 +141,33 @@ internal sealed class DxCdgColorManager
     public void UpdateLutIfNeeded()
     {
         if (!_lutNeedsUpdate) return;
-        
-        for (int i = 0; i < DxCdgConstants.ColorCount; i++)
+
+        for (var i = 0; i < DxCdgConstants.ColorCount; i++)
         {
-            bool isBg = i == 0 || i == _borderColorIndex || i == _backgroundColorIndex;
-            var baseColor = _colorTable[i];
-            
+            var isBg = i == 0 || i == _borderColorIndex || i == BackgroundColorIndex;
+            Color baseColor = _colorTable[i];
+
             // Apply background override if applicable
-            if (_backgroundOverrideArgb.HasValue && isBg)
-                baseColor = FromArgb(_backgroundOverrideArgb.Value);
-            
+            if (BackgroundOverrideArgb.HasValue && isBg)
+                baseColor = FromArgb(BackgroundOverrideArgb.Value);
+
             // Calculate final alpha
-            byte finalA = baseColor.A;
+            var finalA = baseColor.A;
             if (isBg)
             {
-                var sourceA = _backgroundOverrideArgb.HasValue 
-                    ? FromArgb(_backgroundOverrideArgb.Value).A 
+                var sourceA = BackgroundOverrideArgb.HasValue
+                    ? FromArgb(BackgroundOverrideArgb.Value).A
                     : (byte)255;
-                finalA = (byte)Math.Clamp((sourceA * _backgroundOpacity) / 255, 0, 255);
+                finalA = (byte)Math.Clamp(sourceA * _backgroundOpacity / 255, 0, 255);
             }
-            
+
             // Pack into ARGB integer
             _colorArgbLut[i] = (finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B;
         }
-        
+
         _lutNeedsUpdate = false;
     }
-    
+
     /// <summary>
     /// Sets the border color index.
     /// </summary>
@@ -182,80 +175,73 @@ internal sealed class DxCdgColorManager
     public void SetBorderColor(int colorIndex)
     {
         if (_borderColorIndex == colorIndex) return;
-        
+
         _borderColorIndex = colorIndex;
         InvalidateColorState(invalidateWash: false);
     }
-    
+
     /// <summary>
     /// Sets the background color index.
     /// </summary>
     /// <param name="colorIndex">Color index (0-15)</param>
     public void SetBackgroundColor(int colorIndex)
     {
-        if (_backgroundColorIndex == colorIndex) return;
-        
-        _backgroundColorIndex = colorIndex;
+        if (BackgroundColorIndex == colorIndex) return;
+
+        BackgroundColorIndex = colorIndex;
         InvalidateColorState(invalidateWash: true);
     }
-    
+
     /// <summary>
     /// Loads colors into the lower half of the color table (colors 0-7).
     /// </summary>
     /// <param name="colorData">8 colors worth of data (16 bytes)</param>
-    public void LoadColorTableLower(ReadOnlySpan<byte> colorData)
-    {
-        LoadColorTableRange(colorData, 0);
-    }
-    
+    public void LoadColorTableLower(ReadOnlySpan<byte> colorData) => LoadColorTableRange(colorData, 0);
+
     /// <summary>
     /// Loads colors into the upper half of the color table (colors 8-15).
     /// </summary>
     /// <param name="colorData">8 colors worth of data (16 bytes)</param>
-    public void LoadColorTableUpper(ReadOnlySpan<byte> colorData)
-    {
-        LoadColorTableRange(colorData, 8);
-    }
-    
+    public void LoadColorTableUpper(ReadOnlySpan<byte> colorData) => LoadColorTableRange(colorData, 8);
+
     /// <summary>
     /// Defines a color as transparent.
     /// </summary>
     /// <param name="colorIndex">Color index to make transparent</param>
     public void DefineTransparentColor(int colorIndex)
     {
-        if (colorIndex < 0 || colorIndex >= DxCdgConstants.ColorCount) return;
+        if (colorIndex is < 0 or >= DxCdgConstants.ColorCount) return;
         // Host-controlled background opacity handles visual transparency.
         // CDG transparent-color packets are intentionally not mapped to WPF alpha here.
         InvalidateColorState(invalidateWash: false);
     }
-    
+
     #endregion
 
     #region Private Methods
-    
+
     private void LoadColorTableRange(ReadOnlySpan<byte> colorData, int offset)
     {
         if (colorData.Length < 16) return;
-        
-        for (int i = 0; i < 8; i++)
+
+        for (var i = 0; i < 8; i++)
         {
             var high = colorData[2 * i];
-            var low = colorData[2 * i + 1];
-            
+            var low = colorData[(2 * i) + 1];
+
             // Extract RGB components (CDG color format)
-            int r = (high & DxCdgConstants.RedColorMask) >> 2;
-            int g = (high & DxCdgConstants.GreenColorMask) << 2 | 
-                    (low & DxCdgConstants.GreenLowbyteColorMask) >> 4;
-            int b = low & DxCdgConstants.BlueColorMask;
-            
+            var r = (high & DxCdgConstants.RedColorMask) >> 2;
+            var g = ((high & DxCdgConstants.GreenColorMask) << 2) | ((low & DxCdgConstants.GreenLowbyteColorMask) >> 4);
+            var b = low & DxCdgConstants.BlueColorMask;
+
             // Scale to full 8-bit range
             r *= DxCdgConstants.ColorValueMultiplier;
             g *= DxCdgConstants.ColorValueMultiplier;
             b *= DxCdgConstants.ColorValueMultiplier;
-            
+
             _colorTable[i + offset] = Color.FromArgb(255, (byte)r, (byte)g, (byte)b);
         }
-        
+
         InvalidateColorState(invalidateWash: true);
     }
 
@@ -270,28 +256,28 @@ internal sealed class DxCdgColorManager
 
     private uint CalculateBackgroundWashArgb()
     {
-        var bgIndex = _backgroundColorIndex >= 0 ? _backgroundColorIndex : 0;
-        var baseColor = _colorTable[bgIndex];
+        var bgIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
+        Color baseColor = _colorTable[bgIndex];
 
-        if (_backgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == _backgroundColorIndex))
+        if (BackgroundOverrideArgb.HasValue && (bgIndex == 0 || bgIndex == BackgroundColorIndex))
         {
-            baseColor = FromArgb(_backgroundOverrideArgb.Value);
+            baseColor = FromArgb(BackgroundOverrideArgb.Value);
         }
 
-        var sourceA = _backgroundOverrideArgb.HasValue
-            ? FromArgb(_backgroundOverrideArgb.Value).A
+        var sourceA = BackgroundOverrideArgb.HasValue
+            ? FromArgb(BackgroundOverrideArgb.Value).A
             : (byte)255;
-        var finalA = (byte)Math.Clamp((sourceA * _backgroundOpacity) / 255, 0, 255);
+        var finalA = (byte)Math.Clamp(sourceA * _backgroundOpacity / 255, 0, 255);
 
         return (uint)((finalA << 24) | (baseColor.R << 16) | (baseColor.G << 8) | baseColor.B);
     }
-    
+
     private static Color FromArgb(uint argb) =>
         Color.FromArgb(
-            (byte)((argb >> 24) & 0xFF), 
-            (byte)((argb >> 16) & 0xFF), 
-            (byte)((argb >> 8) & 0xFF), 
+            (byte)((argb >> 24) & 0xFF),
+            (byte)((argb >> 16) & 0xFF),
+            (byte)((argb >> 8) & 0xFF),
             (byte)(argb & 0xFF));
-    
+
     #endregion
 }

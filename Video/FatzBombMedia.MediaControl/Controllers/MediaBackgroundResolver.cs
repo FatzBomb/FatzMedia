@@ -6,34 +6,20 @@ namespace FatzBombMedia.MediaControl.Controllers;
 
 internal static class MediaBackgroundResolver
 {
-    public static MediaBackgroundCandidate? Resolve(string sourcePath, IArchiveService archiveService, MediaContent content)
-    {
-        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
-        {
-            return null;
-        }
-
-        if (content.HasFlag(MediaContent.Video) || content.HasFlag(MediaContent.Image))
-        {
-            return null;
-        }
-
-        if (!content.HasFlag(MediaContent.Audio) && !content.HasFlag(MediaContent.Cdg))
-        {
-            return null;
-        }
-
-        return FileTypes.IsArchive(sourcePath)
-            ? ResolveArchiveBackground(sourcePath, archiveService)
-            : ResolveSidecarBackground(sourcePath);
-    }
+    public static MediaBackgroundCandidate? Resolve(string sourcePath, IArchiveService archiveService, MediaContent content) => string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath)
+            ? null
+            : content.HasFlag(MediaContent.Video) || content.HasFlag(MediaContent.Image)
+                ? null
+                : !content.HasFlag(MediaContent.Audio) && !content.HasFlag(MediaContent.Cdg)
+                    ? null
+                    : FileTypes.IsArchive(sourcePath)
+                        ? ResolveArchiveBackground(sourcePath, archiveService)
+                        : ResolveSidecarBackground(sourcePath);
 
     private static MediaBackgroundCandidate? ResolveArchiveBackground(string sourcePath, IArchiveService archiveService)
     {
-        using var archive = archiveService.Open(sourcePath);
-        var entries = archive.Entries
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Key))
-            .ToArray();
+        using IArchiveHandle archive = archiveService.Open(sourcePath);
+        IArchiveEntryInfo[] entries = [.. archive.Entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Key))];
 
         var mediaBases = entries
             .Where(entry => FileTypes.IsAudio(entry.Key) || FileTypes.IsCdg(entry.Key))
@@ -61,12 +47,9 @@ internal static class MediaBackgroundResolver
                 .ThenBy(item => item.Entry.Key, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
 
-        if (selected != null)
-        {
-            return MediaBackgroundCandidate.FromArchiveEntry(selected.Kind!.Value, selected.Entry);
-        }
-
-        return ResolveSidecarBackground(sourcePath);
+        return selected != null
+            ? MediaBackgroundCandidate.FromArchiveEntry(selected.Kind!.Value, selected.Entry)
+            : ResolveSidecarBackground(sourcePath);
     }
 
     private static MediaBackgroundCandidate? ResolveSidecarBackground(string sourcePath)
@@ -78,7 +61,7 @@ internal static class MediaBackgroundResolver
         }
 
         var sourceBase = Path.GetFileNameWithoutExtension(sourcePath);
-        foreach (var kind in PreferredKindOrder())
+        foreach (MediaBackgroundKind kind in PreferredKindOrder())
         {
             foreach (var extension in GetExtensions(kind))
             {
@@ -93,20 +76,11 @@ internal static class MediaBackgroundResolver
         return null;
     }
 
-    private static MediaBackgroundKind? GetBackgroundKind(string path)
-    {
-        if (FileTypes.IsVideo(path))
-        {
-            return MediaBackgroundKind.Video;
-        }
-
-        if (FileTypes.IsImage(path))
-        {
-            return MediaBackgroundKind.Image;
-        }
-
-        return null;
-    }
+    private static MediaBackgroundKind? GetBackgroundKind(string path) => FileTypes.IsVideo(path)
+        ? MediaBackgroundKind.Video
+        : FileTypes.IsImage(path)
+            ? MediaBackgroundKind.Image
+            : null;
 
     private static IEnumerable<MediaBackgroundKind> PreferredKindOrder()
     {
@@ -114,13 +88,7 @@ internal static class MediaBackgroundResolver
         yield return MediaBackgroundKind.Image;
     }
 
-    private static IEnumerable<string> GetExtensions(MediaBackgroundKind kind)
-    {
-        return kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
-    }
+    private static IEnumerable<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
-    private static int GetKindPriority(MediaBackgroundKind kind)
-    {
-        return kind == MediaBackgroundKind.Video ? 0 : 1;
-    }
+    private static int GetKindPriority(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? 0 : 1;
 }

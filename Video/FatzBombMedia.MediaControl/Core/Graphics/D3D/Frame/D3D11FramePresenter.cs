@@ -54,7 +54,7 @@ internal sealed class D3D11FramePresenter(
             if (!uploadPipeline.UploadCpuFrame(
                     deviceResources,
                     uploadResources.TextureCache,
-                    presentationTexture!,
+                    presentationTexture,
                     presentationWidth,
                     presentationHeight,
                     pixelData,
@@ -144,23 +144,17 @@ internal sealed class D3D11FramePresenter(
         ReadOnlySpan<byte> pixelData,
         int width,
         int height,
-        int stride)
-    {
-        return deviceResources.Context != null
+        int stride) => deviceResources.Context != null
             && presentationTexture != null
             && !pixelData.IsEmpty
             && width > 0
             && height > 0
             && stride >= width * 4;
-    }
 
-    private void RecordUpload(long startTimestamp, int sourceWidth, int sourceHeight, int presentationWidth, int presentationHeight)
-    {
-        uploadResources.RecordUpload(
+    private void RecordUpload(long startTimestamp, int sourceWidth, int sourceHeight, int presentationWidth, int presentationHeight) => uploadResources.RecordUpload(
             startTimestamp,
             sourceWidth,
             sourceHeight,
             presentationWidth,
             presentationHeight);
-    }
 }

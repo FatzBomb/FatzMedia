@@ -7,14 +7,14 @@ namespace FatzBombMedia.MediaControl.Core.DxCdg;
 internal readonly struct DxCdgPacket
 {
     private readonly ReadOnlyMemory<byte> _data;
-    
+
     public DxCdgPacket(ReadOnlySpan<byte> data)
     {
         _data = data.ToArray();
         Command = (DxCdgConstants.Command)(data[0] & 0x3F);
         Instruction = (DxCdgConstants.Instruction)(data[1] & 0x3F);
     }
-    
+
     public DxCdgConstants.Command Command { get; }
     public DxCdgConstants.Instruction Instruction { get; }
     public ReadOnlySpan<byte> DataSpan => _data.Span.Slice(4, 16);

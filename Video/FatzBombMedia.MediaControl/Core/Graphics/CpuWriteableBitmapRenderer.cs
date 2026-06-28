@@ -12,7 +12,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics;
 /// </summary>
 internal sealed class CpuWriteableBitmapRenderer
 {
-    public WriteableBitmap? CreateBitmap(int width, int height)
+    public static WriteableBitmap? CreateBitmap(int width, int height)
     {
         try
         {
@@ -58,7 +58,7 @@ internal sealed class CpuWriteableBitmapRenderer
 
         try
         {
-            dispatcher.BeginInvoke(() =>
+            _ = dispatcher.BeginInvoke(() =>
             {
                 try
                 {

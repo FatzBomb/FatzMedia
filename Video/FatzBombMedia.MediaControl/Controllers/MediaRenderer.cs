@@ -1,4 +1,3 @@
-using System;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows;
@@ -32,7 +31,6 @@ public sealed class MediaRenderer : IDisposable
     private ImageSource? _stillImageSource;
     private bool _nativeCompositeBaseIsBackgroundVideo;
     private bool _loggedHardwareVideoLayer0Suppressed;
-    private MediaLayerState _layerState = MediaLayerState.Empty;
 
     // Natural window refresh rendering
     private bool _isRenderingActive;
@@ -77,24 +75,19 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public ImageSource? ImageSource => _stillImageSource ?? _graphicsRenderer.ImageSource;
 
-    private ImageSource? _backgroundSource;
     private Color _backgroundColor = Colors.Transparent;
-    private Stretch _backgroundStretch = Stretch.Uniform;
-    private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
-    private bool _backgroundAutoDetect = true;
-    private bool _backgroundVisibleWhenStopped = true;
 
     /// <summary>
     /// Gets or sets the optional host-rendered background image shown behind the media surface.
     /// </summary>
     public ImageSource? BackgroundSource
     {
-        get => _backgroundSource;
+        get;
         set
         {
-            if (ReferenceEquals(_backgroundSource, value)) return;
+            if (ReferenceEquals(field, value)) return;
 
-            _backgroundSource = value;
+            field = value;
             UpdateLayerState("manual background source changed");
             RefreshLayer0BaseFrame("manual background source changed");
             RefreshNativeCompositeBaseLayer();
@@ -122,15 +115,15 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public Stretch BackgroundStretch
     {
-        get => _backgroundStretch;
+        get;
         set
         {
-            if (_backgroundStretch == value) return;
+            if (field == value) return;
 
-            _backgroundStretch = value;
+            field = value;
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
-    }
+    } = Stretch.Uniform;
 
     /// <summary>
     /// Gets or sets how primary video content is displayed inside the viewport.
@@ -139,34 +132,34 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public VideoDisplayMode VideoDisplayMode
     {
-        get => _videoDisplayMode;
+        get;
         set
         {
-            if (_videoDisplayMode == value) return;
+            if (field == value) return;
 
-            _videoDisplayMode = value;
-            _graphicsRenderer.SetNativePresentationStretch(VideoDisplayModeMapper.ToStretch(_videoDisplayMode));
+            field = value;
+            _graphicsRenderer.SetNativePresentationStretch(VideoDisplayModeMapper.ToStretch(field));
             VideoDisplayModeChanged?.Invoke(this, EventArgs.Empty);
         }
-    }
+    } = VideoDisplayMode.Zoom;
 
     /// <summary>
     /// Gets or sets whether karaoke backgrounds should be detected from sidecar or archive media.
     /// </summary>
     public bool BackgroundAutoDetect
     {
-        get => _backgroundAutoDetect;
+        get;
         set
         {
-            if (_backgroundAutoDetect == value) return;
+            if (field == value) return;
 
-            _backgroundAutoDetect = value;
-            if (!_backgroundAutoDetect)
+            field = value;
+            if (!field)
             {
                 ClearAutoBackground();
             }
         }
-    }
+    } = true;
 
     /// <summary>
     /// Gets or sets whether the last background video frame remains visible after rendering stops.
@@ -174,67 +167,67 @@ public sealed class MediaRenderer : IDisposable
     /// </summary>
     public bool BackgroundVisibleWhenStopped
     {
-        get => _backgroundVisibleWhenStopped;
+        get;
         set
         {
-            if (_backgroundVisibleWhenStopped == value) return;
+            if (field == value) return;
 
-            _backgroundVisibleWhenStopped = value;
+            field = value;
             if (!_isRenderingActive)
             {
-                _backgroundMediaLayer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+                _backgroundMediaLayer.Stop(clearFrame: !field);
             }
         }
-    }
+    } = true;
 
     /// <summary>
     /// Gets the currently displayed background image source after auto-detection is applied.
     /// </summary>
     public ImageSource? EffectiveBackgroundSource =>
-        _backgroundMediaLayer.ImageSource ?? _backgroundSource;
+        _backgroundMediaLayer.ImageSource ?? BackgroundSource;
 
     /// <summary>
     /// Gets whether a CDG layer is currently attached. Background media uses
     /// CDG layering rules when this is true.
     /// </summary>
-    public bool HasCdgContent => _layerState.ForegroundOverlay == ForegroundOverlayKind.Cdg;
+    public bool HasCdgContent => LayerState.ForegroundOverlay == ForegroundOverlayKind.Cdg;
 
     /// <summary>
     /// Gets the stable layer role classification for the current media session. This is
     /// decided from media/background roles and must not depend on CDG frame invalidations.
     /// </summary>
-    internal MediaLayerState LayerState => _layerState;
+    internal MediaLayerState LayerState { get; private set; } = MediaLayerState.Empty;
 
     /// <summary>
     /// Gets whether the current media session has a foreground overlay such as CDG.
     /// </summary>
-    public bool HasOverlaySession => _layerState.HasOverlaySession;
+    public bool HasOverlaySession => LayerState.HasOverlaySession;
 
     /// <summary>
     /// Gets whether the current media session has background media assigned by role.
     /// </summary>
-    public bool HasBackgroundMedia => _layerState.HasBackgroundMedia;
+    public bool HasBackgroundMedia => LayerState.HasBackgroundMedia;
 
     /// <summary>
     /// Diagnostic string for verifying media/layer classification during refactor testing.
     /// </summary>
-    public string LayerStateDebug => _layerState.ToString();
+    public string LayerStateDebug => LayerState.ToString();
 
     /// <summary>
     /// Gets whether foreground overlay content is layered over separate background media.
     /// In this mode the native/WPF presentation surface must use the full viewport as its
     /// output target; overlay layers are aspect-fitted inside that viewport later.
     /// </summary>
-    public bool HasOverlayBackgroundLayer => _layerState.UsesBackgroundPresentation;
+    public bool HasOverlayBackgroundLayer => LayerState.UsesBackgroundPresentation;
 
     /// <summary>
     /// Gets the background stretch mode after applying overlay layering rules.
     /// Background images/videos fill the viewport for overlay sessions; video-only
     /// playback continues to use the normal media stretch path.
     /// </summary>
-    public Stretch EffectiveBackgroundStretch => _layerState.UsesBackgroundPresentation
+    public Stretch EffectiveBackgroundStretch => LayerState.UsesBackgroundPresentation
         ? Stretch.UniformToFill
-        : _backgroundStretch;
+        : BackgroundStretch;
 
     /// <summary>
     /// Event raised when the ImageSource changes (new video frame, CDG update, etc.).
@@ -320,25 +313,13 @@ public sealed class MediaRenderer : IDisposable
         }
     }
 
-    public void SetNativePresentationSize(int pixelWidth, int pixelHeight)
-    {
-        _graphicsRenderer.SetNativePresentationSize(pixelWidth, pixelHeight);
-    }
+    public void SetNativePresentationSize(int pixelWidth, int pixelHeight) => _graphicsRenderer.SetNativePresentationSize(pixelWidth, pixelHeight);
 
-    public void SetNativePresentationStretch(Stretch stretch)
-    {
-        _graphicsRenderer.SetNativePresentationStretch(stretch);
-    }
+    public void SetNativePresentationStretch(Stretch stretch) => _graphicsRenderer.SetNativePresentationStretch(stretch);
 
-    public void SetNativeResizeInProgress(bool isResizing)
-    {
-        _graphicsRenderer.SetNativeResizeInProgress(isResizing);
-    }
+    public void SetNativeResizeInProgress(bool isResizing) => _graphicsRenderer.SetNativeResizeInProgress(isResizing);
 
-    public void RefreshNativePresentation()
-    {
-        PresentCurrentComposition("native refresh");
-    }
+    public void RefreshNativePresentation() => PresentCurrentComposition("native refresh");
 
 
     private void ApplyVideoPresentationSchedulingMode()
@@ -350,20 +331,14 @@ public sealed class MediaRenderer : IDisposable
         _attachedVideo?.SetWpfCompositionDrivenPresentation(wpfDriven);
     }
 
-    private bool ShouldRenderVideoOnWindowRefresh()
-    {
-        return _wpfCompositionDrivenVideo && _mediaEngine.Content.HasFlag(MediaContent.Video);
-    }
+    private bool ShouldRenderVideoOnWindowRefresh() => _wpfCompositionDrivenVideo && _mediaEngine.Content.HasFlag(MediaContent.Video);
 
     /// <summary>
     /// Supplies the exact WPF D3DImage presentation size in physical pixels. This lets
     /// D3D11 scale into the displayed video rectangle and keeps WPF overlays airspace-safe
     /// without forcing WPF to scale the video Image every frame. Pass 0,0 to use source size.
     /// </summary>
-    public void SetWpfPresentationSize(int pixelWidth, int pixelHeight)
-    {
-        _graphicsRenderer.SetWpfPresentationSize(pixelWidth, pixelHeight);
-    }
+    public void SetWpfPresentationSize(int pixelWidth, int pixelHeight) => _graphicsRenderer.SetWpfPresentationSize(pixelWidth, pixelHeight);
 
     /// <summary>
     /// Supplies the actual refresh rate (Hz) of the monitor displaying this player's surface,
@@ -372,10 +347,7 @@ public sealed class MediaRenderer : IDisposable
     /// should call this when the surface is attached and again whenever the hosting window
     /// moves to a different monitor. Pass null to fall back to automatic detection.
     /// </summary>
-    public void SetDisplayRefreshRate(double? refreshHz)
-    {
-        _mediaEngine.SetDisplayRefreshRate(refreshHz);
-    }
+    public void SetDisplayRefreshRate(double? refreshHz) => _mediaEngine.SetDisplayRefreshRate(refreshHz);
 
     private void OnBackgroundMediaChanged(object? sender, EventArgs e)
     {
@@ -387,19 +359,19 @@ public sealed class MediaRenderer : IDisposable
 
     private void UpdateLayerState(string reason)
     {
-        var backgroundKind = _backgroundMediaLayer.Kind;
-        if (backgroundKind == MediaBackgroundKind.None && _backgroundSource != null)
+        MediaBackgroundKind backgroundKind = _backgroundMediaLayer.Kind;
+        if (backgroundKind == MediaBackgroundKind.None && BackgroundSource != null)
         {
             backgroundKind = MediaBackgroundKind.Image;
         }
 
         var newState = MediaLayerState.From(_mediaEngine.Content, backgroundKind);
-        if (newState.Equals(_layerState))
+        if (newState.Equals(LayerState))
         {
             return;
         }
 
-        _layerState = newState;
+        LayerState = newState;
         var cdgLayeringActive = newState.ForegroundOverlay == ForegroundOverlayKind.Cdg;
         _graphicsRenderer.SetNativeCompositeCdgLayeringActive(cdgLayeringActive);
         if (cdgLayeringActive)
@@ -419,7 +391,7 @@ public sealed class MediaRenderer : IDisposable
 
     internal void ApplyAutoBackground(MediaBackgroundCandidate? background)
     {
-        if (!_backgroundAutoDetect || background == null)
+        if (!BackgroundAutoDetect || background == null)
         {
             ClearAutoBackground();
             return;
@@ -574,7 +546,7 @@ public sealed class MediaRenderer : IDisposable
         _backgroundMediaLayer.Start();
         _isRenderingActive = true;
 
-        var method = _graphicsRenderer.CurrentRenderingMethod;
+        GpuRenderingMethod method = _graphicsRenderer.CurrentRenderingMethod;
         if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Started natural window refresh rendering with {method}");
     }
 
@@ -586,7 +558,7 @@ public sealed class MediaRenderer : IDisposable
         if (!_isRenderingActive) return;
 
         CompositionTarget.Rendering -= OnWindowRefresh;
-        _backgroundMediaLayer.Stop(clearFrame: !_backgroundVisibleWhenStopped);
+        _backgroundMediaLayer.Stop(clearFrame: !BackgroundVisibleWhenStopped);
         _isRenderingActive = false;
 
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Stopped natural window refresh rendering");
@@ -728,7 +700,7 @@ public sealed class MediaRenderer : IDisposable
 
     private void ApplyCdgBackgroundWash()
     {
-        var cdg = _attachedCdg;
+        ICdgEngine? cdg = _attachedCdg;
         if (cdg == null)
         {
             _graphicsRenderer.SetCdgBackgroundWash(0);
@@ -790,7 +762,7 @@ public sealed class MediaRenderer : IDisposable
         try
         {
             if (_attachedCdg is not IDxCdgSnapshotSource dxCdgSnapshotSource
-                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions: false, out var dxCdgSnapshot))
+                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions: false, out DxCdgRenderSnapshot? dxCdgSnapshot))
             {
                 System.Diagnostics.Debug.WriteLine($"[COMPOSITION-TRACE] Hardware background skipped ({reason}): CDG engine did not provide a retained DXCDG snapshot.");
                 return;
@@ -816,7 +788,7 @@ public sealed class MediaRenderer : IDisposable
         try
         {
             if (_attachedCdg is not IDxCdgSnapshotSource dxCdgSnapshotSource
-                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions, out var dxCdgSnapshot))
+                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? dxCdgSnapshot))
             {
                 System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] MediaRenderer skipped ({reason}): CDG engine did not provide a DXCDG snapshot.");
                 return;
@@ -908,7 +880,7 @@ public sealed class MediaRenderer : IDisposable
             return;
         }
 
-        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+        if ((_backgroundMediaLayer.ImageSource ?? BackgroundSource) is BitmapSource backgroundImage)
         {
             _graphicsRenderer.SetCompositionBackgroundFrame(backgroundImage, forceZoomToFill: true);
             _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: reason);
@@ -951,7 +923,7 @@ public sealed class MediaRenderer : IDisposable
             return;
         }
 
-        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+        if ((_backgroundMediaLayer.ImageSource ?? BackgroundSource) is BitmapSource backgroundImage)
         {
             _nativeCompositeBaseIsBackgroundVideo = false;
             _graphicsRenderer.SetCompositionLayer0Frame(backgroundImage, forceZoomToFill: true);
@@ -971,12 +943,10 @@ public sealed class MediaRenderer : IDisposable
         if (_enableVerboseLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 cleared ({reason}).");
     }
 
-    private bool HasActiveVideo()
-    {
+    private bool HasActiveVideo() =>
         // Native HWND presentation does not expose a WPF ImageSource, so the presence of an
         // attached video engine is the correct priority signal here.
-        return _attachedVideo != null;
-    }
+        _attachedVideo != null;
 
     /// <summary>
     /// Refreshes all attachments when media changes.
@@ -987,7 +957,7 @@ public sealed class MediaRenderer : IDisposable
         if (_enableLogging) System.Diagnostics.Debug.WriteLine("[MediaRenderer] Refreshing attachments - cleaning up previous media");
 
         // Remember if rendering was active before stopping
-        bool wasRenderingActive = _isRenderingActive;
+        var wasRenderingActive = _isRenderingActive;
 
         // Stop any active rendering first
         StopRendering();
@@ -1024,7 +994,7 @@ public sealed class MediaRenderer : IDisposable
 
         AttachmentsChanged?.Invoke(this, EventArgs.Empty);
 
-        var capabilities = GpuRenderingCapabilities.Capabilities;
+        GpuCapabilityInfo capabilities = GpuRenderingCapabilities.Capabilities;
         if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Attachments refreshed - Video: {_attachedVideo != null}, CDG: {_attachedCdg != null}, Image: {_stillImageSource != null}, GPU: {capabilities}");
     }
 

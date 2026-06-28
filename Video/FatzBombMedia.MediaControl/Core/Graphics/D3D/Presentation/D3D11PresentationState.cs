@@ -1,4 +1,3 @@
-using System.Threading;
 using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 
@@ -13,25 +12,21 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationState
 {
     private int _nativeLiveResizeInProgress;
-    private Stretch _nativePresentationStretch = Stretch.Uniform;
 
-    public Stretch NativePresentationStretch => _nativePresentationStretch;
+    public Stretch NativePresentationStretch { get; private set; } = Stretch.Uniform;
 
     public bool IsNativeLiveResizeInProgress => Volatile.Read(ref _nativeLiveResizeInProgress) != 0;
 
-    public void SetNativeLiveResizeInProgress(bool isResizing)
-    {
-        Volatile.Write(ref _nativeLiveResizeInProgress, isResizing ? 1 : 0);
-    }
+    public void SetNativeLiveResizeInProgress(bool isResizing) => Volatile.Write(ref _nativeLiveResizeInProgress, isResizing ? 1 : 0);
 
     public void SetNativePresentationStretch(Stretch stretch, D3D11VideoProcessorPresenter videoProcessorPresenter)
     {
-        if (_nativePresentationStretch == stretch)
+        if (NativePresentationStretch == stretch)
         {
             return;
         }
 
-        _nativePresentationStretch = stretch;
+        NativePresentationStretch = stretch;
         videoProcessorPresenter.Reset();
     }
 }

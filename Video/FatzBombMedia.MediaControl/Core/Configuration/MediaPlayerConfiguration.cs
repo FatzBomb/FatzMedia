@@ -197,14 +197,14 @@ public readonly record struct MediaPlayerConfiguration
 
     /// <summary>
     /// Maximum WPF D3DImage surface width used when <see cref="WpfD3DImageSurfaceSizingMode"/> is
-    /// <see cref="Core.Configuration.WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
+    /// <see cref="WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
     /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
     /// </summary>
     public int MaxWpfD3DImageSurfaceWidth { get; init; }
 
     /// <summary>
     /// Maximum WPF D3DImage surface height used when <see cref="WpfD3DImageSurfaceSizingMode"/> is
-    /// <see cref="Core.Configuration.WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
+    /// <see cref="WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
     /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
     /// </summary>
     public int MaxWpfD3DImageSurfaceHeight { get; init; }

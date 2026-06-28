@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using FatzBombMedia.MediaControl.Core.DxCdg;
 
 namespace FatzBombMedia.MediaControl.Core.DxCdg;
 
@@ -22,10 +21,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
     private uint _backgroundWashArgb;
     private bool _disposed;
 
-    public DxCdgEngine()
-    {
-        _backgroundWashArgb = _dxCdgState.BackgroundWashArgb;
-    }
+    public DxCdgEngine() => _backgroundWashArgb = _dxCdgState.BackgroundWashArgb;
 
     public int FrameWidth => DxCdgConstants.FrameWidth;
     public int FrameHeight => DxCdgConstants.FrameHeight;
@@ -84,30 +80,28 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
     public event EventHandler<double>? PositionChanged;
     public event EventHandler? PlaybackStarted;
 
-    private DxCdgEngineState _state;
     public DxCdgEngineState State
     {
-        get => _state;
+        get;
         private set
         {
-            if (_state != value)
+            if (field != value)
             {
-                _state = value;
-                StateChanged?.Invoke(this, _state);
+                field = value;
+                StateChanged?.Invoke(this, field);
             }
         }
     }
 
-    private double _positionSeconds;
     public double PositionSeconds
     {
-        get => _positionSeconds;
+        get;
         set
         {
-            if (Math.Abs(_positionSeconds - value) > 0.001)
+            if (Math.Abs(field - value) > 0.001)
             {
-                _positionSeconds = value;
-                PositionChanged?.Invoke(this, _positionSeconds);
+                field = value;
+                PositionChanged?.Invoke(this, field);
             }
         }
     }
@@ -126,7 +120,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     public void Load(string filePath)
     {
-        using var fs = File.OpenRead(filePath);
+        using FileStream fs = File.OpenRead(filePath);
         using var ms = new MemoryStream();
         fs.CopyTo(ms);
         ms.Position = 0;
@@ -180,7 +174,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
         lock (_renderLock)
         {
-            long endIndex = (long)(seconds * DxCdgConstants.PacketsPerSecond);
+            var endIndex = (long)(seconds * DxCdgConstants.PacketsPerSecond);
             endIndex = Math.Clamp(endIndex, 0, _packets.Length);
 
             var rebuiltFromStart = false;
@@ -246,7 +240,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     private bool RefreshBackgroundWashUnsafe()
     {
-        var snapshot = _dxCdgState.CreateSnapshot(consumeDirtyRegions: false);
+        DxCdgRenderSnapshot snapshot = _dxCdgState.CreateSnapshot(consumeDirtyRegions: false);
         if (snapshot.BackgroundWashArgb == _backgroundWashArgb)
         {
             return false;

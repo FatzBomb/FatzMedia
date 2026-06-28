@@ -89,15 +89,9 @@ internal sealed class D3D11RendererPresentationServices
 
     public bool IsNativeLiveResizeInProgress => State.IsNativeLiveResizeInProgress;
 
-    public void SetNativeLiveResizeInProgress(bool isResizing)
-    {
-        State.SetNativeLiveResizeInProgress(isResizing);
-    }
+    public void SetNativeLiveResizeInProgress(bool isResizing) => State.SetNativeLiveResizeInProgress(isResizing);
 
-    public void SetNativePresentationStretch(Stretch stretch)
-    {
-        State.SetNativePresentationStretch(stretch, VideoProcessorPresenter);
-    }
+    public void SetNativePresentationStretch(Stretch stretch) => State.SetNativePresentationStretch(stretch, VideoProcessorPresenter);
 
     public bool InitializeDevice(bool isDisposed)
     {
@@ -126,9 +120,7 @@ internal sealed class D3D11RendererPresentationServices
         return _deviceResources.InitializeFromNativeDevice(devicePointer, deviceContextPointer, _configuration);
     }
 
-    public bool CreateD3DImageSurface(bool isDisposed, int width, int height, Action<int, int, bool> notifyPresented)
-    {
-        return Surfaces.CreateD3DImageSurface(
+    public bool CreateD3DImageSurface(bool isDisposed, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateD3DImageSurface(
             isDisposed,
             _deviceResources,
             width,
@@ -136,11 +128,8 @@ internal sealed class D3D11RendererPresentationServices
             ResourceCleaner.CleanupSurfaces,
             _configuration.EnableLogging,
             notifyPresented);
-    }
 
-    public bool CreateNativeHwndSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented)
-    {
-        return Surfaces.CreateNativeHwndSurface(
+    public bool CreateNativeHwndSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateNativeHwndSurface(
             isDisposed,
             _deviceResources,
             hwnd,
@@ -149,11 +138,8 @@ internal sealed class D3D11RendererPresentationServices
             ResourceCleaner.CleanupSurfaces,
             _configuration.EnableLogging,
             notifyPresented);
-    }
 
-    public bool CreateDirectCompositionSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented)
-    {
-        return Surfaces.CreateDirectCompositionSurface(
+    public bool CreateDirectCompositionSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateDirectCompositionSurface(
             isDisposed,
             _deviceResources,
             hwnd,
@@ -162,16 +148,10 @@ internal sealed class D3D11RendererPresentationServices
             ResourceCleaner.CleanupSurfaces,
             _configuration.EnableLogging,
             notifyPresented);
-    }
 
-    public void SetDirectCompositionOutputSize(bool isDisposed, int width, int height)
-    {
-        Surfaces.SetDirectCompositionOutputSize(isDisposed, width, height, IsNativeLiveResizeInProgress);
-    }
+    public void SetDirectCompositionOutputSize(bool isDisposed, int width, int height) => Surfaces.SetDirectCompositionOutputSize(isDisposed, width, height, IsNativeLiveResizeInProgress);
 
-    public bool UploadDirectCompositionOverlayFrame(bool isDisposed, ReadOnlySpan<byte> pixelData, int width, int height, int stride)
-    {
-        return Surfaces.UploadDirectCompositionOverlayFrame(
+    public bool UploadDirectCompositionOverlayFrame(bool isDisposed, ReadOnlySpan<byte> pixelData, int width, int height, int stride) => Surfaces.UploadDirectCompositionOverlayFrame(
             isDisposed,
             _deviceResources,
             UploadResources,
@@ -181,32 +161,19 @@ internal sealed class D3D11RendererPresentationServices
             height,
             stride,
             IsNativeLiveResizeInProgress);
-    }
 
 
-    public void ClearPresentedFrame(bool isDisposed, Action raiseFramePresented)
-    {
-        Surfaces.ClearPresentedFrame(
+    public void ClearPresentedFrame(bool isDisposed, Action raiseFramePresented) => Surfaces.ClearPresentedFrame(
             _deviceResources,
             isDisposed,
             IsNativeLiveResizeInProgress,
             raiseFramePresented);
-    }
 
-    public void QueueNativeHwndResize(bool isDisposed, int width, int height)
-    {
-        Surfaces.QueueNativeHwndResize(isDisposed, width, height);
-    }
+    public void QueueNativeHwndResize(bool isDisposed, int width, int height) => Surfaces.QueueNativeHwndResize(isDisposed, width, height);
 
-    public bool ResizeNativeHwndPresentation(bool isDisposed, int width, int height)
-    {
-        return Surfaces.ResizeNativeHwndPresentation(isDisposed, width, height);
-    }
+    public bool ResizeNativeHwndPresentation(bool isDisposed, int width, int height) => Surfaces.ResizeNativeHwndPresentation(isDisposed, width, height);
 
-    public bool TryGetActiveTargetSnapshot(bool applyPendingNativeResize, string? reason, out D3D11PresentationTargetSnapshot target)
-    {
-        return Surfaces.TryGetActiveTargetSnapshot(applyPendingNativeResize, reason, out target);
-    }
+    public bool TryGetActiveTargetSnapshot(bool applyPendingNativeResize, string? reason, out D3D11PresentationTargetSnapshot target) => Surfaces.TryGetActiveTargetSnapshot(applyPendingNativeResize, reason, out target);
 
 
 
@@ -216,9 +183,7 @@ internal sealed class D3D11RendererPresentationServices
         int width,
         int height,
         int stride,
-        Action<int, int> notifyPresented)
-    {
-        FramePresenter.UploadCpuFrame(
+        Action<int, int> notifyPresented) => FramePresenter.UploadCpuFrame(
             _deviceResources,
             isDisposed,
             pixelData,
@@ -226,7 +191,6 @@ internal sealed class D3D11RendererPresentationServices
             height,
             stride,
             notifyPresented);
-    }
 
     public bool PresentHardwareFrame(
         bool isDisposed,
@@ -235,9 +199,7 @@ internal sealed class D3D11RendererPresentationServices
         int width,
         int height,
         double framesPerSecond,
-        Action<int, int> notifyPresented)
-    {
-        return FramePresenter.PresentHardwareFrame(
+        Action<int, int> notifyPresented) => FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
             sourceTexturePointer,
@@ -246,16 +208,12 @@ internal sealed class D3D11RendererPresentationServices
             height,
             framesPerSecond,
             notifyPresented);
-    }
 
-    public void NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented)
-    {
-        Surfaces.NotifyFramePresented(
+    public void NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
             IsNativeLiveResizeInProgress,
             syncImmediate,
             () => isDisposed,
             raiseFramePresented);
-    }
 
     public void SetCompositionBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
     {
@@ -267,10 +225,7 @@ internal sealed class D3D11RendererPresentationServices
         MediaCompositor.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
     }
 
-    public void ClearCompositionBackgroundFrame()
-    {
-        MediaCompositor.ClearBackgroundFrame();
-    }
+    public void ClearCompositionBackgroundFrame() => MediaCompositor.ClearBackgroundFrame();
 
     public bool PresentMediaCompositionVisible(
         bool isDisposed,
@@ -288,7 +243,7 @@ internal sealed class D3D11RendererPresentationServices
         if (!Surfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "media composition presentation",
-                out var target))
+                out D3D11PresentationTargetSnapshot target))
         {
             Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: no active D3D11 presentation target.");
             return false;
@@ -348,7 +303,7 @@ internal sealed class D3D11RendererPresentationServices
         if (!Surfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "DXCDG active-target presentation",
-                out var target))
+                out D3D11PresentationTargetSnapshot target))
         {
             Debug.WriteLine("[DXCDG-TRACE] Visible present skipped: no active D3D11 presentation target.");
             return false;

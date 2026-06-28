@@ -67,8 +67,5 @@ internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration conf
         _nativePresentMaxMs = 0;
     }
 
-    public static double ElapsedMilliseconds(long startTimestamp)
-    {
-        return (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
-    }
+    public static double ElapsedMilliseconds(long startTimestamp) => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 }

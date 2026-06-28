@@ -35,8 +35,8 @@ internal sealed class D3D11FrameUploadPipeline
         Stretch? stretchOverride,
         BlitToPresentationCallback blitToPresentation)
     {
-        var device = deviceResources.Device;
-        var context = deviceResources.Context;
+        ID3D11Device? device = deviceResources.Device;
+        ID3D11DeviceContext? context = deviceResources.Context;
         if (device == null
             || context == null
             || presentationTexture == null

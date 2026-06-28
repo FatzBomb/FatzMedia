@@ -1,4 +1,4 @@
-namespace FatzBombMedia.MediaControl.Wpf;
+namespace FatzBombMedia.MediaControl.Adapters.Wpf;
 
 /// <summary>
 /// Presentation modes exposed by <see cref="FatzBombMediaSurface"/>.

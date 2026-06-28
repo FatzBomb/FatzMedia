@@ -4,6 +4,7 @@ using FatzBombMedia.MediaControl.Controllers;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO;
 using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics;
 
 #pragma warning disable IDE0130
 namespace FatzBombMedia.MediaControl;
@@ -114,29 +115,29 @@ public sealed class MediaPlayer : IDisposable
     {
         Configuration = NormalizeConfiguration(configuration);
 
-        var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-        
+        IReadOnlyList<string> resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+
         // Create service provider with configuration and library path
         _serviceProvider = MediaPlayerServiceProvider.Create(Configuration, resolvedNativeLibraryPaths);
-    
+
         // Resolve actual methods using automatic capability detection.
         ResolveActualMethods();
 
         // Get media engine from DI - this contains all engines
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
-        var archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
+        IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
         AcceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
 
         // Initialize components in dependency order
         Renderer = new MediaRenderer(_mediaEngine, Configuration);
-        Metadata = new Controllers.MediaMetadata(_mediaEngine);
+        Metadata = new MediaMetadata(_mediaEngine);
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
-        
+
         // Initialize Controls and wire up renderer coordination
         Controls = new MediaControls(_mediaEngine, Renderer);
         File = new MediaFile(_mediaEngine, Renderer, Metadata, Controls, Effects, CdgVisuals, archiveService);
-        
+
         // Wire up events from Controls
         WireUpControlsEvents();
 
@@ -152,27 +153,20 @@ public sealed class MediaPlayer : IDisposable
             .ToArray();
 
         foreach (var path in resolvedPaths)
-        {
             if (!Directory.Exists(path))
                 throw new DirectoryNotFoundException($"Native library path does not exist: {path}");
-        }
 
         return resolvedPaths;
     }
 
-    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath)
-    {
-        return string.IsNullOrWhiteSpace(nativeLibraryPath)
+    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) => string.IsNullOrWhiteSpace(nativeLibraryPath)
             ? DLLPath.GetConfiguredNativeLibraryPaths()
             : [nativeLibraryPath];
-    }
 
-    private static MediaPlayerConfiguration NormalizeConfiguration(MediaPlayerConfiguration configuration)
-    {
+    private static MediaPlayerConfiguration NormalizeConfiguration(MediaPlayerConfiguration configuration) =>
         // Auto remains the default through MediaPlayerConfiguration.Auto, but explicit
         // Hardware/Software choices must survive so the host can test and force a decode path.
-        return configuration;
-    }
+        configuration;
 
     #endregion
 
@@ -213,7 +207,7 @@ public sealed class MediaPlayer : IDisposable
     /// </summary>
     private void ResolveActualMethods()
     {
-        var capabilities = Core.Graphics.GpuRenderingCapabilities.Capabilities;
+        GpuCapabilityInfo capabilities = GpuRenderingCapabilities.Capabilities;
 
         ActualVideoDecoding = capabilities.SupportsD3D11
             ? VideoDecodingMethod.Hardware
@@ -508,16 +502,16 @@ public sealed class MediaPlayer : IDisposable
             try
             {
                 // Stop playback first
-                Stop();
-                
+                _ = Stop();
+
                 // Dispose components in reverse dependency order
                 File?.Close(); // Close any open files
                 Renderer?.Dispose(); // Stop natural window refresh first
                 Controls?.Dispose(); // Stop loop monitoring
-                
+
                 // Dispose core engine (this disposes all internal engines)
                 _mediaEngine?.Dispose();
-                
+
                 // Dispose service provider if it's disposable
                 (_serviceProvider as IDisposable)?.Dispose();
             }
