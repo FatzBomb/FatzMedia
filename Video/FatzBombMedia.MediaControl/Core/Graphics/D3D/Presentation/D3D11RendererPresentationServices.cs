@@ -1,13 +1,14 @@
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Layers;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
+using System.Diagnostics;
 using System.Windows.Media;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
@@ -34,14 +35,14 @@ internal sealed class D3D11RendererPresentationServices
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
         State = new D3D11PresentationState();
         RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
-        LayerCompositor = new D3D11LayerCompositor(configuration);
+        DxCdgPresenter = new DxCdgD3D11TexturePresenter();
 
         var nativeHwndBackend = new D3D11NativeHwndSwapChainBackend(
             configuration,
             Diagnostics,
             () => VideoProcessorPresenter.Reset(),
             RenderTargetViewCache.Release,
-            () => LayerCompositor.ResetTransientOverlayFailure());
+            static () => { });
         var d3dImageBackend = new D3D11D3DImagePresentationBackend();
         var directCompositionBackend = new D3D11DirectCompositionSingleTargetBackend(configuration, Diagnostics);
 
@@ -53,14 +54,12 @@ internal sealed class D3D11RendererPresentationServices
             VideoProcessorPresenter,
             Surfaces,
             RenderTargetViewCache,
-            LayerCompositor,
             UploadResources);
 
         var framePresenter = new D3D11FramePresenter(
             FrameUploadPipeline,
             UploadResources,
-            VideoProcessorPresenter,
-            LayerCompositor);
+            VideoProcessorPresenter);
         var presentationBlitter = new D3D11PresentationBlitter(
             deviceResources,
             VideoProcessorPresenter,
@@ -71,9 +70,7 @@ internal sealed class D3D11RendererPresentationServices
             framePresenter,
             Surfaces,
             presentationBlitter,
-            RenderTargetViewCache,
-            State,
-            () => LayerCompositor.HasOverlayTexture);
+            State);
     }
 
 
@@ -88,7 +85,6 @@ internal sealed class D3D11RendererPresentationServices
 
     public string PresentationBackend => Surfaces.PresentationBackend;
 
-    public bool HasOverlayTexture => LayerCompositor.HasOverlayTexture;
 
     public bool IsNativeLiveResizeInProgress => State.IsNativeLiveResizeInProgress;
 
@@ -186,20 +182,6 @@ internal sealed class D3D11RendererPresentationServices
             IsNativeLiveResizeInProgress);
     }
 
-    public bool UploadOverlayTexture(bool isDisposed, ReadOnlySpan<byte> pixelData, int width, int height, int stride)
-    {
-        if (isDisposed || !_deviceResources.HasDevice)
-        {
-            return false;
-        }
-
-        return LayerCompositor.UploadOverlayTexture(_deviceResources, pixelData, width, height, stride);
-    }
-
-    public void ClearOverlayTexture()
-    {
-        LayerCompositor.ClearOverlayTexture();
-    }
 
     public void ClearPresentedFrame(bool isDisposed, Action raiseFramePresented)
     {
@@ -226,30 +208,6 @@ internal sealed class D3D11RendererPresentationServices
     }
 
 
-
-    public bool UploadCpuFrameWithRetainedLayers(
-        bool isDisposed,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        double framesPerSecond,
-        uint washArgb,
-        bool forceBaseUniformToFill,
-        Action<int, int> notifyPresented)
-    {
-        return FramePresenter.UploadCpuFrameWithRetainedLayers(
-            _deviceResources,
-            isDisposed,
-            pixelData,
-            width,
-            height,
-            stride,
-            framesPerSecond,
-            washArgb,
-            forceBaseUniformToFill,
-            notifyPresented);
-    }
 
     public void UploadCpuFrame(
         bool isDisposed,
@@ -298,8 +256,84 @@ internal sealed class D3D11RendererPresentationServices
             raiseFramePresented);
     }
 
+    public void SetDxCdgBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+    {
+        if (isDisposed || !_deviceResources.HasDevice)
+        {
+            return;
+        }
+
+        DxCdgPresenter.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
+    }
+
+    public void ClearDxCdgBackgroundFrame()
+    {
+        DxCdgPresenter.ClearBackgroundFrame();
+    }
+
+    public bool PresentDxCdgSnapshotVisible(
+        bool isDisposed,
+        DxCdgRenderSnapshot snapshot,
+        int outputWidth,
+        int outputHeight,
+        Action<int, int> framePresented,
+        bool retainedRefresh = false)
+    {
+        if (isDisposed || !_deviceResources.HasDevice)
+        {
+            Debug.WriteLine("[DXCDG-TRACE] Visible present skipped: renderer disposed or D3D11 device unavailable.");
+            return false;
+        }
+
+        if (!Surfaces.TryGetActiveTargetSnapshot(
+                applyPendingNativeResize: true,
+                reason: "DXCDG active-target presentation",
+                out var target))
+        {
+            Debug.WriteLine("[DXCDG-TRACE] Visible present skipped: no active D3D11 presentation target.");
+            return false;
+        }
+
+        if (!retainedRefresh)
+        {
+            Debug.WriteLine(
+                $"[DXCDG-TRACE] Present active target snapshot revision={snapshot.Revision} " +
+                $"target={target.Width}x{target.Height} backend={target.BackendName} targetRevision={target.Revision}");
+        }
+
+        if (!DxCdgPresenter.PresentToTarget(
+                _deviceResources,
+                snapshot,
+                target.Texture,
+                target.Width,
+                target.Height,
+                target.BackendName,
+                target.Revision,
+                retainedRefresh))
+        {
+            Debug.WriteLine($"[DXCDG-TRACE] Visible present failed in DXCDG presenter for revision={snapshot.Revision}.");
+            return false;
+        }
+
+        if (!retainedRefresh)
+        {
+            Debug.WriteLine(
+                $"[DXCDG-TRACE] Presenter draw succeeded; notifying backend revision={snapshot.Revision} " +
+                $"backend={target.BackendName} target={target.Width}x{target.Height}.");
+        }
+
+        Surfaces.NotifyFramePresented(
+            State.IsNativeLiveResizeInProgress,
+            syncImmediate: true,
+            () => isDisposed,
+            () => framePresented(target.Width, target.Height));
+
+        return true;
+    }
+
     public void CleanupResources()
     {
+        DxCdgPresenter.Reset();
         ResourceCleaner.CleanupResources();
     }
 
@@ -317,7 +351,8 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11PresentationRenderTargetViewCache RenderTargetViewCache { get; }
 
-    public D3D11LayerCompositor LayerCompositor { get; }
+
+    public DxCdgD3D11TexturePresenter DxCdgPresenter { get; }
 
     public D3D11FrameUploadResources UploadResources { get; }
 

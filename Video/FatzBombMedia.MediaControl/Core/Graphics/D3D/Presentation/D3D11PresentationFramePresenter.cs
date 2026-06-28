@@ -1,6 +1,8 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
+using Vortice.Direct3D11;
+using System.Windows.Media;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -12,75 +14,25 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 ///   validate active presentation -> apply pending native resize -> blit/present -> notify
 ///
 /// This keeps VorticeD3D11Renderer from coordinating blitter details directly while
-/// preserving the existing frame presenter, layer compositor, and backend behavior.
+/// preserving the existing frame presenter and backend behavior.
 /// </summary>
 internal sealed class D3D11PresentationFramePresenter
 {
     private readonly D3D11FramePresenter _framePresenter;
     private readonly D3D11PresentationSurfaceController _presentationSurfaces;
     private readonly D3D11PresentationBlitter _presentationBlitter;
-    private readonly D3D11PresentationRenderTargetViewCache _renderTargetViewCache;
     private readonly D3D11PresentationState _presentationState;
-    private readonly Func<bool> _hasOverlayTexture;
 
     public D3D11PresentationFramePresenter(
         D3D11FramePresenter framePresenter,
         D3D11PresentationSurfaceController presentationSurfaces,
         D3D11PresentationBlitter presentationBlitter,
-        D3D11PresentationRenderTargetViewCache renderTargetViewCache,
-        D3D11PresentationState presentationState,
-        Func<bool> hasOverlayTexture)
+        D3D11PresentationState presentationState)
     {
         _framePresenter = framePresenter;
         _presentationSurfaces = presentationSurfaces;
         _presentationBlitter = presentationBlitter;
-        _renderTargetViewCache = renderTargetViewCache;
         _presentationState = presentationState;
-        _hasOverlayTexture = hasOverlayTexture;
-    }
-
-    public bool UploadCpuFrameWithRetainedLayers(
-        D3D11DeviceResources deviceResources,
-        bool isDisposed,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        double framesPerSecond,
-        uint washArgb,
-        bool forceBaseUniformToFill,
-        Action<int, int> notifyPresented)
-    {
-        if (isDisposed || deviceResources.Context == null)
-        {
-            return false;
-        }
-
-        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
-                applyPendingNativeResize: true,
-                reason: "retained-layer CPU frame upload",
-                out var target))
-        {
-            return false;
-        }
-
-        return _framePresenter.UploadCpuFrameWithRetainedLayers(
-            deviceResources,
-            static () => true,
-            target.Texture,
-            _renderTargetViewCache.Current,
-            target.Width,
-            target.Height,
-            pixelData,
-            width,
-            height,
-            stride,
-            framesPerSecond,
-            washArgb,
-            forceBaseUniformToFill,
-            requireOverlayGraphics: _hasOverlayTexture(),
-            CreateSnapshotBlitCallback(target),
-            notifyPresented);
     }
 
     public void UploadCpuFrame(
@@ -162,6 +114,51 @@ internal sealed class D3D11PresentationFramePresenter
             target.Height,
             _presentationState.NativePresentationStretch,
             notifyPresented);
+    }
+
+    public bool PresentTextureFrame(
+        D3D11DeviceResources deviceResources,
+        bool isDisposed,
+        ID3D11Texture2D sourceTexture,
+        int width,
+        int height,
+        double framesPerSecond,
+        Stretch stretch,
+        Action<int, int> notifyPresented)
+    {
+        if (isDisposed
+            || deviceResources.Context == null
+            || sourceTexture == null
+            || width <= 0
+            || height <= 0)
+        {
+            return false;
+        }
+
+        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
+                applyPendingNativeResize: true,
+                reason: "DXCDG texture presentation",
+                out var target))
+        {
+            return false;
+        }
+
+        if (!_presentationBlitter.BlitToTarget(
+                target.Texture,
+                target.Width,
+                target.Height,
+                sourceTexture,
+                sourceArraySlice: 0,
+                sourceWidth: width,
+                sourceHeight: height,
+                framesPerSecond,
+                stretch))
+        {
+            return false;
+        }
+
+        notifyPresented(width, height);
+        return true;
     }
 
 

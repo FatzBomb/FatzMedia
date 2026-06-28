@@ -43,6 +43,7 @@ internal sealed class D3DImagePresentationNotifier
                 return;
             }
 
+            Debug.WriteLine($"[DXCDG-TRACE] D3DImage AddDirtyRect {width}x{height}.");
             MarkSurfaceDirty(d3dImage, width, height);
             framePresented();
         }

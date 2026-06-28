@@ -1,18 +1,18 @@
 using System;
 using System.Drawing;
 
-namespace FatzBombMedia.MediaControl.Core.Cdg;
+namespace FatzBombMedia.MediaControl.Core.DxCdg;
 
 /// <summary>
 /// Manages CDG color table, lookup table, and background color operations.
 /// Handles all color-related optimizations and calculations.
 /// </summary>
-internal sealed class CdgColorManager
+internal sealed class DxCdgColorManager
 {
     #region Private Fields
     
-    private readonly Color[] _colorTable = new Color[CdgConstants.ColorCount];
-    private readonly int[] _colorArgbLut = new int[CdgConstants.ColorCount];
+    private readonly Color[] _colorTable = new Color[DxCdgConstants.ColorCount];
+    private readonly int[] _colorArgbLut = new int[DxCdgConstants.ColorCount];
     
     private int _borderColorIndex = -1;
     private int _backgroundColorIndex = -1;
@@ -114,7 +114,7 @@ internal sealed class CdgColorManager
     /// <summary>
     /// Initializes a new CDG color manager with default colors.
     /// </summary>
-    public CdgColorManager()
+    public DxCdgColorManager()
     {
         Reset();
     }
@@ -129,9 +129,9 @@ internal sealed class CdgColorManager
     public void Reset()
     {
         // Copy default palette
-        for (int i = 0; i < CdgConstants.ColorCount; i++)
+        for (int i = 0; i < DxCdgConstants.ColorCount; i++)
         {
-            _colorTable[i] = CdgConstants.DefaultColorPalette[i];
+            _colorTable[i] = DxCdgConstants.DefaultColorPalette[i];
         }
         
         _borderColorIndex = -1;
@@ -149,7 +149,7 @@ internal sealed class CdgColorManager
     {
         if (!_lutNeedsUpdate) return;
         
-        for (int i = 0; i < CdgConstants.ColorCount; i++)
+        for (int i = 0; i < DxCdgConstants.ColorCount; i++)
         {
             bool isBg = i == 0 || i == _borderColorIndex || i == _backgroundColorIndex;
             var baseColor = _colorTable[i];
@@ -223,7 +223,7 @@ internal sealed class CdgColorManager
     /// <param name="colorIndex">Color index to make transparent</param>
     public void DefineTransparentColor(int colorIndex)
     {
-        if (colorIndex < 0 || colorIndex >= CdgConstants.ColorCount) return;
+        if (colorIndex < 0 || colorIndex >= DxCdgConstants.ColorCount) return;
         // Host-controlled background opacity handles visual transparency.
         // CDG transparent-color packets are intentionally not mapped to WPF alpha here.
         InvalidateColorState(invalidateWash: false);
@@ -243,15 +243,15 @@ internal sealed class CdgColorManager
             var low = colorData[2 * i + 1];
             
             // Extract RGB components (CDG color format)
-            int r = (high & CdgConstants.RedColorMask) >> 2;
-            int g = (high & CdgConstants.GreenColorMask) << 2 | 
-                    (low & CdgConstants.GreenLowbyteColorMask) >> 4;
-            int b = low & CdgConstants.BlueColorMask;
+            int r = (high & DxCdgConstants.RedColorMask) >> 2;
+            int g = (high & DxCdgConstants.GreenColorMask) << 2 | 
+                    (low & DxCdgConstants.GreenLowbyteColorMask) >> 4;
+            int b = low & DxCdgConstants.BlueColorMask;
             
             // Scale to full 8-bit range
-            r *= CdgConstants.ColorValueMultiplier;
-            g *= CdgConstants.ColorValueMultiplier;
-            b *= CdgConstants.ColorValueMultiplier;
+            r *= DxCdgConstants.ColorValueMultiplier;
+            g *= DxCdgConstants.ColorValueMultiplier;
+            b *= DxCdgConstants.ColorValueMultiplier;
             
             _colorTable[i + offset] = Color.FromArgb(255, (byte)r, (byte)g, (byte)b);
         }

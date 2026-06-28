@@ -119,3 +119,9 @@ If the real host app wants separate BASS and FFmpeg folders, resolve each folder
 12. Seek bar supports click/drag testing for audio, CDG, and video.
 13. `Enable Overlay` off uses plain native HWND.
 14. `Enable Overlay` on uses native HWND plus the transparent owned overlay window.
+
+For a fuller renderer regression pass after refactors, use:
+
+```text
+docs/FatzBombMedia_Renderer_Smoke_Test_Checklist.md
+```

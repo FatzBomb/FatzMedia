@@ -1,12 +1,12 @@
 using System.Drawing;
 
-namespace FatzBombMedia.MediaControl.Core.Cdg;
+namespace FatzBombMedia.MediaControl.Core.DxCdg;
 
 /// <summary>
 /// CDG specification constants and default values.
 /// Based on the CD+G specification for karaoke graphics.
 /// </summary>
-internal static class CdgConstants
+internal static class DxCdgConstants
 {
     #region Frame Geometry
     

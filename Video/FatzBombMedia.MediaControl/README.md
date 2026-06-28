@@ -211,7 +211,7 @@ The active control project runs through `Pipeline/`. The old concrete `Core.Medi
 Do not casually remove these retained active areas:
 
 - `Pipeline/*`
-- `Core/Cdg/*`
+- `Core/DxCdg/*`
 - `Core/Audio/AudioEngine.cs`
 - `Core/Audio/AudioStreamManager.cs`
 - `Core/Audio/AudioNormalizer.cs`
@@ -241,3 +241,29 @@ For high-performance WPF playback with overlay controls, use `NativeHwndOverlay`
 ```
 
 Use `D3DImage` when you need true same-window WPF visual-tree behavior. Use `NativeHwndOverlay` when native playback smoothness matters more and the overlay can be hosted by the control's follower window.
+
+## Renderer architecture documents
+
+The current renderer split is documented in the solution `docs` folder:
+
+| Document | Purpose |
+|---|---|
+| `docs/FatzBombMedia_Renderer_Current_Architecture.md` | Current post-refactor renderer architecture and ownership map. |
+| `docs/FatzBombMedia_Renderer_Smoke_Test_Checklist.md` | Manual regression checklist for video, CDG, background media, resize, backend, and fallback paths. |
+| `docs/FatzBombMedia_Renderer_Refactor_and_Implementation_Plan.md` | Historical refactor plan and current completion status. |
+
+### DXCDG active CDG path
+
+The active CDG path is now DXCDG under `Core/DxCdg`. It uses indexed-color state plus a D3D11 palette shader instead of generating full ARGB CDG bitmap frames. Legacy bitmap-first CDG code is preserved only under `LegacyCdg/` as disabled reference material.
+
+No `AppContext` switches are required for normal CDG playback. A CDG packet stream now flows through:
+
+```text
+DxCdgEngine
+  -> DxCdgStateMachine
+  -> DxCdgRenderSnapshot
+  -> DxCdgD3D11TexturePresenter
+  -> active D3D11 presentation backend
+```
+
+See `docs/FatzBombMedia_DXCDG_Roadmap.md`.

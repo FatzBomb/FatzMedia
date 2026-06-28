@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 using System.Diagnostics;
 using System.Threading;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
@@ -52,7 +53,6 @@ internal sealed class VorticeD3D11Renderer : IDisposable
 
     public bool IsNativeSwapChainActive => _presentation.IsNativeHwndActive;
 
-    public bool HasOverlayTexture => _presentation.HasOverlayTexture;
 
     public void SetNativeLiveResizeInProgress(bool isResizing)
     {
@@ -179,21 +179,6 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     /// video-processor pass can sample video + CDG in one coordinate system and present once.
     /// Pixel data is straight-alpha BGRA.
     /// </summary>
-    public bool UploadOverlayTexture(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
-    {
-        lock (_lock)
-        {
-            return _presentation.UploadOverlayTexture(_disposed, pixelData, width, height, stride);
-        }
-    }
-
-    public void ClearOverlayTexture()
-    {
-        lock (_lock)
-        {
-            _presentation.ClearOverlayTexture();
-        }
-    }
 
     /// <summary>
     /// Clears the currently presented frame and immediately presents/invalidates the active
@@ -234,22 +219,6 @@ internal sealed class VorticeD3D11Renderer : IDisposable
     /// Presents a BGRA video frame through the normal video fast path, then asks the retained
     /// layer compositor to draw wash/overlay layers before the active backend is presented.
     /// </summary>
-    public bool UploadFrameWithCachedCdgOverlay(ReadOnlySpan<byte> pixelData, int width, int height, int stride, double framesPerSecond = 60.0, uint washArgb = 0, bool forceBaseUniformToFill = false)
-    {
-        lock (_lock)
-        {
-            return _presentation.UploadCpuFrameWithRetainedLayers(
-                _disposed,
-                pixelData,
-                width,
-                height,
-                stride,
-                framesPerSecond,
-                washArgb,
-                forceBaseUniformToFill,
-                NotifyPresented);
-        }
-    }
 
     public void UploadFrame(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
     {
@@ -284,6 +253,36 @@ internal sealed class VorticeD3D11Renderer : IDisposable
                 NotifyPresented);
         }
     }
+
+    public void SetDxCdgBackgroundFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
+    {
+        lock (_lock)
+        {
+            _presentation.SetDxCdgBackgroundFrame(_disposed, bgraPixels, width, height, stride, forceZoomToFill);
+        }
+    }
+
+    public void ClearDxCdgBackgroundFrame()
+    {
+        lock (_lock)
+        {
+            _presentation.ClearDxCdgBackgroundFrame();
+        }
+    }
+
+    public bool PresentDxCdgSnapshotVisible(DxCdgRenderSnapshot snapshot, int outputWidth, int outputHeight, bool retainedRefresh = false)
+    {
+        lock (_lock)
+        {
+            // DXCDG already notifies/presents the active backend inside the presentation services.
+            // The callback passed here must only raise the managed FramePresented event; passing
+            // NotifyPresented would cause a second native swap-chain Present with no redraw, which
+            // flickers/blanks alternating buffers.
+            return _presentation.PresentDxCdgSnapshotVisible(_disposed, snapshot, outputWidth, outputHeight, RaisePresentedEvent, retainedRefresh);
+        }
+    }
+
+    private void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
 
     private void NotifyPresented(int _width, int _height) => NotifyPresented();
 

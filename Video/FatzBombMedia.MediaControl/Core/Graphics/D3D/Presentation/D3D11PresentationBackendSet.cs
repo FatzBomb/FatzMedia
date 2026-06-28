@@ -94,15 +94,18 @@ internal sealed class D3D11PresentationBackendSet : IDisposable
         var active = Active;
         if (active == null)
         {
+            Debug.WriteLine("[DXCDG-TRACE] Backend notify skipped: no active backend.");
             return;
         }
 
         if (active.Kind == D3D11PresentationBackendKind.D3DImage)
         {
+            Debug.WriteLine($"[DXCDG-TRACE] Backend notify: D3DImage dirty rect {D3DImage.Width}x{D3DImage.Height}.");
             D3DImage.NotifyDirty(isDisposed, framePresented);
             return;
         }
 
+        Debug.WriteLine($"[DXCDG-TRACE] Backend present: {active.Kind} liveResize={liveResizeFlag} syncImmediate={syncImmediate}.");
         active.Present(liveResizeFlag, syncImmediate);
         framePresented();
     }

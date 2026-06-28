@@ -1600,3 +1600,48 @@ Do not move dead code into new refactor classes.
 Do not optimize obsolete code paths.
 Prefer backend abstraction before DirectComposition rewrite.
 ```
+
+---
+
+# Stage 7G Current Refactor Status
+
+The earlier sections of this plan describe the original target architecture and problems. The current codebase has now completed the first major renderer split.
+
+## Completed renderer split
+
+| Area | Status |
+|---|---:|
+| D3D presentation backend strategy | Done / stabilized |
+| `VorticeD3D11Renderer` facade cleanup | Done |
+| DirectComposition CDG overlay upload extraction | Done |
+| Native composite background/CDG rules extraction | Done |
+| Presentation-mode/backend routing cleanup | Done |
+| Native cached GPU CDG overlay extraction | Done |
+| Background/static composite cadence scheduler extraction | Done |
+| CPU `WriteableBitmap` fallback extraction | Done |
+| Native composite base-state extraction | Done |
+
+## Current stopping point
+
+`VorticeD3D11Renderer` should now be treated as a thin compatibility facade over D3D11 presentation services. `OptimizedGraphicsRenderer` remains the host-level coordinator, but most backend-specific and buffer-heavy responsibilities have been moved to focused helpers.
+
+Before further structural changes, run the smoke-test checklist in:
+
+```text
+docs/FatzBombMedia_Renderer_Smoke_Test_Checklist.md
+```
+
+Use the current architecture map in:
+
+```text
+docs/FatzBombMedia_Renderer_Current_Architecture.md
+```
+
+## Recommended next work
+
+After build-good and smoke-test-good:
+
+1. Commit the Stage 7G/7H renderer refactor baseline.
+2. Fix any smoke-test regressions before adding features.
+3. Consider a small documentation/API cleanup pass only after behavior is stable.
+4. Avoid large additional renderer extractions unless a specific bug or feature needs them.

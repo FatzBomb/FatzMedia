@@ -1,6 +1,6 @@
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 
-using FatzBombMedia.MediaControl.Core.Cdg;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 
 /// <summary>
 /// UI-agnostic CDG decoding/engine abstraction.
@@ -11,21 +11,12 @@ public interface ICdgEngine : IDisposable
     // Geometry
     int FrameWidth { get; }
     int FrameHeight { get; }
-    ReadOnlyMemory<int> FrameArgb { get; }
-
     /// <summary>
     /// Cached full-viewport CDG background wash color in ARGB format. This value changes
     /// only when the decoded CDG background color, background override, or presentation
     /// opacity changes; lyric frame invalidations alone must not recalculate it.
     /// </summary>
     uint BackgroundWashArgb { get; }
-
-    /// <summary>
-    /// Copies the current rendered ARGB frame into the supplied destination.
-    /// Implementations should make this copy atomic with packet replay.
-    /// </summary>
-    /// <param name="destination">Destination buffer with at least FrameWidth * FrameHeight entries.</param>
-    void CopyFrameArgb(Span<int> destination);
 
     // Load CDG alongside audio (paired with an audio channel/engine)
     void LoadPaired(string filePath, int audioStreamHandle);
@@ -58,7 +49,7 @@ public interface ICdgEngine : IDisposable
     /// <param name="forceRebuild">True when the current CDG state should be replayed from the beginning</param>
     void RenderAtSeconds(double seconds, bool forceRebuild);
 
-    // Visual tweaks (use ARGB to avoid UI color dependencies)
+    // Visual tweaks. Colors are packed as ARGB values so the core remains UI-framework independent.
     byte BackgroundOpacity { get; set; }
     uint? BackgroundOverrideArgb { get; set; }
 
@@ -68,7 +59,7 @@ public interface ICdgEngine : IDisposable
     // Notify renderers that the cached full-viewport wash color changed.
     event EventHandler? BackgroundWashChanged;
 
-    event EventHandler<CdgEngineState>? StateChanged;
+    event EventHandler<DxCdgEngineState>? StateChanged;
     event EventHandler? Opened;
     event EventHandler? Closed;
     event EventHandler<double>? PositionChanged;

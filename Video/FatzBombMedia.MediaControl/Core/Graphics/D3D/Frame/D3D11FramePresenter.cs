@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Layers;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
@@ -10,11 +9,11 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
 
 /// <summary>
 /// Coordinates one base media frame through the D3D11 upload/video-processor path,
-/// optional retained layer composition, diagnostics, and caller-provided presentation
+/// diagnostics and caller-provided presentation
 /// notification.  This keeps VorticeD3D11Renderer focused on surface/backend state while
 /// this class owns the repeatable frame pipeline:
 ///
-///   upload base frame -> composite retained layers -> notify/present active backend
+///   upload base frame -> notify/present active backend
 ///
 /// Presentation backend ownership still remains outside this class; the renderer supplies
 /// the current target texture, target dimensions, and blit callback for the active backend.
@@ -24,18 +23,15 @@ internal sealed class D3D11FramePresenter
     private readonly D3D11FrameUploadPipeline _uploadPipeline;
     private readonly D3D11FrameUploadResources _uploadResources;
     private readonly D3D11VideoProcessorPresenter _videoProcessorPresenter;
-    private readonly D3D11LayerCompositor _layerCompositor;
 
     public D3D11FramePresenter(
         D3D11FrameUploadPipeline uploadPipeline,
         D3D11FrameUploadResources uploadResources,
-        D3D11VideoProcessorPresenter videoProcessorPresenter,
-        D3D11LayerCompositor layerCompositor)
+        D3D11VideoProcessorPresenter videoProcessorPresenter)
     {
         _uploadPipeline = uploadPipeline;
         _uploadResources = uploadResources;
         _videoProcessorPresenter = videoProcessorPresenter;
-        _layerCompositor = layerCompositor;
     }
 
     public bool UploadCpuFrame(
@@ -90,80 +86,6 @@ internal sealed class D3D11FramePresenter
         catch (Exception ex)
         {
             Debug.WriteLine($"[D3D11FramePresenter] CPU frame presentation failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    public bool UploadCpuFrameWithRetainedLayers(
-        D3D11DeviceResources deviceResources,
-        Func<bool> preparePresentationTarget,
-        ID3D11Texture2D? presentationTexture,
-        ID3D11RenderTargetView? presentationRenderTargetView,
-        int presentationWidth,
-        int presentationHeight,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        double framesPerSecond,
-        uint washArgb,
-        bool forceBaseUniformToFill,
-        bool requireOverlayGraphics,
-        D3D11FrameUploadPipeline.BlitToPresentationCallback blitToPresentation,
-        Action<int, int> notifyPresented)
-    {
-        if (!ValidateCpuFrameRequest(deviceResources, presentationTexture, pixelData, width, height, stride))
-        {
-            return false;
-        }
-
-        try
-        {
-            var uploadStart = Stopwatch.GetTimestamp();
-            if (!preparePresentationTarget())
-            {
-                return false;
-            }
-
-            var baseStretchOverride = forceBaseUniformToFill ? Stretch.UniformToFill : (Stretch?)null;
-            if (!_uploadPipeline.UploadCpuFrame(
-                    deviceResources,
-                    _uploadResources.TextureCache,
-                    presentationTexture!,
-                    presentationWidth,
-                    presentationHeight,
-                    pixelData,
-                    width,
-                    height,
-                    stride,
-                    framesPerSecond,
-                    baseStretchOverride,
-                    blitToPresentation))
-            {
-                return false;
-            }
-
-            if (!_layerCompositor.CompositeAfterBaseFrame(
-                    deviceResources,
-                    presentationRenderTargetView,
-                    presentationWidth,
-                    presentationHeight,
-                    washArgb,
-                    requireOverlayGraphics))
-            {
-                // Do not present a video-only frame when overlay graphics were required.
-                // The caller can let higher-level fallback paths handle this media frame.
-                RecordUpload(uploadStart, width, height, presentationWidth, presentationHeight);
-                return false;
-            }
-
-            RecordUpload(uploadStart, width, height, presentationWidth, presentationHeight);
-            notifyPresented(width, height);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[D3D11FramePresenter] Retained-layer frame presentation failed: {ex.Message}");
             return false;
         }
     }

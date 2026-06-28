@@ -6,6 +6,8 @@ obj/
 *.nupkg
 *.snupkg
 /legacy/
+/legacyplayer/
+/legacycdg/
 
 # Ignore the massive sea of root-level architectural notes
 /*-NOTES.md

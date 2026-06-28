@@ -784,13 +784,14 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
         if (ShouldUseNativePresentation())
         {
             var mediaStretch = GetEffectiveMediaStretch(renderer);
-            var fillViewportForOverlayBackground = renderer?.HasOverlayBackgroundLayer == true;
+            var fillViewportForCdgCompositor = renderer?.HasCdgContent == true;
 
-            if (fillViewportForOverlayBackground)
+            if (fillViewportForCdgCompositor)
             {
-                // Layer 1 rule: overlay background media is always full-control ZoomToFill.
-                // CDG/future overlays are aspect-fitted separately by their layer renderer and
-                // must not inherit the primary video display mode.
+                // DXCDG owns the full control whenever a CDG overlay is active. Layer 0
+                // background/wash fills the viewport; CDG lyrics are aspect-fitted inside
+                // the DXCDG shader. This avoids a fourth accidental mode where CDG-only
+                // uses an aspect-sized HWND and black WPF borders outside the wash layer.
                 ResetNativeSurfaceHostLayout();
                 _nativeSurfaceHost.SetMediaLayout(0, 0, Stretch.Fill);
             }

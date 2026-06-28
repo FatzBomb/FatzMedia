@@ -1,14 +1,14 @@
 namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using FatzBombMedia.MediaControl.Core.Cdg;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 
 internal sealed class RenderPipeline
 {
     private readonly IMediaEngine _mediaEngine;
     private IVideoEngine? _video;
     private ICdgEngine? _cdg;
-    private long _lastRenderedCdgPacketIndex = -1;
+    private long _lastRenderedDxCdgPacketIndex = -1;
     private double _lastRenderedCdgPosition = double.NaN;
 
     public RenderPipeline(IMediaEngine mediaEngine)
@@ -55,10 +55,9 @@ internal sealed class RenderPipeline
             return;
         }
 
-        if (_video != null && hasActiveVideo)
-        {
-            return;
-        }
+        // DXCDG is now a visual layer, not an alternative to video. Do not skip CDG
+        // just because a video/background layer is active; the renderer decides how to
+        // compose the current layers.
 
         var currentPosition = CurrentPosition;
         if (!ShouldRenderCdg(currentPosition, force))
@@ -84,19 +83,19 @@ internal sealed class RenderPipeline
             return false;
         }
 
-        var packetIndex = Math.Max(0, (long)Math.Floor(currentPosition * CdgConstants.PacketsPerSecond));
-        if (force || packetIndex < _lastRenderedCdgPacketIndex)
+        var packetIndex = Math.Max(0, (long)Math.Floor(currentPosition * DxCdgConstants.PacketsPerSecond));
+        if (force || packetIndex < _lastRenderedDxCdgPacketIndex)
         {
             RememberCdgRender(currentPosition, packetIndex);
             return true;
         }
 
-        if (_mediaEngine.State != MediaPlayerState.Playing && packetIndex == _lastRenderedCdgPacketIndex)
+        if (_mediaEngine.State != MediaPlayerState.Playing && packetIndex == _lastRenderedDxCdgPacketIndex)
         {
             return false;
         }
 
-        if (packetIndex == _lastRenderedCdgPacketIndex || NearlySamePosition(currentPosition, _lastRenderedCdgPosition))
+        if (packetIndex == _lastRenderedDxCdgPacketIndex || NearlySamePosition(currentPosition, _lastRenderedCdgPosition))
         {
             return false;
         }
@@ -108,12 +107,12 @@ internal sealed class RenderPipeline
     private void RememberCdgRender(double position, long packetIndex)
     {
         _lastRenderedCdgPosition = position;
-        _lastRenderedCdgPacketIndex = packetIndex;
+        _lastRenderedDxCdgPacketIndex = packetIndex;
     }
 
     private void ResetCdgRenderGate()
     {
-        _lastRenderedCdgPacketIndex = -1;
+        _lastRenderedDxCdgPacketIndex = -1;
         _lastRenderedCdgPosition = double.NaN;
     }
 

@@ -1,9 +1,9 @@
 using System;
-using System.Buffers;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows;
 using FatzBombMedia.MediaControl.Core.Abstractions;
+using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Pipeline;
@@ -30,6 +30,7 @@ public sealed class MediaRenderer : IDisposable
     private ICdgEngine? _attachedCdg;
     private ImageSource? _stillImageSource;
     private bool _nativeCompositeBaseIsBackgroundVideo;
+    private bool _loggedHardwareVideoLayer0Suppressed;
     private MediaLayerState _layerState = MediaLayerState.Empty;
 
     // Natural window refresh rendering
@@ -94,6 +95,7 @@ public sealed class MediaRenderer : IDisposable
 
             _backgroundSource = value;
             UpdateLayerState("manual background source changed");
+            RefreshLayer0BaseFrame("manual background source changed");
             RefreshNativeCompositeBaseLayer();
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -307,7 +309,7 @@ public sealed class MediaRenderer : IDisposable
         if (_nativePresentationRequested)
         {
             RefreshNativeCompositeBaseLayer();
-            RenderCurrentCdgFrame(force: true);
+            RenderCurrentDxCdgFrame(force: true, consumeDirtyRegions: false, reason: "native backend attached");
         }
         if (_enableLogging)
         {
@@ -334,6 +336,12 @@ public sealed class MediaRenderer : IDisposable
 
     public void RefreshNativePresentation()
     {
+        if (HasCdgContent)
+        {
+            PresentRetainedDxCdgFrame();
+            return;
+        }
+
         _graphicsRenderer.RefreshNativePresentation();
     }
 
@@ -396,7 +404,16 @@ public sealed class MediaRenderer : IDisposable
         }
 
         _layerState = newState;
-        _graphicsRenderer.SetNativeCompositeCdgLayeringActive(newState.ForegroundOverlay == ForegroundOverlayKind.Cdg);
+        var cdgLayeringActive = newState.ForegroundOverlay == ForegroundOverlayKind.Cdg;
+        _graphicsRenderer.SetNativeCompositeCdgLayeringActive(cdgLayeringActive);
+        if (cdgLayeringActive)
+        {
+            RefreshLayer0BaseFrame(reason);
+        }
+        else
+        {
+            _graphicsRenderer.ClearDxCdgLayer0Frame();
+        }
 
         if (_enableLogging)
         {
@@ -417,6 +434,7 @@ public sealed class MediaRenderer : IDisposable
             var applied = _backgroundMediaLayer.Apply(background);
             _nativeCompositeBaseIsBackgroundVideo = applied && background.Kind == MediaBackgroundKind.Video;
             UpdateLayerState($"auto background applied: {(applied ? background.Kind.ToString() : "none")}");
+            RefreshLayer0BaseFrame("auto background applied");
             RefreshNativeCompositeBaseLayer();
         }
         catch (Exception ex)
@@ -434,6 +452,7 @@ public sealed class MediaRenderer : IDisposable
         _backgroundMediaLayer.Clear();
         _nativeCompositeBaseIsBackgroundVideo = false;
         UpdateLayerState("auto background cleared");
+        RefreshLayer0BaseFrame("auto background cleared");
         RefreshNativeCompositeBaseLayer();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -480,7 +499,7 @@ public sealed class MediaRenderer : IDisposable
         }
 
         // Attach to CDG if available. CDG currently produces two generic overlay-session
-        // layers: WashLayer for the cached full-viewport color wash and OverlayLayer for
+        // layers: WashLayer for the cached full-viewport color wash and DXCDG layer for
         // the transparent native-size lyric/graphics frame.
         if (_mediaEngine.Cdg != null)
         {
@@ -505,6 +524,8 @@ public sealed class MediaRenderer : IDisposable
         }
 
         UpdateLayerState("CDG attachment refreshed");
+        RefreshLayer0BaseFrame("CDG attachment refreshed");
+        PresentRetainedDxCdgFrame();
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -525,6 +546,7 @@ public sealed class MediaRenderer : IDisposable
             image.Freeze();
 
             _stillImageSource = image;
+            RefreshLayer0BaseFrame("still image attached");
             RefreshNativeCompositeBaseLayer();
             ImageSourceChanged?.Invoke(this, EventArgs.Empty);
             FramePresented?.Invoke(this, EventArgs.Empty);
@@ -606,6 +628,12 @@ public sealed class MediaRenderer : IDisposable
             }
 
             _renderPipeline.RenderCdgAtCurrentPosition(HasActiveVideo());
+
+            // Native swap-chain presentation is not retained by WPF. Keep presenting the
+            // last DXCDG snapshot on ordinary window refresh ticks so lyrics do not flash
+            // only on packet/dirty updates. This is a DXCDG snapshot present, not a legacy
+            // bitmap redraw.
+            PresentRetainedDxCdgFrame();
         }
         catch (Exception ex)
         {
@@ -639,6 +667,38 @@ public sealed class MediaRenderer : IDisposable
             if (Application.Current?.Dispatcher?.HasShutdownStarted == true)
                 return;
 
+            // When CDG is active, video frames are a DXCDG background input.
+            // They must not present directly to the swap-chain, otherwise the video presenter
+            // competes with the DXCDG presenter and causes full-control flicker.
+            if (HasCdgContent)
+            {
+                _nativeCompositeBaseIsBackgroundVideo = true;
+
+                if (!e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0)
+                {
+                    _graphicsRenderer.SetDxCdgLayer0Frame(
+                        e.PixelData.Span,
+                        e.Width,
+                        e.Height,
+                        e.Stride,
+                        forceZoomToFill: true);
+                    PresentRetainedDxCdgFrame();
+                    return;
+                }
+
+                // A hardware video texture cannot be used by the CPU/BGRA DXCDG compositor yet.
+                // More importantly, it must not be presented directly or it will fight the DXCDG
+                // target and cause the full-control flicker seen with CDG+video.
+                if (e.IsD3D11HardwareFrame && !_loggedHardwareVideoLayer0Suppressed)
+                {
+                    _loggedHardwareVideoLayer0Suppressed = true;
+                    System.Diagnostics.Debug.WriteLine(
+                        "[DXCDG-TRACE] Suppressed direct hardware-video present while CDG overlay is active. " +
+                        "Primary video must provide BGRA frames or be added as a D3D11 texture layer before it can be Layer 0.");
+                }
+                return;
+            }
+
             _graphicsRenderer.RenderVideoFrame(e);
         }
         catch (Exception ex) when (ex is TaskCanceledException || ex is InvalidOperationException)
@@ -663,6 +723,11 @@ public sealed class MediaRenderer : IDisposable
         }
 
         _graphicsRenderer.SetCdgBackgroundWash(cdg.BackgroundWashArgb);
+
+        if (HasCdgContent)
+        {
+            PresentRetainedDxCdgFrame();
+        }
     }
 
     private void OnCdgFrameInvalidated(object? sender, EventArgs e)
@@ -689,47 +754,50 @@ public sealed class MediaRenderer : IDisposable
         }
     }
 
-    private void UpdateImageSourceFromCdg() => RenderCurrentCdgFrame(force: false);
+    private void UpdateImageSourceFromCdg() => RenderCurrentDxCdgFrame(force: false, consumeDirtyRegions: true, reason: "invalidated");
 
-    private void RenderCurrentCdgFrame(bool force)
+    private void PresentRetainedDxCdgFrame()
+    {
+        if (_attachedCdg == null || !_mediaEngine.Content.HasFlag(MediaContent.Cdg))
+        {
+            return;
+        }
+
+        RenderCurrentDxCdgFrame(force: false, consumeDirtyRegions: false, reason: "retained-refresh");
+    }
+
+    private void RenderCurrentDxCdgFrame(bool force, bool consumeDirtyRegions, string reason)
     {
         if (_attachedCdg == null) return;
 
         try
         {
-            var width = _attachedCdg.FrameWidth;
-            var height = _attachedCdg.FrameHeight;
-            var pixelCount = width * height;
-            if (pixelCount <= 0)
+            if (_attachedCdg is not IDxCdgSnapshotSource dxCdgSnapshotSource
+                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions, out var dxCdgSnapshot))
             {
+                System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] MediaRenderer skipped ({reason}): CDG engine did not provide a DXCDG snapshot.");
                 return;
             }
 
-            // In native mode the CDG frame is now a compositor layer, not a WPF bitmap/ImageSource.
-            // The existing CDG engine remains the authoritative rasterizer; the renderer uploads the
-            // final native-composited BGRA frame to the D3D11 HWND surface.
-            var frameBuffer = ArrayPool<int>.Shared.Rent(pixelCount);
-            try
+            var shouldLog = consumeDirtyRegions || force || dxCdgSnapshot.DirtyRects.Count > 0;
+            if (shouldLog)
             {
-                var frameData = frameBuffer.AsSpan(0, pixelCount);
-                _attachedCdg.CopyFrameArgb(frameData);
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DXCDG-TRACE] MediaRenderer snapshot reason={reason} revision={dxCdgSnapshot.Revision} " +
+                    $"dirty={dxCdgSnapshot.DirtyRects.Count} size={dxCdgSnapshot.Width}x{dxCdgSnapshot.Height} force={force}");
+            }
 
-                _graphicsRenderer.RenderCdgFrame(frameData, width, height);
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(frameBuffer);
-            }
+            _graphicsRenderer.RenderDxCdgSnapshot(dxCdgSnapshot, retainedRefresh: !consumeDirtyRegions && !force);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Failed to update CDG frame: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Failed to update DXCDG frame ({reason}): {ex.Message}");
         }
     }
 
     private void OnBackgroundVideoFrameReady(object? sender, VideoFrameEventArgs e)
     {
-        if (!_nativePresentationRequested || e.PixelData.IsEmpty || e.Width <= 0 || e.Height <= 0)
+        if (e.PixelData.IsEmpty || e.Width <= 0 || e.Height <= 0)
         {
             return;
         }
@@ -737,6 +805,24 @@ public sealed class MediaRenderer : IDisposable
         try
         {
             _nativeCompositeBaseIsBackgroundVideo = true;
+
+            if (HasCdgContent)
+            {
+                _graphicsRenderer.SetDxCdgLayer0Frame(
+                    e.PixelData.Span,
+                    e.Width,
+                    e.Height,
+                    e.Stride,
+                    forceZoomToFill: true);
+                PresentRetainedDxCdgFrame();
+                return;
+            }
+
+            if (!_nativePresentationRequested)
+            {
+                return;
+            }
+
             _graphicsRenderer.SetNativeCompositeVideoBase(
                 e.PixelData.Span,
                 e.Width,
@@ -746,12 +832,21 @@ public sealed class MediaRenderer : IDisposable
         }
         catch (Exception ex)
         {
-            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native background video composite failed: {ex.Message}");
+            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Background video Layer 0 update failed: {ex.Message}");
         }
     }
 
     private void RefreshNativeCompositeBaseLayer()
     {
+        if (HasCdgContent)
+        {
+            // CDG overlay sessions use the DXCDG compositor as the only visible presenter.
+            // Layer 0 is pushed through RefreshLayer0BaseFrame; the old native composite
+            // presenter must not draw an image/video background independently.
+            RefreshLayer0BaseFrame("native composite refresh during CDG");
+            return;
+        }
+
         if (!_nativePresentationRequested)
         {
             return;
@@ -760,7 +855,7 @@ public sealed class MediaRenderer : IDisposable
         if (_stillImageSource is BitmapSource stillImage)
         {
             _nativeCompositeBaseIsBackgroundVideo = false;
-            _graphicsRenderer.SetNativeCompositeBase(stillImage, forceZoomToFill: HasOverlayBackgroundLayer);
+            _graphicsRenderer.SetNativeCompositeBase(stillImage, forceZoomToFill: false);
             if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Native compositor base: still image {stillImage.PixelWidth}x{stillImage.PixelHeight}");
             return;
         }
@@ -768,7 +863,7 @@ public sealed class MediaRenderer : IDisposable
         if (_nativeCompositeBaseIsBackgroundVideo || _backgroundMediaLayer.HasVideo)
         {
             // BackgroundMediaLayer/BackgroundVideoRenderer will push video frames through
-            // OnBackgroundVideoFrameReady.  The background-video role is stable even before the
+            // OnBackgroundVideoFrameReady. The background-video role is stable even before the
             // first frame arrives, so do not clear/reclassify the native base here.
             return;
         }
@@ -781,6 +876,42 @@ public sealed class MediaRenderer : IDisposable
         }
 
         _graphicsRenderer.ClearNativeCompositeBase();
+    }
+
+    private void RefreshLayer0BaseFrame(string reason)
+    {
+        if (!HasCdgContent)
+        {
+            _graphicsRenderer.ClearDxCdgLayer0Frame();
+            return;
+        }
+
+        if (_stillImageSource is BitmapSource stillImage)
+        {
+            _nativeCompositeBaseIsBackgroundVideo = false;
+            _graphicsRenderer.SetDxCdgLayer0Frame(stillImage, forceZoomToFill: true);
+            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): still {stillImage.PixelWidth}x{stillImage.PixelHeight}");
+            return;
+        }
+
+        if ((_backgroundMediaLayer.ImageSource ?? _backgroundSource) is BitmapSource backgroundImage)
+        {
+            _nativeCompositeBaseIsBackgroundVideo = false;
+            _graphicsRenderer.SetDxCdgLayer0Frame(backgroundImage, forceZoomToFill: true);
+            if (_enableLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 image selected ({reason}): background {backgroundImage.PixelWidth}x{backgroundImage.PixelHeight}");
+            return;
+        }
+
+        if (_backgroundMediaLayer.HasVideo || _nativeCompositeBaseIsBackgroundVideo)
+        {
+            // The next decoded background-video frame will populate Layer 0. Keep the last
+            // frame if one exists so seeks/temporary decode gaps do not flash to blank.
+            if (_enableVerboseLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 waiting for video frame ({reason}).");
+            return;
+        }
+
+        _graphicsRenderer.ClearDxCdgLayer0Frame();
+        if (_enableVerboseLogging) System.Diagnostics.Debug.WriteLine($"[DXCDG-TRACE] Layer 0 cleared ({reason}).");
     }
 
     private bool HasActiveVideo()
@@ -808,6 +939,7 @@ public sealed class MediaRenderer : IDisposable
         _graphicsRenderer.ClearAllContent();
         _stillImageSource = null;
         _nativeCompositeBaseIsBackgroundVideo = false;
+        _loggedHardwareVideoLayer0Suppressed = false;
         _lastCdgPresentLogSecond = -1;
 
         // Force cleanup of previous attachments
@@ -816,9 +948,9 @@ public sealed class MediaRenderer : IDisposable
         // Reattach engines.  Layer policy notes for future renderer work:
         // - Video-only: uses the primary video layer and obeys VideoDisplayMode.
         // - Image-only: uses the primary still-image/static layer and obeys VideoDisplayMode.
-        // - Audio+CDG/CDG-only: uses WashLayer full viewport plus OverlayLayer Uniform-fit.
+        // - Audio+CDG/CDG-only: uses WashLayer full viewport plus DXCDG layer Uniform-fit.
         // - CDG with companion/manual image/video: uses BackgroundMediaLayer ZoomToFill,
-        //   WashLayer full viewport, and OverlayLayer Uniform-fit; VideoDisplayMode does not
+        //   WashLayer full viewport, and DXCDG layer Uniform-fit; VideoDisplayMode does not
         //   affect these overlay-session layers.
         AttachVideoIfAvailable();
         AttachCdgIfAvailable();
