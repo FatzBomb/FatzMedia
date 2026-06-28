@@ -19,24 +19,15 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectCompos
 /// future true layered DirectComposition backend should replace this class rather than
 /// adding more DirectComposition conditionals to VorticeD3D11Renderer.
 /// </summary>
-internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11PresentationBackend
+internal sealed class D3D11DirectCompositionSingleTargetBackend(
+    MediaPlayerConfiguration configuration,
+    D3D11PresentationDiagnostics diagnostics) : ID3D11PresentationBackend
 {
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly D3D11PresentationDiagnostics _diagnostics;
-    private readonly D3D11DirectCompositionTarget _target;
+    private readonly D3D11DirectCompositionTarget _target = new(configuration);
 
     private IDXGISwapChain? _baseSwapChain;
     private ID3D11Texture2D? _targetTexture;
     private IntPtr _hwnd;
-
-    public D3D11DirectCompositionSingleTargetBackend(
-        MediaPlayerConfiguration configuration,
-        D3D11PresentationDiagnostics diagnostics)
-    {
-        _configuration = configuration;
-        _diagnostics = diagnostics;
-        _target = new D3D11DirectCompositionTarget(configuration);
-    }
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && _targetTexture != null && _hwnd != IntPtr.Zero;
@@ -105,10 +96,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
     {
         D3D11SwapChainPresenter.Present(
             _baseSwapChain,
-            _configuration,
+            configuration,
             liveResizeFlag,
             syncImmediate,
-            _diagnostics);
+            diagnostics);
     }
 
     public void Commit()
@@ -180,14 +171,14 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
             || stride < width * 4
             || pixelData.IsEmpty)
         {
-            if (_configuration.EnableVerboseLogging)
+            if (configuration.EnableVerboseLogging)
             {
                 Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (early: active={IsActive}, ctx={deviceResources.Context != null}, swapChain={_target.OverlaySwapChain != null}, {width}x{height} stride={stride}, data={!pixelData.IsEmpty})");
             }
             return false;
         }
 
-        if (_configuration.EnableVerboseLogging)
+        if (configuration.EnableVerboseLogging)
         {
             Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame entering: {width}x{height} into {Width}x{Height}, resize={liveResize}");
         }
@@ -205,7 +196,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
                 ReacquireOverlayBackBuffer();
                 if (_target.OverlayTexture == null)
                 {
-                    if (_configuration.EnableVerboseLogging)
+                    if (configuration.EnableVerboseLogging)
                     {
                         Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (null overlay texture at bufferIndex={bufferIndex}, resize={liveResize})");
                     }
@@ -222,7 +213,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
                     var device = deviceResources.Device;
                     if (device == null || !cpuUploadCache.Ensure(device, width, height) || cpuUploadCache.Texture == null)
                     {
-                        if (_configuration.EnableVerboseLogging)
+                        if (configuration.EnableVerboseLogging)
                         {
                             Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit path failed, bufferIndex={bufferIndex}, resize={liveResize})");
                         }
@@ -232,7 +223,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
                     deviceResources.Context.UpdateSubresource(pixelData, cpuUploadCache.Texture, 0, (uint)stride, 0, null);
                     if (!BlitTextureToOverlay(deviceResources, videoProcessorPresenter, cpuUploadCache.Texture, width, height, 60.0))
                     {
-                        if (_configuration.EnableVerboseLogging)
+                        if (configuration.EnableVerboseLogging)
                         {
                             Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit failed, bufferIndex={bufferIndex}, resize={liveResize})");
                         }
@@ -245,7 +236,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
                 if (result.Failure)
                 {
                     Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
-                    if (_configuration.EnableVerboseLogging)
+                    if (configuration.EnableVerboseLogging)
                     {
                         Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (Present failed at bufferIndex={bufferIndex}, resize={liveResize})");
                     }
@@ -256,7 +247,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
             ReacquireOverlayBackBuffer();
             Commit();
             recordUploadDiagnostics(D3D11PresentationDiagnostics.ElapsedMilliseconds(uploadStart), width, height);
-            if (_configuration.EnableVerboseLogging)
+            if (configuration.EnableVerboseLogging)
             {
                 Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> true (commit done, {width}x{height}, resize={liveResize})");
             }
@@ -265,7 +256,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend : ID3D11Presenta
         catch (Exception ex)
         {
             Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay upload failed: {ex.Message}");
-            if (_configuration.EnableVerboseLogging)
+            if (configuration.EnableVerboseLogging)
             {
                 Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> exception: {ex.Message}, resize={liveResize}");
             }

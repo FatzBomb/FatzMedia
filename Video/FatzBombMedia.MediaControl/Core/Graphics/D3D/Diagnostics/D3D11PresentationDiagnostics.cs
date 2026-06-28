@@ -7,13 +7,10 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 /// Aggregates upload and native-present performance diagnostics.  The renderer
 /// should decide when work happens; this class owns only the counters/logging.
 /// </summary>
-internal sealed class D3D11PresentationDiagnostics
+internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration configuration)
 {
     private const int UploadFrameInterval = 120;
     private const int NativePresentFrameInterval = 120;
-
-    private readonly MediaPlayerConfiguration _configuration;
-
     private int _uploadFrames;
     private double _uploadMs;
     private double _uploadMaxMs;
@@ -21,11 +18,6 @@ internal sealed class D3D11PresentationDiagnostics
     private int _nativePresentFrames;
     private double _nativePresentMs;
     private double _nativePresentMaxMs;
-
-    public D3D11PresentationDiagnostics(MediaPlayerConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
 
     public void RecordUpload(double uploadMs, int sourceWidth, int sourceHeight, int surfaceWidth, int surfaceHeight)
     {
@@ -38,7 +30,7 @@ internal sealed class D3D11PresentationDiagnostics
             return;
         }
 
-        if (_configuration.EnablePerformanceLogging)
+        if (configuration.EnablePerformanceLogging)
         {
             Debug.WriteLine(
                 $"[VorticeD3D11:Perf] frames={_uploadFrames}, avgUploadFlush={_uploadMs / _uploadFrames:F2}ms, " +
@@ -61,7 +53,7 @@ internal sealed class D3D11PresentationDiagnostics
             return;
         }
 
-        if (_configuration.EnablePerformanceLogging)
+        if (configuration.EnablePerformanceLogging)
         {
             var mode = syncInterval == 0 ? "Immediate" : "VSync";
             Debug.WriteLine(

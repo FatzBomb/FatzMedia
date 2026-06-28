@@ -2,14 +2,9 @@ namespace FatzBombMedia.MediaControl.Pipeline;
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 
-internal sealed class ClockAudioEngine : IAudioEngine
+internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
 {
-    private readonly PlaybackClock _clock;
-
-    public ClockAudioEngine(PlaybackClock clock)
-    {
-        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
-    }
+    private readonly PlaybackClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle => 0;

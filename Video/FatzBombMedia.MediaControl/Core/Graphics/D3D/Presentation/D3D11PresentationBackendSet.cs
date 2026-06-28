@@ -14,21 +14,14 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// it should not repeatedly branch on every backend field just to answer basic questions
 /// such as "where is the active target texture?" or "does this backend present natively?".
 /// </summary>
-internal sealed class D3D11PresentationBackendSet : IDisposable
+internal sealed class D3D11PresentationBackendSet(
+    D3D11NativeHwndSwapChainBackend nativeHwnd,
+    D3D11D3DImagePresentationBackend d3dImage,
+    D3D11DirectCompositionSingleTargetBackend directComposition) : IDisposable
 {
-    public D3D11PresentationBackendSet(
-        D3D11NativeHwndSwapChainBackend nativeHwnd,
-        D3D11D3DImagePresentationBackend d3dImage,
-        D3D11DirectCompositionSingleTargetBackend directComposition)
-    {
-        NativeHwnd = nativeHwnd;
-        D3DImage = d3dImage;
-        DirectComposition = directComposition;
-    }
-
-    public D3D11NativeHwndSwapChainBackend NativeHwnd { get; }
-    public D3D11D3DImagePresentationBackend D3DImage { get; }
-    public D3D11DirectCompositionSingleTargetBackend DirectComposition { get; }
+    public D3D11NativeHwndSwapChainBackend NativeHwnd { get; } = nativeHwnd;
+    public D3D11D3DImagePresentationBackend D3DImage { get; } = d3dImage;
+    public D3D11DirectCompositionSingleTargetBackend DirectComposition { get; } = directComposition;
 
     /// <summary>
     /// Active backend priority is intentional. DirectComposition is the most specific native

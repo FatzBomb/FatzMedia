@@ -53,7 +53,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     private int _compositionBackgroundWidth;
     private int _compositionBackgroundHeight;
     private int _compositionBackgroundStride;
-    private bool _compositionBackgroundForceZoomToFill;
+    private MediaCompositionStretchMode _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+    private bool _compositionBackgroundIsRetainedGpu;
     private long _compositionBackgroundRevision;
     private readonly WashLayer _washLayer = new();
     private readonly CpuWriteableBitmapRenderer _cpuRenderer = new();
@@ -341,6 +342,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         }
     }
 
+
+    private static MediaCompositionStretchMode ToCompositionStretchMode(Stretch stretch) => stretch switch
+    {
+        Stretch.None => MediaCompositionStretchMode.Original,
+        Stretch.Fill => MediaCompositionStretchMode.Fill,
+        Stretch.UniformToFill => MediaCompositionStretchMode.UniformToFill,
+        _ => MediaCompositionStretchMode.UniformFit
+    };
+
     public bool IsNativePresentationRequested => _nativePresentationHwnd != IntPtr.Zero;
 
     /// <summary>
@@ -351,25 +361,19 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// </summary>
     public void SetNativeCompositeCdgLayeringActive(bool active)
     {
-        var changed = false;
+        bool changed;
         lock (_lock)
-        {
             changed = _nativeCompositeBase.SetCdgLayeringActive(active);
-        }
 
         if (changed && IsNativePresentationRequested)
         {
             if (active)
-            {
                 // DXCDG now owns the visible CDG presentation target. Do not let the
                 // retired native composite scheduler present a static/image background
                 // over the composition frame when a CDG layer becomes active.
                 _nativeCompositePresentationScheduler.Clear();
-            }
             else
-            {
                 RequestNativeCompositePresent(forceImmediate: true);
-            }
         }
     }
 
@@ -432,11 +436,12 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 _compositionBackgroundBgra = new byte[required];
             }
 
-            bgraPixels.Slice(0, required).CopyTo(_compositionBackgroundBgra);
+            bgraPixels[..required].CopyTo(_compositionBackgroundBgra);
             _compositionBackgroundWidth = width;
             _compositionBackgroundHeight = height;
             _compositionBackgroundStride = stride;
-            _compositionBackgroundForceZoomToFill = forceZoomToFill;
+            _compositionBackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch);
+            _compositionBackgroundIsRetainedGpu = false;
             _compositionBackgroundRevision++;
         }
     }
@@ -449,7 +454,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             _compositionBackgroundWidth = 0;
             _compositionBackgroundHeight = 0;
             _compositionBackgroundStride = 0;
-            _compositionBackgroundForceZoomToFill = false;
+            _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+            _compositionBackgroundIsRetainedGpu = false;
             _compositionBackgroundRevision++;
         }
 
@@ -546,7 +552,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         if (isVideoBase && IsNativePresentationRequested)
         {
             _nativeDirectCompositionLayersRequested = false;
-            var dxCdgLayeringActive = false;
+            bool dxCdgLayeringActive;
             lock (_lock)
             {
                 dxCdgLayeringActive = _nativeCompositeBase.UseCdgLayering;
@@ -555,7 +561,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                     // While CDG is active, background video is retained as the DXCDG
                     // background layer. It must not present through the old video/native
                     // upload path because that competes with the DXCDG target and flickers.
-                    _nativeCompositeBase.SetFallbackVideoPixels(bgraPixels.Slice(0, required), width, height, stride, required);
+                    _nativeCompositeBase.SetFallbackVideoPixels(bgraPixels[..required], width, height, stride, required);
                 }
                 else
                 {
@@ -569,7 +575,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
                 return;
             }
 
-            RenderNativeGpuCompositedVideoFrame(bgraPixels.Slice(0, required), width, height, stride);
+            RenderNativeGpuCompositedVideoFrame(bgraPixels[..required], width, height, stride);
             return;
         }
 
@@ -590,7 +596,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             // The static image/background is now an input to the media compositor,
             // not a standalone native composite present. Presenting it here would
             // overwrite the DXCDG surface and cause image flashes.
-            SetCompositionLayer0Frame(bgraPixels.Slice(0, required), width, height, stride, forceZoomToFill);
+            SetCompositionLayer0Frame(bgraPixels[..required], width, height, stride, forceZoomToFill);
             _nativeCompositePresentationScheduler.Clear();
             return;
         }
@@ -770,7 +776,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             && _currentMethod == GpuRenderingMethod.D3D11
             && !ShouldUseCpuForContent(frame.Width, frame.Height))
         {
-            RenderD3D11HardwareFrame(frame);
+            RenderHardwareVideoCompositionFrame(frame, cdgOverlay: null, washArgb: 0, forceZoomToFill: false, reason: "hardware video");
             return;
         }
 
@@ -789,52 +795,33 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
     /// <param name="stride">Frame stride</param>
     public void RenderVideoFrame(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
     {
-        if (_disposed || pixelData.IsEmpty || width <= 0 || height <= 0) return;
+        if (_disposed || pixelData.IsEmpty || width <= 0 || height <= 0 || stride < width * 4) return;
 
         if (IsDxCdgLayeringActive)
         {
             if (_configuration.EnableVerboseLogging)
             {
-                Debug.WriteLine($"[DXCDG-TRACE] Suppressed direct BGRA frame present while DXCDG owns the target ({width}x{height}).");
+                Debug.WriteLine($"[COMPOSITION-TRACE] Suppressed direct BGRA frame present while a composition overlay owns the target ({width}x{height}).");
             }
             return;
         }
 
-        if (width != _lastWidth || height != _lastHeight || PresentationSurfaceChanged(width, height))
+        // Software configuration remains available as a fallback, but the normal D3D/native
+        // path treats BGRA video/image/audio-background frames as Layer 0 input to the
+        // single media compositor.
+        if (_currentMethod == GpuRenderingMethod.WriteableBitmap && !IsNativePresentationRequested)
         {
-            InitializeRenderingResources(width, height);
+            if (width != _lastWidth || height != _lastHeight || PresentationSurfaceChanged(width, height))
+            {
+                InitializeRenderingResources(width, height);
+            }
+
+            RenderWithCpuAsync(pixelData, width, height, stride);
+            return;
         }
 
-        lock (_lock)
-        {
-            try
-            {
-                // Check if we should skip GPU for small content (performance optimization)
-                // Native HWND presentation must never fall back to the WPF/WriteableBitmap path
-                // simply because the content is small. CDG/image/background compositor frames are
-                // intentionally uploaded to the native swap-chain even when the source is tiny.
-                var shouldUseCpu = !IsNativePresentationRequested && ShouldUseCpuForContent(width, height);
-                var effectiveMethod = (shouldUseCpu && _currentMethod != GpuRenderingMethod.WriteableBitmap)
-                    ? GpuRenderingMethod.WriteableBitmap
-                    : _currentMethod;
-
-                // Render using the effective method
-                switch (effectiveMethod)
-                {
-                    case GpuRenderingMethod.D3D11:
-                        RenderWithD3D11(pixelData, width, height, stride);
-                        break;
-                    default:
-                        RenderWithCpuAsync(pixelData, width, height, stride);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[OptimizedRenderer] Render error: {ex.Message}");
-                FallbackToSoftwareRendering(pixelData, width, height, stride);
-            }
-        }
+        SetCompositionLayer0Frame(pixelData, width, height, stride, forceZoomToFill: false);
+        PresentBackgroundComposition(forceZoomToFill: false, reason: "bgra layer0 frame");
     }
 
     /// <summary>
@@ -909,7 +896,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         int backgroundWidth;
         int backgroundHeight;
         int backgroundStride;
-        bool backgroundUniformToFill;
+        MediaCompositionStretchMode backgroundStretchMode;
+        bool backgroundIsRetainedGpu;
         long backgroundRevision;
 
         lock (_lock)
@@ -918,7 +906,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             backgroundWidth = _compositionBackgroundWidth;
             backgroundHeight = _compositionBackgroundHeight;
             backgroundStride = _compositionBackgroundStride;
-            backgroundUniformToFill = forceBackgroundZoomToFill || _compositionBackgroundForceZoomToFill;
+            backgroundStretchMode = forceBackgroundZoomToFill ? MediaCompositionStretchMode.UniformToFill : _compositionBackgroundStretchMode;
+            backgroundIsRetainedGpu = _compositionBackgroundIsRetainedGpu;
             backgroundRevision = _compositionBackgroundRevision;
         }
 
@@ -926,17 +915,23 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             && backgroundWidth > 0
             && backgroundHeight > 0
             && backgroundStride >= backgroundWidth * 4;
+        var hasRetainedGpuBackground = !hasBackground
+            && backgroundIsRetainedGpu
+            && backgroundWidth > 0
+            && backgroundHeight > 0;
 
         return new MediaCompositionFrame
         {
             ClearMode = MediaCompositionClearMode.Black,
             ClearArgb = 0xFF000000,
             BackgroundBgra = hasBackground ? backgroundBgra! : ReadOnlyMemory<byte>.Empty,
-            BackgroundWidth = hasBackground ? backgroundWidth : 0,
-            BackgroundHeight = hasBackground ? backgroundHeight : 0,
+            BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
+            BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,
             BackgroundStride = hasBackground ? backgroundStride : 0,
-            BackgroundUniformToFill = hasBackground && backgroundUniformToFill,
-            BackgroundRevision = hasBackground ? backgroundRevision : -1,
+            BackgroundStretchMode = hasBackground || hasRetainedGpuBackground ? backgroundStretchMode : MediaCompositionStretchMode.UniformFit,
+            BackgroundUniformToFill = (hasBackground || hasRetainedGpuBackground) && backgroundStretchMode == MediaCompositionStretchMode.UniformToFill,
+            BackgroundRevision = hasBackground || hasRetainedGpuBackground ? backgroundRevision : -1,
+            UseRetainedBackground = hasRetainedGpuBackground,
             WashArgb = washArgb,
             CdgOverlay = cdgOverlay,
             RetainedRefresh = retainedRefresh,
@@ -951,9 +946,14 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             return (Math.Max(1, frame.CdgOverlay.Width), Math.Max(1, frame.CdgOverlay.Height));
         }
 
-        if (frame.HasBackground)
+        if (frame.HasBackground || frame.HasRetainedBackground)
         {
             return (Math.Max(1, frame.BackgroundWidth), Math.Max(1, frame.BackgroundHeight));
+        }
+
+        if (frame.HasD3D11Background)
+        {
+            return (Math.Max(1, frame.BackgroundD3D11Width), Math.Max(1, frame.BackgroundD3D11Height));
         }
 
         return (1, 1);
@@ -985,21 +985,17 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
 
     public void SetCdgBackgroundWash(uint washArgb)
     {
-        var changed = false;
+        bool changed;
         lock (_lock)
         {
             changed = _washLayer.SetWash(washArgb);
         }
 
         if (changed && IsNativePresentationRequested && HasNativeStaticCompositeContent())
-        {
             RequestNativeCompositePresent(forceImmediate: true);
-        }
 
         if (changed && _configuration.EnableVerboseLogging)
-        {
             Debug.WriteLine($"[OptimizedRenderer] CDG wash updated: 0x{washArgb:X8}");
-        }
     }
 
     private (int Width, int Height) GetDxCdgOutputSize(DxCdgRenderSnapshot snapshot)
@@ -1398,6 +1394,84 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
             RaiseFramePresented);
     }
 
+    public void RenderHardwareVideoCompositionFrame(
+        VideoFrameEventArgs frame,
+        DxCdgRenderSnapshot? cdgOverlay,
+        uint washArgb,
+        bool forceZoomToFill,
+        string reason,
+        bool retainedRefresh = false)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        if (_disposed
+            || !frame.IsD3D11HardwareFrame
+            || frame.Width <= 0
+            || frame.Height <= 0)
+        {
+            return;
+        }
+
+        if (!EnsureD3D11ForHardwareComposition(frame))
+        {
+            if (_configuration.EnableLogging)
+            {
+                Debug.WriteLine($"[COMPOSITION-TRACE] Hardware composition skipped: D3D11 hardware compositor not ready reason={reason}.");
+            }
+            return;
+        }
+
+        long backgroundRevision;
+        lock (_lock)
+        {
+            _compositionBackgroundBgra = null;
+            _compositionBackgroundWidth = frame.Width;
+            _compositionBackgroundHeight = frame.Height;
+            _compositionBackgroundStride = frame.Width * 4;
+            _compositionBackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch);
+            _compositionBackgroundIsRetainedGpu = true;
+            backgroundRevision = ++_compositionBackgroundRevision;
+        }
+
+        PresentMediaComposition(new MediaCompositionFrame
+        {
+            ClearMode = MediaCompositionClearMode.Black,
+            ClearArgb = 0xFF000000,
+            BackgroundD3D11TexturePointer = frame.D3D11TexturePointer,
+            BackgroundD3D11ArraySlice = frame.D3D11ArraySlice,
+            BackgroundD3D11Width = frame.Width,
+            BackgroundD3D11Height = frame.Height,
+            BackgroundD3D11FramesPerSecond = frame.FramesPerSecond,
+            BackgroundWidth = frame.Width,
+            BackgroundHeight = frame.Height,
+            BackgroundStride = frame.Width * 4,
+            BackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch),
+            BackgroundUniformToFill = (forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch)) == MediaCompositionStretchMode.UniformToFill,
+            BackgroundRevision = backgroundRevision,
+            WashArgb = washArgb,
+            CdgOverlay = cdgOverlay,
+            RetainedRefresh = retainedRefresh,
+            Reason = reason
+        });
+    }
+
+    private bool EnsureD3D11ForHardwareComposition(VideoFrameEventArgs frame)
+    {
+        if (frame.D3D11DevicePointer == IntPtr.Zero || frame.D3D11TexturePointer == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (_d3d11Renderer?.NativeDevicePointer != frame.D3D11DevicePointer
+            || frame.Width != _lastWidth
+            || frame.Height != _lastHeight
+            || PresentationSurfaceChanged(frame.Width, frame.Height))
+        {
+            InitializeHardwareD3D11(frame);
+        }
+
+        return _d3d11Renderer?.IsReady == true;
+    }
+
     private void RenderD3D11HardwareFrame(VideoFrameEventArgs frame)
     {
         if (frame.D3D11DevicePointer == IntPtr.Zero || frame.D3D11TexturePointer == IntPtr.Zero)
@@ -1578,7 +1652,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
         _compositionBackgroundWidth = 0;
         _compositionBackgroundHeight = 0;
         _compositionBackgroundStride = 0;
-        _compositionBackgroundForceZoomToFill = false;
+        _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+        _compositionBackgroundIsRetainedGpu = false;
         _compositionBackgroundRevision++;
         _washLayer.Clear();
         _nativeDirectCompositionLayersRequested = false;

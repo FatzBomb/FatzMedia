@@ -682,15 +682,17 @@ public sealed class MediaRenderer : IDisposable
                     return;
                 }
 
-                // A hardware video texture cannot be used by the CPU/BGRA DXCDG compositor yet.
-                // More importantly, it must not be presented directly or it will fight the DXCDG
-                // target and cause the full-control flicker seen with CDG+video.
-                if (e.IsD3D11HardwareFrame && !_loggedHardwareVideoLayer0Suppressed)
+                if (e.IsD3D11HardwareFrame)
+                {
+                    RenderCurrentDxCdgFrameWithHardwareBackground(e, forceZoomToFill: true, reason: "hardware video + cdg");
+                    return;
+                }
+
+                if (!_loggedHardwareVideoLayer0Suppressed)
                 {
                     _loggedHardwareVideoLayer0Suppressed = true;
                     System.Diagnostics.Debug.WriteLine(
-                        "[DXCDG-TRACE] Suppressed direct hardware-video present while CDG overlay is active. " +
-                        "Primary video must provide BGRA frames or be added as a D3D11 texture layer before it can be Layer 0.");
+                        "[COMPOSITION-TRACE] CDG video frame skipped: frame had neither BGRA pixels nor a D3D11 hardware texture.");
                 }
                 return;
             }
@@ -777,6 +779,36 @@ public sealed class MediaRenderer : IDisposable
         RenderCurrentDxCdgFrame(force: false, consumeDirtyRegions: false, reason: "retained-refresh");
     }
 
+    private void RenderCurrentDxCdgFrameWithHardwareBackground(VideoFrameEventArgs videoFrame, bool forceZoomToFill, string reason)
+    {
+        if (_attachedCdg == null || !_mediaEngine.Content.HasFlag(MediaContent.Cdg))
+        {
+            _graphicsRenderer.RenderHardwareVideoCompositionFrame(videoFrame, null, 0, forceZoomToFill, reason);
+            return;
+        }
+
+        try
+        {
+            if (_attachedCdg is not IDxCdgSnapshotSource dxCdgSnapshotSource
+                || !dxCdgSnapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions: false, out var dxCdgSnapshot))
+            {
+                System.Diagnostics.Debug.WriteLine($"[COMPOSITION-TRACE] Hardware background skipped ({reason}): CDG engine did not provide a retained DXCDG snapshot.");
+                return;
+            }
+
+            _graphicsRenderer.RenderHardwareVideoCompositionFrame(
+                videoFrame,
+                dxCdgSnapshot,
+                dxCdgSnapshot.BackgroundWashArgb,
+                forceZoomToFill,
+                reason);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MediaRenderer] Failed to present hardware background DXCDG frame ({reason}): {ex.Message}");
+        }
+    }
+
     private void RenderCurrentDxCdgFrame(bool force, bool consumeDirtyRegions, string reason)
     {
         if (_attachedCdg == null) return;
@@ -808,7 +840,7 @@ public sealed class MediaRenderer : IDisposable
 
     private void OnBackgroundVideoFrameReady(object? sender, VideoFrameEventArgs e)
     {
-        if (e.PixelData.IsEmpty || e.Width <= 0 || e.Height <= 0)
+        if (e.Width <= 0 || e.Height <= 0)
         {
             return;
         }
@@ -819,23 +851,41 @@ public sealed class MediaRenderer : IDisposable
 
             if (HasCdgContent)
             {
-                _graphicsRenderer.SetCompositionLayer0Frame(
+                if (!e.PixelData.IsEmpty)
+                {
+                    _graphicsRenderer.SetCompositionLayer0Frame(
+                        e.PixelData.Span,
+                        e.Width,
+                        e.Height,
+                        e.Stride,
+                        forceZoomToFill: true);
+                    PresentRetainedDxCdgFrame();
+                    return;
+                }
+
+                if (e.IsD3D11HardwareFrame)
+                {
+                    RenderCurrentDxCdgFrameWithHardwareBackground(e, forceZoomToFill: true, reason: "background hardware video + cdg");
+                }
+                return;
+            }
+
+            if (!e.PixelData.IsEmpty)
+            {
+                _graphicsRenderer.SetCompositionBackgroundFrame(
                     e.PixelData.Span,
                     e.Width,
                     e.Height,
                     e.Stride,
                     forceZoomToFill: true);
-                PresentRetainedDxCdgFrame();
+                _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: "background video frame");
                 return;
             }
 
-            _graphicsRenderer.SetCompositionBackgroundFrame(
-                e.PixelData.Span,
-                e.Width,
-                e.Height,
-                e.Stride,
-                forceZoomToFill: true);
-            _graphicsRenderer.PresentBackgroundComposition(forceZoomToFill: true, reason: "background video frame");
+            if (e.IsD3D11HardwareFrame)
+            {
+                _graphicsRenderer.RenderHardwareVideoCompositionFrame(e, null, 0, forceZoomToFill: true, reason: "background hardware video frame");
+            }
         }
         catch (Exception ex)
         {

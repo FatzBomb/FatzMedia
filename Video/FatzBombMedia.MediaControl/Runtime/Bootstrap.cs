@@ -14,7 +14,7 @@ internal static partial class Bootstrap
     public static bool IsFfmpegLoaded { get; private set; } = false;
     public static bool IsInitialized => _isInitialized;
     public static string Message { get; set; } = string.Empty;
-    public static IReadOnlyList<string> NativeLoadMessages => _nativeLoadMessages.ToArray();
+    public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
     public static string? RootPath { get; private set; }
     public static string? FfmpegPath => FFmpeg.AutoGen.ffmpeg.RootPath;
     public static string? BassPath { get; private set; }

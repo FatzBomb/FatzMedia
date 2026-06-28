@@ -308,7 +308,8 @@ internal sealed class D3D11RendererPresentationServices
                 target.Width,
                 target.Height,
                 target.BackendName,
-                target.Revision))
+                target.Revision,
+                VideoProcessorPresenter))
         {
             Debug.WriteLine($"[COMPOSITION-TRACE] Visible present failed in media compositor reason={frame.Reason}.");
             return false;

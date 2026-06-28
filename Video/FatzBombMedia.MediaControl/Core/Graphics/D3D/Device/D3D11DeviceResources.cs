@@ -119,10 +119,7 @@ internal sealed class D3D11DeviceResources : IDisposable
         VideoDevice = Device.QueryInterfaceOrNull<ID3D11VideoDevice>();
         VideoContext = Context.QueryInterfaceOrNull<ID3D11VideoContext>();
         _multithreadProtection = Device.QueryInterfaceOrNull<ID3D11Multithread>();
-        if (_multithreadProtection != null)
-        {
-            _multithreadProtection.SetMultithreadProtected(true);
-        }
+        _multithreadProtection?.SetMultithreadProtected(true);
 
         if (VideoDevice == null || VideoContext == null)
         {

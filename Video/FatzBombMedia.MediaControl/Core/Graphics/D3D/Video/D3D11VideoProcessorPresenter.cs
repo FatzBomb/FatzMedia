@@ -15,9 +15,8 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 /// into the current presentation target. The coordinator decides when to call it; this class
 /// owns the processor enumerator, processor, output view, and rect mapping details.
 /// </summary>
-internal sealed class D3D11VideoProcessorPresenter : IDisposable
+internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration configuration) : IDisposable
 {
-    private readonly MediaPlayerConfiguration _configuration;
     private ID3D11VideoProcessorEnumerator? _videoProcessorEnumerator;
     private ID3D11VideoProcessor? _videoProcessor;
     private ID3D11VideoProcessorOutputView? _videoOutputView;
@@ -26,11 +25,7 @@ internal sealed class D3D11VideoProcessorPresenter : IDisposable
     private int _videoProcessorOutputWidth;
     private int _videoProcessorOutputHeight;
     private double _videoProcessorFps;
-
-    public D3D11VideoProcessorPresenter(MediaPlayerConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
+    private IntPtr _videoProcessorOutputTexturePointer;
 
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
@@ -112,8 +107,8 @@ internal sealed class D3D11VideoProcessorPresenter : IDisposable
 
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
-        var rects = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
-        ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, rects.Source, rects.Destination);
+        var (Source, Destination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
+        ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, Source, Destination);
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
 
         var streams = new[]
@@ -150,6 +145,7 @@ internal sealed class D3D11VideoProcessorPresenter : IDisposable
         _videoProcessorHeight = 0;
         _videoProcessorOutputWidth = 0;
         _videoProcessorOutputHeight = 0;
+        _videoProcessorOutputTexturePointer = IntPtr.Zero;
         _videoProcessorFps = 0;
     }
 
@@ -177,6 +173,7 @@ internal sealed class D3D11VideoProcessorPresenter : IDisposable
             && _videoProcessorHeight == height
             && _videoProcessorOutputWidth == presentationWidth
             && _videoProcessorOutputHeight == presentationHeight
+            && _videoProcessorOutputTexturePointer == presentationTexture.NativePointer
             && Math.Abs(_videoProcessorFps - normalizedFps) < 0.01)
         {
             return true;
@@ -215,8 +212,9 @@ internal sealed class D3D11VideoProcessorPresenter : IDisposable
         _videoProcessorHeight = height;
         _videoProcessorOutputWidth = presentationWidth;
         _videoProcessorOutputHeight = presentationHeight;
+        _videoProcessorOutputTexturePointer = presentationTexture.NativePointer;
         _videoProcessorFps = normalizedFps;
-        if (_configuration.EnableLogging)
+        if (configuration.EnableLogging)
         {
             Debug.WriteLine($"[VorticeD3D11] Created video processor source={width}x{height}, output={presentationWidth}x{presentationHeight} @ {normalizedFps:F2}fps");
         }

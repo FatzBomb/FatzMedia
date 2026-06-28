@@ -11,10 +11,8 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectCompos
 /// presentation backend.  This keeps composition visuals/transforms separate
 /// from the main D3D11 renderer coordinator.
 /// </summary>
-internal sealed class D3D11DirectCompositionTarget : IDisposable
+internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration configuration) : IDisposable
 {
-    private readonly MediaPlayerConfiguration _configuration;
-
     private IDCompositionDevice? _compositionDevice;
     private IDCompositionTarget? _compositionTarget;
     private IDCompositionVisual? _rootVisual;
@@ -22,11 +20,6 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
     private IDCompositionVisual? _overlayVisual;
     private int _outputWidth;
     private int _outputHeight;
-
-    public D3D11DirectCompositionTarget(MediaPlayerConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
 
     public IDXGISwapChain1? OverlaySwapChain { get; private set; }
     public ID3D11Texture2D? OverlayTexture { get; private set; }
@@ -87,7 +80,7 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
             return;
         }
 
-        if (_configuration.EnableVerboseLogging)
+        if (configuration.EnableVerboseLogging)
         {
             Debug.WriteLine($"[CDG-DC-TRACE] SetDirectCompositionOutputSize: {_outputWidth}x{_outputHeight} -> {width}x{height}, content={contentWidth}x{contentHeight}, resize={liveResize}");
         }
@@ -97,7 +90,7 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         ApplyTransforms(contentWidth, contentHeight);
         _compositionDevice.Commit();
 
-        if (_configuration.EnableVerboseLogging)
+        if (configuration.EnableVerboseLogging)
         {
             Debug.WriteLine($"[VorticeD3D11] DirectComposition visual output resized by transform: content={contentWidth}x{contentHeight}, output={width}x{height}");
         }
@@ -132,7 +125,7 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         var scaleY = (float)outputHeight / contentHeight;
         var matrix = System.Numerics.Matrix3x2.CreateScale(scaleX, scaleY);
         var result = _rootVisual.SetTransform(matrix);
-        if (result.Failure && _configuration.EnableLogging)
+        if (result.Failure && configuration.EnableLogging)
         {
             Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");
         }

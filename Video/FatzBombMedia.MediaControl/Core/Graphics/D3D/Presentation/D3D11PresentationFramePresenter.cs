@@ -16,25 +16,12 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// This keeps VorticeD3D11Renderer from coordinating blitter details directly while
 /// preserving the existing frame presenter and backend behavior.
 /// </summary>
-internal sealed class D3D11PresentationFramePresenter
+internal sealed class D3D11PresentationFramePresenter(
+    D3D11FramePresenter framePresenter,
+    D3D11PresentationSurfaceController presentationSurfaces,
+    D3D11PresentationBlitter presentationBlitter,
+    D3D11PresentationState presentationState)
 {
-    private readonly D3D11FramePresenter _framePresenter;
-    private readonly D3D11PresentationSurfaceController _presentationSurfaces;
-    private readonly D3D11PresentationBlitter _presentationBlitter;
-    private readonly D3D11PresentationState _presentationState;
-
-    public D3D11PresentationFramePresenter(
-        D3D11FramePresenter framePresenter,
-        D3D11PresentationSurfaceController presentationSurfaces,
-        D3D11PresentationBlitter presentationBlitter,
-        D3D11PresentationState presentationState)
-    {
-        _framePresenter = framePresenter;
-        _presentationSurfaces = presentationSurfaces;
-        _presentationBlitter = presentationBlitter;
-        _presentationState = presentationState;
-    }
-
     public void UploadCpuFrame(
         D3D11DeviceResources deviceResources,
         bool isDisposed,
@@ -49,7 +36,7 @@ internal sealed class D3D11PresentationFramePresenter
             return;
         }
 
-        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "CPU frame upload",
                 out var target))
@@ -57,7 +44,7 @@ internal sealed class D3D11PresentationFramePresenter
             return;
         }
 
-        _framePresenter.UploadCpuFrame(
+        framePresenter.UploadCpuFrame(
             deviceResources,
             static () => true,
             target.Texture,
@@ -93,7 +80,7 @@ internal sealed class D3D11PresentationFramePresenter
             return false;
         }
 
-        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "hardware frame presentation",
                 out var target))
@@ -101,7 +88,7 @@ internal sealed class D3D11PresentationFramePresenter
             return false;
         }
 
-        return _framePresenter.PresentHardwareFrame(
+        return framePresenter.PresentHardwareFrame(
             deviceResources,
             static () => true,
             target.Texture,
@@ -112,7 +99,7 @@ internal sealed class D3D11PresentationFramePresenter
             framesPerSecond,
             target.Width,
             target.Height,
-            _presentationState.NativePresentationStretch,
+            presentationState.NativePresentationStretch,
             notifyPresented);
     }
 
@@ -135,7 +122,7 @@ internal sealed class D3D11PresentationFramePresenter
             return false;
         }
 
-        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "DXCDG texture presentation",
                 out var target))
@@ -143,7 +130,7 @@ internal sealed class D3D11PresentationFramePresenter
             return false;
         }
 
-        if (!_presentationBlitter.BlitToTarget(
+        if (!presentationBlitter.BlitToTarget(
                 target.Texture,
                 target.Width,
                 target.Height,
@@ -166,7 +153,7 @@ internal sealed class D3D11PresentationFramePresenter
         D3D11PresentationTargetSnapshot target)
     {
         return (sourceTexture, sourceArraySlice, sourceWidth, sourceHeight, framesPerSecond, stretchOverride) =>
-            _presentationBlitter.BlitToTarget(
+            presentationBlitter.BlitToTarget(
                 target.Texture,
                 target.Width,
                 target.Height,
@@ -175,6 +162,6 @@ internal sealed class D3D11PresentationFramePresenter
                 sourceWidth,
                 sourceHeight,
                 framesPerSecond,
-                stretchOverride ?? _presentationState.NativePresentationStretch);
+                stretchOverride ?? presentationState.NativePresentationStretch);
     }
 }

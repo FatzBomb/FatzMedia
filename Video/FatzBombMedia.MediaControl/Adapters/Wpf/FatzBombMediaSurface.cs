@@ -386,11 +386,8 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
     private void DetachNativeResizeHook()
     {
-        if (_topLevelHwndSource != null)
-        {
-            _topLevelHwndSource.RemoveHook(OnTopLevelWindowMessage);
-            _topLevelHwndSource = null;
-        }
+        _topLevelHwndSource?.RemoveHook(OnTopLevelWindowMessage);
+        _topLevelHwndSource = null;
 
         _nativeResizeSettleTimer?.Stop();
         _nativeResizeSettleTimer = null;
@@ -582,10 +579,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
 
     private void OnSurfaceDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_overlayWindow != null)
-        {
-            _overlayWindow.DataContext = DataContext;
-        }
+        _overlayWindow?.DataContext = DataContext;
     }
 
     private void SubscribeSurfaceLayout(MediaRenderer renderer)
@@ -876,12 +870,12 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return;
         }
 
-        var bounds = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        var (_, _, width, height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
 
         _wpfSurface.HorizontalAlignment = HorizontalAlignment.Center;
         _wpfSurface.VerticalAlignment = VerticalAlignment.Center;
-        _wpfSurface.Width = Math.Max(1.0, bounds.width);
-        _wpfSurface.Height = Math.Max(1.0, bounds.height);
+        _wpfSurface.Width = Math.Max(1.0, width);
+        _wpfSurface.Height = Math.Max(1.0, height);
         _wpfSurface.Stretch = Stretch.Fill;
 
         renderer?.SetWpfPresentationSize(GetWpfPresentationPixelWidth(renderer), GetWpfPresentationPixelHeight(renderer));
@@ -896,9 +890,9 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return 0;
         }
 
-        var bounds = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        var (_, _, width, _) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
         var dpi = VisualTreeHelper.GetDpi(this);
-        return Math.Max(1, (int)Math.Round(bounds.width * dpi.DpiScaleX));
+        return Math.Max(1, (int)Math.Round(width * dpi.DpiScaleX));
     }
 
     private int GetWpfPresentationPixelHeight(MediaRenderer? renderer)
@@ -910,9 +904,9 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             return 0;
         }
 
-        var bounds = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
+        var (_, _, _, height) = CalculateFitBounds(ActualWidth, ActualHeight, mediaWidth, mediaHeight, GetEffectiveMediaStretch(renderer), includeOffsets: false);
         var dpi = VisualTreeHelper.GetDpi(this);
-        return Math.Max(1, (int)Math.Round(bounds.height * dpi.DpiScaleY));
+        return Math.Max(1, (int)Math.Round(height * dpi.DpiScaleY));
     }
 
     private static (double x, double y, double width, double height) CalculateFitBounds(
@@ -975,10 +969,7 @@ public sealed class FatzBombMediaSurface : Grid, IDisposable
             _overlayOwner.Closed += OnOverlayOwnerClosed;
         }
 
-        if (_overlayWindow != null)
-        {
-            _overlayWindow.Owner = _overlayOwner;
-        }
+        _overlayWindow?.Owner = _overlayOwner;
     }
 
     private void DetachOverlayOwner()

@@ -158,7 +158,7 @@ public sealed class DxCdgStateMachine
             var paletteCopy = _paletteArgb.ToArray();
             var dirtyCopy = _dirtyRects.Count == 0
                 ? Array.Empty<DxCdgDirtyRect>()
-                : _dirtyRects.ToArray();
+                : [.. _dirtyRects];
 
             if (consumeDirtyRegions)
             {
@@ -179,12 +179,9 @@ public sealed class DxCdgStateMachine
     {
         var dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & DxCdgConstants.ColorMask);
-        var changed = false;
-
         _colorManager.SetBackgroundColor(color);
         RefreshColorStateUnsafe(addDirtyRect: false);
-        changed = true;
-
+        bool changed = true;
         if ((dataSpan[1] & DxCdgConstants.ColorMask) == 0)
         {
             var span = _colorIndices.AsSpan();
@@ -255,7 +252,7 @@ public sealed class DxCdgStateMachine
             return false;
         }
 
-        Span<byte> lookup = stackalloc byte[] { color0, color1 };
+        Span<byte> lookup = [color0, color1];
         var changed = false;
         var maxColumn = Math.Min(DxCdgConstants.TileWidth, DxCdgConstants.FrameWidth - columnIndex);
         var maxRow = Math.Min(DxCdgConstants.TileHeight, DxCdgConstants.FrameHeight - rowIndex);

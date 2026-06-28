@@ -18,10 +18,9 @@ public static class DLLPath
 
     internal static IReadOnlyList<string> GetConfiguredNativeLibraryPaths()
     {
-        return new[] { Bass, FFmpeg }
+        return [.. new[] { Bass, FFmpeg }
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 }

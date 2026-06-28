@@ -7,39 +7,28 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// uploaded or presented.  This keeps target texture, dimensions, backend identity, and
 /// revision together so resize/adoption changes do not get mixed with stale frame state.
 /// </summary>
-internal readonly struct D3D11PresentationTargetSnapshot
+internal readonly struct D3D11PresentationTargetSnapshot(
+    ID3D11Texture2D texture,
+    int width,
+    int height,
+    IntPtr nativeHwnd,
+    D3D11PresentationBackendKind backendKind,
+    string backendName,
+    long revision)
 {
-    public D3D11PresentationTargetSnapshot(
-        ID3D11Texture2D texture,
-        int width,
-        int height,
-        IntPtr nativeHwnd,
-        D3D11PresentationBackendKind backendKind,
-        string backendName,
-        long revision)
-    {
-        Texture = texture;
-        Width = width;
-        Height = height;
-        NativeHwnd = nativeHwnd;
-        BackendKind = backendKind;
-        BackendName = backendName;
-        Revision = revision;
-    }
+    public ID3D11Texture2D Texture { get; } = texture;
 
-    public ID3D11Texture2D Texture { get; }
+    public int Width { get; } = width;
 
-    public int Width { get; }
+    public int Height { get; } = height;
 
-    public int Height { get; }
+    public IntPtr NativeHwnd { get; } = nativeHwnd;
 
-    public IntPtr NativeHwnd { get; }
+    public D3D11PresentationBackendKind BackendKind { get; } = backendKind;
 
-    public D3D11PresentationBackendKind BackendKind { get; }
+    public string BackendName { get; } = backendName;
 
-    public string BackendName { get; }
-
-    public long Revision { get; }
+    public long Revision { get; } = revision;
 
     public bool IsValid => Texture != null && Width > 0 && Height > 0 && BackendKind != D3D11PresentationBackendKind.None;
 }

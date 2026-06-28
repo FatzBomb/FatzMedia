@@ -14,15 +14,8 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// The renderer should coordinate frame upload/composition; this controller owns the
 /// bookkeeping that says which backend target texture is active and how large it is.
 /// </summary>
-internal sealed class D3D11PresentationSurfaceController
+internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends)
 {
-    private readonly D3D11PresentationBackendSet _backends;
-
-    public D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends)
-    {
-        _backends = backends;
-    }
-
     private long _targetRevision;
 
     public ID3D11Texture2D? TargetTexture { get; private set; }
@@ -31,11 +24,11 @@ internal sealed class D3D11PresentationSurfaceController
     public long TargetRevision => _targetRevision;
     public IntPtr NativeHwnd { get; private set; }
     public bool LastActivationCreated { get; private set; }
-    public ImageSource? ImageSource => _backends.D3DImage.ImageSource;
+    public ImageSource? ImageSource => backends.D3DImage.ImageSource;
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
-    public bool IsNativeHwndActive => _backends.NativeHwnd.IsActive;
-    public bool IsDirectCompositionActive => _backends.DirectComposition.IsActive;
-    public string PresentationBackend => _backends.ActiveKind switch
+    public bool IsNativeHwndActive => backends.NativeHwnd.IsActive;
+    public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
+    public string PresentationBackend => backends.ActiveKind switch
     {
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
         D3D11PresentationBackendKind.NativeHwndSwapChain => "NativeHwndSwapChain",
@@ -57,7 +50,7 @@ internal sealed class D3D11PresentationSurfaceController
             return false;
         }
 
-        var active = _backends.Active;
+        var active = backends.Active;
         if (active == null)
         {
             LogInvalidTarget(reason, "no active backend");
@@ -73,9 +66,9 @@ internal sealed class D3D11PresentationSurfaceController
             return false;
         }
 
-        if (!ReferenceEquals(texture, TargetTexture) || width != Width || height != Height || active.Kind != _backends.ActiveKind)
+        if (!ReferenceEquals(texture, TargetTexture) || width != Width || height != Height || active.Kind != backends.ActiveKind)
         {
-            Adopt(active, active.Kind == D3D11PresentationBackendKind.NativeHwndSwapChain ? _backends.NativeHwnd.Hwnd : NativeHwnd);
+            Adopt(active, active.Kind == D3D11PresentationBackendKind.NativeHwndSwapChain ? backends.NativeHwnd.Hwnd : NativeHwnd);
         }
 
         snapshot = new D3D11PresentationTargetSnapshot(
@@ -101,12 +94,12 @@ internal sealed class D3D11PresentationSurfaceController
 
     public bool OwnsTexture(ID3D11Texture2D? texture)
     {
-        return _backends.OwnsTexture(texture);
+        return backends.OwnsTexture(texture);
     }
 
     public void CleanupBackends()
     {
-        _backends.Cleanup();
+        backends.Cleanup();
     }
 
     public void Reset()
@@ -249,7 +242,7 @@ internal sealed class D3D11PresentationSurfaceController
 
         if (LastActivationCreated)
         {
-            _backends.ClearActiveTargetToBlack(deviceResources);
+            backends.ClearActiveTargetToBlack(deviceResources);
             onCreated();
         }
 
@@ -271,7 +264,7 @@ internal sealed class D3D11PresentationSurfaceController
 
         if (LastActivationCreated)
         {
-            _backends.ClearActiveTargetToBlack(deviceResources);
+            backends.ClearActiveTargetToBlack(deviceResources);
             onCreated();
         }
 
@@ -293,10 +286,10 @@ internal sealed class D3D11PresentationSurfaceController
 
         if (LastActivationCreated)
         {
-            _backends.ClearActiveTargetToBlack(deviceResources);
-            _backends.DirectComposition.ClearOverlayToTransparent(deviceResources);
+            backends.ClearActiveTargetToBlack(deviceResources);
+            backends.DirectComposition.ClearOverlayToTransparent(deviceResources);
             onCreated();
-            _backends.DirectComposition.PresentOverlayAndCommit();
+            backends.DirectComposition.PresentOverlayAndCommit();
         }
 
         return true;
@@ -308,7 +301,7 @@ internal sealed class D3D11PresentationSurfaceController
         int height,
         Action cleanupBeforeCreate)
     {
-        if (_backends.D3DImage.Matches(width, height))
+        if (backends.D3DImage.Matches(width, height))
         {
             LastActivationCreated = false;
             return true;
@@ -317,13 +310,13 @@ internal sealed class D3D11PresentationSurfaceController
         cleanupBeforeCreate();
         Reset();
 
-        if (!_backends.D3DImage.Create(deviceResources, width, height))
+        if (!backends.D3DImage.Create(deviceResources, width, height))
         {
             cleanupBeforeCreate();
             return false;
         }
 
-        Adopt(_backends.D3DImage);
+        Adopt(backends.D3DImage);
         LastActivationCreated = true;
         return true;
     }
@@ -335,7 +328,7 @@ internal sealed class D3D11PresentationSurfaceController
         int height,
         Action cleanupBeforeCreate)
     {
-        if (_backends.NativeHwnd.Matches(hwnd, width, height))
+        if (backends.NativeHwnd.Matches(hwnd, width, height))
         {
             LastActivationCreated = false;
             return true;
@@ -344,13 +337,13 @@ internal sealed class D3D11PresentationSurfaceController
         cleanupBeforeCreate();
         Reset();
 
-        if (!_backends.NativeHwnd.Create(deviceResources, hwnd, width, height))
+        if (!backends.NativeHwnd.Create(deviceResources, hwnd, width, height))
         {
             cleanupBeforeCreate();
             return false;
         }
 
-        Adopt(_backends.NativeHwnd, hwnd);
+        Adopt(backends.NativeHwnd, hwnd);
         LastActivationCreated = true;
         return true;
     }
@@ -362,7 +355,7 @@ internal sealed class D3D11PresentationSurfaceController
         int height,
         Action cleanupBeforeCreate)
     {
-        if (_backends.DirectComposition.Matches(hwnd, width, height))
+        if (backends.DirectComposition.Matches(hwnd, width, height))
         {
             LastActivationCreated = false;
             return true;
@@ -371,25 +364,25 @@ internal sealed class D3D11PresentationSurfaceController
         cleanupBeforeCreate();
         Reset();
 
-        if (!_backends.DirectComposition.Create(deviceResources, hwnd, width, height))
+        if (!backends.DirectComposition.Create(deviceResources, hwnd, width, height))
         {
             cleanupBeforeCreate();
             return false;
         }
 
-        Adopt(_backends.DirectComposition, hwnd);
+        Adopt(backends.DirectComposition, hwnd);
         LastActivationCreated = true;
         return true;
     }
 
     public void SetDirectCompositionOutputSize(bool isDisposed, int width, int height, bool liveResize)
     {
-        if (isDisposed || !_backends.DirectComposition.IsActive || Width <= 0 || Height <= 0)
+        if (isDisposed || !backends.DirectComposition.IsActive || Width <= 0 || Height <= 0)
         {
             return;
         }
 
-        _backends.DirectComposition.SetOutputSize(
+        backends.DirectComposition.SetOutputSize(
             width,
             height,
             Width,
@@ -408,12 +401,12 @@ internal sealed class D3D11PresentationSurfaceController
         int stride,
         bool liveResize)
     {
-        if (isDisposed || !_backends.DirectComposition.IsActive || width <= 0 || height <= 0)
+        if (isDisposed || !backends.DirectComposition.IsActive || width <= 0 || height <= 0)
         {
             return false;
         }
 
-        return _backends.DirectComposition.UploadOverlayFrame(
+        return backends.DirectComposition.UploadOverlayFrame(
             deviceResources,
             uploadResources.TextureCache,
             videoProcessorPresenter,
@@ -436,7 +429,7 @@ internal sealed class D3D11PresentationSurfaceController
             return;
         }
 
-        _backends.ClearPresentedFrame(
+        backends.ClearPresentedFrame(
             deviceResources,
             liveResize ? 1 : 0,
             syncImmediate: true,
@@ -450,7 +443,7 @@ internal sealed class D3D11PresentationSurfaceController
         Func<bool> isDisposed,
         Action raiseFramePresented)
     {
-        _backends.NotifyFramePresented(
+        backends.NotifyFramePresented(
             liveResize ? 1 : 0,
             syncImmediate,
             isDisposed,
@@ -459,43 +452,43 @@ internal sealed class D3D11PresentationSurfaceController
 
     public void QueueNativeHwndResize(bool isDisposed, int width, int height)
     {
-        if (isDisposed || !_backends.NativeHwnd.IsActive)
+        if (isDisposed || !backends.NativeHwnd.IsActive)
         {
             return;
         }
 
-        _backends.NativeHwnd.QueueResize(Math.Max(1, width), Math.Max(1, height));
+        backends.NativeHwnd.QueueResize(Math.Max(1, width), Math.Max(1, height));
     }
 
     public bool ResizeNativeHwndPresentation(bool isDisposed, int width, int height)
     {
-        if (isDisposed || !_backends.NativeHwnd.IsActive)
+        if (isDisposed || !backends.NativeHwnd.IsActive)
         {
             return false;
         }
 
-        var resized = _backends.NativeHwnd.Resize(Math.Max(1, width), Math.Max(1, height));
+        var resized = backends.NativeHwnd.Resize(Math.Max(1, width), Math.Max(1, height));
         SyncNativeHwndState();
         return resized;
     }
 
     public bool ApplyPendingNativeHwndResizeIfNeeded()
     {
-        if (!_backends.NativeHwnd.IsActive)
+        if (!backends.NativeHwnd.IsActive)
         {
             return true;
         }
 
-        var resized = _backends.NativeHwnd.ApplyPendingResizeIfNeeded();
+        var resized = backends.NativeHwnd.ApplyPendingResizeIfNeeded();
         SyncNativeHwndState();
         return resized;
     }
 
     private void SyncNativeHwndState()
     {
-        if (_backends.NativeHwnd.IsActive)
+        if (backends.NativeHwnd.IsActive)
         {
-            Adopt(_backends.NativeHwnd, _backends.NativeHwnd.Hwnd);
+            Adopt(backends.NativeHwnd, backends.NativeHwnd.Hwnd);
         }
     }
 

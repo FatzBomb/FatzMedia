@@ -56,7 +56,7 @@ internal sealed class NativeCompositeBaseState
             _bgra = new byte[requiredLength];
         }
 
-        bgraPixels.Slice(0, requiredLength).CopyTo(_bgra);
+        bgraPixels[..requiredLength].CopyTo(_bgra);
         return sizeChanged;
     }
 
@@ -68,7 +68,7 @@ internal sealed class NativeCompositeBaseState
             _bgra = new byte[requiredLength];
         }
 
-        bgraPixels.Slice(0, requiredLength).CopyTo(_bgra);
+        bgraPixels[..requiredLength].CopyTo(_bgra);
         Width = width;
         Height = height;
         Stride = stride;

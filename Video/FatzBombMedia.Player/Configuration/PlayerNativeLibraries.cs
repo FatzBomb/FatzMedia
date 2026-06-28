@@ -11,9 +11,7 @@ public static class PlayerNativeLibraries
 
     public static IReadOnlyList<string> ResolveSearchPaths()
     {
-        return NativeFolders
-            .Select(ResolveFromAppBase)
-            .ToArray();
+        return [.. NativeFolders.Select(ResolveFromAppBase)];
     }
 
     private static string ResolveFromAppBase(string path)

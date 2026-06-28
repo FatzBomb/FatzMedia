@@ -5,12 +5,14 @@ using System.Runtime.InteropServices;
 using System.Text;
 using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
+using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using FatzBombMedia.MediaControl.Core.Graphics.Geometry;
 using SharpGen.Runtime;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using System.Windows.Media;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
@@ -27,7 +29,7 @@ internal sealed class D3D11MediaCompositionPresenter
     private ID3D11PixelShader? _backgroundPixelShader;
     private ID3D11PixelShader? _solidPixelShader;
     private bool _hasBackgroundFrame;
-    private bool _backgroundForceZoomToFill;
+    private MediaCompositionStretchMode _backgroundStretchMode = MediaCompositionStretchMode.UniformFit;
     private int _backgroundWidth;
     private int _backgroundHeight;
     private int _backgroundStride;
@@ -99,9 +101,9 @@ internal sealed class D3D11MediaCompositionPresenter
                 return;
             }
 
-            deviceResources.Context.UpdateSubresource(bgraPixels.Slice(0, required), _backgroundTexture, 0, (uint)stride, 0, null);
+            deviceResources.Context.UpdateSubresource(bgraPixels[..required], _backgroundTexture, 0, (uint)stride, 0, null);
             _hasBackgroundFrame = true;
-            _backgroundForceZoomToFill = forceZoomToFill;
+            _backgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : MediaCompositionStretchMode.UniformFit;
             _backgroundWidth = width;
             _backgroundHeight = height;
             _backgroundStride = stride;
@@ -116,12 +118,73 @@ internal sealed class D3D11MediaCompositionPresenter
     public void ClearBackgroundFrame()
     {
         _hasBackgroundFrame = false;
-        _backgroundForceZoomToFill = false;
+        _backgroundStretchMode = MediaCompositionStretchMode.UniformFit;
         _backgroundWidth = 0;
         _backgroundHeight = 0;
         _backgroundStride = 0;
         _lastBackgroundRevision = -1;
         ReleaseBackgroundResources();
+    }
+
+    public bool SetHardwareBackgroundFrame(
+        D3D11DeviceResources deviceResources,
+        D3D11VideoProcessorPresenter videoProcessorPresenter,
+        IntPtr sourceTexturePointer,
+        int sourceArraySlice,
+        int width,
+        int height,
+        double framesPerSecond,
+        MediaCompositionStretchMode stretchMode,
+        long backgroundRevision)
+    {
+        if (deviceResources.Device == null
+            || deviceResources.Context == null
+            || !deviceResources.HasVideoProcessorSupport
+            || sourceTexturePointer == IntPtr.Zero
+            || width <= 0
+            || height <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            EnsureBackgroundTexture(deviceResources.Device, width, height);
+            if (_backgroundTexture == null || _backgroundShaderResourceView == null)
+            {
+                return false;
+            }
+
+            var normalizedFps = double.IsFinite(framesPerSecond) && framesPerSecond > 0 ? framesPerSecond : 60.0;
+            if (!videoProcessorPresenter.PresentHardwareFrame(
+                    deviceResources,
+                    _backgroundTexture,
+                    sourceTexturePointer,
+                    sourceArraySlice,
+                    width,
+                    height,
+                    normalizedFps,
+                    width,
+                    height,
+                    Stretch.Fill))
+            {
+                return false;
+            }
+
+            _hasBackgroundFrame = true;
+            _backgroundStretchMode = stretchMode;
+            _backgroundWidth = width;
+            _backgroundHeight = height;
+            _backgroundStride = width * 4;
+            _lastBackgroundRevision = backgroundRevision;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[COMPOSITION-D3D11] Hardware background copy failed: {ex.GetType().Name}: {ex.Message}");
+            ClearBackgroundFrame();
+            return false;
+        }
     }
 
     public bool PresentToTarget(
@@ -157,7 +220,8 @@ internal sealed class D3D11MediaCompositionPresenter
         int targetWidth,
         int targetHeight,
         string backendName,
-        long targetRevision)
+        long targetRevision,
+        D3D11VideoProcessorPresenter? videoProcessorPresenter = null)
     {
         if (deviceResources.Device == null
             || deviceResources.Context == null
@@ -171,13 +235,10 @@ internal sealed class D3D11MediaCompositionPresenter
 
         try
         {
-            if (frame.HasBackground)
+            if (!EnsureCompositionBackgroundFrame(deviceResources, frame, videoProcessorPresenter))
             {
-                EnsureCompositionBackgroundFrame(deviceResources, frame);
-            }
-            else
-            {
-                ClearBackgroundFrame();
+                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: background layer could not be prepared reason={frame.Reason}.");
+                return false;
             }
 
             var snapshot = frame.CdgOverlay;
@@ -198,7 +259,7 @@ internal sealed class D3D11MediaCompositionPresenter
                 }
             }
 
-            if (frame.HasAnyVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
+            if (frame.HasShaderVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
             {
                 Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: shader pipeline is unavailable.");
                 return false;
@@ -234,38 +295,71 @@ internal sealed class D3D11MediaCompositionPresenter
     }
 
 
-    private void EnsureCompositionBackgroundFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame)
+    private bool EnsureCompositionBackgroundFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame, D3D11VideoProcessorPresenter? videoProcessorPresenter)
     {
-        if (!frame.HasBackground)
+        if (frame.HasD3D11Background)
         {
-            ClearBackgroundFrame();
-            return;
+            if (videoProcessorPresenter == null)
+            {
+                return false;
+            }
+
+            return SetHardwareBackgroundFrame(
+                deviceResources,
+                videoProcessorPresenter,
+                frame.BackgroundD3D11TexturePointer,
+                frame.BackgroundD3D11ArraySlice,
+                frame.BackgroundD3D11Width,
+                frame.BackgroundD3D11Height,
+                frame.BackgroundD3D11FramesPerSecond,
+                frame.EffectiveBackgroundStretchMode,
+                frame.BackgroundRevision);
         }
 
-        var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == _lastBackgroundRevision;
-        var dimensionsMatch = _hasBackgroundFrame
-            && _backgroundWidth == frame.BackgroundWidth
-            && _backgroundHeight == frame.BackgroundHeight
-            && _backgroundStride == frame.BackgroundStride
-            && _backgroundForceZoomToFill == frame.BackgroundUniformToFill;
-
-        if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
+        if (frame.HasBackground)
         {
-            return;
+            var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == _lastBackgroundRevision;
+            var dimensionsMatch = _hasBackgroundFrame
+                && _backgroundWidth == frame.BackgroundWidth
+                && _backgroundHeight == frame.BackgroundHeight
+                && _backgroundStride == frame.BackgroundStride
+                && _backgroundStretchMode == frame.EffectiveBackgroundStretchMode;
+
+            if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
+            {
+                return true;
+            }
+
+            SetBackgroundFrame(
+                deviceResources,
+                frame.BackgroundBgra.Span,
+                frame.BackgroundWidth,
+                frame.BackgroundHeight,
+                frame.BackgroundStride,
+                frame.EffectiveBackgroundStretchMode == MediaCompositionStretchMode.UniformToFill);
+
+            if (_hasBackgroundFrame)
+            {
+                _backgroundStretchMode = frame.EffectiveBackgroundStretchMode;
+                _lastBackgroundRevision = frame.BackgroundRevision;
+            }
+
+            return _hasBackgroundFrame;
         }
 
-        SetBackgroundFrame(
-            deviceResources,
-            frame.BackgroundBgra.Span,
-            frame.BackgroundWidth,
-            frame.BackgroundHeight,
-            frame.BackgroundStride,
-            frame.BackgroundUniformToFill);
-
-        if (_hasBackgroundFrame)
+        if (frame.HasRetainedBackground)
         {
-            _lastBackgroundRevision = frame.BackgroundRevision;
+            if (!_hasBackgroundFrame || _backgroundShaderResourceView == null)
+            {
+                return false;
+            }
+
+            _backgroundStretchMode = frame.EffectiveBackgroundStretchMode;
+            return true;
         }
+
+        ClearBackgroundFrame();
+        return true;
     }
 
     private void EnsureResources(ID3D11Device device)
@@ -325,7 +419,7 @@ internal sealed class D3D11MediaCompositionPresenter
             (uint)height,
             arraySize: 1,
             mipLevels: 1,
-            BindFlags.ShaderResource,
+            BindFlags.ShaderResource | BindFlags.RenderTarget,
             ResourceUsage.Default,
             CpuAccessFlags.None,
             sampleCount: 1,
@@ -386,7 +480,7 @@ internal sealed class D3D11MediaCompositionPresenter
         ID3D11RenderTargetView renderTargetView,
         bool clearTarget)
     {
-        if (frame.HasAnyVisibleLayer
+        if (frame.HasShaderVisibleLayer
             && (_constantBuffer == null
                 || _vertexShader == null
                 || _samplerState == null
@@ -406,7 +500,7 @@ internal sealed class D3D11MediaCompositionPresenter
             context.ClearRenderTargetView(renderTargetView, ResolveClearColor(frame));
         }
 
-        if (frame.HasAnyVisibleLayer)
+        if (frame.HasShaderVisibleLayer)
         {
             context.VSSetShader(_vertexShader);
             context.RSSetState(_rasterizerState);
@@ -414,7 +508,7 @@ internal sealed class D3D11MediaCompositionPresenter
             context.PSSetSampler(0, _samplerState);
         }
 
-        if (frame.HasBackground
+        if (frame.HasAnyBackground
             && _hasBackgroundFrame
             && _backgroundShaderResourceView != null
             && _backgroundPixelShader != null)
@@ -482,15 +576,34 @@ internal sealed class D3D11MediaCompositionPresenter
 
     private void DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight)
     {
-        var backgroundRect = _backgroundForceZoomToFill
-            ? ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
-            : ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight);
+        var backgroundRect = ResolveBackgroundDestinationRect(outputWidth, outputHeight);
 
         SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
         context.PSSetShader(_backgroundPixelShader);
         context.PSSetShaderResource(0, _backgroundShaderResourceView);
         context.Draw(4, 0);
         context.PSSetShaderResource(0, null);
+    }
+
+
+    private RectD ResolveBackgroundDestinationRect(int outputWidth, int outputHeight)
+    {
+        return _backgroundStretchMode switch
+        {
+            MediaCompositionStretchMode.Original => CenterOriginal(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
+            MediaCompositionStretchMode.Fill => new RectD(0, 0, outputWidth, outputHeight),
+            MediaCompositionStretchMode.UniformToFill => ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
+            _ => ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
+        };
+    }
+
+    private static RectD CenterOriginal(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight)
+    {
+        var width = Math.Max(1, Math.Min(sourceWidth, outputWidth));
+        var height = Math.Max(1, Math.Min(sourceHeight, outputHeight));
+        var left = (outputWidth - width) / 2.0;
+        var top = (outputHeight - height) / 2.0;
+        return new RectD(left, top, width, height);
     }
 
     private void DrawWashLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, uint washArgb)
@@ -661,21 +774,23 @@ internal sealed class D3D11MediaCompositionPresenter
         {
             Debug.WriteLine(
                 $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
-                $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasBackground} " +
-                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
+                $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasAnyBackground} hardwareBackground={frame.HasD3D11Background} retainedBackground={frame.HasRetainedBackground} " +
+                $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} hwBackground={frame.BackgroundD3D11Width}x{frame.BackgroundD3D11Height} " +
+                $"bgRevision={frame.BackgroundRevision} bgStretch={frame.EffectiveBackgroundStretchMode} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
             return;
         }
 
-        var stats = CountIndexStats(snapshot);
+        var (NonZero, Foreground, Background, Histogram) = CountIndexStats(snapshot);
         Debug.WriteLine(
             $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} revision={snapshot.Revision} dirty={snapshot.DirtyRects.Count} " +
             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
             $"clear={frame.ClearMode} bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
-            $"backgroundFrame={frame.HasBackground} background={frame.BackgroundWidth}x{frame.BackgroundHeight} bgRevision={frame.BackgroundRevision} " +
-            $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
-            $"hist=[{stats.Histogram}]");
+            $"backgroundFrame={frame.HasAnyBackground} hardwareBackground={frame.HasD3D11Background} retainedBackground={frame.HasRetainedBackground} " +
+            $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} hwBackground={frame.BackgroundD3D11Width}x{frame.BackgroundD3D11Height} bgRevision={frame.BackgroundRevision} bgStretch={frame.EffectiveBackgroundStretchMode} " +
+            $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={NonZero} foreground={Foreground} bgPixels={Background} " +
+            $"hist=[{Histogram}]");
 
-        if (stats.Foreground == 0)
+        if (Foreground == 0)
         {
             Debug.WriteLine(
                 $"[COMPOSITION-D3D11] WARNING: snapshot revision={snapshot.Revision} contains no foreground pixels after background-index filtering.");

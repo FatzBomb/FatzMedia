@@ -1,0 +1,397 @@
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+index 405f6cc..4985f2d 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs
+@@ -29,7 +29,7 @@ internal sealed class D3D11MediaCompositionPresenter
+     private ID3D11PixelShader? _backgroundPixelShader;
+     private ID3D11PixelShader? _solidPixelShader;
+     private bool _hasBackgroundFrame;
+-    private bool _backgroundForceZoomToFill;
++    private MediaCompositionStretchMode _backgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+     private int _backgroundWidth;
+     private int _backgroundHeight;
+     private int _backgroundStride;
+@@ -103,7 +103,7 @@ internal sealed class D3D11MediaCompositionPresenter
+ 
+             deviceResources.Context.UpdateSubresource(bgraPixels.Slice(0, required), _backgroundTexture, 0, (uint)stride, 0, null);
+             _hasBackgroundFrame = true;
+-            _backgroundForceZoomToFill = forceZoomToFill;
++            _backgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : MediaCompositionStretchMode.UniformFit;
+             _backgroundWidth = width;
+             _backgroundHeight = height;
+             _backgroundStride = stride;
+@@ -118,7 +118,7 @@ internal sealed class D3D11MediaCompositionPresenter
+     public void ClearBackgroundFrame()
+     {
+         _hasBackgroundFrame = false;
+-        _backgroundForceZoomToFill = false;
++        _backgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+         _backgroundWidth = 0;
+         _backgroundHeight = 0;
+         _backgroundStride = 0;
+@@ -134,7 +134,7 @@ internal sealed class D3D11MediaCompositionPresenter
+         int width,
+         int height,
+         double framesPerSecond,
+-        bool forceZoomToFill,
++        MediaCompositionStretchMode stretchMode,
+         long backgroundRevision)
+     {
+         if (deviceResources.Device == null
+@@ -172,7 +172,7 @@ internal sealed class D3D11MediaCompositionPresenter
+             }
+ 
+             _hasBackgroundFrame = true;
+-            _backgroundForceZoomToFill = forceZoomToFill;
++            _backgroundStretchMode = stretchMode;
+             _backgroundWidth = width;
+             _backgroundHeight = height;
+             _backgroundStride = width * 4;
+@@ -312,7 +312,7 @@ internal sealed class D3D11MediaCompositionPresenter
+                 frame.BackgroundD3D11Width,
+                 frame.BackgroundD3D11Height,
+                 frame.BackgroundD3D11FramesPerSecond,
+-                frame.BackgroundUniformToFill,
++                frame.EffectiveBackgroundStretchMode,
+                 frame.BackgroundRevision);
+         }
+ 
+@@ -323,7 +323,7 @@ internal sealed class D3D11MediaCompositionPresenter
+                 && _backgroundWidth == frame.BackgroundWidth
+                 && _backgroundHeight == frame.BackgroundHeight
+                 && _backgroundStride == frame.BackgroundStride
+-                && _backgroundForceZoomToFill == frame.BackgroundUniformToFill;
++                && _backgroundStretchMode == frame.EffectiveBackgroundStretchMode;
+ 
+             if (revisionMatches && dimensionsMatch && _backgroundShaderResourceView != null)
+             {
+@@ -336,10 +336,11 @@ internal sealed class D3D11MediaCompositionPresenter
+                 frame.BackgroundWidth,
+                 frame.BackgroundHeight,
+                 frame.BackgroundStride,
+-                frame.BackgroundUniformToFill);
++                frame.EffectiveBackgroundStretchMode == MediaCompositionStretchMode.UniformToFill);
+ 
+             if (_hasBackgroundFrame)
+             {
++                _backgroundStretchMode = frame.EffectiveBackgroundStretchMode;
+                 _lastBackgroundRevision = frame.BackgroundRevision;
+             }
+ 
+@@ -353,7 +354,7 @@ internal sealed class D3D11MediaCompositionPresenter
+                 return false;
+             }
+ 
+-            _backgroundForceZoomToFill = frame.BackgroundUniformToFill;
++            _backgroundStretchMode = frame.EffectiveBackgroundStretchMode;
+             return true;
+         }
+ 
+@@ -575,9 +576,7 @@ internal sealed class D3D11MediaCompositionPresenter
+ 
+     private void DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight)
+     {
+-        var backgroundRect = _backgroundForceZoomToFill
+-            ? ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
+-            : ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight);
++        var backgroundRect = ResolveBackgroundDestinationRect(outputWidth, outputHeight);
+ 
+         SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
+         context.PSSetShader(_backgroundPixelShader);
+@@ -586,6 +585,27 @@ internal sealed class D3D11MediaCompositionPresenter
+         context.PSSetShaderResource(0, null);
+     }
+ 
++
++    private RectD ResolveBackgroundDestinationRect(int outputWidth, int outputHeight)
++    {
++        return _backgroundStretchMode switch
++        {
++            MediaCompositionStretchMode.Original => CenterOriginal(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
++            MediaCompositionStretchMode.Fill => new RectD(0, 0, outputWidth, outputHeight),
++            MediaCompositionStretchMode.UniformToFill => ViewportGeometry.UniformToFill(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight),
++            _ => ViewportGeometry.UniformFit(_backgroundWidth, _backgroundHeight, outputWidth, outputHeight)
++        };
++    }
++
++    private static RectD CenterOriginal(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight)
++    {
++        var width = Math.Max(1, Math.Min(sourceWidth, outputWidth));
++        var height = Math.Max(1, Math.Min(sourceHeight, outputHeight));
++        var left = (outputWidth - width) / 2.0;
++        var top = (outputHeight - height) / 2.0;
++        return new RectD(left, top, width, height);
++    }
++
+     private void DrawWashLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, uint washArgb)
+     {
+         var alpha = ((washArgb >> 24) & 0xFF) / 255.0f;
+@@ -756,7 +776,7 @@ internal sealed class D3D11MediaCompositionPresenter
+                 $"[COMPOSITION-D3D11] Drawing composition reason={frame.Reason} target={outputWidth}x{outputHeight} " +
+                 $"backend={backendName} targetRevision={targetRevision} backgroundFrame={frame.HasAnyBackground} hardwareBackground={frame.HasD3D11Background} retainedBackground={frame.HasRetainedBackground} " +
+                 $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} hwBackground={frame.BackgroundD3D11Width}x{frame.BackgroundD3D11Height} " +
+-                $"bgRevision={frame.BackgroundRevision} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
++                $"bgRevision={frame.BackgroundRevision} bgStretch={frame.EffectiveBackgroundStretchMode} wash=0x{frame.WashArgb:X8} overlay=False clear={frame.ClearMode}");
+             return;
+         }
+ 
+@@ -766,7 +786,7 @@ internal sealed class D3D11MediaCompositionPresenter
+             $"target={outputWidth}x{outputHeight} backend={backendName} targetRevision={targetRevision} " +
+             $"clear={frame.ClearMode} bg=0x{snapshot.BackgroundWashArgb:X8} bgIndex={snapshot.BackgroundColorIndex} " +
+             $"backgroundFrame={frame.HasAnyBackground} hardwareBackground={frame.HasD3D11Background} retainedBackground={frame.HasRetainedBackground} " +
+-            $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} hwBackground={frame.BackgroundD3D11Width}x{frame.BackgroundD3D11Height} bgRevision={frame.BackgroundRevision} " +
++            $"background={frame.BackgroundWidth}x{frame.BackgroundHeight} hwBackground={frame.BackgroundD3D11Width}x{frame.BackgroundD3D11Height} bgRevision={frame.BackgroundRevision} bgStretch={frame.EffectiveBackgroundStretchMode} " +
+             $"wash=0x{frame.WashArgb:X8} overlay=True nonZero={stats.NonZero} foreground={stats.Foreground} bgPixels={stats.Background} " +
+             $"hist=[{stats.Histogram}]");
+ 
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+index ea0bc0e..8acf5d6 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionFrame.cs
+@@ -16,6 +16,13 @@ public readonly record struct MediaCompositionFrame
+     public int BackgroundWidth { get; init; }
+     public int BackgroundHeight { get; init; }
+     public int BackgroundStride { get; init; }
++    public MediaCompositionStretchMode BackgroundStretchMode { get; init; }
++
++    /// <summary>
++    /// Transitional compatibility flag for older call sites. New composition code should use
++    /// <see cref="BackgroundStretchMode" />. When <see cref="BackgroundStretchMode" /> is
++    /// <see cref="MediaCompositionStretchMode.Auto" />, this flag maps to UniformToFill.
++    /// </summary>
+     public bool BackgroundUniformToFill { get; init; }
+     public long BackgroundRevision { get; init; }
+ 
+@@ -64,6 +71,13 @@ public readonly record struct MediaCompositionFrame
+ 
+     public bool HasAnyVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay;
+ 
++    public MediaCompositionStretchMode EffectiveBackgroundStretchMode => BackgroundStretchMode switch
++    {
++        MediaCompositionStretchMode.Auto when BackgroundUniformToFill => MediaCompositionStretchMode.UniformToFill,
++        MediaCompositionStretchMode.Auto => MediaCompositionStretchMode.UniformFit,
++        _ => BackgroundStretchMode
++    };
++
+     public static MediaCompositionFrame Empty(MediaCompositionClearMode clearMode = MediaCompositionClearMode.Black, uint clearArgb = 0xFF000000, string reason = "empty")
+         => new()
+         {
+@@ -73,6 +87,7 @@ public readonly record struct MediaCompositionFrame
+             BackgroundWidth = 0,
+             BackgroundHeight = 0,
+             BackgroundStride = 0,
++            BackgroundStretchMode = MediaCompositionStretchMode.UniformFit,
+             BackgroundUniformToFill = false,
+             BackgroundRevision = -1,
+             BackgroundD3D11TexturePointer = IntPtr.Zero,
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionStretchMode.cs b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionStretchMode.cs
+new file mode 100644
+index 0000000..1d032c3
+--- /dev/null
++++ b/FatzBombMedia.MediaControl/Core/Graphics/Composition/MediaCompositionStretchMode.cs
+@@ -0,0 +1,35 @@
++namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
++
++/// <summary>
++/// Describes how a composition background/base layer maps into the final viewport.
++/// This keeps all media modes on the same compositor path while preserving each mode's
++/// intended display behavior.
++/// </summary>
++public enum MediaCompositionStretchMode
++{
++    /// <summary>
++    /// Compatibility/default value. The compositor resolves this to <see cref="UniformFit" /> unless
++    /// the older BackgroundUniformToFill flag is still set by a transitional call site.
++    /// </summary>
++    Auto = 0,
++
++    /// <summary>
++    /// Draw the layer at its native pixel size, centered in the viewport.
++    /// </summary>
++    Original,
++
++    /// <summary>
++    /// Scale uniformly so the whole source is visible inside the viewport.
++    /// </summary>
++    UniformFit,
++
++    /// <summary>
++    /// Scale non-uniformly to exactly fill the viewport.
++    /// </summary>
++    Fill,
++
++    /// <summary>
++    /// Scale uniformly until the viewport is filled, cropping excess edges.
++    /// </summary>
++    UniformToFill
++}
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 7a29637..24bd654 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -53,7 +53,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     private int _compositionBackgroundWidth;
+     private int _compositionBackgroundHeight;
+     private int _compositionBackgroundStride;
+-    private bool _compositionBackgroundForceZoomToFill;
++    private MediaCompositionStretchMode _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+     private bool _compositionBackgroundIsRetainedGpu;
+     private long _compositionBackgroundRevision;
+     private readonly WashLayer _washLayer = new();
+@@ -342,6 +342,15 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         }
+     }
+ 
++
++    private static MediaCompositionStretchMode ToCompositionStretchMode(Stretch stretch) => stretch switch
++    {
++        Stretch.None => MediaCompositionStretchMode.Original,
++        Stretch.Fill => MediaCompositionStretchMode.Fill,
++        Stretch.UniformToFill => MediaCompositionStretchMode.UniformToFill,
++        _ => MediaCompositionStretchMode.UniformFit
++    };
++
+     public bool IsNativePresentationRequested => _nativePresentationHwnd != IntPtr.Zero;
+ 
+     /// <summary>
+@@ -437,7 +446,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             _compositionBackgroundWidth = width;
+             _compositionBackgroundHeight = height;
+             _compositionBackgroundStride = stride;
+-            _compositionBackgroundForceZoomToFill = forceZoomToFill;
++            _compositionBackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch);
+             _compositionBackgroundIsRetainedGpu = false;
+             _compositionBackgroundRevision++;
+         }
+@@ -451,7 +460,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             _compositionBackgroundWidth = 0;
+             _compositionBackgroundHeight = 0;
+             _compositionBackgroundStride = 0;
+-            _compositionBackgroundForceZoomToFill = false;
++            _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+             _compositionBackgroundIsRetainedGpu = false;
+             _compositionBackgroundRevision++;
+         }
+@@ -792,52 +801,33 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+     /// <param name="stride">Frame stride</param>
+     public void RenderVideoFrame(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
+     {
+-        if (_disposed || pixelData.IsEmpty || width <= 0 || height <= 0) return;
++        if (_disposed || pixelData.IsEmpty || width <= 0 || height <= 0 || stride < width * 4) return;
+ 
+         if (IsDxCdgLayeringActive)
+         {
+             if (_configuration.EnableVerboseLogging)
+             {
+-                Debug.WriteLine($"[DXCDG-TRACE] Suppressed direct BGRA frame present while DXCDG owns the target ({width}x{height}).");
++                Debug.WriteLine($"[COMPOSITION-TRACE] Suppressed direct BGRA frame present while a composition overlay owns the target ({width}x{height}).");
+             }
+             return;
+         }
+ 
+-        if (width != _lastWidth || height != _lastHeight || PresentationSurfaceChanged(width, height))
+-        {
+-            InitializeRenderingResources(width, height);
+-        }
+-
+-        lock (_lock)
++        // Software configuration remains available as a fallback, but the normal D3D/native
++        // path treats BGRA video/image/audio-background frames as Layer 0 input to the
++        // single media compositor.
++        if (_currentMethod == GpuRenderingMethod.WriteableBitmap && !IsNativePresentationRequested)
+         {
+-            try
+-            {
+-                // Check if we should skip GPU for small content (performance optimization)
+-                // Native HWND presentation must never fall back to the WPF/WriteableBitmap path
+-                // simply because the content is small. CDG/image/background compositor frames are
+-                // intentionally uploaded to the native swap-chain even when the source is tiny.
+-                var shouldUseCpu = !IsNativePresentationRequested && ShouldUseCpuForContent(width, height);
+-                var effectiveMethod = (shouldUseCpu && _currentMethod != GpuRenderingMethod.WriteableBitmap)
+-                    ? GpuRenderingMethod.WriteableBitmap
+-                    : _currentMethod;
+-
+-                // Render using the effective method
+-                switch (effectiveMethod)
+-                {
+-                    case GpuRenderingMethod.D3D11:
+-                        RenderWithD3D11(pixelData, width, height, stride);
+-                        break;
+-                    default:
+-                        RenderWithCpuAsync(pixelData, width, height, stride);
+-                        break;
+-                }
+-            }
+-            catch (Exception ex)
++            if (width != _lastWidth || height != _lastHeight || PresentationSurfaceChanged(width, height))
+             {
+-                Debug.WriteLine($"[OptimizedRenderer] Render error: {ex.Message}");
+-                FallbackToSoftwareRendering(pixelData, width, height, stride);
++                InitializeRenderingResources(width, height);
+             }
++
++            RenderWithCpuAsync(pixelData, width, height, stride);
++            return;
+         }
++
++        SetCompositionLayer0Frame(pixelData, width, height, stride, forceZoomToFill: false);
++        PresentBackgroundComposition(forceZoomToFill: false, reason: "bgra layer0 frame");
+     }
+ 
+     /// <summary>
+@@ -912,7 +902,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         int backgroundWidth;
+         int backgroundHeight;
+         int backgroundStride;
+-        bool backgroundUniformToFill;
++        MediaCompositionStretchMode backgroundStretchMode;
+         bool backgroundIsRetainedGpu;
+         long backgroundRevision;
+ 
+@@ -922,7 +912,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             backgroundWidth = _compositionBackgroundWidth;
+             backgroundHeight = _compositionBackgroundHeight;
+             backgroundStride = _compositionBackgroundStride;
+-            backgroundUniformToFill = forceBackgroundZoomToFill || _compositionBackgroundForceZoomToFill;
++            backgroundStretchMode = forceBackgroundZoomToFill ? MediaCompositionStretchMode.UniformToFill : _compositionBackgroundStretchMode;
+             backgroundIsRetainedGpu = _compositionBackgroundIsRetainedGpu;
+             backgroundRevision = _compositionBackgroundRevision;
+         }
+@@ -944,7 +934,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
+             BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,
+             BackgroundStride = hasBackground ? backgroundStride : 0,
+-            BackgroundUniformToFill = (hasBackground || hasRetainedGpuBackground) && backgroundUniformToFill,
++            BackgroundStretchMode = hasBackground || hasRetainedGpuBackground ? backgroundStretchMode : MediaCompositionStretchMode.UniformFit,
++            BackgroundUniformToFill = hasBackground || hasRetainedGpuBackground ? backgroundStretchMode == MediaCompositionStretchMode.UniformToFill : false,
+             BackgroundRevision = hasBackground || hasRetainedGpuBackground ? backgroundRevision : -1,
+             UseRetainedBackground = hasRetainedGpuBackground,
+             WashArgb = washArgb,
+@@ -1446,7 +1437,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             _compositionBackgroundWidth = frame.Width;
+             _compositionBackgroundHeight = frame.Height;
+             _compositionBackgroundStride = frame.Width * 4;
+-            _compositionBackgroundForceZoomToFill = forceZoomToFill;
++            _compositionBackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch);
+             _compositionBackgroundIsRetainedGpu = true;
+             backgroundRevision = ++_compositionBackgroundRevision;
+         }
+@@ -1463,7 +1454,8 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             BackgroundWidth = frame.Width,
+             BackgroundHeight = frame.Height,
+             BackgroundStride = frame.Width * 4,
+-            BackgroundUniformToFill = forceZoomToFill,
++            BackgroundStretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch),
++            BackgroundUniformToFill = (forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : ToCompositionStretchMode(_nativePresentationStretch)) == MediaCompositionStretchMode.UniformToFill,
+             BackgroundRevision = backgroundRevision,
+             WashArgb = washArgb,
+             CdgOverlay = cdgOverlay,
+@@ -1670,7 +1662,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+         _compositionBackgroundWidth = 0;
+         _compositionBackgroundHeight = 0;
+         _compositionBackgroundStride = 0;
+-        _compositionBackgroundForceZoomToFill = false;
++        _compositionBackgroundStretchMode = MediaCompositionStretchMode.UniformFit;
+         _compositionBackgroundIsRetainedGpu = false;
+         _compositionBackgroundRevision++;
+         _washLayer.Clear();

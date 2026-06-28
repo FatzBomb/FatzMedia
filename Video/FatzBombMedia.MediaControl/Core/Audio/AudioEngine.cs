@@ -591,18 +591,14 @@ public sealed class AudioEngine : IAudioEngine
     private void ApplyNormalizationPeakIfCurrent(double peak, string cacheKey, string sourceLabel, int generation, CancellationToken cancellationToken, bool isFinal)
     {
         if (!IsCurrentNormalizationAnalysis(generation, cancellationToken))
-        {
             return;
-        }
 
         var gain = _normalizer.SetNormalizationGainFromPeak(peak, forceNotify: true);
         _normalizationReady = true;
         NormalizationGainCache[cacheKey] = gain;
 
         if (Normalize)
-        {
             _normalizer.SetNormalizeEnabled(true);
-        }
 
         Debug.WriteLine($"[AudioEngine] {(isFinal ? "Deep" : "Quick")} normalization complete, gain={gain:F3} ({sourceLabel})");
     }

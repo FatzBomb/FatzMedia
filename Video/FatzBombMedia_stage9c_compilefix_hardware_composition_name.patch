@@ -1,0 +1,13 @@
+diff --git a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+index 4e731bc..7a29637 100644
+--- a/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
++++ b/FatzBombMedia.MediaControl/Core/Graphics/OptimizedGraphicsRenderer.cs
+@@ -773,7 +773,7 @@ public sealed class OptimizedGraphicsRenderer(MediaPlayerConfiguration configura
+             && _currentMethod == GpuRenderingMethod.D3D11
+             && !ShouldUseCpuForContent(frame.Width, frame.Height))
+         {
+-            RenderD3D11HardwareCompositionFrame(frame, cdgOverlay: null, washArgb: 0, forceZoomToFill: false, reason: "hardware video");
++            RenderHardwareVideoCompositionFrame(frame, cdgOverlay: null, washArgb: 0, forceZoomToFill: false, reason: "hardware video");
+             return;
+         }
+ 

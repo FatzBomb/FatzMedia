@@ -4,10 +4,10 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Diagnostics;
 using System.IO;
 
-internal sealed class CdgPipeline
+internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, MediaState state)
 {
-    private readonly ICdgEngine _cdgEngine;
-    private readonly MediaState _state;
+    private readonly ICdgEngine _cdgEngine = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
+    private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private CancellationTokenSource? _completionCts;
     private bool _isOpen;
     private bool _isPairedWithAudio;
@@ -26,14 +26,7 @@ internal sealed class CdgPipeline
     private const int CdgSeekIntervalMilliseconds = 50;
     private const double CdgSeekTargetChangeThresholdSeconds = 0.025;
 
-    public CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, MediaState state)
-    {
-        _cdgEngine = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
-        Clock = clock ?? throw new ArgumentNullException(nameof(clock));
-        _state = state ?? throw new ArgumentNullException(nameof(state));
-    }
-
-    public PlaybackClock Clock { get; }
+    public PlaybackClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
     public ICdgEngine Engine => _cdgEngine;
     public bool IsOpen => _isOpen;
     public double DurationSeconds => _cdgEngine.TotalDurationSeconds;

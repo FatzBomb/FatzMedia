@@ -3,18 +3,13 @@ namespace FatzBombMedia.MediaControl.Pipeline;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.DxCdg;
 
-internal sealed class RenderPipeline
+internal sealed class RenderPipeline(IMediaEngine mediaEngine)
 {
-    private readonly IMediaEngine _mediaEngine;
+    private readonly IMediaEngine _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
     private IVideoEngine? _video;
     private ICdgEngine? _cdg;
     private long _lastRenderedDxCdgPacketIndex = -1;
     private double _lastRenderedCdgPosition = double.NaN;
-
-    public RenderPipeline(IMediaEngine mediaEngine)
-    {
-        _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
-    }
 
     public double CurrentPosition
     {

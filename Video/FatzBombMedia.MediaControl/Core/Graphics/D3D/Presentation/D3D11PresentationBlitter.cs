@@ -10,25 +10,12 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// the D3D11 video-processor presenter. The renderer decides when frames should be
 /// presented; this class owns how a source texture is copied into the active target.
 /// </summary>
-internal sealed class D3D11PresentationBlitter
+internal sealed class D3D11PresentationBlitter(
+    D3D11DeviceResources deviceResources,
+    D3D11VideoProcessorPresenter videoProcessorPresenter,
+    D3D11PresentationSurfaceController presentationSurfaces,
+    D3D11PresentationState presentationState)
 {
-    private readonly D3D11DeviceResources _deviceResources;
-    private readonly D3D11VideoProcessorPresenter _videoProcessorPresenter;
-    private readonly D3D11PresentationSurfaceController _presentationSurfaces;
-    private readonly D3D11PresentationState _presentationState;
-
-    public D3D11PresentationBlitter(
-        D3D11DeviceResources deviceResources,
-        D3D11VideoProcessorPresenter videoProcessorPresenter,
-        D3D11PresentationSurfaceController presentationSurfaces,
-        D3D11PresentationState presentationState)
-    {
-        _deviceResources = deviceResources;
-        _videoProcessorPresenter = videoProcessorPresenter;
-        _presentationSurfaces = presentationSurfaces;
-        _presentationState = presentationState;
-    }
-
     public bool BlitToActivePresentation(
         ID3D11Texture2D sourceTexture,
         int sourceArraySlice,
@@ -37,12 +24,12 @@ internal sealed class D3D11PresentationBlitter
         double framesPerSecond,
         Stretch? stretchOverride = null)
     {
-        if (_deviceResources.Context == null)
+        if (deviceResources.Context == null)
         {
             return false;
         }
 
-        if (!_presentationSurfaces.TryGetActiveTargetSnapshot(
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "active presentation blit",
                 out var target))
@@ -59,7 +46,7 @@ internal sealed class D3D11PresentationBlitter
             width,
             height,
             framesPerSecond,
-            stretchOverride ?? _presentationState.NativePresentationStretch);
+            stretchOverride ?? presentationState.NativePresentationStretch);
     }
 
     public bool BlitToTarget(
@@ -73,13 +60,13 @@ internal sealed class D3D11PresentationBlitter
         double framesPerSecond,
         Stretch stretch)
     {
-        if (_deviceResources.Context == null || targetTexture == null || targetWidth <= 0 || targetHeight <= 0)
+        if (deviceResources.Context == null || targetTexture == null || targetWidth <= 0 || targetHeight <= 0)
         {
             return false;
         }
 
-        return _videoProcessorPresenter.BlitTextureToPresentation(
-            _deviceResources,
+        return videoProcessorPresenter.BlitTextureToPresentation(
+            deviceResources,
             targetTexture,
             sourceTexture,
             sourceArraySlice,

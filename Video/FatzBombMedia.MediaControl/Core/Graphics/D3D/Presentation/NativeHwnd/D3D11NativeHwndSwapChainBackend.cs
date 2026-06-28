@@ -14,34 +14,19 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 /// back-buffer ownership, and Present policy.  This keeps native-HWND-specific state out of
 /// the renderer coordinator.
 /// </summary>
-internal sealed class D3D11NativeHwndSwapChainBackend : ID3D11PresentationBackend
+internal sealed class D3D11NativeHwndSwapChainBackend(
+    MediaPlayerConfiguration configuration,
+    D3D11PresentationDiagnostics diagnostics,
+    Action resetVideoProcessorState,
+    Action releasePresentationRenderTargetView,
+    Action resetOverlayTransientFailure) : ID3D11PresentationBackend
 {
-    private readonly MediaPlayerConfiguration _configuration;
-    private readonly D3D11PresentationDiagnostics _diagnostics;
-    private readonly Action _resetVideoProcessorState;
-    private readonly Action _releasePresentationRenderTargetView;
-    private readonly Action _resetOverlayTransientFailure;
-
     private IDXGISwapChain? _swapChain;
     private ID3D11Texture2D? _targetTexture;
     private IntPtr _hwnd;
     private int _pendingWidth;
     private int _pendingHeight;
     private bool _resizePending;
-
-    public D3D11NativeHwndSwapChainBackend(
-        MediaPlayerConfiguration configuration,
-        D3D11PresentationDiagnostics diagnostics,
-        Action resetVideoProcessorState,
-        Action releasePresentationRenderTargetView,
-        Action resetOverlayTransientFailure)
-    {
-        _configuration = configuration;
-        _diagnostics = diagnostics;
-        _resetVideoProcessorState = resetVideoProcessorState;
-        _releasePresentationRenderTargetView = releasePresentationRenderTargetView;
-        _resetOverlayTransientFailure = resetOverlayTransientFailure;
-    }
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
     public bool IsActive => _swapChain != null && _targetTexture != null && _hwnd != IntPtr.Zero;
@@ -70,7 +55,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend : ID3D11PresentationBacken
             using var adapter = dxgiDevice.GetAdapter();
             using var factory = adapter.GetParent<IDXGIFactory>();
 
-            _swapChain = D3D11SwapChainFactory.CreateBestNativeSwapChain(factory, deviceResources.Device, hwnd, width, height, _configuration);
+            _swapChain = D3D11SwapChainFactory.CreateBestNativeSwapChain(factory, deviceResources.Device, hwnd, width, height, configuration);
             if (_swapChain == null)
             {
                 Cleanup();
@@ -134,10 +119,10 @@ internal sealed class D3D11NativeHwndSwapChainBackend : ID3D11PresentationBacken
     {
         D3D11SwapChainPresenter.Present(
             _swapChain,
-            _configuration,
+            configuration,
             liveResizeFlag,
             syncImmediate,
-            _diagnostics);
+            diagnostics);
     }
 
     private bool ResizeCore(int width, int height)
@@ -158,8 +143,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend : ID3D11PresentationBacken
             // DXGI ResizeBuffers requires all direct and indirect references to the current
             // backbuffer to be released first. The caller-owned render target view and video
             // processor output view are released through callbacks before the buffer resize.
-            _resetVideoProcessorState();
-            _releasePresentationRenderTargetView();
+            resetVideoProcessorState();
+            releasePresentationRenderTargetView();
             _targetTexture?.Dispose();
             _targetTexture = null;
 
@@ -174,11 +159,11 @@ internal sealed class D3D11NativeHwndSwapChainBackend : ID3D11PresentationBacken
             Width = width;
             Height = height;
             _resizePending = false;
-            _resetOverlayTransientFailure();
+            resetOverlayTransientFailure();
 
             // Do not clear/present here. Presenting black during live resize is the flicker.
             // The renderer draws real content into the new backbuffer and presents once.
-            if (_configuration.EnableVerboseLogging)
+            if (configuration.EnableVerboseLogging)
             {
                 Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain resized at frame boundary to {width}x{height}");
             }

@@ -42,12 +42,11 @@ public sealed record AcceptedMediaTypes(
 
     private static IReadOnlyList<string> Sorted(IEnumerable<string> extensions)
     {
-        return extensions
+        return [.. extensions
             .Where(extension => !string.IsNullOrWhiteSpace(extension))
             .Select(NormalizeExtension)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Order(StringComparer.OrdinalIgnoreCase)];
     }
 
     private static string NormalizeExtension(string extension)

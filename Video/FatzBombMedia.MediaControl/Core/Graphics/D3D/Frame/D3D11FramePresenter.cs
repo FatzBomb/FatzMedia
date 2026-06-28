@@ -18,22 +18,11 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
 /// Presentation backend ownership still remains outside this class; the renderer supplies
 /// the current target texture, target dimensions, and blit callback for the active backend.
 /// </summary>
-internal sealed class D3D11FramePresenter
+internal sealed class D3D11FramePresenter(
+    D3D11FrameUploadPipeline uploadPipeline,
+    D3D11FrameUploadResources uploadResources,
+    D3D11VideoProcessorPresenter videoProcessorPresenter)
 {
-    private readonly D3D11FrameUploadPipeline _uploadPipeline;
-    private readonly D3D11FrameUploadResources _uploadResources;
-    private readonly D3D11VideoProcessorPresenter _videoProcessorPresenter;
-
-    public D3D11FramePresenter(
-        D3D11FrameUploadPipeline uploadPipeline,
-        D3D11FrameUploadResources uploadResources,
-        D3D11VideoProcessorPresenter videoProcessorPresenter)
-    {
-        _uploadPipeline = uploadPipeline;
-        _uploadResources = uploadResources;
-        _videoProcessorPresenter = videoProcessorPresenter;
-    }
-
     public bool UploadCpuFrame(
         D3D11DeviceResources deviceResources,
         Func<bool> preparePresentationTarget,
@@ -62,9 +51,9 @@ internal sealed class D3D11FramePresenter
                 return false;
             }
 
-            if (!_uploadPipeline.UploadCpuFrame(
+            if (!uploadPipeline.UploadCpuFrame(
                     deviceResources,
-                    _uploadResources.TextureCache,
+                    uploadResources.TextureCache,
                     presentationTexture!,
                     presentationWidth,
                     presentationHeight,
@@ -122,7 +111,7 @@ internal sealed class D3D11FramePresenter
                 return false;
             }
 
-            var presented = _videoProcessorPresenter.PresentHardwareFrame(
+            var presented = videoProcessorPresenter.PresentHardwareFrame(
                 deviceResources,
                 presentationTexture,
                 sourceTexturePointer,
@@ -167,7 +156,7 @@ internal sealed class D3D11FramePresenter
 
     private void RecordUpload(long startTimestamp, int sourceWidth, int sourceHeight, int presentationWidth, int presentationHeight)
     {
-        _uploadResources.RecordUpload(
+        uploadResources.RecordUpload(
             startTimestamp,
             sourceWidth,
             sourceHeight,

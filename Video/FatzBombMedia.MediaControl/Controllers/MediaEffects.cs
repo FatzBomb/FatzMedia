@@ -36,8 +36,7 @@ public sealed class MediaEffects
         var current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
         if (ReferenceEquals(_subscribedAudioEngine, current)) return;
 
-        if (_subscribedAudioEngine != null)
-            _subscribedAudioEngine.NormalizationGainChanged -= OnNormalizationGainChanged;
+        _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
 
         _subscribedAudioEngine = current;
         _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
