@@ -1,3 +1,6 @@
+using FatzBombMedia.MediaControl.Controllers;
+using FatzBombMedia.MediaControl;
+
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 
 [Flags]
@@ -19,14 +22,29 @@ public interface IMediaEngine : IDisposable
     IAudioEngine Audio { get; } // Add audio engine access
     string? ImagePath { get; }
 
+    /// <summary>Gets or sets whether Core should automatically resolve sidecar/archive backgrounds for overlay media.</summary>
+    bool BackgroundAutoDetect { get; set; }
+
+    /// <summary>Gets the Core-owned background candidate currently selected for overlay composition, if any.</summary>
+    MediaBackgroundCandidate? Background { get; }
+
     /// <summary>
     /// Supplies the actual monitor refresh rate (Hz) for video presentation timing, independent
     /// of whether a file is currently open. See IVideoEngine.SetDisplayRefreshRate for details.
     /// </summary>
     void SetDisplayRefreshRate(double? refreshHz);
 
+    /// <summary>Sets the Core-owned overlay background candidate. The engine loads/loops it as required.</summary>
+    bool SetBackground(MediaBackgroundCandidate? background);
+
+    /// <summary>Clears the Core-owned overlay background candidate and any retained background resources.</summary>
+    void ClearBackground();
+
     // Media operations
     bool Open(string path);
+
+    /// <summary>Opens media from a framework-neutral Core input source.</summary>
+    bool Open(MediaInputSource source);
     bool Play();
     bool Pause();
     bool Stop();
@@ -46,4 +64,16 @@ public interface IMediaEngine : IDisposable
     /// Raised when the active media reaches its natural end.
     /// </summary>
     event EventHandler? MediaEnded;
+
+    /// <summary>Raised when Core has an image-only frame ready for the compositor bridge.</summary>
+    event EventHandler<VideoFrameEventArgs>? ImageFrameReady;
+
+    /// <summary>Returns the current image-only frame if one is retained by Core.</summary>
+    bool TryGetCurrentImageFrame(out VideoFrameEventArgs? frame);
+
+    /// <summary>Raised when Core has a background frame ready for the compositor bridge.</summary>
+    event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady;
+
+    /// <summary>Raised when Core background state has been cleared.</summary>
+    event EventHandler? BackgroundCleared;
 }

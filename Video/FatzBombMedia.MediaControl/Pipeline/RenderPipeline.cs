@@ -33,7 +33,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
         ResetCdgRenderGate();
     }
 
-    public void RenderCdgAtCurrentPosition(bool hasActiveVideo, bool force = false)
+    public void RenderCdgAtCurrentPosition(bool force = false)
     {
         if (_cdg == null || !_mediaEngine.Content.HasFlag(MediaContent.Cdg))
         {

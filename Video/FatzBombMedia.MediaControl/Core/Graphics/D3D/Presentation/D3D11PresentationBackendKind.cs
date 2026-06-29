@@ -7,7 +7,8 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal enum D3D11PresentationBackendKind
 {
     None = 0,
-    D3DImage = 1,
+    UiSharedSurface = 1,
     NativeHwndSwapChain = 2,
-    DirectCompositionSingleTarget = 3
+    DirectCompositionSingleTarget = 3,
+    ExternalTexture = 4
 }

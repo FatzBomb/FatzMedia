@@ -25,7 +25,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
     private volatile bool _isPlaying;
-    private volatile bool _wpfCompositionDrivenPresentation;
+    private volatile bool _hostRenderEventDrivenPresentation;
     private volatile int _generation;
 
     // Seek calls are accepted as fast as the host sends them, but the pipeline processes them with
@@ -107,14 +107,14 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     public void SetDisplayRefreshRate(double? refreshHz) => _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
 
-    public void SetWpfCompositionDrivenPresentation(bool enabled)
+    public void SetHostRenderEventDrivenPresentation(bool enabled)
     {
-        if (_wpfCompositionDrivenPresentation == enabled)
+        if (_hostRenderEventDrivenPresentation == enabled)
         {
             return;
         }
 
-        _wpfCompositionDrivenPresentation = enabled;
+        _hostRenderEventDrivenPresentation = enabled;
 
         if (!_isOpen)
         {
@@ -127,7 +127,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             ResetPresentationDiagnostics();
             if (_configuration.EnableLogging)
             {
-                Debug.WriteLine("[VideoPipeline] WPF CompositionTarget.Rendering now drives D3DImage video presentation.");
+                Debug.WriteLine("[VideoPipeline] Host render-event presentation now drives UI-backed video presentation.");
             }
         }
         else if (_isPlaying)
@@ -242,7 +242,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             }
 
             StartDecodeLoop();
-            if (!_wpfCompositionDrivenPresentation)
+            if (!_hostRenderEventDrivenPresentation)
                 StartPresentationLoop();
             _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
@@ -315,7 +315,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     /// <remarks>
     /// Because the seek now runs off the caller's thread, <see cref="PositionChanged"/> (and other
     /// playback events) may be raised on a background thread for seeks, just as they already can be
-    /// during playback. Handlers that update UI must marshal to their dispatcher.
+    /// during playback. Handlers that update UI must marshal to the appropriate UI thread.
     /// </remarks>
     public bool Seek(double seconds)
     {
@@ -402,7 +402,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 {
                     BeginPostSeekPresentationRecovery();
                     StartDecodeLoop();
-                    if (!_wpfCompositionDrivenPresentation)
+                    if (!_hostRenderEventDrivenPresentation)
                         StartPresentationLoop();
                 }
             }
@@ -691,7 +691,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return;
 
         // During normal playback the background decode loop owns packet/frame filling. Do not
-        // decode on WPF's UI render thread; the WPFDXInterop-style path should only choose and
+        // decode on the host UI render thread; the shared-surface interop path should only choose and
         // present the newest ready frame during CompositionTarget.Rendering. For paused/stopped
         // preview, it is still useful to decode one frame if the queue is empty.
         if (!_isPlaying)
@@ -734,11 +734,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     /// <summary>
     /// Starts a dedicated presentation thread that selects and pushes video frames on its own
-    /// schedule, independent of the host's CompositionTarget.Rendering tick. WPF's render-tick
-    /// scheduler does not reliably fire at the true display refresh rate when driving a D3DImage
-    /// surface (observed gaps of 40-90ms+ against an expected ~16.7ms at 60Hz, with no WPF-level
+    /// schedule, independent of the host's CompositionTarget.Rendering tick. the host render-event
+    /// scheduler does not reliably fire at the true display refresh rate when driving a UI-backed interop surface
+    /// surface (observed gaps of 40-90ms+ against an expected ~16.7ms at 60Hz, with no host-level
     /// fix available), so frame presentation timing is handled here instead, on a steady interval
-    /// independent of WPF's own scheduling.
+    /// independent of host UI scheduling.
     /// </summary>
     private void StartPresentationLoop()
     {
@@ -1107,7 +1107,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         var targetBufferedFrames = Math.Min(GetTargetBufferedVideoFrames(), Math.Max(PostSeekMinimumBufferedFrames, MinBufferedVideoFrames));
         var decodedFrames = 0;
-        var firstPassDecodedFrames = 0;
+        int firstPassDecodedFrames;
 
         lock (_decodeLock)
         {

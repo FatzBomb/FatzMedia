@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <ProjectReference Include="..\FatzBombMedia.MediaControl\FatzBombMedia.MediaControl.csproj" />
+    <ProjectReference Include="..\FatzBombMedia.MediaControl.Wpf\FatzBombMedia.MediaControl.Wpf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,12 +2,12 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Adapters.Wpf;
+using FatzBombMedia.MediaControl.Wpf;
 using FatzBombMedia.Player.Configuration;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-using FatzMediaPlayer = FatzBombMedia.MediaControl.MediaPlayer;
+using FatzMediaPlayer = FatzBombMedia.MediaControl.Wpf.Player;
 
 namespace FatzBombMedia.Player.ViewModels;
 
@@ -43,8 +43,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
                 EnableVerboseLogging = false,
-                WpfD3DImagePresentationMode = WpfD3DImagePresentationMode.IndependentPresentationLoop,
-                WpfD3DImageSurfaceSizingMode = WpfD3DImageSurfaceSizingMode.SourceNative
+                UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop,
+                UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative
             };
 
             var player = new FatzMediaPlayer(diagnosticsConfig, NativeLibraryPaths)

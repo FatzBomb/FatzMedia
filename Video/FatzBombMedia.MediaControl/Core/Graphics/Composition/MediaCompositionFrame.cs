@@ -7,7 +7,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 /// All media modes build one of these frames: video/image/audio background, optional wash,
 /// optional overlay graphics, then one final present.
 /// </summary>
-public readonly record struct MediaCompositionFrame
+public readonly partial record struct MediaCompositionFrame
 {
     public MediaCompositionClearMode ClearMode { get; init; }
     public uint ClearArgb { get; init; }

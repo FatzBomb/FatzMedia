@@ -1,7 +1,7 @@
 <Window x:Class="FatzBombMedia.Player.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="clr-namespace:FatzBombMedia.MediaControl.Adapters.Wpf;assembly=FatzBombMedia.MediaControl"
+        xmlns:fbm="clr-namespace:FatzBombMedia.MediaControl.Wpf;assembly=FatzBombMedia.MediaControl.Wpf"
         Title="FatzBomb Media Player"
         Height="720"
         Width="1120"
@@ -146,7 +146,7 @@
                 Padding="8"
                 ClipToBounds="True"
                 MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
-            <fbm:FatzBombMediaSurface x:Name="MediaSurface"
+            <fbm:MediaSurface x:Name="MediaSurface"
                                       Player="{Binding Player}"
                                       VideoDisplayMode="{Binding VideoDisplayMode}"
                                       BitmapScalingMode="{Binding BitmapScalingMode}"
@@ -260,6 +260,12 @@
                                 ToolTip="Stop"
                                 Style="{StaticResource ChromeButtonStyle}"
                                 Command="{Binding StopCommand}"
+                                Margin="5,0,0,0" />
+                        <Button x:Name="ProjectorButton"
+                                Content="&#xE7F4;"
+                                ToolTip="Toggle secondary/projector output validation"
+                                Style="{StaticResource ChromeButtonStyle}"
+                                Click="ProjectorButton_Click"
                                 Margin="5,0,0,0" />
                         <Button Content="&#xE740;"
                                 ToolTip="Toggle full screen (double-click video also works)"

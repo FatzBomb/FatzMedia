@@ -53,7 +53,9 @@ public partial class MainWindow : Window
         _viewModel = new MainWindowViewModel();
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        MediaSurface.SecondaryOutputsChanged += MediaSurface_SecondaryOutputsChanged;
         UpdateSeekBarVisual();
+        UpdateProjectorButtonVisual();
 
     }
 
@@ -90,6 +92,37 @@ public partial class MainWindow : Window
     {
         ToggleFullScreen();
         e.Handled = true;
+    }
+
+    private void ProjectorButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (MediaSurface.IsSecondaryOutputOpen())
+        {
+            _ = MediaSurface.CloseSecondaryOutput();
+        }
+        else
+        {
+            _ = MediaSurface.ShowSecondaryOutput();
+        }
+
+        UpdateProjectorButtonVisual();
+        e.Handled = true;
+    }
+
+    private void MediaSurface_SecondaryOutputsChanged(object? sender, EventArgs e) => UpdateProjectorButtonVisual();
+
+    private void UpdateProjectorButtonVisual()
+    {
+        if (ProjectorButton == null)
+        {
+            return;
+        }
+
+        bool isOpen = MediaSurface.IsSecondaryOutputOpen();
+        ProjectorButton.ToolTip = isOpen
+            ? "Close secondary/projector output validation"
+            : "Open secondary/projector output validation";
+        ProjectorButton.Opacity = isOpen ? 1.0 : 0.72;
     }
 
     private void SeekBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -281,7 +314,7 @@ public partial class MainWindow : Window
     private void AttachBottomChromeToFullScreenOverlay()
     {
         // Native HWND presentation is above the normal WPF visual tree. In full screen, the
-        // controls must move into FatzBombMediaSurface's owned transparent overlay window;
+        // controls must move into MediaSurface's owned transparent overlay window;
         // otherwise they are still present but hidden behind the native renderer.
         _fullScreenOverlayRoot ??= CreateFullScreenOverlayRoot();
         _fullScreenOverlayRoot.DataContext = DataContext;
@@ -392,6 +425,8 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _fullScreenChromeTimer.Stop();
+        MediaSurface.SecondaryOutputsChanged -= MediaSurface_SecondaryOutputsChanged;
+        _ = MediaSurface.CloseSecondaryOutput();
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
         _viewModel.Dispose();
         base.OnClosed(e);

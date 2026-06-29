@@ -12,7 +12,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationResourceCleaner(
     D3D11DeviceResources deviceResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter,
-    D3D11PresentationSurfaceController presentationSurfaces,
+    ID3D11PresentationSurfaceProvider presentationSurfaces,
     D3D11PresentationRenderTargetViewCache renderTargetViewCache,
     D3D11FrameUploadResources uploadResources)
 {

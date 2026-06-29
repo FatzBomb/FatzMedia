@@ -1,4 +1,3 @@
-using System.Windows.Media;
 using System.Diagnostics;
 using System.IO;
 using Vortice.Direct3D11;
@@ -52,7 +51,7 @@ public static class GpuRenderingCapabilities
         if (pixelCount < gpuRenderingMinResolution)
         {
             Debug.WriteLine($"[GPU] Small resolution {width}x{height}, using CPU rendering");
-            return GpuRenderingMethod.WriteableBitmap;
+            return GpuRenderingMethod.CpuFallback;
         }
 
         // Always enable GPU rendering for best quality
@@ -70,15 +69,8 @@ public static class GpuRenderingCapabilities
 
         // Fallback to CPU rendering
         Debug.WriteLine($"[GPU] No GPU acceleration available, using optimized CPU rendering for {width}x{height}");
-        return GpuRenderingMethod.WriteableBitmap;
+        return GpuRenderingMethod.CpuFallback;
     }
-
-    private static bool CanUseRenderingMethod(GpuRenderingMethod method, GpuCapabilityInfo capabilities) => method switch
-    {
-        GpuRenderingMethod.D3D11 => capabilities.SupportsD3D11,
-        GpuRenderingMethod.WriteableBitmap => true,
-        _ => false
-    };
 
     /// <summary>
     /// Detects system GPU capabilities and DirectX support.
@@ -89,10 +81,9 @@ public static class GpuRenderingCapabilities
         {
             _capabilities = new GpuCapabilityInfo();
 
-            // Check DirectX 11 support via WPF RenderCapability
-            var renderingTier = RenderCapability.Tier;
-            _capabilities.WpfRenderingTier = renderingTier >> 16;
-            _capabilities.SupportsHardwareAcceleration = _capabilities.WpfRenderingTier > 0;
+            // Core capability detection must not depend on any UI framework. Treat a successfully-created
+            // D3D11 device as the hardware acceleration signal.
+            _capabilities.LegacyUiRenderingTier = 0;
 
             // DirectX 11 detection - check if D3D11 DLLs exist and can be loaded
             _capabilities.SupportsD3D11 = CheckD3D11Support();
@@ -100,13 +91,11 @@ public static class GpuRenderingCapabilities
             // D3D9 support removed - modern D3D11 approach only
             // No longer setting SupportsD3D9 as it's obsolete
 
-            // Check for dedicated GPU via WPF tier
-            _capabilities.HasDedicatedGpu = _capabilities.WpfRenderingTier >= 2;
-
             // Try to get more accurate GPU info via DXGI
             DetectGpuInfoViaDxgi();
 
-            Debug.WriteLine($"[GPU] Capabilities: Tier={_capabilities.WpfRenderingTier}, D3D11={_capabilities.SupportsD3D11}, Dedicated={_capabilities.HasDedicatedGpu}, VRAM=~{_capabilities.EstimatedGpuMemoryMB}MB");
+            _capabilities.SupportsHardwareAcceleration = _capabilities.SupportsD3D11;
+            Debug.WriteLine($"[GPU] Capabilities: D3D11={_capabilities.SupportsD3D11}, Dedicated={_capabilities.HasDedicatedGpu}, VRAM=~{_capabilities.EstimatedGpuMemoryMB}MB");
         }
         catch (Exception ex)
         {
@@ -199,9 +188,9 @@ public static class GpuRenderingCapabilities
 public sealed class GpuCapabilityInfo
 {
     /// <summary>
-    /// WPF rendering tier (0 = software, 1 = partial hardware, 2 = full hardware).
+    /// Legacy UI rendering tier value. Core detection no longer depends on a UI framework; this remains for compatibility.
     /// </summary>
-    public int WpfRenderingTier { get; internal set; } = 0;
+    public int LegacyUiRenderingTier { get; internal set; } = 0;
 
     /// <summary>
     /// Whether any form of hardware acceleration is supported.
@@ -231,7 +220,7 @@ public sealed class GpuCapabilityInfo
     /// <summary>
     /// Gets a summary string of GPU capabilities for debugging.
     /// </summary>
-    public override string ToString() => $"Tier: {WpfRenderingTier}, D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}, VRAM: {EstimatedGpuMemoryMB}MB, GPU: {GpuDescription}";
+    public override string ToString() => $"D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}, VRAM: {EstimatedGpuMemoryMB}MB, GPU: {GpuDescription}";
 }
 
 /// <summary>
@@ -240,13 +229,12 @@ public sealed class GpuCapabilityInfo
 public enum GpuRenderingMethod
 {
     /// <summary>
-    /// DirectX 11 upload and WPF D3DImage presentation through a shared surface.
+    /// DirectX 11 upload and GPU presentation through the active presentation backend.
     /// </summary>
     D3D11,
 
     /// <summary>
-    /// CPU-based WriteableBitmap rendering with optimizations.
-    /// Fallback method, always available.
+    /// Host-specific CPU fallback rendering implemented by whichever UI adapter is active.
     /// </summary>
-    WriteableBitmap
+    CpuFallback
 }

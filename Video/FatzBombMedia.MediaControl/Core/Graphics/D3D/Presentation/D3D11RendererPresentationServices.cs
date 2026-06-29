@@ -4,13 +4,11 @@ using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.D3DImage;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using System.Diagnostics;
-using System.Windows.Media;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -26,7 +24,8 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11RendererPresentationServices(
         MediaPlayerConfiguration configuration,
-        D3D11DeviceResources deviceResources)
+        D3D11DeviceResources deviceResources,
+        ID3D11UiSharedSurfacePresentationBackend uiSharedSurfaceBackend)
     {
         _configuration = configuration;
         _deviceResources = deviceResources;
@@ -36,18 +35,19 @@ internal sealed class D3D11RendererPresentationServices
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
         State = new D3D11PresentationState();
         RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
-        MediaCompositor = new D3D11MediaCompositionPresenter();
+        MediaCompositor = new D3D11MediaCompositionPresenter(configuration.EnableVerboseLogging);
 
-        var nativeHwndBackend = new D3D11NativeHwndSwapChainBackend(
+        D3D11NativeHwndSwapChainBackend CreateNativeHwndBackend() => new(
             configuration,
             Diagnostics,
             () => VideoProcessorPresenter.Reset(),
             RenderTargetViewCache.Release,
             static () => { });
-        var d3dImageBackend = new D3D11D3DImagePresentationBackend();
+
+        var nativeHwndBackend = CreateNativeHwndBackend();
         var directCompositionBackend = new D3D11DirectCompositionSingleTargetBackend(configuration, Diagnostics);
 
-        Backends = new D3D11PresentationBackendSet(nativeHwndBackend, d3dImageBackend, directCompositionBackend);
+        Backends = new D3D11PresentationBackendSet(nativeHwndBackend, uiSharedSurfaceBackend, directCompositionBackend, CreateNativeHwndBackend);
         Surfaces = new D3D11PresentationSurfaceController(Backends);
         UploadResources = new D3D11FrameUploadResources(Diagnostics, () => Surfaces.Width, () => Surfaces.Height);
         ResourceCleaner = new D3D11PresentationResourceCleaner(
@@ -75,9 +75,6 @@ internal sealed class D3D11RendererPresentationServices
     }
 
 
-
-    public ImageSource? ImageSource => Surfaces.ImageSource;
-
     public bool IsReady => _deviceResources.HasDevice && Surfaces.IsReady;
 
     public bool IsNativeHwndActive => Surfaces.IsNativeHwndActive;
@@ -91,7 +88,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public void SetNativeLiveResizeInProgress(bool isResizing) => State.SetNativeLiveResizeInProgress(isResizing);
 
-    public void SetNativePresentationStretch(Stretch stretch) => State.SetNativePresentationStretch(stretch, VideoProcessorPresenter);
+    public void SetNativePresentationStretch(MediaCompositionStretchMode stretchMode) => State.SetNativePresentationStretch(stretchMode, VideoProcessorPresenter);
 
     public bool InitializeDevice(bool isDisposed)
     {
@@ -120,7 +117,7 @@ internal sealed class D3D11RendererPresentationServices
         return _deviceResources.InitializeFromNativeDevice(devicePointer, deviceContextPointer, _configuration);
     }
 
-    public bool CreateD3DImageSurface(bool isDisposed, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateD3DImageSurface(
+    public bool CreateUiSharedSurface(bool isDisposed, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateUiSharedSurface(
             isDisposed,
             _deviceResources,
             width,
@@ -138,6 +135,17 @@ internal sealed class D3D11RendererPresentationServices
             ResourceCleaner.CleanupSurfaces,
             _configuration.EnableLogging,
             notifyPresented);
+
+    public bool CreateSecondaryNativeHwndSurface(bool isDisposed, string targetId, IntPtr hwnd, int width, int height) => Surfaces.CreateSecondaryNativeHwndSurface(
+            isDisposed,
+            _deviceResources,
+            targetId,
+            hwnd,
+            width,
+            height,
+            _configuration.EnableLogging);
+
+    public bool RemoveSecondaryPresentationTarget(string targetId) => Surfaces.RemoveSecondaryPresentationTarget(targetId);
 
     public bool CreateDirectCompositionSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateDirectCompositionSurface(
             isDisposed,
@@ -230,58 +238,40 @@ internal sealed class D3D11RendererPresentationServices
     public bool PresentMediaCompositionVisible(
         bool isDisposed,
         MediaCompositionFrame frame,
-        int outputWidth,
-        int outputHeight,
         Action<int, int> framePresented)
     {
         if (isDisposed || !_deviceResources.HasDevice)
         {
-            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: renderer disposed or D3D11 device unavailable.");
+            if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: renderer disposed or D3D11 device unavailable.");
             return false;
         }
 
-        if (!Surfaces.TryGetActiveTargetSnapshot(
-                applyPendingNativeResize: true,
-                reason: "media composition presentation",
-                out D3D11PresentationTargetSnapshot target))
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = Surfaces.GetActiveTargetSnapshots(
+            applyPendingNativeResize: true,
+            reason: "media composition presentation");
+        if (targets.Count == 0)
         {
-            Debug.WriteLine("[COMPOSITION-TRACE] Visible present skipped: no active D3D11 presentation target.");
+            if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: no active D3D11 presentation target.");
             return false;
         }
 
-        if (!frame.RetainedRefresh)
-        {
-            Debug.WriteLine(
-                $"[COMPOSITION-TRACE] Present active target reason={frame.Reason} target={target.Width}x{target.Height} " +
-                $"backend={target.BackendName} targetRevision={target.Revision}");
-        }
-
-        if (!MediaCompositor.PresentToTarget(
+        if (!MediaCompositor.PresentToTargets(
                 _deviceResources,
                 frame,
-                target.Texture,
-                target.Width,
-                target.Height,
-                target.BackendName,
-                target.Revision,
-                VideoProcessorPresenter))
+                targets,
+                VideoProcessorPresenter,
+                out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
         {
-            Debug.WriteLine($"[COMPOSITION-TRACE] Visible present failed in media compositor reason={frame.Reason}.");
+            if (_configuration.EnableLogging) Debug.WriteLine($"[COMPOSITION] Visible present failed in media compositor reason={frame.Reason}.");
             return false;
         }
 
-        if (!frame.RetainedRefresh)
-        {
-            Debug.WriteLine(
-                $"[COMPOSITION-TRACE] Compositor draw succeeded; notifying backend reason={frame.Reason} " +
-                $"backend={target.BackendName} target={target.Width}x{target.Height}.");
-        }
-
-        Surfaces.NotifyFramePresented(
+        Surfaces.NotifyTargetsPresented(
+            presentedTargets,
             State.IsNativeLiveResizeInProgress,
             syncImmediate: true,
             () => isDisposed,
-            () => framePresented(target.Width, target.Height));
+            target => framePresented(target.Width, target.Height));
 
         return true;
     }
@@ -289,59 +279,49 @@ internal sealed class D3D11RendererPresentationServices
     public bool PresentDxCdgSnapshotVisible(
         bool isDisposed,
         DxCdgRenderSnapshot snapshot,
-        int outputWidth,
-        int outputHeight,
         Action<int, int> framePresented,
         bool retainedRefresh = false)
     {
         if (isDisposed || !_deviceResources.HasDevice)
         {
-            Debug.WriteLine("[DXCDG-TRACE] Visible present skipped: renderer disposed or D3D11 device unavailable.");
+            if (_configuration.EnableLogging) Debug.WriteLine("[DXCDG] Visible present skipped: renderer disposed or D3D11 device unavailable.");
             return false;
         }
 
-        if (!Surfaces.TryGetActiveTargetSnapshot(
-                applyPendingNativeResize: true,
-                reason: "DXCDG active-target presentation",
-                out D3D11PresentationTargetSnapshot target))
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = Surfaces.GetActiveTargetSnapshots(
+            applyPendingNativeResize: true,
+            reason: "DXCDG active-target presentation");
+        if (targets.Count == 0)
         {
-            Debug.WriteLine("[DXCDG-TRACE] Visible present skipped: no active D3D11 presentation target.");
+            if (_configuration.EnableLogging) Debug.WriteLine("[DXCDG] Visible present skipped: no active D3D11 presentation target.");
             return false;
         }
 
-        if (!retainedRefresh)
-        {
-            Debug.WriteLine(
-                $"[DXCDG-TRACE] Present active target snapshot revision={snapshot.Revision} " +
-                $"target={target.Width}x{target.Height} backend={target.BackendName} targetRevision={target.Revision}");
-        }
-
-        if (!MediaCompositor.PresentToTarget(
+        if (!MediaCompositor.PresentToTargets(
                 _deviceResources,
-                snapshot,
-                target.Texture,
-                target.Width,
-                target.Height,
-                target.BackendName,
-                target.Revision,
-                retainedRefresh))
+                new MediaCompositionFrame
+                {
+                    ClearMode = MediaCompositionClearMode.Black,
+                    ClearArgb = 0xFF000000,
+                    WashArgb = snapshot.BackgroundWashArgb,
+                    CdgOverlay = snapshot,
+                    RetainedRefresh = retainedRefresh,
+                    Reason = retainedRefresh ? "retained-dxcdg" : "dxcdg"
+                },
+                targets,
+                VideoProcessorPresenter,
+                out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
         {
-            Debug.WriteLine($"[DXCDG-TRACE] Visible present failed in DXCDG presenter for revision={snapshot.Revision}.");
+            if (_configuration.EnableLogging) Debug.WriteLine($"[DXCDG] Visible present failed in DXCDG presenter for revision={snapshot.Revision}.");
             return false;
         }
 
-        if (!retainedRefresh)
-        {
-            Debug.WriteLine(
-                $"[DXCDG-TRACE] Presenter draw succeeded; notifying backend revision={snapshot.Revision} " +
-                $"backend={target.BackendName} target={target.Width}x{target.Height}.");
-        }
-
-        Surfaces.NotifyFramePresented(
+        Surfaces.NotifyTargetsPresented(
+            presentedTargets,
             State.IsNativeLiveResizeInProgress,
             syncImmediate: true,
             () => isDisposed,
-            () => framePresented(target.Width, target.Height));
+            target => framePresented(target.Width, target.Height));
 
         return true;
     }

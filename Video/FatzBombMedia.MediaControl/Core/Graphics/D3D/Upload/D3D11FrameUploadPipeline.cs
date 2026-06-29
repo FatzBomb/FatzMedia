@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using Vortice.Direct3D11;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 
@@ -19,7 +19,7 @@ internal sealed class D3D11FrameUploadPipeline
         int sourceWidth,
         int sourceHeight,
         double framesPerSecond,
-        Stretch? stretchOverride);
+        MediaCompositionStretchMode? stretchOverride);
 
     public bool UploadCpuFrame(
         D3D11DeviceResources deviceResources,
@@ -32,7 +32,7 @@ internal sealed class D3D11FrameUploadPipeline
         int height,
         int stride,
         double framesPerSecond,
-        Stretch? stretchOverride,
+        MediaCompositionStretchMode? stretchOverride,
         BlitToPresentationCallback blitToPresentation)
     {
         ID3D11Device? device = deviceResources.Device;

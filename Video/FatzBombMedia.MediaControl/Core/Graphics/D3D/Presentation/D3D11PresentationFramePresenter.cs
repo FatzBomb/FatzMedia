@@ -2,7 +2,7 @@ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using Vortice.Direct3D11;
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -18,7 +18,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// </summary>
 internal sealed class D3D11PresentationFramePresenter(
     D3D11FramePresenter framePresenter,
-    D3D11PresentationSurfaceController presentationSurfaces,
+    ID3D11PresentationSurfaceProvider presentationSurfaces,
     D3D11PresentationBlitter presentationBlitter,
     D3D11PresentationState presentationState)
 {
@@ -98,7 +98,7 @@ internal sealed class D3D11PresentationFramePresenter(
         int width,
         int height,
         double framesPerSecond,
-        Stretch stretch,
+        MediaCompositionStretchMode stretch,
         Action<int, int> notifyPresented)
     {
         if (isDisposed

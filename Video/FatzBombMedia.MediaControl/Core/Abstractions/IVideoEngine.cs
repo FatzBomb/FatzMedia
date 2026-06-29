@@ -5,6 +5,12 @@ namespace FatzBombMedia.MediaControl.Core.Abstractions;
 public sealed class VideoFrameEventArgs : EventArgs
 {
     public ReadOnlyMemory<byte> PixelData { get; init; } = ReadOnlyMemory<byte>.Empty;
+
+    /// <summary>
+    /// True when <see cref="PixelData"/> is backed by stable Core-owned memory that can be
+    /// retained after the event returns. Leave false for decoder-pooled frame buffers.
+    /// </summary>
+    public bool PixelDataCanBeRetained { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required int Stride { get; init; }
@@ -65,12 +71,12 @@ public interface IVideoEngine : IDisposable
     void SetDisplayRefreshRate(double? refreshHz);
 
     /// <summary>
-    /// When enabled, WPF CompositionTarget.Rendering drives frame presentation instead of the
-    /// pipeline's independent presentation thread. This is intended for the airspace-safe D3DImage
-    /// path so DirectX surface updates are synchronized with WPF composition. Native HWND/swap-chain
+    /// When enabled, a UI adapter render event drives frame presentation instead of the
+    /// pipeline's independent presentation thread. This is intended for UI-backed interop
+    /// paths so DirectX surface updates are synchronized with host composition. Native HWND/swap-chain
     /// presentation should disable this.
     /// </summary>
-    void SetWpfCompositionDrivenPresentation(bool enabled);
+    void SetHostRenderEventDrivenPresentation(bool enabled);
 
     event EventHandler<VideoFrameEventArgs>? FrameReady;
     event EventHandler<VideoEngineState>? StateChanged;

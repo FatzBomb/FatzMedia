@@ -1,5 +1,3 @@
-using System.Windows.Media;
-
 namespace FatzBombMedia.MediaControl;
 
 /// <summary>
@@ -21,8 +19,8 @@ public enum VideoDisplayMode
     Zoom,
 
     /// <summary>
-    /// Scale the video non-uniformly so it exactly fills the viewport. This matches
-    /// WPF Stretch.Fill semantics and may distort the video aspect ratio.
+    /// Scale the video non-uniformly so it exactly fills the viewport. This may distort
+    /// the video aspect ratio.
     /// </summary>
     Stretch,
 
@@ -31,18 +29,4 @@ public enum VideoDisplayMode
     /// when the viewport aspect differs from the video aspect.
     /// </summary>
     ZoomToFill
-}
-
-/// <summary>
-/// Conversion helpers between FatzBombMedia display modes and WPF Stretch values.
-/// </summary>
-public static class VideoDisplayModeMapper
-{
-    public static Stretch ToStretch(VideoDisplayMode mode) => mode switch
-    {
-        VideoDisplayMode.Original => Stretch.None,
-        VideoDisplayMode.Stretch => Stretch.Fill,
-        VideoDisplayMode.ZoomToFill => Stretch.UniformToFill,
-        _ => Stretch.Uniform
-    };
 }

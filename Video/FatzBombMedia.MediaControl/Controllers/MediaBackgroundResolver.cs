@@ -88,7 +88,7 @@ internal static class MediaBackgroundResolver
         yield return MediaBackgroundKind.Image;
     }
 
-    private static IEnumerable<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
+    private static HashSet<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
     private static int GetKindPriority(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? 0 : 1;
 }

@@ -1,3 +1,4 @@
+using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 
 namespace FatzBombMedia.MediaControl.Controllers;
@@ -8,14 +9,14 @@ namespace FatzBombMedia.MediaControl.Controllers;
 public sealed class MediaFile
 {
     private readonly IMediaEngine _mediaEngine;
-    private readonly MediaRenderer? _mediaRenderer;
+    private readonly IMediaRenderCoordinator? _mediaRenderer;
     private readonly MediaMetadata? _mediaMetadata;
     private readonly MediaControls? _mediaControls;
     private readonly MediaEffects? _mediaEffects;
     private readonly CdgVisuals? _cdgVisuals;
     private readonly IArchiveService? _archiveService;
 
-    internal MediaFile(IMediaEngine mediaEngine, MediaRenderer? mediaRenderer = null, MediaMetadata? mediaMetadata = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
+    internal MediaFile(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null, MediaMetadata? mediaMetadata = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
         _mediaEngine = mediaEngine;
@@ -32,81 +33,92 @@ public sealed class MediaFile
     /// </summary>
     public bool PlayOnLoad { get; set; } = false;
 
+    /// <summary>Gets or sets whether Core should automatically load matching sidecar/archive backgrounds for overlay media.</summary>
+    public bool BackgroundAutoDetect
+    {
+        get => _mediaEngine.BackgroundAutoDetect;
+        set => _mediaEngine.BackgroundAutoDetect = value;
+    }
+
     /// <summary>
     /// Loads a media file from the specified path.
     /// </summary>
-    /// <param name="path">Path to the media file.</param>
-    /// <returns>True if the file was loaded successfully.</returns>
-    public async Task<bool> LoadAsync(string path)
+    public Task<bool> LoadAsync(string path) => LoadAsync(path, ignoreSidecar: false);
+
+    /// <summary>
+    /// Loads a media file from the specified path, optionally ignoring sidecar/archive backgrounds.
+    /// </summary>
+    public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
+        LoadAsync(MediaInputSource.FromFile(path), backgroundSource: null, ignoreSidecar);
+
+    /// <summary>
+    /// Loads media from a neutral Core source.
+    /// </summary>
+    public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
+        LoadAsync(source, backgroundSource: null, ignoreSidecar);
+
+    /// <summary>
+    /// Loads a media file with an optional explicit background. Unless ignored, a discovered sidecar/archive
+    /// background takes precedence over the explicit background path.
+    /// </summary>
+    public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
+        LoadAsync(
+            MediaInputSource.FromFile(path),
+            string.IsNullOrWhiteSpace(backgroundPath) ? null : MediaInputSource.FromFile(backgroundPath),
+            ignoreSidecar);
+
+    /// <summary>
+    /// Loads media from a neutral Core source with an optional explicit neutral background source.
+    /// </summary>
+    public async Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
     {
-        var success = _mediaEngine.Open(path);
-        if (success)
+        var success = LoadCore(source, backgroundSource, ignoreSidecar);
+        if (success && PlayOnLoad)
         {
-            ApplyAutoBackground(path);
-
-            // Refresh renderer attachments when new media is loaded
-            _mediaRenderer?.RefreshAttachments();
-
-            // Refresh metadata when new media is loaded
-            _mediaMetadata?.Refresh();
-
-            // Re-apply effect settings if this media selected a different audio engine.
-            _mediaEffects?.RefreshActiveEngine();
-            _cdgVisuals?.Apply();
-
-            // Auto-play with proper normalization timing if enabled
-            if (PlayOnLoad)
-            {
-                await HandlePlayOnLoadAsync();
-            }
+            await HandlePlayOnLoadAsync();
         }
+
         return success;
     }
 
     /// <summary>
     /// Loads a media file from the specified path (synchronous version).
     /// </summary>
-    /// <param name="path">Path to the media file.</param>
-    /// <returns>True if the file was loaded successfully.</returns>
-    public bool Load(string path)
+    public bool Load(string path) => Load(path, ignoreSidecar: false);
+
+    /// <summary>
+    /// Loads a media file from the specified path, optionally ignoring sidecar/archive backgrounds.
+    /// </summary>
+    public bool Load(string path, bool ignoreSidecar = false) =>
+        Load(MediaInputSource.FromFile(path), backgroundSource: null, ignoreSidecar);
+
+    /// <summary>
+    /// Loads media from a neutral Core source.
+    /// </summary>
+    public bool Load(MediaInputSource source, bool ignoreSidecar = false) =>
+        Load(source, backgroundSource: null, ignoreSidecar);
+
+    /// <summary>
+    /// Loads a media file with an optional explicit background. Unless ignored, a discovered sidecar/archive
+    /// background takes precedence over the explicit background path.
+    /// </summary>
+    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) =>
+        Load(
+            MediaInputSource.FromFile(path),
+            string.IsNullOrWhiteSpace(backgroundPath) ? null : MediaInputSource.FromFile(backgroundPath),
+            ignoreSidecar);
+
+    /// <summary>
+    /// Loads media from a neutral Core source with an optional explicit neutral background source.
+    /// </summary>
+    public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
     {
-        System.Diagnostics.Debug.WriteLine($"[MediaFile] Loading: {path}");
-
-        // Force stop any currently playing media to ensure clean state
-        if (_mediaEngine.IsOpen)
+        var success = LoadCore(source, backgroundSource, ignoreSidecar);
+        if (success && PlayOnLoad)
         {
-            System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
-            _ = (_mediaControls?.Stop());
+            _ = Task.Run(HandlePlayOnLoadAsync);
         }
 
-        var success = _mediaEngine.Open(path);
-        if (success)
-        {
-            System.Diagnostics.Debug.WriteLine("[MediaFile] Media opened successfully, refreshing attachments");
-
-            ApplyAutoBackground(path);
-
-            // Refresh renderer attachments when new media is loaded
-            _mediaRenderer?.RefreshAttachments();
-
-            // Refresh metadata when new media is loaded
-            _mediaMetadata?.Refresh();
-
-            // Re-apply effect settings if this media selected a different audio engine.
-            _mediaEffects?.RefreshActiveEngine();
-            _cdgVisuals?.Apply();
-
-            // Auto-play with proper normalization timing if enabled
-            if (PlayOnLoad)
-            {
-                // Fire and forget for auto-play with normalization wait
-                _ = Task.Run(HandlePlayOnLoadAsync);
-            }
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"[MediaFile] Failed to load: {path}");
-        }
         return success;
     }
 
@@ -190,7 +202,7 @@ public sealed class MediaFile
     {
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
-        _mediaRenderer?.ClearAutoBackground();
+        _mediaEngine.ClearBackground();
         _mediaRenderer?.RefreshAttachments();
         _mediaMetadata?.Refresh();
     }
@@ -205,20 +217,89 @@ public sealed class MediaFile
     /// </summary>
     public bool IsLoaded => _mediaEngine.IsOpen;
 
-    private void ApplyAutoBackground(string path)
+    private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
-        if (_mediaRenderer == null)
+        ArgumentNullException.ThrowIfNull(source);
+        System.Diagnostics.Debug.WriteLine($"[MediaFile] Loading: {source.DisplayName}");
+
+        if (_mediaEngine.IsOpen)
         {
-            return;
+            System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
+            _ = (_mediaControls?.Stop());
         }
 
-        if (!_mediaRenderer.BackgroundAutoDetect || _archiveService == null)
+        _mediaEngine.ClearBackground();
+        var success = _mediaEngine.Open(source);
+        if (!success)
         {
-            _mediaRenderer.ClearAutoBackground();
-            return;
+            System.Diagnostics.Debug.WriteLine($"[MediaFile] Failed to load: {source.DisplayName}");
+            return false;
         }
 
-        MediaBackgroundCandidate? background = MediaBackgroundResolver.Resolve(path, _archiveService, _mediaEngine.Content);
-        _mediaRenderer.ApplyAutoBackground(background);
+        System.Diagnostics.Debug.WriteLine("[MediaFile] Media opened successfully, refreshing attachments");
+        _mediaRenderer?.RefreshAttachments();
+        ApplyCoreBackground(source, backgroundSource, ignoreSidecar);
+
+        _mediaMetadata?.Refresh();
+        _mediaEffects?.RefreshActiveEngine();
+        _cdgVisuals?.Apply();
+        return true;
+    }
+
+    private void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
+    {
+        MediaBackgroundCandidate? background = ResolveCoreBackground(source, backgroundSource, ignoreSidecar);
+        _ = _mediaEngine.SetBackground(background);
+    }
+
+    private MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
+    {
+        if (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Image))
+        {
+            return null;
+        }
+
+        MediaBackgroundCandidate? sidecar = null;
+        if (!ignoreSidecar && source.IsFile && _mediaEngine.BackgroundAutoDetect && _archiveService != null)
+        {
+            sidecar = MediaBackgroundResolver.Resolve(source.FilePath!, _archiveService, _mediaEngine.Content);
+        }
+
+        if (sidecar != null)
+        {
+            return sidecar;
+        }
+
+        return ResolveExplicitBackground(backgroundSource);
+    }
+
+    private static MediaBackgroundCandidate? ResolveExplicitBackground(MediaInputSource? backgroundSource)
+    {
+        if (backgroundSource == null)
+        {
+            return null;
+        }
+
+        if (backgroundSource.IsFile)
+        {
+            string path = backgroundSource.FilePath!;
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            if (FatzBombMedia.MediaControl.Core.Files.FileTypes.IsVideo(path))
+            {
+                return MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Video, path);
+            }
+
+            return FatzBombMedia.MediaControl.Core.Files.FileTypes.IsImage(path)
+                ? MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Image, path)
+                : null;
+        }
+
+        return backgroundSource.IsBgraImage
+            ? MediaBackgroundCandidate.FromSource(MediaBackgroundKind.Image, backgroundSource)
+            : null;
     }
 }

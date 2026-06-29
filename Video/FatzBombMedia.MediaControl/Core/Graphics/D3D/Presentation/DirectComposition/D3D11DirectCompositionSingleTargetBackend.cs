@@ -8,7 +8,7 @@ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
@@ -275,7 +275,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             framesPerSecond,
             Width,
             Height,
-            Stretch.Fill);
+            MediaCompositionStretchMode.Fill);
     }
 
     public void Cleanup()

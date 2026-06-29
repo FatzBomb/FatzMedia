@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using System.Windows;
-using System.Windows.Threading;
+
 
 namespace FatzBombMedia.MediaControl.Controllers;
 
@@ -10,17 +9,15 @@ namespace FatzBombMedia.MediaControl.Controllers;
 public sealed class MediaControls
 {
     private readonly IMediaEngine _mediaEngine;
-    private readonly MediaRenderer? _mediaRenderer;
-    private readonly Dispatcher _dispatcher;
+    private readonly IMediaRenderCoordinator? _mediaRenderer;
     private bool _handlingMediaEnd;
     private bool _disposed;
 
-    internal MediaControls(IMediaEngine mediaEngine, MediaRenderer? mediaRenderer = null)
+    internal MediaControls(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
         _mediaEngine = mediaEngine;
         _mediaRenderer = mediaRenderer;
-        _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
         _mediaEngine.MediaEnded += OnMediaEnded;
     }
 
@@ -130,7 +127,16 @@ public sealed class MediaControls
     /// </summary>
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    private void OnMediaEnded(object? sender, EventArgs e) => RunOnDispatcher(HandleMediaEnded, DispatcherPriority.Normal);
+    private void OnMediaEnded(object? sender, EventArgs e)
+    {
+        if (_mediaRenderer is not null)
+        {
+            _mediaRenderer.RunOnRenderThread(HandleMediaEnded);
+            return;
+        }
+
+        HandleMediaEnded();
+    }
 
     private void HandleMediaEnded()
     {
@@ -169,49 +175,9 @@ public sealed class MediaControls
         }
     }
 
-    private void StartRendering()
-    {
-        if (_mediaRenderer == null) return;
+    private void StartRendering() => _mediaRenderer?.StartRendering();
 
-        if (_dispatcher.CheckAccess())
-        {
-            _mediaRenderer.StartRendering();
-            return;
-        }
-
-        _ = _dispatcher.BeginInvoke(() => _mediaRenderer.StartRendering(), DispatcherPriority.Render);
-    }
-
-    private void StopRendering()
-    {
-        if (_mediaRenderer == null) return;
-
-        if (_dispatcher.CheckAccess())
-        {
-            _mediaRenderer.StopRendering();
-            return;
-        }
-
-        _ = _dispatcher.BeginInvoke(() => _mediaRenderer.StopRendering(), DispatcherPriority.Render);
-    }
-
-    private void RunOnDispatcher(Action action, DispatcherPriority priority)
-    {
-        if (_dispatcher.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        try
-        {
-            _ = _dispatcher.BeginInvoke(action, priority);
-        }
-        catch (InvalidOperationException)
-        {
-            // Dispatcher is shutting down; the monitor will be discarded with this control.
-        }
-    }
+    private void StopRendering() => _mediaRenderer?.StopRendering();
 
     /// <summary>
     /// Gets the current playback state.

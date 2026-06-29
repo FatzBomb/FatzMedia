@@ -1,0 +1,112 @@
+using FatzBombMedia.MediaControl.Core.Abstractions;
+
+#pragma warning disable IDE0130
+namespace FatzBombMedia.MediaControl;
+
+/// <summary>
+/// Framework-neutral public playback/control contract for a FatzBombMedia media-control instance.
+/// </summary>
+/// <remarks>
+/// UI adapters such as WPF, WinForms, WinUI, Avalonia, and MAUI should expose this session instead
+/// of re-implementing playback/controller logic. Adapters may add tiny convenience pass-throughs,
+/// but playback, rendering, retained layers, swap chains, and target fan-out remain owned by the
+/// shared media-control implementation.
+/// </remarks>
+public interface IMediaControlSession : IDisposable
+{
+    /// <summary>Gets or sets whether loading media should automatically begin playback.</summary>
+    bool PlayOnLoad { get; set; }
+
+    /// <summary>Gets or sets whether playback loops when the end of media is reached.</summary>
+    bool LoopMedia { get; set; }
+
+    /// <summary>Gets whether media is currently open.</summary>
+    bool IsOpen { get; }
+
+    /// <summary>Gets the current playback state.</summary>
+    MediaPlayerState State { get; }
+
+    /// <summary>Gets the content roles present in the loaded media.</summary>
+    MediaContent Content { get; }
+
+    /// <summary>Gets whether the loaded media has video content.</summary>
+    bool HasVideo { get; }
+
+    /// <summary>Gets whether the loaded media has audio content.</summary>
+    bool HasAudio { get; }
+
+    /// <summary>Gets whether the loaded media has CDG content.</summary>
+    bool HasCdg { get; }
+
+    /// <summary>Gets or sets how primary video content maps into the presentation surface.</summary>
+    VideoDisplayMode VideoDisplayMode { get; set; }
+
+    /// <summary>Gets or sets the current playback position.</summary>
+    TimeSpan Position { get; set; }
+
+    /// <summary>Gets the loaded media duration.</summary>
+    TimeSpan Duration { get; }
+
+    /// <summary>Loads media from a file path.</summary>
+    bool Load(string path);
+
+    /// <summary>Loads media from a file path, optionally ignoring matching sidecar/archive backgrounds.</summary>
+    bool Load(string path, bool ignoreSidecar = false);
+
+    /// <summary>Loads media from a framework-neutral Core source.</summary>
+    bool Load(MediaInputSource source, bool ignoreSidecar = false);
+
+    /// <summary>Loads media with an optional explicit background. Unless ignored, a discovered sidecar/archive background takes precedence.</summary>
+    bool Load(string path, string? backgroundPath, bool ignoreSidecar = false);
+
+    /// <summary>Loads media from a framework-neutral Core source with an optional neutral background source.</summary>
+    bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false);
+
+    /// <summary>Loads media from a file path asynchronously.</summary>
+    Task<bool> LoadAsync(string path);
+
+    /// <summary>Loads media from a file path asynchronously, optionally ignoring matching sidecar/archive backgrounds.</summary>
+    Task<bool> LoadAsync(string path, bool ignoreSidecar = false);
+
+    /// <summary>Loads media from a framework-neutral Core source asynchronously.</summary>
+    Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false);
+
+    /// <summary>Loads media with an optional explicit background asynchronously. Unless ignored, a discovered sidecar/archive background takes precedence.</summary>
+    Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false);
+
+    /// <summary>Loads media from a framework-neutral Core source with an optional neutral background source asynchronously.</summary>
+    Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false);
+
+    /// <summary>Starts or resumes playback.</summary>
+    bool Play();
+
+    /// <summary>Pauses playback.</summary>
+    bool Pause();
+
+    /// <summary>Stops playback and resets position.</summary>
+    bool Stop();
+
+    /// <summary>Seeks to a playback position.</summary>
+    bool Seek(TimeSpan position);
+
+    /// <summary>Seeks to a playback position in seconds.</summary>
+    bool Seek(double seconds);
+
+    /// <summary>Closes the currently loaded media.</summary>
+    void Close();
+
+    /// <summary>Attaches or updates a framework-provided presentation surface.</summary>
+    bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface);
+
+    /// <summary>Resizes a previously attached framework-provided presentation surface.</summary>
+    bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight);
+
+    /// <summary>Detaches a previously attached framework-provided presentation surface.</summary>
+    bool DetachPresentationSurface(string surfaceId);
+
+    /// <summary>Raised when media reaches the end.</summary>
+    event EventHandler? MediaEnded;
+
+    /// <summary>Raised when media playback is stopped.</summary>
+    event EventHandler? MediaStopped;
+}

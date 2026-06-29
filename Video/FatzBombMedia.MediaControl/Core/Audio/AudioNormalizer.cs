@@ -54,14 +54,14 @@ internal sealed class AudioNormalizer
     /// <param name="handle">BASS channel handle for analysis</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
-    public async Task<double> AnalyzePeakQuickAsync(int handle, CancellationToken cancellationToken = default, bool updateGain = true)
+    public async Task<double> AnalyzePeakQuickAsync(int handle, bool updateGain = true, CancellationToken cancellationToken = default)
     {
         if (handle == 0) return 0.0;
 
         const float blockSeconds = 0.25f;
         const int maxSamples = 24;
 
-        return await Task.Run(() => AnalyzePeakInternal(handle, blockSeconds, maxSamples, cancellationToken, updateGain), cancellationToken);
+        return await Task.Run(() => AnalyzePeakInternal(handle, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -71,10 +71,10 @@ internal sealed class AudioNormalizer
     /// <param name="handle">BASS channel handle for analysis</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
-    public async Task<double> AnalyzePeakAsync(int handle, CancellationToken cancellationToken = default, bool updateGain = true) =>
+    public async Task<double> AnalyzePeakAsync(int handle, bool updateGain = true, CancellationToken cancellationToken = default) =>
         handle == 0
             ? 0.0
-            : await Task.Run(() => AnalyzePeakFull(handle, cancellationToken, updateGain), cancellationToken);
+            : await Task.Run(() => AnalyzePeakFull(handle, updateGain, cancellationToken), cancellationToken);
 
     /// <summary>
     /// Resets the normalization gain to default value. Thread-safe operation.
@@ -200,7 +200,7 @@ internal sealed class AudioNormalizer
 
     #region Private Methods
 
-    private double AnalyzePeakInternal(int handle, float blockSeconds, int maxSamples, CancellationToken cancellationToken, bool updateGain)
+    private double AnalyzePeakInternal(int handle, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
     {
         const LevelRetrievalFlags flags = LevelRetrievalFlags.Stereo;
         var levelBuffer = LevelBuffer.Value!;
@@ -228,7 +228,7 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private double AnalyzePeakFull(int handle, CancellationToken cancellationToken, bool updateGain)
+    private double AnalyzePeakFull(int handle, bool updateGain, CancellationToken cancellationToken)
     {
         const LevelRetrievalFlags flags = LevelRetrievalFlags.Stereo;
         const double blockSeconds = 0.5;

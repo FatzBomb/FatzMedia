@@ -19,6 +19,7 @@ graphify_out/
 .opencode/
 
 /*.zip
+/*.patch
 
 # Exclude all standalone build reports and HTML logs recursively
 *.htm

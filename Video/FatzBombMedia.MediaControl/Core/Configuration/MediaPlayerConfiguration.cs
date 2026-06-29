@@ -33,7 +33,7 @@ public enum VideoDecodingMethod
 public enum RenderingMethod
 {
     /// <summary>
-    /// Automatically detect and use the best available method (D3D11 > WriteableBitmap).
+    /// Automatically detect and use the best available method (D3D11 > host CPU fallback).
     /// This is the recommended setting for best quality and performance.
     /// </summary>
     Auto,
@@ -45,8 +45,8 @@ public enum RenderingMethod
     DirectX11,
 
     /// <summary>
-    /// Force optimized CPU-based WriteableBitmap rendering.
-    /// Always available and uses SIMD optimizations when possible.
+    /// Force host-specific CPU fallback rendering.
+    /// Always available when the active UI adapter provides a fallback surface.
     /// </summary>
     Software
 }
@@ -70,49 +70,48 @@ public enum NativeSwapChainPresentMode
 
 
 /// <summary>
-/// WPF D3DImage presentation scheduling style. CompositionTargetRendering follows the
-/// WPFDXInterop pattern: WPF's render pass requests the next DirectX surface update,
-/// which keeps the airspace-safe ImageSource path synchronized with WPF composition.
+/// UI-backed shared-surface presentation scheduling style. HostRenderEvent follows a
+/// host render-event pattern where the adapter requests the next DirectX surface update.
 /// IndependentPresentationLoop keeps the older worker-thread presentation scheduler.
 /// </summary>
-public enum WpfD3DImagePresentationMode
+public enum UiSharedSurfacePresentationMode
 {
     /// <summary>
-    /// Present D3DImage frames from the video pipeline's independent presentation loop.
-    /// This is the stable default because the WPF render-tick experiment produced resize
+    /// Present UI-backed frames from the video pipeline's independent presentation loop.
+    /// This is the stable default because host-render-event presentation produced resize
     /// flicker/stutter in real playback tests.
     /// </summary>
     IndependentPresentationLoop,
 
     /// <summary>
-    /// Experimental mode: present D3DImage frames when WPF raises CompositionTarget.Rendering.
+    /// Experimental mode: present UI-backed frames when the active adapter raises its render event.
     /// Kept for comparison only; do not use as the default until it is proven smoother.
     /// </summary>
-    CompositionTargetRendering
+    HostRenderEvent
 }
 
 /// <summary>
-/// Controls how large the D3DImage shared presentation surface should be.
+/// Controls how large the UI-backed shared presentation surface should be.
 /// </summary>
-public enum WpfD3DImageSurfaceSizingMode
+public enum UiSharedSurfaceSizingMode
 {
     /// <summary>
-    /// Keep the shared D3DImage surface at the decoded/source media size. WPF performs final
+    /// Keep the shared UI surface at the decoded/source media size. The host performs final
     /// layout scaling. This avoids expensive D3D9 shared-surface churn during window resize and
-    /// is the stable default for overlay-friendly WPF playback.
+    /// is the stable default for overlay-friendly UI playback.
     /// </summary>
     SourceNative,
 
     /// <summary>
-    /// Keep the shared D3DImage surface source-sized, but cap very large sources to the configured
+    /// Keep the shared UI surface source-sized, but cap very large sources to the configured
     /// maximum size while preserving aspect ratio. This is intended for laptop/performance-friendly
-    /// WPF playback of 4K/oversized sources without using a window-sized interop surface.
+    /// UI playback of 4K/oversized sources without using a window-sized interop surface.
     /// </summary>
     SourceCapped,
 
     /// <summary>
-    /// Experimental: recreate the shared D3DImage surface at the displayed media rectangle size.
-    /// This can reduce WPF scaling, but it is expensive during resize and may flicker/stutter.
+    /// Experimental: recreate the shared UI surface at the displayed media rectangle size.
+    /// This can reduce host scaling, but it is expensive during resize and may flicker/stutter.
     /// </summary>
     DisplayRectangle
 }
@@ -160,7 +159,7 @@ public readonly record struct MediaPlayerConfiguration
 
     /// <summary>
     /// Enables very noisy diagnostic details such as decoder candidate dumps, individual FFmpeg packet
-    /// errors, WPF callback cadence, and seek preview details. Leave false for normal debugging.
+    /// errors, host callback cadence, and seek preview details. Leave false for normal debugging.
     /// </summary>
     public bool EnableVerboseLogging { get; init; }
 
@@ -179,35 +178,35 @@ public readonly record struct MediaPlayerConfiguration
     public NativeSwapChainPresentMode NativeSwapChainPresentMode { get; init; }
 
     /// <summary>
-    /// Controls how the WPF D3DImage/ImageSource presentation path is scheduled. The stable default
-    /// is the independent presentation loop. CompositionTargetRendering remains available as an
+    /// Controls how the UI-backed presentation path is scheduled. The stable default
+    /// is the independent presentation loop. HostRenderEvent remains available as an
     /// experiment, but it should be tested with SourceNative or SourceCapped sizing so resize-driven
-    /// D3D9 shared-surface recreation does not pollute the result. Native HWND mode ignores this and
+    /// shared-surface recreation does not pollute the result. Native HWND mode ignores this and
     /// continues to use the DXGI swap-chain presentation loop.
     /// </summary>
-    public WpfD3DImagePresentationMode WpfD3DImagePresentationMode { get; init; }
+    public UiSharedSurfacePresentationMode UiSharedSurfacePresentationMode { get; init; }
 
     /// <summary>
-    /// Controls whether the WPF D3DImage shared surface stays at the source media size, is capped
+    /// Controls whether the UI-backed shared surface stays at the source media size, is capped
     /// from the source size for laptop/performance-friendly playback, or is recreated to match the
     /// displayed rectangle. SourceNative is the stable default because real-world testing showed
     /// display-sized surface recreation causes resize flicker and can increase stutter.
     /// </summary>
-    public WpfD3DImageSurfaceSizingMode WpfD3DImageSurfaceSizingMode { get; init; }
+    public UiSharedSurfaceSizingMode UiSharedSurfaceSizingMode { get; init; }
 
     /// <summary>
-    /// Maximum WPF D3DImage surface width used when <see cref="WpfD3DImageSurfaceSizingMode"/> is
-    /// <see cref="WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
+    /// Maximum UI-backed shared surface width used when <see cref="UiSharedSurfaceSizingMode"/> is
+    /// <see cref="UiSharedSurfaceSizingMode.SourceCapped"/>. The source aspect
     /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
     /// </summary>
-    public int MaxWpfD3DImageSurfaceWidth { get; init; }
+    public int MaxUiSharedSurfaceWidth { get; init; }
 
     /// <summary>
-    /// Maximum WPF D3DImage surface height used when <see cref="WpfD3DImageSurfaceSizingMode"/> is
-    /// <see cref="WpfD3DImageSurfaceSizingMode.SourceCapped"/>. The source aspect
+    /// Maximum UI-backed shared surface height used when <see cref="UiSharedSurfaceSizingMode"/> is
+    /// <see cref="UiSharedSurfaceSizingMode.SourceCapped"/>. The source aspect
     /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
     /// </summary>
-    public int MaxWpfD3DImageSurfaceHeight { get; init; }
+    public int MaxUiSharedSurfaceHeight { get; init; }
 
     /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
@@ -224,10 +223,10 @@ public readonly record struct MediaPlayerConfiguration
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
-        WpfD3DImagePresentationMode = WpfD3DImagePresentationMode.IndependentPresentationLoop;
-        WpfD3DImageSurfaceSizingMode = WpfD3DImageSurfaceSizingMode.SourceNative;
-        MaxWpfD3DImageSurfaceWidth = 1920;
-        MaxWpfD3DImageSurfaceHeight = 1080;
+        UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop;
+        UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative;
+        MaxUiSharedSurfaceWidth = 1920;
+        MaxUiSharedSurfaceHeight = 1080;
     }
 
     /// <summary>
@@ -244,10 +243,10 @@ public readonly record struct MediaPlayerConfiguration
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
-        WpfD3DImagePresentationMode = WpfD3DImagePresentationMode.IndependentPresentationLoop;
-        WpfD3DImageSurfaceSizingMode = WpfD3DImageSurfaceSizingMode.SourceNative;
-        MaxWpfD3DImageSurfaceWidth = 1920;
-        MaxWpfD3DImageSurfaceHeight = 1080;
+        UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop;
+        UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative;
+        MaxUiSharedSurfaceWidth = 1920;
+        MaxUiSharedSurfaceHeight = 1080;
     }
 
     /// <summary>

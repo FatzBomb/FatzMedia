@@ -406,14 +406,14 @@ public sealed class AudioEngine : IAudioEngine
     public async Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakQuickAsync(handle, cancellationToken);
+        return await _normalizer.AnalyzePeakQuickAsync(handle, cancellationToken: cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task<double> AnalyzePeakAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakAsync(handle, cancellationToken);
+        return await _normalizer.AnalyzePeakAsync(handle, cancellationToken: cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -440,16 +440,6 @@ public sealed class AudioEngine : IAudioEngine
     #endregion
 
     #region Private Methods - Core
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static AudioEngineState MapBassState(PlaybackState state) => state switch
-    {
-        PlaybackState.Playing => AudioEngineState.Playing,
-        PlaybackState.Paused => AudioEngineState.Paused,
-        PlaybackState.Stopped => AudioEngineState.Stopped,
-        PlaybackState.Stalled => AudioEngineState.Stalled,
-        _ => AudioEngineState.Null
-    };
 
     private void AttachPlaybackEndSync()
     {
@@ -567,12 +557,12 @@ public sealed class AudioEngine : IAudioEngine
         try
         {
             Debug.WriteLine($"[AudioEngine] Quick normalization analysis starting with handle {analysisHandle} ({sourceLabel})");
-            var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, cancellationToken, updateGain: false).ConfigureAwait(false);
-            ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, cancellationToken, isFinal: false);
+            var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, isFinal: false, cancellationToken: cancellationToken);
 
             Debug.WriteLine($"[AudioEngine] Deep normalization analysis starting ({sourceLabel})");
-            var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, cancellationToken, updateGain: false).ConfigureAwait(false);
-            ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, cancellationToken, isFinal: true);
+            var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, isFinal: true, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -584,7 +574,7 @@ public sealed class AudioEngine : IAudioEngine
         }
     }
 
-    private void ApplyNormalizationPeakIfCurrent(double peak, string cacheKey, string sourceLabel, int generation, CancellationToken cancellationToken, bool isFinal)
+    private void ApplyNormalizationPeakIfCurrent(double peak, string cacheKey, string sourceLabel, int generation, bool isFinal, CancellationToken cancellationToken)
     {
         if (!IsCurrentNormalizationAnalysis(generation, cancellationToken))
             return;

@@ -25,4 +25,4 @@ At runtime these files are copied beside `FatzBombMedia.Player.exe`:
 native/
 ```
 
-`PlayerNativeLibraries` resolves that runtime folder and passes it into `MediaPlayer`.
+`PlayerNativeLibraries` resolves that runtime folder and passes it into the WPF `Player`, which inherits the Core `MediaControlPlayer`.

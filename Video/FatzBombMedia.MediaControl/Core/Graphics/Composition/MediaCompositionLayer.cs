@@ -1,0 +1,64 @@
+using FatzBombMedia.MediaControl.Core.DxCdg;
+
+namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
+
+/// <summary>
+/// Retained-layer intent produced by <see cref="MediaCompositionFrame" />.
+/// This is intentionally descriptive in Stage 10A: the existing Stage 9 draw path
+/// still consumes the compatibility fields, while later Stage 10 patches can move
+/// upload/render ownership into per-layer targets without changing media producers.
+/// </summary>
+public sealed record MediaCompositionLayer
+{
+    public MediaCompositionLayerId Id { get; init; }
+    public MediaCompositionLayerKind Kind { get; init; }
+    public MediaCompositionLayerSourceKind SourceKind { get; init; }
+    public int Order { get; init; }
+    public long Revision { get; init; } = -1;
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public int Stride { get; init; }
+    public MediaCompositionStretchMode StretchMode { get; init; } = MediaCompositionStretchMode.UniformFit;
+    public double Opacity { get; init; } = 1.0d;
+    public uint ColorArgb { get; init; }
+
+    /// <summary>
+    /// Optional BGRA source payload for the transitional software/background path.
+    /// Kept here so the layer descriptor contains enough intent for Stage 10B to
+    /// move the upload into a retained Layer 0 target.
+    /// </summary>
+    public ReadOnlyMemory<byte> BgraPixels { get; init; }
+
+    /// <summary>
+    /// Optional hardware texture pointer for transient D3D11 video Layer 0 input.
+    /// Stage 10B/10G can replace this with an explicit layer-surface abstraction.
+    /// </summary>
+    public IntPtr D3D11TexturePointer { get; init; }
+    public int D3D11ArraySlice { get; init; }
+    public double FramesPerSecond { get; init; }
+
+    /// <summary>
+    /// Optional DXCDG indexed/palette snapshot for the overlay layer.
+    /// </summary>
+    public DxCdgRenderSnapshot? CdgSnapshot { get; init; }
+
+    public bool HasNaturalSize => Width > 0 && Height > 0;
+
+    public bool IsVisible => SourceKind != MediaCompositionLayerSourceKind.None
+        && SourceKind != MediaCompositionLayerSourceKind.Clear
+        && Opacity > 0d;
+
+    /// <summary>
+    /// Returns descriptor metadata suitable for retention without holding large transient
+    /// pixel buffers or snapshot payloads alive after the current present call.
+    /// </summary>
+    public MediaCompositionLayer WithoutTransientPayload()
+        => this with
+        {
+            BgraPixels = ReadOnlyMemory<byte>.Empty,
+            CdgSnapshot = null
+        };
+
+    public override string ToString()
+        => $"{Order}:{Id}/{SourceKind} rev={Revision} size={Width}x{Height} opacity={Opacity:0.###}";
+}

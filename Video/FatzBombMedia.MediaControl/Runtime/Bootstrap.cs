@@ -21,7 +21,7 @@ internal static partial class Bootstrap
         EnsureInitialized(ToNativeLibraryPathArray(userLibraryPath));
 
     public static bool EnsureInitialized(IReadOnlyList<string> nativeLibraryPaths) => Initialize(nativeLibraryPaths);
-    private static IReadOnlyList<string> searchPaths = [];
+    private static List<string> searchPaths = [];
     private static readonly List<string> _nativeLoadMessages = [];
 
     private static bool Initialize(IReadOnlyList<string> nativeLibraryPaths)

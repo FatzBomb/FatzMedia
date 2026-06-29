@@ -1,4 +1,4 @@
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
@@ -13,7 +13,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationBlitter(
     D3D11DeviceResources deviceResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter,
-    D3D11PresentationSurfaceController presentationSurfaces,
+    ID3D11PresentationSurfaceProvider presentationSurfaces,
     D3D11PresentationState presentationState)
 {
     public bool BlitToActivePresentation(
@@ -22,7 +22,7 @@ internal sealed class D3D11PresentationBlitter(
         int width,
         int height,
         double framesPerSecond,
-        Stretch? stretchOverride = null) => deviceResources.Context != null && presentationSurfaces.TryGetActiveTargetSnapshot(
+        MediaCompositionStretchMode? stretchOverride = null) => deviceResources.Context != null && presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "active presentation blit",
                 out D3D11PresentationTargetSnapshot target) && BlitToTarget(
@@ -45,7 +45,7 @@ internal sealed class D3D11PresentationBlitter(
         int sourceWidth,
         int sourceHeight,
         double framesPerSecond,
-        Stretch stretch) =>
+        MediaCompositionStretchMode stretch) =>
         deviceResources.Context != null && targetTexture != null && targetWidth > 0 && targetHeight > 0 && videoProcessorPresenter.BlitTextureToPresentation(
             deviceResources,
             targetTexture,

@@ -1,4 +1,4 @@
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Geometry;
 
@@ -18,14 +18,14 @@ internal static class ViewportGeometry
         double sourceHeight,
         double viewportWidth,
         double viewportHeight,
-        Stretch stretch)
+        MediaCompositionStretchMode stretch)
     {
         var inputWidth = Math.Max(1, sourceWidth);
         var inputHeight = Math.Max(1, sourceHeight);
         var outputWidth = Math.Max(1, viewportWidth);
         var outputHeight = Math.Max(1, viewportHeight);
 
-        if (stretch == Stretch.Fill)
+        if (stretch == MediaCompositionStretchMode.Fill)
         {
             return FullViewport(outputWidth, outputHeight);
         }
@@ -34,9 +34,9 @@ internal static class ViewportGeometry
         var scaleY = outputHeight / inputHeight;
         var scale = stretch switch
         {
-            Stretch.None => 1.0,
-            Stretch.UniformToFill => Math.Max(scaleX, scaleY),
-            Stretch.Uniform => Math.Min(scaleX, scaleY),
+            MediaCompositionStretchMode.Original => 1.0,
+            MediaCompositionStretchMode.UniformToFill => Math.Max(scaleX, scaleY),
+            MediaCompositionStretchMode.UniformFit => Math.Min(scaleX, scaleY),
             _ => Math.Min(scaleX, scaleY)
         };
 
@@ -53,14 +53,14 @@ internal static class ViewportGeometry
         double sourceHeight,
         double viewportWidth,
         double viewportHeight,
-        Stretch stretch)
+        MediaCompositionStretchMode stretch)
     {
         var inputWidth = Math.Max(1, sourceWidth);
         var inputHeight = Math.Max(1, sourceHeight);
         var outputWidth = Math.Max(1, viewportWidth);
         var outputHeight = Math.Max(1, viewportHeight);
 
-        if (stretch == Stretch.Fill)
+        if (stretch == MediaCompositionStretchMode.Fill)
         {
             return new ViewportMapping(
                 new RectD(0, 0, inputWidth, inputHeight),
@@ -99,12 +99,12 @@ internal static class ViewportGeometry
         double sourceHeight,
         double viewportWidth,
         double viewportHeight)
-        => DestinationRect(sourceWidth, sourceHeight, viewportWidth, viewportHeight, Stretch.Uniform);
+        => DestinationRect(sourceWidth, sourceHeight, viewportWidth, viewportHeight, MediaCompositionStretchMode.UniformFit);
 
     public static RectD UniformToFill(
         double sourceWidth,
         double sourceHeight,
         double viewportWidth,
         double viewportHeight)
-        => DestinationRect(sourceWidth, sourceHeight, viewportWidth, viewportHeight, Stretch.UniformToFill);
+        => DestinationRect(sourceWidth, sourceHeight, viewportWidth, viewportHeight, MediaCompositionStretchMode.UniformToFill);
 }

@@ -14,6 +14,7 @@ Project reference:
 
 ```xml
 <ProjectReference Include="..\FatzBombMedia.MediaControl\FatzBombMedia.MediaControl.csproj" />
+<ProjectReference Include="..\FatzBombMedia.MediaControl.Wpf\FatzBombMedia.MediaControl.Wpf.csproj" />
 ```
 
 WPF adapter namespace in code:
@@ -29,43 +30,40 @@ The player uses a standard WPF MVVM split:
 
 | Layer | Responsibility |
 |---|---|
-| `MainWindow.xaml` | Declares buttons, sliders, status text, and the `FatzBombMediaSurface`. |
+| `MainWindow.xaml` | Declares buttons, sliders, status text, and the `MediaSurface`. |
 | `MainWindow.xaml.cs` | Handles view-only concerns: file dialog, seek bar, and fullscreen chrome. |
-| `ViewModels/MainWindowViewModel.cs` | Owns `MediaPlayer`, playback commands, effect properties, busy state, and status text. |
+| `ViewModels/MainWindowViewModel.cs` | Owns WPF `Player`, inherited Core playback commands, effect properties, busy state, and status text. |
 
-The player owns its display surface in XAML, but the surface owns the rendering attachment internally.
-For this test app, D3DImage is intentionally bypassed so the checkbox compares only the two native paths:
+The player owns its display surface in XAML. The WPF adapter supplies native HWND surfaces to the Core session; Core owns composition, swap chains, retained layers, target fan-out, and presentation.
+The test app uses `MediaSurface` as a native HWND interop control:
 
 ```xml
-<fbm:FatzBombMediaSurface Player="{Binding Player}"
+<fbm:MediaSurface Player="{Binding Player}"
                           VideoDisplayMode="{Binding VideoDisplayMode}"
                           BitmapScalingMode="{Binding BitmapScalingMode}"
                           PresentationMode="{Binding PresentationMode}"
                           OverlayHitTestVisible="False">
-    <fbm:FatzBombMediaSurface.OverlayContent>
+    <fbm:MediaSurface.OverlayContent>
         <Grid IsHitTestVisible="False">
             <Border>
                 <TextBlock Text="Native HWND Overlay" />
             </Border>
         </Grid>
-    </fbm:FatzBombMediaSurface.OverlayContent>
-</fbm:FatzBombMediaSurface>
+    </fbm:MediaSurface.OverlayContent>
+</fbm:MediaSurface>
 ```
 
-`Enable Overlay` now means:
+Overlay mode means:
 
 | Checkbox | Presentation mode | Expected backend |
 |---|---|---|
 | Off | `NativeHwnd` | `NativeHwndSwapChain` |
 | On | `NativeHwndOverlay` | `NativeHwndSwapChain` plus transparent owned overlay window |
 
-Expected logs when overlay is on:
+Expected diagnostics when overlay is on:
 
 ```text
-[FatzBombMediaSurface] PresentationMode=NativeHwndOverlay
-[FatzBombMediaSurface] Native overlay window created
-[FatzBombMediaSurface] Native overlay window shown
-[MediaRenderer] Presentation backend requested: NativeHwnd hwnd=...
+[NativeMediaPresentationCoordinator] Refreshing Core presentation attachments
 [VorticeD3D11] Presentation backend: NativeHwndSwapChain
 ```
 
@@ -98,30 +96,57 @@ The host app sets the resolved folder before it creates the player:
 ```csharp
 DLLPath.Bass = nativePath;
 DLLPath.FFmpeg = nativePath;
-var player = new MediaPlayer();
+var player = new Player();
 ```
 
 If the real host app wants separate BASS and FFmpeg folders, resolve each folder in the host app and set `DLLPath.Bass` and `DLLPath.FFmpeg` separately. The MediaControl project does not copy or package native DLLs.
 
-## Smoke test checklist
+## Smoke Test Checklist
 
 1. Audio file plays.
 2. Volume works.
 3. Pitch works.
 4. Tempo works.
 5. Normalization can toggle.
-6. MP3+CDG renders lyrics.
-7. ZIP audio+CDG renders lyrics.
+6. MP3+CD+G renders DxCdg lyrics.
+7. ZIP audio+CD+G renders DxCdg lyrics.
 8. Video plays.
 9. Video tempo affects BASS-processed audio and video stays synced.
 10. Direct image files render as a still surface.
-11. Same-name and internal zip karaoke backgrounds appear under audio/CDG.
-12. Seek bar supports click/drag testing for audio, CDG, and video.
-13. `Enable Overlay` off uses plain native HWND.
-14. `Enable Overlay` on uses native HWND plus the transparent owned overlay window.
+11. Same-name and internal zip karaoke backgrounds appear under audio+DxCdg.
+12. Seek bar supports click/drag testing for audio, DxCdg, and video.
+13. Native HWND output appears in the main surface.
+14. Full-screen overlay controls appear through the transparent owned overlay window.
 
-For a fuller renderer regression pass after refactors, use:
+For the current presentation regression pass after refactors, use:
 
 ```text
-docs/FatzBombMedia_Renderer_Smoke_Test_Checklist.md
+docs/VALIDATION.md
 ```
+
+## Secondary-Output Validation
+
+The Player includes a validation button for secondary/projector output. The Player does not call renderer or swap-chain APIs directly. It asks the WPF `MediaSurface` to open or close a secondary output:
+
+```csharp
+MediaSurface.ShowSecondaryOutput();
+MediaSurface.CloseSecondaryOutput();
+```
+
+`MediaSurface` creates the WPF validation window and supplies its HWND to the shared session as a neutral presentation-surface descriptor. The shared media-control implementation owns the secondary target, swap-chain lifetime, compositor fan-out, and final presents.
+
+Stage 10X smoke tests:
+
+- Primary-only output.
+- Primary + secondary/projector output.
+- Audio-only/no visual clears both targets.
+- Image-only appears on both targets.
+- Video-only hardware and software paths appear on both targets.
+- CD+G/DxCdg-only appears on both targets.
+- CD+G/DxCdg + image background appears on both targets.
+- CD+G/DxCdg + video background appears on both targets.
+- Wash opacity/color changes appear on both targets.
+- Resize primary during playback.
+- Resize secondary during playback.
+- Close secondary while playing and verify primary remains stable.
+- Repeated open/stop/type switches leave no stale layer artifacts.

@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Windows.Media;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
@@ -34,7 +34,7 @@ internal sealed class D3D11FramePresenter(
         int height,
         int stride,
         double framesPerSecond,
-        Stretch? baseStretchOverride,
+        MediaCompositionStretchMode? baseStretchOverride,
         D3D11FrameUploadPipeline.BlitToPresentationCallback blitToPresentation,
         Action<int, int> notifyPresented)
     {
@@ -90,7 +90,7 @@ internal sealed class D3D11FramePresenter(
         double framesPerSecond,
         int presentationWidth,
         int presentationHeight,
-        Stretch presentationStretch,
+        MediaCompositionStretchMode presentationStretch,
         Action<int, int> notifyPresented)
     {
         if (deviceResources.Context == null

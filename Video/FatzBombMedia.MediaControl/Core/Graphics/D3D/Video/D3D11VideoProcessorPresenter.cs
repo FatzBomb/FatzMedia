@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Media;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.Geometry;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -38,7 +38,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         double framesPerSecond,
         int presentationWidth,
         int presentationHeight,
-        Stretch stretch)
+        MediaCompositionStretchMode stretch)
     {
         if (!deviceResources.HasVideoProcessorSupport
             || sourceTexturePointer == IntPtr.Zero
@@ -74,7 +74,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         double framesPerSecond,
         int presentationWidth,
         int presentationHeight,
-        Stretch stretch)
+        MediaCompositionStretchMode stretch)
     {
         if (deviceResources.VideoDevice == null
             || deviceResources.VideoContext == null
@@ -227,7 +227,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         int sourceHeight,
         int presentationWidth,
         int presentationHeight,
-        Stretch stretch)
+        MediaCompositionStretchMode stretch)
     {
         ViewportMapping mapping = ViewportGeometry.MapSourceToViewport(
             sourceWidth,

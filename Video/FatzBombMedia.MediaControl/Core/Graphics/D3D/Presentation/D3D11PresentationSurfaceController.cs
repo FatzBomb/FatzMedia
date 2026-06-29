@@ -3,7 +3,6 @@ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
 using System.Diagnostics;
-using System.Windows.Media;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -12,7 +11,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// The renderer should coordinate frame upload/composition; this controller owns the
 /// bookkeeping that says which backend target texture is active and how large it is.
 /// </summary>
-internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends)
+internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends) : ID3D11PresentationSurfaceProvider
 {
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public int Width { get; private set; }
@@ -20,7 +19,6 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
     public long TargetRevision { get; private set; }
     public IntPtr NativeHwnd { get; private set; }
     public bool LastActivationCreated { get; private set; }
-    public ImageSource? ImageSource => backends.D3DImage.ImageSource;
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsNativeHwndActive => backends.NativeHwnd.IsActive;
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
@@ -28,7 +26,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
     {
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
         D3D11PresentationBackendKind.NativeHwndSwapChain => "NativeHwndSwapChain",
-        D3D11PresentationBackendKind.D3DImage => "D3DImage",
+        D3D11PresentationBackendKind.UiSharedSurface => "UiSharedSurface",
         _ => "None"
     };
 
@@ -38,44 +36,62 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         string? reason,
         out D3D11PresentationTargetSnapshot snapshot)
     {
-        snapshot = default;
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = GetActiveTargetSnapshots(applyPendingNativeResize, reason);
+        snapshot = targets.Count > 0 ? targets[0] : default;
+        return snapshot.IsValid;
+    }
 
+    public IReadOnlyList<D3D11PresentationTargetSnapshot> GetActiveTargetSnapshots(
+        bool applyPendingNativeResize,
+        string? reason)
+    {
         if (applyPendingNativeResize && !ApplyPendingNativeHwndResizeIfNeeded())
         {
             LogInvalidTarget(reason, "pending native HWND resize failed");
-            return false;
+            return Array.Empty<D3D11PresentationTargetSnapshot>();
         }
 
-        ID3D11PresentationBackend? active = backends.Active;
-        if (active == null)
+        var snapshots = new List<D3D11PresentationTargetSnapshot>();
+        ID3D11PresentationBackend? primary = backends.Active;
+        foreach (D3D11PresentationBackendTarget candidate in backends.EnumerateActiveTargetBackends())
         {
-            LogInvalidTarget(reason, "no active backend");
-            return false;
+            ID3D11PresentationBackend backend = candidate.Backend;
+            ID3D11Texture2D? texture = backend.TargetTexture;
+            var width = backend.Width;
+            var height = backend.Height;
+            if (texture == null || width <= 0 || height <= 0)
+            {
+                LogInvalidTarget(reason, $"invalid target {candidate.TargetId} texture/dimensions (texture null: {texture == null}, {width}x{height})");
+                continue;
+            }
+
+            var isPrimary = ReferenceEquals(backend, primary);
+            var targetId = isPrimary
+                ? FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11.D3D11CompositionTargetDescriptor.PrimaryFinalTargetId
+                : candidate.TargetId;
+
+            if (isPrimary && (!ReferenceEquals(texture, TargetTexture) || width != Width || height != Height || backend.Kind != backends.ActiveKind))
+            {
+                Adopt(backend, candidate.NativeHwnd);
+            }
+
+            snapshots.Add(new D3D11PresentationTargetSnapshot(
+                targetId,
+                texture,
+                width,
+                height,
+                candidate.NativeHwnd,
+                backend.Kind,
+                candidate.BackendName,
+                isPrimary ? TargetRevision : backend.GetHashCode()));
         }
 
-        ID3D11Texture2D? texture = active.TargetTexture;
-        var width = active.Width;
-        var height = active.Height;
-        if (texture == null || width <= 0 || height <= 0)
+        if (snapshots.Count == 0)
         {
-            LogInvalidTarget(reason, $"invalid active target texture/dimensions (texture null: {texture == null}, {width}x{height})");
-            return false;
+            LogInvalidTarget(reason, "no active backend targets");
         }
 
-        if (!ReferenceEquals(texture, TargetTexture) || width != Width || height != Height || active.Kind != backends.ActiveKind)
-        {
-            Adopt(active, active.Kind == D3D11PresentationBackendKind.NativeHwndSwapChain ? backends.NativeHwnd.Hwnd : NativeHwnd);
-        }
-
-        snapshot = new D3D11PresentationTargetSnapshot(
-            TargetTexture!,
-            Width,
-            Height,
-            NativeHwnd,
-            active.Kind,
-            PresentationBackend,
-            TargetRevision);
-        return snapshot.IsValid;
+        return snapshots;
     }
 
     private static void LogInvalidTarget(string? reason, string detail)
@@ -124,7 +140,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             Debug.WriteLine($"[VorticeD3D11] Presentation backend: {backendName}");
         });
 
-    public bool CreateD3DImageSurface(
+    public bool CreateUiSharedSurface(
         bool isDisposed,
         D3D11DeviceResources deviceResources,
         int width,
@@ -137,14 +153,14 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             deviceResources,
             width,
             height,
-            onCreated => ActivateD3DImageSurface(
+            onCreated => ActivateUiSharedSurface(
                 deviceResources,
                 width,
                 height,
                 cleanupBeforeCreate,
                 onCreated),
-            "D3DImage shared presentation surface",
-            "D3DImage",
+            "UI shared presentation surface",
+            "UiSharedSurface",
             enableLogging,
             notifyPresented);
 
@@ -174,6 +190,31 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             enableLogging,
             notifyPresented);
 
+    public bool CreateSecondaryNativeHwndSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        string targetId,
+        IntPtr hwnd,
+        int width,
+        int height,
+        bool enableLogging)
+    {
+        if (isDisposed || hwnd == IntPtr.Zero || !deviceResources.HasDevice || width <= 0 || height <= 0)
+        {
+            return false;
+        }
+
+        bool created = backends.CreateSecondaryNativeHwndTarget(deviceResources, targetId, hwnd, width, height);
+        if (created && enableLogging)
+        {
+            Debug.WriteLine($"[VorticeD3D11] Created secondary native HWND compositor target '{targetId}' for {width}x{height}");
+        }
+
+        return created;
+    }
+
+    public bool RemoveSecondaryPresentationTarget(string targetId) => backends.RemoveSecondaryTarget(targetId);
+
     public bool CreateDirectCompositionSurface(
         bool isDisposed,
         D3D11DeviceResources deviceResources,
@@ -200,14 +241,14 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             enableLogging,
             notifyPresented);
 
-    public bool ActivateD3DImageSurface(
+    public bool ActivateUiSharedSurface(
         D3D11DeviceResources deviceResources,
         int width,
         int height,
         Action cleanupBeforeCreate,
         Action onCreated)
     {
-        if (!EnsureD3DImageSurface(deviceResources, width, height, cleanupBeforeCreate))
+        if (!EnsureUiSharedSurface(deviceResources, width, height, cleanupBeforeCreate))
         {
             return false;
         }
@@ -267,13 +308,13 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         return true;
     }
 
-    public bool EnsureD3DImageSurface(
+    public bool EnsureUiSharedSurface(
         D3D11DeviceResources deviceResources,
         int width,
         int height,
         Action cleanupBeforeCreate)
     {
-        if (backends.D3DImage.Matches(width, height))
+        if (backends.UiSharedSurface.Matches(width, height))
         {
             LastActivationCreated = false;
             return true;
@@ -282,13 +323,13 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         cleanupBeforeCreate();
         Reset();
 
-        if (!backends.D3DImage.Create(deviceResources, width, height))
+        if (!backends.UiSharedSurface.Create(deviceResources, width, height))
         {
             cleanupBeforeCreate();
             return false;
         }
 
-        Adopt(backends.D3DImage);
+        Adopt(backends.UiSharedSurface);
         LastActivationCreated = true;
         return true;
     }
@@ -394,12 +435,16 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             return;
         }
 
-        backends.ClearPresentedFrame(
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = GetActiveTargetSnapshots(
+            applyPendingNativeResize: true,
+            reason: "clear presented frame");
+        backends.ClearPresentedTargets(
             deviceResources,
+            targets,
             liveResize ? 1 : 0,
             syncImmediate: true,
             () => isDisposed,
-            raiseFramePresented);
+            _ => raiseFramePresented());
     }
 
     public void NotifyFramePresented(
@@ -411,6 +456,18 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             syncImmediate,
             isDisposed,
             raiseFramePresented);
+
+    public void NotifyTargetsPresented(
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
+        bool liveResize,
+        bool syncImmediate,
+        Func<bool> isDisposed,
+        Action<D3D11PresentationTargetSnapshot> framePresented) => backends.NotifyTargetsPresented(
+            targets,
+            liveResize ? 1 : 0,
+            syncImmediate,
+            isDisposed,
+            framePresented);
 
     public void QueueNativeHwndResize(bool isDisposed, int width, int height)
     {
