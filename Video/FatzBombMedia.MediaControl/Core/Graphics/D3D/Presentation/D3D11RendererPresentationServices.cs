@@ -167,15 +167,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public void QueueDirectCompositionResize(bool isDisposed, int width, int height) => Surfaces.QueueDirectCompositionResize(isDisposed, width, height);
 
-    public void ClearPresentedFrame(bool isDisposed, Action raiseFramePresented) => Surfaces.ClearPresentedFrame(
-            _deviceResources,
-            isDisposed,
-            IsNativeLiveResizeInProgress,
-            raiseFramePresented);
-
     public void QueueNativeHwndResize(bool isDisposed, int width, int height) => Surfaces.QueueNativeHwndResize(isDisposed, width, height);
-
-    public bool ResizeNativeHwndPresentation(bool isDisposed, int width, int height) => Surfaces.ResizeNativeHwndPresentation(isDisposed, width, height);
 
     public bool TryGetActiveTargetSnapshot(bool applyPendingNativeResize, string? reason, out D3D11PresentationTargetSnapshot target) => Surfaces.TryGetActiveTargetSnapshot(applyPendingNativeResize, reason, out target);
 

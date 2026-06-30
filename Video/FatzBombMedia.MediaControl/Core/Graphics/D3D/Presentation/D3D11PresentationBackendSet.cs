@@ -155,61 +155,6 @@ internal sealed class D3D11PresentationBackendSet(
         return deviceResources.Device != null && deviceResources.Context != null && target != null && ClearTargetToBlack(deviceResources, target, flush);
     }
 
-    public void ClearPresentedTargets(
-        D3D11DeviceResources deviceResources,
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
-        int liveResizeFlag,
-        bool syncImmediate,
-        Func<bool> isDisposed,
-        Action<D3D11PresentationTargetSnapshot> framePresented)
-    {
-        if (targets.Count == 0)
-        {
-            return;
-        }
-
-        foreach (D3D11PresentationTargetSnapshot target in targets)
-        {
-            _ = ClearTarget(deviceResources, target.Texture, new Color4(0f, 0f, 0f, 0f), flush: false);
-        }
-
-        if (DirectComposition.IsActive)
-        {
-            DirectComposition.ClearOverlayToTransparent(deviceResources);
-        }
-
-        NotifyTargetsPresented(targets, liveResizeFlag, syncImmediate, isDisposed, framePresented);
-        deviceResources.Context?.Flush();
-    }
-
-    /// <summary>
-    /// Clears the base frame and, for DirectComposition, the retained overlay chain. Then
-    /// immediately presents/invalidates the active backend so stale video frames disappear
-    /// when the current media has no visual layer.
-    /// </summary>
-    public void ClearPresentedFrame(
-        D3D11DeviceResources deviceResources,
-        int liveResizeFlag,
-        bool syncImmediate,
-        Func<bool> isDisposed,
-        Action framePresented)
-    {
-        if (Active == null)
-        {
-            return;
-        }
-
-        _ = ClearActiveTarget(deviceResources, new Color4(0f, 0f, 0f, 0f), flush: false);
-
-        if (DirectComposition.IsActive)
-        {
-            DirectComposition.ClearOverlayToTransparent(deviceResources);
-        }
-
-        NotifyFramePresented(liveResizeFlag, syncImmediate, isDisposed, framePresented);
-        deviceResources.Context?.Flush();
-    }
-
     public void Cleanup()
     {
         DirectComposition.Dispose();
@@ -258,12 +203,6 @@ internal sealed class D3D11PresentationBackendSet(
     {
         backend.Present(liveResizeFlag, syncImmediate);
         framePresented();
-    }
-
-    private bool ClearActiveTarget(D3D11DeviceResources deviceResources, Color4 color, bool flush)
-    {
-        ID3D11Texture2D? target = ActiveTargetTexture;
-        return ClearTarget(deviceResources, target, color, flush);
     }
 
     private static bool ClearTargetToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, bool flush) =>

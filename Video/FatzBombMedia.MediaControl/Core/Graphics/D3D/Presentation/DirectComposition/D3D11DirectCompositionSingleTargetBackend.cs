@@ -120,11 +120,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         return ResizeCore(deviceResources, width, height);
     }
 
-    public bool Resize(D3D11DeviceResources deviceResources, int width, int height) => ResizeCore(
-        deviceResources,
-        Math.Max(1, width),
-        Math.Max(1, height));
-
     private bool ResizeCore(D3D11DeviceResources deviceResources, int width, int height)
     {
         if (!IsActive || _baseSwapChain == null || _target.OverlaySwapChain == null)

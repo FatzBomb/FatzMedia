@@ -394,29 +394,6 @@ internal sealed class D3D11PresentationSurfaceController(
         backends.DirectComposition.QueueResize(requestedWidth, requestedHeight);
     }
 
-    public void ClearPresentedFrame(
-        D3D11DeviceResources deviceResources,
-        bool isDisposed,
-        bool liveResize,
-        Action raiseFramePresented)
-    {
-        if (isDisposed)
-        {
-            return;
-        }
-
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = GetActiveTargetSnapshots(
-            applyPendingNativeResize: true,
-            reason: "clear presented frame");
-        backends.ClearPresentedTargets(
-            deviceResources,
-            targets,
-            liveResize ? 1 : 0,
-            syncImmediate: true,
-            () => isDisposed,
-            _ => raiseFramePresented());
-    }
-
     public void NotifyFramePresented(
         bool liveResize,
         bool syncImmediate,
@@ -447,18 +424,6 @@ internal sealed class D3D11PresentationSurfaceController(
         }
 
         backends.NativeHwnd.QueueResize(Math.Max(1, width), Math.Max(1, height));
-    }
-
-    public bool ResizeNativeHwndPresentation(bool isDisposed, int width, int height)
-    {
-        if (isDisposed || !backends.NativeHwnd.IsActive)
-        {
-            return false;
-        }
-
-        var resized = backends.NativeHwnd.Resize(Math.Max(1, width), Math.Max(1, height));
-        SyncNativeHwndState();
-        return resized;
     }
 
     public bool ApplyPendingNativeHwndResizeIfNeeded()

@@ -86,8 +86,6 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         _resizePending = width != Width || height != Height;
     }
 
-    public bool Resize(int width, int height) => ResizeCore(Math.Max(1, width), Math.Max(1, height));
-
     public bool ApplyPendingResizeIfNeeded()
     {
         if (!IsActive || !_resizePending)

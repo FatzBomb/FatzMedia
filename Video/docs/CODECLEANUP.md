@@ -66,6 +66,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 - [x] Stage 1 — completed 2026-06-30: removed DirectoryScanner single-root convenience overloads, ExactMatch/Incompatible enum values + doc refs; deleted GpuRenderingCapabilities.cs zombie. Debug pass, Release pass.
 - [x] Stage 2 — completed 2026-06-30: removed dead CPU/BGRA upload chain and upload-cache files; kept hardware/composition diagnostics. Builds: Debug pass, Release pass.
 - [x] Stage 3 — completed 2026-06-30: removed D3DImage/UI shared-surface backend scaffolding; kept native HWND and DirectComposition paths. Builds: Debug pass, Release pass.
+- [x] Stage 4 — completed 2026-06-30: removed immediate clear/resize renderer APIs; kept queued resize and composition presentation paths. Builds: Debug pass, Release pass.
 
 ---
 
@@ -271,20 +272,59 @@ Bridge members `ResizeNativeHwndPresentation(...)`, `RefreshNativePresentation(.
 
 - `D3D11RendererPresentationServices.ClearPresentedFrame(...)` / `ResizeNativeHwndPresentation(...)`
 - `D3D11PresentationSurfaceController.ClearPresentedFrame(...)` / `ResizeNativeHwndPresentation(...)`
-- `D3D11PresentationBackendSet.ClearPresentedFrame(...)` / `ClearPresentedTargets(...)`
+- `D3D11PresentationBackendSet.ClearPresentedFrame(...)` / `ClearPresentedTargets(...)`; remove private `ClearActiveTarget(...)` if it becomes uncalled after `ClearPresentedFrame(...)` removal.
 - `D3D11NativeHwndSwapChainBackend.Resize(...)` — immediate-helper overload; keep `ApplyPendingResizeIfNeeded(...)` (live/queued).
+- `D3D11DirectCompositionSingleTargetBackend.Resize(...)` — related immediate-helper overload; keep `QueueResize(...)`, `ApplyPendingResizeIfNeeded(...)`, and `ResizeCore(...)` because queued DirectComposition resize is live.
+- `RefreshNativePresentation(...)` is already absent from source; no source cleanup is expected for that symbol beyond the guard.
+
+**Exclusions (do NOT touch):**
+- Public/host surface resize APIs: `IMediaControlSession.ResizePresentationSurface(...)`, `MediaControlPlayer.ResizePresentationSurface(...)`, `NativeMediaPresentationCoordinator.ResizePresentationSurface(...)`, and WPF callers.
+- Live resize APIs and state: `SetPresentationSurfaceLiveResize(...)`, `SetNativeLiveResizeInProgress(...)`, `IsNativeLiveResizeInProgress`.
+- Queued resize paths: `QueueNativeHwndPresentationResize(...)`, `QueueDirectCompositionPresentationResize(...)`, `QueueNativeHwndResize(...)`, `QueueDirectCompositionResize(...)`, backend `QueueResize(...)`, `ApplyPendingResizeIfNeeded(...)`, `ApplyPendingPresentationResizeIfNeeded(...)`, `ApplyPendingNativeHwndResizeIfNeeded(...)`, `ApplyPendingDirectCompositionResizeIfNeeded(...)`, and backend `ResizeCore(...)`.
+- Live clearing/presentation paths: `ClearActiveTargetToBlack(...)`, `ClearTargetToBlack(...)`, `ClearTarget(...)` if still used by surface activation, `ClearDirectCompositionOverlay(...)`, `ClearOverlayToTransparent(...)`, `ClearCompositionBackgroundFrame(...)`, `PresentMediaCompositionVisible(...)`, and composition-empty presentation.
+- Native HWND primary/secondary attach, DirectComposition attach, secondary output routing, WPF adapter code, and renderer stages D/E/F.
 
 **Trace guards:**
 
 ```powershell
-rg -n "ClearPresentedFrame\b|ResizeNativeHwndPresentation|RefreshNativePresentation" FatzBombMedia.MediaControl -g "*.cs"
-# Verify queued resize path stays live:
-rg -n "ApplyPendingResizeIfNeeded|QueueNativeHwndResize" FatzBombMedia.MediaControl -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "ClearPresentedFrame\b|ResizeNativeHwndPresentation|RefreshNativePresentation" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "ClearPresentedFrame\(|ClearPresentedTargets\(|ClearActiveTarget\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "NativeHwnd\.Resize|D3D11NativeHwndSwapChainBackend\.Resize|Resize\(int width, int height\) => ResizeCore" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "DirectComposition\.Resize|D3D11DirectCompositionSingleTargetBackend\.Resize|\.Resize\(deviceResources|Resize\(D3D11DeviceResources deviceResources" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Verify live queued resize and presentation paths stay live:
+git grep -n -E "ApplyPendingResizeIfNeeded|QueueNativeHwndResize|QueueDirectCompositionResize|QueueNativeHwndPresentationResize|QueueDirectCompositionPresentationResize|ResizePresentationSurface|SetPresentationSurfaceLiveResize" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "PresentCurrentComposition|PresentMediaCompositionVisible|ClearCompositionBackgroundFrame|ClearDirectCompositionOverlay|ClearActiveTargetToBlack|ClearOverlayToTransparent" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "ClearPresentedFrame\b|ResizeNativeHwndPresentation|RefreshNativePresentation|ClearPresentedTargets\(|NativeHwnd\.Resize|DirectComposition\.Resize|Resize\(D3D11DeviceResources deviceResources|Resize\(int width, int height\) => ResizeCore" -- FatzBombMedia.MediaControl
+git grep -n -E "ApplyPendingResizeIfNeeded|QueueNativeHwndResize|QueueDirectCompositionResize|QueueNativeHwndPresentationResize|QueueDirectCompositionPresentationResize|ResizePresentationSurface|SetPresentationSurfaceLiveResize|PresentMediaCompositionVisible|ClearActiveTargetToBlack" -- FatzBombMedia.MediaControl FatzBombMedia.MediaControl.Wpf FatzBombMedia.Player
 ```
 
-**Likely files affected:** 4 files.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium. The removable clear/resize APIs are confined to Core renderer internals, but this is presentation code and needs resize/clear smoke testing. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json`, under the repo, or under `C:\Programming`, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** remove `D3D11RendererPresentationServices.ClearPresentedFrame(...)` and `ResizeNativeHwndPresentation(...)`; remove `D3D11PresentationSurfaceController.ClearPresentedFrame(...)` and `ResizeNativeHwndPresentation(...)`; remove `D3D11PresentationBackendSet.ClearPresentedFrame(...)`, `ClearPresentedTargets(...)`, and private `ClearActiveTarget(...)` if it becomes uncalled; remove immediate-helper `D3D11NativeHwndSwapChainBackend.Resize(...)`; remove immediate-helper `D3D11DirectCompositionSingleTargetBackend.Resize(...)`; no source cleanup is needed for `RefreshNativePresentation(...)` because it is already absent.
+- **Exclusions/defer:** keep all public/host surface resize APIs and WPF callers; keep live-resize state; keep queued native HWND and DirectComposition resize paths and all `ApplyPending*ResizeIfNeeded(...)` paths; keep backend `QueueResize(...)` and private `ResizeCore(...)`; keep `ClearActiveTargetToBlack(...)` and low-level clear helpers if still used by surface activation; keep DirectComposition overlay clearing, composition background clearing, composition-empty presentation, native HWND/DirectComposition attach paths, secondary outputs, and renderer stages D/E/F.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found `ClearPresentedFrame(...)`, `ResizeNativeHwndPresentation(...)`, and `ClearPresentedTargets(...)` only in the renderer methods listed above; `RefreshNativePresentation(...)` has zero source/config matches; `D3D11NativeHwndSwapChainBackend.Resize(...)` is only reached through `D3D11PresentationSurfaceController.ResizeNativeHwndPresentation(...)`; `D3D11DirectCompositionSingleTargetBackend.Resize(...)` has no callers; queued resize and WPF surface resize paths remain live.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source matches for immediate clear/resize APIs. The second should still show live queued resize, WPF/session resize, composition presentation, and activation clear paths. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `Core\Graphics\D3D\Presentation\D3D11RendererPresentationServices.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationSurfaceController.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationBackendSet.cs`; `Core\Graphics\D3D\Presentation\NativeHwnd\D3D11NativeHwndSwapChainBackend.cs`; `Core\Graphics\D3D\Presentation\DirectComposition\D3D11DirectCompositionSingleTargetBackend.cs`.
+- **Smoke tests:** run Player with primary DirectComposition overlay mode, native HWND fallback/overlay disabled mode, resize/live resize, stop/idle clear, audio-only/visual-less transition, CDG-only/audio+CDG, secondary output attach/resize/detach, software-decoded video fallback, and hardware-decoded video if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 5 source files. See latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
 
 **Manual verification:** resize, live resize, audio-only clear, stopped/idle CDG clear, secondary output close/open.
+
+**Exit criteria:** Debug and Release builds pass; immediate clear/resize guards return no source/config callers; queued resize, WPF/session resize, composition presentation, activation clear, secondary output, and WPF adapter boundary guards remain clean/live as described above.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
