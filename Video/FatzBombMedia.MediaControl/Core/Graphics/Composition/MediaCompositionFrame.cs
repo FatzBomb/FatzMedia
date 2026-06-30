@@ -70,8 +70,6 @@ public readonly partial record struct MediaCompositionFrame
 
     public bool HasShaderVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay;
 
-    public bool HasAnyVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay;
-
     public MediaCompositionStretchMode EffectiveBackgroundStretchMode => BackgroundStretchMode switch
     {
         MediaCompositionStretchMode.Auto when BackgroundUniformToFill => MediaCompositionStretchMode.UniformToFill,

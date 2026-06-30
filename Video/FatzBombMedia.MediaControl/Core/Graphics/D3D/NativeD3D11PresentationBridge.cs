@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Core.DxCdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
@@ -26,8 +25,6 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
     }
 
     public event EventHandler? FramePresented;
-
-    public bool IsReady => _presentation.IsReady;
 
     public IntPtr NativeDevicePointer => _deviceResources.NativeDevicePointer;
 
@@ -140,22 +137,6 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool ResizeNativeHwndPresentation(int width, int height)
-    {
-        lock (_lock)
-        {
-            return _presentation.ResizeNativeHwndPresentation(_disposed, width, height);
-        }
-    }
-
-    public void UploadFrame(ReadOnlySpan<byte> pixelData, int width, int height, int stride)
-    {
-        lock (_lock)
-        {
-            _presentation.UploadCpuFrame(_disposed, pixelData, width, height, stride, NotifyPresented);
-        }
-    }
-
     public bool PresentHardwareFrame(VideoFrameEventArgs frame)
     {
         if (frame == null || !frame.IsD3D11HardwareFrame)
@@ -184,41 +165,11 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool PresentDxCdgSnapshotVisible(DxCdgRenderSnapshot snapshot, bool retainedRefresh = false)
-    {
-        lock (_lock)
-        {
-            return _presentation.PresentDxCdgSnapshotVisible(_disposed, snapshot, RaisePresentedEvent, retainedRefresh);
-        }
-    }
-
     public bool PresentMediaCompositionVisible(MediaCompositionFrame frame)
     {
         lock (_lock)
         {
             return _presentation.PresentMediaCompositionVisible(_disposed, frame, RaisePresentedEvent);
-        }
-    }
-
-    public void RefreshNativePresentation()
-    {
-        lock (_lock)
-        {
-            if (_presentation.TryGetActiveTargetSnapshot(
-                    applyPendingNativeResize: true,
-                    reason: "native presentation refresh",
-                    out _))
-            {
-                NotifyPresented(syncImmediate: true);
-            }
-        }
-    }
-
-    public void ClearPresentedFrame()
-    {
-        lock (_lock)
-        {
-            _presentation.ClearPresentedFrame(_disposed, RaiseFramePresented);
         }
     }
 

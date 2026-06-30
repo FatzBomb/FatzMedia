@@ -42,8 +42,6 @@ public sealed record MediaCompositionLayer
     /// </summary>
     public DxCdgRenderSnapshot? CdgSnapshot { get; init; }
 
-    public bool HasNaturalSize => Width > 0 && Height > 0;
-
     public bool IsVisible => SourceKind != MediaCompositionLayerSourceKind.None
         && SourceKind != MediaCompositionLayerSourceKind.Clear
         && Opacity > 0d;

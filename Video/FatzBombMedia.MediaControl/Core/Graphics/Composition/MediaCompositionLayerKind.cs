@@ -7,7 +7,5 @@ public enum MediaCompositionLayerKind
 {
     Background,
     Wash,
-    Overlay,
-    Diagnostics,
-    UiOverlay
+    Overlay
 }

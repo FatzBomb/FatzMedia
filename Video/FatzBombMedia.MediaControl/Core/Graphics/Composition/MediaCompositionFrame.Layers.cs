@@ -102,18 +102,6 @@ public readonly partial record struct MediaCompositionFrame
         }
     }
 
-    public MediaCompositionLayer[] CreateLayerDescriptors()
-        => [.. EnumerateLayers()];
-
-    public string LayerSummary
-    {
-        get
-        {
-            MediaCompositionLayer[] layers = CreateLayerDescriptors();
-            return layers.Length == 0 ? "none" : string.Join(",", layers.Select(static layer => layer.ToString()));
-        }
-    }
-
     private static long StableColorRevision(uint argb)
         => unchecked((long)(ulong)argb);
 }

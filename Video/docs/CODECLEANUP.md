@@ -25,6 +25,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 5 — completed 2026-06-30: removed `MediaControlPlayer._metadata` construction/field, `MediaFile._mediaMetadata` field/ctor param and both `Refresh()` calls; deleted `Controllers\MediaMetadata.cs` and `Core\Metadata\MediaMetadata.cs`. BASS calls remain only in real audio code. Builds: Debug pass, Release pass.
 - [x] Stage 6 — completed 2026-06-30: removed `MediaState.Changed`/`OnChanged()`/`LastError`/`SetError()` and 3 `AudioPipeline.SetError` calls; removed no-subscriber `IAudioEngine.SeekCompleted`/`PlaybackStarted` and `ICdgEngine.PositionChanged` from interface and all active implementations/invocations. Preserved `IAudioEngine.PositionChanged`. Builds: Debug pass, Release pass.
 - [x] Stage 7 — completed 2026-06-30: guarded `MediaEffects` volume/pitch/tempo/normalize/gain behind `HasAudio`; made unsupported `ClockAudioEngine` members (`Init`, `Open`, `SetVolume`, `SetPitch`, `AnalyzePeak*`) throw `NotSupportedException`; removed fake `NormalizationGainChanged` invocations from clock analysis. Preserved clock transport. Builds: Debug pass, Release pass.
+- [x] Stage 8 — completed 2026-06-30: removed 6 dead bridge members (IsReady, UploadFrame, RefreshNativePresentation, ClearPresentedFrame, ResizeNativeHwndPresentation, PresentDxCdgSnapshotVisible) from NativeD3D11PresentationBridge; removed 9 composition dead items (FutureVisualizer, Diagnostics/UiOverlay from LayerKind/LayerId, HasNaturalSize, HasAnyVisibleLayer, LayerSummary, CreateLayerDescriptors). Excluded HasMultipleTargets (live); deferred RetainedOffscreenLayer/FutureSwapChain (Cluster F scaffolding). No cascade into downstream renderer chains. Builds: Debug pass, Release pass.
 
 ---
 
@@ -813,22 +814,63 @@ rg -n "NormalizationGainChanged\?\.Invoke|Task\.FromResult\(NormalizationGain\)|
 
 **Risk:** high. Keep isolated from all non-renderer cleanup.
 
-**Scope:**
+**Scope (corrected 2026-06-30 — bridge-level only, no downstream cascade):**
 
-- `NativeD3D11PresentationBridge` dead methods/properties.
-- Composition enum values and properties that have no target-plan or presenter callers.
-- `D3D11CompositionTargetKind` dead future/offscreen values only if current target registry does not plan to activate them.
+- `NativeD3D11PresentationBridge` dead public members only (items 84-89): `IsReady` (line 30), `ResizeNativeHwndPresentation` (143), `UploadFrame` (151), `PresentDxCdgSnapshotVisible` (187), `RefreshNativePresentation` (203), `ClearPresentedFrame` (217). Bridge is `internal sealed`, instantiated at `NativeMediaPresentationCoordinator.cs:59`; the coordinator never calls these six. **Do NOT cascade into the downstream `D3D11RendererPresentationServices` / `D3D11PresentationSurfaceController` / `D3D11PresentationBackendSet` chains** (`UploadCpuFrame`, services/controller `ClearPresentedFrame`/`ResizeNativeHwndPresentation`/`PresentDxCdgSnapshotVisible`, `services.IsReady`). Those become orphaned-but-compiling and belong to Renderer Stages A/C/D in §11.9.
+- Composition dead values/properties with zero callers (items 109-117): `MediaCompositionLayerSourceKind.FutureVisualizer` (109), `MediaCompositionLayerKind.Diagnostics`/`UiOverlay` (110-111), `MediaCompositionLayerId.Diagnostics`/`UiOverlay` (112-113), `MediaCompositionLayer.HasNaturalSize` (114), `MediaCompositionFrame.HasAnyVisibleLayer` (115), and `MediaCompositionFrame.LayerSummary` + `CreateLayerDescriptors` (116-117, removed together). Private `EnumerateLayers()` is LIVE (used by `D3D11CompositionLayerCache` + `D3D11MediaCompositionPresenter`) and must stay.
+- `D3D11CompositionTargetKind.RetainedOffscreenLayer` (118) and `FutureSwapChain` (119): zero usages, build-safe to remove, but they are §11.7 Cluster F offscreen/future scaffolding. Remove only if abandoning the offscreen retained-layer plan; otherwise defer to Renderer Stage F.
+
+**Excluded (audit error — do NOT remove in this stage):**
+
+- `D3D11CompositionTargetPlan.HasMultipleTargets` (item 120) is **NOT dead**. It is read by the live `D3D11CompositionTargetPlan.Summary` getter (line 42, `multiTarget={HasMultipleTargets}`), which is consumed by `D3D11MediaCompositionPresenter` (lines 501, 1029-1030). Removing it requires also editing the `Summary` interpolation. Leave it in place, or trim it together with the `Summary` string in a deliberate diagnostics change — not as a "dead member" deletion.
 
 **Legacy connection:** many names point to earlier or future DirectComposition/shared-surface plans (`FutureSwapChain`, `RetainedOffscreenLayer`, `UiOverlay`, `Diagnostics`). They are likely legacy scaffolding, but renderer paths are high blast-radius.
 
-**Trace guards:**
+**Trace guards (whole-solution, from repo root `C:\Programming\FatzBombMedia`):**
 
 ```powershell
-rg -n "UploadFrame|RefreshNativePresentation|ClearPresentedFrame|ResizeNativeHwndPresentation|PresentDxCdgSnapshotVisible|IsReady" FatzBombMedia.MediaControl
-rg -n "FutureVisualizer|Diagnostics|UiOverlay|RetainedOffscreenLayer|FutureSwapChain|HasMultipleTargets|LayerSummary|CreateLayerDescriptors|HasAnyVisibleLayer" FatzBombMedia.MediaControl
+# Bridge members — verify zero external callers (definitions/internal delegations only):
+rg -n "\bIsReady\b|UploadFrame|RefreshNativePresentation|ClearPresentedFrame|ResizeNativeHwndPresentation|PresentDxCdgSnapshotVisible" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.csproj"
+# Composition members — verify zero callers:
+rg -n "FutureVisualizer|RetainedOffscreenLayer|FutureSwapChain|HasMultipleTargets|LayerSummary|CreateLayerDescriptors|HasAnyVisibleLayer|HasNaturalSize" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config"
+# Ambiguous enum members — scope precisely (substring 'Diagnostics'/'UiOverlay' collide with namespaces):
+rg -n "LayerKind\.Diagnostics|LayerId\.Diagnostics|\.UiOverlay\b" . -g "*.cs"
+# Guard live members that MUST survive:
+rg -n "EnumerateLayers" . -g "*.cs"                 # live: cache + presenter — keep
+rg -n "\.Summary\b" FatzBombMedia.MediaControl\Core\Graphics -g "*.cs"   # D3D11CompositionTargetPlan.Summary is live — keep HasMultipleTargets
+rg -n "D3D11CompositionTargetKind\." . -g "*.cs"    # confirm only None/FinalPresentation/DirectCompositionOverlay used
 ```
 
+**Likely files affected:**
+
+- `FatzBombMedia.MediaControl\Core\Graphics\D3D\NativeD3D11PresentationBridge.cs` (remove 6 members)
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionLayerSourceKind.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionLayerKind.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionLayerId.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionLayer.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionFrame.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\MediaCompositionFrame.Layers.cs`
+- `FatzBombMedia.MediaControl\Core\Graphics\Composition\D3D11\D3D11CompositionTargetKind.cs` (only if abandoning offscreen/future scaffolding)
+- No `.csproj`/XAML/JSON edits expected (no references found in those file types).
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore` (Release = warnings-as-errors; confirmed no private-member orphaning because `EnumerateLayers` stays live and the removed bridge downstream targets are public, not private).
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
 **Manual verification after this stage:** run Player and validate primary output, secondary/projector output, resize/fullscreen, video, image, audio+CDG, and sidecar background cases from `docs/VALIDATION.md`.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety: Medium.** Build risk is low — every confirmed item (84-89, 109-117) has zero callers across the whole solution (all `.cs`; no XAML/JSON/config/reflection/`nameof` hits). But this is renderer-adjacent (high blast-radius per the stage's own label), so manual `docs/VALIDATION.md` smoke testing is mandatory, and one audit item is mischaracterized.
+- **Safe items (confirmed zero callers, build-safe):** bridge members 84-89 (`IsReady`, `UploadFrame`, `RefreshNativePresentation`, `ClearPresentedFrame`, `ResizeNativeHwndPresentation`, `PresentDxCdgSnapshotVisible`); composition 109 (`FutureVisualizer`), 110/111 (`MediaCompositionLayerKind.Diagnostics`/`UiOverlay`), 112/113 (`MediaCompositionLayerId.Diagnostics`/`UiOverlay`), 114 (`HasNaturalSize`), 115 (`HasAnyVisibleLayer`), and 116+117 (`LayerSummary` + `CreateLayerDescriptors`, removed as a pair).
+- **Exclude/defer:**
+  - **Exclude 120 `D3D11CompositionTargetPlan.HasMultipleTargets`** — not dead; read by live `Summary` (consumed by presenter at 501/1029-1030). Audit's "Never read" is wrong.
+  - **Defer 118/119 (`RetainedOffscreenLayer`, `FutureSwapChain`)** unless the offscreen retained-layer future (§11.7 Cluster F) is explicitly abandoned. Build-safe to remove, but they are intentional scaffolding tied to `D3D11CompositionLayerRenderTarget`/`OffscreenRenderTarget`.
+  - **Do not cascade** the 6 bridge removals into the downstream services/controller/backendset chains (Renderer Stages A/C/D).
+  - Keep private `EnumerateLayers()` — live.
+- **Corrected whole-solution guards:** the original guards were project-local (`FatzBombMedia.MediaControl` only) and used bare `Diagnostics`/`UiOverlay`/`IsReady` substrings that collide with `System.Diagnostics`, the `D3D.Diagnostics` namespace, and three unrelated `IsReady` properties. Use the repo-root guard block above, which scopes the enum members (`LayerKind.Diagnostics`, `LayerId.Diagnostics`, `.UiOverlay`) and adds positive guards for the live members that must survive (`EnumerateLayers`, `D3D11CompositionTargetPlan.Summary`).
+- **Smoke tests:** launch Player; validate primary DirectComposition output, native HWND fallback, secondary/projector output, hardware video, image/BGRA + software fallback, audio+CDG, video+CDG, sidecar image/video background, resize/live-resize/fullscreen, and audio-only/stopped/idle clear behavior (the removed bridge clear/refresh/resize/upload/DXCDG-snapshot paths must show no regression because the live coordinator uses the queued/composition paths instead).
+- **Recommendation: proceed with exclusions.** Remove bridge items 84-89 and composition items 109-117 only; exclude 120; defer 118/119 to the Cluster F decision; do not touch downstream renderer chains. Build Debug + Release, then run the manual renderer checklist. If any new caller appears for a bridge member or composition value, stop and keep that member.
 
 ### Stage 9 — WPF Adapter Cleanup
 

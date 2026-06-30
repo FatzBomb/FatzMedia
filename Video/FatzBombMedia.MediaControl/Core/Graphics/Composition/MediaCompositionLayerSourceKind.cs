@@ -13,6 +13,5 @@ public enum MediaCompositionLayerSourceKind
     D3D11Texture,
     RetainedD3D11Texture,
     DxCdgSnapshot,
-    SolidColor,
-    FutureVisualizer
+    SolidColor
 }
