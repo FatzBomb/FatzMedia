@@ -635,7 +635,7 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 
 | Ref | Description | Status |
 |-----|-------------|--------|
-| S1 | `MediaFile.cs Task.Run(HandlePlayOnLoadAsync)` | Deferred (self-handling try/catch; minimal disposed-guard possible) |
+| S1 | `MediaFile.cs Task.Run(HandlePlayOnLoadAsync)` | Resolved 2026-06-30 (load-generation guard; Debug/Release pass) |
 | S6 | `RenderPipeline` cast to `VideoPipeline` | Deferred (Stage 8 review; requires `IVideoEngine` surface change) |
 | S7 | `ClockAudioEngine` ~60% no-op members | Deferred (no broad IAudioEngine split unless explicitly approved) |
 | S10 | `PipelineMediaEngine` double `ImagePath` assignment | Removed (Stage 8) |

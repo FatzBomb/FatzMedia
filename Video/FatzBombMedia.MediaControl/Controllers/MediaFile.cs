@@ -13,6 +13,7 @@ public sealed class MediaFile
     private readonly MediaEffects? _mediaEffects;
     private readonly CdgVisuals? _cdgVisuals;
     private readonly IArchiveService? _archiveService;
+    private int _loadGeneration;
 
     internal MediaFile(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
     {
@@ -69,9 +70,10 @@ public sealed class MediaFile
     /// </summary>
     public async Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
     {
+        var loadGeneration = BeginLoadOperation();
         var success = LoadCore(source, backgroundSource, ignoreSidecar);
         if (success && PlayOnLoad)
-            await HandlePlayOnLoadAsync();
+            await HandlePlayOnLoadAsync(loadGeneration);
 
         return success;
     }
@@ -108,9 +110,10 @@ public sealed class MediaFile
     /// </summary>
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
     {
+        var loadGeneration = BeginLoadOperation();
         var success = LoadCore(source, backgroundSource, ignoreSidecar);
         if (success && PlayOnLoad)
-            _ = Task.Run(HandlePlayOnLoadAsync);
+            _ = Task.Run(() => HandlePlayOnLoadAsync(loadGeneration));
 
         return success;
     }
@@ -119,7 +122,7 @@ public sealed class MediaFile
     /// Handles PlayOnLoad with proper normalization timing.
     /// Waits for quick normalization before starting playback to avoid audio jumps.
     /// </summary>
-    private async Task HandlePlayOnLoadAsync()
+    private async Task HandlePlayOnLoadAsync(int loadGeneration)
     {
         try
         {
@@ -127,6 +130,12 @@ public sealed class MediaFile
 
             // Wait for quick normalization to complete (max 2 seconds)
             await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2));
+
+            if (!IsCurrentLoadOperation(loadGeneration))
+            {
+                System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Skipped because media changed before playback could start");
+                return;
+            }
 
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Quick normalization complete, starting playback");
 
@@ -185,11 +194,19 @@ public sealed class MediaFile
     /// </summary>
     public void Close()
     {
+        InvalidatePendingPlayOnLoad();
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
         _mediaRenderer?.RefreshAttachments();
     }
+
+    private int BeginLoadOperation() => System.Threading.Interlocked.Increment(ref _loadGeneration);
+
+    private void InvalidatePendingPlayOnLoad() => _ = System.Threading.Interlocked.Increment(ref _loadGeneration);
+
+    private bool IsCurrentLoadOperation(int loadGeneration) =>
+        System.Threading.Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
 
     private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {

@@ -39,10 +39,9 @@ The test app uses `MediaSurface` as a native HWND interop control:
 
 ```xml
 <fbm:MediaSurface Player="{Binding Player}"
-                          VideoDisplayMode="{Binding VideoDisplayMode}"
-                          BitmapScalingMode="{Binding BitmapScalingMode}"
-                          PresentationMode="{Binding PresentationMode}"
-                          OverlayHitTestVisible="False">
+                           VideoDisplayMode="{Binding VideoDisplayMode}"
+                           PresentationMode="{Binding PresentationMode}"
+                           OverlayHitTestVisible="False">
     <fbm:MediaSurface.OverlayContent>
         <Grid IsHitTestVisible="False">
             <Border>
