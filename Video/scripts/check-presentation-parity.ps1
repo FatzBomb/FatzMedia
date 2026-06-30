@@ -42,7 +42,6 @@ $surfaceController = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/D3D/Pre
 $presentationServices = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
 $compositionPresenter = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
 $targetRegistry = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11/D3D11CompositionTargetRegistry.cs'
-$targetPlan = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11/D3D11CompositionTargetPlan.cs'
 
 Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IMediaControlSession must expose neutral presentation-surface attach.'
 Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IMediaControlSession must expose neutral presentation-surface resize.'
@@ -83,6 +82,5 @@ Assert-Match $presentationServices 'Surfaces\.NotifyTargetsPresented' 'Visible c
 Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets\.Select' 'D3D11 composition presenter must capture all valid presentation targets.'
 Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<D3D11CompositionTargetDescriptor>\s+targets\s*\)' 'Target registry must support multi-target capture.'
-Assert-Match $targetPlan 'ActivePresentationTargetIds' 'Target plan must expose the final active presentation target ids.'
 
 Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'

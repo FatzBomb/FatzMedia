@@ -13,9 +13,8 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 /// directly from the frame compatibility field; Stage 10E records per-layer
 /// invalidation metadata for future scheduling without changing draw behavior;
 /// Stage 10G hardens layer lifecycle/deactivation reporting; Stage 10H/10I adds
-/// transition guardrails and update-planner metadata; Stage 10J/10K adds
-/// future offscreen-target ownership and scheduling metadata without changing
-/// current presentation behavior.
+/// transition guardrails and update-planner metadata; Stage 10K adds scheduling
+/// metadata without changing current presentation behavior.
 /// </summary>
 internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposable
 {
@@ -26,7 +25,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
     public long UploadedRevision { get; private set; } = -1;
     public long RenderedRevision { get; set; } = -1;
     public bool IsActive => Descriptor != null;
-    public bool HasRetainedResources => HasTexture || HasDxCdgResources || SolidColorOpacity > 0d || HasOffscreenRenderTarget;
+    public bool HasRetainedResources => HasTexture || HasDxCdgResources || SolidColorOpacity > 0d;
     public bool HadRetainedResourcesWhenDeactivated { get; private set; }
     public bool WasDeactivated => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.Deactivated);
     public bool RequiresResourceAllocation => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.ResourceAllocationChanged);
@@ -39,9 +38,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         && (DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.RenderRequired)
             || (Descriptor.Revision >= 0 && Descriptor.Revision != RenderedRevision));
 
-    public D3D11CompositionLayerRenderTarget OffscreenRenderTarget { get; } = new();
     public D3D11CompositionLayerSchedule Schedule { get; private set; } = D3D11CompositionLayerSchedule.None;
-    public bool HasOffscreenRenderTarget => OffscreenRenderTarget.IsAllocated;
 
     public D3D11CompositionLayerUpdate CreateUpdatePlanEntry()
     {
@@ -79,7 +76,6 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             action,
             Schedule,
             WasDeactivated ? HadRetainedResourcesWhenDeactivated : HasRetainedResources,
-            HasOffscreenRenderTarget,
             LastCapturedSequence);
     }
 
@@ -317,12 +313,11 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         Schedule = D3D11CompositionLayerSchedule.None;
         ReleaseResources();
         ReleaseCdgResources();
-        OffscreenRenderTarget.Release();
     }
 
     public string LifecycleSummary =>
         IsActive && Descriptor != null
-            ? $"{Descriptor}; dirty={DirtyFlags}; uploaded={UploadedRevision}; rendered={RenderedRevision}; schedule={Schedule}; {OffscreenRenderTarget}; capture={LastCapturedSequence}"
+            ? $"{Descriptor}; dirty={DirtyFlags}; uploaded={UploadedRevision}; rendered={RenderedRevision}; schedule={Schedule}; capture={LastCapturedSequence}"
             : WasDeactivated
                 ? $"{Id}; dirty={DirtyFlags}; capture={LastCapturedSequence}"
                 : $"{Id}; inactive";

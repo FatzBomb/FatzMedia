@@ -10,8 +10,6 @@ internal sealed class D3D11CompositionTargetPlan(long captureSequence, IEnumerab
     private readonly D3D11CompositionTargetUpdate[] _targets = [.. targets];
 
     public long CaptureSequence { get; } = captureSequence;
-    public IReadOnlyList<D3D11CompositionTargetUpdate> Targets => _targets;
-    public bool HasTargets => _targets.Length > 0;
     public int ActiveTargetCount => _targets.Count(static target => target.IsActive);
     public int DirtyTargetCount => _targets.Count(static target => target.RequiresWork);
     public int ResizeTargetCount => _targets.Count(static target => target.Action.HasFlag(D3D11CompositionTargetUpdateAction.Resize));
@@ -19,17 +17,12 @@ internal sealed class D3D11CompositionTargetPlan(long captureSequence, IEnumerab
     public int MetadataWorkTargetCount => _targets.Count(static target => (target.Action & ~D3D11CompositionTargetUpdateAction.Present) != D3D11CompositionTargetUpdateAction.None);
     public int DeactivatedTargetCount => _targets.Count(static target => !target.IsActive && target.Action.HasFlag(D3D11CompositionTargetUpdateAction.Deactivate));
     public bool HasMultipleTargets => ActiveTargetCount > 1;
-    public bool HasWork => _targets.Any(static target => target.RequiresWork);
     public bool HasMetadataWork => MetadataWorkTargetCount > 0;
 
     public bool ShouldPresentTarget(string targetId) => _targets.Any(target =>
         target.IsActive
         && target.Action.HasFlag(D3D11CompositionTargetUpdateAction.Present)
         && string.Equals(target.Id, targetId, StringComparison.Ordinal));
-
-    public IReadOnlyList<string> ActivePresentationTargetIds => [.. _targets
-        .Where(static target => target.IsActive && target.Action.HasFlag(D3D11CompositionTargetUpdateAction.Present))
-        .Select(static target => target.Id)];
 
     public string Summary
     {

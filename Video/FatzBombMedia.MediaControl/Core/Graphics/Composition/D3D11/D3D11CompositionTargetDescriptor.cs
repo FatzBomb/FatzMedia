@@ -20,18 +20,6 @@ internal readonly record struct D3D11CompositionTargetDescriptor(
         && Width > 0
         && Height > 0;
 
-    public static D3D11CompositionTargetDescriptor PrimaryFinalTarget(
-        int width,
-        int height,
-        string backendName,
-        long revision) => new(
-            PrimaryFinalTargetId,
-            D3D11CompositionTargetKind.FinalPresentation,
-            width,
-            height,
-            string.IsNullOrWhiteSpace(backendName) ? "Unknown" : backendName,
-            revision);
-
     public override string ToString()
         => IsValid
             ? $"{Id}/{Kind}/{BackendName} {Width}x{Height} rev={Revision}"

@@ -15,9 +15,6 @@ internal enum D3D11CompositionLayerUpdateCadence
     /// <summary>Update according to the source media cadence, such as video frame rate.</summary>
     SourceRate,
 
-    /// <summary>Update at the final presentation/display cadence.</summary>
-    DisplayRate,
-
     /// <summary>Layer content is retained until explicitly invalidated.</summary>
     Static
 }

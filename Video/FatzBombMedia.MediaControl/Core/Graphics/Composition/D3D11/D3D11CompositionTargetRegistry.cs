@@ -11,7 +11,6 @@ internal sealed class D3D11CompositionTargetRegistry
     private readonly List<string> _scratchActiveIds = [];
 
     public long CaptureSequence { get; private set; }
-    public IReadOnlyCollection<D3D11CompositionTargetState> Targets => _targets.Values;
     public bool HasMultipleActiveTargets => _targets.Values.Count(static target => target.IsActive) > 1;
     public int ActiveTargetCount => _targets.Values.Count(static target => target.IsActive);
     public int PendingDeactivationCount => _targets.Values.Count(static target => target.WasDeactivated);
@@ -23,17 +22,6 @@ internal sealed class D3D11CompositionTargetRegistry
                 .OrderBy(static target => target.Descriptor.Kind)
                 .ThenBy(static target => target.Id, StringComparer.Ordinal)
                 .Select(static target => target.LifecycleSummary));
-
-    public void Capture(D3D11CompositionTargetDescriptor target)
-    {
-        if (target.IsValid)
-        {
-            Capture([target]);
-            return;
-        }
-
-        Capture([]);
-    }
 
     public void Capture(IEnumerable<D3D11CompositionTargetDescriptor> targets)
     {

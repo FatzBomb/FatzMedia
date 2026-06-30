@@ -13,10 +13,6 @@ internal readonly record struct D3D11CompositionLayerSchedule(
 {
     public bool HasSourceRate => double.IsFinite(SourceFramesPerSecond) && SourceFramesPerSecond > 0d;
 
-    public TimeSpan? SourceFrameInterval => HasSourceRate
-        ? TimeSpan.FromSeconds(1d / SourceFramesPerSecond)
-        : null;
-
     public override string ToString()
     {
         var fps = HasSourceRate ? $"@{SourceFramesPerSecond:0.###}fps" : string.Empty;

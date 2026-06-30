@@ -14,7 +14,6 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     private readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
     private readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
 
-    public IReadOnlyCollection<D3D11CompositionLayerState> Layers => _layers.Values;
     public long CaptureSequence { get; private set; }
     public bool LastCaptureHadVisibleLayers { get; private set; }
     public bool LastCaptureIsClearOnly => !LastCaptureHadVisibleLayers;
@@ -86,12 +85,6 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
         _ = _scratchDeactivatedIds.RemoveAll(id => !_layers.TryGetValue(id, out D3D11CompositionLayerState? state) || !state.WasDeactivated);
     }
-
-    public string ActiveLayerSummary
-        => string.Join(",", _layers.Values
-            .Where(static layer => layer.IsActive)
-            .OrderBy(static layer => layer.Descriptor?.Order ?? int.MaxValue)
-            .Select(static layer => layer.Descriptor!.ToString()));
 
     public string ActiveLayerStateSummary
         => string.Join(",", _layers.Values

@@ -8,7 +8,5 @@ internal enum D3D11CompositionTargetKind
 {
     None = 0,
     FinalPresentation = 1,
-    RetainedOffscreenLayer = 2,
-    FutureSwapChain = 3,
     DirectCompositionOverlay = 4
 }

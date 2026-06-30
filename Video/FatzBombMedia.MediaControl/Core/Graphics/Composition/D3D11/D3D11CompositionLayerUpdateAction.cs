@@ -12,6 +12,5 @@ internal enum D3D11CompositionLayerUpdateAction
     Upload = 1 << 0,
     Render = 1 << 1,
     AllocateResources = 1 << 2,
-    ReleaseResources = 1 << 3,
-    ClearOnly = 1 << 4
+    ReleaseResources = 1 << 3
 }

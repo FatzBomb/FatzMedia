@@ -69,6 +69,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 - [x] Stage 4 — completed 2026-06-30: removed immediate clear/resize renderer APIs; kept queued resize and composition presentation paths. Builds: Debug pass, Release pass.
 - [x] Stage 5 — completed 2026-06-30: removed direct DXCDG/single-target present APIs; kept composition fan-out and overlay split paths. Builds: Debug pass, Release pass.
 - [x] Stage 6 — completed 2026-06-30: removed dead direct blitter/texture presenter/cache helpers; kept hardware and composition fan-out paths. Builds: Debug pass, Release pass.
+- [x] Stage 7 — completed 2026-06-30: removed unused offscreen allocation and future-only planner helpers; kept live retained-layer/fan-out metadata. Builds: Debug pass, Release pass.
 
 ---
 
@@ -533,6 +534,8 @@ git grep -n -E "D3D11CompositionLayerSchedule|RetainedOffscreenTexture|HasFuture
 
 **Exit criteria:** Debug and Release builds pass; removed offscreen/future-only guards return no source/script callers; retained-layer planner, target fan-out, final/direct-composition target metadata, and WPF adapter boundary guards remain clean/live as described above.
 
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
 ---
 
 ### Stage 8 — Visibility & Code-Smell Fixes
@@ -610,7 +613,7 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 | S11 | `PipelineMediaEngine` empty `finally` block | In Stage 8 |
 | S12-S14 | Visibility reductions | In Stage 8 |
 | F11 | `ClockAudioEngine` no-op members (Full-file cleanup) | Deferred |
-| §11.7 | Renderer Cluster F (offscreen scaffolding) | In Stage 7 (decision pending) |
+| §11.7 | Renderer Cluster F (offscreen scaffolding) | Removed (Stage 7) |
 | 90-94 | DirectoryScanner dead members + ExactMatch/Incompatible | Removed (Stage 1) |
 | F14 | `GpuRenderingCapabilities.cs` zombie file | Removed (Stage 1) |
 | 108 | `FileTypes.GetFileType` | Stale (method already absent) |

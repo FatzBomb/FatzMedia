@@ -14,12 +14,11 @@ internal readonly record struct D3D11CompositionLayerUpdate(
     D3D11CompositionLayerUpdateAction Action,
     D3D11CompositionLayerSchedule Schedule,
     bool HasRetainedResources,
-    bool HasOffscreenRenderTarget,
     long CaptureSequence)
 {
     public bool RequiresWork => Action != D3D11CompositionLayerUpdateAction.None;
     public bool CanReuseRetainedOutput => Schedule.CanReuseRetainedOutput && HasRetainedResources;
 
     public override string ToString()
-        => $"{Order}:{Id}/{SourceKind} rev={Revision} action={Action} dirty={DirtyFlags} schedule={Schedule} retained={HasRetainedResources} offscreen={HasOffscreenRenderTarget} capture={CaptureSequence}";
+        => $"{Order}:{Id}/{SourceKind} rev={Revision} action={Action} dirty={DirtyFlags} schedule={Schedule} retained={HasRetainedResources} capture={CaptureSequence}";
 }
