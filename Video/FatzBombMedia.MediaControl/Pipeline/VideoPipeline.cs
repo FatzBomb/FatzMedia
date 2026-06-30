@@ -235,7 +235,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
             if (HasAudio)
             {
-                _ = _audioEngine!.Play();
+                if (!_audioEngine!.Play() && _configuration.EnableLogging)
+                    Debug.WriteLine("[VideoPipeline] audio Play() returned false during transport start");
                 _presentationClock.Start(_audioEngine.Position);
                 if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Playback started using BASS video-audio clock.");
             }
@@ -396,7 +397,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 if (HasAudio && wasPlaying)
                 {
                     _ = _audioEngine!.PrebufferAudio();
-                    _ = _audioEngine.Play();
+                    if (!_audioEngine.Play() && _configuration.EnableLogging)
+                        Debug.WriteLine("[VideoPipeline] audio Play() returned false during post-seek resume");
                     _presentationClock.Start(_audioEngine.Position);
                 }
                 else if (!HasAudio && wasPlaying)

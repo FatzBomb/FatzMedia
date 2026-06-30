@@ -148,7 +148,6 @@
             <fbm:MediaSurface x:Name="MediaSurface" Background="Transparent"
                                       Player="{Binding Player}"
                                       VideoDisplayMode="{Binding VideoDisplayMode}"
-                                      BitmapScalingMode="{Binding BitmapScalingMode}"
                                       PresentationMode="{Binding PresentationMode}"
                                       OverlayHitTestVisible="False"
                                       HorizontalAlignment="Stretch"
@@ -365,10 +364,6 @@
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="58" />
-                                    <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="6" />
-                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
                                 <CheckBox Grid.Column="0"
@@ -395,12 +390,6 @@
                                     Value="{Binding CdgBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                     TickFrequency="10"
                                     IsSnapToTickEnabled="True" />
-                                <TextBlock Grid.Column="9"
-                                       Text="QUALITY"
-                                       Style="{StaticResource LabelTextStyle}" />
-                                <ComboBox Grid.Column="11" Foreground="Black"
-                                      ItemsSource="{Binding QualityModes}"
-                                      SelectedItem="{Binding BitmapScalingMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                         </Border>
                     </Grid>

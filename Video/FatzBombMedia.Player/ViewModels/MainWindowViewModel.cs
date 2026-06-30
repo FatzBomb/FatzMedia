@@ -4,7 +4,6 @@ using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Wpf;
 using FatzBombMedia.Player.Configuration;
-using System.Windows.Media;
 using System.Windows.Threading;
 
 using FatzMediaPlayer = FatzBombMedia.MediaControl.Wpf.Player;
@@ -56,15 +55,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public IReadOnlyList<string> NativeLibraryPaths { get; }
-
-    public IReadOnlyList<BitmapScalingMode> QualityModes { get; } =
-    [
-        BitmapScalingMode.HighQuality,
-        BitmapScalingMode.Fant,
-        BitmapScalingMode.Linear,
-        BitmapScalingMode.LowQuality,
-        BitmapScalingMode.NearestNeighbor
-    ];
 
     public IReadOnlyList<VideoDisplayMode> VideoDisplayModes { get; } =
     [
@@ -178,9 +168,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 player.VideoDisplayMode = field;
         }
     } = VideoDisplayMode.Zoom;
-
-    [ObservableProperty]
-    public partial BitmapScalingMode BitmapScalingMode { get; set; } = BitmapScalingMode.HighQuality;
 
     public int CdgBackgroundOpacity
     {

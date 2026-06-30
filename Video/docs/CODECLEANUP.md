@@ -26,6 +26,8 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 6 — completed 2026-06-30: removed `MediaState.Changed`/`OnChanged()`/`LastError`/`SetError()` and 3 `AudioPipeline.SetError` calls; removed no-subscriber `IAudioEngine.SeekCompleted`/`PlaybackStarted` and `ICdgEngine.PositionChanged` from interface and all active implementations/invocations. Preserved `IAudioEngine.PositionChanged`. Builds: Debug pass, Release pass.
 - [x] Stage 7 — completed 2026-06-30: guarded `MediaEffects` volume/pitch/tempo/normalize/gain behind `HasAudio`; made unsupported `ClockAudioEngine` members (`Init`, `Open`, `SetVolume`, `SetPitch`, `AnalyzePeak*`) throw `NotSupportedException`; removed fake `NormalizationGainChanged` invocations from clock analysis. Preserved clock transport. Builds: Debug pass, Release pass.
 - [x] Stage 8 — completed 2026-06-30: removed 6 dead bridge members (IsReady, UploadFrame, RefreshNativePresentation, ClearPresentedFrame, ResizeNativeHwndPresentation, PresentDxCdgSnapshotVisible) from NativeD3D11PresentationBridge; removed 9 composition dead items (FutureVisualizer, Diagnostics/UiOverlay from LayerKind/LayerId, HasNaturalSize, HasAnyVisibleLayer, LayerSummary, CreateLayerDescriptors). Excluded HasMultipleTargets (live); deferred RetainedOffscreenLayer/FutureSwapChain (Cluster F scaffolding). No cascade into downstream renderer chains. Builds: Debug pass, Release pass.
+- [x] Stage 9 — completed 2026-06-30: removed MediaPresentationMode.D3DImage + NativeHwnd enum values; removed BitmapScalingMode DP from MediaSurface, its XAML binding + QUALITY ComboBox from MainWindow, and QualityModes + BitmapScalingMode property from MainWindowViewModel; extracted shared NativeHwndSurfaceHost from MediaSurface.cs and SecondaryPresentationWindow.cs to its own file with reconciled WS_VISIBLE/SetNativeVisible behavior. Excluded stale Player-ctor item (121-126 already gone/124-125 live). Builds: Debug pass, Release pass.
+- [x] Stage 10 — completed 2026-06-30: converted S2 (Stop-before-load), S3 (SetBackground), and S4 (both audio Play() discards in VideoPipeline) to observe-and-log; excluded S5 (Directory.CreateDirectory — throws on failure, harmless); deferred S1 (HandlePlayOnLoadAsync — already self-handles all exceptions). Builds: Debug pass, Release pass.
 
 ---
 
@@ -878,21 +880,52 @@ rg -n "D3D11CompositionTargetKind\." . -g "*.cs"    # confirm only None/FinalPre
 
 **Risk:** medium.
 
-**Scope:**
+**Scope (corrected 2026-06-30 — see Latest review findings):**
 
-- Remove `MediaPresentationMode.D3DImage`; consider removing `NativeHwnd` if `NativeHwndOverlay` is the only supported mode.
-- Remove `MediaSurface.BitmapScalingMode` DP and Player/ViewModel bindings if still no renderer reads it.
-- Remove dead WPF `Player` constructors/static factories if external API compatibility is not required.
-- Extract duplicated `NativeHwndSurfaceHost` from `MediaSurface.cs` and `SecondaryPresentationWindow.cs` to one internal WPF class.
+- Remove `MediaPresentationMode.D3DImage` (item 128) and `MediaPresentationMode.NativeHwnd` (item 127) — both dead. Keep `NativeHwndOverlay` (live: MediaSurface DP default, `MediaSurface.cs:459`, `MainWindowViewModel.cs:197`) and keep the `PresentationMode` DP itself (bound at `MainWindow.xaml:152`).
+- Remove `MediaSurface.BitmapScalingMode` DP **together with its live XAML/VM wiring** (no renderer reads the DP value — no change callback, never consumed). This is a coordinated multi-file edit, not a single deletion: `MediaSurface.cs` DP (66-75), `MainWindow.xaml:151` attribute, `MainWindow.xaml:398-403` QUALITY label + ComboBox (and fix the surrounding `Grid` column layout), and `MainWindowViewModel.cs` `BitmapScalingMode` property (183) + `QualityModes` (60-66). This removes a visible user-facing QUALITY selector that currently has no effect.
+- ~~Remove dead WPF `Player` constructors/static factories~~ — **STALE / EXCLUDED.** Items 121/122/123/126 were already removed in a prior stage. The only remaining members — `Player(MediaPlayerConfiguration, IEnumerable<string>)` ctor (item 124) and `Player.CreateAsync` (item 125) — are **LIVE** (`CreateAsync` is called at `MainWindowViewModel.cs:302` via the `FatzMediaPlayer` alias; the ctor is used by `CreateAsync`). Nothing dead remains in `Wpf\Player.cs`; do not touch it.
+- Extract duplicated `NativeHwndSurfaceHost` from `MediaSurface.cs` (561-712) and `SecondaryPresentationWindow.cs` (84-226) to one `internal` WPF class. **They are NOT byte-identical:** the Secondary version adds `WS_VISIBLE` to the window style; the MediaSurface version omits `WS_VISIBLE` and exposes `SetNativeVisible(bool)`. The extraction must preserve both behaviors (e.g., an initial-visibility ctor parameter / keep `SetNativeVisible`). `NativeMethods` is shared `internal` (`NativeMethods.cs`), so accessibility is fine.
 
 **Trace guards:**
 
 ```powershell
-rg -n "D3DImage|NativeHwnd\b|BitmapScalingMode|new Player\(|Player\.CreateAsync|NativeHwndSurfaceHost" .
+# Enum values — NativeHwnd\b correctly excludes NativeHwndOverlay (O is a word char):
+rg -n "MediaPresentationMode\.NativeHwnd\b|MediaPresentationMode\.D3DImage|\bD3DImage\b" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config"
+rg -n "NativeHwndOverlay" . -g "*.cs" -g "*.xaml"   # must remain live — keep
+# BitmapScalingMode — distinguish the dead MediaSurface DP from the live WPF framework enum:
+rg -n "BitmapScalingMode" . -g "*.cs" -g "*.xaml" -g "*.json"
+rg -n "QualityModes|QUALITY" FatzBombMedia.Player -g "*.cs" -g "*.xaml"
+# WPF Player ctors/factories — confirm only the LIVE 2-arg ctor + CreateAsync remain:
+rg -n "Player\.CreateAsync|new Player\(|FatzMediaPlayer" . -g "*.cs"
+# Duplicated host + adapter boundary:
+rg -n "NativeHwndSurfaceHost" FatzBombMedia.MediaControl.Wpf
 rg -n "using FatzBombMedia\.MediaControl\.(Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video)" FatzBombMedia.MediaControl.Wpf
+# check-wpf-boundary.ps1 references D3DImage as a FORBIDDEN token (a guard, not a consumer) — removal is compatible:
+rg -n "D3DImage" scripts\check-wpf-boundary.ps1
 ```
 
-**Exit criteria:** build passes; WPF adapter imports remain boundary-clean; primary and secondary HWND surfaces attach/detach/resize.
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
+**Exit criteria:** Debug and Release builds pass; WPF adapter imports remain boundary-clean; primary and secondary HWND surfaces attach/detach/resize; `MainWindow.xaml` still parses after the QUALITY selector removal; `scripts\check-wpf-boundary.ps1` still passes.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety: Medium.** The two enum-value deletions are Low risk, but `BitmapScalingMode` removal is a coordinated XAML+VM+control change that deletes a visible UI element, and the `NativeHwndSurfaceHost` extraction is a renderer-adjacent native-HWND refactor with a real (non-identical) behavioral difference between the two copies. Whole-solution searches (`.cs/.xaml/.json/.config/.ps1`) found no reflection/`nameof`/DI/binding consumers beyond those listed; no integer/JSON persistence of either enum.
+- **Safe items:**
+  - `MediaPresentationMode.D3DImage` (128): only the declaration + `scripts/check-wpf-boundary.ps1` (forbidden-token guard, not a consumer). Safe to remove; removal satisfies the boundary check.
+  - `MediaPresentationMode.NativeHwnd` (127): zero usages (`MediaPresentationMode.NativeHwnd\b` → none). Safe to remove. Ordinal shift is harmless (all refs are by name; no int persistence).
+  - `MediaSurface.BitmapScalingMode` DP + its XAML/VM wiring + the QUALITY ComboBox: the DP has no `PropertyChangedCallback` and is never read by any renderer code; removing it (and the binding/selector) is behavior-neutral except for deleting the non-functional UI control.
+  - `NativeHwndSurfaceHost` extraction: duplication is real; `NativeMethods` is shared `internal`.
+- **Exclude / correct:**
+  - **Exclude the "dead WPF `Player` ctors/factories" item entirely** — stale. 121/122/123/126 already gone; 124/125 are LIVE (`MainWindowViewModel.cs:302`). The audit's item 125 "never called; hides base with `new`" is wrong for the current file (it is a plain static factory and is called). Do not edit `Wpf\Player.cs`.
+  - Keep `NativeHwndOverlay`, the `PresentationMode` DP, and `System.Windows.Media.BitmapScalingMode` (the WPF framework enum is a separate type from the MediaSurface DP — only the DP and its wiring are removed).
+  - Reconcile the `WS_VISIBLE` / `SetNativeVisible` difference when extracting `NativeHwndSurfaceHost`; a naive "identical class" extraction would change initial visibility for one surface.
+- **Corrected whole-solution guards:** use the block above. The original single-line guard mixed the dead MediaSurface DP with the live WPF framework `BitmapScalingMode` enum and did not surface the XAML QUALITY ComboBox or the stale Player-ctor reality; the corrected guards separate dead-vs-live for each token and cover `.xaml/.json/.config/.ps1`.
+- **Likely files affected:** `FatzBombMedia.MediaControl.Wpf\MediaPresentationMode.cs`; `FatzBombMedia.MediaControl.Wpf\MediaSurface.cs` (DP removal + host extraction); `FatzBombMedia.MediaControl.Wpf\SecondaryPresentationWindow.cs` (host extraction); a new `FatzBombMedia.MediaControl.Wpf\NativeHwndSurfaceHost.cs`; `FatzBombMedia.Player\MainWindow.xaml` (remove BitmapScalingMode attr + QUALITY label/ComboBox + fix grid columns); `FatzBombMedia.Player\ViewModels\MainWindowViewModel.cs` (remove `BitmapScalingMode` property + `QualityModes`). **Do NOT** edit `Wpf\Player.cs`.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Smoke tests:** launch Player; confirm the QUALITY selector is gone and the bottom-chrome layout is intact; primary surface attach/detach/resize/fullscreen; secondary/projector window open/close/resize; native HWND background fill on both surfaces; overlay hit-testing on the primary surface; verify `scripts\check-wpf-boundary.ps1` passes.
+- **Recommendation: proceed with exclusions.** Implement the two enum-value deletions and the `BitmapScalingMode` DP+wiring removal, then the `NativeHwndSurfaceHost` extraction. Exclude the stale WPF `Player` ctor/factory item. Prefer splitting deletions (build) from the host-extraction refactor (build) into two build-verified sub-steps rather than one combined pass.
 
 ### Stage 10 — Fire-and-Forget & Failure-Signal Cleanup
 
@@ -900,22 +933,51 @@ rg -n "using FatzBombMedia\.MediaControl\.(Pipeline|Core\.DxCdg|Core\.Graphics|C
 
 **Risk:** medium-high because this can change runtime behavior.
 
-**Scope:**
+**Scope (corrected 2026-06-30 — current line numbers; see Latest review findings):**
 
-- `MediaFile` sync `Load()` fire-and-forget `Task.Run(HandlePlayOnLoadAsync)`.
-- Discarded bool returns from `_mediaControls.Stop()` and `_mediaEngine.SetBackground()`.
-- `VideoPipeline` post-seek `_audioEngine.Play()` discard.
-- `Directory.CreateDirectory(tempDir)` discard.
+- **S2** — `MediaFile.cs:202` discarded `bool` from `_mediaControls?.Stop()` (before opening new media). Observe + log on failure. Low risk.
+- **S3** — `MediaFile.cs:225` discarded `bool` from `_mediaEngine.SetBackground(background)`. Observe + log on failure, but do not log a "failure" when `background` is legitimately `null` (no background). Low risk.
+- **S4** — `VideoPipeline` discarded `bool` from `_audioEngine.Play()`. **Two occurrences, both with the same consistency concern:** the post-seek resume at `VideoPipeline.cs:399` (`_ = _audioEngine.Play();`, no `!`) AND the main transport `Play()` at `VideoPipeline.cs:238` (`_ = _audioEngine!.Play();`, with `!`). In both, if audio `Play()` returns `false` the pipeline still starts `_presentationClock`/decode/presentation loops and sets state to Playing. Address both for consistency. Medium-high risk — these run under `_transportGate` lock in a performance-sensitive path; prefer observe-and-log over aborting the transport unless a behavior change is deliberately chosen.
+- **S1 (defer / minimal-only)** — `MediaFile.cs:113` `_ = Task.Run(HandlePlayOnLoadAsync)`. `HandlePlayOnLoadAsync` is `async Task` with a top-level try/catch that swallows + logs ALL exceptions, so there is no unobserved-exception risk. The remaining concern is lifetime (play running on a possibly-disposed engine after the up-to-2s normalization wait). Do NOT change the public sync `Load(...)` bool API or the PlayOnLoad timing. At most add a disposed/closed guard before the delayed play. Recommend deferring unless a minimal disposed-guard is wanted.
 
-**Recommendation:** convert to explicit handling, logging, or async-only control flow. Do not mix with API deletions.
+**Excluded (do NOT change in this stage):**
 
-**Trace guards:**
+- **S5** — `VideoPipeline.cs:1774` `_ = Directory.CreateDirectory(tempDir)`. `Directory.CreateDirectory` returns a `DirectoryInfo` and **throws** on failure; it never silently fails. The audit's "next line `File.WriteAllBytes` throws" reasoning is inaccurate — `CreateDirectory` itself throws first, and that exception already propagates out of `CreateTempMediaPath` → `OpenBytes`. Discarding the `DirectoryInfo` is harmless and idiomatic. No correctness fix needed; treat as a non-issue.
+- Out-of-scope discards (do not touch): `_audioEngine!.PrebufferAudio()` (`VideoPipeline.cs:398`), `_audioEngine!.Seek(...)` (`:367`), `MediaEffects.cs` `_ = SetVolume/SetPitch/SetTempo`, `VideoAudioEngine.cs:708` and Player-project (`App.xaml.cs:27`, `PlayerNativeLibraries.cs:21`) `Directory.CreateDirectory`.
+
+**Recommendation:** convert S2/S3/S4 to explicit observe-and-log using each file's existing logging style (`MediaFile` uses `System.Diagnostics.Debug.WriteLine`; `VideoPipeline` uses `if (_configuration.EnableLogging) Debug.WriteLine(...)`). Do not mix with API deletions. Keep changes minimal; avoid changing transport control flow under lock unless deliberately chosen and smoke-tested.
+
+**Trace guards (corrected — the original `_ = _audioEngine!\.Play\(` with `!` matched only line 238 and MISSED the post-seek `:399` which has no `!`):**
 
 ```powershell
-rg -n "_ = Task\.Run|_ = \(_mediaControls\?\.Stop\(\)\)|_ = _mediaEngine\.SetBackground|_ = _audioEngine!\.Play\(|Directory\.CreateDirectory" FatzBombMedia.MediaControl
+# Both _audioEngine.Play() discards (with and without the ! null-forgiving operator):
+rg -n "_ = _audioEngine!?\.Play\(" FatzBombMedia.MediaControl\Pipeline\VideoPipeline.cs
+# MediaFile discards (S1/S2/S3):
+rg -n "_ = Task\.Run\(HandlePlayOnLoadAsync\)|_ = \(_mediaControls\?\.Stop\(\)\)|_ = _mediaEngine\.SetBackground" FatzBombMedia.MediaControl\Controllers\MediaFile.cs
+# Confirm return types are bool before observing them:
+rg -n "bool Play\(\)|bool Stop\(\)|bool SetBackground" FatzBombMedia.MediaControl\Core\Abstractions
+# S5 context (excluded — verify CreateDirectory throws-on-failure semantics, no change):
+rg -n "Directory\.CreateDirectory" FatzBombMedia.MediaControl
+# Whole-repo awareness for out-of-scope discards (do not change):
+rg -n "_ = .*\.(Stop|SetBackground|Play|PrebufferAudio|SetVolume|SetPitch|SetTempo)\(" FatzBombMedia.MediaControl FatzBombMedia.MediaControl.Wpf FatzBombMedia.Player
 ```
 
-**Exit criteria:** build passes; seek after playback, load with PlayOnLoad, and sidecar background failure cases do not silently regress.
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
+**Exit criteria:** Debug and Release builds pass; seek-during-playback resume with audio, load-with-PlayOnLoad, load-one-media-after-another (Stop-before-open), and sidecar/explicit-background apply do not silently regress; audio `Play()` failures are now visible in logs.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety: Medium-High.** This is a behavior-change stage in threading/transport-sensitive paths (the S4 discards execute under `_transportGate`; S1 is a fire-and-forget on the sync `Load` path). Unlike Stages 1-9 this does not delete dead code — it alters runtime error handling, so manual smoke testing is mandatory. Trace was project-local to `FatzBombMedia.MediaControl` (correct — all five items are internal implementation details), with whole-repo awareness added for out-of-scope discards.
+- **Safe items (proceed):** S2 (`MediaFile.cs:202`, `Stop()` → `bool`), S3 (`MediaFile.cs:225`, `SetBackground()` → `bool`). Observe the boolean and log on failure; for S3 do not treat a legitimately `null` background as a failure.
+- **S4 (proceed, careful):** address BOTH `VideoPipeline.cs:399` (post-seek, the item the audit named) AND `VideoPipeline.cs:238` (main `Play()`), since both ignore an audio `Play()==false` while the pipeline starts clock/decode/presentation and marks state Playing. Prefer observe-and-log; aborting the resume (skipping clock/loop start on failure) is a real behavior change under lock and needs explicit sign-off + smoke testing.
+- **Exclude S5:** `Directory.CreateDirectory` throws on failure (returns `DirectoryInfo`, never silently fails); the audit's premise is wrong. No change. 
+- **Defer / minimal S1:** `HandlePlayOnLoadAsync` already self-handles all exceptions in a top-level try/catch, so there is no unobserved-fault risk; the only residual concern is running on a disposed/closed engine after the normalization wait. Do not change the public `Load(...)` signature or PlayOnLoad timing; at most add a disposed/closed guard. Otherwise defer.
+- **Corrected whole-solution guards:** the original guard's `_audioEngine!\.Play\(` (with `!`) only matched the `Play()` occurrence at `:238` and missed the post-seek `:399` (no `!`). Use `_ = _audioEngine!?\.Play\(`. Guards added to confirm `bool` return types and to enumerate out-of-scope discards so they are not swept in.
+- **Likely files affected:** `FatzBombMedia.MediaControl\Controllers\MediaFile.cs` (S2, S3, and S1 if minimal guard added); `FatzBombMedia.MediaControl\Pipeline\VideoPipeline.cs` (S4 at `:238` and `:399`). Core project only — no WPF/adapter/public-API changes; package surface unaffected.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Smoke tests:** launch Player; PlayOnLoad auto-play (audio, audio+CDG, video-with-audio, standalone CDG, video-without-audio); load one media immediately after another (exercises S2 Stop-before-open); explicit + sidecar background apply on audio/CDG (S3); seek during playback with audio and verify it resumes (S4 `:399`); start playback from stopped with audio (S4 `:238`); open an archive/byte-based media to exercise `CreateTempMediaPath` (S5 path, unchanged); confirm no new log spam for legitimate null-background cases.
+- **Recommendation: proceed with exclusions.** Implement S2, S3, and S4 (both occurrences) as observe-and-log; exclude S5; defer S1 (or add only a disposed-guard). Keep the transport control flow unchanged unless a deliberate abort-on-failure behavior is chosen and smoke-tested.
 
 ### Stage 11 — Release Build, Smoke Test, and Documentation Sync
 

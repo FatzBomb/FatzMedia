@@ -199,7 +199,8 @@ public sealed class MediaFile
         if (_mediaEngine.IsOpen)
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
-            _ = (_mediaControls?.Stop());
+            if (!(_mediaControls?.Stop() ?? false))
+                System.Diagnostics.Debug.WriteLine("[MediaFile] Stop failed or returned false");
         }
 
         _mediaEngine.ClearBackground();
@@ -222,7 +223,9 @@ public sealed class MediaFile
     private void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
         MediaBackgroundCandidate? background = ResolveCoreBackground(source, backgroundSource, ignoreSidecar);
-        _ = _mediaEngine.SetBackground(background);
+        var setBackgroundResult = _mediaEngine.SetBackground(background);
+        if (!setBackgroundResult && background != null)
+            System.Diagnostics.Debug.WriteLine("[MediaFile] SetBackground failed");
     }
 
     private MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
