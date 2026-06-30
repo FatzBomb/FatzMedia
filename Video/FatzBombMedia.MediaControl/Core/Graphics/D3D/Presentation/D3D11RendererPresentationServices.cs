@@ -495,58 +495,6 @@ internal sealed class D3D11RendererPresentationServices
             : frame.Reason + " directcomposition base"
     };
 
-    public bool PresentDxCdgSnapshotVisible(
-        bool isDisposed,
-        DxCdgRenderSnapshot snapshot,
-        Action<int, int> framePresented,
-        bool retainedRefresh = false)
-    {
-        if (isDisposed || !_deviceResources.HasDevice)
-        {
-            if (_configuration.EnableLogging) Debug.WriteLine("[DXCDG] Visible present skipped: renderer disposed or D3D11 device unavailable.");
-            return false;
-        }
-
-        ClearDirectCompositionOverlaySplitIfNeeded(isDisposed);
-
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = Surfaces.GetActiveTargetSnapshots(
-            applyPendingNativeResize: true,
-            reason: "DXCDG active-target presentation");
-        if (targets.Count == 0)
-        {
-            if (_configuration.EnableLogging) Debug.WriteLine("[DXCDG] Visible present skipped: no active D3D11 presentation target.");
-            return false;
-        }
-
-        if (!MediaCompositor.PresentToTargets(
-                _deviceResources,
-                new MediaCompositionFrame
-                {
-                    ClearMode = MediaCompositionClearMode.Black,
-                    ClearArgb = 0xFF000000,
-                    WashArgb = snapshot.BackgroundWashArgb,
-                    CdgOverlay = snapshot,
-                    RetainedRefresh = retainedRefresh,
-                    Reason = retainedRefresh ? "retained-dxcdg" : "dxcdg"
-                },
-                targets,
-                VideoProcessorPresenter,
-                out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
-        {
-            if (_configuration.EnableLogging) Debug.WriteLine($"[DXCDG] Visible present failed in DXCDG presenter for revision={snapshot.Revision}.");
-            return false;
-        }
-
-        Surfaces.NotifyTargetsPresented(
-            presentedTargets,
-            State.IsNativeLiveResizeInProgress,
-            syncImmediate: true,
-            () => isDisposed,
-            target => framePresented(target.Width, target.Height));
-
-        return true;
-    }
-
     public void CleanupResources()
     {
         _directCompositionOverlaySplitActive = false;

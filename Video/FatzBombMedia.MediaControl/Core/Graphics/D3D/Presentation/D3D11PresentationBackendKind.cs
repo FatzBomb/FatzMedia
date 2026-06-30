@@ -8,6 +8,5 @@ internal enum D3D11PresentationBackendKind
 {
     None = 0,
     NativeHwndSwapChain = 2,
-    DirectCompositionSingleTarget = 3,
-    ExternalTexture = 4
+    DirectCompositionSingleTarget = 3
 }

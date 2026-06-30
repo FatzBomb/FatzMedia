@@ -176,56 +176,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
     }
 
-    public bool PresentToTarget(
-        D3D11DeviceResources deviceResources,
-        DxCdgRenderSnapshot snapshot,
-        ID3D11Texture2D targetTexture,
-        int targetWidth,
-        int targetHeight,
-        string backendName,
-        long targetRevision,
-        bool retainedRefresh = false)
-        => PresentToTarget(
-            deviceResources,
-            new MediaCompositionFrame
-            {
-                ClearMode = MediaCompositionClearMode.Black,
-                ClearArgb = 0xFF000000,
-                WashArgb = snapshot.BackgroundWashArgb,
-                CdgOverlay = snapshot,
-                RetainedRefresh = retainedRefresh,
-                Reason = retainedRefresh ? "retained-dxcdg" : "dxcdg"
-            },
-            targetTexture,
-            targetWidth,
-            targetHeight,
-            backendName,
-            targetRevision);
-
-    public bool PresentToTarget(
-        D3D11DeviceResources deviceResources,
-        MediaCompositionFrame frame,
-        ID3D11Texture2D targetTexture,
-        int targetWidth,
-        int targetHeight,
-        string backendName,
-        long targetRevision,
-        D3D11VideoProcessorPresenter? videoProcessorPresenter = null)
-    {
-        var target = new D3D11PresentationTargetSnapshot(
-            D3D11CompositionTargetDescriptor.PrimaryFinalTargetId,
-            targetTexture,
-            targetWidth,
-            targetHeight,
-            IntPtr.Zero,
-            D3D11PresentationBackendKind.ExternalTexture,
-            backendName,
-            targetRevision,
-            D3D11CompositionTargetKind.FinalPresentation);
-
-        return PresentToTargets(deviceResources, frame, [target], videoProcessorPresenter);
-    }
-
     public bool PresentToTargets(
         D3D11DeviceResources deviceResources,
         MediaCompositionFrame frame,

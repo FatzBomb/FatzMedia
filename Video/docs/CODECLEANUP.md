@@ -67,6 +67,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 - [x] Stage 2 — completed 2026-06-30: removed dead CPU/BGRA upload chain and upload-cache files; kept hardware/composition diagnostics. Builds: Debug pass, Release pass.
 - [x] Stage 3 — completed 2026-06-30: removed D3DImage/UI shared-surface backend scaffolding; kept native HWND and DirectComposition paths. Builds: Debug pass, Release pass.
 - [x] Stage 4 — completed 2026-06-30: removed immediate clear/resize renderer APIs; kept queued resize and composition presentation paths. Builds: Debug pass, Release pass.
+- [x] Stage 5 — completed 2026-06-30: removed direct DXCDG/single-target present APIs; kept composition fan-out and overlay split paths. Builds: Debug pass, Release pass.
 
 ---
 
@@ -332,26 +333,64 @@ git grep -n -E "ApplyPendingResizeIfNeeded|QueueNativeHwndResize|QueueDirectComp
 
 **Goal:** remove direct DXCDG snapshot presentation path orphaned after Phase 1 Stage 8 removed `PresentDxCdgSnapshotVisible`. The live path uses `PresentMediaCompositionVisible(...)` and the composition-frame fan-out.
 
-**Risk:** Medium-High.
+**Risk:** Medium-High (renderer/DxCdg presentation risk).
 
 **Scope:**
 
 Bridge member `PresentDxCdgSnapshotVisible(...)` was removed in Phase 1 Stage 8. Now remove the downstream chain:
 
 - `D3D11RendererPresentationServices.PresentDxCdgSnapshotVisible(...)`
-- `D3D11MediaCompositionPresenter.PresentToTarget(...)` single-target overloads
-- `D3D11PresentationBackendKind.ExternalTexture` only if unused after `PresentToTarget` removal
+- `D3D11MediaCompositionPresenter.PresentToTarget(...)` single-target overloads: both the `DxCdgRenderSnapshot` overload and the `MediaCompositionFrame` overload.
+- `D3D11PresentationBackendKind.ExternalTexture`; whole-repo review found it only exists to support the dead `PresentToTarget(...)` single-target adapter.
+
+**Exclusions (do NOT touch):**
+- Live composition fan-out path: `NativeD3D11PresentationBridge.PresentMediaCompositionVisible(...)`, `D3D11RendererPresentationServices.PresentMediaCompositionVisible(...)`, `D3D11MediaCompositionPresenter.PresentToTargets(...)`, `D3D11PresentationSurfaceController.NotifyTargetsPresented(...)`, and `D3D11PresentationBackendSet.NotifyTargetsPresented(...)`.
+- Live DxCdg snapshot/render path in `NativeMediaPresentationCoordinator`: `RenderCurrentDxCdgFrame(...)`, `RenderCurrentDxCdgFrameNoLock(...)`, `PresentMediaCompositionNoLock(...)`, `BuildCompositionFrameNoLock(...)`, `TryCreateAndCacheDxCdgSnapshot(...)`, retained refresh, pending DxCdg cadence, and dirty-region consumption.
+- DirectComposition overlay split path: `PresentMediaCompositionWithDirectCompositionOverlaySplit(...)`, `DrawDxCdgOverlayToTarget(...)`, `TryGetDirectCompositionOverlayTargetSnapshot(...)`, overlay/base state, overlay clearing, and DirectComposition overlay diagnostics.
+- Multi-target/fan-out metadata: `D3D11PresentationTargetSnapshot`, `D3D11CompositionTargetDescriptor`, `D3D11CompositionTargetKind.FinalPresentation`, `D3D11CompositionTargetKind.DirectCompositionOverlay`, target registry/capture, and secondary native HWND output paths.
+- Stage 6 direct blit/texture helper cleanup (`PresentTextureFrame(...)`, `BlitToActivePresentation(...)`, `D3D11PresentationBackendSet.Present(...)`, `HasNativePresentingBackend`, render-target-view cache) remains out of scope.
 
 **Trace guards:**
 
 ```powershell
-rg -n "PresentDxCdgSnapshotVisible|PresentToTarget\(" FatzBombMedia.MediaControl -g "*.cs"
-rg -n "ExternalTexture" FatzBombMedia.MediaControl -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "PresentDxCdgSnapshotVisible|PresentToTarget\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "ExternalTexture|D3D11PresentationBackendKind\.ExternalTexture" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "DxCdgSnapshot|CdgSnapshot|SnapshotVisible|Present.*Snapshot" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Verify live composition fan-out and DxCdg paths stay live:
+git grep -n -E "PresentMediaCompositionVisible|PresentToTargets\(|NotifyTargetsPresented|DrawDxCdgOverlayToTarget|PresentMediaCompositionWithDirectCompositionOverlaySplit" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "RenderCurrentDxCdgFrame|PresentPendingDxCdgFrame|PresentRetainedDxCdgFrame|BuildCompositionFrameNoLock|TryCreateAndCacheDxCdgSnapshot|TryGetDxCdgSnapshotForVideoComposition" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11PresentationTargetSnapshot|D3D11CompositionTargetDescriptor|D3D11CompositionTargetKind|FinalPresentation|DirectCompositionOverlay" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "PresentDxCdgSnapshotVisible|PresentToTarget\(|ExternalTexture|D3D11PresentationBackendKind\.ExternalTexture" -- FatzBombMedia.MediaControl
+git grep -n -E "PresentMediaCompositionVisible|PresentToTargets\(|NotifyTargetsPresented|DrawDxCdgOverlayToTarget|PresentMediaCompositionWithDirectCompositionOverlaySplit|RenderCurrentDxCdgFrame|PresentPendingDxCdgFrame|D3D11CompositionTargetKind" -- FatzBombMedia.MediaControl
 ```
 
-**Likely files affected:** 2-3 files.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium-High. The direct/single-target APIs are dead and internally confined, but this touches DxCdg renderer presentation and must be smoke-tested across CDG, video+CDG, DirectComposition overlay split, and secondary output. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json`, under the repo, or under `C:\Programming`, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** remove `D3D11RendererPresentationServices.PresentDxCdgSnapshotVisible(...)`; remove both `D3D11MediaCompositionPresenter.PresentToTarget(...)` single-target overloads; remove `D3D11PresentationBackendKind.ExternalTexture` because its only whole-repo use is inside the dead `PresentToTarget(...)` adapter.
+- **Exclusions/defer:** keep `PresentMediaCompositionVisible(...)`, `PresentToTargets(...)`, `NotifyTargetsPresented(...)`, `DrawDxCdgOverlayToTarget(...)`, DirectComposition overlay split, all `NativeMediaPresentationCoordinator` DxCdg snapshot/cadence/retained-refresh paths, composition target metadata, target registry/capture, secondary native HWND outputs, and all Stage 6 direct blit/texture helper items.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found `PresentDxCdgSnapshotVisible(...)` only in `D3D11RendererPresentationServices`; `PresentToTarget(...)` only in the two single-target overloads/self-delegation in `D3D11MediaCompositionPresenter`; and `ExternalTexture` only in `D3D11PresentationBackendKind` plus the dead single-target adapter. Live composition fan-out, DxCdg coordinator presentation, and target metadata paths remain active.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source matches for `PresentDxCdgSnapshotVisible`, `PresentToTarget(`, or `ExternalTexture`. The second should still show live composition fan-out, DirectComposition overlay split, DxCdg coordinator, and composition target kind paths. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `Core\Graphics\D3D\Presentation\D3D11RendererPresentationServices.cs`; `Core\Graphics\Composition\D3D11MediaCompositionPresenter.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationBackendKind.cs`.
+- **Smoke tests:** run Player with CDG-only/audio+CDG, video+CDG, sidecar image + CDG, sidecar video + CDG, DirectComposition overlay split, native HWND fallback/overlay disabled mode, resize/live resize with CDG visible, retained refresh after pause/seek/surface attach, and secondary output if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 3 source files. See latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
 
 **Manual verification:** CDG-only, audio+CDG, video+CDG, DirectComposition overlay split, secondary output.
+
+**Exit criteria:** Debug and Release builds pass; direct/single-target guards return no source/config callers; composition fan-out, DxCdg coordinator, DirectComposition overlay split, target metadata, secondary output, and WPF adapter boundary guards remain clean/live as described above.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
