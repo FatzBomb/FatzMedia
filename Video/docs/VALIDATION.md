@@ -1,32 +1,478 @@
 # Validation Checklist
 
-## Build And Boundary
+Updated: 2026-06-30
 
-- `dotnet restore FatzBombMedia.sln`
-- `dotnet build FatzBombMedia.sln --no-restore`
-- `./scripts/check-wpf-boundary.ps1`
-- `./scripts/check-presentation-parity.ps1`
-- The boundary script also scans the WPF adapter for renderer/pipeline/Cdg/video-frame/D3D11 presentation references.
+This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
-## Player Smoke Tests
+Use the **Routine Validation** sections after normal code changes. Use the **Extended Validation** sections after renderer/presentation/timing/threading/state changes or before merging a major roadmap stage.
+
+---
+
+## 1. Build And Boundary
+
+Run from the repository root.
+
+```powershell
+dotnet restore FatzBombMedia.sln
+dotnet build FatzBombMedia.sln --no-restore
+dotnet build -c Release FatzBombMedia.sln --no-restore
+.\scripts\check-wpf-boundary.ps1
+.\scripts\check-presentation-parity.ps1
+```
+
+Expected:
+
+- Debug build passes.
+- Release build passes.
+- WPF boundary check passes.
+- Presentation parity check passes.
+- No WPF adapter references to renderer/pipeline/internal CDG/D3D11 presentation code.
+- Core does not reference WPF UI/bitmap types.
+
+After CDG naming work, also verify no stale `DxCdg` references remain:
+
+```powershell
+rg -n "DxCdg|DXCDG|dxcdg" .
+```
+
+Expected:
+
+- Zero results, unless intentionally preserved in old historical notes.
+
+---
+
+## 2. Runtime Test Setup
+
+Use a consistent test set so before/after results are comparable.
+
+Recommended media set:
+
+- Audio-only file
+- MP3 + CDG pair
+- ZIP containing audio + CDG
+- Standalone CDG, if supported
+- Video with audio
+- Video without audio or muted/silent video
+- Image-only file
+- Audio + CDG with sidecar image background
+- Audio + CDG with sidecar video background
+- 23.976 / 23.98fps video
+- 29.97fps video
+- 60fps video, if available
+- Long-GOP video, if available
+
+Run runtime validation in **Release x64** with native BASS and FFmpeg DLLs present.
+
+Record:
+
+```text
+Build:
+GPU:
+Monitor refresh rate:
+Primary display:
+Secondary/projector display:
+Windows scaling/DPI:
+Media file:
+Scenario:
+Visible glitches:
+Logs:
+```
+
+---
+
+## 3. Routine Player Smoke Tests
 
 1. Audio file plays.
-2. Volume, pitch, tempo, and normalization work.
-3. MP3+CD+G renders Cdg lyrics.
-4. ZIP audio+CD+G renders Cdg lyrics.
-5. Video plays.
-6. Video tempo keeps audio/video sync.
-7. Image-only renders as a still visual.
-8. Audio+Cdg sidecar image background appears behind lyrics.
-9. Audio+Cdg sidecar video background appears behind lyrics.
-10. Seek works for audio, Cdg, video, and sidecar background cases.
-11. Primary native HWND output resizes cleanly.
-12. Fullscreen WPF UI chrome overlay appears above the native HWND without becoming a media layer.
-13. Secondary/projector output receives the same final Core-composed frame.
-14. Closing secondary output while playing does not disturb primary output.
-15. Repeated media-type switches leave no stale layer artifacts.
+2. Volume works.
+3. Pitch works.
+4. Tempo works.
+5. Normalization works.
+6. MP3 + CDG renders CDG lyrics.
+7. ZIP audio + CDG renders CDG lyrics.
+8. Standalone CDG plays with clock-backed timing, if supported.
+9. Video plays.
+10. Video tempo keeps audio/video sync.
+11. Video without audio uses clock-backed timing correctly.
+12. Image-only renders as a still visual.
+13. Audio + CDG sidecar image background appears behind lyrics.
+14. Audio + CDG sidecar video background appears behind lyrics.
+15. Seek works for audio.
+16. Seek works for CDG.
+17. Seek works for video.
+18. Seek works with sidecar background cases.
+19. Primary native HWND output resizes cleanly.
+20. Fullscreen WPF UI chrome overlay appears above the native HWND without becoming a media layer.
+21. Secondary/projector output receives the same final Core-composed frame.
+22. Closing secondary output while playing does not disturb primary output.
+23. Re-opening secondary output while playing resumes presentation correctly.
+24. Repeated media-type switches leave no stale layer artifacts.
+25. Stop clears or hides the native HWND correctly, with no stale frame/layer.
+26. Close/dispose while playing does not hang or throw unhandled exceptions.
 
-## Automated Architecture Checks
+---
 
-- `check-wpf-boundary.ps1` verifies Core does not reference WPF UI/bitmap types and the WPF adapter does not reference renderer/pipeline/Cdg/D3D11 presentation code.
-- `check-presentation-parity.ps1` verifies the source-level primary/secondary output contract: WPF primary and secondary surfaces both attach through neutral `MediaPresentationSurfaceDescriptor.NativeHwnd`, Core retains attached surfaces in one registry, and the D3D11 compositor captures/draws/presents all active final targets through one target plan.
+## 4. CDG-Specific Validation
+
+Run with MP3 + CDG and ZIP audio + CDG.
+
+Expected:
+
+- Lyrics render at the correct position.
+- CDG colors are correct.
+- CDG transparent color behavior is correct.
+- CDG wash/background layer appears correctly.
+- CDG overlay remains sharp after resize/fullscreen.
+- CDG timing stays synced with audio.
+- Seeking updates CDG state correctly.
+- Repeated seek does not leave stale lyrics or wrong colors.
+- Sidecar image/video remains behind lyrics.
+- Secondary output matches primary output.
+
+After CDG-related code changes, watch for:
+
+```text
+wrong palette
+wrong transparent color
+stale tiles
+missed dirty regions
+lyrics lagging audio
+lyrics jumping after seek
+background/wash not clearing
+secondary output mismatch
+```
+
+---
+
+## 5. Video Timing / Stutter Validation
+
+Use this after changes to:
+
+- `VideoPipeline`
+- `VideoPresentationTiming`
+- `PrecisionWaiter`
+- video decode/presentation loops
+- seek pump
+- background video loop
+- native presentation coordinator
+- DirectComposition/native HWND presentation
+- thread scheduling or wait logic
+
+Test at least:
+
+```text
+23.976 / 23.98fps video
+29.97fps video
+60fps video if available
+video with audio
+video without audio
+audio + CDG + video background
+secondary/projector output
+fullscreen/resize
+seek/scrub stress
+```
+
+For 23.98fps playback, expected healthy log shape:
+
+```text
+adaptive=hold-source-cadence
+lateDrops=0
+selectionSkips=0 or near-zero during steady playback
+queued remains healthy
+timer=high-res when available
+avgTickGap close to source frame duration
+```
+
+Acceptable exceptions:
+
+- Small `selectionSkips` spike immediately after seek.
+- Small spike after resize/fullscreen if a real loop gap occurred.
+- Occasional single skip if the machine is under real external load.
+
+Not acceptable:
+
+- `selectionSkips` steadily increasing during normal playback.
+- Visible stutter while `lateDrops=0`, queue is full, and decode/present/composition times are healthy.
+- Adaptive lead increasing during source-cadence 23.98fps playback.
+- Repeated visible hitch every few seconds with no corresponding late/drop diagnostic.
+- Secondary output drifting or stuttering differently from primary.
+
+If visible stutter remains with near-zero drops/skips, capture profiling data rather than changing selector logic blindly.
+
+---
+
+## 6. Extended Timing / Presentation Profiling
+
+Use after significant renderer, presentation, or timing changes.
+
+### Live counters
+
+```powershell
+dotnet-counters ps
+dotnet-counters monitor --process-id <PID> --refresh-interval 1 System.Runtime
+```
+
+Record:
+
+```text
+CPU %
+allocation rate
+GC heap size
+Gen0/Gen1/Gen2 counts
+exception count
+ThreadPool thread count
+ThreadPool queue length
+visible stutters
+```
+
+### CPU trace
+
+```powershell
+dotnet-trace collect --process-id <PID> --profile cpu-sampling --output .\profiling\video-timing-cpu.nettrace
+```
+
+Capture during:
+
+- 23.98fps playback
+- seek/scrub stress
+- fullscreen/resize
+- secondary output playback
+
+### GC / memory snapshot
+
+```powershell
+dotnet-gcdump collect --process-id <PID> --output .\profiling\before-longrun.gcdump
+```
+
+Run a 10–20 minute long-run with load/seek/stop/reload cycles.
+
+```powershell
+dotnet-gcdump collect --process-id <PID> --output .\profiling\after-longrun.gcdump
+```
+
+Look for retained growth in:
+
+```text
+CancellationTokenSource
+CdgRenderSnapshot
+byte[] / int[] CDG buffers
+D3D/Vortice wrapper objects
+event handler targets
+queued frames
+Task / Timer / CancellationToken registrations
+```
+
+### Windows presentation trace
+
+Use for DirectComposition, DWM, GPU, native HWND, resize/fullscreen, or secondary-output stutter.
+
+```powershell
+wpr -start GeneralProfile -filemode
+```
+
+Run the presentation scenario, then:
+
+```powershell
+wpr -stop .\profiling\presentation.etl
+```
+
+Inspect with Windows Performance Analyzer or GPUView when needed.
+
+---
+
+## 7. Error Handling / Logging Validation
+
+Use after changes to structured logging, host-facing errors, load/open paths, native DLL loading, archive handling, FFmpeg/BASS handling, or background media loading.
+
+Test failures intentionally:
+
+1. Missing media file.
+2. Unsupported file type.
+3. Corrupted/invalid media file.
+4. Missing BASS native DLL.
+5. Missing FFmpeg native DLL.
+6. Corrupted ZIP/archive.
+7. ZIP with missing audio or missing CDG pair.
+8. Sidecar background missing.
+9. Sidecar background unsupported or corrupted.
+10. Video decode failure.
+11. Device removed/reset scenario if reproducible.
+
+Expected:
+
+- Failure does not crash the process.
+- Host receives useful failure status.
+- Logs include enough detail for diagnosis.
+- User-facing error can distinguish likely cause.
+- `Debug.WriteLine` is not the only error surface.
+- Repeated failure/retry does not leave stale state.
+
+---
+
+## 8. State / Threading / Async Validation
+
+Use after changes to:
+
+- `MediaControlOperationQueue`
+- `MediaState`
+- `PlaybackCoordinator`
+- `MediaSession`
+- `ClockAudioEngine`
+- `IAudioEngine`
+- pipeline start/stop/pause/seek behavior
+- fire-and-forget cleanup
+
+Stress cases:
+
+1. Load → play → pause → play → stop.
+2. Load while previous media is playing.
+3. Rapid seek while playing.
+4. Rapid seek while paused.
+5. Stop during seek.
+6. Dispose during playback.
+7. Dispose during seek.
+8. Switch audio → CDG → video → image → audio repeatedly.
+9. Toggle secondary output while playing.
+10. Toggle fullscreen while playing.
+11. Close secondary output while seeking.
+12. Trigger PlayOnLoad repeatedly.
+
+Expected:
+
+- No deadlocks.
+- No UI freeze.
+- No unobserved task exceptions.
+- No stale playback state.
+- No stale media layers.
+- No cross-thread UI exceptions.
+- Public events do not require unsafe WPF access from background threads.
+- Sync methods do not block longer than expected.
+
+If playback stalls, capture:
+
+```powershell
+dotnet-stack report --process-id <PID> > .\profiling\stacks-during-stall.txt
+```
+
+---
+
+## 9. Audio / Clock Validation
+
+Use after changes to audio, virtual clock, standalone CDG, silent video, or `ClockAudioEngine`.
+
+Test:
+
+1. Audio-only.
+2. Audio + CDG.
+3. Standalone CDG.
+4. Video with audio.
+5. Video without audio.
+6. Pitch changes while playing audio.
+7. Tempo changes while playing audio.
+8. Normalization enabled/disabled.
+9. Seek with audio.
+10. Seek without audio.
+11. Stop/reset with audio.
+12. Stop/reset without audio.
+
+Expected:
+
+- Real audio content accepts volume/pitch/tempo/normalization.
+- Non-audio clock-backed content does not pretend unsupported effects succeeded.
+- Position/duration remain coherent.
+- Stop resets transport state.
+- Seek does not desync video/CDG.
+
+---
+
+## 10. Renderer / Presentation Validation
+
+Use after renderer, DirectComposition, native HWND, D3D11, swap-chain, resize, or compositor changes.
+
+Test:
+
+1. Primary DirectComposition path.
+2. Native HWND fallback path, if available.
+3. Secondary/projector output.
+4. Resize primary while playing.
+5. Resize secondary while playing.
+6. Fullscreen toggle.
+7. Audio-only clear/idle behavior.
+8. Image-only.
+9. Video-only.
+10. Audio + CDG.
+11. Video + CDG.
+12. CDG + image background.
+13. CDG + video background.
+14. Stop/clear.
+15. Close/reopen output surfaces.
+
+Expected:
+
+- No stale frame after stop/close.
+- No stale layer after media-type switch.
+- No crash on resize.
+- No flicker or black frame beyond expected attach/first-present behavior.
+- Primary and secondary outputs match.
+- WPF chrome remains outside Core media layers.
+- Core owns composition and target fan-out.
+
+---
+
+## 11. Automated Architecture Checks
+
+`check-wpf-boundary.ps1` verifies:
+
+- Core does not reference WPF UI/bitmap types.
+- WPF adapter does not reference renderer/pipeline/internal CDG/D3D11 presentation code.
+- WPF may use safe public control concepts but not Core implementation details.
+
+`check-presentation-parity.ps1` verifies:
+
+- WPF primary and secondary surfaces both attach through neutral `MediaPresentationSurfaceDescriptor.NativeHwnd`.
+- Core retains attached surfaces in one registry.
+- D3D11 compositor captures/draws/presents all active final targets through one target plan.
+
+Run both scripts after any WPF/Core boundary, renderer, surface, or presentation change.
+
+---
+
+## 12. Long-Run Stability Validation
+
+Run before considering a major stage complete.
+
+Recommended long-run:
+
+```text
+10–20 minutes audio + CDG
+10–20 minutes video
+10–20 minutes audio + CDG + video background
+repeated seek/stop/reload cycles
+secondary output open/close
+fullscreen toggle
+```
+
+Expected:
+
+- Heap stabilizes.
+- Gen2 GC does not climb continuously during normal playback.
+- No increasing handle count.
+- No steady allocation growth.
+- No increasing exception count.
+- No growing stutter over time.
+- Stop/dispose/reload remain responsive.
+
+---
+
+## 13. Completion Criteria For Major Stages
+
+A major stage is not done until:
+
+- Debug build passes.
+- Release build passes.
+- Boundary script passes.
+- Presentation parity script passes.
+- Relevant smoke tests pass.
+- Relevant extended tests pass.
+- No stale `DxCdg` references remain.
+- CDG, video, audio, image, sidecar background, secondary output, resize/fullscreen, and seek behavior are validated if touched.
+- Any known limitations are documented.
