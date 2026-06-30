@@ -9,18 +9,16 @@ public sealed class MediaFile
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly IMediaRenderCoordinator? _mediaRenderer;
-    private readonly MediaMetadata? _mediaMetadata;
     private readonly MediaControls? _mediaControls;
     private readonly MediaEffects? _mediaEffects;
     private readonly CdgVisuals? _cdgVisuals;
     private readonly IArchiveService? _archiveService;
 
-    internal MediaFile(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null, MediaMetadata? mediaMetadata = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
+    internal MediaFile(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
         _mediaEngine = mediaEngine;
         _mediaRenderer = mediaRenderer;
-        _mediaMetadata = mediaMetadata;
         _mediaControls = mediaControls;
         _mediaEffects = mediaEffects;
         _cdgVisuals = cdgVisuals;
@@ -191,7 +189,6 @@ public sealed class MediaFile
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
         _mediaRenderer?.RefreshAttachments();
-        _mediaMetadata?.Refresh();
     }
 
     private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
@@ -217,7 +214,6 @@ public sealed class MediaFile
         _mediaRenderer?.RefreshAttachments();
         ApplyCoreBackground(source, backgroundSource, ignoreSidecar);
 
-        _mediaMetadata?.Refresh();
         _mediaEffects?.RefreshActiveEngine();
         _cdgVisuals?.Apply();
         return true;

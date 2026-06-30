@@ -22,6 +22,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 2 — completed 2026-06-30: marked complete from prior work.
 - [x] Stage 3 — completed 2026-06-30: removed 26 dead members from MediaControlPlayer, 8 from MediaControls, 2 from MediaFile, 2 from CdgVisuals, 6 enum values. Fixed WPF Player ctor chain. Builds: Debug pass, Release pass.
 - [x] Stage 4 — completed 2026-06-30: removed 6 dead config properties (GpuRenderingMinResolution, MaxGpuMemoryMB, MaxUiSharedSurfaceWidth, MaxUiSharedSurfaceHeight, UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) + 2 enum types (UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) from MediaPlayerConfiguration. Removed GetOptimalRenderingMethod + 4 dead GpuCapabilityInfo properties (LegacyUiRenderingTier, SupportsHardwareAcceleration, EstimatedGpuMemoryMB, GpuDescription) from GpuRenderingCapabilities. Removed Player-side assignments in MainWindowViewModel. GpuRenderingCapabilities.cs remains as a zombie class (~173 lines) — no external consumers; schedule full-file deletion for follow-up. Builds: Debug pass, Release pass.
+- [x] Stage 5 — completed 2026-06-30: removed `MediaControlPlayer._metadata` construction/field, `MediaFile._mediaMetadata` field/ctor param and both `Refresh()` calls; deleted `Controllers\MediaMetadata.cs` and `Core\Metadata\MediaMetadata.cs`. BASS calls remain only in real audio code. Builds: Debug pass, Release pass.
 
 ---
 
@@ -644,25 +645,54 @@ rg -n "GpuRenderingCapabilities|GpuCapabilityInfo|GpuRenderingMethod" . -g "*.cs
 
 ### Stage 5 — Metadata Controller Decoupling Decision
 
-**Goal:** decide whether metadata is dead and should be removed, or live and should be exposed properly.
+**Goal:** remove the active-solution metadata controller/model path unless a new real consumer appears immediately before implementation. If metadata is wanted for UI/diagnostics, defer cleanup and implement the revive path as a separate feature stage.
 
-**Risk:** medium.
+**Risk:** medium. Runtime risk is low because the active solution has no metadata consumer; package/API risk remains because `Core.Metadata.MediaMetadata` is public and the removal is source-breaking for hypothetical external consumers.
 
 **Options:**
 
-- **Delete path:** remove `Controllers\MediaMetadata.Current`, `Summary`, `IsResampling`, `PopulateFromEngines()`, and `MediaControlPlayer.Metadata` if no UI/consumer will display metadata.
-- **Revive path:** keep metadata, expose it intentionally, and decouple ManagedBass reads by adding metadata properties to `IAudioEngine`/video abstractions instead of calling `Bass.ChannelGetInfo` from the controller.
+- **Delete path (recommended):** remove the remaining active metadata wiring: `MediaControlPlayer._metadata` construction/field, the `MediaFile` metadata constructor parameter/field and `_mediaMetadata?.Refresh()` calls, `Controllers\MediaMetadata.cs`, and `Core\Metadata\MediaMetadata.cs` if whole-solution guards still show no non-controller consumers. `MediaControlPlayer.Metadata` was already removed in Stage 3, so do not look for that as a current implementation target.
+- **Revive path (defer unless product wants metadata UI now):** keep metadata, expose it intentionally, and decouple ManagedBass reads by adding metadata properties to `IAudioEngine`/video abstractions instead of calling `Bass.ChannelGetInfo` from the controller. This is a feature stage, not cleanup.
 
-**Recommendation:** choose one path before deleting. The current state computes expensive metadata that no caller reads.
+**Exclusions (do NOT remove in this stage):**
+
+- `legacy/**` metadata copies. They are in the repo, but not in `FatzBombMedia.sln`; treat legacy cleanup as a separate request.
+- Unrelated renderer/composition uses of the word `Metadata`, such as `PropertyMetadata`, `MetadataWorkTargetCount`, `HasMetadataWork`, comments, and plan summaries.
+- Active `ManagedBass` package references and BASS calls in real audio engine/normalizer code. This stage removes only the controller-level metadata probe (`Bass.ChannelGetInfo` / `Bass.GetInfo` inside `Controllers\MediaMetadata.cs`).
+- Do not add metadata UI, bindings, or new audio/video abstraction members on the delete path.
+
+**Recommendation:** proceed with the delete path, with the exclusions above. The current active solution computes metadata during load/close and writes debug lines, but no caller reads the cached result.
 
 **Trace guards:**
 
 ```powershell
-rg -n "\.Metadata\b|\.Summary\b|\.IsResampling\b|\.Current\b|GetSummary\(|GetDurationMismatchInfo\(" .
-rg -n "ChannelGetInfo|Bass\.GetInfo" FatzBombMedia.MediaControl
+# Whole-repo/source guards from repo root. Include active projects, WPF/XAML, docs, project/config files, scripts, nameof/reflection strings, and legacy hits for exclusion accounting.
+rg -n "MediaMetadata|Core\.Metadata\.MediaMetadata|PopulateFromEngines|GetSummary\(|GetDurationMismatchInfo\(|IsResampling" . -g "*.cs" -g "*.xaml" -g "*.csproj" -g "*.props" -g "*.targets" -g "*.sln" -g "*.slnx" -g "*.ps1" -g "*.json" -g "*.config" -g "*.md"
+rg -n "\b_metadata\b|_mediaMetadata|new MediaMetadata\(|Core\.Metadata\.MediaMetadata" . -g "*.cs"
+rg -n "\.Metadata\b|Path=Metadata|\{Binding Metadata\b|nameof\([^)]*Metadata|\"Metadata\"" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.md"
+rg -n "\.Summary\b|Path=Summary|\{Binding Summary\b|nameof\([^)]*Summary|\"Summary\"" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.md"
+rg -n "\.IsResampling\b|Path=IsResampling|\{Binding IsResampling\b|nameof\([^)]*IsResampling|\"IsResampling\"" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.md"
+rg -n "ChannelGetInfo|Bass\.GetInfo|ManagedBass" FatzBombMedia.MediaControl -g "*.cs" -g "*.csproj"
+
+# Active-project follow-up guards after deletion. Expected: no metadata controller/model refs in active projects; BASS refs remain only in real audio code.
+rg -n "MediaMetadata|Core\.Metadata\.MediaMetadata|PopulateFromEngines|GetSummary\(|GetDurationMismatchInfo\(|IsResampling|\b_metadata\b|_mediaMetadata" FatzBombMedia.MediaControl FatzBombMedia.MediaControl.Wpf FatzBombMedia.Player -g "*.cs" -g "*.xaml" -g "*.csproj"
+rg -n "ChannelGetInfo|Bass\.GetInfo" FatzBombMedia.MediaControl -g "*.cs"
 ```
 
-**Exit criteria:** either metadata is intentionally removed, or it has a real consumer and no controller-level ManagedBass dependency.
+**Exit criteria:** metadata is intentionally removed from the active solution, or it has a real consumer and no controller-level ManagedBass dependency. Debug and Release builds pass. Player load/close/open-next-media paths still work without metadata refresh side effects. Legacy files remain untouched.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** medium. Active runtime impact should be low because whole-solution searches found no active UI/XAML/config/command/DI/reflection consumer for `Controllers\MediaMetadata.Current`, `Summary`, `IsResampling`, `PopulateFromEngines()`, `Core.Metadata.MediaMetadata`, `GetSummary()`, or `GetDurationMismatchInfo()`. API/package impact is medium because `Core.Metadata.MediaMetadata` is public.
+- **Safe items:** active `Controllers\MediaMetadata.cs` is self-contained except for construction in `MediaControlPlayer` and `Refresh()` calls from `MediaFile`; active `Core\Metadata\MediaMetadata.cs` is referenced only by the controller. Delete-path implementation should remove `MediaControlPlayer._metadata`, stop passing metadata into `MediaFile`, remove the `MediaFile` metadata parameter/field and refresh calls, then delete both active metadata files if guards still match.
+- **Exclusions/defer items:** do not touch `legacy/**` metadata copies found by whole-repo search; do not touch unrelated `PropertyMetadata` or compositor target/layer `MetadataWork` terminology; do not remove `ManagedBass` package references or BASS calls in `AudioEngine`, `AudioNormalizer`, `VideoAudioEngine`, or `AudioStreamManager`; do not implement the revive path in this cleanup stage.
+- **Corrected whole-solution guards:** use the guard block above from repo root before deleting. The original broad `\.Current` / `\.Summary` guard was too noisy and missed the active internal wiring that remains after Stage 3 removed `MediaControlPlayer.Metadata`.
+- **Likely files affected:** `FatzBombMedia.MediaControl\Api\MediaControlPlayer.cs`, `FatzBombMedia.MediaControl\Controllers\MediaFile.cs`, delete `FatzBombMedia.MediaControl\Controllers\MediaMetadata.cs`, delete `FatzBombMedia.MediaControl\Core\Metadata\MediaMetadata.cs`. No `.csproj` edit is expected unless explicit file includes are later added.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Smoke tests:** launch Player, load/play/stop/close an audio file, video file, CDG/audio+CDG file, and image/background sidecar case; load one file after another to cover the removed close/load metadata refresh calls; confirm no metadata UI is expected; verify the WPF adapter boundary remains clean with `rg -n "using FatzBombMedia\.MediaControl\.(Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video)" FatzBombMedia.MediaControl.Wpf`.
+- **Recommendation:** proceed with exclusions. If a new active consumer appears in the guards, stop and switch to the revive path as a separate feature stage.
 
 ### Stage 6 — State/Event Cleanup
 

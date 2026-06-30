@@ -31,12 +31,11 @@ public class MediaControlPlayer : IMediaControlSession
         IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
 
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
-        _metadata = new MediaMetadata(_mediaEngine);
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
         _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
-        File = new MediaFile(_mediaEngine, _presentationCoordinator, _metadata, Controls, Effects, CdgVisuals, archiveService);
+        File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
         _controlOperations = new MediaControlOperationQueue("MediaControl");
 
         Controls.MediaEnded += OnControlsMediaEnded;
@@ -52,8 +51,6 @@ public class MediaControlPlayer : IMediaControlSession
     public MediaEffects Effects { get; }
 
     public CdgVisuals CdgVisuals { get; }
-
-    private readonly MediaMetadata _metadata;
 
     private readonly AcceptedMediaTypes _acceptedTypes;
 
