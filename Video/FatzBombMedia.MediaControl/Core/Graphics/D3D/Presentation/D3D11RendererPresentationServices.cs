@@ -45,7 +45,6 @@ internal sealed class D3D11RendererPresentationServices
         _deviceResources = deviceResources;
 
         VideoProcessorPresenter = new D3D11VideoProcessorPresenter(configuration);
-        FrameUploadPipeline = new D3D11FrameUploadPipeline();
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
         State = new D3D11PresentationState();
         RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
@@ -69,16 +68,14 @@ internal sealed class D3D11RendererPresentationServices
 
         Backends = new D3D11PresentationBackendSet(nativeHwndBackend, uiSharedSurfaceBackend, directCompositionBackend, CreateNativeHwndBackend);
         Surfaces = new D3D11PresentationSurfaceController(Backends, deviceResources);
-        UploadResources = new D3D11FrameUploadResources(Diagnostics, () => Surfaces.Width, () => Surfaces.Height);
+        UploadResources = new D3D11FrameUploadResources(Diagnostics);
         ResourceCleaner = new D3D11PresentationResourceCleaner(
             deviceResources,
             VideoProcessorPresenter,
             Surfaces,
-            RenderTargetViewCache,
-            UploadResources);
+            RenderTargetViewCache);
 
         var framePresenter = new D3D11FramePresenter(
-            FrameUploadPipeline,
             UploadResources,
             VideoProcessorPresenter);
         var presentationBlitter = new D3D11PresentationBlitter(
@@ -195,21 +192,6 @@ internal sealed class D3D11RendererPresentationServices
     public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot target) => Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out target);
 
 
-
-    public void UploadCpuFrame(
-        bool isDisposed,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        Action<int, int> notifyPresented) => FramePresenter.UploadCpuFrame(
-            _deviceResources,
-            isDisposed,
-            pixelData,
-            width,
-            height,
-            stride,
-            notifyPresented);
 
     public bool PresentHardwareFrame(
         bool isDisposed,
@@ -593,8 +575,6 @@ internal sealed class D3D11RendererPresentationServices
     }
 
     public D3D11VideoProcessorPresenter VideoProcessorPresenter { get; }
-
-    public D3D11FrameUploadPipeline FrameUploadPipeline { get; }
 
     public D3D11PresentationDiagnostics Diagnostics { get; }
 

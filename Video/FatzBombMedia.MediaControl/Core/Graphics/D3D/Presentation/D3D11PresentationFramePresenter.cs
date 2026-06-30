@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using Vortice.Direct3D11;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
@@ -22,44 +21,6 @@ internal sealed class D3D11PresentationFramePresenter(
     D3D11PresentationBlitter presentationBlitter,
     D3D11PresentationState presentationState)
 {
-    public void UploadCpuFrame(
-        D3D11DeviceResources deviceResources,
-        bool isDisposed,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        Action<int, int> notifyPresented)
-    {
-        if (isDisposed || deviceResources.Context == null)
-        {
-            return;
-        }
-
-        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
-                applyPendingNativeResize: true,
-                reason: "CPU frame upload",
-                out D3D11PresentationTargetSnapshot target))
-        {
-            return;
-        }
-
-        _ = framePresenter.UploadCpuFrame(
-            deviceResources,
-            static () => true,
-            target.Texture,
-            target.Width,
-            target.Height,
-            pixelData,
-            width,
-            height,
-            stride,
-            framesPerSecond: 60.0,
-            baseStretchOverride: null,
-            CreateSnapshotBlitCallback(target),
-            notifyPresented);
-    }
-
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
         bool isDisposed,
@@ -135,18 +96,4 @@ internal sealed class D3D11PresentationFramePresenter(
         notifyPresented(width, height);
         return true;
     }
-
-
-    private D3D11FrameUploadPipeline.BlitToPresentationCallback CreateSnapshotBlitCallback(
-        D3D11PresentationTargetSnapshot target) => (sourceTexture, sourceArraySlice, sourceWidth, sourceHeight, framesPerSecond, stretchOverride) =>
-                                                            presentationBlitter.BlitToTarget(
-                                                                target.Texture,
-                                                                target.Width,
-                                                                target.Height,
-                                                                sourceTexture,
-                                                                sourceArraySlice,
-                                                                sourceWidth,
-                                                                sourceHeight,
-                                                                framesPerSecond,
-                                                                stretchOverride ?? presentationState.NativePresentationStretch);
 }

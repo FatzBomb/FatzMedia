@@ -13,7 +13,7 @@ obj/
 /*-NOTES.md
 
 # Ignore local AI configurations
-graphify_out/
+# graphify_out/
 
 # Remove Hash for Code Cleanup, add for normal use
 *.md

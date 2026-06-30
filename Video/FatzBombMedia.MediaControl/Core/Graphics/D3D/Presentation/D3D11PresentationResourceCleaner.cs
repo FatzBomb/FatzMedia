@@ -1,5 +1,4 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
 
@@ -13,8 +12,7 @@ internal sealed class D3D11PresentationResourceCleaner(
     D3D11DeviceResources deviceResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter,
     ID3D11PresentationSurfaceProvider presentationSurfaces,
-    D3D11PresentationRenderTargetViewCache renderTargetViewCache,
-    D3D11FrameUploadResources uploadResources)
+    D3D11PresentationRenderTargetViewCache renderTargetViewCache)
 {
     public void CleanupSurfaces()
     {
@@ -25,7 +23,6 @@ internal sealed class D3D11PresentationResourceCleaner(
         renderTargetViewCache.Release();
         presentationSurfaces.CleanupBackends();
 
-        uploadResources.ReleaseCache();
         if (!backendOwnsPresentationTexture)
         {
             activeTarget?.Dispose();

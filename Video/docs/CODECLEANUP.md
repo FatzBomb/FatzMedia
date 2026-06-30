@@ -64,6 +64,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 ### Cleanup Progress
 
 - [x] Stage 1 — completed 2026-06-30: removed DirectoryScanner single-root convenience overloads, ExactMatch/Incompatible enum values + doc refs; deleted GpuRenderingCapabilities.cs zombie. Debug pass, Release pass.
+- [x] Stage 2 — completed 2026-06-30: removed dead CPU/BGRA upload chain and upload-cache files; kept hardware/composition diagnostics. Builds: Debug pass, Release pass.
 
 ---
 
@@ -146,25 +147,51 @@ The bridge member `NativeD3D11PresentationBridge.UploadFrame(...)` was removed i
 - `D3D11FramePresenter.UploadCpuFrame(...)` — `Core\Graphics\D3D\Frame\D3D11FramePresenter.cs`
 - Delete `D3D11FrameUploadPipeline.cs` — `Core\Graphics\D3D\Upload\D3D11FrameUploadPipeline.cs` (complete dead file if `UploadCpuFrame` is removed)
 - Delete `D3D11TextureUploadCache.cs` — `Core\Graphics\D3D\Upload\D3D11TextureUploadCache.cs` (complete dead file if CPU upload path is removed)
-- `D3D11FrameUploadResources.TextureCache` and stale upload helpers — `Core\Graphics\D3D\Upload\D3D11FrameUploadResources.cs` **Do NOT delete the whole file** — `RecordUpload(...)` is still live for hardware-frame diagnostics. Remove only `TextureCache`, `RecordUploadWithCurrentTarget(...)`, and any methods that are only called by the dead UploadCpuFrame chain.
+- `D3D11FrameUploadResources.TextureCache` and stale upload helpers — `Core\Graphics\D3D\Upload\D3D11FrameUploadResources.cs` **Do NOT delete the whole file** — `RecordUpload(...)` is still live for hardware-frame diagnostics. Remove only `TextureCache`, `RecordUploadWithCurrentTarget(...)`, `ReleaseCache()`, `IDisposable`, the current-target constructor delegates, and any methods that are only called by the dead UploadCpuFrame chain.
+- `D3D11PresentationResourceCleaner` upload-resources dependency and `ReleaseCache()` call — `Core\Graphics\D3D\Presentation\D3D11PresentationResourceCleaner.cs` (only because the CPU upload cache is removed; keep normal surface/resource cleanup intact)
 
 **Exclusions (do NOT touch):**
 - `D3D11FrameUploadResources.RecordUpload(...)` — live (hardware-frame diagnostics)
 - Any remaining `D3D11FrameUploadResources` members that have live callers
+- `D3D11PresentationDiagnostics.RecordUpload(...)` — live diagnostics sink
+- `D3D11FramePresenter.PresentHardwareFrame(...)` and the hardware/video-processor path
+- Composition fan-out / `PresentMediaCompositionVisible(...)`
 - All other renderer clusters (B/C/D/E/F) — out of scope for this stage
 
 **Trace guards:**
 
 ```powershell
-rg -n "UploadCpuFrame" . -g "*.cs"
-rg -n "D3D11FrameUploadPipeline|D3D11TextureUploadCache|TextureCache|RecordUploadWithCurrentTarget" . -g "*.cs"
-# Confirm RecordUpload is live (must remain):
-rg -n "RecordUpload\(" . -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "UploadCpuFrame" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11FrameUploadPipeline|D3D11TextureUploadCache|TextureCache|RecordUploadWithCurrentTarget" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11FrameUploadResources|ReleaseCache\(|getPresentationWidth|getPresentationHeight" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "UploadFrame\(|UploadFrame\b|NativeD3D11PresentationBridge\.UploadFrame" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Confirm RecordUpload is live and must remain:
+git grep -n -E "RecordUpload\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Project-local renderer follow-up guards after removal:
+git grep -n -E "D3D11FrameUploadPipeline|D3D11TextureUploadCache|TextureCache|RecordUploadWithCurrentTarget|ReleaseCache\(" -- FatzBombMedia.MediaControl
+git grep -n -E "RecordUpload\(|PresentHardwareFrame|PresentMediaCompositionVisible|D3D11VideoProcessorPresenter" -- FatzBombMedia.MediaControl
 ```
 
-**Likely files affected:** 5 files (see scope); delete 2 files.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium. The CPU/BGRA upload chain is internally isolated, but this is renderer code and must be smoke-tested after build.
+- **Safe items:** remove `UploadCpuFrame(...)` from `D3D11RendererPresentationServices`, `D3D11PresentationFramePresenter`, and `D3D11FramePresenter`; delete `D3D11FrameUploadPipeline.cs`; delete `D3D11TextureUploadCache.cs`; remove `TextureCache`, `RecordUploadWithCurrentTarget(...)`, `ReleaseCache()`, `IDisposable`, and unused current-target delegates from `D3D11FrameUploadResources`; remove the now-dead `D3D11PresentationResourceCleaner` upload-resources dependency/call.
+- **Exclusions/defer:** do not remove `D3D11FrameUploadResources.RecordUpload(...)` or `D3D11PresentationDiagnostics.RecordUpload(...)`; both remain live for hardware-frame presentation diagnostics. Do not touch `PresentHardwareFrame(...)`, `D3D11VideoProcessorPresenter`, `D3D11MediaCompositionPresenter`, composition fan-out, WPF adapter code, or renderer clusters B/C/D/E/F.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found no source/config callers of `NativeD3D11PresentationBridge.UploadFrame`; `UploadCpuFrame` matches are confined to the three renderer methods plus `D3D11FrameUploadPipeline`; upload cache matches are confined to the CPU upload chain/resources; `RecordUpload(...)` remains live and must stay.
+- **Likely files affected:** `Core\Graphics\D3D\Presentation\D3D11RendererPresentationServices.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationFramePresenter.cs`; `Core\Graphics\D3D\Frame\D3D11FramePresenter.cs`; `Core\Graphics\D3D\Upload\D3D11FrameUploadResources.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationResourceCleaner.cs`; delete `Core\Graphics\D3D\Upload\D3D11FrameUploadPipeline.cs`; delete `Core\Graphics\D3D\Upload\D3D11TextureUploadCache.cs`.
+- **Smoke tests:** run Player with image/BGRA playback, software-decoded video fallback, hardware-decoded video, CDG-only/audio+CDG, sidecar image background, resize/live resize, DirectComposition primary surface, and secondary output if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 5 source files; delete 2 files. See the latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
 
 **Manual verification:** run Player — image/BGRA playback, software-decoded video fallback, hardware video, CDG, sidecar image background.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
