@@ -38,8 +38,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11RendererPresentationServices(
         MediaPlayerConfiguration configuration,
-        D3D11DeviceResources deviceResources,
-        ID3D11UiSharedSurfacePresentationBackend uiSharedSurfaceBackend)
+        D3D11DeviceResources deviceResources)
     {
         _configuration = configuration;
         _deviceResources = deviceResources;
@@ -66,7 +65,7 @@ internal sealed class D3D11RendererPresentationServices
             () => VideoProcessorPresenter.Reset(),
             RenderTargetViewCache.Release);
 
-        Backends = new D3D11PresentationBackendSet(nativeHwndBackend, uiSharedSurfaceBackend, directCompositionBackend, CreateNativeHwndBackend);
+        Backends = new D3D11PresentationBackendSet(nativeHwndBackend, directCompositionBackend, CreateNativeHwndBackend);
         Surfaces = new D3D11PresentationSurfaceController(Backends, deviceResources);
         UploadResources = new D3D11FrameUploadResources(Diagnostics);
         ResourceCleaner = new D3D11PresentationResourceCleaner(
@@ -134,15 +133,6 @@ internal sealed class D3D11RendererPresentationServices
         ResourceCleaner.CleanupResources();
         return _deviceResources.InitializeFromNativeDevice(devicePointer, deviceContextPointer, _configuration);
     }
-
-    public bool CreateUiSharedSurface(bool isDisposed, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateUiSharedSurface(
-            isDisposed,
-            _deviceResources,
-            width,
-            height,
-            ResourceCleaner.CleanupSurfaces,
-            _configuration.EnableLogging,
-            notifyPresented);
 
     public bool CreateNativeHwndSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateNativeHwndSurface(
             isDisposed,

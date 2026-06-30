@@ -34,7 +34,6 @@ internal sealed class D3D11PresentationSurfaceController(
     {
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
         D3D11PresentationBackendKind.NativeHwndSwapChain => "NativeHwndSwapChain",
-        D3D11PresentationBackendKind.UiSharedSurface => "UiSharedSurface",
         _ => "None"
     };
 
@@ -197,30 +196,6 @@ internal sealed class D3D11PresentationSurfaceController(
             Debug.WriteLine($"[VorticeD3D11] Presentation backend: {backendName}");
         });
 
-    public bool CreateUiSharedSurface(
-        bool isDisposed,
-        D3D11DeviceResources deviceResources,
-        int width,
-        int height,
-        Action cleanupBeforeCreate,
-        bool enableLogging,
-        Action<int, int, bool> notifyPresented) => ActivatePresentationSurface(
-            isDisposed,
-            true,
-            deviceResources,
-            width,
-            height,
-            onCreated => ActivateUiSharedSurface(
-                deviceResources,
-                width,
-                height,
-                cleanupBeforeCreate,
-                onCreated),
-            "UI shared presentation surface",
-            "UiSharedSurface",
-            enableLogging,
-            notifyPresented);
-
     public bool CreateNativeHwndSurface(
         bool isDisposed,
         D3D11DeviceResources deviceResources,
@@ -298,27 +273,6 @@ internal sealed class D3D11PresentationSurfaceController(
             enableLogging,
             notifyPresented);
 
-    public bool ActivateUiSharedSurface(
-        D3D11DeviceResources deviceResources,
-        int width,
-        int height,
-        Action cleanupBeforeCreate,
-        Action onCreated)
-    {
-        if (!EnsureUiSharedSurface(deviceResources, width, height, cleanupBeforeCreate))
-        {
-            return false;
-        }
-
-        if (LastActivationCreated)
-        {
-            _ = backends.ClearActiveTargetToBlack(deviceResources);
-            onCreated();
-        }
-
-        return true;
-    }
-
     public bool ActivateNativeHwndSurface(
         D3D11DeviceResources deviceResources,
         IntPtr hwnd,
@@ -362,32 +316,6 @@ internal sealed class D3D11PresentationSurfaceController(
             backends.DirectComposition.PresentOverlayAndCommit();
         }
 
-        return true;
-    }
-
-    public bool EnsureUiSharedSurface(
-        D3D11DeviceResources deviceResources,
-        int width,
-        int height,
-        Action cleanupBeforeCreate)
-    {
-        if (backends.UiSharedSurface.Matches(width, height))
-        {
-            LastActivationCreated = false;
-            return true;
-        }
-
-        cleanupBeforeCreate();
-        Reset();
-
-        if (!backends.UiSharedSurface.Create(deviceResources, width, height))
-        {
-            cleanupBeforeCreate();
-            return false;
-        }
-
-        Adopt(backends.UiSharedSurface);
-        LastActivationCreated = true;
         return true;
     }
 

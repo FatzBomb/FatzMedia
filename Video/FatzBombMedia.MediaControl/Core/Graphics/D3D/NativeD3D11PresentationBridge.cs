@@ -20,8 +20,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         _configuration = configuration;
         _presentation = new D3D11RendererPresentationServices(
             configuration,
-            _deviceResources,
-            new NullD3D11UiSharedSurfacePresentationBackend());
+            _deviceResources);
     }
 
     public event EventHandler? FramePresented;

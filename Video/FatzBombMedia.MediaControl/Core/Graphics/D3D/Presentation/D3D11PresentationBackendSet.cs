@@ -16,7 +16,6 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// </summary>
 internal sealed class D3D11PresentationBackendSet(
     D3D11NativeHwndSwapChainBackend nativeHwnd,
-    ID3D11UiSharedSurfacePresentationBackend uiSharedSurface,
     D3D11DirectCompositionSingleTargetBackend directComposition,
     Func<D3D11NativeHwndSwapChainBackend>? createSecondaryNativeHwndBackend = null) : IDisposable
 {
@@ -26,20 +25,18 @@ internal sealed class D3D11PresentationBackendSet(
     public const string DirectCompositionTargetId = "directcomposition-final";
     public const string DirectCompositionOverlayTargetId = "directcomposition-overlay";
     public const string NativeHwndTargetId = "native-hwnd-final";
-    public const string UiSharedSurfaceTargetId = "ui-shared-final";
     public const string SecondaryNativeHwndTargetPrefix = "native-hwnd-secondary:";
 
     public D3D11NativeHwndSwapChainBackend NativeHwnd { get; } = nativeHwnd;
-    public ID3D11UiSharedSurfacePresentationBackend UiSharedSurface { get; } = uiSharedSurface;
     public D3D11DirectCompositionSingleTargetBackend DirectComposition { get; } = directComposition;
 
     /// <summary>
     /// Primary backend priority is intentional. DirectComposition is the most specific native
-    /// layered mode, then plain native HWND, then UI shared-surface fallback. Secondary targets do
-    /// not change this primary identity; they are fan-out outputs for the same composed frame.
+    /// layered mode, then plain native HWND. Secondary targets do not change this primary identity;
+    /// they are fan-out outputs for the same composed frame.
     /// </summary>
     public ID3D11PresentationBackend? Active =>
-        DirectComposition.IsActive ? DirectComposition : NativeHwnd.IsActive ? NativeHwnd : UiSharedSurface.IsActive ? UiSharedSurface : null;
+        DirectComposition.IsActive ? DirectComposition : NativeHwnd.IsActive ? NativeHwnd : null;
 
     public D3D11PresentationBackendKind ActiveKind => Active?.Kind ?? D3D11PresentationBackendKind.None;
 
@@ -48,14 +45,11 @@ internal sealed class D3D11PresentationBackendSet(
     public bool HasNativePresentingBackend => ActiveKind is D3D11PresentationBackendKind.NativeHwndSwapChain
         or D3D11PresentationBackendKind.DirectCompositionSingleTarget;
 
-    public bool HasUiSharedSurfaceBackend => ActiveKind == D3D11PresentationBackendKind.UiSharedSurface;
-
     public bool HasMultipleActiveTargets => EnumerateActiveTargetBackends().Skip(1).Any();
 
     public bool OwnsTexture(ID3D11Texture2D? texture) => texture != null
             && ((NativeHwnd.IsActive && ReferenceEquals(texture, NativeHwnd.TargetTexture))
                 || (DirectComposition.IsActive && ReferenceEquals(texture, DirectComposition.TargetTexture))
-                || (UiSharedSurface.IsActive && ReferenceEquals(texture, UiSharedSurface.TargetTexture))
                 || _secondaryNativeHwndTargets.Values.Any(target => target.IsActive && ReferenceEquals(texture, target.TargetTexture)));
 
     public bool CreateSecondaryNativeHwndTarget(D3D11DeviceResources deviceResources, string targetId, IntPtr hwnd, int width, int height)
@@ -95,9 +89,6 @@ internal sealed class D3D11PresentationBackendSet(
         if (NativeHwnd.IsActive)
             yield return new D3D11PresentationBackendTarget(NativeHwndTargetId, NativeHwnd, NativeHwnd.Hwnd, "NativeHwndSwapChain");
 
-        if (UiSharedSurface.IsActive)
-            yield return new D3D11PresentationBackendTarget(UiSharedSurfaceTargetId, UiSharedSurface, IntPtr.Zero, "UiSharedSurface");
-
         foreach (KeyValuePair<string, D3D11NativeHwndSwapChainBackend> pair in _secondaryNativeHwndTargets.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
             if (pair.Value.IsActive)
                 yield return new D3D11PresentationBackendTarget(pair.Key, pair.Value, pair.Value.Hwnd, "NativeHwndSwapChain");
@@ -106,7 +97,7 @@ internal sealed class D3D11PresentationBackendSet(
     public void Present(int liveResizeFlag, bool syncImmediate)
     {
         ID3D11PresentationBackend? active = Active;
-        if (active == null || active.Kind == D3D11PresentationBackendKind.UiSharedSurface)
+        if (active == null)
             return;
 
         active.Present(liveResizeFlag, syncImmediate);
@@ -114,8 +105,7 @@ internal sealed class D3D11PresentationBackendSet(
 
     /// <summary>
     /// Presents or invalidates the active backend after a complete frame has been rendered.
-    /// Native backends are DXGI-presented immediately; the WPF backend is notified through
-    /// UI shared-surface dirty-rect invalidation.
+    /// Native backends are DXGI-presented immediately.
     /// </summary>
     public void NotifyFramePresented(
         int liveResizeFlag,
@@ -224,7 +214,6 @@ internal sealed class D3D11PresentationBackendSet(
     {
         DirectComposition.Dispose();
         NativeHwnd.Dispose();
-        UiSharedSurface.Dispose();
 
         foreach (D3D11NativeHwndSwapChainBackend target in _secondaryNativeHwndTargets.Values)
         {
@@ -251,10 +240,6 @@ internal sealed class D3D11PresentationBackendSet(
         {
             backend = NativeHwnd;
         }
-        else if (kind == D3D11PresentationBackendKind.UiSharedSurface && targetId == UiSharedSurfaceTargetId)
-        {
-            backend = UiSharedSurface;
-        }
         else if (kind == D3D11PresentationBackendKind.NativeHwndSwapChain)
         {
             _ = _secondaryNativeHwndTargets.TryGetValue(NormalizeSecondaryNativeHwndTargetId(targetId), out D3D11NativeHwndSwapChainBackend? secondary);
@@ -271,12 +256,6 @@ internal sealed class D3D11PresentationBackendSet(
         Func<bool> isDisposed,
         Action framePresented)
     {
-        if (backend.Kind == D3D11PresentationBackendKind.UiSharedSurface)
-        {
-            UiSharedSurface.NotifyDirty(isDisposed, framePresented);
-            return;
-        }
-
         backend.Present(liveResizeFlag, syncImmediate);
         framePresented();
     }

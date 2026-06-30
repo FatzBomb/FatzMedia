@@ -65,6 +65,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 
 - [x] Stage 1 — completed 2026-06-30: removed DirectoryScanner single-root convenience overloads, ExactMatch/Incompatible enum values + doc refs; deleted GpuRenderingCapabilities.cs zombie. Debug pass, Release pass.
 - [x] Stage 2 — completed 2026-06-30: removed dead CPU/BGRA upload chain and upload-cache files; kept hardware/composition diagnostics. Builds: Debug pass, Release pass.
+- [x] Stage 3 — completed 2026-06-30: removed D3DImage/UI shared-surface backend scaffolding; kept native HWND and DirectComposition paths. Builds: Debug pass, Release pass.
 
 ---
 
@@ -197,29 +198,64 @@ git grep -n -E "RecordUpload\(|PresentHardwareFrame|PresentMediaCompositionVisib
 
 ### Stage 3 — Renderer Stage B: Remove D3DImage/Shared-Surface Backend
 
-**Goal:** remove the UI shared-surface / D3DImage-era backend scaffolding. The current WPF surfaces always attach as native HWND descriptors; no live caller invokes `CreateUiSharedSurface(...)`.
+**Goal:** remove the UI shared-surface / D3DImage-era backend scaffolding. The current WPF surfaces attach only as native HWND descriptors; no live caller invokes `CreateUiSharedSurface(...)`.
 
-**Risk:** Medium-High (API + renderer risk). The `ID3D11UiSharedSurfacePresentationBackend` interface is public.
+**Risk:** Medium (renderer risk). The previous API-risk note was stale: `ID3D11UiSharedSurfacePresentationBackend` is `internal`, not public.
 
 **Scope:**
 
 - Delete `ID3D11UiSharedSurfacePresentationBackend.cs` — `Core\Graphics\D3D\Presentation\ID3D11UiSharedSurfacePresentationBackend.cs`
 - Delete `NullD3D11UiSharedSurfacePresentationBackend.cs` — `Core\Graphics\D3D\Presentation\NullD3D11UiSharedSurfacePresentationBackend.cs`
-- Remove `CreateUiSharedSurface(...)` from `D3D11RendererPresentationServices.cs`
-- Remove `CreateUiSharedSurface(...)`, `ActivateUiSharedSurface(...)`, `EnsureUiSharedSurface(...)` from `D3D11PresentationSurfaceController.cs`
+- Remove `CreateUiSharedSurface(...)` and the `ID3D11UiSharedSurfacePresentationBackend` constructor dependency from `D3D11RendererPresentationServices.cs`
+- Remove `CreateUiSharedSurface(...)`, `ActivateUiSharedSurface(...)`, `EnsureUiSharedSurface(...)`, and the `UiSharedSurface` display-name branch from `D3D11PresentationSurfaceController.cs`
+- Remove UI shared-surface ownership/routing from `D3D11PresentationBackendSet.cs`: constructor parameter, `UiSharedSurface` property, `UiSharedSurfaceTargetId`, active fallback branch, texture ownership branch, target enumeration branch, `Present(...)` shared-surface skip, cleanup call, `TryGetBackend(...)` branch, `NotifyDirty(...)` special case, comments, and `HasUiSharedSurfaceBackend`.
 - Remove `D3D11PresentationBackendKind.UiSharedSurface` enum value from `D3D11PresentationBackendKind.cs`
 - Update `NativeD3D11PresentationBridge.cs` ctor — remove the `new NullD3D11UiSharedSurfacePresentationBackend()` parameter
+
+**Exclusions (do NOT touch):**
+- Native HWND primary and secondary presentation paths.
+- DirectComposition single-target and overlay paths.
+- `D3D11PresentationBackendKind.ExternalTexture` and direct/single-target present cleanup planned for later stages.
+- WPF adapter source files, except only if a boundary/script reference is proven to be stage-local build fallout.
+- Stage 4 immediate clear/resize cleanup and Stage 6 direct-blit/texture helper cleanup, except removal of `HasUiSharedSurfaceBackend` because it is directly tied to this stage's backend deletion.
 
 **Trace guards:**
 
 ```powershell
-rg -n "UiSharedSurface|ID3D11UiSharedSurface|NullD3D11UiSharedSurface|CreateUiSharedSurface|ActivateUiSharedSurface|EnsureUiSharedSurface" . -g "*.cs" -g "*.xaml" -g "*.json"
-rg -n "D3D11PresentationBackendKind\.UiSharedSurface" . -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "UiSharedSurface|ID3D11UiSharedSurface|NullD3D11UiSharedSurface|CreateUiSharedSurface|ActivateUiSharedSurface|EnsureUiSharedSurface" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11PresentationBackendKind\.UiSharedSurface|\bUiSharedSurface\b|ui-shared-final|UiSharedSurfaceTargetId|HasUiSharedSurfaceBackend|NotifyDirty\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3DImage|SharedSurface|shared-surface|CreateUi|ActivateUi|EnsureUi" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "new D3D11RendererPresentationServices|D3D11RendererPresentationServices\(|new D3D11PresentationBackendSet|D3D11PresentationBackendSet\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "UiSharedSurface|ID3D11UiSharedSurface|NullD3D11UiSharedSurface|CreateUiSharedSurface|ActivateUiSharedSurface|EnsureUiSharedSurface|ui-shared-final|UiSharedSurfaceTargetId|HasUiSharedSurfaceBackend|NotifyDirty\(" -- FatzBombMedia.MediaControl
+git grep -n -E "NativeHwndSwapChain|DirectCompositionSingleTarget|CreateNativeHwndSurface|CreateSecondaryNativeHwndSurface|CreateDirectCompositionSurface|NotifyTargetsPresented" -- FatzBombMedia.MediaControl
 ```
 
-**Likely files affected:** ~5 files; delete 2 files.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium. Whole-repo searches found no XAML/config/script/project callers of the UI shared-surface creation API; matches are confined to the renderer backend scaffolding and docs/scripts references. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json` or elsewhere under the repo, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** delete `ID3D11UiSharedSurfacePresentationBackend.cs` and `NullD3D11UiSharedSurfacePresentationBackend.cs`; remove `CreateUiSharedSurface(...)` from `D3D11RendererPresentationServices`; remove `CreateUiSharedSurface(...)`, `ActivateUiSharedSurface(...)`, and `EnsureUiSharedSurface(...)` from `D3D11PresentationSurfaceController`; remove `D3D11PresentationBackendKind.UiSharedSurface`; remove the `new NullD3D11UiSharedSurfacePresentationBackend()` bridge constructor argument; remove all `D3D11PresentationBackendSet` UI shared-surface state/routing listed in scope.
+- **Exclusions/defer:** do not touch native HWND primary/secondary presentation, DirectComposition single-target/overlay presentation, `D3D11PresentationBackendKind.ExternalTexture`, immediate clear/resize APIs, direct DXCDG/single-target present, direct-blit helpers other than `HasUiSharedSurfaceBackend`, WPF adapter files, or adapter boundary scripts except for documentation/guard updates in this stage plan.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found the removal matches in `NativeD3D11PresentationBridge`, `D3D11RendererPresentationServices`, `D3D11PresentationSurfaceController`, `D3D11PresentationBackendSet`, `D3D11PresentationBackendKind`, and the two shared-surface backend files. It also found documentation/script mentions of `D3DImage`/shared-surface that should not be treated as callers.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source matches for UI shared-surface backend symbols. The second should still show live native HWND, secondary HWND, DirectComposition, and target notification paths. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `Core\Graphics\D3D\NativeD3D11PresentationBridge.cs`; `Core\Graphics\D3D\Presentation\D3D11RendererPresentationServices.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationSurfaceController.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationBackendSet.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationBackendKind.cs`; delete `Core\Graphics\D3D\Presentation\ID3D11UiSharedSurfacePresentationBackend.cs`; delete `Core\Graphics\D3D\Presentation\NullD3D11UiSharedSurfacePresentationBackend.cs`.
+- **Smoke tests:** run Player with primary DirectComposition overlay mode, native HWND fallback/overlay disabled mode, secondary output attach/detach, resize/live resize, stop/idle clear, CDG-only/audio+CDG, software-decoded video fallback, and hardware-decoded video if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 5 source files; delete 2 files. See latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
 
 **Manual verification:** run Player — primary DirectComposition, native HWND fallback, secondary output. Confirm WPF adapter boundary clean.
+
+**Exit criteria:** Debug and Release builds pass; whole-solution UI shared-surface guards return no source/config callers; native HWND, DirectComposition, secondary target, and WPF adapter boundary guards remain clean/live as described above.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
