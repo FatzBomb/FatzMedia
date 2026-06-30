@@ -101,9 +101,6 @@ public sealed class AudioEngine : IAudioEngine
     public event EventHandler? Closed;
     public event EventHandler<double>? PositionChanged;
 
-    // Event for orchestration
-    public event EventHandler? SeekCompleted;
-    public event EventHandler? PlaybackStarted;
     public event EventHandler? PlaybackEnded;
 
     public AudioEngineState State
@@ -129,7 +126,6 @@ public sealed class AudioEngine : IAudioEngine
             if (Math.Abs(updated - old) > 0.001)
             {
                 PositionChanged?.Invoke(this, updated);
-                SeekCompleted?.Invoke(this, EventArgs.Empty);
             }
         }
     }
@@ -316,7 +312,6 @@ public sealed class AudioEngine : IAudioEngine
         if (result)
         {
             State = AudioEngineState.Playing;
-            PlaybackStarted?.Invoke(this, EventArgs.Empty);
         }
         return result;
     }

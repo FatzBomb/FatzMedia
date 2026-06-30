@@ -74,7 +74,6 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
     public event EventHandler<DxCdgEngineState>? StateChanged;
     public event EventHandler? Opened;
     public event EventHandler? Closed;
-    public event EventHandler<double>? PositionChanged;
     public event EventHandler? PlaybackStarted;
 
     public DxCdgEngineState State
@@ -98,7 +97,6 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
             if (Math.Abs(field - value) > 0.001)
             {
                 field = value;
-                PositionChanged?.Invoke(this, field);
             }
         }
     }

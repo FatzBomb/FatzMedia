@@ -48,7 +48,6 @@ internal sealed class AudioPipeline : IDisposable
 
         if (string.IsNullOrWhiteSpace(path))
         {
-            State.SetError("Audio path was empty.");
             return false;
         }
 
@@ -59,7 +58,6 @@ internal sealed class AudioPipeline : IDisposable
         {
             _pendingOpenPath = null;
             State.Reset();
-            State.SetError($"Audio open failed: {path}");
             return false;
         }
 
@@ -80,7 +78,6 @@ internal sealed class AudioPipeline : IDisposable
         if (!Engine.Open(archiveEntry))
         {
             State.Reset();
-            State.SetError($"Archive audio open failed: {archiveEntry.Key}");
             return false;
         }
 

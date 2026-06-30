@@ -62,6 +62,5 @@ public interface ICdgEngine : IDisposable
     event EventHandler<DxCdgEngineState>? StateChanged;
     event EventHandler? Opened;
     event EventHandler? Closed;
-    event EventHandler<double>? PositionChanged;
     event EventHandler? PlaybackStarted;
 }

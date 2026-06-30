@@ -23,6 +23,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 3 — completed 2026-06-30: removed 26 dead members from MediaControlPlayer, 8 from MediaControls, 2 from MediaFile, 2 from CdgVisuals, 6 enum values. Fixed WPF Player ctor chain. Builds: Debug pass, Release pass.
 - [x] Stage 4 — completed 2026-06-30: removed 6 dead config properties (GpuRenderingMinResolution, MaxGpuMemoryMB, MaxUiSharedSurfaceWidth, MaxUiSharedSurfaceHeight, UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) + 2 enum types (UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) from MediaPlayerConfiguration. Removed GetOptimalRenderingMethod + 4 dead GpuCapabilityInfo properties (LegacyUiRenderingTier, SupportsHardwareAcceleration, EstimatedGpuMemoryMB, GpuDescription) from GpuRenderingCapabilities. Removed Player-side assignments in MainWindowViewModel. GpuRenderingCapabilities.cs remains as a zombie class (~173 lines) — no external consumers; schedule full-file deletion for follow-up. Builds: Debug pass, Release pass.
 - [x] Stage 5 — completed 2026-06-30: removed `MediaControlPlayer._metadata` construction/field, `MediaFile._mediaMetadata` field/ctor param and both `Refresh()` calls; deleted `Controllers\MediaMetadata.cs` and `Core\Metadata\MediaMetadata.cs`. BASS calls remain only in real audio code. Builds: Debug pass, Release pass.
+- [x] Stage 6 — completed 2026-06-30: removed `MediaState.Changed`/`OnChanged()`/`LastError`/`SetError()` and 3 `AudioPipeline.SetError` calls; removed no-subscriber `IAudioEngine.SeekCompleted`/`PlaybackStarted` and `ICdgEngine.PositionChanged` from interface and all active implementations/invocations. Preserved `IAudioEngine.PositionChanged`. Builds: Debug pass, Release pass.
 
 ---
 
@@ -696,24 +697,59 @@ rg -n "ChannelGetInfo|Bass\.GetInfo" FatzBombMedia.MediaControl -g "*.cs"
 
 ### Stage 6 — State/Event Cleanup
 
-**Goal:** remove no-subscriber notification and error channels or wire them to real consumers.
+**Goal:** remove confirmed no-subscriber notification and error channels while preserving live state, position, lifecycle, and playback-ended paths.
 
 **Risk:** medium, because event removal touches interfaces and implementation contracts.
 
 **Scope:**
 
-- `MediaState.Changed`, `OnChanged()` calls, and `LastError`/`SetError` if errors remain communicated by return values/logging only.
-- `IAudioEngine.SeekCompleted`, `IAudioEngine.PlaybackStarted`, `ICdgEngine.PositionChanged` if still no subscribers.
-- `ClockAudioEngine` no-op event paths.
+- Remove `MediaState.Changed`, `OnChanged()` calls, `LastError`, and `SetError()` if errors remain communicated by existing bool return values/logging only.
+- Remove no-subscriber `IAudioEngine.SeekCompleted` and `IAudioEngine.PlaybackStarted` from the interface and all active implementations/invocations.
+- Remove no-subscriber `ICdgEngine.PositionChanged` from the interface and `DxCdgEngine` invocation.
+- Remove only the corresponding `ClockAudioEngine.SeekCompleted` / `PlaybackStarted` declarations and invokes. Keep `ClockAudioEngine.PositionChanged` because `IAudioEngine.PositionChanged` is live through `AudioPipeline`.
+
+**Exclusions (do NOT remove in this stage):**
+
+- `IAudioEngine.PositionChanged` — live. `AudioPipeline` subscribes/unsubscribes and uses it to update `MediaState.PositionSeconds`.
+- `IAudioEngine.StateChanged`, `Opened`, `Closed`, and `PlaybackEnded` — live through `AudioPipeline` state/lifecycle/end handling.
+- `IVideoEngine.PositionChanged`, `VideoPipeline.PositionChanged`, and seek comments that reference video position events.
+- `ICdgEngine.PlaybackStarted`, `StateChanged`, `Opened`, `Closed`, `FrameInvalidated`, and `BackgroundWashChanged` — out of scope for this stage even if some have no current subscribers.
+- `ClockAudioEngine` normalization no-op/fake-analysis paths and unsupported operations (`Normalize`, `NormalizationGainChanged`, `AnalyzePeak*`, `Init`, `Open`, `SetPitch`) — defer to Stage 7 clock/audio interface split.
+- Unrelated `SetLastError`, `MBass.LastError`, WPF `SizeChanged`, MVVM `PropertyChanged`, and other framework/renderer events.
 
 **Trace guards:**
 
 ```powershell
-rg -n "Changed \+=|LastError|SetError\(|SeekCompleted \+=|PlaybackStarted \+=|PositionChanged \+=" .
-rg -n "event EventHandler.*SeekCompleted|event EventHandler.*PlaybackStarted|event EventHandler.*PositionChanged" FatzBombMedia.MediaControl
+# Whole-repo/source guards from repo root. Include active projects, WPF/XAML, docs, project/config files, scripts, nameof/reflection strings, and bindings.
+rg -n "\bMediaState\b|LastError|SetError\(|OnChanged\(|Changed\s*(\+=|-=)|\.Changed\b|event\s+EventHandler\??\s+Changed" . -g "*.cs" -g "*.xaml" -g "*.csproj" -g "*.props" -g "*.targets" -g "*.sln" -g "*.slnx" -g "*.ps1" -g "*.json" -g "*.config" -g "*.md"
+rg -n "SeekCompleted|PlaybackStarted|PositionChanged" . -g "*.cs" -g "*.xaml" -g "*.csproj" -g "*.props" -g "*.targets" -g "*.sln" -g "*.slnx" -g "*.ps1" -g "*.json" -g "*.config" -g "*.md"
+rg -n "Path=LastError|\{Binding LastError|Path=Changed|\{Binding Changed|Path=SeekCompleted|Path=PlaybackStarted|Path=PositionChanged" . -g "*.xaml" -g "*.json" -g "*.config"
+rg -n "nameof\((SeekCompleted|PlaybackStarted|PositionChanged|LastError|Changed|SetError)\)|\"(SeekCompleted|PlaybackStarted|PositionChanged|LastError|SetError)\"" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.md"
+
+# Subscriber guards. Expected before removal: zero hits for SeekCompleted/PlaybackStarted subscribers; PositionChanged hits only in AudioPipeline and must stay.
+rg -n "SeekCompleted\s*(\+=|-=)" . -g "*.cs"
+rg -n "PlaybackStarted\s*(\+=|-=)" . -g "*.cs"
+rg -n "PositionChanged\s*(\+=|-=)" . -g "*.cs"
+
+# Post-removal active-project guards. Expected: no SeekCompleted/PlaybackStarted, no ICdgEngine/DxCdg PositionChanged; IAudioEngine/IVideoEngine PositionChanged still exists.
+rg -n "SeekCompleted|PlaybackStarted|LastError|SetError\(|OnChanged\(|event\s+EventHandler\??\s+Changed" FatzBombMedia.MediaControl FatzBombMedia.MediaControl.Wpf FatzBombMedia.Player -g "*.cs" -g "*.xaml" -g "*.csproj"
+rg -n "ICdgEngine.*PositionChanged|DxCdgEngine.*PositionChanged|PositionChanged\?\.Invoke\(this, field\)" FatzBombMedia.MediaControl -g "*.cs"
 ```
 
 **Exit criteria:** build passes; open/load failure still reaches the caller through existing bool/exception/status paths.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** medium. Whole-solution guards found no subscribers for `IAudioEngine.SeekCompleted`, `IAudioEngine.PlaybackStarted`, or `ICdgEngine.PositionChanged`; no XAML/config/reflection/nameof/binding consumers were found. `MediaState.Changed` has no subscribers, and `MediaState.LastError` is only written/reset internally. Removal touches public Core interfaces, so build coverage across all three active projects is required.
+- **Safe items:** remove `MediaState.Changed`, `OnChanged()`, `LastError`, and `SetError()` plus the three `AudioPipeline.State.SetError(...)` calls, preserving existing `false` returns. Remove `SeekCompleted`/`PlaybackStarted` from `IAudioEngine`, `AudioEngine`, `VideoAudioEngine`, and `ClockAudioEngine`, including invokes. Remove `PositionChanged` only from `ICdgEngine`/`DxCdgEngine`.
+- **Exclusions/defer items:** preserve `IAudioEngine.PositionChanged`, `IAudioEngine.StateChanged`, `Opened`, `Closed`, and `PlaybackEnded`; preserve `IVideoEngine.PositionChanged`; preserve `ClockAudioEngine.PositionChanged`; defer clock normalization/no-op unsupported-operation cleanup to Stage 7; ignore unrelated `SetLastError`, `MBass.LastError`, `SizeChanged`, `PropertyChanged`, and renderer/framework events.
+- **Corrected whole-solution guards:** use the guard block above. The original `Changed +=` / `PositionChanged +=` guard was too broad and did not distinguish live `IAudioEngine.PositionChanged` from dead `ICdgEngine.PositionChanged`.
+- **Likely files affected:** `FatzBombMedia.MediaControl\Pipeline\MediaState.cs`, `FatzBombMedia.MediaControl\Pipeline\AudioPipeline.cs`, `FatzBombMedia.MediaControl\Core\Abstractions\IAudioEngine.cs`, `FatzBombMedia.MediaControl\Core\Abstractions\ICdgEngine.cs`, `FatzBombMedia.MediaControl\Core\Audio\AudioEngine.cs`, `FatzBombMedia.MediaControl\Core\Audio\VideoAudioEngine.cs`, `FatzBombMedia.MediaControl\Pipeline\ClockAudioEngine.cs`, `FatzBombMedia.MediaControl\Core\DxCdg\DxCdgEngine.cs`.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Smoke tests:** launch Player; verify invalid/missing audio open still returns failure without crashing; load/play/pause/seek/stop audio; load/play/seek video with audio; load/play/seek standalone CDG and audio+CDG; confirm playback end still fires for audio/video/CDG paths; confirm Player position/status continues updating after audio seeks.
+- **Recommendation:** proceed with exclusions. If a new subscriber appears for `SeekCompleted`, `PlaybackStarted`, or `ICdgEngine.PositionChanged`, stop and keep that event or wire it intentionally.
 
 ### Stage 7 — ClockAudioEngine Interface Split
 

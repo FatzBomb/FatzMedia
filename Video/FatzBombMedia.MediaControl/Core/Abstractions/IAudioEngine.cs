@@ -138,19 +138,6 @@ public interface IAudioEngine : IDisposable
     /// </summary>
     event EventHandler<double>? PositionChanged;
 
-    /// <summary>
-    /// Raised when the seek operation is completed.
-    /// </summary>
-    event EventHandler? SeekCompleted;
-
-    /// <summary>
-    /// Raised when playback is started.
-    /// </summary>
-    event EventHandler? PlaybackStarted;
-
-    /// <summary>
-    /// Raised when the audio stream reaches its natural end.
-    /// </summary>
     event EventHandler? PlaybackEnded;
 }
 

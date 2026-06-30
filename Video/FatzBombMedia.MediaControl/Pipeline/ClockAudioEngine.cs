@@ -22,7 +22,6 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         {
             _clock.Seek(value);
             PositionChanged?.Invoke(this, _clock.PositionSeconds);
-            SeekCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -31,8 +30,6 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
     public event EventHandler? Opened;
     public event EventHandler? Closed;
     public event EventHandler<double>? PositionChanged;
-    public event EventHandler? SeekCompleted;
-    public event EventHandler? PlaybackStarted;
     event EventHandler? IAudioEngine.PlaybackEnded
     {
         add { }
@@ -48,7 +45,6 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         _clock.Start(_clock.PositionSeconds);
         SetState(AudioEngineState.Playing);
         Opened?.Invoke(this, EventArgs.Empty);
-        PlaybackStarted?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

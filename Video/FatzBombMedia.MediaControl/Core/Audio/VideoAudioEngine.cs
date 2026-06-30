@@ -94,8 +94,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public event EventHandler? Opened;
     public event EventHandler? Closed;
     public event EventHandler<double>? PositionChanged;
-    public event EventHandler? SeekCompleted;
-    public event EventHandler? PlaybackStarted;
     event EventHandler? IAudioEngine.PlaybackEnded
     {
         add { }
@@ -243,7 +241,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (success)
         {
             SetState(AudioEngineState.Playing);
-            PlaybackStarted?.Invoke(this, EventArgs.Empty);
         }
 
         return success;
@@ -344,7 +341,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
 
         PositionChanged?.Invoke(this, target);
-        SeekCompleted?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

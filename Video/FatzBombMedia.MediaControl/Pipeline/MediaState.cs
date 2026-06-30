@@ -10,11 +10,8 @@ internal sealed class MediaState
     public string? SourcePath { get; private set; }
     public double PositionSeconds { get; private set; }
     public double DurationSeconds { get; private set; }
-    public string? LastError { get; private set; }
 
     public bool IsOpen => Content != MediaContent.None;
-
-    public event EventHandler? Changed;
 
     public void SetOpened(MediaContent content, string? sourcePath, double durationSeconds)
     {
@@ -22,9 +19,7 @@ internal sealed class MediaState
         SourcePath = sourcePath;
         PositionSeconds = 0;
         DurationSeconds = CleanSeconds(durationSeconds);
-        LastError = null;
         PlaybackState = MediaPlayerState.Stopped;
-        OnChanged();
     }
 
     public void SetPlaybackState(MediaPlayerState state)
@@ -35,7 +30,6 @@ internal sealed class MediaState
         }
 
         PlaybackState = state;
-        OnChanged();
     }
 
     public void SetPosition(double positionSeconds)
@@ -47,7 +41,6 @@ internal sealed class MediaState
         }
 
         PositionSeconds = cleanPosition;
-        OnChanged();
     }
 
     public void SetDuration(double durationSeconds)
@@ -57,14 +50,6 @@ internal sealed class MediaState
         {
             PositionSeconds = DurationSeconds;
         }
-
-        OnChanged();
-    }
-
-    public void SetError(string? message)
-    {
-        LastError = string.IsNullOrWhiteSpace(message) ? null : message;
-        OnChanged();
     }
 
     public void Reset()
@@ -74,11 +59,7 @@ internal sealed class MediaState
         SourcePath = null;
         PositionSeconds = 0;
         DurationSeconds = 0;
-        LastError = null;
-        OnChanged();
     }
 
     private static double CleanSeconds(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
-
-    private void OnChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }
