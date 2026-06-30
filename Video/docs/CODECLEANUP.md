@@ -24,6 +24,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 4 — completed 2026-06-30: removed 6 dead config properties (GpuRenderingMinResolution, MaxGpuMemoryMB, MaxUiSharedSurfaceWidth, MaxUiSharedSurfaceHeight, UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) + 2 enum types (UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) from MediaPlayerConfiguration. Removed GetOptimalRenderingMethod + 4 dead GpuCapabilityInfo properties (LegacyUiRenderingTier, SupportsHardwareAcceleration, EstimatedGpuMemoryMB, GpuDescription) from GpuRenderingCapabilities. Removed Player-side assignments in MainWindowViewModel. GpuRenderingCapabilities.cs remains as a zombie class (~173 lines) — no external consumers; schedule full-file deletion for follow-up. Builds: Debug pass, Release pass.
 - [x] Stage 5 — completed 2026-06-30: removed `MediaControlPlayer._metadata` construction/field, `MediaFile._mediaMetadata` field/ctor param and both `Refresh()` calls; deleted `Controllers\MediaMetadata.cs` and `Core\Metadata\MediaMetadata.cs`. BASS calls remain only in real audio code. Builds: Debug pass, Release pass.
 - [x] Stage 6 — completed 2026-06-30: removed `MediaState.Changed`/`OnChanged()`/`LastError`/`SetError()` and 3 `AudioPipeline.SetError` calls; removed no-subscriber `IAudioEngine.SeekCompleted`/`PlaybackStarted` and `ICdgEngine.PositionChanged` from interface and all active implementations/invocations. Preserved `IAudioEngine.PositionChanged`. Builds: Debug pass, Release pass.
+- [x] Stage 7 — completed 2026-06-30: guarded `MediaEffects` volume/pitch/tempo/normalize/gain behind `HasAudio`; made unsupported `ClockAudioEngine` members (`Init`, `Open`, `SetVolume`, `SetPitch`, `AnalyzePeak*`) throw `NotSupportedException`; removed fake `NormalizationGainChanged` invocations from clock analysis. Preserved clock transport. Builds: Debug pass, Release pass.
 
 ---
 
@@ -759,19 +760,52 @@ rg -n "ICdgEngine.*PositionChanged|DxCdgEngine.*PositionChanged|PositionChanged\
 
 **Scope:**
 
-- Introduce a smaller clock/playback-position abstraction, or keep `ClockAudioEngine` but make unsupported operations explicit.
-- Audit `MediaEffects` so pitch/tempo/normalize only apply to real audio engines.
-- Remove or fail loudly for `ClockAudioEngine.Init`, `Open`, `SetPitch`, fake normalization analysis, and no-op events.
+- Keep `ClockAudioEngine : IAudioEngine` for this stage; do not introduce a new clock abstraction yet. The safer stage-sized change is to stop routing audio effects into the clock engine and make unsupported clock members explicit.
+- Audit `MediaEffects` so volume/pitch/tempo/normalize and normalization-gain subscriptions only apply when the active media content includes real audio (`MediaContent.Audio`). Preserve the stored UI values so they apply when real audio becomes active.
+- Make unsupported `ClockAudioEngine` real-audio operations fail explicitly instead of silently pretending to work: `Init`, both `Open(...)` overloads, `SetVolume`, `SetPitch`, fake normalization analysis (`AnalyzePeakQuickAsync`, `AnalyzePeakAsync`), and the explicit no-op `IAudioEngine.PlaybackEnded` event path.
+- Keep `ClockAudioEngine.SetTempo` only if implementation intentionally supports clock tempo independent of audio; otherwise guard `MediaEffects` so the UI tempo control does not apply to non-audio content. Do not change clock tempo behavior accidentally.
 
 **Legacy connection:** `ClockAudioEngine` exists to satisfy `IAudioEngine` where only timing is needed. The extra no-op members are legacy leakage from using one interface for real audio and virtual timing.
+
+**Exclusions (do NOT remove in this stage):**
+
+- Do not change `IAudioEngine` or `IMediaEngine.Audio` signatures in this stage; broad interface split is deferred unless a later stage explicitly approves it.
+- Preserve `ClockAudioEngine` transport behavior: `Play`, `Pause`, `Stop`, `Close`, `Position`, `PositionChanged`, `StateChanged`, `Opened`, and `Closed` are used for standalone CDG/video-without-audio timing.
+- Preserve real audio effects on `AudioEngine` and `VideoAudioEngine`.
+- Preserve Player UI bindings for volume, pitch, tempo, and normalize; this stage changes whether those effects are applied to non-audio content, not the UI surface.
+- Do not touch renderer, WPF adapter, fire-and-forget, or Stage 8+ renderer cleanup.
 
 **Trace guards:**
 
 ```powershell
-rg -n "ClockAudio|ActiveAudio|IAudioEngine Audio|SetPitch\(|Normalize|AnalyzePeak" FatzBombMedia.MediaControl
+# Whole-repo/source guards from repo root. Include active projects, WPF/XAML, docs, project/config files, scripts, nameof/reflection strings, and bindings.
+rg -n "ClockAudioEngine|ClockAudio|ActiveAudio|IAudioEngine\s+Audio|SetPitch\(|SetTempo\(|SetVolume\(|Normalize\b|AnalyzePeak|NormalizationGain|IsNormalizationReady|PlaybackEnded" . -g "*.cs" -g "*.xaml" -g "*.csproj" -g "*.props" -g "*.targets" -g "*.sln" -g "*.slnx" -g "*.ps1" -g "*.json" -g "*.config" -g "*.md"
+rg -n "nameof\((ClockAudioEngine|ClockAudio|ActiveAudio|SetPitch|SetTempo|SetVolume|Normalize|AnalyzePeak|NormalizationGain|IsNormalizationReady|PlaybackEnded)\)|\"(ClockAudioEngine|ClockAudio|ActiveAudio|SetPitch|SetTempo|SetVolume|Normalize|AnalyzePeak|NormalizationGain|IsNormalizationReady|PlaybackEnded)\"" . -g "*.cs" -g "*.xaml" -g "*.json" -g "*.config" -g "*.md"
+
+# Focused active-project guards.
+rg -n "ClockAudioEngine|ClockAudio|ActiveAudio" FatzBombMedia.MediaControl -g "*.cs"
+rg -n "SetVolume\(|SetPitch\(|SetTempo\(|Normalize\s*=|\.Normalize\b|NormalizationGainChanged|IsNormalizationReady|AnalyzePeakQuickAsync\(|AnalyzePeakAsync\(" FatzBombMedia.MediaControl -g "*.cs"
+rg -n "Volume|Pitch|Tempo|Normalize" FatzBombMedia.Player -g "*.cs" -g "*.xaml"
+
+# Post-change guards. Expected: MediaEffects does not call effect/normalization members on non-audio content; ClockAudioEngine fake analysis no longer raises NormalizationGainChanged.
+rg -n "_subscribedAudioEngine\.(SetVolume|SetPitch|SetTempo|Normalize)|Audio\.(SetVolume|SetPitch|SetTempo|Normalize|CurrentTempo|NormalizationGain)" FatzBombMedia.MediaControl\Controllers\MediaEffects.cs
+rg -n "NormalizationGainChanged\?\.Invoke|Task\.FromResult\(NormalizationGain\)|SetVolume\(double|SetPitch\(int|AnalyzePeakQuickAsync|AnalyzePeakAsync|Init\(|Open\(" FatzBombMedia.MediaControl\Pipeline\ClockAudioEngine.cs
 ```
 
 **Exit criteria:** standalone CDG and video-without-audio still seek/play/stop correctly; volume/pitch/tempo UI does not silently claim success on non-audio content.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** medium-high. Whole-repo guards found live UI bindings for volume/pitch/tempo/normalize and live controller code that applies these through `MediaEffects` to `_mediaEngine.Audio`, which can be `ClockAudioEngine` for standalone CDG, video-without-audio, and idle states. Directly throwing from `ClockAudioEngine` without first guarding `MediaEffects` would regress UI interactions.
+- **Safe items:** update `MediaEffects` to apply volume/pitch/tempo/normalize and subscribe to `NormalizationGainChanged` only when `IMediaEngine.Content` has `MediaContent.Audio`. Keep stored effect values so they apply on the next real-audio engine. After that guard, make `ClockAudioEngine.Init`, `Open(...)`, `SetVolume`, `SetPitch`, and fake analysis methods fail explicitly. Remove the fake `NormalizationGainChanged?.Invoke(...)` calls from clock analysis methods.
+- **Exclusions/defer items:** keep `ClockAudioEngine` as `IAudioEngine` for this stage; preserve clock transport (`Play`, `Pause`, `Stop`, `Position`, `SetTempo` if intentionally used for clock pacing, state/lifecycle events); preserve all real audio behavior in `AudioEngine`/`VideoAudioEngine`; leave UI bindings in place; defer a true smaller clock abstraction or public interface split to a later explicit stage.
+- **Corrected whole-solution guards:** use the guard block above. The original guard was too narrow and did not catch Player UI bindings or the `MediaEffects` path that currently applies effects to `ClockAudioEngine`.
+- **Likely files affected:** `FatzBombMedia.MediaControl\Controllers\MediaEffects.cs`, `FatzBombMedia.MediaControl\Pipeline\ClockAudioEngine.cs`. Possible small supporting edits in `FatzBombMedia.MediaControl\Pipeline\PlaybackCoordinator.cs` or `PipelineMediaEngine.cs` only if needed to expose/check real-audio state without referencing pipeline types from controllers.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Smoke tests:** launch Player; adjust volume/pitch/tempo/normalize with no media loaded, standalone CDG, video without audio, audio-only, audio+CDG, and video with audio; verify standalone CDG and video-without-audio still play/pause/seek/stop; verify audio effects still apply to real audio; verify PlayOnLoad normalization wait still works for real audio and does not block non-audio content.
+- **Recommendation:** proceed with exclusions. Do not perform a broad `IAudioEngine`/clock abstraction split in this stage; guard `MediaEffects` first, then make only unsupported `ClockAudioEngine` audio-effect/open/analysis members explicit.
 
 ### Stage 8 — Renderer-Adjacent Dead API Cleanup
 

@@ -12,6 +12,8 @@ public sealed class MediaEffects
     private IAudioEngine? _subscribedAudioEngine;
     private int _tempo = 100;
 
+    private bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
+
     internal MediaEffects(IMediaEngine mediaEngine)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
@@ -36,11 +38,14 @@ public sealed class MediaEffects
         _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
 
         _subscribedAudioEngine = current;
-        _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
-        _subscribedAudioEngine.Normalize = Normalize;
-        _ = _subscribedAudioEngine.SetVolume(Volume);
-        _ = _subscribedAudioEngine.SetPitch(Pitch);
-        _ = _subscribedAudioEngine.SetTempo(_tempo - 100);
+        if (HasAudio)
+        {
+            _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
+            _subscribedAudioEngine.Normalize = Normalize;
+            _ = _subscribedAudioEngine.SetVolume(Volume);
+            _ = _subscribedAudioEngine.SetPitch(Pitch);
+            _ = _subscribedAudioEngine.SetTempo(_tempo - 100);
+        }
     }
 
     internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
@@ -54,7 +59,8 @@ public sealed class MediaEffects
         set
         {
             field = Math.Clamp(value, 0.0, 1.0);
-            _ = Audio.SetVolume(field);
+            if (HasAudio)
+                _ = Audio.SetVolume(field);
         }
     } = 1.0;
 
@@ -67,7 +73,8 @@ public sealed class MediaEffects
         set
         {
             field = Math.Clamp(value, -60, 60);
-            _ = Audio.SetPitch(field);
+            if (HasAudio)
+                _ = Audio.SetPitch(field);
         }
     } = 0;
 
@@ -76,15 +83,12 @@ public sealed class MediaEffects
     /// </summary>
     public int Tempo
     {
-        get => Audio.CurrentTempo + 100; // Convert BASS format back to UI format
+        get => HasAudio ? Audio.CurrentTempo + 100 : _tempo;
         set
         {
             _tempo = Math.Clamp(value, 5, 5000);
-            // Convert UI percentage to BASS format:
-            // UI: 100 = normal, 200 = 2x speed, 50 = half speed
-            // BASS: 0 = normal, 100 = 2x speed, -50 = half speed
-            var bassTempoPercent = _tempo - 100;
-            _ = Audio.SetTempo(bassTempoPercent);
+            if (HasAudio)
+                _ = Audio.SetTempo(_tempo - 100);
         }
     }
 
@@ -100,7 +104,8 @@ public sealed class MediaEffects
         {
             if (field == value) return;
             field = value;
-            Audio.Normalize = value;
+            if (HasAudio)
+                Audio.Normalize = value;
 
             Debug.WriteLine($"[MediaEffects] Normalization {(value ? "enabled" : "disabled")} by user");
         }
@@ -109,7 +114,7 @@ public sealed class MediaEffects
     /// <summary>
     /// Gets the current normalization gain value in dB.
     /// </summary>
-    public double NormalizationGain => Audio.NormalizationGain;
+    public double NormalizationGain => HasAudio ? Audio.NormalizationGain : 1.0;
 
     /// <summary>
     /// Event raised when normalization gain changes (after analysis completes).

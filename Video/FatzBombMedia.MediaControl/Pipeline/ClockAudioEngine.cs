@@ -25,20 +25,23 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         }
     }
 
+#pragma warning disable CS0067
     public event EventHandler<double>? NormalizationGainChanged;
+#pragma warning restore CS0067
     public event EventHandler<AudioEngineState>? StateChanged;
     public event EventHandler? Opened;
     public event EventHandler? Closed;
     public event EventHandler<double>? PositionChanged;
-    event EventHandler? IAudioEngine.PlaybackEnded
-    {
-        add { }
-        remove { }
-    }
+#pragma warning disable CS0067
+    public event EventHandler? PlaybackEnded;
+#pragma warning restore CS0067
 
-    public bool Init(int device = -1, int sampleRate = 44100) => true;
-    public bool Open(string filePath) => false;
-    public bool Open(IArchiveEntryInfo archiveEntry) => false;
+    public bool Init(int device = -1, int sampleRate = 44100) =>
+        throw new NotSupportedException("ClockAudioEngine does not support device initialization.");
+    public bool Open(string filePath) =>
+        throw new NotSupportedException("ClockAudioEngine does not support opening audio files.");
+    public bool Open(IArchiveEntryInfo archiveEntry) =>
+        throw new NotSupportedException("ClockAudioEngine does not support opening audio archives.");
 
     public bool Play()
     {
@@ -69,8 +72,10 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool SetVolume(double volume01) => true;
-    public bool SetPitch(int semitones) => false;
+    public bool SetVolume(double volume01) =>
+        throw new NotSupportedException("ClockAudioEngine does not support volume control.");
+    public bool SetPitch(int semitones) =>
+        throw new NotSupportedException("ClockAudioEngine does not support pitch control.");
 
     public bool SetTempo(int percent)
     {
@@ -78,17 +83,11 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         return true;
     }
 
-    public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken)
-    {
-        NormalizationGainChanged?.Invoke(this, NormalizationGain);
-        return Task.FromResult(NormalizationGain);
-    }
+    public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException("ClockAudioEngine does not support peak analysis.");
 
-    public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken)
-    {
-        NormalizationGainChanged?.Invoke(this, NormalizationGain);
-        return Task.FromResult(NormalizationGain);
-    }
+    public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException("ClockAudioEngine does not support peak analysis.");
 
     public void Dispose() => Close();
 
