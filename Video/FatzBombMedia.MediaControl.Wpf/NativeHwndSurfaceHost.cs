@@ -4,7 +4,7 @@ using System.Windows.Interop;
 
 namespace FatzBombMedia.MediaControl.Wpf;
 
-internal sealed class NativeHwndSurfaceHost : HwndHost
+internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHost
 {
     private const int WS_CHILD = 0x40000000;
     private const int WS_VISIBLE = 0x10000000;
@@ -14,16 +14,9 @@ internal sealed class NativeHwndSurfaceHost : HwndHost
     private const int WM_ERASEBKGND = 0x0014;
     private const int WM_SIZE = 0x0005;
     private const int WM_WINDOWPOSCHANGED = 0x0047;
-
-    private readonly bool _startVisible;
     private int _lastHostWidth;
     private int _lastHostHeight;
     private bool _boundsUpdateQueued;
-
-    public NativeHwndSurfaceHost(bool startVisible = false)
-    {
-        _startVisible = startVisible;
-    }
 
     public IntPtr WindowHandle { get; private set; }
 
@@ -39,7 +32,7 @@ internal sealed class NativeHwndSurfaceHost : HwndHost
     {
         (var hostWidth, var hostHeight) = GetCurrentClientSize();
         var style = WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
-        if (_startVisible)
+        if (startVisible)
             style |= WS_VISIBLE;
 
         WindowHandle = NativeMethods.CreateWindowEx(

@@ -865,13 +865,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         var clockPosition = GetPresentationPosition();
         var selectionLeadSeconds = GetFrameSelectionLeadLimit(decoder.FramesPerSecond);
         var waitSeconds = nextFrame.PresentationTime - selectionLeadSeconds - clockPosition;
-        if (!double.IsFinite(waitSeconds))
-            return fallbackIntervalSeconds;
-
-        if (waitSeconds <= 0)
-            return 0;
-
-        return Math.Min(waitSeconds, Math.Max(0.001, fallbackIntervalSeconds));
+        return !double.IsFinite(waitSeconds)
+            ? fallbackIntervalSeconds
+            : waitSeconds <= 0 ? 0 : Math.Min(waitSeconds, Math.Max(0.001, fallbackIntervalSeconds));
     }
 
     private double GetPrimaryPresentationIntervalSeconds() =>
@@ -1528,17 +1524,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private bool ShouldAdvanceSelectionToFrame(double fps, double clockPosition, double selectedPresentationTime, double nextPresentationTime)
     {
         if (!IsSourceCadencePlayback(fps))
-        {
             return true;
-        }
 
         var frameDuration = 1.0 / fps;
-        if (clockPosition - selectedPresentationTime < frameDuration)
-        {
-            return false;
-        }
-
-        return nextPresentationTime <= clockPosition;
+        return clockPosition - selectedPresentationTime >= frameDuration && nextPresentationTime <= clockPosition;
     }
 
     private int GetTargetBufferedVideoFrames()
@@ -1576,12 +1565,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         _presentationDiagnosticMaxTargetLateMs = Math.Max(_presentationDiagnosticMaxTargetLateMs, targetLateMs);
         _presentationDiagnosticMaxEarlyMs = Math.Max(_presentationDiagnosticMaxEarlyMs, earlyMs);
         var clockLateThresholdMs = GetAdaptiveClockLateThresholdMilliseconds(refreshIntervalMs);
-        if (double.IsFinite(clockLateThresholdMs)
-            && clockLateThresholdMs > 0
-            && clockLateMs > clockLateThresholdMs)
-        {
+        if (double.IsFinite(clockLateThresholdMs) && clockLateThresholdMs > 0 && clockLateMs > clockLateThresholdMs)
             _presentationDiagnosticClockLateSamples++;
-        }
 
         if (_presentationDiagnosticFrames < PresentationDiagnosticsFrameInterval)
             return;
@@ -1592,18 +1577,14 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         var suppressedWindows = Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining);
         string adaptiveAction;
         if (inSeekRecovery)
-        {
             adaptiveAction = "seek-recovery";
-        }
         else if (suppressedWindows > 0)
         {
             var remaining = Math.Max(0, Interlocked.Decrement(ref _postSeekAdaptiveSuppressionWindowsRemaining));
             adaptiveAction = $"post-seek-suppress remaining={remaining}";
         }
         else
-        {
             adaptiveAction = UpdateAdaptivePresentationLead(refreshIntervalMs);
-        }
 
         if (_configuration.EnablePerformanceLogging)
         {
@@ -1635,24 +1616,17 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         var earlyDecreaseThresholdMs = refreshIntervalMs * PresentationLeadEarlyDecreaseThresholdRefreshes;
         var previous = active;
 
-        if (_presentationDiagnosticClockLateSamples >= PresentationLeadLateSampleIncreaseThreshold
-            || _presentationDiagnosticMaxClockLateMs > lateThresholdMs * 2.0)
-        {
+        if (_presentationDiagnosticClockLateSamples >= PresentationLeadLateSampleIncreaseThreshold || _presentationDiagnosticMaxClockLateMs > lateThresholdMs * 2.0)
             active = Math.Min(MaximumPresentationLeadRefreshIntervals, active + PresentationLeadIncreaseStepRefreshIntervals);
-        }
-        else if (_presentationDiagnosticClockLateSamples == 0
-            && _presentationDiagnosticMaxClockLateMs < goodLateThresholdMs
-            && _presentationDiagnosticMaxEarlyMs > earlyDecreaseThresholdMs)
-        {
+        else if (_presentationDiagnosticClockLateSamples == 0 && _presentationDiagnosticMaxClockLateMs < goodLateThresholdMs && _presentationDiagnosticMaxEarlyMs > earlyDecreaseThresholdMs)
             active = Math.Max(MinimumPresentationLeadRefreshIntervals, active - PresentationLeadDecreaseStepRefreshIntervals);
-        }
 
         _activePresentationLeadRefreshIntervals = active;
         return Math.Abs(active - previous) < 0.0001
             ? "hold"
             : active > previous
-            ? $"increase {previous:F3}->{active:F3}"
-            : $"decrease {previous:F3}->{active:F3}";
+                ? $"increase {previous:F3}->{active:F3}"
+                : $"decrease {previous:F3}->{active:F3}";
     }
 
     private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs)

@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace FatzBombMedia.MediaControl.Core.Files;
 
 /// <summary>

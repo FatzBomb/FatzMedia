@@ -33,17 +33,17 @@ internal sealed class MediaControlOperationQueue : IDisposable
             {
                 try
                 {
-                    completion.TrySetResult(operation());
+                    _ = completion.TrySetResult(operation());
                 }
                 catch (Exception ex)
                 {
-                    completion.TrySetException(ex);
+                    _ = completion.TrySetException(ex);
                 }
             });
         }
         catch (InvalidOperationException ex)
         {
-            completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue), ex));
+            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue), ex));
         }
 
         return completion.Task;
@@ -71,7 +71,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
     {
         try
         {
-            foreach (var operation in _queue.GetConsumingEnumerable())
+            foreach (Action operation in _queue.GetConsumingEnumerable())
                 operation();
         }
         catch (ObjectDisposedException)

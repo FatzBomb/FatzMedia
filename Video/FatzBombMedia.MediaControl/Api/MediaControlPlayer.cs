@@ -197,14 +197,8 @@ public class MediaControlPlayer : IMediaControlSession
         return resized;
     }
 
-    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing)
-    {
-        if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
-            return false;
-
-        return _presentationSurfaces.ContainsKey(surfaceId)
-            && _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
-    }
+    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) =>
+        !_disposed && !string.IsNullOrWhiteSpace(surfaceId) && _presentationSurfaces.ContainsKey(surfaceId) && _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
 
     public bool DetachPresentationSurface(string surfaceId)
     {

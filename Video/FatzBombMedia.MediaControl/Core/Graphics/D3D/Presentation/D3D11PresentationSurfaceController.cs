@@ -313,7 +313,7 @@ internal sealed class D3D11PresentationSurfaceController(
             _ = backends.ClearActiveTargetToBlack(deviceResources);
             backends.DirectComposition.ClearOverlayToTransparent(deviceResources);
             onCreated();
-            backends.DirectComposition.PresentOverlayAndCommit();
+            _ = backends.DirectComposition.PresentOverlayAndCommit();
         }
 
         return true;

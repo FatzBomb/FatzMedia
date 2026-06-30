@@ -32,7 +32,7 @@ internal sealed class DxCdgColorManager
     {
         get
         {
-            UpdateLutIfNeeded();
+            _ = UpdateLutIfNeeded();
             var backgroundIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
             return _colorArgbLut[backgroundIndex];
         }
@@ -123,15 +123,13 @@ internal sealed class DxCdgColorManager
     {
         // Copy default palette
         for (var i = 0; i < DxCdgConstants.ColorCount; i++)
-        {
             _colorTable[i] = DxCdgConstants.DefaultColorPalette[i];
-        }
 
         _borderColorIndex = -1;
         BackgroundColorIndex = -1;
         InvalidateColorState(invalidateWash: true);
 
-        UpdateLutIfNeeded();
+        _ = UpdateLutIfNeeded();
     }
 
     /// <summary>

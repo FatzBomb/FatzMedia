@@ -1,5 +1,4 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -347,7 +346,7 @@ public sealed class MediaSurface : Grid
 
     private void AttachOwnerWindowHook()
     {
-        Window? window = Window.GetWindow(this);
+        var window = Window.GetWindow(this);
         if (window == null)
             return;
 
@@ -368,7 +367,7 @@ public sealed class MediaSurface : Grid
         if (hwnd == IntPtr.Zero)
             return;
 
-        HwndSource? source = HwndSource.FromHwnd(hwnd);
+        var source = HwndSource.FromHwnd(hwnd);
         if (source == null || ReferenceEquals(source, _ownerHwndSource))
             return;
 
@@ -380,12 +379,8 @@ public sealed class MediaSurface : Grid
     private void DetachOwnerWindowHook()
     {
         SetPrimarySurfaceLiveResize(false);
-
-        if (_ownerHwndSource != null)
-        {
-            _ownerHwndSource.RemoveHook(OnOwnerWindowMessage);
-            _ownerHwndSource = null;
-        }
+        _ownerHwndSource?.RemoveHook(OnOwnerWindowMessage);
+        _ownerHwndSource = null;
 
         if (_ownerWindow != null)
         {

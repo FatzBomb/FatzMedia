@@ -201,12 +201,12 @@ public sealed class MediaFile
         _mediaRenderer?.RefreshAttachments();
     }
 
-    private int BeginLoadOperation() => System.Threading.Interlocked.Increment(ref _loadGeneration);
+    private int BeginLoadOperation() => Interlocked.Increment(ref _loadGeneration);
 
-    private void InvalidatePendingPlayOnLoad() => _ = System.Threading.Interlocked.Increment(ref _loadGeneration);
+    private void InvalidatePendingPlayOnLoad() => _ = Interlocked.Increment(ref _loadGeneration);
 
     private bool IsCurrentLoadOperation(int loadGeneration) =>
-        System.Threading.Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
+        Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
 
     private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {

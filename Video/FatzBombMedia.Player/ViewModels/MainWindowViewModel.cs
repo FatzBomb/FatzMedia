@@ -286,7 +286,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 EnableVerboseLogging = false
             };
 
-            var player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);
+            FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);
             if (_disposed)
             {
                 player.Dispose();

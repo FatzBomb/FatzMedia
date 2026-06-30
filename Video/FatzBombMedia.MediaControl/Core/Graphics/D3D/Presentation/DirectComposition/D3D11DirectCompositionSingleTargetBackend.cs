@@ -27,7 +27,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     private IDXGISwapChain? _baseSwapChain;
     private int _pendingWidth;
     private int _pendingHeight;
-    private bool _resizePending;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -36,7 +35,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public ID3D11Texture2D? OverlayTexture => _target.OverlayTexture;
     public IntPtr Hwnd { get; private set; }
-    public bool HasPendingResize => _resizePending;
+    public bool HasPendingResize { get; private set; }
 
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
@@ -75,7 +74,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             Hwnd = hwnd;
             Width = width;
             Height = height;
-            _resizePending = false;
+            HasPendingResize = false;
             return true;
         }
         catch (Exception ex)
@@ -98,12 +97,12 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
         _pendingWidth = width;
         _pendingHeight = height;
-        _resizePending = width != Width || height != Height;
+        HasPendingResize = width != Width || height != Height;
     }
 
     public bool ApplyPendingResizeIfNeeded(D3D11DeviceResources deviceResources)
     {
-        if (!IsActive || !_resizePending)
+        if (!IsActive || !HasPendingResize)
         {
             return true;
         }
@@ -112,7 +111,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         var height = Math.Max(1, _pendingHeight);
         if (width == Width && height == Height)
         {
-            _resizePending = false;
+            HasPendingResize = false;
             return true;
         }
 
@@ -128,7 +127,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
         if (width == Width && height == Height)
         {
-            _resizePending = false;
+            HasPendingResize = false;
             return true;
         }
 
@@ -159,7 +158,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             _target.ReacquireOverlayBackBuffer();
             Width = width;
             Height = height;
-            _resizePending = false;
+            HasPendingResize = false;
             _target.SetContentSize(width, height);
             diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
 
@@ -268,7 +267,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         Height = 0;
         _pendingWidth = 0;
         _pendingHeight = 0;
-        _resizePending = false;
+        HasPendingResize = false;
     }
 
     public void Dispose() => Cleanup();

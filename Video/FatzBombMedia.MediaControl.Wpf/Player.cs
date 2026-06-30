@@ -8,13 +8,8 @@ namespace FatzBombMedia.MediaControl.Wpf;
 /// WPF adapter facade over the Core-owned media-control player.
 /// Core owns playback, commands, events, composition, and presentation; this type adds only WPF input conversions.
 /// </summary>
-public sealed class Player : MediaControlPlayer
+public sealed class Player(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) : MediaControlPlayer(configuration, nativeLibraryPaths)
 {
-    public Player(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
-        : base(configuration, nativeLibraryPaths)
-    {
-    }
-
     public static Task<Player> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
         Task.Run(() => new Player(configuration, nativeLibraryPaths));
 

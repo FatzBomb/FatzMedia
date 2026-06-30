@@ -311,13 +311,10 @@ internal sealed class D3D11RendererPresentationServices
         if (snapshot == null || !Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot overlayTarget))
             return false;
 
-        var baseState = CreateDirectCompositionOverlaySplitBaseState(frame, overlayTarget);
+        DirectCompositionOverlaySplitBaseState baseState = CreateDirectCompositionOverlaySplitBaseState(frame, overlayTarget);
         var shouldPresentBase = ShouldPresentDirectCompositionOverlaySplitBase(baseState);
-        if (shouldPresentBase
-            && !PresentMediaCompositionToFinalTargets(isDisposed, AsDirectCompositionBaseFrame(frame), framePresented))
-        {
+        if (shouldPresentBase && !PresentMediaCompositionToFinalTargets(isDisposed, AsDirectCompositionBaseFrame(frame), framePresented))
             return false;
-        }
 
         if (shouldPresentBase)
         {
@@ -326,7 +323,7 @@ internal sealed class D3D11RendererPresentationServices
             basePresented = true;
         }
 
-        var overlayState = CreateDirectCompositionOverlaySplitOverlayState(snapshot, overlayTarget);
+        DirectCompositionOverlaySplitOverlayState overlayState = CreateDirectCompositionOverlaySplitOverlayState(snapshot, overlayTarget);
         var shouldPresentOverlay = ShouldPresentDirectCompositionOverlaySplitOverlay(overlayState);
         if (!shouldPresentOverlay)
         {
@@ -336,9 +333,7 @@ internal sealed class D3D11RendererPresentationServices
         }
 
         if (!MediaCompositor.DrawDxCdgOverlayToTarget(_deviceResources, snapshot, overlayTarget))
-        {
             return false;
-        }
 
         if (!Surfaces.PresentDirectCompositionOverlay(isDisposed, State.IsNativeLiveResizeInProgress))
         {

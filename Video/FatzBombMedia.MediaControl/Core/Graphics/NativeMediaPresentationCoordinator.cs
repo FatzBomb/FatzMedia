@@ -651,7 +651,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             _dxCdgPendingReason = "dxcdg pending";
         }
 
-        var result = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
+        CompositionPresentResult result = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
         if (result == CompositionPresentResult.Deferred)
         {
             RequeueDxCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
