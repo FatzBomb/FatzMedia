@@ -2,7 +2,7 @@
 
 Host-agnostic media engine core for FatzBombMedia.
 
-This project intentionally contains no WPF types and does not set `UseWPF`. It owns shared media-engine state, audio/video/CD+G input handling, DxCdg rendering, FFmpeg/BASS integration, Direct3D composition primitives, neutral configuration types, retained layer state, target planning, and final presentation.
+This project intentionally contains no WPF types and does not set `UseWPF`. It owns shared media-engine state, audio/video/CD+G input handling, DirectX Cdg rendering, FFmpeg/BASS integration, Direct3D composition primitives, neutral configuration types, retained layer state, target planning, and final presentation.
 
 ## Boundary rule
 
@@ -19,7 +19,7 @@ All visual media continues to route through the single media compositor model:
 
 - Layer 0: background/base visual, such as video, image, or a visualizer.
 - Layer 1: optional wash/dim/color overlay.
-- Layer 2: optional overlay graphics, such as DxCdg lyrics.
+- Layer 2: optional overlay graphics, such as Cdg lyrics.
 - Audio-only/no-visual media is valid and should clear or transparent-clear through the compositor.
 
 Media types provide optional layers. They do not independently present final frames.

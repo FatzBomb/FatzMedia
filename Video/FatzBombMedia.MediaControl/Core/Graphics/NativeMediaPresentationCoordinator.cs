@@ -1,7 +1,7 @@
 using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D;
 using FatzBombMedia.MediaControl.Core.Threading;
@@ -19,9 +19,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         Deferred
     }
 
-    private const int DxCdgPacketsPerSector = 4;
-    private const int DxCdgPresentationCadenceHz = DxCdgConstants.PacketsPerSecond / DxCdgPacketsPerSector;
-    private static readonly long DxCdgPresentationIntervalTicks = Math.Max(1L, Stopwatch.Frequency / DxCdgPresentationCadenceHz);
+    private const int CdgPacketsPerSector = 4;
+    private const int CdgPresentationCadenceHz = CdgConstants.PacketsPerSecond / CdgPacketsPerSector;
+    private static readonly long CdgPresentationIntervalTicks = Math.Max(1L, Stopwatch.Frequency / CdgPresentationCadenceHz);
 
     private readonly IMediaEngine _mediaEngine;
     private readonly MediaPlayerConfiguration _configuration;
@@ -30,7 +30,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _lock = new();
-    private readonly Lock _dxCdgPresentationGate = new();
+    private readonly Lock _cdgPresentationGate = new();
 
     private IVideoEngine? _attachedVideo;
     private ICdgEngine? _attachedCdg;
@@ -45,11 +45,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private bool _compositionBackgroundIsRetainedGpu;
     private long _compositionBackgroundRevision;
     private MediaCompositionStretchMode _primaryStretchMode = MediaCompositionStretchMode.UniformFit;
-    private bool _dxCdgPresentationPending;
-    private bool _dxCdgPendingConsumeDirtyRegions;
-    private bool _dxCdgPendingRetainedRefresh;
-    private DxCdgRenderSnapshot? _lastDxCdgSnapshot;
-    private string _dxCdgPendingReason = "dxcdg pending";
+    private bool _cdgPresentationPending;
+    private bool _cdgPendingConsumeDirtyRegions;
+    private bool _cdgPendingRetainedRefresh;
+    private CdgRenderSnapshot? _lastCdgSnapshot;
+    private string _cdgPendingReason = "cdg pending";
 
     public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
     {
@@ -265,15 +265,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             return;
         }
 
-        _ = PresentPendingDxCdgFrame(deferIfCompositionBusy: false);
+        _ = PresentPendingCdgFrame(deferIfCompositionBusy: false);
     }
 
     internal void RefreshAttachments()
     {
         if (_configuration.EnableLogging)
-        {
             Debug.WriteLine("[NativeMediaPresentationCoordinator] Refreshing Core presentation attachments");
-        }
 
         var wasRenderingActive = _isRenderingActive;
         StopRendering();
@@ -284,7 +282,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         AttachCdgIfAvailable();
         AttachImageIfAvailable();
         _renderPipeline.Attach(_attachedVideo, _attachedCdg);
-        if (HasDxCdgContent && !ShouldPresentVisualLayers)
+        if (HasCdgContent && !ShouldPresentVisualLayers)
             ClearVisibleComposition("attachments refreshed idle");
         else
             PresentCurrentComposition("attachments refreshed");
@@ -300,9 +298,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         while (!cancellationToken.IsCancellationRequested)
         {
             _renderPipeline.RenderCdgAtCurrentPosition();
-            _ = PresentPendingDxCdgFrame(deferIfCompositionBusy: true);
+            _ = PresentPendingCdgFrame(deferIfCompositionBusy: true);
 
-            nextTick += DxCdgPresentationIntervalTicks;
+            nextTick += CdgPresentationIntervalTicks;
             var delayTicks = nextTick - Stopwatch.GetTimestamp();
             if (delayTicks > 0)
                 waiter.Wait(TimeSpan.FromSeconds(delayTicks / (double)Stopwatch.Frequency), cancellationToken.WaitHandle);
@@ -409,13 +407,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _renderPipeline.Attach(_attachedVideo, _attachedCdg);
         if (!ShouldPresentVisualLayers)
         {
-            ClearPendingDxCdgPresentation();
+            ClearPendingCdgPresentation();
             return;
         }
 
         _renderPipeline.RenderCdgAtCurrentPosition(force: true);
-        if (!PresentPendingDxCdgFrame(deferIfCompositionBusy: false))
-            PresentRetainedDxCdgFrame();
+        if (!PresentPendingCdgFrame(deferIfCompositionBusy: false))
+            PresentRetainedCdgFrame();
     }
 
     private void AttachImageIfAvailable()
@@ -443,12 +441,12 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, MediaCompositionStretchMode.UniformToFill);
-            if (HasDxCdgContent)
+            if (HasCdgContent)
             {
                 if (!ShouldPresentVisualLayers)
                     return;
 
-                PresentRetainedDxCdgFrame();
+                PresentRetainedCdgFrame();
                 return;
             }
 
@@ -458,7 +456,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         if (e.IsD3D11HardwareFrame)
         {
-            if (HasDxCdgContent && !ShouldPresentVisualLayers)
+            if (HasCdgContent && !ShouldPresentVisualLayers)
             {
                 StoreRetainedHardwareBackgroundFrame(e, MediaCompositionStretchMode.UniformToFill);
                 return;
@@ -480,9 +478,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             return;
         }
 
-        if (HasDxCdgContent)
+        if (HasCdgContent)
         {
-            PresentRetainedDxCdgFrame();
+            PresentRetainedCdgFrame();
             return;
         }
 
@@ -496,7 +494,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     {
         try
         {
-            if (HasDxCdgContent)
+            if (HasCdgContent)
             {
                 PresentVideoFrameAsCdgBackground(e);
                 return;
@@ -536,131 +534,131 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, MediaCompositionStretchMode.UniformToFill);
-            PresentRetainedDxCdgFrame();
+            PresentRetainedCdgFrame();
             return;
         }
 
         if (e.IsD3D11HardwareFrame)
-            RenderHardwareVideoCompositionFrame(e, forceZoomToFill: true, "hardware video + dxcdg");
+            RenderHardwareVideoCompositionFrame(e, forceZoomToFill: true, "hardware video + cdg");
     }
 
     private void OnCdgBackgroundWashChanged(object? sender, EventArgs e) =>
-        RequestDxCdgPresentationIfVisible(consumeDirtyRegions: false, retainedRefresh: true, "dxcdg wash changed");
+        RequestCdgPresentationIfVisible(consumeDirtyRegions: false, retainedRefresh: true, "cdg wash changed");
 
     private void OnCdgFrameInvalidated(object? sender, EventArgs e) =>
-        RequestDxCdgPresentationIfVisible(consumeDirtyRegions: true, retainedRefresh: false, "dxcdg invalidated");
+        RequestCdgPresentationIfVisible(consumeDirtyRegions: true, retainedRefresh: false, "cdg invalidated");
 
-    private void PresentRetainedDxCdgFrame()
+    private void PresentRetainedCdgFrame()
     {
-        _ = ConsumePendingDxCdgPresentation(out var consumeDirtyRegions, out _, out _);
-        _ = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh: true, "retained dxcdg refresh");
+        _ = ConsumePendingCdgPresentation(out var consumeDirtyRegions, out _, out _);
+        _ = RenderCurrentCdgFrame(consumeDirtyRegions, retainedRefresh: true, "retained cdg refresh");
     }
 
-    private void RequestDxCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
+    private void RequestCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
     {
-        lock (_dxCdgPresentationGate)
+        lock (_cdgPresentationGate)
         {
-            _dxCdgPendingConsumeDirtyRegions |= consumeDirtyRegions;
-            _dxCdgPendingRetainedRefresh = _dxCdgPresentationPending
-                ? _dxCdgPendingRetainedRefresh && retainedRefresh
+            _cdgPendingConsumeDirtyRegions |= consumeDirtyRegions;
+            _cdgPendingRetainedRefresh = _cdgPresentationPending
+                ? _cdgPendingRetainedRefresh && retainedRefresh
                 : retainedRefresh;
-            _dxCdgPendingReason = reason;
-            _dxCdgPresentationPending = true;
+            _cdgPendingReason = reason;
+            _cdgPresentationPending = true;
         }
 
         if (!_isRenderingActive)
-            _ = PresentPendingDxCdgFrame(deferIfCompositionBusy: false);
+            _ = PresentPendingCdgFrame(deferIfCompositionBusy: false);
     }
 
-    private void RequestDxCdgPresentationIfVisible(bool consumeDirtyRegions, bool retainedRefresh, string reason)
+    private void RequestCdgPresentationIfVisible(bool consumeDirtyRegions, bool retainedRefresh, string reason)
     {
         if (!ShouldPresentVisualLayers)
         {
-            ClearPendingDxCdgPresentation();
+            ClearPendingCdgPresentation();
             return;
         }
 
-        RequestDxCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
+        RequestCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
     }
 
-    private bool PresentPendingDxCdgFrame(bool deferIfCompositionBusy)
+    private bool PresentPendingCdgFrame(bool deferIfCompositionBusy)
     {
         bool consumeDirtyRegions;
         bool retainedRefresh;
         string reason;
 
-        lock (_dxCdgPresentationGate)
+        lock (_cdgPresentationGate)
         {
-            if (!_dxCdgPresentationPending)
+            if (!_cdgPresentationPending)
                 return false;
 
-            consumeDirtyRegions = _dxCdgPendingConsumeDirtyRegions;
-            retainedRefresh = _dxCdgPendingRetainedRefresh;
-            reason = _dxCdgPendingReason;
-            _dxCdgPresentationPending = false;
-            _dxCdgPendingConsumeDirtyRegions = false;
-            _dxCdgPendingRetainedRefresh = false;
-            _dxCdgPendingReason = "dxcdg pending";
+            consumeDirtyRegions = _cdgPendingConsumeDirtyRegions;
+            retainedRefresh = _cdgPendingRetainedRefresh;
+            reason = _cdgPendingReason;
+            _cdgPresentationPending = false;
+            _cdgPendingConsumeDirtyRegions = false;
+            _cdgPendingRetainedRefresh = false;
+            _cdgPendingReason = "cdg pending";
         }
 
-        CompositionPresentResult result = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
+        CompositionPresentResult result = RenderCurrentCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
         if (result == CompositionPresentResult.Deferred)
-            RequeueDxCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
+            RequeueCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
 
         return result == CompositionPresentResult.Presented;
     }
 
-    private void RequeueDxCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
+    private void RequeueCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
     {
-        lock (_dxCdgPresentationGate)
+        lock (_cdgPresentationGate)
         {
-            _dxCdgPendingConsumeDirtyRegions |= consumeDirtyRegions;
-            _dxCdgPendingRetainedRefresh = _dxCdgPresentationPending
-                ? _dxCdgPendingRetainedRefresh && retainedRefresh
+            _cdgPendingConsumeDirtyRegions |= consumeDirtyRegions;
+            _cdgPendingRetainedRefresh = _cdgPresentationPending
+                ? _cdgPendingRetainedRefresh && retainedRefresh
                 : retainedRefresh;
-            _dxCdgPendingReason = reason;
-            _dxCdgPresentationPending = true;
+            _cdgPendingReason = reason;
+            _cdgPresentationPending = true;
         }
     }
 
-    private void ClearPendingDxCdgPresentation()
+    private void ClearPendingCdgPresentation()
     {
-        lock (_dxCdgPresentationGate)
-            ClearPendingDxCdgPresentationNoLock();
+        lock (_cdgPresentationGate)
+            ClearPendingCdgPresentationNoLock();
     }
 
-    private bool ConsumePendingDxCdgPresentation(
+    private bool ConsumePendingCdgPresentation(
         out bool consumeDirtyRegions,
         out bool retainedRefresh,
         out string reason)
     {
-        lock (_dxCdgPresentationGate)
+        lock (_cdgPresentationGate)
         {
-            if (!_dxCdgPresentationPending)
+            if (!_cdgPresentationPending)
             {
                 consumeDirtyRegions = false;
                 retainedRefresh = false;
-                reason = "dxcdg pending";
+                reason = "cdg pending";
                 return false;
             }
 
-            consumeDirtyRegions = _dxCdgPendingConsumeDirtyRegions;
-            retainedRefresh = _dxCdgPendingRetainedRefresh;
-            reason = _dxCdgPendingReason;
-            ClearPendingDxCdgPresentationNoLock();
+            consumeDirtyRegions = _cdgPendingConsumeDirtyRegions;
+            retainedRefresh = _cdgPendingRetainedRefresh;
+            reason = _cdgPendingReason;
+            ClearPendingCdgPresentationNoLock();
             return true;
         }
     }
 
-    private void ClearPendingDxCdgPresentationNoLock()
+    private void ClearPendingCdgPresentationNoLock()
     {
-        _dxCdgPresentationPending = false;
-        _dxCdgPendingConsumeDirtyRegions = false;
-        _dxCdgPendingRetainedRefresh = false;
-        _dxCdgPendingReason = "dxcdg pending";
+        _cdgPresentationPending = false;
+        _cdgPendingConsumeDirtyRegions = false;
+        _cdgPendingRetainedRefresh = false;
+        _cdgPendingReason = "cdg pending";
     }
 
-    private CompositionPresentResult RenderCurrentDxCdgFrame(
+    private CompositionPresentResult RenderCurrentCdgFrame(
         bool consumeDirtyRegions,
         bool retainedRefresh,
         string reason,
@@ -673,7 +671,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
             try
             {
-                return RenderCurrentDxCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
+                return RenderCurrentCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
             }
             finally
             {
@@ -682,22 +680,22 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         lock (_lock)
-            return RenderCurrentDxCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
+            return RenderCurrentCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
     }
 
-    private CompositionPresentResult RenderCurrentDxCdgFrameNoLock(
+    private CompositionPresentResult RenderCurrentCdgFrameNoLock(
         bool consumeDirtyRegions,
         bool retainedRefresh,
         string reason) =>
-            !TryCreateAndCacheDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? snapshot) || snapshot == null
+            !TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null
                 ? CompositionPresentResult.Failed
                 : PresentMediaCompositionNoLock(BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
-        DxCdgRenderSnapshot? snapshot = null;
+        CdgRenderSnapshot? snapshot = null;
         uint washArgb = 0;
-        if (TryGetDxCdgSnapshotForVideoComposition(out DxCdgRenderSnapshot? cdgSnapshot) && cdgSnapshot != null)
+        if (TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? cdgSnapshot) && cdgSnapshot != null)
         {
             snapshot = cdgSnapshot;
             washArgb = cdgSnapshot.BackgroundWashArgb;
@@ -762,52 +760,52 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
     }
 
-    private bool TryGetDxCdgSnapshotForVideoComposition(out DxCdgRenderSnapshot? snapshot)
+    private bool TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? snapshot)
     {
         snapshot = null;
-        if (!HasDxCdgContent)
+        if (!HasCdgContent)
             return false;
 
-        var hadPending = ConsumePendingDxCdgPresentation(
+        var hadPending = ConsumePendingCdgPresentation(
             out var consumeDirtyRegions,
             out var retainedRefresh,
             out var pendingReason);
         if (!hadPending)
         {
-            lock (_dxCdgPresentationGate)
-                snapshot = _lastDxCdgSnapshot;
+            lock (_cdgPresentationGate)
+                snapshot = _lastCdgSnapshot;
 
             if (snapshot != null)
                 return true;
         }
 
-        if (TryCreateAndCacheDxCdgSnapshot(consumeDirtyRegions, out snapshot))
+        if (TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out snapshot))
             return true;
 
         if (hadPending)
-            RequeueDxCdgPresentation(consumeDirtyRegions, retainedRefresh, pendingReason);
+            RequeueCdgPresentation(consumeDirtyRegions, retainedRefresh, pendingReason);
 
         return false;
     }
 
-    private bool TryCreateAndCacheDxCdgSnapshot(bool consumeDirtyRegions, out DxCdgRenderSnapshot? snapshot)
+    private bool TryCreateAndCacheCdgSnapshot(bool consumeDirtyRegions, out CdgRenderSnapshot? snapshot)
     {
         snapshot = null;
-        if (_attachedCdg is not IDxCdgSnapshotSource snapshotSource
+        if (_attachedCdg is not ICdgSnapshotSource snapshotSource
             || !_mediaEngine.Content.HasFlag(MediaContent.Cdg)
-            || !snapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? createdSnapshot))
+            || !snapshotSource.TryCreateCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? createdSnapshot))
             return false;
 
         snapshot = createdSnapshot;
-        lock (_dxCdgPresentationGate)
-            _lastDxCdgSnapshot = createdSnapshot;
+        lock (_cdgPresentationGate)
+            _lastCdgSnapshot = createdSnapshot;
 
         return true;
     }
 
     private void PresentCurrentComposition(string reason)
     {
-        if (HasDxCdgContent)
+        if (HasCdgContent)
         {
             if (!ShouldPresentVisualLayers)
             {
@@ -815,7 +813,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 return;
             }
 
-            PresentRetainedDxCdgFrame();
+            PresentRetainedCdgFrame();
             return;
         }
 
@@ -856,7 +854,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     }
 
     private MediaCompositionFrame BuildCompositionFrame(
-        DxCdgRenderSnapshot? cdgOverlay,
+        CdgRenderSnapshot? cdgOverlay,
         uint washArgb,
         bool retainedRefresh,
         string reason)
@@ -866,7 +864,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     }
 
     private MediaCompositionFrame BuildCompositionFrameNoLock(
-        DxCdgRenderSnapshot? cdgOverlay,
+        CdgRenderSnapshot? cdgOverlay,
         uint washArgb,
         bool retainedRefresh,
         string reason)
@@ -977,9 +975,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private void ClearVisibleComposition(string reason)
     {
-        ClearPendingDxCdgPresentation();
-        lock (_dxCdgPresentationGate)
-            _lastDxCdgSnapshot = null;
+        ClearPendingCdgPresentation();
+        lock (_cdgPresentationGate)
+            _lastCdgSnapshot = null;
 
         lock (_lock)
         {
@@ -1022,16 +1020,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             _attachedCdg = null;
         }
 
-        lock (_dxCdgPresentationGate)
+        lock (_cdgPresentationGate)
         {
-            _lastDxCdgSnapshot = null;
-            ClearPendingDxCdgPresentationNoLock();
+            _lastCdgSnapshot = null;
+            ClearPendingCdgPresentationNoLock();
         }
 
         _renderPipeline.Clear();
     }
 
-    private bool HasDxCdgContent => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
+    private bool HasCdgContent => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
 
     private bool ShouldPresentVisualLayers =>
         _isRenderingActive
@@ -1039,7 +1037,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private bool ShouldPresentImmediatelyAfterPrimaryResize() =>
         !_isRenderingActive
-        || (!HasDxCdgContent && !_mediaEngine.Content.HasFlag(MediaContent.Video));
+        || (!HasCdgContent && !_mediaEngine.Content.HasFlag(MediaContent.Video));
 
     private static bool IsValidBgraFrame(VideoFrameEventArgs e) =>
         !e.PixelData.IsEmpty && e.Width > 0 && e.Height > 0 && e.Stride >= e.Width * 4;

@@ -2,28 +2,28 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Buffers;
 using System.Diagnostics;
 
-namespace FatzBombMedia.MediaControl.Core.DxCdg;
+namespace FatzBombMedia.MediaControl.Core.Cdg;
 
 /// <summary>
-/// Active CDG engine backed by the DXCDG indexed state model. Packet replay updates
-/// <see cref="DxCdgStateMachine"/>, and live renderers consume
-/// <see cref="DxCdgRenderSnapshot"/> directly.
+/// Active CDG engine backed by the CDG indexed state model. Packet replay updates
+/// <see cref="CdgStateMachine"/>, and live renderers consume
+/// <see cref="CdgRenderSnapshot"/> directly.
 /// </summary>
-public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
+public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 {
-    private readonly DxCdgStateMachine _dxCdgState = new();
+    private readonly CdgStateMachine _cdgState = new();
     private readonly Lock _renderLock = new();
 
-    private DxCdgPacket[] _packets = [];
+    private CdgPacket[] _packets = [];
     private int _startPacketIndex;
     private int _lastRenderLogSecond = -1;
     private uint _backgroundWashArgb;
     private bool _disposed;
 
-    public DxCdgEngine() => _backgroundWashArgb = _dxCdgState.BackgroundWashArgb;
+    public CdgEngine() => _backgroundWashArgb = _cdgState.BackgroundWashArgb;
 
-    public int FrameWidth => DxCdgConstants.FrameWidth;
-    public int FrameHeight => DxCdgConstants.FrameHeight;
+    public int FrameWidth => CdgConstants.FrameWidth;
+    public int FrameHeight => CdgConstants.FrameHeight;
     public uint BackgroundWashArgb
     {
         get
@@ -35,13 +35,13 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     public byte BackgroundOpacity
     {
-        get => _dxCdgState.BackgroundOpacity;
+        get => _cdgState.BackgroundOpacity;
         set
         {
             bool washChanged;
             lock (_renderLock)
             {
-                _dxCdgState.BackgroundOpacity = value;
+                _cdgState.BackgroundOpacity = value;
                 washChanged = RefreshBackgroundWashUnsafe();
             }
 
@@ -52,13 +52,13 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     public uint? BackgroundOverrideArgb
     {
-        get => _dxCdgState.BackgroundOverrideArgb;
+        get => _cdgState.BackgroundOverrideArgb;
         set
         {
             bool washChanged;
             lock (_renderLock)
             {
-                _dxCdgState.BackgroundOverrideArgb = value;
+                _cdgState.BackgroundOverrideArgb = value;
                 washChanged = RefreshBackgroundWashUnsafe();
             }
 
@@ -67,16 +67,16 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         }
     }
 
-    public double TotalDurationSeconds => _packets.Length / (double)DxCdgConstants.PacketsPerSecond;
+    public double TotalDurationSeconds => _packets.Length / (double)CdgConstants.PacketsPerSecond;
 
     public event EventHandler? FrameInvalidated;
     public event EventHandler? BackgroundWashChanged;
-    public event EventHandler<DxCdgEngineState>? StateChanged;
+    public event EventHandler<CdgEngineState>? StateChanged;
     public event EventHandler? Opened;
     public event EventHandler? Closed;
     public event EventHandler? PlaybackStarted;
 
-    public DxCdgEngineState State
+    public CdgEngineState State
     {
         get;
         private set
@@ -101,11 +101,11 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         }
     }
 
-    public bool TryCreateDxCdgSnapshot(bool consumeDirtyRegions, out DxCdgRenderSnapshot snapshot)
+    public bool TryCreateCdgSnapshot(bool consumeDirtyRegions, out CdgRenderSnapshot snapshot)
     {
         lock (_renderLock)
         {
-            snapshot = _dxCdgState.CreateSnapshot(consumeDirtyRegions);
+            snapshot = _cdgState.CreateSnapshot(consumeDirtyRegions);
             return true;
         }
     }
@@ -121,8 +121,8 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         ms.Position = 0;
         _packets = [.. InitializeCdgStream(ms)];
         ResetInternal();
-        State = DxCdgEngineState.Ready;
-        Debug.WriteLine($"[DxCdgEngine] Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
+        State = CdgEngineState.Ready;
+        Debug.WriteLine($"[CdgEngine] Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
     }
@@ -134,24 +134,24 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         ms.Position = 0;
         _packets = [.. InitializeCdgStream(ms)];
         ResetInternal();
-        State = DxCdgEngineState.Ready;
-        Debug.WriteLine($"[DxCdgEngine] Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
+        State = CdgEngineState.Ready;
+        Debug.WriteLine($"[CdgEngine] Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
     }
 
     public void Play()
     {
-        State = DxCdgEngineState.Playing;
+        State = CdgEngineState.Playing;
         PlaybackStarted?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Pause() => State = DxCdgEngineState.Paused;
+    public void Pause() => State = CdgEngineState.Paused;
 
     public void Stop()
     {
         Reset();
-        State = DxCdgEngineState.Stopped;
+        State = CdgEngineState.Stopped;
     }
 
     public void Reset()
@@ -169,7 +169,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
         lock (_renderLock)
         {
-            var endIndex = (long)(seconds * DxCdgConstants.PacketsPerSecond);
+            var endIndex = (long)(seconds * CdgConstants.PacketsPerSecond);
             endIndex = Math.Clamp(endIndex, 0, _packets.Length);
 
             var rebuiltFromStart = false;
@@ -182,7 +182,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
             var hasChanges = false;
             for (; _startPacketIndex < endIndex && _startPacketIndex < _packets.Length; _startPacketIndex++)
             {
-                if (_dxCdgState.ProcessPacket(_packets[_startPacketIndex]))
+                if (_cdgState.ProcessPacket(_packets[_startPacketIndex]))
                 {
                     hasChanges = true;
                 }
@@ -195,7 +195,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
                 if (logSecond != _lastRenderLogSecond)
                 {
                     _lastRenderLogSecond = logSecond;
-                    Debug.WriteLine($"[DxCdgEngine] Frame invalidated at {seconds:F3}s, packet {endIndex}/{_packets.Length}, changed={hasChanges}, rebuilt={rebuiltFromStart}, revision={_dxCdgState.Revision}");
+                    Debug.WriteLine($"[CdgEngine] Frame invalidated at {seconds:F3}s, packet {endIndex}/{_packets.Length}, changed={hasChanges}, rebuilt={rebuiltFromStart}, revision={_cdgState.Revision}");
                 }
 
                 shouldInvalidate = true;
@@ -227,7 +227,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     private void ResetPacketStateForReplay()
     {
-        _dxCdgState.Reset();
+        _cdgState.Reset();
         _startPacketIndex = 0;
     }
 
@@ -235,7 +235,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
 
     private bool RefreshBackgroundWashUnsafe()
     {
-        DxCdgRenderSnapshot snapshot = _dxCdgState.CreateSnapshot(consumeDirtyRegions: false);
+        CdgRenderSnapshot snapshot = _cdgState.CreateSnapshot(consumeDirtyRegions: false);
         if (snapshot.BackgroundWashArgb == _backgroundWashArgb)
         {
             return false;
@@ -253,12 +253,12 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         }
     }
 
-    private static IEnumerable<DxCdgPacket> InitializeCdgStream(Stream cdgStream)
+    private static IEnumerable<CdgPacket> InitializeCdgStream(Stream cdgStream)
     {
         if (cdgStream == null) yield break;
-        if (cdgStream.CanSeek && cdgStream.Length < DxCdgConstants.PacketSize) yield break;
+        if (cdgStream.CanSeek && cdgStream.Length < CdgConstants.PacketSize) yield break;
 
-        var buffer = ArrayPool<byte>.Shared.Rent(DxCdgConstants.PacketSize * 64);
+        var buffer = ArrayPool<byte>.Shared.Rent(CdgConstants.PacketSize * 64);
         var buffered = 0;
 
         try
@@ -266,21 +266,21 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
             while (true)
             {
                 var read = cdgStream.Read(buffer, buffered, buffer.Length - buffered);
-                if (read == 0 && buffered < DxCdgConstants.PacketSize) break;
+                if (read == 0 && buffered < CdgConstants.PacketSize) break;
 
                 buffered += read;
-                var full = buffered / DxCdgConstants.PacketSize;
+                var full = buffered / CdgConstants.PacketSize;
 
                 for (var i = 0; i < full; i++)
                 {
-                    var offset = i * DxCdgConstants.PacketSize;
-                    yield return new DxCdgPacket(new ReadOnlySpan<byte>(buffer, offset, DxCdgConstants.PacketSize));
+                    var offset = i * CdgConstants.PacketSize;
+                    yield return new CdgPacket(new ReadOnlySpan<byte>(buffer, offset, CdgConstants.PacketSize));
                 }
 
-                var leftover = buffered % DxCdgConstants.PacketSize;
+                var leftover = buffered % CdgConstants.PacketSize;
                 if (leftover > 0)
                 {
-                    Buffer.BlockCopy(buffer, full * DxCdgConstants.PacketSize, buffer, 0, leftover);
+                    Buffer.BlockCopy(buffer, full * CdgConstants.PacketSize, buffer, 0, leftover);
                 }
 
                 buffered = leftover;
@@ -304,7 +304,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         Pause();
         ResetInternal();
         _packets = [];
-        State = DxCdgEngineState.Closed;
+        State = CdgEngineState.Closed;
         Closed?.Invoke(this, EventArgs.Empty);
     }
 }

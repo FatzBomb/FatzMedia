@@ -1,4 +1,4 @@
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
@@ -38,9 +38,9 @@ public sealed record MediaCompositionLayer
     public double FramesPerSecond { get; init; }
 
     /// <summary>
-    /// Optional DXCDG indexed/palette snapshot for the overlay layer.
+    /// Optional CDG indexed/palette snapshot for the overlay layer.
     /// </summary>
-    public DxCdgRenderSnapshot? CdgSnapshot { get; init; }
+    public CdgRenderSnapshot? CdgSnapshot { get; init; }
 
     public bool IsVisible => SourceKind != MediaCompositionLayerSourceKind.None
         && SourceKind != MediaCompositionLayerSourceKind.Clear

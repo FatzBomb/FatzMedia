@@ -1,4 +1,4 @@
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
@@ -17,7 +17,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
 /// <summary>
 /// D3D11 implementation of the single media compositor. It draws an optional
-/// background/base layer, optional wash layer, optional DXCDG foreground overlay, then presents once.
+/// background/base layer, optional wash layer, optional CDG foreground overlay, then presents once.
 /// </summary>
 internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics = false, bool enableCompositionDiagnostics = false)
 {
@@ -47,13 +47,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private int _compositionRetainedReuses;
     private int _compositionTargetResizes;
     private int _compositionSkippedRetainedNoOps;
-    private int _compositionDxCdgOverlayOnlyPasses;
-    private int _compositionDxCdgOverlayOnlyDrawnTargets;
+    private int _compositionCdgOverlayOnlyPasses;
+    private int _compositionCdgOverlayOnlyDrawnTargets;
     private double _compositionMs;
     private double _compositionMaxMs;
     private string? _lastCompositionReason;
 
-    public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasDxCdgResources == true;
+    public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasCdgResources == true;
 
     public void Reset()
     {
@@ -183,28 +183,28 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11VideoProcessorPresenter? videoProcessorPresenter = null)
         => PresentToTargets(deviceResources, frame, targets, videoProcessorPresenter, out _);
 
-    public bool DrawDxCdgOverlayToTarget(
+    public bool DrawCdgOverlayToTarget(
         D3D11DeviceResources deviceResources,
-        DxCdgRenderSnapshot snapshot,
+        CdgRenderSnapshot snapshot,
         D3D11PresentationTargetSnapshot target)
     {
         if (deviceResources.Device == null
             || deviceResources.Context == null
             || !target.IsValid
             || target.CompositionTargetKind != D3D11CompositionTargetKind.DirectCompositionOverlay
-            || snapshot.ColorIndices.Length < DxCdgConstants.TotalPixels
-            || snapshot.PaletteArgb.Length < DxCdgConstants.ColorCount)
+            || snapshot.ColorIndices.Length < CdgConstants.TotalPixels
+            || snapshot.PaletteArgb.Length < CdgConstants.ColorCount)
         {
             return false;
         }
 
         try
         {
-            if (!EnsureDxCdgOverlayLayer(deviceResources, snapshot) || !EnsureDrawPipeline(deviceResources.Device))
+            if (!EnsureCdgOverlayLayer(deviceResources, snapshot) || !EnsureDrawPipeline(deviceResources.Device))
                 return false;
 
             using ID3D11RenderTargetView targetRenderView = deviceResources.Device.CreateRenderTargetView(target.Texture);
-            return DrawDxCdgOverlayOnlyToRenderTarget(
+            return DrawCdgOverlayOnlyToRenderTarget(
                 deviceResources.Context,
                 snapshot,
                 target.Width,
@@ -397,7 +397,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         && !updatePlan.HasWork
         && !targetPlan.HasMetadataWork;
 
-    private static bool IsDxCdgOverlayOnlyCompositionCandidate(
+    private static bool IsCdgOverlayOnlyCompositionCandidate(
         MediaCompositionFrame frame,
         D3D11CompositionLayerUpdatePlan updatePlan,
         D3D11CompositionTargetPlan targetPlan) =>
@@ -430,10 +430,10 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _compositionTargetResizes += targetPlan.ResizeTargetCount;
         if (skippedRetainedNoOp)
             _compositionSkippedRetainedNoOps++;
-        if (IsDxCdgOverlayOnlyCompositionCandidate(frame, updatePlan, targetPlan))
+        if (IsCdgOverlayOnlyCompositionCandidate(frame, updatePlan, targetPlan))
         {
-            _compositionDxCdgOverlayOnlyPasses++;
-            _compositionDxCdgOverlayOnlyDrawnTargets += drawnTargets;
+            _compositionCdgOverlayOnlyPasses++;
+            _compositionCdgOverlayOnlyDrawnTargets += drawnTargets;
         }
 
         _compositionMs += elapsedMs;
@@ -447,7 +447,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             $"[COMPOSITION-D3D11:10X] passes={_compositionPasses}, avgPass={_compositionMs / _compositionPasses:F2}ms, " +
             $"maxPass={_compositionMaxMs:F2}ms, drawnTargets={_compositionDrawnTargets}, layerUploads={_compositionLayerUploads}, " +
             $"layerRenders={_compositionLayerRenders}, retainedReuses={_compositionRetainedReuses}, retainedNoOpSkips={_compositionSkippedRetainedNoOps}, targetResizes={_compositionTargetResizes}, " +
-            $"dxCdgOverlayOnlyPasses={_compositionDxCdgOverlayOnlyPasses}, dxCdgOverlayOnlyDrawnTargets={_compositionDxCdgOverlayOnlyDrawnTargets}, " +
+            $"cdgOverlayOnlyPasses={_compositionCdgOverlayOnlyPasses}, cdgOverlayOnlyDrawnTargets={_compositionCdgOverlayOnlyDrawnTargets}, " +
             $"lastReason={_lastCompositionReason}, lastLayerPlan=({updatePlan.Summary}), lastTargetPlan=({targetPlan.Summary})");
 
         ResetCompositionDiagnostics();
@@ -462,8 +462,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _compositionRetainedReuses = 0;
         _compositionTargetResizes = 0;
         _compositionSkippedRetainedNoOps = 0;
-        _compositionDxCdgOverlayOnlyPasses = 0;
-        _compositionDxCdgOverlayOnlyDrawnTargets = 0;
+        _compositionCdgOverlayOnlyPasses = 0;
+        _compositionCdgOverlayOnlyDrawnTargets = 0;
         _compositionMs = 0;
         _compositionMaxMs = 0;
         _lastCompositionReason = null;
@@ -484,31 +484,31 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             && descriptor.Revision == overlayLayer.UploadedRevision
             && paletteRevision == overlayLayer.CdgPaletteUploadedRevision;
 
-        return (revisionMatches && overlayLayer.HasDxCdgResources && !overlayLayer.NeedsUpload) || overlayLayer.UploadDxCdgSnapshot(deviceResources.Device!, deviceResources.Context!, descriptor);
+        return (revisionMatches && overlayLayer.HasCdgResources && !overlayLayer.NeedsUpload) || overlayLayer.UploadCdgSnapshot(deviceResources.Device!, deviceResources.Context!, descriptor);
     }
 
-    private bool EnsureDxCdgOverlayLayer(D3D11DeviceResources deviceResources, DxCdgRenderSnapshot snapshot)
+    private bool EnsureCdgOverlayLayer(D3D11DeviceResources deviceResources, CdgRenderSnapshot snapshot)
     {
         if (deviceResources.Device == null || deviceResources.Context == null)
             return false;
 
         D3D11CompositionLayerState overlayLayer = _layerCache.GetOrCreate(MediaCompositionLayerId.Overlay);
-        MediaCompositionLayer descriptor = CreateDxCdgOverlayLayerDescriptor(snapshot);
+        MediaCompositionLayer descriptor = CreateCdgOverlayLayerDescriptor(snapshot);
         overlayLayer.Update(descriptor);
 
         var revisionMatches = descriptor.Revision >= 0
             && descriptor.Revision == overlayLayer.UploadedRevision
             && snapshot.PaletteRevision == overlayLayer.CdgPaletteUploadedRevision;
 
-        return (revisionMatches && overlayLayer.HasDxCdgResources && !overlayLayer.NeedsUpload)
-            || overlayLayer.UploadDxCdgSnapshot(deviceResources.Device, deviceResources.Context, snapshot);
+        return (revisionMatches && overlayLayer.HasCdgResources && !overlayLayer.NeedsUpload)
+            || overlayLayer.UploadCdgSnapshot(deviceResources.Device, deviceResources.Context, snapshot);
     }
 
-    private static MediaCompositionLayer CreateDxCdgOverlayLayerDescriptor(DxCdgRenderSnapshot snapshot) => new()
+    private static MediaCompositionLayer CreateCdgOverlayLayerDescriptor(CdgRenderSnapshot snapshot) => new()
     {
         Id = MediaCompositionLayerId.Overlay,
         Kind = MediaCompositionLayerKind.Overlay,
-        SourceKind = MediaCompositionLayerSourceKind.DxCdgSnapshot,
+        SourceKind = MediaCompositionLayerSourceKind.CdgSnapshot,
         Order = 2,
         Revision = snapshot.Revision,
         Width = snapshot.Width,
@@ -527,15 +527,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         ID3D11RenderTargetView renderTargetView,
         bool clearTarget)
     {
-        if (frame.HasShaderVisibleLayer
-            && (_constantBuffer == null
-                || _vertexShader == null
-                || _samplerState == null
-                || _blendState == null
-                || _rasterizerState == null))
-        {
+        if (frame.HasShaderVisibleLayer && (_constantBuffer == null || _vertexShader == null
+            || _samplerState == null || _blendState == null || _rasterizerState == null))
             return false;
-        }
 
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
         context.IASetInputLayout(null);
@@ -543,9 +537,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.OMSetRenderTargets(renderTargetView);
 
         if (clearTarget)
-        {
             context.ClearRenderTargetView(renderTargetView, ResolveClearColor(frame));
-        }
 
         if (frame.HasShaderVisibleLayer)
         {
@@ -559,38 +551,28 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         if (frame.HasAnyBackground
             && backgroundLayer?.HasTexture == true
             && _backgroundPixelShader != null)
-        {
             if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer))
-            {
                 return false;
-            }
-        }
 
         D3D11CompositionLayerState? washLayer = _layerCache.TryGet(MediaCompositionLayerId.Wash);
         if (frame.HasWash)
         {
             if (washLayer?.HasSolidColor != true)
-            {
                 return false;
-            }
 
             DrawWashLayer(context, outputWidth, outputHeight, washLayer);
         }
 
         D3D11CompositionLayerState? overlayLayer = _layerCache.TryGet(MediaCompositionLayerId.Overlay);
-        DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
+        CdgRenderSnapshot? snapshot = frame.CdgOverlay;
         if (frame.HasCdgOverlay && snapshot != null && !frame.SuppressCdgOverlayDraw)
         {
-            if (overlayLayer == null || !DrawDxCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
-            {
+            if (overlayLayer == null || !DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
                 return false;
-            }
             _lastDrawnRevision = snapshot.Revision;
         }
         else
-        {
             _lastDrawnRevision = -1;
-        }
 
         context.PSSetShaderResource(0, null!);
         context.PSSetShaderResource(1, null!);
@@ -603,9 +585,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         return true;
     }
 
-    private bool DrawDxCdgOverlayOnlyToRenderTarget(
+    private bool DrawCdgOverlayOnlyToRenderTarget(
         ID3D11DeviceContext context,
-        DxCdgRenderSnapshot snapshot,
+        CdgRenderSnapshot snapshot,
         int outputWidth,
         int outputHeight,
         ID3D11RenderTargetView renderTargetView)
@@ -633,7 +615,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.OMSetBlendState(_premultipliedBlendState);
         context.PSSetSampler(0, _samplerState);
 
-        if (!DrawDxCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
+        if (!DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
             return false;
 
         overlayLayer.MarkRendered(snapshot.Revision);
@@ -660,31 +642,20 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private void MarkRenderedLayers(MediaCompositionFrame frame)
     {
         if (frame.HasAnyBackground && _layerCache.TryGet(MediaCompositionLayerId.Background) is { } backgroundLayer)
-        {
             backgroundLayer.MarkRendered(backgroundLayer.UploadedRevision);
-        }
 
         if (frame.HasWash && _layerCache.TryGet(MediaCompositionLayerId.Wash) is { } washLayer)
-        {
             washLayer.MarkRendered(washLayer.UploadedRevision);
-        }
 
-        if (frame.HasCdgOverlay
-            && !frame.SuppressCdgOverlayDraw
-            && frame.CdgOverlay is { } snapshot
-            && _layerCache.TryGet(MediaCompositionLayerId.Overlay) is { } overlayLayer)
-        {
+        if (frame.HasCdgOverlay && !frame.SuppressCdgOverlayDraw && frame.CdgOverlay is { } snapshot && _layerCache.TryGet(MediaCompositionLayerId.Overlay) is { } overlayLayer)
             overlayLayer.MarkRendered(snapshot.Revision);
-        }
     }
 
     private bool DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState backgroundLayer)
     {
         ID3D11ShaderResourceView? shaderResourceView = backgroundLayer.ShaderResourceView;
         if (shaderResourceView == null || _backgroundPixelShader == null)
-        {
             return false;
-        }
 
         RectD backgroundRect = ResolveBackgroundDestinationRect(backgroundLayer, outputWidth, outputHeight);
 
@@ -696,22 +667,17 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         return true;
     }
 
-    private bool DrawDxCdgOverlayLayer(
+    private bool DrawCdgOverlayLayer(
         ID3D11DeviceContext context,
-        DxCdgRenderSnapshot snapshot,
+        CdgRenderSnapshot snapshot,
         int outputWidth,
         int outputHeight,
         D3D11CompositionLayerState overlayLayer)
     {
-        if (!overlayLayer.HasDxCdgResources
-            || overlayLayer.CdgIndexShaderResourceView == null
-            || overlayLayer.CdgPaletteShaderResourceView == null
-            || _pixelShader == null)
-        {
+        if (!overlayLayer.HasCdgResources || overlayLayer.CdgIndexShaderResourceView == null || overlayLayer.CdgPaletteShaderResourceView == null || _pixelShader == null)
             return false;
-        }
 
-        RectD cdgRect = ViewportGeometry.UniformFit(DxCdgConstants.FrameWidth, DxCdgConstants.FrameHeight, outputWidth, outputHeight);
+        RectD cdgRect = ViewportGeometry.UniformFit(CdgConstants.FrameWidth, CdgConstants.FrameHeight, outputWidth, outputHeight);
         var cdgLeft = (int)Math.Round(cdgRect.Left);
         var cdgTop = (int)Math.Round(cdgRect.Top);
         var cdgRight = cdgLeft + Math.Max(1, (int)Math.Round(cdgRect.Width));
@@ -723,7 +689,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             cdgDestination,
             outputWidth,
             outputHeight,
-            new Vector4(DxCdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
+            new Vector4(CdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
         DrawCdgForegroundLayer(
             context,
             overlayLayer.CdgIndexShaderResourceView,
@@ -762,9 +728,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         var alpha = ((washArgb >> 24) & 0xFF) / 255.0f;
         ID3D11PixelShader? pixelShader = premultipliedOutput ? _premultipliedSolidPixelShader : _solidPixelShader;
         if (alpha <= 0f || pixelShader == null)
-        {
             return;
-        }
 
         var r = ((washArgb >> 16) & 0xFF) / 255.0f;
         var g = ((washArgb >> 8) & 0xFF) / 255.0f;
@@ -798,8 +762,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         var right = left + Math.Max(1, (int)Math.Round(destinationRect.Width));
         var bottom = top + Math.Max(1, (int)Math.Round(destinationRect.Height));
 
-        Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<DxCdgShaderConstants>()];
-        var constants = new DxCdgShaderConstants
+        Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgShaderConstants>()];
+        var constants = new CdgShaderConstants
         {
             DestinationRect = new Vector4(
                 (float)((left / (double)outputWidth * 2.0) - 1.0),
@@ -828,11 +792,11 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         {
             if (_vertexShader == null || _pixelShader == null)
             {
-                var vertexShaderBytecode = CompileShaderBytecode(DxCdgShaderSource, "VSMain", "vs_5_0");
-                var pixelShaderBytecode = CompileShaderBytecode(DxCdgShaderSource, "PSMain", "ps_5_0");
-                var backgroundPixelShaderBytecode = CompileShaderBytecode(DxCdgShaderSource, "PSBackground", "ps_5_0");
-                var solidPixelShaderBytecode = CompileShaderBytecode(DxCdgShaderSource, "PSSolid", "ps_5_0");
-                var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(DxCdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
+                var vertexShaderBytecode = CompileShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
+                var pixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
+                var backgroundPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
+                var solidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
+                var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
                 _backgroundPixelShader = device.CreatePixelShader(backgroundPixelShaderBytecode);
@@ -844,7 +808,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             {
                 var constantBufferDescription = new BufferDescription
                 {
-                    ByteWidth = (uint)Marshal.SizeOf<DxCdgShaderConstants>(),
+                    ByteWidth = (uint)Marshal.SizeOf<CdgShaderConstants>(),
                     Usage = ResourceUsage.Default,
                     BindFlags = BindFlags.ConstantBuffer,
                     CPUAccessFlags = CpuAccessFlags.None,
@@ -946,7 +910,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         catch (Exception ex)
         {
             _pipelineFailed = true;
-            Debug.WriteLine($"[DXCDG-D3D11] Draw pipeline initialization failed: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[CDG-D3D11] Draw pipeline initialization failed: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -957,9 +921,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private void LogClearOnlyResourceGuardrailIfNeeded(D3D11CompositionLayerUpdatePlan updatePlan)
     {
         if (!updatePlan.IsClearOnly || !_layerCache.HasRetainedResources)
-        {
             return;
-        }
 
         Debug.WriteLine(
             $"[COMPOSITION-D3D11] Clear-only capture still has retained layer resources: {_layerCache.RetainedResourceSummary}");
@@ -971,9 +933,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11CompositionTargetPlan targetPlan)
     {
         if (!enableLayerDiagnostics || frame.RetainedRefresh)
-        {
             return;
-        }
 
         var lifecycleSummary = _layerCache.CaptureLifecycleSummary;
         var updateSummary = updatePlan.Summary;
@@ -981,17 +941,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         var targetLifecycleSummary = _targetRegistry.LifecycleSummary;
         var combinedSummary = $"targets={targetSummary}; targetLifecycle={targetLifecycleSummary}; lifecycle={lifecycleSummary}; plan={updateSummary}";
 
-        if (string.IsNullOrWhiteSpace(lifecycleSummary)
-            || string.Equals(combinedSummary, _lastLayerDiagnosticSummary, StringComparison.Ordinal))
-        {
+        if (string.IsNullOrWhiteSpace(lifecycleSummary) || string.Equals(combinedSummary, _lastLayerDiagnosticSummary, StringComparison.Ordinal))
             return;
-        }
 
         _lastLayerDiagnosticSummary = combinedSummary;
         var clearMode = frame.ClearMode.ToString();
         var layerMode = updatePlan.IsClearOnly ? "clear-only" : "visible";
-        Debug.WriteLine(
-            $"[COMPOSITION-D3D11] Layer plan mode={layerMode} clear={clearMode} reason={frame.Reason} {combinedSummary}");
+        Debug.WriteLine($"[COMPOSITION-D3D11] Layer plan mode={layerMode} clear={clearMode} reason={frame.Reason} {combinedSummary}");
     }
 
 
@@ -1108,15 +1064,15 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         out IntPtr errorMessages);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct DxCdgShaderConstants
+    private struct CdgShaderConstants
     {
         public Vector4 DestinationRect;
         public Vector4 TextureRect;
         public Vector4 PaletteInfo;
     }
 
-    private const string DxCdgShaderSource = @"
-cbuffer DxCdgConstants : register(b0)
+    private const string CdgShaderSource = @"
+cbuffer CdgConstants : register(b0)
 {
     float4 DestinationRect;
     float4 TextureRect;
@@ -1177,7 +1133,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
     float normalizedIndex = IndexTexture.Sample(PointSampler, input.TexCoord).r;
     float paletteIndex = clamp(floor((normalizedIndex * 255.0f) + 0.5f), 0.0f, PaletteInfo.x - 1.0f);
 
-    // The active DXCDG path clears the target to the background/wash color first.
+    // The active CDG path clears the target to the background/wash color first.
     // Only the current CDG background index is transparent in the foreground pass.
     // Do not automatically hide index 0; CDG files may legitimately use color 0 as
     // a lyric/tile color when a different background index is active.

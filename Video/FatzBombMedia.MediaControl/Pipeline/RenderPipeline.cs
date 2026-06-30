@@ -1,6 +1,6 @@
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
@@ -9,7 +9,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
     private readonly IMediaEngine _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
     private IVideoEngine? _video;
     private ICdgEngine? _cdg;
-    private long _lastRenderedDxCdgPacketIndex = -1;
+    private long _lastRenderedCdgPacketIndex = -1;
     private double _lastRenderedCdgPosition = double.NaN;
 
     private double CurrentPosition =>
@@ -40,7 +40,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
             return;
         }
 
-        // DXCDG is now a visual layer, not an alternative to video. Do not skip CDG
+        // CDG is now a visual layer, not an alternative to video. Do not skip CDG
         // just because a video/background layer is active; the renderer decides how to
         // compose the current layers.
 
@@ -68,19 +68,19 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
             return false;
         }
 
-        var packetIndex = Math.Max(0, (long)Math.Floor(currentPosition * DxCdgConstants.PacketsPerSecond));
-        if (force || packetIndex < _lastRenderedDxCdgPacketIndex)
+        var packetIndex = Math.Max(0, (long)Math.Floor(currentPosition * CdgConstants.PacketsPerSecond));
+        if (force || packetIndex < _lastRenderedCdgPacketIndex)
         {
             RememberCdgRender(currentPosition, packetIndex);
             return true;
         }
 
-        if (_mediaEngine.State != MediaPlayerState.Playing && packetIndex == _lastRenderedDxCdgPacketIndex)
+        if (_mediaEngine.State != MediaPlayerState.Playing && packetIndex == _lastRenderedCdgPacketIndex)
         {
             return false;
         }
 
-        if (packetIndex == _lastRenderedDxCdgPacketIndex || NearlySamePosition(currentPosition, _lastRenderedCdgPosition))
+        if (packetIndex == _lastRenderedCdgPacketIndex || NearlySamePosition(currentPosition, _lastRenderedCdgPosition))
         {
             return false;
         }
@@ -92,12 +92,12 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
     private void RememberCdgRender(double position, long packetIndex)
     {
         _lastRenderedCdgPosition = position;
-        _lastRenderedDxCdgPacketIndex = packetIndex;
+        _lastRenderedCdgPacketIndex = packetIndex;
     }
 
     private void ResetCdgRenderGate()
     {
-        _lastRenderedDxCdgPacketIndex = -1;
+        _lastRenderedCdgPacketIndex = -1;
         _lastRenderedCdgPosition = double.NaN;
     }
 

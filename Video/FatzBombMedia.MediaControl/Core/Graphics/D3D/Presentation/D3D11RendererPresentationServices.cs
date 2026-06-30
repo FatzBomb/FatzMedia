@@ -1,5 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Configuration;
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
@@ -307,7 +307,7 @@ internal sealed class D3D11RendererPresentationServices
         overlaySkipped = false;
         overlayPresentFailure = false;
 
-        DxCdgRenderSnapshot? snapshot = frame.CdgOverlay;
+        CdgRenderSnapshot? snapshot = frame.CdgOverlay;
         if (snapshot == null || !Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot overlayTarget))
             return false;
 
@@ -332,7 +332,7 @@ internal sealed class D3D11RendererPresentationServices
             return true;
         }
 
-        if (!MediaCompositor.DrawDxCdgOverlayToTarget(_deviceResources, snapshot, overlayTarget))
+        if (!MediaCompositor.DrawCdgOverlayToTarget(_deviceResources, snapshot, overlayTarget))
             return false;
 
         if (!Surfaces.PresentDirectCompositionOverlay(isDisposed, State.IsNativeLiveResizeInProgress))
@@ -463,7 +463,7 @@ internal sealed class D3D11RendererPresentationServices
         frame.BackgroundD3D11Height);
 
     private static DirectCompositionOverlaySplitOverlayState CreateDirectCompositionOverlaySplitOverlayState(
-        DxCdgRenderSnapshot snapshot,
+        CdgRenderSnapshot snapshot,
         D3D11PresentationTargetSnapshot overlayTarget) => new(
         overlayTarget.Revision,
         snapshot.Revision,

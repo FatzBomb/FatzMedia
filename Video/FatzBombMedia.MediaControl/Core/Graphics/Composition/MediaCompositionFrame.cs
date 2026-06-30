@@ -1,4 +1,4 @@
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
@@ -34,7 +34,7 @@ public readonly partial record struct MediaCompositionFrame
     public bool UseRetainedBackground { get; init; }
 
     public uint WashArgb { get; init; }
-    public DxCdgRenderSnapshot? CdgOverlay { get; init; }
+    public CdgRenderSnapshot? CdgOverlay { get; init; }
     public bool SuppressCdgOverlayDraw { get; init; }
 
     public bool RetainedRefresh { get; init; }
@@ -61,7 +61,7 @@ public readonly partial record struct MediaCompositionFrame
     {
         get
         {
-            DxCdgRenderSnapshot? overlay = CdgOverlay;
+            CdgRenderSnapshot? overlay = CdgOverlay;
             return overlay != null
                 && !overlay.ColorIndices.IsEmpty
                 && !overlay.PaletteArgb.IsEmpty;

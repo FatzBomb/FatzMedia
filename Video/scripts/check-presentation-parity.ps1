@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
+# This script is CDG-name agnostic; it validates presentation fan-out, not CDG engine symbol names.
 $root = Split-Path -Parent $PSScriptRoot
 
 function Read-Text {

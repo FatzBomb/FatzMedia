@@ -28,6 +28,9 @@ $coreForbiddenPatterns = @(
     '\bWpfRenderingTier\b'
 )
 
+# The WPF adapter may expose safe public CDG-facing concepts, such as HasCdg or CdgVisuals.
+# It must not reference Core pipeline, renderer, internal CDG engine/snapshot/state types,
+# D3D11, Vortice, or DirectComposition implementation details.
 $adapterForbiddenPatterns = @(
     '\bMediaRenderer\b',
     '\bOptimizedGraphicsRenderer\b',
@@ -39,8 +42,16 @@ $adapterForbiddenPatterns = @(
     '\bBackgroundFrameReady\b',
     '\bImageFrameReady\b',
     '\bBackgroundCleared\b',
-    '\bDxCdg\b',
+    'FatzBombMedia\.MediaControl\.Core\.Cdg',
+    '\bCdgEngine\b',
+    '\bCdgStateMachine\b',
+    '\bCdgRenderSnapshot\b',
+    '\bCdgDirtyRect\b',
+    '\bCdgPacket\b',
+    '\bCdgConstants\b',
+    '\bICdgSnapshotSource\b',
     '\bD3D11\b',
+    '\bDirectComposition\b',
     '\bVortice\b',
     '\bRenderer\b',
     '\bPipeline\b'
@@ -87,7 +98,7 @@ if ($coreViolations.Count -gt 0) {
 $adapterViolations = @(Find-Violations -Path $wpfProject -Patterns $adapterForbiddenPatterns)
 if ($adapterViolations.Count -gt 0) {
     $adapterViolations | Format-Table -AutoSize
-    throw 'WPF boundary check failed: renderer/pipeline/DxCdg/D3D11 terms were found in FatzBombMedia.MediaControl.Wpf.'
+    throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzBombMedia.MediaControl.Wpf.'
 }
 
-Write-Host 'WPF boundary check passed: Core has no WPF UI/bitmap types, and WPF adapter has no renderer/pipeline/DxCdg/D3D11 references.'
+Write-Host 'WPF boundary check passed: Core has no WPF UI/bitmap types, and WPF adapter has no renderer/pipeline/internal CDG/D3D11 references.'

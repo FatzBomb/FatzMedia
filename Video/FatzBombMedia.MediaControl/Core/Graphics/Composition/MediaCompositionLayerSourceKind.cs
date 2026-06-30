@@ -12,6 +12,6 @@ public enum MediaCompositionLayerSourceKind
     BgraPixels,
     D3D11Texture,
     RetainedD3D11Texture,
-    DxCdgSnapshot,
+    CdgSnapshot,
     SolidColor
 }

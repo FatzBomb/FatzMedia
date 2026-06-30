@@ -1,6 +1,6 @@
-namespace FatzBombMedia.MediaControl.Core.DxCdg;
+namespace FatzBombMedia.MediaControl.Core.Cdg;
 
-public enum DxCdgEngineState
+public enum CdgEngineState
 {
     Null = 0,
     Ready,

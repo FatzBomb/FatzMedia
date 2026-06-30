@@ -53,7 +53,7 @@ internal readonly record struct D3D11CompositionLayerSchedule(
                     0d,
                     CanReuseRetainedOutput: true),
 
-                MediaCompositionLayerSourceKind.DxCdgSnapshot => new D3D11CompositionLayerSchedule(
+                MediaCompositionLayerSourceKind.CdgSnapshot => new D3D11CompositionLayerSchedule(
                     D3D11CompositionLayerUpdateCadence.OnDemand,
                     D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
                     0d,

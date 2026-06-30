@@ -61,7 +61,7 @@ public static class MediaPlayerServiceProvider
             return audioEngine;
         });
 
-        _ = services.AddSingleton<ICdgEngine, Core.DxCdg.DxCdgEngine>();
+        _ = services.AddSingleton<ICdgEngine, Core.Cdg.CdgEngine>();
         _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
 
         _ = services.AddSingleton<IMediaEngine>(provider =>

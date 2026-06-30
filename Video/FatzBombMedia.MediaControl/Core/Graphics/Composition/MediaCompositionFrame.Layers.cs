@@ -1,4 +1,4 @@
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
@@ -82,14 +82,14 @@ public readonly partial record struct MediaCompositionFrame
             };
         }
 
-        DxCdgRenderSnapshot? overlay = CdgOverlay;
+        CdgRenderSnapshot? overlay = CdgOverlay;
         if (HasCdgOverlay && overlay != null)
         {
             yield return new MediaCompositionLayer
             {
                 Id = MediaCompositionLayerId.Overlay,
                 Kind = MediaCompositionLayerKind.Overlay,
-                SourceKind = MediaCompositionLayerSourceKind.DxCdgSnapshot,
+                SourceKind = MediaCompositionLayerSourceKind.CdgSnapshot,
                 Order = 2,
                 Revision = overlay.Revision,
                 Width = overlay.Width,

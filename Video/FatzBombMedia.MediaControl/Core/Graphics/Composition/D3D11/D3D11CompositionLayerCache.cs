@@ -2,7 +2,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 
 /// <summary>
 /// Retained-layer cache keyed by stable layer id. Layer 0 owns retained BGRA/D3D11
-/// background texture state, Layer 1 owns wash/color state, and Layer 2 owns DXCDG
+/// background texture state, Layer 1 owns wash/color state, and Layer 2 owns CDG
 /// index/palette texture state while the compositor still performs one final draw/present.
 /// Stage 10E adds capture sequencing and dirty metadata for future layer scheduling;
 /// Stage 10G adds lifecycle/deactivation summaries used by verbose diagnostics;

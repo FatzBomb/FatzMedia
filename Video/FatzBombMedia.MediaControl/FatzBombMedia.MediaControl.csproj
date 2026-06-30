@@ -16,7 +16,7 @@
 		<PackageId>FatzBombMedia.MediaControl.Core</PackageId>
 		<AssemblyName>FatzBombMedia.MediaControl</AssemblyName>
 		<RootNamespace>FatzBombMedia.MediaControl</RootNamespace>
-		<Description>Host-agnostic FatzBombMedia media engine core for audio/video/image/CD+G input, DxCdg rendering, Direct3D composition primitives, BASS/FFmpeg integration, normalization, and effects.</Description>
+		<Description>Host-agnostic FatzBombMedia media engine core for audio/video/image/CD+G input, Cdg rendering, Direct3D composition primitives, BASS/FFmpeg integration, normalization, and effects.</Description>
 		<Authors>Keith Litfin</Authors>
 		<Company>FatzBomb Entertainment</Company>
 		<RepositoryUrl>https://github.com/FatzBomb75/FatzBombMedia</RepositoryUrl>

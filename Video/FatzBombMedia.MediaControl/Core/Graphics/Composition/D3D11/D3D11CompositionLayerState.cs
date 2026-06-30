@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
@@ -8,7 +8,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 
 /// <summary>
 /// Retained per-layer state. Stage 10B attached GPU-side resources to Layer 0;
-/// Stage 10C also retains DXCDG Layer 2 index/palette textures by layer identity;
+/// Stage 10C also retains CDG Layer 2 index/palette textures by layer identity;
 /// Stage 10D retains Layer 1 wash/color state by layer identity instead of drawing
 /// directly from the frame compatibility field; Stage 10E records per-layer
 /// invalidation metadata for future scheduling without changing draw behavior;
@@ -25,7 +25,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
     public long UploadedRevision { get; private set; } = -1;
     public long RenderedRevision { get; set; } = -1;
     public bool IsActive => Descriptor != null;
-    public bool HasRetainedResources => HasTexture || HasDxCdgResources || SolidColorOpacity > 0d;
+    public bool HasRetainedResources => HasTexture || HasCdgResources || SolidColorOpacity > 0d;
     public bool HadRetainedResourcesWhenDeactivated { get; private set; }
     public bool WasDeactivated => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.Deactivated);
     public bool RequiresResourceAllocation => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.ResourceAllocationChanged);
@@ -100,7 +100,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         && TextureWidth > 0
         && TextureHeight > 0;
 
-    public bool HasDxCdgResources => CdgIndexTexture != null
+    public bool HasCdgResources => CdgIndexTexture != null
         && CdgIndexShaderResourceView != null
         && CdgPaletteTexture != null
         && CdgPaletteShaderResourceView != null;
@@ -207,33 +207,33 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         }
     }
 
-    public bool UploadDxCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer) =>
-        layer.SourceKind == MediaCompositionLayerSourceKind.DxCdgSnapshot && layer.CdgSnapshot != null && UploadDxCdgSnapshot(device, context, layer.CdgSnapshot);
+    public bool UploadCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer) =>
+        layer.SourceKind == MediaCompositionLayerSourceKind.CdgSnapshot && layer.CdgSnapshot != null && UploadCdgSnapshot(device, context, layer.CdgSnapshot);
 
-    public bool UploadDxCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, DxCdgRenderSnapshot snapshot)
+    public bool UploadCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, CdgRenderSnapshot snapshot)
     {
-        if (snapshot.ColorIndices.Length < DxCdgConstants.TotalPixels
-            || snapshot.PaletteArgb.Length < DxCdgConstants.ColorCount)
+        if (snapshot.ColorIndices.Length < CdgConstants.TotalPixels
+            || snapshot.PaletteArgb.Length < CdgConstants.ColorCount)
             return false;
 
         try
         {
-            EnsureDxCdgTextures(device);
-            if (!HasDxCdgResources || CdgIndexTexture == null || CdgPaletteTexture == null)
+            EnsureCdgTextures(device);
+            if (!HasCdgResources || CdgIndexTexture == null || CdgPaletteTexture == null)
                 return false;
 
             if (UploadedRevision != snapshot.Revision)
             {
                 ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
-                UploadDxCdgIndexRegions(context, CdgIndexTexture, snapshot, indices);
+                UploadCdgIndexRegions(context, CdgIndexTexture, snapshot, indices);
                 MarkUploaded(snapshot.Revision);
             }
 
             if (CdgPaletteUploadedRevision != snapshot.PaletteRevision)
             {
-                Span<byte> paletteBgra = stackalloc byte[DxCdgConstants.ColorCount * 4];
+                Span<byte> paletteBgra = stackalloc byte[CdgConstants.ColorCount * 4];
                 ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
-                for (var i = 0; i < DxCdgConstants.ColorCount; i++)
+                for (var i = 0; i < CdgConstants.ColorCount; i++)
                 {
                     var argb = unchecked((uint)palette[i]);
                     var offset = i * 4;
@@ -243,19 +243,19 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
                     paletteBgra[offset + 3] = (byte)((argb >> 24) & 0xFF);
                 }
 
-                context.UpdateSubresource(paletteBgra, CdgPaletteTexture, 0, DxCdgConstants.ColorCount * 4, 0, null);
+                context.UpdateSubresource(paletteBgra, CdgPaletteTexture, 0, CdgConstants.ColorCount * 4, 0, null);
                 CdgPaletteUploadedRevision = snapshot.PaletteRevision;
             }
 
-            TextureWidth = DxCdgConstants.FrameWidth;
-            TextureHeight = DxCdgConstants.FrameHeight;
-            TextureStride = DxCdgConstants.FrameWidth;
+            TextureWidth = CdgConstants.FrameWidth;
+            TextureHeight = CdgConstants.FrameHeight;
+            TextureStride = CdgConstants.FrameWidth;
             StretchMode = MediaCompositionStretchMode.UniformFit;
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Layer {Id} DXCDG upload failed: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[COMPOSITION-D3D11] Layer {Id} CDG upload failed: {ex.GetType().Name}: {ex.Message}");
             ReleaseCdgResources();
             return false;
         }
@@ -413,19 +413,17 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         TextureStride = stride;
     }
 
-    private void EnsureDxCdgTextures(ID3D11Device device)
+    private void EnsureCdgTextures(ID3D11Device device)
     {
-        if (HasDxCdgResources)
-        {
+        if (HasCdgResources)
             return;
-        }
 
         ReleaseCdgResources();
 
         var indexDescription = new Texture2DDescription(
             Format.R8_UNorm,
-            DxCdgConstants.FrameWidth,
-            DxCdgConstants.FrameHeight,
+            CdgConstants.FrameWidth,
+            CdgConstants.FrameHeight,
             arraySize: 1,
             mipLevels: 1,
             BindFlags.ShaderResource,
@@ -440,7 +438,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
         var paletteDescription = new Texture2DDescription(
             Format.B8G8R8A8_UNorm,
-            DxCdgConstants.ColorCount,
+            CdgConstants.ColorCount,
             1,
             arraySize: 1,
             mipLevels: 1,
@@ -455,27 +453,27 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         CdgPaletteShaderResourceView = device.CreateShaderResourceView(CdgPaletteTexture);
     }
 
-    private static void UploadDxCdgIndexRegions(
+    private static void UploadCdgIndexRegions(
         ID3D11DeviceContext context,
         ID3D11Texture2D indexTexture,
-        DxCdgRenderSnapshot snapshot,
+        CdgRenderSnapshot snapshot,
         ReadOnlySpan<byte> indices)
     {
-        if (!snapshot.HasDirtyRegions || snapshot.DirtyRects.Contains(DxCdgDirtyRect.FullFrame))
+        if (!snapshot.HasDirtyRegions || snapshot.DirtyRects.Contains(CdgDirtyRect.FullFrame))
         {
-            context.UpdateSubresource(indices[..DxCdgConstants.TotalPixels], indexTexture, 0, DxCdgConstants.FrameWidth, 0, null);
+            context.UpdateSubresource(indices[..CdgConstants.TotalPixels], indexTexture, 0, CdgConstants.FrameWidth, 0, null);
             return;
         }
 
-        foreach (DxCdgDirtyRect dirtyRect in snapshot.DirtyRects)
+        foreach (CdgDirtyRect dirtyRect in snapshot.DirtyRects)
         {
-            DxCdgDirtyRect rect = dirtyRect.ClampToFrame();
+            CdgDirtyRect rect = dirtyRect.ClampToFrame();
             if (rect.IsEmpty)
             {
                 continue;
             }
 
-            var sourceOffset = (rect.Y * DxCdgConstants.FrameWidth) + rect.X;
+            var sourceOffset = (rect.Y * CdgConstants.FrameWidth) + rect.X;
             var destinationBox = new Box(
                 rect.X,
                 rect.Y,
@@ -488,7 +486,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
                 indices[sourceOffset..],
                 indexTexture,
                 0,
-                DxCdgConstants.FrameWidth,
+                CdgConstants.FrameWidth,
                 0,
                 destinationBox);
         }

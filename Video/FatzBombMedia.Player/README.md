@@ -107,13 +107,13 @@ If the real host app wants separate BASS and FFmpeg folders, resolve each folder
 3. Pitch works.
 4. Tempo works.
 5. Normalization can toggle.
-6. MP3+CD+G renders DxCdg lyrics.
-7. ZIP audio+CD+G renders DxCdg lyrics.
+6. MP3+CD+G renders Cdg lyrics.
+7. ZIP audio+CD+G renders  Cdg lyrics.
 8. Video plays.
 9. Video tempo affects BASS-processed audio and video stays synced.
 10. Direct image files render as a still surface.
-11. Same-name and internal zip karaoke backgrounds appear under audio+DxCdg.
-12. Seek bar supports click/drag testing for audio, DxCdg, and video.
+11. Same-name and internal zip karaoke backgrounds appear under audio+Cdg.
+12. Seek bar supports click/drag testing for audio, Cdg, and video.
 13. Native HWND output appears in the main surface.
 14. Full-screen overlay controls appear through the transparent owned overlay window.
 
@@ -141,9 +141,9 @@ Stage 10X smoke tests:
 - Audio-only/no visual clears both targets.
 - Image-only appears on both targets.
 - Video-only hardware and software paths appear on both targets.
-- CD+G/DxCdg-only appears on both targets.
-- CD+G/DxCdg + image background appears on both targets.
-- CD+G/DxCdg + video background appears on both targets.
+- CD+G/Cdg-only appears on both targets.
+- CD+G/Cdg + image background appears on both targets.
+- CD+G/Cdg + video background appears on both targets.
 - Wash opacity/color changes appear on both targets.
 - Resize primary during playback.
 - Resize secondary during playback.

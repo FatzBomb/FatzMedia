@@ -1,5 +1,5 @@
 
-using FatzBombMedia.MediaControl.Core.DxCdg;
+using FatzBombMedia.MediaControl.Core.Cdg;
 
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 /// <summary>
@@ -59,7 +59,7 @@ public interface ICdgEngine : IDisposable
     // Notify renderers that the cached full-viewport wash color changed.
     event EventHandler? BackgroundWashChanged;
 
-    event EventHandler<DxCdgEngineState>? StateChanged;
+    event EventHandler<CdgEngineState>? StateChanged;
     event EventHandler? Opened;
     event EventHandler? Closed;
     event EventHandler? PlaybackStarted;
