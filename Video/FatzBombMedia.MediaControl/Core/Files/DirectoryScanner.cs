@@ -13,19 +13,9 @@ public enum CompatibilityLevel
     All,
 
     /// <summary>
-    /// Only files with exact architecture match are considered valid.
-    /// </summary>
-    ExactMatch,
-
-    /// <summary>
     /// Files that are compatible with the current process architecture are considered valid (e.g. AnyCPU on x64).
     /// </summary>
-    Compatible,
-
-    /// <summary>
-    /// Only files that are not compatible with the current process architecture are considered valid (e.g. x86 on x64).
-    /// </summary>
-    Incompatible
+    Compatible
 }
 
 /// <summary>
@@ -84,26 +74,13 @@ public static class DirectoryScanner
 
     /// <summary>
     /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
-    /// Returns the full path to that directory, or null if none match.
-    /// </summary>
-    /// <param name="rootPath">The root directory to search in</param>
-    /// <param name="fileNames">Array of file names to search for</param>
-    /// <param name="compatibility">The compatibility level to check for binary files</param>
-    /// <returns>The full path to the directory containing all files, or null if not found</returns>
-    public static string? LocateFilesDirectory(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-        LocateFilesDirectory([rootPath], fileNames, compatibility);
-
-    /// <summary>
-    /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
     /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
     /// </summary>
     /// <param name="rootPaths">The root directory to search in. Must exist and not be null or whitespace.</param>
     /// <param name="fileNames">Collection of file names to search for. All files must be found in the same directory.</param>
-    /// <param name="compatibility">The compatibility level to check for binary files. 
+    /// <param name="compatibility">The compatibility level to check for binary files.
     /// - All: No compatibility checking
-    /// - ExactMatch: Only files with exact architecture match
-    /// - Compatible: Files that are compatible with current process
-    /// - Incompatible: Only incompatible files</param>
+    /// - Compatible: Files that are compatible with current process</param>
     /// <returns>The full path to the directory containing all specified files, or null if not found or invalid input.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="fileNames"/> is null.</exception>
     public static string? LocateFilesDirectory(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All)
@@ -165,27 +142,14 @@ public static class DirectoryScanner
 
     /// <summary>
     /// Locates multiple files and returns a dictionary mapping file names to their full paths.
-    /// Searches in the specified directory and optionally its subdirectories.
-    /// </summary>
-    /// <param name="rootPath">The primary directory path to search in.</param>
-    /// <param name="fileNames">Collection of file names to search for.</param>
-    /// <param name="compatibility">The compatibility level to check for binary files.</param>
-    /// <returns>A dictionary mapping found file names to their full paths.</returns>
-    public static Dictionary<string, string> LocateFiles(string rootPath, IEnumerable<string> fileNames, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-        LocateFiles([rootPath], fileNames, true, compatibility);
-
-    /// <summary>
-    /// Locates multiple files and returns a dictionary mapping file names to their full paths.
     /// Searches in the specified directories and optionally their subdirectories.
     /// </summary>
     /// <param name="rootPaths">Collection of directory paths to search in.</param>
     /// <param name="fileNames">Collection of file names to search for.</param>
     /// <param name="subDirectories">Whether to search subdirectories recursively. Default is true.</param>
-    /// <param name="compatibility">The compatibility level to check for binary files. 
+    /// <param name="compatibility">The compatibility level to check for binary files.
     /// - All: No compatibility checking
-    /// - ExactMatch: Only files with exact architecture match
-    /// - Compatible: Files that are compatible with current process
-    /// - Incompatible: Only incompatible files</param>
+    /// - Compatible: Files that are compatible with current process</param>
     /// <returns>A dictionary mapping found file names to their full paths.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileNames"/> is null.</exception>
     public static Dictionary<string, string> LocateFiles(IEnumerable<string> rootPaths, IEnumerable<string> fileNames, bool subDirectories = true, CompatibilityLevel compatibility = CompatibilityLevel.All)
@@ -231,10 +195,6 @@ public static class DirectoryScanner
         if (compatibility == CompatibilityLevel.All) return true;
 
         CompatibilityInfo compat = BinaryCompatibility.Analyze(file);
-        var isMatch = compat.IsMatch;
-        var isCompat = compat.IsCompatible;
-        return (compatibility == CompatibilityLevel.ExactMatch && isMatch) ||
-                (compatibility == CompatibilityLevel.Compatible && isCompat) ||
-                (compatibility == CompatibilityLevel.Incompatible && !isCompat);
+        return compat.IsCompatible;
     }
 }
