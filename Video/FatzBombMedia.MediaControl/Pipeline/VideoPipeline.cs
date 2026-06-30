@@ -1466,8 +1466,6 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
 
-    private void PresentFrameForPosition(double position) => PresentFrameForPosition(position, position);
-
     private void PresentFrameForPosition(double targetPosition, double clockPosition)
     {
         VideoDecoder? decoder = _videoDecoder;

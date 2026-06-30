@@ -83,53 +83,6 @@ public static class DirectoryScanner
     }
 
     /// <summary>
-    /// Finds the first directory (root or any subdirectory) that contains the specified file.
-    /// Returns the full path to that directory, or null if none match.
-    /// </summary>
-    /// <param name="rootPath">The root directory to search in</param>
-    /// <param name="fileName">The file name to search for</param>
-    /// <param name="compatibility">The compatibility level to check for binary files</param>
-    /// <returns>The full path to the directory containing the file, or null if not found</returns>
-    public static string? LocateFile(string rootPath, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All) =>
-        LocateFile([rootPath], fileName, compatibility);
-
-    /// <summary>
-    /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
-    /// Uses breadth-first search to traverse the directory tree and checks for binary compatibility when specified.
-    /// </summary>
-    /// <param name="rootPaths">Array of directory paths to search in. Must exist and not be null or whitespace.</param>
-    /// <param name="fileName">Name of file to search for.</param>
-    /// <param name="compatibility">The compatibility level to check for binary files. 
-    /// - All: No compatibility checking
-    /// - ExactMatch: Only files with exact architecture match
-    /// - Compatible: Files that are compatible with current process
-    /// - Incompatible: Only incompatible files</param>
-    /// <returns>The full path to the directory containing the specified file, or null if not found or invalid input.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPaths"/> or <paramref name="fileName"/> is null.</exception>
-    public static string? LocateFile(IEnumerable<string> rootPaths, string fileName, CompatibilityLevel compatibility = CompatibilityLevel.All)
-    {
-        if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
-            throw new ArgumentNullException(nameof(fileName));
-
-        if (!rootPaths.Any() || string.IsNullOrWhiteSpace(fileName))
-            return null;
-
-        foreach (var dir in rootPaths)
-        {
-            foreach (var foundFile in Directory.EnumerateFiles(dir, fileName, EnumerateFilesRecursive))
-            {
-
-                if (!MatchesCompatibility(foundFile, compatibility))
-                    continue;
-
-                Debug.WriteLine($"[SCANNER] Found: {foundFile}");
-                return Path.GetDirectoryName(foundFile);
-            }
-        }
-        return null;
-    }
-
-    /// <summary>
     /// Finds the first directory (root or any subdirectory) that contains all required files (by file name).
     /// Returns the full path to that directory, or null if none match.
     /// </summary>
@@ -272,56 +225,6 @@ public static class DirectoryScanner
     }
 
     public static HashSet<string> CleanList(IEnumerable<string> fileNames) => new(fileNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(), StringComparer.OrdinalIgnoreCase);
-
-    public static IReadOnlyList<string> CleanPaths(IEnumerable<string> roots)
-    {
-        if (roots is null || !roots.Any()) return [];
-
-        var normalized = roots
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Select(Normalize)
-            .Where(p => p is not null && Directory.Exists(p))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(p => p!.Length) // parents first
-            .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .ToArray()!;
-
-        var kept = new List<string>(normalized.Length);
-        foreach (var path in normalized)
-        {
-            if (!kept.Any(parent => IsParentOf(parent, path!)))
-                kept.Add(path!);
-        }
-        return kept;
-    }
-
-    private static string? Normalize(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return path;
-
-        try
-        {
-            var full = Path.GetFullPath(path.Trim());
-            var root = Path.GetPathRoot(full);
-
-            if (!string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
-                full = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            return full;
-        }
-        catch { return null; } // invalid path
-    }
-
-    private static bool IsParentOf(string parent, string child)
-    {
-        if (string.Equals(parent, child, StringComparison.OrdinalIgnoreCase)) return true;      // identical -> treat as covered
-        if (!child.StartsWith(parent, StringComparison.OrdinalIgnoreCase)) return false;
-
-        // Ensure boundary so "C:\path" is not parent of "C:\pathology"
-        if (child.Length == parent.Length) return true;
-        var next = child[parent.Length];
-        return next == Path.DirectorySeparatorChar || next == Path.AltDirectorySeparatorChar;
-    }
 
     public static bool MatchesCompatibility(string file, CompatibilityLevel compatibility)
     {

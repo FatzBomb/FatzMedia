@@ -162,24 +162,6 @@ internal sealed class AudioPipeline : IDisposable
         State.Reset();
     }
 
-    public bool SetVolume(double volume01)
-    {
-        ThrowIfDisposed();
-        return Engine.SetVolume(Math.Clamp(volume01, 0, 1));
-    }
-
-    public bool SetPitch(int semitones)
-    {
-        ThrowIfDisposed();
-        return Engine.SetPitch(semitones);
-    }
-
-    public bool SetTempo(int percent)
-    {
-        ThrowIfDisposed();
-        return Engine.SetTempo(percent);
-    }
-
     public void Dispose()
     {
         if (_disposed)

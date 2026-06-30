@@ -10,13 +10,8 @@ internal sealed class MediaSession : IDisposable
     public VideoPipeline? Video { get; private set; }
 
     public MediaSession()
-        : this(null)
     {
-    }
-
-    public MediaSession(MediaState? state)
-    {
-        State = state ?? new MediaState();
+        State = new MediaState();
         ClockAudio = new ClockAudioEngine(Clock);
     }
 

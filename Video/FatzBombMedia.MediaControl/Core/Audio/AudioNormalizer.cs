@@ -183,19 +183,6 @@ internal sealed class AudioNormalizer
     /// <param name="normalize">True to apply cached gain, false to use 1.0 gain</param>
     public void SetNormalizeEnabled(bool normalize) => ApplyGainToFx(normalize);
 
-    /// <summary>
-    /// Calculates the effective volume considering normalization.
-    /// </summary>
-    /// <param name="baseVolume">Base volume (0.0 to 1.0)</param>
-    /// <param name="normalize">Whether to apply normalization</param>
-    /// <returns>Effective volume with normalization applied</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public double CalculateEffectiveVolume(double baseVolume, bool normalize)
-    {
-        baseVolume = Math.Clamp(baseVolume, 0.0, 1.0);
-        return normalize ? baseVolume * Volatile.Read(ref _normalizationGain) : baseVolume;
-    }
-
     #endregion
 
     #region Private Methods

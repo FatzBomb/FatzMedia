@@ -66,41 +66,4 @@ public static class FileTypes
         return a;
     }
 
-    public static FileType GetFileType(string path, IArchiveService svc, bool searchArchive = true, bool searchCompanionFile = true)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return FileType.FileNotFound;
-
-        var ext = Path.GetExtension(path);
-        if (Audio.Contains(ext)) return File.Exists(Path.ChangeExtension(path, ".cdg")) ? FileType.AudioCdg : FileType.Audio;
-        if (Video.Contains(ext)) return FileType.Video;
-        if (Image.Contains(ext)) return FileType.Image;
-
-        if (Cdg.Contains(ext))
-        {
-            if (!searchCompanionFile) return FileType.Cdg;
-            foreach (var audioExt in Audio) // check same name with audio extension
-            {
-                if (File.Exists(Path.ChangeExtension(path, audioExt)))
-                    return FileType.AudioCdg;
-            }
-            return FileType.Cdg;
-        }
-
-        if (Archive.Contains(ext))
-        {
-            if (searchArchive)
-            {
-                using IArchiveHandle h = svc.Open(path);
-                ArchiveAnalysis a = AnalyzeArchive(h);
-                return a.HasAudioCdgPair
-                    ? FileType.AudioCdgArchive
-                    : a.HasVideo
-                    ? FileType.VideoArchive
-                    : a.HasAudio ? FileType.AudioArchive : a.HasCdg ? FileType.CdgArchive : FileType.UnsupportedArchive;
-            }
-            return FileType.Archive;
-        }
-        return FileType.Unsupported;
-    }
-
 }

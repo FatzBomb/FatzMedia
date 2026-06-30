@@ -61,7 +61,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         IsOpen = true;
         _isPairedWithAudio = false;
         _state.SetOpened(MediaContent.Cdg, path, DurationSeconds);
-        RenderAt(0);
+        RenderAt(0, forceRebuild: false);
         StartSeekWorker();
     }
 
@@ -74,7 +74,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         IsOpen = true;
         _isPairedWithAudio = false;
         _state.SetOpened(MediaContent.Cdg | MediaContent.Archive, archiveEntry.Key, DurationSeconds);
-        RenderAt(0);
+        RenderAt(0, forceRebuild: false);
         StartSeekWorker();
     }
 
@@ -301,8 +301,6 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
             || Math.Abs(target - previousTarget) > CdgSeekTargetChangeThresholdSeconds;
 
     private static double GetElapsedMilliseconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) * 1000.0 / Stopwatch.Frequency;
-
-    public void RenderAt(double seconds) => RenderAt(seconds, forceRebuild: false);
 
     public void RenderAt(double seconds, bool forceRebuild)
     {
