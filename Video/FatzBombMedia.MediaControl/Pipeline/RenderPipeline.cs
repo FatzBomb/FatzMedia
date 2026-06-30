@@ -12,7 +12,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
     private long _lastRenderedDxCdgPacketIndex = -1;
     private double _lastRenderedCdgPosition = double.NaN;
 
-    public double CurrentPosition =>
+    private double CurrentPosition =>
         _mediaEngine.Content.HasFlag(MediaContent.Audio)
             ? _mediaEngine.Audio.Position
             : _mediaEngine.Content.HasFlag(MediaContent.Video) && _mediaEngine.Video != null

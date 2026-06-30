@@ -8,14 +8,14 @@ internal static partial class Bootstrap
     private static int _initOnce;
     private static volatile bool _isInitialized;
 
-    public static bool IsBassLoaded { get; private set; } = false;
-    public static bool IsFfmpegLoaded { get; private set; } = false;
+    internal static bool IsBassLoaded { get; private set; } = false;
+    internal static bool IsFfmpegLoaded { get; private set; } = false;
     public static bool IsInitialized => _isInitialized;
     public static string Message { get; set; } = string.Empty;
     public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
-    public static string? RootPath { get; private set; }
+    internal static string? RootPath { get; private set; }
     public static string? FfmpegPath => FFmpeg.AutoGen.ffmpeg.RootPath;
-    public static string? BassPath { get; private set; }
+    internal static string? BassPath { get; private set; }
     public static bool EnsureInitialized(string? userLibraryPath = null) =>
         EnsureInitialized(ToNativeLibraryPathArray(userLibraryPath));
 

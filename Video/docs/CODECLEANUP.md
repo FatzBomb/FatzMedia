@@ -70,6 +70,8 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 - [x] Stage 5 — completed 2026-06-30: removed direct DXCDG/single-target present APIs; kept composition fan-out and overlay split paths. Builds: Debug pass, Release pass.
 - [x] Stage 6 — completed 2026-06-30: removed dead direct blitter/texture presenter/cache helpers; kept hardware and composition fan-out paths. Builds: Debug pass, Release pass.
 - [x] Stage 7 — completed 2026-06-30: removed unused offscreen allocation and future-only planner helpers; kept live retained-layer/fan-out metadata. Builds: Debug pass, Release pass.
+- [x] Stage 8 — completed 2026-06-30: reduced internal visibility and removed minor PipelineMediaEngine code smells. Builds: Debug pass, Release pass.
+- [x] Stage 9 — completed 2026-06-30: removed completed known-dead entries from AGENTS.md and completed final validation. Builds: Debug pass, Release pass.
 
 ---
 
@@ -540,43 +542,68 @@ git grep -n -E "D3D11CompositionLayerSchedule|RetainedOffscreenTexture|HasFuture
 
 ### Stage 8 — Visibility & Code-Smell Fixes
 
-**Goal:** reduce overly-broad visibility and fix minor code smells without changing behavior.
+**Goal:** reduce overly-broad visibility on internal members and fix two minor code smells without changing behavior.
 
-**Risk:** Low-Medium. No renderer or threading impact.
+**Risk:** Low. No renderer, WPF, or threading impact.
 
 **Scope:**
 
-**8a — Visibility reductions:**
-- `CdgPipeline.Clock` — `public` → `private` (item S12; zero external reads)
-- `RenderPipeline.CurrentPosition` — `public` → `private` (item S13; zero external reads)
-- `Bootstrap.IsBassLoaded`, `IsFfmpegLoaded`, `RootPath`, `BassPath` — `public` → `internal` (item S14; only read within partial class)
+**8a — Visibility reductions (corrected):**
+- `CdgPipeline.Clock` — `public` → `private` (item S12; `CdgPipeline` is `internal`; whole-repo `Clock` callers are only inside `FatzBombMedia.MediaControl`; the only other public `Clock` is `MediaSession.Clock`, which is unrelated and must remain `public`).
+- `RenderPipeline.CurrentPosition` — `public` → `private` (item S13; `RenderPipeline` is `internal`; whole-repo search found zero external reads).
+- `Bootstrap.IsBassLoaded`, `IsFfmpegLoaded`, `RootPath`, `BassPath` — `public` → `internal` (item S14; `Bootstrap` is `internal static partial class`; whole-repo callers are only inside `Bootstrap.LibraryLoader.cs`).
 
-**8b — Minor code-smell fixes:**
-- `PipelineMediaEngine.cs:569-570` — double assignment of `ImagePath` (item S10; set → cleared by `Close()` → set again)
-- `PipelineMediaEngine.cs:236-240` — empty `finally` block (item S11; remove if the concerns are already handled elsewhere)
-- `RenderPipeline.cs:58` — cast `_video is VideoPipeline` to call `RenderCurrentFrame` (item S6; won't work with non-VideoPipeline IVideoEngine — fix or document)
+**8b — Minor code-smell fixes (corrected):**
+- `PipelineMediaEngine.OpenImageFile` (`PipelineMediaEngine.cs:568-570`) — remove the duplicate `ImagePath = imagePath;` line that immediately follows `_coordinator.Close();` (item S10). Leave `ImagePath = imagePath;` before `_coordinator.Close();` so the path is set before state is reset.
+- `PipelineMediaEngine.PresentBackgroundImage` (`PipelineMediaEngine.cs:236-240`) — remove the empty `finally` block whose only content is a comment; the `using` declaration already disposes the decoder (item S11).
 
-**8c — Additional dead items from original audit (if still present):**
-- `VideoPipeline._presentationDiagnosticMaxTargetLateMs` (item 53)
-- `VideoPipeline._presentationDiagnosticLeadMs` (item 54)
-- `VideoPresentationTiming.GetBackgroundFrameLeadTolerance` (item 104)
-- `AudioNormalizer.CalculateEffectiveVolume` (item 102)
-- `PipelineMediaEngine.SeekAsync` (item 71)
+**Exclusions (do NOT touch):**
+- `RenderPipeline.cs:58` cast `_video is VideoPipeline` (item S6) — defer; the cast is currently safe (`_video` is only set through `RenderPipeline.Attach(...)` from `PlaybackCoordinator` and the coordinator only constructs `VideoPipeline`, but fixing this properly requires adding `RenderCurrentFrame` to `IVideoEngine` or restructuring the renderer). The class is `internal` so it cannot be replaced from outside the assembly, and the `VideoPipeline.RenderCurrentFrame` method is already `internal`.
+- `PipelineMediaEngine.SeekAsync` (item 71) — keep; `IMediaEngine.SeekAsync(...)` is part of the public Core interface and must stay.
+- `VideoPipeline._presentationDiagnosticMaxTargetLateMs` (item 53) and `_presentationDiagnosticLeadMs` (item 54) — keep; both are live and used by the performance log at `VideoPipeline.cs:1611-1618` and updated in `GetDisplayAdjustedPresentationPosition`/diagnostic reset paths.
+- `VideoPresentationTiming.GetBackgroundFrameLeadTolerance` (item 104) — stale; whole-repo search found zero source/config callers and no such method in current source. Treat as already removed.
+- `AudioNormalizer.CalculateEffectiveVolume` (item 102) — stale; whole-repo search found only an `AudioEngine.cs:372` comment that says it is no longer needed, and the method does not exist in current source. Treat as already removed.
 
 **Trace guards:**
 
 ```powershell
-rg -n "CdgPipeline.*\.Clock\b" . -g "*.cs"
-rg -n "\.CurrentPosition\b" . -g "*.cs"
-rg -n "IsBassLoaded|IsFfmpegLoaded|RootPath|BassPath" . -g "*.cs"
-rg -n "_presentationDiagnosticMaxTargetLateMs|_presentationDiagnosticLeadMs" FatzBombMedia.MediaControl
-rg -n "GetBackgroundFrameLeadTolerance" FatzBombMedia.MediaControl
-rg -n "CalculateEffectiveVolume" FatzBombMedia.MediaControl
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "CdgPipeline.*\bClock\b|\.Clock\b|public\s+(static\s+)?PlaybackClock\s+Clock\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "\.CurrentPosition\b|CurrentPosition\s*\{|public\s+double\s+CurrentPosition\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "\bIsBassLoaded\b|\bIsFfmpegLoaded\b|\bRootPath\b|\bBassPath\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "_presentationDiagnosticMaxTargetLateMs|_presentationDiagnosticLeadMs|GetBackgroundFrameLeadTolerance|CalculateEffectiveVolume|\bSeekAsync\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "ImagePath\s*=|new\s+MediaCompositionFrame|RenderCurrentFrame|_video\s+is\s+VideoPipeline" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "CdgPipeline\.Clock\b|RenderPipeline\.CurrentPosition\b" -- FatzBombMedia.MediaControl
+git grep -n -E "public\s+static\s+(bool|string\?)\s+(IsBassLoaded|IsFfmpegLoaded|RootPath|BassPath)\b" -- FatzBombMedia.MediaControl
+git grep -n -E "ImagePath\s*=\s*imagePath" -- FatzBombMedia.MediaControl scripts
+git grep -n -E "Bootstrap\.(IsBassLoaded|IsFfmpegLoaded|RootPath|BassPath)" -- FatzBombMedia.MediaControl scripts
 ```
 
-**Likely files affected:** `CdgPipeline.cs`, `RenderPipeline.cs`, `Bootstrap.cs`, `PipelineMediaEngine.cs`, `VideoPipeline.cs`, `VideoPresentationTiming.cs`, `AudioNormalizer.cs`.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Low. Only redundant `public` modifiers on `internal` members and two trivial code smells; behavior is unchanged. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json`, under the repo, or under `C:\Programming`, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** `CdgPipeline.Clock` `public` → `private`; `RenderPipeline.CurrentPosition` `public` → `private`; `Bootstrap.IsBassLoaded`/`IsFfmpegLoaded`/`RootPath`/`BassPath` `public static` → `internal static`; remove the second `ImagePath = imagePath;` line in `PipelineMediaEngine.OpenImageFile` (keep the first); remove the empty `finally` block in `PipelineMediaEngine.PresentBackgroundImage`.
+- **Exclusions/defer:** keep `VideoPipeline.RenderCurrentFrame` as `internal`; defer the `_video is VideoPipeline` cast (item S6) since fixing it safely requires `IVideoEngine` surface changes; keep `PipelineMediaEngine.SeekAsync` (public Core interface); keep `VideoPipeline._presentationDiagnosticMaxTargetLateMs` and `_presentationDiagnosticLeadMs` because they are live in the performance log; treat `GetBackgroundFrameLeadTolerance` and `CalculateEffectiveVolume` as already absent from source. Do not touch WPF adapter files.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review confirmed `CdgPipeline.Clock` is only consumed inside `FatzBombMedia.MediaControl.Pipeline` (`PlaybackCoordinator`), `RenderPipeline.CurrentPosition` has zero callers, `Bootstrap` properties are only consumed inside `Bootstrap.LibraryLoader.cs`, the S10 double assignment is a literal duplicate, the S11 `finally` is empty, `SeekAsync` is part of `IMediaEngine`, both diagnostic fields are referenced in the performance log, and the two stale items are already gone from source. `MediaSession.Clock` is a separate `public PlaybackClock Clock` on `MediaSession` and must stay `public`; do not confuse it with `CdgPipeline.Clock`.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source matches for the previous public exposures of `CdgPipeline.Clock`, `RenderPipeline.CurrentPosition`, or `public static Bootstrap` properties. The `ImagePath = imagePath` guard should show only one assignment per `OpenImageFile`. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `FatzBombMedia.MediaControl\Pipeline\CdgPipeline.cs`; `FatzBombMedia.MediaControl\Pipeline\RenderPipeline.cs`; `FatzBombMedia.MediaControl\Runtime\Bootstrap.cs`; `FatzBombMedia.MediaControl\Pipeline\PipelineMediaEngine.cs`.
+- **Smoke tests:** build is the primary verification. If native DLLs are available, run Player and confirm: open image, open audio+CDG, open video, play/pause/stop/close still cycle the image path correctly; native bootstrap still loads BASS + FFmpeg and reports `IsBassLoaded`/`IsFfmpegLoaded`/`BassPath` correctly.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 4 source files. See latest review findings for the corrected file list.
 
 **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+
+**Manual verification:** open image, open audio+CDG, open video, play/pause/stop/close, native bootstrap.
+
+**Exit criteria:** Debug and Release builds pass; the three visibility reductions are in place; the duplicate `ImagePath` line and the empty `finally` block are gone; `RenderCurrentFrame`, `SeekAsync`, and the live presentation diagnostic fields stay; the WPF adapter boundary guard remains empty.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
@@ -600,6 +627,8 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 - Remove completed items from `AGENTS.md` `Known Dead Code` (A4 `D3DImage`, A5 `BitmapScalingMode` DP, A6 `totalLibraries` — all now gone).
 - Mark this plan file as complete.
 
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
+
 ---
 
 ## Quick Reference — Remaining Deferred Items
@@ -607,11 +636,11 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 | Ref | Description | Status |
 |-----|-------------|--------|
 | S1 | `MediaFile.cs Task.Run(HandlePlayOnLoadAsync)` | Deferred (self-handling try/catch; minimal disposed-guard possible) |
-| S6 | `RenderPipeline` cast to `VideoPipeline` | In Stage 8 |
+| S6 | `RenderPipeline` cast to `VideoPipeline` | Deferred (Stage 8 review; requires `IVideoEngine` surface change) |
 | S7 | `ClockAudioEngine` ~60% no-op members | Deferred (no broad IAudioEngine split unless explicitly approved) |
-| S10 | `PipelineMediaEngine` double `ImagePath` assignment | In Stage 8 |
-| S11 | `PipelineMediaEngine` empty `finally` block | In Stage 8 |
-| S12-S14 | Visibility reductions | In Stage 8 |
+| S10 | `PipelineMediaEngine` double `ImagePath` assignment | Removed (Stage 8) |
+| S11 | `PipelineMediaEngine` empty `finally` block | Removed (Stage 8) |
+| S12-S14 | Visibility reductions | Completed (Stage 8) |
 | F11 | `ClockAudioEngine` no-op members (Full-file cleanup) | Deferred |
 | §11.7 | Renderer Cluster F (offscreen scaffolding) | Removed (Stage 7) |
 | 90-94 | DirectoryScanner dead members + ExactMatch/Incompatible | Removed (Stage 1) |

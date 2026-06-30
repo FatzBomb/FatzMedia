@@ -24,7 +24,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     private const int CdgSeekIntervalMilliseconds = 50;
     private const double CdgSeekTargetChangeThresholdSeconds = 0.025;
 
-    public PlaybackClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
+    private PlaybackClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
     public ICdgEngine Engine { get; } = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
     public bool IsOpen { get; private set; }
     public double DurationSeconds => Engine.TotalDurationSeconds;

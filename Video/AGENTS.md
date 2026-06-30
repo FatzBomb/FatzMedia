@@ -49,9 +49,6 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 - `MediaControlSession.cs` — unused facade for future "Stage 10S", never instantiated
 - `MediaControlPlayer.Create(...)` — 3 static factory methods, never called
 - `MediaControlPlayer.SeekAsync(...)` — not in `IMediaControlSession`, never called
-- `MediaPresentationMode.D3DImage` — no backend exists, never referenced
-- `MediaSurface.BitmapScalingMode` DP — registered but never read by any code
-- `Bootstrap.LibraryLoader.cs` `totalLibraries` variables — computed but never used
 
 ## Key Entrypoints
 

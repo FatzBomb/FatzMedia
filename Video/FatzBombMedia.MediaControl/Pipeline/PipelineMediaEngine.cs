@@ -220,24 +220,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return RaiseBackgroundFrame(background.Source);
         }
 
-        try
-        {
-            using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: false);
-            if (decoder == null)
-                return false;
+        using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: false);
+        if (decoder == null)
+            return false;
 
-            VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
-            if (frame == null)
-                return false;
+        VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
+        if (frame == null)
+            return false;
 
-            RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
-            return true;
-        }
-        finally
-        {
-            // The event gets a Core-owned frame buffer, so the decoder-owned frame can be returned.
-            // frame is returned by the decoder in DecodeFirstBackgroundFrame failure paths.
-        }
+        RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
+        return true;
     }
 
     private bool StartBackgroundVideo(MediaBackgroundCandidate background)
@@ -567,7 +559,6 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         {
             ImagePath = imagePath;
             _coordinator.Close();
-            ImagePath = imagePath;
             _coordinator.State.SetOpened(MediaContent.Image, imagePath, 0);
             RaiseImageFrame(decoder, frame);
             return true;
