@@ -1,7 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Frame;
-using Vortice.Direct3D11;
-using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -18,7 +16,6 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationFramePresenter(
     D3D11FramePresenter framePresenter,
     ID3D11PresentationSurfaceProvider presentationSurfaces,
-    D3D11PresentationBlitter presentationBlitter,
     D3D11PresentationState presentationState)
 {
     public bool PresentHardwareFrame(
@@ -51,49 +48,4 @@ internal sealed class D3D11PresentationFramePresenter(
             target.Height,
             presentationState.NativePresentationStretch,
             notifyPresented);
-
-    public bool PresentTextureFrame(
-        D3D11DeviceResources deviceResources,
-        bool isDisposed,
-        ID3D11Texture2D sourceTexture,
-        int width,
-        int height,
-        double framesPerSecond,
-        MediaCompositionStretchMode stretch,
-        Action<int, int> notifyPresented)
-    {
-        if (isDisposed
-            || deviceResources.Context == null
-            || sourceTexture == null
-            || width <= 0
-            || height <= 0)
-        {
-            return false;
-        }
-
-        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
-                applyPendingNativeResize: true,
-                reason: "DXCDG texture presentation",
-                out D3D11PresentationTargetSnapshot target))
-        {
-            return false;
-        }
-
-        if (!presentationBlitter.BlitToTarget(
-                target.Texture,
-                target.Width,
-                target.Height,
-                sourceTexture,
-                sourceArraySlice: 0,
-                sourceWidth: width,
-                sourceHeight: height,
-                framesPerSecond,
-                stretch))
-        {
-            return false;
-        }
-
-        notifyPresented(width, height);
-        return true;
-    }
 }

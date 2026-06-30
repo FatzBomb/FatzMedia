@@ -17,7 +17,6 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     MediaPlayerConfiguration configuration,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState,
-    Action releasePresentationRenderTargetView,
     Action resetOverlayTransientFailure) : ID3D11PresentationBackend
 {
     private IDXGISwapChain? _swapChain;
@@ -129,10 +128,9 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             var resizeStart = Stopwatch.GetTimestamp();
 
             // DXGI ResizeBuffers requires all direct and indirect references to the current
-            // backbuffer to be released first. The caller-owned render target view and video
-            // processor output view are released through callbacks before the buffer resize.
+            // backbuffer to be released first. The video processor output view is released
+            // through a callback before the buffer resize.
             resetVideoProcessorState();
-            releasePresentationRenderTargetView();
             TargetTexture?.Dispose();
             TargetTexture = null;
 

@@ -11,8 +11,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationResourceCleaner(
     D3D11DeviceResources deviceResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter,
-    ID3D11PresentationSurfaceProvider presentationSurfaces,
-    D3D11PresentationRenderTargetViewCache renderTargetViewCache)
+    ID3D11PresentationSurfaceProvider presentationSurfaces)
 {
     public void CleanupSurfaces()
     {
@@ -20,7 +19,6 @@ internal sealed class D3D11PresentationResourceCleaner(
         ID3D11Texture2D? activeTarget = presentationSurfaces.TargetTexture;
         var backendOwnsPresentationTexture = presentationSurfaces.OwnsTexture(activeTarget);
 
-        renderTargetViewCache.Release();
         presentationSurfaces.CleanupBackends();
 
         if (!backendOwnsPresentationTexture)

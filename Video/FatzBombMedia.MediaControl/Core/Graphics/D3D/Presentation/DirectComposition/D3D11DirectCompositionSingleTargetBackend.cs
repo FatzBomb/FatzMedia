@@ -20,8 +20,7 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectCompos
 internal sealed class D3D11DirectCompositionSingleTargetBackend(
     MediaPlayerConfiguration configuration,
     D3D11PresentationDiagnostics diagnostics,
-    Action resetVideoProcessorState,
-    Action releasePresentationRenderTargetView) : ID3D11PresentationBackend
+    Action resetVideoProcessorState) : ID3D11PresentationBackend
 {
     private readonly D3D11DirectCompositionTarget _target = new(configuration);
 
@@ -138,7 +137,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             var resizeStart = Stopwatch.GetTimestamp();
 
             resetVideoProcessorState();
-            releasePresentationRenderTargetView();
             TargetTexture?.Dispose();
             TargetTexture = null;
             _target.ReleaseOverlayBackBuffer();

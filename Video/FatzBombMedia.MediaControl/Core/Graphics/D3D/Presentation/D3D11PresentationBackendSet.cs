@@ -42,9 +42,6 @@ internal sealed class D3D11PresentationBackendSet(
 
     public ID3D11Texture2D? ActiveTargetTexture => Active?.TargetTexture;
 
-    public bool HasNativePresentingBackend => ActiveKind is D3D11PresentationBackendKind.NativeHwndSwapChain
-        or D3D11PresentationBackendKind.DirectCompositionSingleTarget;
-
     public bool HasMultipleActiveTargets => EnumerateActiveTargetBackends().Skip(1).Any();
 
     public bool OwnsTexture(ID3D11Texture2D? texture) => texture != null
@@ -92,15 +89,6 @@ internal sealed class D3D11PresentationBackendSet(
         foreach (KeyValuePair<string, D3D11NativeHwndSwapChainBackend> pair in _secondaryNativeHwndTargets.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
             if (pair.Value.IsActive)
                 yield return new D3D11PresentationBackendTarget(pair.Key, pair.Value, pair.Value.Hwnd, "NativeHwndSwapChain");
-    }
-
-    public void Present(int liveResizeFlag, bool syncImmediate)
-    {
-        ID3D11PresentationBackend? active = Active;
-        if (active == null)
-            return;
-
-        active.Present(liveResizeFlag, syncImmediate);
     }
 
     /// <summary>

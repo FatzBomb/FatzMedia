@@ -46,7 +46,6 @@ internal sealed class D3D11RendererPresentationServices
         VideoProcessorPresenter = new D3D11VideoProcessorPresenter(configuration);
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
         State = new D3D11PresentationState();
-        RenderTargetViewCache = new D3D11PresentationRenderTargetViewCache();
         MediaCompositor = new D3D11MediaCompositionPresenter(
             configuration.EnableVerboseLogging,
             configuration.EnablePerformanceLogging);
@@ -55,15 +54,13 @@ internal sealed class D3D11RendererPresentationServices
             configuration,
             Diagnostics,
             () => VideoProcessorPresenter.Reset(),
-            RenderTargetViewCache.Release,
             static () => { });
 
         D3D11NativeHwndSwapChainBackend nativeHwndBackend = CreateNativeHwndBackend();
         var directCompositionBackend = new D3D11DirectCompositionSingleTargetBackend(
             configuration,
             Diagnostics,
-            () => VideoProcessorPresenter.Reset(),
-            RenderTargetViewCache.Release);
+            () => VideoProcessorPresenter.Reset());
 
         Backends = new D3D11PresentationBackendSet(nativeHwndBackend, directCompositionBackend, CreateNativeHwndBackend);
         Surfaces = new D3D11PresentationSurfaceController(Backends, deviceResources);
@@ -71,22 +68,14 @@ internal sealed class D3D11RendererPresentationServices
         ResourceCleaner = new D3D11PresentationResourceCleaner(
             deviceResources,
             VideoProcessorPresenter,
-            Surfaces,
-            RenderTargetViewCache);
+            Surfaces);
 
         var framePresenter = new D3D11FramePresenter(
             UploadResources,
             VideoProcessorPresenter);
-        var presentationBlitter = new D3D11PresentationBlitter(
-            deviceResources,
-            VideoProcessorPresenter,
-            Surfaces,
-            State);
-
         FramePresenter = new D3D11PresentationFramePresenter(
             framePresenter,
             Surfaces,
-            presentationBlitter,
             State);
     }
 
@@ -513,9 +502,6 @@ internal sealed class D3D11RendererPresentationServices
     public D3D11PresentationSurfaceController Surfaces { get; }
 
     public D3D11PresentationState State { get; }
-
-    public D3D11PresentationRenderTargetViewCache RenderTargetViewCache { get; }
-
 
     public D3D11MediaCompositionPresenter MediaCompositor { get; }
 

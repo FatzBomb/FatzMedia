@@ -68,6 +68,7 @@ Audit catalog (items 1-128, S1-S15, A1-A7, F1-F19, Renderer Clusters A-F) preser
 - [x] Stage 3 — completed 2026-06-30: removed D3DImage/UI shared-surface backend scaffolding; kept native HWND and DirectComposition paths. Builds: Debug pass, Release pass.
 - [x] Stage 4 — completed 2026-06-30: removed immediate clear/resize renderer APIs; kept queued resize and composition presentation paths. Builds: Debug pass, Release pass.
 - [x] Stage 5 — completed 2026-06-30: removed direct DXCDG/single-target present APIs; kept composition fan-out and overlay split paths. Builds: Debug pass, Release pass.
+- [x] Stage 6 — completed 2026-06-30: removed dead direct blitter/texture presenter/cache helpers; kept hardware and composition fan-out paths. Builds: Debug pass, Release pass.
 
 ---
 
@@ -398,60 +399,139 @@ git grep -n -E "PresentMediaCompositionVisible|PresentToTargets\(|NotifyTargetsP
 
 **Goal:** remove unused direct-blit and helper-present paths not consumed by the current composition fan-out.
 
-**Risk:** Medium (depends on Clusters A/C/D being removed first for trace clarity).
+**Risk:** Medium. Clusters A/C/D are already removed, so the remaining direct-blit helpers are now traceable. This still touches renderer presentation construction and cleanup, so build and Player smoke testing are required after implementation.
 
 **Scope:**
 
-- `D3D11PresentationBlitter.BlitToActivePresentation(...)`
-- `D3D11PresentationFramePresenter.PresentTextureFrame(...)`
-- `D3D11PresentationBackendSet.Present(...)`
-- `D3D11PresentationBackendSet.HasNativePresentingBackend`
-- `D3D11PresentationBackendSet.HasUiSharedSurfaceBackend`
-- `D3D11PresentationRenderTargetViewCache.Current` and no-op `Release()` path (confirm no future code assigns `Current`)
+- Remove `D3D11PresentationFramePresenter.PresentTextureFrame(...)`. It is no longer called after the direct DXCDG/single-target path was removed.
+- Delete `D3D11PresentationBlitter.cs` and remove its `D3D11RendererPresentationServices` construction/dependency wiring. `BlitToActivePresentation(...)` has zero callers, and `BlitToTarget(...)` is only reachable from the dead `PresentTextureFrame(...)` method.
+- Remove `D3D11PresentationBackendSet.Present(...)`. Keep `NotifyFramePresented(...)`, `NotifyTargetsPresented(...)`, and the private `NotifyBackendPresented(...)` path because they are live.
+- Remove `D3D11PresentationBackendSet.HasNativePresentingBackend`. Whole-repo review found no callers.
+- Delete `D3D11PresentationRenderTargetViewCache.cs` and remove the no-op cache dependency/property/callback wiring from `D3D11RendererPresentationServices` and `D3D11PresentationResourceCleaner`. `Current` is never assigned, and all `Release()` calls only dispose `null`.
+- Pass no-op callbacks directly to native HWND and DirectComposition backend constructors only if their constructor parameters remain otherwise useful for future real reset hooks; do not broaden backend cleanup beyond removing the dead cache callback wiring.
+- `D3D11PresentationBackendSet.HasUiSharedSurfaceBackend` is stale and already gone from Stage 3; no implementation work remains for that symbol.
+
+**Exclusions (do NOT touch):**
+- Live hardware frame path: `NativeMediaPresentationCoordinator` → `NativeD3D11PresentationBridge.PresentHardwareFrame(...)` → `D3D11RendererPresentationServices.FramePresenter.PresentHardwareFrame(...)` → `D3D11FramePresenter.PresentHardwareFrame(...)`.
+- Live composition fan-out path: `PresentMediaCompositionVisible(...)`, `D3D11MediaCompositionPresenter.PresentToTargets(...)`, `D3D11PresentationSurfaceController.NotifyTargetsPresented(...)`, and `D3D11PresentationBackendSet.NotifyTargetsPresented(...)`.
+- Native HWND primary/secondary backends, DirectComposition single-target/overlay backends, queued resize paths, `ClearActiveTargetToBlack(...)`, `OwnsTexture(...)`, `ActiveTargetTexture`, and `HasMultipleActiveTargets`.
+- `D3D11VideoProcessorPresenter.BlitTextureToPresentation(...)`; it remains used by live hardware/composition presentation code outside this direct helper cleanup.
+- WPF adapter source files.
 
 **Trace guards:**
 
 ```powershell
-rg -n "BlitToActivePresentation|PresentTextureFrame|HasNativePresentingBackend|HasUiSharedSurfaceBackend|PresentationRenderTargetViewCache" FatzBombMedia.MediaControl -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "PresentTextureFrame\(|BlitToActivePresentation\(|BlitToTarget\(|D3D11PresentationBlitter|new D3D11PresentationBlitter|HasNativePresentingBackend|HasUiSharedSurfaceBackend|PresentationRenderTargetViewCache|D3D11PresentationRenderTargetViewCache" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11PresentationBackendSet\.Present\(|\.Present\(liveResizeFlag, syncImmediate\)|NotifyFramePresented\(|NotifyTargetsPresented\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "RenderTargetViewCache|renderTargetViewCache|releasePresentationRenderTargetView|ID3D11RenderTargetView\?|\.Current\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Verify live presentation paths stay live:
+git grep -n -E "PresentHardwareFrame|D3D11FramePresenter|PresentMediaCompositionVisible|PresentToTargets\(|NotifyTargetsPresented|PresentMediaCompositionWithDirectCompositionOverlaySplit|BlitTextureToPresentation" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "ActiveTargetTexture|ClearActiveTargetToBlack|OwnsTexture\(|HasMultipleActiveTargets|CreateSecondaryNativeHwndTarget|DirectCompositionOverlay|NativeHwndSwapChain" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "PresentTextureFrame\(|BlitToActivePresentation\(|BlitToTarget\(|D3D11PresentationBlitter|HasNativePresentingBackend|HasUiSharedSurfaceBackend|PresentationRenderTargetViewCache|D3D11PresentationRenderTargetViewCache" -- FatzBombMedia.MediaControl
+git grep -n -E "D3D11PresentationBackendSet\.Present\(" -- FatzBombMedia.MediaControl
+git grep -n -E "PresentHardwareFrame|PresentMediaCompositionVisible|PresentToTargets\(|NotifyFramePresented\(|NotifyTargetsPresented\(|BlitTextureToPresentation|ClearActiveTargetToBlack|HasMultipleActiveTargets" -- FatzBombMedia.MediaControl
 ```
 
-**Likely files affected:** ~4 files.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium. Whole-repo searches found no XAML/config/script/project callers for the direct texture/blit helpers. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json`, under the repo, or under `C:\Programming`, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** remove `D3D11PresentationFramePresenter.PresentTextureFrame(...)`; delete `D3D11PresentationBlitter.cs`; remove `D3D11RendererPresentationServices` blitter construction and the `D3D11PresentationFramePresenter` constructor parameter; remove `D3D11PresentationBackendSet.Present(...)`; remove `D3D11PresentationBackendSet.HasNativePresentingBackend`; delete `D3D11PresentationRenderTargetViewCache.cs`; remove `RenderTargetViewCache` construction/property, backend release callback wiring, and `D3D11PresentationResourceCleaner` cache dependency/call.
+- **Exclusions/defer:** keep `PresentHardwareFrame(...)`, `D3D11FramePresenter`, `D3D11VideoProcessorPresenter`, `PresentMediaCompositionVisible(...)`, `PresentToTargets(...)`, `NotifyFramePresented(...)`, `NotifyTargetsPresented(...)`, DirectComposition overlay split, native HWND primary/secondary paths, queued resize, `ClearActiveTargetToBlack(...)`, `OwnsTexture(...)`, `ActiveTargetTexture`, `HasMultipleActiveTargets`, and WPF adapter files. `HasUiSharedSurfaceBackend` is already absent from Stage 3 and should not drive any new edit.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found `BlitToActivePresentation(...)` only in `D3D11PresentationBlitter`; `BlitToTarget(...)` only in `D3D11PresentationBlitter` plus the dead `PresentTextureFrame(...)`; `PresentTextureFrame(...)` only in `D3D11PresentationFramePresenter`; `HasNativePresentingBackend` only in `D3D11PresentationBackendSet`; `HasUiSharedSurfaceBackend` absent; and `D3D11PresentationRenderTargetViewCache` only in its own file, `D3D11RendererPresentationServices`, and `D3D11PresentationResourceCleaner`.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source matches for the direct blitter/presenter/cache symbols. The backend-set direct `Present(...)` guard should return no matches, while `NotifyFramePresented(...)` and `NotifyTargetsPresented(...)` remain live. The live presentation-path guards should still show hardware frame, composition fan-out, video-processor, clear, multi-target, and backend notification paths. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `Core\Graphics\D3D\Presentation\D3D11RendererPresentationServices.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationFramePresenter.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationBackendSet.cs`; `Core\Graphics\D3D\Presentation\D3D11PresentationResourceCleaner.cs`; delete `Core\Graphics\D3D\Presentation\D3D11PresentationBlitter.cs`; delete `Core\Graphics\D3D\Presentation\D3D11PresentationRenderTargetViewCache.cs`.
+- **Smoke tests:** run Player with hardware-decoded video, software-decoded fallback if available, CDG-only/audio+CDG, video+CDG, sidecar image/video backgrounds, DirectComposition overlay split, native HWND fallback/overlay disabled mode, resize/live resize, stop/idle clear, and secondary output if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 4 source files; delete 2 files. See latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
 
 **Manual verification:** same as Clusters A/C/D. Any media mode that exercises the composition fan-out.
+
+**Exit criteria:** Debug and Release builds pass; direct blitter/presenter/cache guards return no source/config callers; hardware frame, composition fan-out, DirectComposition overlay split, native HWND primary/secondary, cleanup, and WPF adapter boundary guards remain clean/live as described above.
+
+**Status:** Completed — 2026-06-30. Debug and Release builds pass.
 
 ---
 
 ### Stage 7 — Renderer Stage F: Decide Offscreen Retained-Layer Future
 
-**Goal:** either keep the offscreen retained-layer scaffolding as documented future architecture, or delete it. This is a decision stage.
+**Goal:** prune the truly unused offscreen retained-layer allocation scaffolding while keeping current retained-layer planner metadata that is actively consumed by composition diagnostics, retained-refresh decisions, and target fan-out.
 
-**Risk:** High if deleted broadly. Much of this feeds diagnostics and plan summaries.
+**Risk:** Medium-High if scoped narrowly; High if deleted broadly. The original broad delete list is stale because much of the retained-layer and target-plan metadata is live.
 
 **Deferred items from Phase 1 Stage 8:** `D3D11CompositionTargetKind.RetainedOffscreenLayer` (118), `D3D11CompositionTargetKind.FutureSwapChain` (119).
 
-**Scope (if DELETE is chosen):**
+**Corrected scope:**
 
-- `D3D11CompositionLayerRenderTarget.cs` — `Ensure(...)`, `MarkRendered(...)`, resource properties
-- `D3D11CompositionLayerState.OffscreenRenderTarget`, `HasOffscreenRenderTarget`
-- `D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture`
-- `D3D11CompositionTargetKind.RetainedOffscreenLayer`, `FutureSwapChain`
-- `D3D11CompositionLayerUpdateCadence.DisplayRate`
-- `D3D11CompositionLayerUpdateAction.ClearOnly`
-- `D3D11CompositionLayerSchedule.SourceFrameInterval`
-- `D3D11CompositionTargetDescriptor.PrimaryFinalTarget(...)` factory
-- `D3D11CompositionTargetRegistry.Capture(D3D11CompositionTargetDescriptor)` single-target overload
-- `D3D11CompositionLayerCache.Layers`, `ActiveLayerSummary`
-- `D3D11CompositionTargetPlan.Targets`, `HasTargets`, `HasWork`, `ActivePresentationTargetIds`
+- Delete `D3D11CompositionLayerRenderTarget.cs`; its `Ensure(...)`, resource properties, and `MarkRendered(...)` have no callers.
+- Remove `D3D11CompositionLayerState.OffscreenRenderTarget` and `HasOffscreenRenderTarget`; also remove offscreen participation from `HasRetainedResources`, `CreateUpdatePlanEntry(...)`, `Clear()`, and `LifecycleSummary`.
+- Remove the `HasOffscreenRenderTarget` field from `D3D11CompositionLayerUpdate` and its `ToString()` summary.
+- Remove `D3D11CompositionTargetKind.RetainedOffscreenLayer` and `D3D11CompositionTargetKind.FutureSwapChain`; both enum values have zero callers.
+- Remove `D3D11CompositionLayerUpdateCadence.DisplayRate`; no code constructs or checks it.
+- Remove `D3D11CompositionLayerUpdateAction.ClearOnly`; no code sets or checks this enum flag. Keep `D3D11CompositionLayerUpdatePlan.IsClearOnly` and clear-only guardrail logging.
+- Remove `D3D11CompositionLayerSchedule.SourceFrameInterval`; no caller reads it.
+- Remove `D3D11CompositionTargetDescriptor.PrimaryFinalTarget(...)` factory only; keep `PrimaryFinalTargetId`, which is live in presentation target routing.
+- Remove `D3D11CompositionTargetRegistry.Capture(D3D11CompositionTargetDescriptor)` single-target overload only; keep the live `Capture(IEnumerable<D3D11CompositionTargetDescriptor>)` overload.
+- Remove `D3D11CompositionLayerCache.Layers` and `ActiveLayerSummary`; both have zero callers.
+- Remove `D3D11CompositionTargetPlan.Targets`, `HasTargets`, `HasWork`, and `ActivePresentationTargetIds`; all are uncalled by source. `ActivePresentationTargetIds` is referenced by `scripts/check-presentation-parity.ps1`, so update that script assertion if the property is removed.
 
-**Scope (if KEEP is chosen):** do nothing. Document that offscreen retained-layer is a planned feature with scaffolding in place.
+**Exclusions (do NOT touch):**
+- Keep `D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture`, `D3D11CompositionLayerSchedule.TargetKind`, and `D3D11CompositionLayerUpdatePlan.HasFutureOffscreenTargets`; they are live planner/diagnostic metadata in the current composition flow.
+- Keep `D3D11CompositionLayerSchedule`, `D3D11CompositionLayerUpdateCadence.None/OnDemand/SourceRate/Static`, `CanReuseRetainedOutput`, `HasSourceRate`, and `ToString()` except for removing the unused `SourceFrameInterval` property.
+- Keep `D3D11CompositionLayerUpdatePlan.IsClearOnly`, `HasWork`, `ReusableLayerCount`, `HasSourceRateLayers`, `HasReusableRetainedOutputs`, `Summary`, and clear-only guardrail logging.
+- Keep live retained-layer state and resource paths: `Texture`, `ShaderResourceView`, `HasTexture`, `HasDxCdgResources`, `HasRetainedResources`, `UploadBgraPixels(...)`, `EnsureRenderTargetTexture(...)`, `UploadDxCdgSnapshot(...)`, `MarkUploaded(...)`, `MarkRendered(...)`, `MarkPlanConsumed()`, and resource release methods.
+- Keep live target fan-out metadata and behavior: `D3D11CompositionTargetDescriptor`, `PrimaryFinalTargetId`, `D3D11CompositionTargetRegistry.Capture(IEnumerable<...>)`, `CreatePlan()`, `MarkPlanConsumed()`, `D3D11CompositionTargetPlan.ShouldPresentTarget(...)`, `HasMetadataWork`, `ResizeTargetCount`, `Summary`, and all `D3D11CompositionTargetUpdate*` types.
+- Keep `D3D11CompositionTargetKind.FinalPresentation` and `DirectCompositionOverlay`, plus presentation target snapshot conversion and backend routing.
+- Do not touch WPF adapter files.
 
 **Trace guards:**
 
 ```powershell
-rg -n "RetainedOffscreen|FutureSwapChain|OffscreenRenderTarget|DisplayRate|ClearOnly|SourceFrameInterval|PrimaryFinalTarget|RetainedOffscreenTexture" FatzBombMedia.MediaControl -g "*.cs"
+# Whole-solution guards from repo root. Include source, XAML, project/config, docs/scripts/JSON, and reflection/name strings.
+git grep -n -E "RetainedOffscreen|FutureSwapChain|OffscreenRenderTarget|DisplayRate|ClearOnly|SourceFrameInterval|PrimaryFinalTarget|RetainedOffscreenTexture" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "D3D11CompositionLayerRenderTarget|D3D11CompositionLayerRenderTargetKind|D3D11CompositionLayerState|D3D11CompositionTargetKind|D3D11CompositionLayerUpdateCadence|D3D11CompositionLayerUpdateAction|D3D11CompositionLayerSchedule|D3D11CompositionTargetDescriptor|D3D11CompositionTargetRegistry|D3D11CompositionLayerCache|D3D11CompositionTargetPlan" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "OffscreenRenderTarget\.|OffscreenRenderTarget\b|HasOffscreenRenderTarget\b|Ensure\(ID3D11Device device|MarkRendered\(long revision\) => Revision|D3D11CompositionTargetKind\.(RetainedOffscreenLayer|FutureSwapChain)|\bRetainedOffscreenLayer\b|\bFutureSwapChain\b" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "PrimaryFinalTarget\(|PrimaryFinalTargetId|D3D11CompositionTargetDescriptor\.PrimaryFinalTarget|Capture\(D3D11CompositionTargetDescriptor|Capture\(IEnumerable<D3D11CompositionTargetDescriptor>|ActiveLayerSummary\b|\.Layers\b|HasTargets|ActivePresentationTargetIds|Targets =>|HasWork =>" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# Verify live composition planner and target fan-out paths stay live:
+git grep -n -E "D3D11CompositionLayerSchedule|RetainedOffscreenTexture|HasFutureOffscreenTargets|IsClearOnly|ReusableLayerCount|HasSourceRateLayers|HasReusableRetainedOutputs|ShouldPresentTarget|HasMetadataWork|ResizeTargetCount|PresentToTargets\(|NotifyTargetsPresented" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+git grep -n -E "FinalPresentation|DirectCompositionOverlay|PrimaryFinalTargetId|ToCompositionTargetDescriptor|Capture\(validTargets\.Select|CreatePlan\(|MarkPlanConsumed\(" -- "*.cs" "*.xaml" "*.csproj" "*.props" "*.targets" "*.sln" "*.slnx" "*.ps1" "*.md" "*.json" "*.config" "*.xml"
+
+# WPF adapter boundary guard:
+git grep -n -E "FatzBombMedia\.MediaControl\.Core\.(Pipeline|DxCdg|Graphics|Video)|Core\.Pipeline|Core\.DxCdg|Core\.Graphics|Core\.Video" -- FatzBombMedia.MediaControl.Wpf
+
+# Project-local follow-up guards after removal:
+git grep -n -E "D3D11CompositionLayerRenderTarget|OffscreenRenderTarget|HasOffscreenRenderTarget|D3D11CompositionTargetKind\.(RetainedOffscreenLayer|FutureSwapChain)|\bRetainedOffscreenLayer\b|\bFutureSwapChain\b|DisplayRate|D3D11CompositionLayerUpdateAction\.ClearOnly|SourceFrameInterval|PrimaryFinalTarget\(|Capture\(D3D11CompositionTargetDescriptor|ActiveLayerSummary\b|HasTargets|ActivePresentationTargetIds|Targets =>|HasWork =>" -- FatzBombMedia.MediaControl scripts
+git grep -n -E "D3D11CompositionLayerSchedule|RetainedOffscreenTexture|HasFutureOffscreenTargets|IsClearOnly|ShouldPresentTarget|HasMetadataWork|ResizeTargetCount|FinalPresentation|DirectCompositionOverlay|PrimaryFinalTargetId|ToCompositionTargetDescriptor|PresentToTargets\(|NotifyTargetsPresented" -- FatzBombMedia.MediaControl
 ```
 
-**Recommendation:** defer the decision. Keep the scaffolding until there is a clear product decision to abandon offscreen retained-layer rendering.
+**Latest review findings — 2026-06-30:**
+
+- **Safety:** Medium-High. The truly unused offscreen allocation class and a few future-only enum/property helpers are safe to remove, but the original broad Stage 7 delete list would break live composition planning and diagnostics. Graphify output was not available at `C:\Programming\FatzBombMedia\graphify-out\graph.json`, under the repo, or under `C:\Programming`, so this review is based on source inspection and whole-repo text searches.
+- **Safe items:** delete `D3D11CompositionLayerRenderTarget.cs`; remove `D3D11CompositionLayerState.OffscreenRenderTarget` and `HasOffscreenRenderTarget`; remove the `HasOffscreenRenderTarget` field from `D3D11CompositionLayerUpdate`; remove `D3D11CompositionTargetKind.RetainedOffscreenLayer` and `FutureSwapChain`; remove unused `D3D11CompositionLayerUpdateCadence.DisplayRate`; remove unused `D3D11CompositionLayerUpdateAction.ClearOnly`; remove unused `D3D11CompositionLayerSchedule.SourceFrameInterval`; remove `D3D11CompositionTargetDescriptor.PrimaryFinalTarget(...)` factory while keeping `PrimaryFinalTargetId`; remove `D3D11CompositionTargetRegistry.Capture(D3D11CompositionTargetDescriptor)` while keeping the enumerable overload; remove `D3D11CompositionLayerCache.Layers` and `ActiveLayerSummary`; remove `D3D11CompositionTargetPlan.Targets`, `HasTargets`, `HasWork`, and `ActivePresentationTargetIds`; update `scripts/check-presentation-parity.ps1` if `ActivePresentationTargetIds` is removed.
+- **Exclusions/defer:** do not delete live retained-layer schedule/update-plan metadata such as `D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture`, `D3D11CompositionLayerSchedule.TargetKind`, `CanReuseRetainedOutput`, `D3D11CompositionLayerUpdatePlan.HasFutureOffscreenTargets`, `D3D11CompositionLayerUpdatePlan.IsClearOnly`, `D3D11CompositionLayerUpdatePlan.HasWork`, update-plan `Summary`, clear-only guardrail logging, retained BGRA/DXCDG/resource state, target registry enumerable capture, target-plan `ShouldPresentTarget(...)`, `HasMetadataWork`, `ResizeTargetCount`, target-plan `Summary`, target snapshot conversion, `FinalPresentation`, `DirectCompositionOverlay`, composition fan-out, or WPF adapter files.
+- **Corrected whole-solution guards:** run the `git grep` commands above, or equivalent OpenCode whole-repo grep, from `C:\Programming\FatzBombMedia` before implementation. The 2026-06-30 review found `D3D11CompositionLayerRenderTarget.Ensure(...)` and `MarkRendered(...)` uncalled; `RetainedOffscreenLayer` and `FutureSwapChain` only in their enum declaration; `DisplayRate`, `D3D11CompositionLayerUpdateAction.ClearOnly`, `SourceFrameInterval`, `PrimaryFinalTarget(...)`, single-target `Capture(...)`, `Layers`, `ActiveLayerSummary`, `Targets`, `HasTargets`, and `HasWork` uncalled by source; `ActivePresentationTargetIds` referenced only by `scripts/check-presentation-parity.ps1`.
+- **Project-local follow-up guards:** after removal, the first project-local guard should return no source/script matches for removed allocation/future-only helpers except historical docs if included. The second should still show live retained-layer schedule/update-plan metadata, target fan-out, final/direct-composition target kinds, primary target id routing, target snapshot conversion, `PresentToTargets(...)`, and `NotifyTargetsPresented(...)`. The WPF adapter boundary guard should remain empty.
+- **Likely files affected:** `Core\Graphics\Composition\D3D11\D3D11CompositionLayerState.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionLayerUpdate.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionTargetKind.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionLayerUpdateCadence.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionLayerUpdateAction.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionLayerSchedule.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionTargetDescriptor.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionTargetRegistry.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionLayerCache.cs`; `Core\Graphics\Composition\D3D11\D3D11CompositionTargetPlan.cs`; `scripts\check-presentation-parity.ps1`; delete `Core\Graphics\Composition\D3D11\D3D11CompositionLayerRenderTarget.cs`.
+- **Smoke tests:** run Player with retained background refresh after pause/seek/surface attach, CDG-only/audio+CDG, video+CDG, sidecar image/video backgrounds, DirectComposition overlay split, native HWND fallback/overlay disabled mode, resize/live resize, stop/idle clear, secondary output attach/detach, software-decoded fallback, and hardware-decoded video if native DLLs are available.
+- **Recommendation:** proceed with exclusions.
+
+**Likely files affected:** 10 source files; delete 1 file; update 1 script if removing `ActivePresentationTargetIds`. See latest review findings for the corrected file list.
+
+**Build commands:** `dotnet build FatzBombMedia.sln --no-restore`; `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+
+**Manual verification:** run Player retained refresh, CDG/video composition, DirectComposition overlay split, native HWND fallback, secondary output, resize/live resize, and stop/idle clear scenarios.
+
+**Exit criteria:** Debug and Release builds pass; removed offscreen/future-only guards return no source/script callers; retained-layer planner, target fan-out, final/direct-composition target metadata, and WPF adapter boundary guards remain clean/live as described above.
 
 ---
 
