@@ -42,9 +42,9 @@ public sealed class MediaEffects
         {
             _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
             _subscribedAudioEngine.Normalize = Normalize;
-            _ = _subscribedAudioEngine.SetVolume(Volume);
-            _ = _subscribedAudioEngine.SetPitch(Pitch);
-            _ = _subscribedAudioEngine.SetTempo(_tempo - 100);
+            _subscribedAudioEngine.SetVolume(Volume);
+            _subscribedAudioEngine.SetPitch(Pitch);
+            _subscribedAudioEngine.SetTempo(_tempo - 100);
         }
     }
 
@@ -60,7 +60,7 @@ public sealed class MediaEffects
         {
             field = Math.Clamp(value, 0.0, 1.0);
             if (HasAudio)
-                _ = Audio.SetVolume(field);
+                Audio.SetVolume(field);
         }
     } = 1.0;
 
@@ -74,7 +74,7 @@ public sealed class MediaEffects
         {
             field = Math.Clamp(value, -60, 60);
             if (HasAudio)
-                _ = Audio.SetPitch(field);
+                Audio.SetPitch(field);
         }
     } = 0;
 
@@ -88,7 +88,7 @@ public sealed class MediaEffects
         {
             _tempo = Math.Clamp(value, 5, 5000);
             if (HasAudio)
-                _ = Audio.SetTempo(_tempo - 100);
+                Audio.SetTempo(_tempo - 100);
         }
     }
 

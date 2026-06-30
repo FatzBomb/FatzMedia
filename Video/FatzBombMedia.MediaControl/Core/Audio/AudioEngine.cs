@@ -363,37 +363,37 @@ public sealed class AudioEngine : IAudioEngine
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool SetVolume(double volume01)
+    public void SetVolume(double volume01)
     {
         var playHandle = _streamManager.PlayHandle;
-        if (playHandle == 0) return false;
+        if (playHandle == 0) return;
 
         // Just set volume directly - gain is handled separately by FX
         // No need for CalculateEffectiveVolume anymore
-        return MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Volume, volume01);
+        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Volume, volume01);
     }
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool SetPitch(int semitones)
+    public void SetPitch(int semitones)
     {
         var playHandle = _streamManager.PlayHandle;
-        if (playHandle == 0) return false;
+        if (playHandle == 0) return;
 
         semitones = Math.Clamp(semitones, -60, 60);
-        return MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Pitch, semitones);
+        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Pitch, semitones);
     }
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool SetTempo(int percent)
+    public void SetTempo(int percent)
     {
         var playHandle = _streamManager.PlayHandle;
-        if (playHandle == 0) return false;
+        if (playHandle == 0) return;
 
         percent = Math.Clamp(percent, -95, 5000);
         CurrentTempo = percent; // Track the current tempo setting
-        return MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
+        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
     }
 
     /// <inheritdoc/>

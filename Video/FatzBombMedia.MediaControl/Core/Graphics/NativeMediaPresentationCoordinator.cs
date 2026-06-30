@@ -127,7 +127,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         bool resized;
-        bool presentAfterResize = false;
+        bool presentAfterResize;
         lock (_lock)
         {
             if (!_surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
@@ -180,31 +180,23 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
-        {
             return false;
-        }
 
-        bool shouldRefreshAfterResize = false;
+        bool shouldRefreshAfterResize;
         lock (_lock)
         {
             if (!_surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
-            {
                 return false;
-            }
 
             if (surface.Role != MediaPresentationSurfaceRole.Primary)
-            {
                 return true;
-            }
 
             _presenter.SetNativeLiveResizeInProgress(isResizing);
             shouldRefreshAfterResize = !isResizing;
         }
 
         if (shouldRefreshAfterResize)
-        {
             PresentCurrentComposition("presentation surface live resize ended");
-        }
 
         return true;
     }
@@ -212,16 +204,12 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public bool DetachPresentationSurface(string surfaceId)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
-        {
             return false;
-        }
 
         lock (_lock)
         {
             if (!_surfaces.Remove(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
-            {
                 return false;
-            }
 
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
             {
@@ -230,9 +218,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 RecreateAttachedSurfacesNoLock();
             }
             else
-            {
                 _ = _presenter.RemoveSecondaryPresentationTarget(surface.Id);
-            }
 
             return true;
         }
@@ -260,17 +246,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public void StartRendering()
     {
         if (_disposed || _isRenderingActive)
-        {
             return;
-        }
 
         _isRenderingActive = true;
         _attachedVideo?.SetHostRenderEventDrivenPresentation(false);
 
         if (_attachedCdg != null)
-        {
             _presentationScheduler.Start(RenderLoop);
-        }
     }
 
     public void StopRendering()
@@ -344,15 +326,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private bool EnsureD3D11()
     {
         if (_presenter.NativeDevicePointer != IntPtr.Zero)
-        {
             return true;
-        }
 
         var initialized = _presenter.Initialize();
         if (initialized)
-        {
             RecreateAttachedSurfacesNoLock();
-        }
 
         return initialized;
     }
@@ -360,20 +338,14 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private bool EnsureD3D11ForHardwareFrame(VideoFrameEventArgs frame)
     {
         if (!frame.IsD3D11HardwareFrame)
-        {
             return false;
-        }
 
         if (_presenter.NativeDevicePointer == frame.D3D11DevicePointer)
-        {
             return true;
-        }
 
         var initialized = _presenter.InitializeFromNativeDevice(frame.D3D11DevicePointer, frame.D3D11DeviceContextPointer);
         if (initialized)
-        {
             RecreateAttachedSurfacesNoLock();
-        }
 
         return initialized;
     }
@@ -381,9 +353,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private void RecreateAttachedSurfacesNoLock()
     {
         foreach (MediaPresentationSurfaceDescriptor surface in _surfaces.Values)
-        {
             _ = AttachSurfaceNoLock(surface);
-        }
     }
 
     private void AttachVideoIfAvailable()
@@ -445,22 +415,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         _renderPipeline.RenderCdgAtCurrentPosition(force: true);
         if (!PresentPendingDxCdgFrame(deferIfCompositionBusy: false))
-        {
             PresentRetainedDxCdgFrame();
-        }
     }
 
     private void AttachImageIfAvailable()
     {
         if (!_mediaEngine.Content.HasFlag(MediaContent.Image))
-        {
             return;
-        }
 
         if (_mediaEngine.TryGetCurrentImageFrame(out VideoFrameEventArgs? frame) && frame != null)
-        {
             PresentCoreImageFrame(frame);
-        }
     }
 
     private void OnCoreImageFrameReady(object? sender, VideoFrameEventArgs e) => PresentCoreImageFrame(e);
@@ -468,12 +432,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private void PresentCoreImageFrame(VideoFrameEventArgs e)
     {
         if (!IsValidBgraFrame(e))
-        {
             return;
-        }
 
         SetCompositionLayer0Frame(e, MediaCompositionStretchMode.UniformFit);
-        PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core image frame"));
+        _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core image frame"));
     }
 
     private void OnCoreBackgroundFrameReady(object? sender, VideoFrameEventArgs e)
@@ -490,7 +452,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 return;
             }
 
-            PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core background frame"));
+            _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core background frame"));
             return;
         }
 
@@ -524,7 +486,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             return;
         }
 
-        PresentMediaComposition(MediaCompositionFrame.Empty(
+        _ = PresentMediaComposition(MediaCompositionFrame.Empty(
             MediaCompositionClearMode.Transparent,
             0x00000000,
             "core background cleared"));
@@ -553,21 +515,17 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, _primaryStretchMode);
-            PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "primary video frame"));
+            _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "primary video frame"));
             return;
         }
 
         if (!e.IsD3D11HardwareFrame)
-        {
             return;
-        }
 
         lock (_lock)
         {
             if (!EnsureD3D11ForHardwareFrame(e))
-            {
                 return;
-            }
 
             _ = _presenter.PresentHardwareFrame(e);
         }
@@ -583,9 +541,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         if (e.IsD3D11HardwareFrame)
-        {
             RenderHardwareVideoCompositionFrame(e, forceZoomToFill: true, "hardware video + dxcdg");
-        }
     }
 
     private void OnCdgBackgroundWashChanged(object? sender, EventArgs e) =>
@@ -596,8 +552,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private void PresentRetainedDxCdgFrame()
     {
-        ConsumePendingDxCdgPresentation(out var consumeDirtyRegions, out _, out _);
-        RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh: true, "retained dxcdg refresh");
+        _ = ConsumePendingDxCdgPresentation(out var consumeDirtyRegions, out _, out _);
+        _ = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh: true, "retained dxcdg refresh");
     }
 
     private void RequestDxCdgPresentation(bool consumeDirtyRegions, bool retainedRefresh, string reason)
@@ -613,9 +569,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         if (!_isRenderingActive)
-        {
             _ = PresentPendingDxCdgFrame(deferIfCompositionBusy: false);
-        }
     }
 
     private void RequestDxCdgPresentationIfVisible(bool consumeDirtyRegions, bool retainedRefresh, string reason)
@@ -638,9 +592,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         lock (_dxCdgPresentationGate)
         {
             if (!_dxCdgPresentationPending)
-            {
                 return false;
-            }
 
             consumeDirtyRegions = _dxCdgPendingConsumeDirtyRegions;
             retainedRefresh = _dxCdgPendingRetainedRefresh;
@@ -653,9 +605,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         CompositionPresentResult result = RenderCurrentDxCdgFrame(consumeDirtyRegions, retainedRefresh, reason, deferIfCompositionBusy);
         if (result == CompositionPresentResult.Deferred)
-        {
             RequeueDxCdgPresentation(consumeDirtyRegions, retainedRefresh, reason);
-        }
 
         return result == CompositionPresentResult.Presented;
     }
@@ -676,9 +626,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private void ClearPendingDxCdgPresentation()
     {
         lock (_dxCdgPresentationGate)
-        {
             ClearPendingDxCdgPresentationNoLock();
-        }
     }
 
     private bool ConsumePendingDxCdgPresentation(
@@ -721,9 +669,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (deferIfCompositionBusy)
         {
             if (!_lock.TryEnter())
-            {
                 return CompositionPresentResult.Deferred;
-            }
 
             try
             {
@@ -736,24 +682,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         lock (_lock)
-        {
             return RenderCurrentDxCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
-        }
     }
 
     private CompositionPresentResult RenderCurrentDxCdgFrameNoLock(
         bool consumeDirtyRegions,
         bool retainedRefresh,
-        string reason)
-    {
-        if (!TryCreateAndCacheDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? snapshot) || snapshot == null)
-        {
-            return CompositionPresentResult.Failed;
-        }
-
-        return PresentMediaCompositionNoLock(
-            BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
-    }
+        string reason) =>
+            !TryCreateAndCacheDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? snapshot) || snapshot == null
+                ? CompositionPresentResult.Failed
+                : PresentMediaCompositionNoLock(BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
@@ -769,9 +707,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         lock (_lock)
         {
             if (!EnsureD3D11ForHardwareFrame(frame))
-            {
                 return;
-            }
 
             MediaCompositionStretchMode stretch = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : _primaryStretchMode;
             _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
@@ -803,7 +739,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             };
         }
 
-        PresentMediaComposition(compositionFrame);
+        _ = PresentMediaComposition(compositionFrame);
     }
 
     private void StoreRetainedHardwareBackgroundFrame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
@@ -814,9 +750,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         lock (_lock)
         {
             if (!EnsureD3D11ForHardwareFrame(frame))
-            {
                 return;
-            }
 
             _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
             _compositionBackgroundWidth = frame.Width;
@@ -832,9 +766,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     {
         snapshot = null;
         if (!HasDxCdgContent)
-        {
             return false;
-        }
 
         var hadPending = ConsumePendingDxCdgPresentation(
             out var consumeDirtyRegions,
@@ -843,25 +775,17 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (!hadPending)
         {
             lock (_dxCdgPresentationGate)
-            {
                 snapshot = _lastDxCdgSnapshot;
-            }
 
             if (snapshot != null)
-            {
                 return true;
-            }
         }
 
         if (TryCreateAndCacheDxCdgSnapshot(consumeDirtyRegions, out snapshot))
-        {
             return true;
-        }
 
         if (hadPending)
-        {
             RequeueDxCdgPresentation(consumeDirtyRegions, retainedRefresh, pendingReason);
-        }
 
         return false;
     }
@@ -872,15 +796,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (_attachedCdg is not IDxCdgSnapshotSource snapshotSource
             || !_mediaEngine.Content.HasFlag(MediaContent.Cdg)
             || !snapshotSource.TryCreateDxCdgSnapshot(consumeDirtyRegions, out DxCdgRenderSnapshot? createdSnapshot))
-        {
             return false;
-        }
 
         snapshot = createdSnapshot;
         lock (_dxCdgPresentationGate)
-        {
             _lastDxCdgSnapshot = createdSnapshot;
-        }
 
         return true;
     }
@@ -907,7 +827,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             return;
         }
 
-        PresentMediaComposition(MediaCompositionFrame.Empty(
+        _ = PresentMediaComposition(MediaCompositionFrame.Empty(
             MediaCompositionClearMode.Transparent,
             0x00000000,
             reason));
@@ -922,16 +842,12 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private CompositionPresentResult PresentMediaCompositionNoLock(MediaCompositionFrame frame)
     {
         if (!EnsureD3D11())
-        {
             return CompositionPresentResult.Failed;
-        }
 
         if (!_presenter.PresentMediaCompositionVisible(frame))
         {
             if (_configuration.EnableLogging)
-            {
                 Debug.WriteLine($"[NativeMediaPresentationCoordinator] Composition present failed reason={frame.Reason}");
-            }
 
             return CompositionPresentResult.Failed;
         }
@@ -1040,9 +956,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private void ClearCompositionLayer0Frame()
     {
         lock (_lock)
-        {
             ClearCompositionLayer0FrameNoLock();
-        }
 
         _presenter.ClearCompositionBackgroundFrame();
     }
@@ -1065,9 +979,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     {
         ClearPendingDxCdgPresentation();
         lock (_dxCdgPresentationGate)
-        {
             _lastDxCdgSnapshot = null;
-        }
 
         lock (_lock)
         {
@@ -1145,9 +1057,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public void Dispose()
     {
         if (_disposed)
-        {
             return;
-        }
 
         StopRendering();
         DetachAllEngines();

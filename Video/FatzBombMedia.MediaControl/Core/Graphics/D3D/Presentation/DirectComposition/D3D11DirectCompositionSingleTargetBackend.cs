@@ -121,9 +121,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     private bool ResizeCore(D3D11DeviceResources deviceResources, int width, int height)
     {
         if (!IsActive || _baseSwapChain == null || _target.OverlaySwapChain == null)
-        {
             return false;
-        }
 
         if (width == Width && height == Height)
         {
@@ -163,9 +161,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
 
             if (configuration.EnableVerboseLogging)
-            {
                 Debug.WriteLine($"[VorticeD3D11] DirectComposition swap-chain buffers resized at frame boundary to {width}x{height}");
-            }
 
             return true;
         }
@@ -213,9 +209,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     private void ReacquireBaseBackBuffer()
     {
         if (_baseSwapChain == null)
-        {
             return;
-        }
 
         TargetTexture?.Dispose();
         TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
@@ -224,9 +218,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public void ClearOverlayToTransparent(D3D11DeviceResources deviceResources)
     {
         if (deviceResources.Device == null || deviceResources.Context == null || _target.OverlaySwapChain == null)
-        {
             return;
-        }
 
         try
         {
@@ -237,9 +229,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             {
                 ReacquireOverlayBackBuffer();
                 if (_target.OverlayTexture == null)
-                {
                     return;
-                }
 
                 using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
                 deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));

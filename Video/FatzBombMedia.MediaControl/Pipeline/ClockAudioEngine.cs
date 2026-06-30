@@ -72,15 +72,14 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool SetVolume(double volume01) =>
+    public void SetVolume(double volume01) =>
         throw new NotSupportedException("ClockAudioEngine does not support volume control.");
-    public bool SetPitch(int semitones) =>
+    public void SetPitch(int semitones) =>
         throw new NotSupportedException("ClockAudioEngine does not support pitch control.");
 
-    public bool SetTempo(int percent)
+    public void SetTempo(int percent)
     {
         _clock.SetTempo(percent);
-        return true;
     }
 
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) =>

@@ -101,17 +101,17 @@ public interface IAudioEngine : IDisposable
     /// Implementations should apply normalization to the effective volume
     /// when Normalize is enabled.
     /// </summary>
-    bool SetVolume(double volume01);
+    void SetVolume(double volume01);
 
     /// <summary>
     /// Sets pitch in semitones [-60..+60] if supported.
     /// </summary>
-    bool SetPitch(int semitones);
+    void SetPitch(int semitones);
 
     /// <summary>
     /// Sets tempo as percentage (-95..5000). 0 means normal speed.
     /// </summary>
-    bool SetTempo(int percent);
+    void SetTempo(int percent);
 
     /// <summary>
     /// Gets the current tempo as percentage (0 = normal speed).

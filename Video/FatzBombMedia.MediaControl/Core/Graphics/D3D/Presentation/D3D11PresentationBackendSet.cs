@@ -162,17 +162,11 @@ internal sealed class D3D11PresentationBackendSet(
     {
         backend = null;
         if (targetId == D3D11CompositionTargetDescriptor.PrimaryFinalTargetId)
-        {
             backend = Active;
-        }
         else if (kind == D3D11PresentationBackendKind.DirectCompositionSingleTarget && targetId == DirectCompositionTargetId)
-        {
             backend = DirectComposition;
-        }
         else if (kind == D3D11PresentationBackendKind.NativeHwndSwapChain && targetId == NativeHwndTargetId)
-        {
             backend = NativeHwnd;
-        }
         else if (kind == D3D11PresentationBackendKind.NativeHwndSwapChain)
         {
             _ = _secondaryNativeHwndTargets.TryGetValue(NormalizeSecondaryNativeHwndTargetId(targetId), out D3D11NativeHwndSwapChainBackend? secondary);
@@ -182,7 +176,7 @@ internal sealed class D3D11PresentationBackendSet(
         return backend?.IsActive == true;
     }
 
-    private void NotifyBackendPresented(
+    private static void NotifyBackendPresented(
         ID3D11PresentationBackend backend,
         int liveResizeFlag,
         bool syncImmediate,
@@ -199,18 +193,14 @@ internal sealed class D3D11PresentationBackendSet(
     private static bool ClearTarget(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, Color4 color, bool flush)
     {
         if (deviceResources.Device == null || deviceResources.Context == null || target == null)
-        {
             return false;
-        }
 
         try
         {
             using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(target);
             deviceResources.Context.ClearRenderTargetView(renderTargetView, color);
             if (flush)
-            {
                 deviceResources.Context.Flush();
-            }
 
             return true;
         }

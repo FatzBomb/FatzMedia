@@ -445,30 +445,32 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool SetVolume(double volume01)
+    public void SetVolume(double volume01)
     {
         lock (_sync)
         {
             _volume = Math.Clamp(volume01, 0.0, 1.0);
-            return ApplyVolume();
+            ApplyVolume();
         }
     }
 
-    public bool SetPitch(int semitones)
+    public void SetPitch(int semitones)
     {
         lock (_sync)
         {
             _pitch = Math.Clamp(semitones, -60, 60);
-            return PlayHandle != 0 && Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
+            if (PlayHandle != 0)
+                Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
         }
     }
 
-    public bool SetTempo(int percent)
+    public void SetTempo(int percent)
     {
         lock (_sync)
         {
             CurrentTempo = Math.Clamp(percent, -95, 5000);
-            return PlayHandle != 0 && Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
+            if (PlayHandle != 0)
+                Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
         }
     }
 

@@ -48,11 +48,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public Exception? StartupError
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial Exception? StartupError { get; private set; }
 
     public IReadOnlyList<string> NativeLibraryPaths { get; }
 
