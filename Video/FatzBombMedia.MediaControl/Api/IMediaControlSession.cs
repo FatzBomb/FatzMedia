@@ -80,11 +80,20 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Starts or resumes playback.</summary>
     bool Play();
 
+    /// <summary>Starts or resumes playback asynchronously on the Core control queue.</summary>
+    Task<bool> PlayAsync();
+
     /// <summary>Pauses playback.</summary>
     bool Pause();
 
+    /// <summary>Pauses playback asynchronously on the Core control queue.</summary>
+    Task<bool> PauseAsync();
+
     /// <summary>Stops playback and resets position.</summary>
     bool Stop();
+
+    /// <summary>Stops playback asynchronously on the Core control queue.</summary>
+    Task<bool> StopAsync();
 
     /// <summary>Seeks to a playback position.</summary>
     bool Seek(TimeSpan position);
@@ -101,11 +110,20 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Resizes a previously attached framework-provided presentation surface.</summary>
     bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight);
 
+    /// <summary>Notifies Core that a framework-provided presentation surface is in an active host resize/move loop.</summary>
+    bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing);
+
     /// <summary>Detaches a previously attached framework-provided presentation surface.</summary>
     bool DetachPresentationSurface(string surfaceId);
 
     /// <summary>Raised when media reaches the end.</summary>
     event EventHandler? MediaEnded;
+
+    /// <summary>Raised when media playback starts or resumes.</summary>
+    event EventHandler? MediaStarted;
+
+    /// <summary>Raised after Core presents a frame to an attached presentation surface.</summary>
+    event EventHandler? PresentationFramePresented;
 
     /// <summary>Raised when media playback is stopped.</summary>
     event EventHandler? MediaStopped;

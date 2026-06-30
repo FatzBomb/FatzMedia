@@ -25,6 +25,13 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DestroyWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    internal const int SW_HIDE = 0;
+    internal const int SW_SHOW = 5;
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
     {

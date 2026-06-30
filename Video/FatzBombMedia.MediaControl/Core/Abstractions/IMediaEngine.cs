@@ -1,5 +1,4 @@
 using FatzBombMedia.MediaControl.Controllers;
-using FatzBombMedia.MediaControl;
 
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 

@@ -1,9 +1,8 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.IO;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using ManagedBass;
 using ManagedBass.Fx;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using MBass = ManagedBass.Bass;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;

@@ -3,12 +3,9 @@ using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.SwapChain;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
@@ -22,11 +19,16 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.DirectCompos
 /// </summary>
 internal sealed class D3D11DirectCompositionSingleTargetBackend(
     MediaPlayerConfiguration configuration,
-    D3D11PresentationDiagnostics diagnostics) : ID3D11PresentationBackend
+    D3D11PresentationDiagnostics diagnostics,
+    Action resetVideoProcessorState,
+    Action releasePresentationRenderTargetView) : ID3D11PresentationBackend
 {
     private readonly D3D11DirectCompositionTarget _target = new(configuration);
 
     private IDXGISwapChain? _baseSwapChain;
+    private int _pendingWidth;
+    private int _pendingHeight;
+    private bool _resizePending;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -35,6 +37,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public ID3D11Texture2D? OverlayTexture => _target.OverlayTexture;
     public IntPtr Hwnd { get; private set; }
+    public bool HasPendingResize => _resizePending;
 
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
@@ -53,7 +56,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
             using IDXGIFactory2 factory = adapter.GetParent<IDXGIFactory2>();
 
-            SwapChainDescription1 baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Ignore);
+            SwapChainDescription1 baseDescription = D3D11SwapChainFactory.CreateCompositionSwapChainDescription(width, height, AlphaMode.Premultiplied);
             _baseSwapChain = factory.CreateSwapChainForComposition(deviceResources.Device, baseDescription);
             if (_baseSwapChain == null)
             {
@@ -73,6 +76,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             Hwnd = hwnd;
             Width = width;
             Height = height;
+            _resizePending = false;
             return true;
         }
         catch (Exception ex)
@@ -83,24 +87,147 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
     }
 
-    public void SetOutputSize(int width, int height, int contentWidth, int contentHeight, bool liveResize) => _target.SetOutputSize(width, height, contentWidth, contentHeight, liveResize);
+    public void QueueResize(int width, int height)
+    {
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
 
-    public void Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
+        if (!IsActive)
+        {
+            return;
+        }
+
+        _pendingWidth = width;
+        _pendingHeight = height;
+        _resizePending = width != Width || height != Height;
+    }
+
+    public bool ApplyPendingResizeIfNeeded(D3D11DeviceResources deviceResources)
+    {
+        if (!IsActive || !_resizePending)
+        {
+            return true;
+        }
+
+        var width = Math.Max(1, _pendingWidth);
+        var height = Math.Max(1, _pendingHeight);
+        if (width == Width && height == Height)
+        {
+            _resizePending = false;
+            return true;
+        }
+
+        return ResizeCore(deviceResources, width, height);
+    }
+
+    public bool Resize(D3D11DeviceResources deviceResources, int width, int height) => ResizeCore(
+        deviceResources,
+        Math.Max(1, width),
+        Math.Max(1, height));
+
+    private bool ResizeCore(D3D11DeviceResources deviceResources, int width, int height)
+    {
+        if (!IsActive || _baseSwapChain == null || _target.OverlaySwapChain == null)
+        {
+            return false;
+        }
+
+        if (width == Width && height == Height)
+        {
+            _resizePending = false;
+            return true;
+        }
+
+        try
+        {
+            var resizeStart = Stopwatch.GetTimestamp();
+
+            resetVideoProcessorState();
+            releasePresentationRenderTargetView();
+            TargetTexture?.Dispose();
+            TargetTexture = null;
+            _target.ReleaseOverlayBackBuffer();
+
+            _ = _baseSwapChain.ResizeBuffers(
+                0,
+                (uint)width,
+                (uint)height,
+                Format.Unknown,
+                SwapChainFlags.None);
+
+            _ = _target.OverlaySwapChain.ResizeBuffers(
+                0,
+                (uint)width,
+                (uint)height,
+                Format.Unknown,
+                SwapChainFlags.None);
+
+            TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+            _target.ReacquireOverlayBackBuffer();
+            Width = width;
+            Height = height;
+            _resizePending = false;
+            _target.SetContentSize(width, height);
+            diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
+
+            if (configuration.EnableVerboseLogging)
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition swap-chain buffers resized at frame boundary to {width}x{height}");
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[VorticeD3D11] DirectComposition resize failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    public void Present(int liveResizeFlag, bool syncImmediate)
+    {
+        D3D11SwapChainPresenter.Present(
             _baseSwapChain,
             configuration,
             liveResizeFlag,
             syncImmediate,
             diagnostics);
 
+        Commit();
+        ReacquireBaseBackBuffer();
+    }
+
     public void Commit() => _target.Commit();
 
-    public void PresentOverlayAndCommit(uint syncInterval = 1)
+    public bool PresentOverlayAndCommit(uint syncInterval = 1)
     {
-        _ = (_target.OverlaySwapChain?.Present(syncInterval, (int)PresentFlags.None));
+        if (_target.OverlaySwapChain == null)
+            return false;
+
+        Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
+        if (result.Failure)
+        {
+            Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
+            return false;
+        }
+
         Commit();
+        ReacquireOverlayBackBuffer();
+        return true;
     }
 
     public void ReacquireOverlayBackBuffer() => _target.ReacquireOverlayBackBuffer();
+
+    private void ReacquireBaseBackBuffer()
+    {
+        if (_baseSwapChain == null)
+        {
+            return;
+        }
+
+        TargetTexture?.Dispose();
+        TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+    }
 
     public void ClearOverlayToTransparent(D3D11DeviceResources deviceResources)
     {
@@ -136,148 +263,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
     }
 
-    public bool UploadOverlayFrame(
-        D3D11DeviceResources deviceResources,
-        D3D11TextureUploadCache cpuUploadCache,
-        D3D11VideoProcessorPresenter videoProcessorPresenter,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        bool liveResize,
-        Action<double, int, int> recordUploadDiagnostics)
-    {
-        if (!IsActive
-            || deviceResources.Context == null
-            || _target.OverlaySwapChain == null
-            || width <= 0
-            || height <= 0
-            || stride < width * 4
-            || pixelData.IsEmpty)
-        {
-            if (configuration.EnableVerboseLogging)
-            {
-                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (early: active={IsActive}, ctx={deviceResources.Context != null}, swapChain={_target.OverlaySwapChain != null}, {width}x{height} stride={stride}, data={!pixelData.IsEmpty})");
-            }
-            return false;
-        }
-
-        if (configuration.EnableVerboseLogging)
-        {
-            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame entering: {width}x{height} into {Width}x{Height}, resize={liveResize}");
-        }
-
-        try
-        {
-            var uploadStart = Stopwatch.GetTimestamp();
-
-            // The overlay swap-chain is updated only when overlay graphics change, unlike the
-            // base video swap-chain which receives a new frame every video tick. With a flip-model
-            // composition swap-chain, stale back buffers can reappear if only one buffer is updated.
-            // Prime every overlay buffer with the same overlay frame.
-            for (var bufferIndex = 0; bufferIndex < D3D11SwapChainFactory.DirectCompositionBufferCount; bufferIndex++)
-            {
-                ReacquireOverlayBackBuffer();
-                if (_target.OverlayTexture == null)
-                {
-                    if (configuration.EnableVerboseLogging)
-                    {
-                        Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (null overlay texture at bufferIndex={bufferIndex}, resize={liveResize})");
-                    }
-                    return false;
-                }
-
-                if (width == Width && height == Height)
-                {
-                    deviceResources.Context.UpdateSubresource(pixelData, _target.OverlayTexture, 0, (uint)stride, 0, null);
-                    deviceResources.Context.Flush();
-                }
-                else
-                {
-                    ID3D11Device? device = deviceResources.Device;
-                    if (device == null || !cpuUploadCache.Ensure(device, width, height) || cpuUploadCache.Texture == null)
-                    {
-                        if (configuration.EnableVerboseLogging)
-                        {
-                            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit path failed, bufferIndex={bufferIndex}, resize={liveResize})");
-                        }
-                        return false;
-                    }
-
-                    deviceResources.Context.UpdateSubresource(pixelData, cpuUploadCache.Texture, 0, (uint)stride, 0, null);
-                    if (!BlitTextureToOverlay(deviceResources, videoProcessorPresenter, cpuUploadCache.Texture, width, height, 60.0))
-                    {
-                        if (configuration.EnableVerboseLogging)
-                        {
-                            Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (blit failed, bufferIndex={bufferIndex}, resize={liveResize})");
-                        }
-                        return false;
-                    }
-                }
-
-                var syncInterval = (bufferIndex == D3D11SwapChainFactory.DirectCompositionBufferCount - 1 && !liveResize) ? 1u : 0u;
-                Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
-                if (result.Failure)
-                {
-                    Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
-                    if (configuration.EnableVerboseLogging)
-                    {
-                        Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> false (Present failed at bufferIndex={bufferIndex}, resize={liveResize})");
-                    }
-                    return false;
-                }
-            }
-
-            ReacquireOverlayBackBuffer();
-            Commit();
-            recordUploadDiagnostics(D3D11PresentationDiagnostics.ElapsedMilliseconds(uploadStart), width, height);
-            if (configuration.EnableVerboseLogging)
-            {
-                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> true (commit done, {width}x{height}, resize={liveResize})");
-            }
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay upload failed: {ex.Message}");
-            if (configuration.EnableVerboseLogging)
-            {
-                Debug.WriteLine($"[CDG-DC-TRACE] UploadDirectCompositionOverlayFrame -> exception: {ex.Message}, resize={liveResize}");
-            }
-            return false;
-        }
-    }
-
-
-    private bool BlitTextureToOverlay(
-        D3D11DeviceResources deviceResources,
-        D3D11VideoProcessorPresenter videoProcessorPresenter,
-        ID3D11Texture2D sourceTexture,
-        int width,
-        int height,
-        double framesPerSecond)
-    {
-        if (_target.OverlayTexture == null || deviceResources.Context == null || width <= 0 || height <= 0 || Width <= 0 || Height <= 0)
-        {
-            return false;
-        }
-
-        // DirectComposition overlay frames are already prepared in overlay coordinates.
-        // Copy them into the alpha overlay swap-chain with Stretch.Fill; do not use the
-        // primary video display mode or background-media zoom policy for this target.
-        return videoProcessorPresenter.BlitTextureToPresentation(
-            deviceResources,
-            _target.OverlayTexture,
-            sourceTexture,
-            sourceArraySlice: 0,
-            width,
-            height,
-            framesPerSecond,
-            Width,
-            Height,
-            MediaCompositionStretchMode.Fill);
-    }
-
     public void Cleanup()
     {
         TargetTexture?.Dispose();
@@ -288,6 +273,9 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         Hwnd = IntPtr.Zero;
         Width = 0;
         Height = 0;
+        _pendingWidth = 0;
+        _pendingHeight = 0;
+        _resizePending = false;
     }
 
     public void Dispose() => Cleanup();

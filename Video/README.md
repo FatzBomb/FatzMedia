@@ -24,7 +24,6 @@ BASS and FFmpeg native DLLs are not included. The host app/test shell supplies t
 
 ## Active Docs
 
-- `STAGE10_CONTROL_OWNED_MULTI_SWAPCHAIN_PLAN.md`
+- `STAGE11_PRESENTATION_PLAN.md`
 - `docs/CURRENT_ARCHITECTURE.md`
-- `docs/STAGE10X_11_TODO.md`
 - `docs/VALIDATION.md`

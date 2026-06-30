@@ -138,9 +138,9 @@ internal sealed class DxCdgColorManager
     /// Updates the lookup table if changes have been made.
     /// This is called automatically but can be forced for immediate updates.
     /// </summary>
-    public void UpdateLutIfNeeded()
+    public bool UpdateLutIfNeeded()
     {
-        if (!_lutNeedsUpdate) return;
+        if (!_lutNeedsUpdate) return false;
 
         for (var i = 0; i < DxCdgConstants.ColorCount; i++)
         {
@@ -166,6 +166,7 @@ internal sealed class DxCdgColorManager
         }
 
         _lutNeedsUpdate = false;
+        return true;
     }
 
     /// <summary>

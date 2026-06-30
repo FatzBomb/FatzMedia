@@ -45,9 +45,7 @@ public sealed class SecondaryPresentationWindow : Window
     private void AttachOrResizeSurface()
     {
         if (_surfaceHost.WindowHandle == IntPtr.Zero)
-        {
             return;
-        }
 
         var pixelWidth = Math.Max(1, _surfaceHost.NativeClientWidth);
         var pixelHeight = Math.Max(1, _surfaceHost.NativeClientHeight);
@@ -110,7 +108,7 @@ public sealed class SecondaryPresentationWindow : Window
 
         protected override HandleRef BuildWindowCore(HandleRef hwndParent)
         {
-            (int hostWidth, int hostHeight) = GetCurrentClientSize();
+            (var hostWidth, var hostHeight) = GetCurrentClientSize();
             WindowHandle = NativeMethods.CreateWindowEx(
                 0,
                 "static",
@@ -133,9 +131,7 @@ public sealed class SecondaryPresentationWindow : Window
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
             if (hwnd.Handle != IntPtr.Zero)
-            {
                 _ = NativeMethods.DestroyWindow(hwnd.Handle);
-            }
 
             WindowHandle = IntPtr.Zero;
             NativeHandleChanged?.Invoke(this, EventArgs.Empty);
@@ -152,9 +148,7 @@ public sealed class SecondaryPresentationWindow : Window
             if (msg == WM_ERASEBKGND)
             {
                 if (wParam != IntPtr.Zero)
-                {
                     FillNativeBackground(hwnd, wParam);
-                }
 
                 handled = true;
                 return new IntPtr(1);
@@ -173,9 +167,7 @@ public sealed class SecondaryPresentationWindow : Window
             }
 
             if (msg is WM_SIZE or WM_WINDOWPOSCHANGED)
-            {
                 QueueBoundsChanged();
-            }
 
             handled = false;
             return IntPtr.Zero;
@@ -184,19 +176,15 @@ public sealed class SecondaryPresentationWindow : Window
         private void QueueBoundsChanged()
         {
             if (WindowHandle == IntPtr.Zero || _boundsUpdateQueued)
-            {
                 return;
-            }
 
             _boundsUpdateQueued = true;
             _ = Dispatcher.BeginInvoke(new Action(() =>
             {
                 _boundsUpdateQueued = false;
-                (int width, int height) = GetCurrentClientSize();
+                (var width, var height) = GetCurrentClientSize();
                 if (width == _lastHostWidth && height == _lastHostHeight)
-                {
                     return;
-                }
 
                 _lastHostWidth = width;
                 _lastHostHeight = height;
@@ -207,11 +195,9 @@ public sealed class SecondaryPresentationWindow : Window
         private (int width, int height) GetCurrentClientSize()
         {
             if (WindowHandle != IntPtr.Zero && NativeMethods.GetClientRect(WindowHandle, out NativeMethods.RECT rect))
-            {
                 return (
                     Math.Max(1, rect.Right - rect.Left),
                     Math.Max(1, rect.Bottom - rect.Top));
-            }
 
             return (
                 Math.Max(1, (int)Math.Round(ActualWidth)),
@@ -221,15 +207,11 @@ public sealed class SecondaryPresentationWindow : Window
         private static void FillNativeBackground(IntPtr hwnd, IntPtr hdc)
         {
             if (hwnd == IntPtr.Zero || hdc == IntPtr.Zero || !NativeMethods.GetClientRect(hwnd, out NativeMethods.RECT rect))
-            {
                 return;
-            }
 
-            IntPtr brush = NativeMethods.CreateSolidBrush(0);
+            var brush = NativeMethods.CreateSolidBrush(0);
             if (brush == IntPtr.Zero)
-            {
                 return;
-            }
 
             try
             {

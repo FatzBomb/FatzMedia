@@ -5,7 +5,8 @@
 - `dotnet restore FatzBombMedia.sln`
 - `dotnet build FatzBombMedia.sln --no-restore`
 - `./scripts/check-wpf-boundary.ps1`
-- Scan adapter project for renderer/pipeline/DxCdg/video-frame/D3D11 presentation references.
+- `./scripts/check-presentation-parity.ps1`
+- The boundary script also scans the WPF adapter for renderer/pipeline/DxCdg/video-frame/D3D11 presentation references.
 
 ## Player Smoke Tests
 
@@ -24,3 +25,8 @@
 13. Secondary/projector output receives the same final Core-composed frame.
 14. Closing secondary output while playing does not disturb primary output.
 15. Repeated media-type switches leave no stale layer artifacts.
+
+## Automated Architecture Checks
+
+- `check-wpf-boundary.ps1` verifies Core does not reference WPF UI/bitmap types and the WPF adapter does not reference renderer/pipeline/DxCdg/D3D11 presentation code.
+- `check-presentation-parity.ps1` verifies the source-level primary/secondary output contract: WPF primary and secondary surfaces both attach through neutral `MediaPresentationSurfaceDescriptor.NativeHwnd`, Core retains attached surfaces in one registry, and the D3D11 compositor captures/draws/presents all active final targets through one target plan.

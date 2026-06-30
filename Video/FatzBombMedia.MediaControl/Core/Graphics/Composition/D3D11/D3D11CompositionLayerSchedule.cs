@@ -29,50 +29,44 @@ internal readonly record struct D3D11CompositionLayerSchedule(
         0d,
         CanReuseRetainedOutput: false);
 
-    public static D3D11CompositionLayerSchedule From(MediaCompositionLayer? descriptor)
-    {
-        if (descriptor == null || !descriptor.IsVisible)
-        {
-            return None;
-        }
+    public static D3D11CompositionLayerSchedule From(MediaCompositionLayer? descriptor) => descriptor == null || !descriptor.IsVisible
+            ? None
+            : descriptor.SourceKind switch
+            {
+                MediaCompositionLayerSourceKind.D3D11Texture => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.SourceRate,
+                    D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
+                    descriptor.FramesPerSecond,
+                    CanReuseRetainedOutput: true),
 
-        return descriptor.SourceKind switch
-        {
-            MediaCompositionLayerSourceKind.D3D11Texture => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.SourceRate,
-                D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
-                descriptor.FramesPerSecond,
-                CanReuseRetainedOutput: true),
+                MediaCompositionLayerSourceKind.RetainedD3D11Texture => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.Static,
+                    D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
+                    0d,
+                    CanReuseRetainedOutput: true),
 
-            MediaCompositionLayerSourceKind.RetainedD3D11Texture => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.Static,
-                D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
-                0d,
-                CanReuseRetainedOutput: true),
+                MediaCompositionLayerSourceKind.BgraPixels => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.OnDemand,
+                    D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
+                    0d,
+                    CanReuseRetainedOutput: true),
 
-            MediaCompositionLayerSourceKind.BgraPixels => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.OnDemand,
-                D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
-                0d,
-                CanReuseRetainedOutput: true),
+                MediaCompositionLayerSourceKind.SolidColor => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.OnDemand,
+                    D3D11CompositionLayerRenderTargetKind.ImmediateFinalTarget,
+                    0d,
+                    CanReuseRetainedOutput: true),
 
-            MediaCompositionLayerSourceKind.SolidColor => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.OnDemand,
-                D3D11CompositionLayerRenderTargetKind.ImmediateFinalTarget,
-                0d,
-                CanReuseRetainedOutput: true),
+                MediaCompositionLayerSourceKind.DxCdgSnapshot => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.OnDemand,
+                    D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
+                    0d,
+                    CanReuseRetainedOutput: true),
 
-            MediaCompositionLayerSourceKind.DxCdgSnapshot => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.OnDemand,
-                D3D11CompositionLayerRenderTargetKind.RetainedOffscreenTexture,
-                0d,
-                CanReuseRetainedOutput: true),
-
-            _ => new D3D11CompositionLayerSchedule(
-                D3D11CompositionLayerUpdateCadence.OnDemand,
-                D3D11CompositionLayerRenderTargetKind.ImmediateFinalTarget,
-                0d,
-                CanReuseRetainedOutput: false)
-        };
-    }
+                _ => new D3D11CompositionLayerSchedule(
+                    D3D11CompositionLayerUpdateCadence.OnDemand,
+                    D3D11CompositionLayerRenderTargetKind.ImmediateFinalTarget,
+                    0d,
+                    CanReuseRetainedOutput: false)
+            };
 }

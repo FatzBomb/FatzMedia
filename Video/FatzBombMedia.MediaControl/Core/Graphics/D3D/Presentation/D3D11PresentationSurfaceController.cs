@@ -1,6 +1,4 @@
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Upload;
-using FatzBombMedia.MediaControl.Core.Graphics.D3D.Video;
 using Vortice.Direct3D11;
 using System.Diagnostics;
 
@@ -11,17 +9,27 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation;
 /// The renderer should coordinate frame upload/composition; this controller owns the
 /// bookkeeping that says which backend target texture is active and how large it is.
 /// </summary>
-internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBackendSet backends) : ID3D11PresentationSurfaceProvider
+internal sealed class D3D11PresentationSurfaceController(
+    D3D11PresentationBackendSet backends,
+    D3D11DeviceResources deviceResources) : ID3D11PresentationSurfaceProvider
 {
+    private static readonly long DirectCompositionResizeOverlaySplitSuppressionTicks = Math.Max(1, Stopwatch.Frequency / 4);
+
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
     public long TargetRevision { get; private set; }
     public IntPtr NativeHwnd { get; private set; }
+    private D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
+    private long _directCompositionOverlaySplitSuppressedUntil;
     public bool LastActivationCreated { get; private set; }
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsNativeHwndActive => backends.NativeHwnd.IsActive;
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
+    public bool ShouldSuppressDirectCompositionOverlaySplit =>
+        backends.DirectComposition.IsActive
+        && (backends.DirectComposition.HasPendingResize
+            || _directCompositionOverlaySplitSuppressedUntil > Stopwatch.GetTimestamp());
     public string PresentationBackend => backends.ActiveKind switch
     {
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
@@ -45,10 +53,10 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         bool applyPendingNativeResize,
         string? reason)
     {
-        if (applyPendingNativeResize && !ApplyPendingNativeHwndResizeIfNeeded())
+        if (applyPendingNativeResize && !ApplyPendingPresentationResizeIfNeeded())
         {
-            LogInvalidTarget(reason, "pending native HWND resize failed");
-            return Array.Empty<D3D11PresentationTargetSnapshot>();
+            LogInvalidTarget(reason, "pending presentation resize failed");
+            return [];
         }
 
         var snapshots = new List<D3D11PresentationTargetSnapshot>();
@@ -67,10 +75,14 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
 
             var isPrimary = ReferenceEquals(backend, primary);
             var targetId = isPrimary
-                ? FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11.D3D11CompositionTargetDescriptor.PrimaryFinalTargetId
+                ? Composition.D3D11.D3D11CompositionTargetDescriptor.PrimaryFinalTargetId
                 : candidate.TargetId;
 
-            if (isPrimary && (!ReferenceEquals(texture, TargetTexture) || width != Width || height != Height || backend.Kind != backends.ActiveKind))
+            if (isPrimary && (!ReferenceEquals(texture, TargetTexture)
+                || width != Width
+                || height != Height
+                || candidate.NativeHwnd != NativeHwnd
+                || backend.Kind != _activeBackendKind))
             {
                 Adopt(backend, candidate.NativeHwnd);
             }
@@ -83,7 +95,8 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
                 candidate.NativeHwnd,
                 backend.Kind,
                 candidate.BackendName,
-                isPrimary ? TargetRevision : backend.GetHashCode()));
+                isPrimary ? TargetRevision : backend.GetHashCode(),
+                Composition.D3D11.D3D11CompositionTargetKind.FinalPresentation));
         }
 
         if (snapshots.Count == 0)
@@ -92,6 +105,48 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         }
 
         return snapshots;
+    }
+
+    public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot snapshot)
+    {
+        snapshot = default;
+        if (!backends.DirectComposition.IsActive
+            || backends.DirectComposition.OverlayTexture == null
+            || backends.DirectComposition.Width <= 0
+            || backends.DirectComposition.Height <= 0)
+        {
+            return false;
+        }
+
+        snapshot = new D3D11PresentationTargetSnapshot(
+            D3D11PresentationBackendSet.DirectCompositionOverlayTargetId,
+            backends.DirectComposition.OverlayTexture,
+            backends.DirectComposition.Width,
+            backends.DirectComposition.Height,
+            backends.DirectComposition.Hwnd,
+            backends.DirectComposition.Kind,
+            "DirectCompositionOverlay",
+            TargetRevision,
+            Composition.D3D11.D3D11CompositionTargetKind.DirectCompositionOverlay);
+
+        return snapshot.IsValid;
+    }
+
+    public bool PresentDirectCompositionOverlay(bool isDisposed, bool liveResize) =>
+        !isDisposed
+        && backends.DirectComposition.IsActive
+        && backends.DirectComposition.PresentOverlayAndCommit(liveResize ? 0u : 1u);
+
+    public bool ClearDirectCompositionOverlay(
+        D3D11DeviceResources deviceResources,
+        bool isDisposed,
+        bool liveResize)
+    {
+        if (isDisposed || !backends.DirectComposition.IsActive)
+            return false;
+
+        backends.DirectComposition.ClearOverlayToTransparent(deviceResources);
+        return backends.DirectComposition.PresentOverlayAndCommit(liveResize ? 0u : 1u);
     }
 
     private static void LogInvalidTarget(string? reason, string detail)
@@ -114,6 +169,8 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         Width = 0;
         Height = 0;
         NativeHwnd = IntPtr.Zero;
+        _activeBackendKind = D3D11PresentationBackendKind.None;
+        _directCompositionOverlaySplitSuppressedUntil = 0;
         LastActivationCreated = false;
         TargetRevision++;
     }
@@ -204,7 +261,7 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
             return false;
         }
 
-        bool created = backends.CreateSecondaryNativeHwndTarget(deviceResources, targetId, hwnd, width, height);
+        var created = backends.CreateSecondaryNativeHwndTarget(deviceResources, targetId, hwnd, width, height);
         if (created && enableLogging)
         {
             Debug.WriteLine($"[VorticeD3D11] Created secondary native HWND compositor target '{targetId}' for {width}x{height}");
@@ -388,41 +445,26 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         return true;
     }
 
-    public void SetDirectCompositionOutputSize(bool isDisposed, int width, int height, bool liveResize)
+    public void QueueDirectCompositionResize(
+        bool isDisposed,
+        int width,
+        int height)
     {
-        if (isDisposed || !backends.DirectComposition.IsActive || Width <= 0 || Height <= 0)
+        if (isDisposed || !backends.DirectComposition.IsActive)
         {
             return;
         }
 
-        backends.DirectComposition.SetOutputSize(
-            width,
-            height,
-            Width,
-            Height,
-            liveResize);
-    }
+        var requestedWidth = Math.Max(1, width);
+        var requestedHeight = Math.Max(1, height);
+        if (requestedWidth != backends.DirectComposition.Width
+            || requestedHeight != backends.DirectComposition.Height)
+        {
+            SuppressDirectCompositionOverlaySplitForResize();
+        }
 
-    public bool UploadDirectCompositionOverlayFrame(
-        bool isDisposed,
-        D3D11DeviceResources deviceResources,
-        D3D11FrameUploadResources uploadResources,
-        D3D11VideoProcessorPresenter videoProcessorPresenter,
-        ReadOnlySpan<byte> pixelData,
-        int width,
-        int height,
-        int stride,
-        bool liveResize) =>
-            !isDisposed && backends.DirectComposition.IsActive && width > 0 && height > 0 && backends.DirectComposition.UploadOverlayFrame(
-                deviceResources,
-                uploadResources.TextureCache,
-                videoProcessorPresenter,
-                pixelData,
-                width,
-                height,
-                stride,
-                liveResize,
-                uploadResources.RecordUploadWithCurrentTarget);
+        backends.DirectComposition.QueueResize(requestedWidth, requestedHeight);
+    }
 
     public void ClearPresentedFrame(
         D3D11DeviceResources deviceResources,
@@ -503,6 +545,34 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         return resized;
     }
 
+    public bool ApplyPendingPresentationResizeIfNeeded()
+    {
+        var directCompositionResized = ApplyPendingDirectCompositionResizeIfNeeded();
+        var nativeHwndResized = ApplyPendingNativeHwndResizeIfNeeded();
+        return directCompositionResized && nativeHwndResized;
+    }
+
+    private bool ApplyPendingDirectCompositionResizeIfNeeded()
+    {
+        if (!backends.DirectComposition.IsActive)
+        {
+            return true;
+        }
+
+        var hadPendingResize = backends.DirectComposition.HasPendingResize;
+        var resized = backends.DirectComposition.ApplyPendingResizeIfNeeded(deviceResources);
+        if (resized && hadPendingResize)
+        {
+            SuppressDirectCompositionOverlaySplitForResize();
+        }
+
+        SyncDirectCompositionState();
+        return resized;
+    }
+
+    private void SuppressDirectCompositionOverlaySplitForResize() =>
+        _directCompositionOverlaySplitSuppressedUntil = Stopwatch.GetTimestamp() + DirectCompositionResizeOverlaySplitSuppressionTicks;
+
     private void SyncNativeHwndState()
     {
         if (backends.NativeHwnd.IsActive)
@@ -511,12 +581,30 @@ internal sealed class D3D11PresentationSurfaceController(D3D11PresentationBacken
         }
     }
 
+    private void SyncDirectCompositionState()
+    {
+        if (backends.DirectComposition.IsActive)
+        {
+            Adopt(backends.DirectComposition, backends.DirectComposition.Hwnd);
+        }
+    }
+
     private void Adopt(ID3D11PresentationBackend backend, IntPtr nativeHwnd = default)
     {
+        var structuralChange = Width != backend.Width
+            || Height != backend.Height
+            || NativeHwnd != nativeHwnd
+            || _activeBackendKind != backend.Kind;
+
         TargetTexture = backend.TargetTexture;
         Width = backend.Width;
         Height = backend.Height;
         NativeHwnd = nativeHwnd;
-        TargetRevision++;
+        _activeBackendKind = backend.Kind;
+
+        if (structuralChange)
+        {
+            TargetRevision++;
+        }
     }
 }

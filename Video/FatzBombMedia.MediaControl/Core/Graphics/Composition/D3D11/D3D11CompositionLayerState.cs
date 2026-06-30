@@ -2,6 +2,7 @@ using System.Diagnostics;
 using FatzBombMedia.MediaControl.Core.DxCdg;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using Vortice.Mathematics;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 
@@ -16,14 +17,9 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 /// future offscreen-target ownership and scheduling metadata without changing
 /// current presentation behavior.
 /// </summary>
-internal sealed class D3D11CompositionLayerState : IDisposable
+internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposable
 {
-    public D3D11CompositionLayerState(MediaCompositionLayerId id)
-    {
-        Id = id;
-    }
-
-    public MediaCompositionLayerId Id { get; }
+    public MediaCompositionLayerId Id { get; } = id;
     public MediaCompositionLayer? Descriptor { get; private set; }
     public MediaCompositionLayerDirtyFlags DirtyFlags { get; private set; } = MediaCompositionLayerDirtyFlags.None;
     public long LastCapturedSequence { get; private set; } = -1;
@@ -49,8 +45,8 @@ internal sealed class D3D11CompositionLayerState : IDisposable
 
     public D3D11CompositionLayerUpdate CreateUpdatePlanEntry()
     {
-        var descriptor = Descriptor;
-        var action = D3D11CompositionLayerUpdateAction.None;
+        MediaCompositionLayer? descriptor = Descriptor;
+        D3D11CompositionLayerUpdateAction action = D3D11CompositionLayerUpdateAction.None;
 
         if (WasDeactivated)
         {
@@ -131,9 +127,7 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         // Keep the retained descriptor metadata, but do not retain transient frame payloads.
         Descriptor = descriptor.WithoutTransientPayload();
         if (descriptor.StretchMode != MediaCompositionStretchMode.Auto)
-        {
             StretchMode = descriptor.StretchMode;
-        }
 
         if (descriptor.SourceKind == MediaCompositionLayerSourceKind.SolidColor)
         {
@@ -148,23 +142,16 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         }
     }
 
-    public bool UploadBgraPixels(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer)
-    {
-        if (layer.SourceKind != MediaCompositionLayerSourceKind.BgraPixels || layer.BgraPixels.IsEmpty)
-        {
-            return false;
-        }
-
-        return UploadBgraPixels(
-            device,
-            context,
-            layer.BgraPixels.Span,
-            layer.Width,
-            layer.Height,
-            layer.Stride,
-            layer.StretchMode,
-            layer.Revision);
-    }
+    public bool UploadBgraPixels(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer) =>
+        layer.SourceKind == MediaCompositionLayerSourceKind.BgraPixels && !layer.BgraPixels.IsEmpty && UploadBgraPixels(
+                device,
+                context,
+                layer.BgraPixels.Span,
+                layer.Width,
+                layer.Height,
+                layer.Stride,
+                layer.StretchMode,
+                layer.Revision);
 
     public bool UploadBgraPixels(
         ID3D11Device device,
@@ -177,23 +164,17 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         long revision)
     {
         if (bgraPixels.IsEmpty || width <= 0 || height <= 0 || stride < width * 4)
-        {
             return false;
-        }
 
         var required = checked(stride * height);
         if (bgraPixels.Length < required)
-        {
             return false;
-        }
 
         try
         {
             EnsureTexture(device, width, height, stride, BindFlags.ShaderResource | BindFlags.RenderTarget);
             if (Texture == null)
-            {
                 return false;
-            }
 
             context.UpdateSubresource(bgraPixels[..required], Texture, 0, (uint)stride, 0, null);
             MarkUploaded(revision);
@@ -214,9 +195,7 @@ internal sealed class D3D11CompositionLayerState : IDisposable
     public bool EnsureRenderTargetTexture(ID3D11Device device, int width, int height, int stride, MediaCompositionStretchMode stretchMode)
     {
         if (width <= 0 || height <= 0 || stride < width * 4)
-        {
             return false;
-        }
 
         try
         {
@@ -232,40 +211,29 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         }
     }
 
-    public bool UploadDxCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer)
-    {
-        if (layer.SourceKind != MediaCompositionLayerSourceKind.DxCdgSnapshot || layer.CdgSnapshot == null)
-        {
-            return false;
-        }
-
-        return UploadDxCdgSnapshot(device, context, layer.CdgSnapshot);
-    }
+    public bool UploadDxCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, MediaCompositionLayer layer) =>
+        layer.SourceKind == MediaCompositionLayerSourceKind.DxCdgSnapshot && layer.CdgSnapshot != null && UploadDxCdgSnapshot(device, context, layer.CdgSnapshot);
 
     public bool UploadDxCdgSnapshot(ID3D11Device device, ID3D11DeviceContext context, DxCdgRenderSnapshot snapshot)
     {
         if (snapshot.ColorIndices.Length < DxCdgConstants.TotalPixels
             || snapshot.PaletteArgb.Length < DxCdgConstants.ColorCount)
-        {
             return false;
-        }
 
         try
         {
             EnsureDxCdgTextures(device);
             if (!HasDxCdgResources || CdgIndexTexture == null || CdgPaletteTexture == null)
-            {
                 return false;
-            }
 
             if (UploadedRevision != snapshot.Revision)
             {
                 ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
-                context.UpdateSubresource(indices[..DxCdgConstants.TotalPixels], CdgIndexTexture, 0, DxCdgConstants.FrameWidth, 0, null);
+                UploadDxCdgIndexRegions(context, CdgIndexTexture, snapshot, indices);
                 MarkUploaded(snapshot.Revision);
             }
 
-            if (CdgPaletteUploadedRevision != snapshot.Revision)
+            if (CdgPaletteUploadedRevision != snapshot.PaletteRevision)
             {
                 Span<byte> paletteBgra = stackalloc byte[DxCdgConstants.ColorCount * 4];
                 ReadOnlySpan<int> palette = snapshot.PaletteArgb.Span;
@@ -280,7 +248,7 @@ internal sealed class D3D11CompositionLayerState : IDisposable
                 }
 
                 context.UpdateSubresource(paletteBgra, CdgPaletteTexture, 0, DxCdgConstants.ColorCount * 4, 0, null);
-                CdgPaletteUploadedRevision = snapshot.Revision;
+                CdgPaletteUploadedRevision = snapshot.PaletteRevision;
             }
 
             TextureWidth = DxCdgConstants.FrameWidth;
@@ -322,16 +290,12 @@ internal sealed class D3D11CompositionLayerState : IDisposable
 
         var needsUpload = NeedsUpload;
         var needsRender = NeedsRender;
-        var remainingFlags = MediaCompositionLayerDirtyFlags.None;
+        MediaCompositionLayerDirtyFlags remainingFlags = MediaCompositionLayerDirtyFlags.None;
         if (needsUpload)
-        {
             remainingFlags |= MediaCompositionLayerDirtyFlags.UploadRequired;
-        }
 
         if (needsRender)
-        {
             remainingFlags |= MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         DirtyFlags = remainingFlags;
     }
@@ -343,9 +307,7 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         Descriptor = null;
         DirtyFlags = wasActive ? MediaCompositionLayerDirtyFlags.Deactivated : MediaCompositionLayerDirtyFlags.None;
         if (captureSequence >= 0)
-        {
             LastCapturedSequence = captureSequence;
-        }
 
         UploadedRevision = -1;
         RenderedRevision = -1;
@@ -358,92 +320,64 @@ internal sealed class D3D11CompositionLayerState : IDisposable
         OffscreenRenderTarget.Release();
     }
 
-    public string LifecycleSummary
-    {
-        get
-        {
-            if (IsActive && Descriptor != null)
-            {
-                return $"{Descriptor}; dirty={DirtyFlags}; uploaded={UploadedRevision}; rendered={RenderedRevision}; schedule={Schedule}; {OffscreenRenderTarget}; capture={LastCapturedSequence}";
-            }
-
-            return WasDeactivated
+    public string LifecycleSummary =>
+        IsActive && Descriptor != null
+            ? $"{Descriptor}; dirty={DirtyFlags}; uploaded={UploadedRevision}; rendered={RenderedRevision}; schedule={Schedule}; {OffscreenRenderTarget}; capture={LastCapturedSequence}"
+            : WasDeactivated
                 ? $"{Id}; dirty={DirtyFlags}; capture={LastCapturedSequence}"
                 : $"{Id}; inactive";
-        }
-    }
 
     public void Dispose() => Clear();
 
     private static MediaCompositionLayerDirtyFlags ComputeDirtyFlags(MediaCompositionLayer? previous, MediaCompositionLayer current)
     {
         if (previous == null)
-        {
             return MediaCompositionLayerDirtyFlags.Activated
                 | MediaCompositionLayerDirtyFlags.ContentChanged
                 | MediaCompositionLayerDirtyFlags.SizeChanged
                 | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
-        var flags = MediaCompositionLayerDirtyFlags.None;
+        MediaCompositionLayerDirtyFlags flags = MediaCompositionLayerDirtyFlags.None;
 
         if (previous.SourceKind != current.SourceKind)
-        {
             flags |= MediaCompositionLayerDirtyFlags.SourceKindChanged
                 | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
-        if (previous.Revision != current.Revision
-            || previous.D3D11TexturePointer != current.D3D11TexturePointer
-            || previous.D3D11ArraySlice != current.D3D11ArraySlice)
-        {
+        if (previous.Revision != current.Revision || previous.D3D11TexturePointer != current.D3D11TexturePointer || previous.D3D11ArraySlice != current.D3D11ArraySlice)
             flags |= MediaCompositionLayerDirtyFlags.ContentChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (previous.Width != current.Width || previous.Height != current.Height)
-        {
             flags |= MediaCompositionLayerDirtyFlags.SizeChanged
                 | MediaCompositionLayerDirtyFlags.ResourceAllocationChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (previous.Stride != current.Stride)
-        {
             flags |= MediaCompositionLayerDirtyFlags.StrideChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (previous.StretchMode != current.StretchMode)
-        {
             flags |= MediaCompositionLayerDirtyFlags.StretchChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (!NearlyEquals(previous.FramesPerSecond, current.FramesPerSecond))
-        {
             flags |= MediaCompositionLayerDirtyFlags.FrameRateChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (!NearlyEquals(previous.Opacity, current.Opacity))
-        {
             flags |= MediaCompositionLayerDirtyFlags.OpacityChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         if (previous.ColorArgb != current.ColorArgb)
-        {
             flags |= MediaCompositionLayerDirtyFlags.ColorChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
-        }
 
         return flags;
     }
@@ -524,6 +458,45 @@ internal sealed class D3D11CompositionLayerState : IDisposable
 
         CdgPaletteTexture = device.CreateTexture2D(in paletteDescription);
         CdgPaletteShaderResourceView = device.CreateShaderResourceView(CdgPaletteTexture);
+    }
+
+    private static void UploadDxCdgIndexRegions(
+        ID3D11DeviceContext context,
+        ID3D11Texture2D indexTexture,
+        DxCdgRenderSnapshot snapshot,
+        ReadOnlySpan<byte> indices)
+    {
+        if (!snapshot.HasDirtyRegions || snapshot.DirtyRects.Contains(DxCdgDirtyRect.FullFrame))
+        {
+            context.UpdateSubresource(indices[..DxCdgConstants.TotalPixels], indexTexture, 0, DxCdgConstants.FrameWidth, 0, null);
+            return;
+        }
+
+        foreach (DxCdgDirtyRect dirtyRect in snapshot.DirtyRects)
+        {
+            DxCdgDirtyRect rect = dirtyRect.ClampToFrame();
+            if (rect.IsEmpty)
+            {
+                continue;
+            }
+
+            var sourceOffset = (rect.Y * DxCdgConstants.FrameWidth) + rect.X;
+            var destinationBox = new Box(
+                rect.X,
+                rect.Y,
+                0,
+                rect.X + rect.Width,
+                rect.Y + rect.Height,
+                1);
+
+            context.UpdateSubresource(
+                indices[sourceOffset..],
+                indexTexture,
+                0,
+                DxCdgConstants.FrameWidth,
+                0,
+                destinationBox);
+        }
     }
 
     private void ReleaseResources()

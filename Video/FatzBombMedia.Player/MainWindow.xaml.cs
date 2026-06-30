@@ -68,7 +68,6 @@ public partial class MainWindow : Window
         };
 
         if (dialog.ShowDialog(this) == true)
-        {
             try
             {
                 await _viewModel.LoadMediaAsync(dialog.FileName);
@@ -77,7 +76,6 @@ public partial class MainWindow : Window
             {
                 _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-        }
     }
 
     private void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -96,14 +94,7 @@ public partial class MainWindow : Window
 
     private void ProjectorButton_Click(object sender, RoutedEventArgs e)
     {
-        if (MediaSurface.IsSecondaryOutputOpen())
-        {
-            _ = MediaSurface.CloseSecondaryOutput();
-        }
-        else
-        {
-            _ = MediaSurface.ShowSecondaryOutput();
-        }
+        _ = MediaSurface.IsSecondaryOutputOpen() ? MediaSurface.CloseSecondaryOutput() : MediaSurface.ShowSecondaryOutput();
 
         UpdateProjectorButtonVisual();
         e.Handled = true;
@@ -114,11 +105,9 @@ public partial class MainWindow : Window
     private void UpdateProjectorButtonVisual()
     {
         if (ProjectorButton == null)
-        {
             return;
-        }
 
-        bool isOpen = MediaSurface.IsSecondaryOutputOpen();
+        var isOpen = MediaSurface.IsSecondaryOutputOpen();
         ProjectorButton.ToolTip = isOpen
             ? "Close secondary/projector output validation"
             : "Open secondary/projector output validation";

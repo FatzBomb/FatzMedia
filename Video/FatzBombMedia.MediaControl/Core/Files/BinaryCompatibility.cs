@@ -1,4 +1,3 @@
-using System.IO;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 

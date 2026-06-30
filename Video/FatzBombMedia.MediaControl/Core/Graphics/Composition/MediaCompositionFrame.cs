@@ -35,6 +35,7 @@ public readonly partial record struct MediaCompositionFrame
 
     public uint WashArgb { get; init; }
     public DxCdgRenderSnapshot? CdgOverlay { get; init; }
+    public bool SuppressCdgOverlayDraw { get; init; }
 
     public bool RetainedRefresh { get; init; }
     public string Reason { get; init; }
@@ -98,6 +99,7 @@ public readonly partial record struct MediaCompositionFrame
             UseRetainedBackground = false,
             WashArgb = 0,
             CdgOverlay = null,
+            SuppressCdgOverlayDraw = false,
             RetainedRefresh = false,
             Reason = reason
         };

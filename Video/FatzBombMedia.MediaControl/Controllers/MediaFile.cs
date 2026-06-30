@@ -1,4 +1,3 @@
-using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 
 namespace FatzBombMedia.MediaControl.Controllers;
@@ -74,9 +73,7 @@ public sealed class MediaFile
     {
         var success = LoadCore(source, backgroundSource, ignoreSidecar);
         if (success && PlayOnLoad)
-        {
             await HandlePlayOnLoadAsync();
-        }
 
         return success;
     }
@@ -115,9 +112,7 @@ public sealed class MediaFile
     {
         var success = LoadCore(source, backgroundSource, ignoreSidecar);
         if (success && PlayOnLoad)
-        {
             _ = Task.Run(HandlePlayOnLoadAsync);
-        }
 
         return success;
     }
@@ -140,13 +135,9 @@ public sealed class MediaFile
             // Start through MediaControls so renderer coordination and loop monitoring are active.
             var playSuccess = _mediaControls?.Play() ?? _mediaEngine.Play();
             if (playSuccess)
-            {
                 System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Playback started successfully");
-            }
             else
-            {
                 System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Failed to start playback");
-            }
         }
         catch (Exception ex)
         {
@@ -180,14 +171,10 @@ public sealed class MediaFile
         {
             // Wait for gain change or timeout
             while (!gainChanged && !audioEngine.IsNormalizationReady && DateTime.UtcNow - startTime < timeout)
-            {
                 await Task.Delay(50); // Check every 50ms
-            }
 
             if (!gainChanged)
-            {
                 System.Diagnostics.Debug.WriteLine("[MediaFile] Quick normalization timeout - proceeding with playback");
-            }
         }
         finally
         {
@@ -255,47 +242,30 @@ public sealed class MediaFile
     private MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
         if (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Image))
-        {
             return null;
-        }
 
         MediaBackgroundCandidate? sidecar = null;
         if (!ignoreSidecar && source.IsFile && _mediaEngine.BackgroundAutoDetect && _archiveService != null)
-        {
             sidecar = MediaBackgroundResolver.Resolve(source.FilePath!, _archiveService, _mediaEngine.Content);
-        }
 
-        if (sidecar != null)
-        {
-            return sidecar;
-        }
-
-        return ResolveExplicitBackground(backgroundSource);
+        return sidecar ?? ResolveExplicitBackground(backgroundSource);
     }
 
     private static MediaBackgroundCandidate? ResolveExplicitBackground(MediaInputSource? backgroundSource)
     {
         if (backgroundSource == null)
-        {
             return null;
-        }
 
         if (backgroundSource.IsFile)
         {
-            string path = backgroundSource.FilePath!;
-            if (!File.Exists(path))
-            {
-                return null;
-            }
-
-            if (FatzBombMedia.MediaControl.Core.Files.FileTypes.IsVideo(path))
-            {
-                return MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Video, path);
-            }
-
-            return FatzBombMedia.MediaControl.Core.Files.FileTypes.IsImage(path)
-                ? MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Image, path)
-                : null;
+            var path = backgroundSource.FilePath;
+            return !File.Exists(path)
+                ? null
+                : Core.Files.FileTypes.IsVideo(path)
+                    ? MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Video, path)
+                    : Core.Files.FileTypes.IsImage(path)
+                        ? MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Image, path)
+                        : null;
         }
 
         return backgroundSource.IsBgraImage

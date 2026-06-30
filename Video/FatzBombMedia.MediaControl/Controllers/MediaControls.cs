@@ -33,6 +33,11 @@ public sealed class MediaControls
     public event EventHandler? MediaEnded;
 
     /// <summary>
+    /// Event raised when media playback starts.
+    /// </summary>
+    public event EventHandler? MediaStarted;
+
+    /// <summary>
     /// Event raised when media playback stops.
     /// </summary>
     public event EventHandler? MediaStopped;
@@ -53,6 +58,7 @@ public sealed class MediaControls
             // Start rendering for video/CDG sync
             StartRendering();
 
+            MediaStarted?.Invoke(this, EventArgs.Empty);
             System.Diagnostics.Debug.WriteLine("[MediaControls] Playback started");
         }
         return success;
@@ -159,6 +165,7 @@ public sealed class MediaControls
                 if (_mediaEngine.Play())
                 {
                     StartRendering();
+                    MediaStarted?.Invoke(this, EventArgs.Empty);
                 }
             }
             else

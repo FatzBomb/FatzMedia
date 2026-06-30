@@ -1,7 +1,6 @@
+using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Buffers;
 using System.Diagnostics;
-using System.IO;
-using FatzBombMedia.MediaControl.Core.Abstractions;
 
 namespace FatzBombMedia.MediaControl.Core.DxCdg;
 
@@ -30,9 +29,7 @@ public sealed class DxCdgEngine : ICdgEngine, IDxCdgSnapshotSource, IDisposable
         get
         {
             lock (_renderLock)
-            {
                 return _backgroundWashArgb;
-            }
         }
     }
 

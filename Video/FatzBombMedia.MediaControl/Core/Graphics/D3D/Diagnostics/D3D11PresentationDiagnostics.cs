@@ -11,6 +11,7 @@ internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration conf
 {
     private const int UploadFrameInterval = 120;
     private const int NativePresentFrameInterval = 120;
+    private const int NativeResizeFrameInterval = 30;
     private int _uploadFrames;
     private double _uploadMs;
     private double _uploadMaxMs;
@@ -18,6 +19,12 @@ internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration conf
     private int _nativePresentFrames;
     private double _nativePresentMs;
     private double _nativePresentMaxMs;
+
+    private int _nativeResizeFrames;
+    private double _nativeResizeMs;
+    private double _nativeResizeMaxMs;
+    private int _lastNativeResizeWidth;
+    private int _lastNativeResizeHeight;
 
     public void RecordUpload(double uploadMs, int sourceWidth, int sourceHeight, int surfaceWidth, int surfaceHeight)
     {
@@ -65,6 +72,32 @@ internal sealed class D3D11PresentationDiagnostics(MediaPlayerConfiguration conf
         _nativePresentFrames = 0;
         _nativePresentMs = 0;
         _nativePresentMaxMs = 0;
+    }
+
+    public void RecordNativeResize(double resizeMs, int width, int height)
+    {
+        _nativeResizeFrames++;
+        _nativeResizeMs += resizeMs;
+        _nativeResizeMaxMs = Math.Max(_nativeResizeMaxMs, resizeMs);
+        _lastNativeResizeWidth = width;
+        _lastNativeResizeHeight = height;
+
+        if (_nativeResizeFrames < NativeResizeFrameInterval)
+        {
+            return;
+        }
+
+        if (configuration.EnablePerformanceLogging)
+        {
+            Debug.WriteLine(
+                $"[VorticeD3D11:ResizePerf] resizes={_nativeResizeFrames}, " +
+                $"avgResizeBuffers={_nativeResizeMs / _nativeResizeFrames:F2}ms, " +
+                $"maxResizeBuffers={_nativeResizeMaxMs:F2}ms, last={_lastNativeResizeWidth}x{_lastNativeResizeHeight}");
+        }
+
+        _nativeResizeFrames = 0;
+        _nativeResizeMs = 0;
+        _nativeResizeMaxMs = 0;
     }
 
     public static double ElapsedMilliseconds(long startTimestamp) => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;

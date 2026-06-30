@@ -223,9 +223,7 @@ internal sealed class AudioPipeline : IDisposable
     private void OnAudioPlaybackEnded(object? sender, EventArgs e)
     {
         if (!IsOpen)
-        {
             return;
-        }
 
         State.SetPosition(DurationSeconds);
         State.SetPlaybackState(MediaPlayerState.Stopped);

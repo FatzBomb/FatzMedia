@@ -1,7 +1,6 @@
-using FFmpeg.AutoGen;
 using FatzBombMedia.MediaControl.Core.Files;
+using FFmpeg.AutoGen;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl;

@@ -39,18 +39,19 @@ public sealed class Player : MediaControlPlayer
     {
     }
 
+    public static new Task<Player> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
+        Task.Run(() => new Player(configuration, nativeLibraryPaths));
+
     public bool Load(ImageSource source, bool ignoreSidecar = false) =>
         Load(ToMediaInputSource(source), ignoreSidecar);
 
     public bool Load(string path, ImageSource? backgroundSource, bool ignoreSidecar = false) =>
-        Load(
-            MediaInputSource.FromFile(path),
+        Load(MediaInputSource.FromFile(path),
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
     public bool Load(ImageSource source, ImageSource? backgroundSource, bool ignoreSidecar = false) =>
-        Load(
-            ToMediaInputSource(source),
+        Load(ToMediaInputSource(source),
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
@@ -58,14 +59,12 @@ public sealed class Player : MediaControlPlayer
         LoadAsync(ToMediaInputSource(source), ignoreSidecar);
 
     public Task<bool> LoadAsync(string path, ImageSource? backgroundSource, bool ignoreSidecar = false) =>
-        LoadAsync(
-            MediaInputSource.FromFile(path),
+        LoadAsync(MediaInputSource.FromFile(path),
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
     public Task<bool> LoadAsync(ImageSource source, ImageSource? backgroundSource, bool ignoreSidecar = false) =>
-        LoadAsync(
-            ToMediaInputSource(source),
+        LoadAsync(ToMediaInputSource(source),
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
@@ -74,22 +73,18 @@ public sealed class Player : MediaControlPlayer
         ArgumentNullException.ThrowIfNull(source);
 
         if (source is not BitmapSource bitmapSource)
-        {
             throw new NotSupportedException($"ImageSource type {source.GetType().Name} cannot be converted to a Core media input source. Use a BitmapSource-compatible image or pass MediaInputSource directly.");
-        }
 
         BitmapSource bgraSource = bitmapSource.Format == PixelFormats.Bgra32
             ? bitmapSource
             : new FormatConvertedBitmap(bitmapSource, PixelFormats.Bgra32, null, 0);
 
         if (bgraSource.CanFreeze && !bgraSource.IsFrozen)
-        {
             bgraSource.Freeze();
-        }
 
-        int width = bgraSource.PixelWidth;
-        int height = bgraSource.PixelHeight;
-        int stride = checked(width * 4);
+        var width = bgraSource.PixelWidth;
+        var height = bgraSource.PixelHeight;
+        var stride = checked(width * 4);
         var pixels = new byte[checked(stride * height)];
         bgraSource.CopyPixels(pixels, stride, 0);
         return MediaInputSource.FromOwnedBgra32Image(pixels, width, height, stride, "WPF ImageSource");

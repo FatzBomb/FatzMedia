@@ -13,10 +13,9 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     private readonly Dictionary<MediaCompositionLayerId, D3D11CompositionLayerState> _layers = [];
     private readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
     private readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
-    private long _captureSequence;
 
     public IReadOnlyCollection<D3D11CompositionLayerState> Layers => _layers.Values;
-    public long CaptureSequence => _captureSequence;
+    public long CaptureSequence { get; private set; }
     public bool LastCaptureHadVisibleLayers { get; private set; }
     public bool LastCaptureIsClearOnly => !LastCaptureHadVisibleLayers;
     public bool LastCaptureDeactivatedLayers => _scratchDeactivatedIds.Count > 0;
@@ -32,12 +31,12 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     {
         _scratchActiveIds.Clear();
         _scratchDeactivatedIds.Clear();
-        _captureSequence++;
+        CaptureSequence++;
 
         foreach (MediaCompositionLayer layer in frame.EnumerateLayers())
         {
             _scratchActiveIds.Add(layer.Id);
-            GetOrCreate(layer.Id).Update(layer, _captureSequence);
+            GetOrCreate(layer.Id).Update(layer, CaptureSequence);
         }
 
         LastCaptureHadVisibleLayers = _scratchActiveIds.Count > 0;
@@ -48,11 +47,9 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
             {
                 D3D11CompositionLayerState state = _layers[existingId];
                 var wasActive = state.IsActive || state.HasRetainedResources;
-                state.Clear(_captureSequence);
+                state.Clear(CaptureSequence);
                 if (wasActive)
-                {
                     _scratchDeactivatedIds.Add(existingId);
-                }
             }
         }
     }
@@ -69,7 +66,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
             .Select(static layer => layer.CreateUpdatePlanEntry());
 
         return new D3D11CompositionLayerUpdatePlan(
-            _captureSequence,
+            CaptureSequence,
             LastCaptureIsClearOnly,
             LastCaptureDeactivatedLayers,
             updates);
@@ -79,19 +76,15 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     public void MarkPlanConsumed()
     {
         foreach (D3D11CompositionLayerState layer in _layers.Values)
-        {
             layer.MarkPlanConsumed();
-        }
 
         foreach (MediaCompositionLayerId inactiveId in _layers
-                     .Where(static pair => !pair.Value.IsActive && !pair.Value.HasRetainedResources && !pair.Value.WasDeactivated)
-                     .Select(static pair => pair.Key)
-                     .ToArray())
-        {
-            _layers.Remove(inactiveId);
-        }
+            .Where(static pair => !pair.Value.IsActive && !pair.Value.HasRetainedResources && !pair.Value.WasDeactivated)
+            .Select(static pair => pair.Key)
+            .ToArray())
+            _ = _layers.Remove(inactiveId);
 
-        _scratchDeactivatedIds.RemoveAll(id => !_layers.TryGetValue(id, out D3D11CompositionLayerState? state) || !state.WasDeactivated);
+        _ = _scratchDeactivatedIds.RemoveAll(id => !_layers.TryGetValue(id, out D3D11CompositionLayerState? state) || !state.WasDeactivated);
     }
 
     public string ActiveLayerSummary
@@ -117,43 +110,28 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
             var active = ActiveLayerStateSummary;
             var deactivated = LastDeactivatedLayerSummary;
 
-            if (string.IsNullOrWhiteSpace(active) && string.IsNullOrWhiteSpace(deactivated))
-            {
-                return LastCaptureHadVisibleLayers ? "active=none" : "active=none; clear-only";
-            }
-
-            if (string.IsNullOrWhiteSpace(deactivated))
-            {
-                return $"active={active}";
-            }
-
-            if (string.IsNullOrWhiteSpace(active))
-            {
-                return $"active=none; deactivated={deactivated}";
-            }
-
-            return $"active={active}; deactivated={deactivated}";
+            return string.IsNullOrWhiteSpace(active) && string.IsNullOrWhiteSpace(deactivated)
+                ? LastCaptureHadVisibleLayers ? "active=none" : "active=none; clear-only"
+                : string.IsNullOrWhiteSpace(deactivated)
+                    ? $"active={active}"
+                    : string.IsNullOrWhiteSpace(active) ? $"active=none; deactivated={deactivated}" : $"active={active}; deactivated={deactivated}";
         }
     }
 
     public void Reset()
     {
         foreach (D3D11CompositionLayerState layer in _layers.Values)
-        {
             layer.Clear();
-        }
 
         _scratchDeactivatedIds.Clear();
         LastCaptureHadVisibleLayers = false;
-        _captureSequence = 0;
+        CaptureSequence = 0;
     }
 
     public void Dispose()
     {
         foreach (D3D11CompositionLayerState layer in _layers.Values)
-        {
             layer.Dispose();
-        }
 
         _layers.Clear();
         _scratchActiveIds.Clear();

@@ -136,17 +136,16 @@
         </Grid.RowDefinitions>
 
         <!-- Double-click this viewport to enter/exit full screen. In full screen, BottomChrome becomes an auto-hide overlay. -->
-        <Border x:Name="MediaViewportBorder"
+        <Border x:Name="MediaViewportBorder" Background="Blue"
                 Grid.Row="0"
                 Margin="12,12,12,8"
-                Background="{StaticResource ViewportBrush}"
                 BorderBrush="#151C24"
                 BorderThickness="1"
                 CornerRadius="12"
                 Padding="8"
                 ClipToBounds="True"
                 MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
-            <fbm:MediaSurface x:Name="MediaSurface"
+            <fbm:MediaSurface x:Name="MediaSurface" Background="Transparent"
                                       Player="{Binding Player}"
                                       VideoDisplayMode="{Binding VideoDisplayMode}"
                                       BitmapScalingMode="{Binding BitmapScalingMode}"

@@ -67,34 +67,23 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         }
     }
 
-    public void SetOutputSize(int width, int height, int contentWidth, int contentHeight, bool liveResize)
+    public void SetContentSize(int contentWidth, int contentHeight)
     {
         if (!IsActive || _compositionDevice == null || contentWidth <= 0 || contentHeight <= 0)
         {
             return;
         }
 
-        width = Math.Max(1, width);
-        height = Math.Max(1, height);
-        if (_outputWidth == width && _outputHeight == height)
-        {
-            return;
-        }
-
-        if (configuration.EnableVerboseLogging)
-        {
-            Debug.WriteLine($"[CDG-DC-TRACE] SetDirectCompositionOutputSize: {_outputWidth}x{_outputHeight} -> {width}x{height}, content={contentWidth}x{contentHeight}, resize={liveResize}");
-        }
-
-        _outputWidth = width;
-        _outputHeight = height;
+        _outputWidth = Math.Max(1, contentWidth);
+        _outputHeight = Math.Max(1, contentHeight);
         ApplyTransforms(contentWidth, contentHeight);
         _ = _compositionDevice.Commit();
+    }
 
-        if (configuration.EnableVerboseLogging)
-        {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition visual output resized by transform: content={contentWidth}x{contentHeight}, output={width}x{height}");
-        }
+    public void ReleaseOverlayBackBuffer()
+    {
+        OverlayTexture?.Dispose();
+        OverlayTexture = null;
     }
 
     public void ReacquireOverlayBackBuffer()
@@ -104,7 +93,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
             return;
         }
 
-        OverlayTexture?.Dispose();
+        ReleaseOverlayBackBuffer();
         OverlayTexture = OverlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 

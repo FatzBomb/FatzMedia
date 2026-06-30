@@ -41,28 +41,11 @@ internal sealed class PlaybackCoordinator : IDisposable
     /// coordinator's lifetime. See IVideoEngine.SetDisplayRefreshRate for details.
     /// </summary>
     public void SetDisplayRefreshRate(double? refreshHz) => _session.Video?.SetDisplayRefreshRate(refreshHz);
-    public IAudioEngine ActiveAudio
-    {
-        get
-        {
-            if (_session.Video?.IsOpen == true)
-            {
-                return _session.Video.HasAudio ? _session.Video.Audio! : _session.ClockAudio;
-            }
-
-            if (_session.Audio?.IsOpen == true)
-            {
-                return _session.Audio.Engine;
-            }
-
-            if (_session.Cdg?.IsOpen == true)
-            {
-                return _session.ClockAudio;
-            }
-
-            return _session.Audio?.Engine ?? _session.ClockAudio;
-        }
-    }
+    public IAudioEngine ActiveAudio => _session.Video?.IsOpen == true
+        ? _session.Video.HasAudio ? _session.Video.Audio! : _session.ClockAudio
+        : _session.Audio?.IsOpen == true
+            ? _session.Audio.Engine
+            : _session.Cdg?.IsOpen == true ? _session.ClockAudio : _session.Audio?.Engine ?? _session.ClockAudio;
 
     public double DurationSeconds
     {
@@ -91,15 +74,9 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public double PositionSeconds
     {
-        get
-        {
-            if (_session.Video?.IsOpen == true)
-            {
-                return _session.Video.Position;
-            }
-
-            return _session.Audio?.IsOpen == true ? _session.Audio.PositionSeconds : _session.Clock.PositionSeconds;
-        }
+        get => _session.Video?.IsOpen == true
+              ? _session.Video.Position
+              : _session.Audio?.IsOpen == true ? _session.Audio.PositionSeconds : _session.Clock.PositionSeconds;
         set => Seek(value);
     }
 
@@ -110,9 +87,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
         if (_session.Audio?.Open(audioPath) != true || _session.Cdg == null)
-        {
             return false;
-        }
 
         _session.Cdg.OpenPaired(cdgPath, _session.Audio.PlayHandle);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg, audioPath, DurationSeconds);

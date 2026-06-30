@@ -1,7 +1,6 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using SharpCompress.Archives;
 using SharpCompress.Readers;
-using System.IO;
 
 namespace FatzBombMedia.MediaControl.Adapters.Archives;
 

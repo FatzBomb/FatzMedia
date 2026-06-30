@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Files;
-using System.IO;
 
 namespace FatzBombMedia.MediaControl.Controllers;
 

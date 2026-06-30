@@ -10,7 +10,7 @@ namespace FatzBombMedia.MediaControl.Core.Video;
 /// <summary>
 /// Handles FFmpeg video decoding operations separate from timing and audio concerns
 /// </summary>
-internal unsafe sealed class VideoDecoder(
+internal sealed unsafe class VideoDecoder(
     VideoDecodingMethod decodingMethod = VideoDecodingMethod.Auto,
     bool enableHardwareFrameOutput = true,
     bool enableDiagnostics = true,
@@ -416,7 +416,7 @@ internal unsafe sealed class VideoDecoder(
     private bool TryCreateHardwareDevice(AVHWDeviceType deviceType, AVPixelFormat pixelFormat)
     {
         AVBufferRef* deviceContext = null;
-        var result = ffmpeg.av_hwdevice_ctx_create(&deviceContext, deviceType, null!, null, 0);
+        var result = ffmpeg.av_hwdevice_ctx_create(&deviceContext, deviceType, null, null, 0);
         if (result < 0 || deviceContext == null)
         {
             if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] Failed to create hardware device {ffmpeg.av_hwdevice_get_type_name(deviceType)}: {result}");
@@ -438,7 +438,7 @@ internal unsafe sealed class VideoDecoder(
         _getFormatCallback = SelectHardwarePixelFormat;
         _videoCodecCtx->get_format = new AVCodecContext_get_format_func
         {
-            Pointer = Marshal.GetFunctionPointerForDelegate(_getFormatCallback!)
+            Pointer = Marshal.GetFunctionPointerForDelegate(_getFormatCallback)
         };
 
         return true;
@@ -949,32 +949,23 @@ internal unsafe sealed class VideoDecoder(
     public bool Seek(double seconds, bool exact = true)
     {
         if (_fmt == null || _videoStream == null)
-        {
             return false;
-        }
 
         var target = Math.Max(0, seconds);
         var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
         var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
         if (ffmpeg.av_seek_frame(_fmt, _videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
-        {
             return false;
-        }
 
         Flush();
         _discardFramesBeforeSeconds = exact ? target : null;
         return true;
     }
 
-    private static double GetStreamStartSeconds(AVStream* stream)
-    {
-        if (stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE)
-        {
-            return 0;
-        }
-
-        return Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
-    }
+    private static double GetStreamStartSeconds(AVStream* stream) =>
+        stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
+            ? 0
+            : Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
 
 }
 
@@ -984,7 +975,7 @@ internal enum VideoFrameKind
     D3D11Hardware
 }
 
-internal unsafe sealed class VideoFrameData
+internal sealed unsafe class VideoFrameData
 {
     public VideoFrameKind Kind { get; init; } = VideoFrameKind.CpuBgra;
     public byte[]? Data { get; init; }

@@ -33,6 +33,8 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
 
     public string PresentationBackend => _presentation.PresentationBackend;
 
+    public bool IsDirectCompositionActive => _presentation.IsDirectCompositionActive;
+
     public bool Initialize()
     {
         if (_disposed)
@@ -69,6 +71,19 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         lock (_lock)
         {
             return _presentation.CreateNativeHwndSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
+        }
+    }
+
+    public bool CreateDirectCompositionSurface(IntPtr hwnd, int width, int height)
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            return _presentation.CreateDirectCompositionSurface(_disposed, hwnd, width, height, NotifyPresentedWithSync);
         }
     }
 
@@ -114,6 +129,14 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         lock (_lock)
         {
             _presentation.QueueNativeHwndResize(_disposed, width, height);
+        }
+    }
+
+    public void QueueDirectCompositionPresentationResize(int width, int height)
+    {
+        lock (_lock)
+        {
+            _presentation.QueueDirectCompositionResize(_disposed, width, height);
         }
     }
 

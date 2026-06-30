@@ -1,7 +1,6 @@
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Diagnostics;
-using System.IO;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 

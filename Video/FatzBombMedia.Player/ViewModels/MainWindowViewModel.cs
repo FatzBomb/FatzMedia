@@ -11,71 +11,49 @@ using FatzMediaPlayer = FatzBombMedia.MediaControl.Wpf.Player;
 
 namespace FatzBombMedia.Player.ViewModels;
 
-public sealed class MainWindowViewModel : ObservableObject, IDisposable
+public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
+    private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
+
     private readonly DispatcherTimer _positionTimer;
     private bool _isSeekPreviewActive;
     private DateTime _suppressPositionRefresh = DateTime.MinValue;
     private bool _disposed;
-    private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
 
     public MainWindowViewModel()
     {
         NativeLibraryPaths = PlayerNativeLibraries.ResolveSearchPaths();
         LoadMediaCommand = new AsyncRelayCommand<string?>(LoadMediaAsync, CanLoadMedia);
-        PlayCommand = new RelayCommand(Play, CanUsePlayer);
-        PauseCommand = new RelayCommand(Pause, CanUsePlayer);
-        StopCommand = new RelayCommand(Stop, CanUsePlayer);
+        PlayCommand = new AsyncRelayCommand(PlayAsync, CanUsePlayer);
+        PauseCommand = new AsyncRelayCommand(PauseAsync, CanUsePlayer);
+        StopCommand = new AsyncRelayCommand(StopAsync, CanUsePlayer);
+
         _positionTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(200)
         };
         _positionTimer.Tick += PositionTimer_Tick;
 
-        try
-        {
-            var nativeLibraryPath = NativeLibraryPaths.Count > 0 ? NativeLibraryPaths[0] : string.Empty;
-            DLLPath.Bass = nativeLibraryPath;
-            DLLPath.FFmpeg = nativeLibraryPath;
-
-            var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware, RenderingMethod.DirectX11)
-            {
-                EnableLogging = true,
-                EnablePerformanceLogging = true,
-                EnableVerboseLogging = false,
-                UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop,
-                UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative
-            };
-
-            var player = new FatzMediaPlayer(diagnosticsConfig, NativeLibraryPaths)
-            {
-                Normalize = Normalize,
-                VideoDisplayMode = VideoDisplayMode
-            };
-            player.Effects.Volume = Volume;
-            player.Effects.Pitch = Pitch;
-            player.Effects.Tempo = Tempo;
-            player.PlayOnLoad = AutoPlay;
-            player.LoopMedia = LoopPlayback;
-            player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
-            Player = player;
-            StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
-        }
-        catch (Exception ex)
-        {
-            StartupError = ex;
-            StatusText = string.IsNullOrWhiteSpace(FatzMediaPlayer.LastNativeLoadMessage)
-                ? $"Native DLLs unavailable: {ex.Message}"
-                : $"Native DLLs unavailable: {FatzMediaPlayer.LastNativeLoadMessage}";
-        }
-
+        _ = InitializePlayerAsync();
         RefreshCommandStates();
         _positionTimer.Start();
     }
 
-    public FatzMediaPlayer? Player { get; }
+    public FatzMediaPlayer? Player
+    {
+        get;
+        private set
+        {
+            if (!SetProperty(ref field, value)) return;
+            RefreshCommandStates();
+        }
+    }
 
-    public Exception? StartupError { get; }
+    public Exception? StartupError
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    }
 
     public IReadOnlyList<string> NativeLibraryPaths { get; }
 
@@ -98,11 +76,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public AsyncRelayCommand<string?> LoadMediaCommand { get; }
 
-    public RelayCommand PlayCommand { get; }
+    public AsyncRelayCommand PlayCommand { get; }
 
-    public RelayCommand PauseCommand { get; }
+    public AsyncRelayCommand PauseCommand { get; }
 
-    public RelayCommand StopCommand { get; }
+    public AsyncRelayCommand StopCommand { get; }
 
     public bool IsBusy
     {
@@ -118,11 +96,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool CanSeek => Player is not null && DurationSeconds > 0;
 
-    public string StatusText
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "Native DLL path is resolved by the host app.";
+    [ObservableProperty]
+    public partial string StatusText { get; private set; } = "Native media engine is initializing.";
 
     public double Volume
     {
@@ -204,11 +179,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     } = VideoDisplayMode.Zoom;
 
-    public BitmapScalingMode BitmapScalingMode
-    {
-        get;
-        set => SetProperty(ref field, value);
-    } = BitmapScalingMode.HighQuality;
+    [ObservableProperty]
+    public partial BitmapScalingMode BitmapScalingMode { get; set; } = BitmapScalingMode.HighQuality;
 
     public int CdgBackgroundOpacity
     {
@@ -222,7 +194,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     } = 100;
 
-    public MediaPresentationMode PresentationMode => MediaPresentationMode.NativeHwndOverlay;
+    public static MediaPresentationMode PresentationMode => MediaPresentationMode.NativeHwndOverlay;
 
     public double PositionSeconds
     {
@@ -247,7 +219,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
             PositionSeconds = target;
             SuppressPositionRefresh();
-            _ = (Player?.Controls.Seek(target));
+            _ = Player?.Controls.Seek(target);
         }
     }
 
@@ -284,44 +256,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             StatusText = $"Load failed: {ex.Message}";
-            throw;
         }
         finally
         {
             IsBusy = false;
         }
-    }
-
-    private bool CanLoadMedia(string? filePath) => !IsBusy && Player is not null && !string.IsNullOrWhiteSpace(filePath);
-
-    private bool CanUsePlayer() => !IsBusy && Player is not null;
-
-    private void Play()
-    {
-        _ = (Player?.Play());
-        RefreshPlaybackPosition();
-    }
-
-    private void Pause()
-    {
-        _ = (Player?.Pause());
-        RefreshPlaybackPosition();
-    }
-
-    private void Stop()
-    {
-        _ = (Player?.Stop());
-        RefreshPlaybackPosition();
-    }
-
-    private void RefreshCommandStates()
-    {
-        OnPropertyChanged(nameof(CanOpen));
-        OnPropertyChanged(nameof(CanSeek));
-        LoadMediaCommand.NotifyCanExecuteChanged();
-        PlayCommand.NotifyCanExecuteChanged();
-        PauseCommand.NotifyCanExecuteChanged();
-        StopCommand.NotifyCanExecuteChanged();
     }
 
     public void BeginSeekPreview()
@@ -340,6 +279,108 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         _isSeekPreviewActive = false;
         SuppressPositionRefresh();
+    }
+
+    private async Task InitializePlayerAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            StatusText = "Initializing native media engine...";
+
+            var nativeLibraryPath = NativeLibraryPaths.Count > 0 ? NativeLibraryPaths[0] : string.Empty;
+            DLLPath.Bass = nativeLibraryPath;
+            DLLPath.FFmpeg = nativeLibraryPath;
+
+            var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware, RenderingMethod.DirectX11)
+            {
+                EnableLogging = true,
+                EnablePerformanceLogging = true,
+                EnableVerboseLogging = false,
+                UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop,
+                UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative
+            };
+
+            var player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);
+            if (_disposed)
+            {
+                player.Dispose();
+                return;
+            }
+
+            player.Normalize = Normalize;
+            player.VideoDisplayMode = VideoDisplayMode;
+            player.Effects.Volume = Volume;
+            player.Effects.Pitch = Pitch;
+            player.Effects.Tempo = Tempo;
+            player.PlayOnLoad = AutoPlay;
+            player.LoopMedia = LoopPlayback;
+            player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
+            Player = player;
+            StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
+        }
+        catch (Exception ex)
+        {
+            StartupError = ex;
+            StatusText = string.IsNullOrWhiteSpace(MediaControlPlayer.LastNativeLoadMessage)
+                ? $"Native DLLs unavailable: {ex.Message}"
+                : $"Native DLLs unavailable: {MediaControlPlayer.LastNativeLoadMessage}";
+        }
+        finally
+        {
+            IsBusy = false;
+            RefreshCommandStates();
+        }
+    }
+
+    private bool CanLoadMedia(string? filePath) => !IsBusy && Player is not null && !string.IsNullOrWhiteSpace(filePath);
+
+    private bool CanUsePlayer() => !IsBusy && Player is not null;
+
+    private Task PlayAsync() =>
+        RunTransportCommandAsync("Starting playback...", "Playing", "Could not start playback.", player => player.PlayAsync());
+
+    private Task PauseAsync() =>
+        RunTransportCommandAsync("Pausing...", "Paused", "Could not pause playback.", player => player.PauseAsync());
+
+    private Task StopAsync() =>
+        RunTransportCommandAsync("Stopping...", "Stopped", "Could not stop playback.", player => player.StopAsync());
+
+    private async Task RunTransportCommandAsync(
+        string workingStatus,
+        string completedStatus,
+        string failedStatus,
+        Func<FatzMediaPlayer, Task<bool>> operation)
+    {
+        if (Player is not { } player)
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusText = workingStatus;
+            var success = await operation(player);
+            RefreshPlaybackPosition();
+            StatusText = success ? completedStatus : failedStatus;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"{failedStatus} {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshCommandStates()
+    {
+        OnPropertyChanged(nameof(CanOpen));
+        OnPropertyChanged(nameof(CanSeek));
+        LoadMediaCommand.NotifyCanExecuteChanged();
+        PlayCommand.NotifyCanExecuteChanged();
+        PauseCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
     }
 
     private void PositionTimer_Tick(object? sender, EventArgs e)
@@ -383,9 +424,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+
+        _disposed = true;
         _positionTimer.Stop();
         _positionTimer.Tick -= PositionTimer_Tick;
         Player?.Dispose();
-        _disposed = true;
     }
 }

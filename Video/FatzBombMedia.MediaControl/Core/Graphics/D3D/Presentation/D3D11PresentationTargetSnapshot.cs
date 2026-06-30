@@ -17,7 +17,8 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     IntPtr nativeHwnd,
     D3D11PresentationBackendKind backendKind,
     string backendName,
-    long revision)
+    long revision,
+    D3D11CompositionTargetKind compositionTargetKind)
 {
     public string TargetId { get; } = targetId;
 
@@ -35,15 +36,18 @@ internal readonly struct D3D11PresentationTargetSnapshot(
 
     public long Revision { get; } = revision;
 
+    public D3D11CompositionTargetKind CompositionTargetKind { get; } = compositionTargetKind;
+
     public bool IsValid => !string.IsNullOrWhiteSpace(TargetId)
         && Texture != null
         && Width > 0
         && Height > 0
-        && BackendKind != D3D11PresentationBackendKind.None;
+        && BackendKind != D3D11PresentationBackendKind.None
+        && CompositionTargetKind != D3D11CompositionTargetKind.None;
 
     public D3D11CompositionTargetDescriptor ToCompositionTargetDescriptor() => new(
         TargetId,
-        D3D11CompositionTargetKind.FinalPresentation,
+        CompositionTargetKind,
         Width,
         Height,
         BackendName,

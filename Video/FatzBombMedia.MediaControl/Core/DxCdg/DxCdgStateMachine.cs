@@ -17,6 +17,7 @@ public sealed class DxCdgStateMachine
     private readonly Lock _lock = new();
 
     private long _revision;
+    private long _paletteRevision;
     private uint _backgroundWashArgb;
 
     public DxCdgStateMachine() => Reset();
@@ -82,6 +83,7 @@ public sealed class DxCdgStateMachine
             Array.Clear(_scratchColorIndices);
             _dirtyRects.Clear();
             _colorManager.Reset();
+            _paletteRevision++;
             RefreshColorStateUnsafe(addDirtyRect: false);
             AddDirtyRectUnsafe(DxCdgDirtyRect.FullFrame);
             _revision++;
@@ -157,6 +159,7 @@ public sealed class DxCdgStateMachine
 
             return new DxCdgRenderSnapshot(
                 _revision,
+                _paletteRevision,
                 colorCopy,
                 paletteCopy,
                 _backgroundWashArgb,
@@ -415,7 +418,11 @@ public sealed class DxCdgStateMachine
 
     private void RefreshColorStateUnsafe(bool addDirtyRect)
     {
-        _colorManager.UpdateLutIfNeeded();
+        if (_colorManager.UpdateLutIfNeeded())
+        {
+            _paletteRevision++;
+        }
+
         _ = _colorManager.UpdateBackgroundWashIfNeeded();
         _colorManager.ColorLut.CopyTo(_paletteArgb);
         _backgroundWashArgb = _colorManager.BackgroundWashArgb;

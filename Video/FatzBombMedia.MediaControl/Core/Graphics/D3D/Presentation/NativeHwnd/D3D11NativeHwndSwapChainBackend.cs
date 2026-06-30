@@ -128,6 +128,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
         try
         {
+            var resizeStart = Stopwatch.GetTimestamp();
+
             // DXGI ResizeBuffers requires all direct and indirect references to the current
             // backbuffer to be released first. The caller-owned render target view and video
             // processor output view are released through callbacks before the buffer resize.
@@ -148,6 +150,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             Height = height;
             _resizePending = false;
             resetOverlayTransientFailure();
+            diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
 
             // Do not clear/present here. Presenting black during live resize is the flicker.
             // The renderer draws real content into the new backbuffer and presents once.

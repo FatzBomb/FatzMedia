@@ -6,25 +6,17 @@ namespace FatzBombMedia.MediaControl.Core.Graphics.Composition.D3D11;
 /// while the existing compositor still performs the same immediate upload/draw/
 /// present sequence.
 /// </summary>
-internal sealed class D3D11CompositionLayerUpdatePlan
+internal sealed class D3D11CompositionLayerUpdatePlan(
+    long captureSequence,
+    bool isClearOnly,
+    bool deactivatedLayers,
+    IEnumerable<D3D11CompositionLayerUpdate> updates)
 {
-    private readonly D3D11CompositionLayerUpdate[] _updates;
+    private readonly D3D11CompositionLayerUpdate[] _updates = [.. updates];
 
-    public D3D11CompositionLayerUpdatePlan(
-        long captureSequence,
-        bool isClearOnly,
-        bool deactivatedLayers,
-        IEnumerable<D3D11CompositionLayerUpdate> updates)
-    {
-        CaptureSequence = captureSequence;
-        IsClearOnly = isClearOnly;
-        DeactivatedLayers = deactivatedLayers;
-        _updates = updates.ToArray();
-    }
-
-    public long CaptureSequence { get; }
-    public bool IsClearOnly { get; }
-    public bool DeactivatedLayers { get; }
+    public long CaptureSequence { get; } = captureSequence;
+    public bool IsClearOnly { get; } = isClearOnly;
+    public bool DeactivatedLayers { get; } = deactivatedLayers;
     public IReadOnlyList<D3D11CompositionLayerUpdate> Updates => _updates;
     public int LayerCount => _updates.Length;
     public int WorkItemCount => _updates.Count(static update => update.RequiresWork);

@@ -1,6 +1,5 @@
 //#pragma warning disable IDE0130
 using System.Diagnostics;
-using System.IO;
 
 namespace FatzBombMedia.MediaControl;
 

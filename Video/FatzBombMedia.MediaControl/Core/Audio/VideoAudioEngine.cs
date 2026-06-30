@@ -1,12 +1,11 @@
 
-using System.Buffers;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
+using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;
 

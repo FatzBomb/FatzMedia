@@ -1,9 +1,8 @@
+using SharpGen.Runtime;
 using System.Diagnostics;
-using System.IO;
+using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using SharpGen.Runtime;
-using Vortice.Direct3D;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics;
 
@@ -79,14 +78,15 @@ public static class GpuRenderingCapabilities
     {
         try
         {
-            _capabilities = new GpuCapabilityInfo();
+            _capabilities = new GpuCapabilityInfo
+            {
+                // Core capability detection must not depend on any UI framework. Treat a successfully-created
+                // D3D11 device as the hardware acceleration signal.
+                LegacyUiRenderingTier = 0,
 
-            // Core capability detection must not depend on any UI framework. Treat a successfully-created
-            // D3D11 device as the hardware acceleration signal.
-            _capabilities.LegacyUiRenderingTier = 0;
-
-            // DirectX 11 detection - check if D3D11 DLLs exist and can be loaded
-            _capabilities.SupportsD3D11 = CheckD3D11Support();
+                // DirectX 11 detection - check if D3D11 DLLs exist and can be loaded
+                SupportsD3D11 = CheckD3D11Support()
+            };
 
             // D3D9 support removed - modern D3D11 approach only
             // No longer setting SupportsD3D9 as it's obsolete

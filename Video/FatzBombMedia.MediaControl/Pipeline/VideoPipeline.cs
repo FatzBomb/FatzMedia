@@ -1,11 +1,11 @@
 
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Audio;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
@@ -51,9 +51,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private const double MaximumPresentationLeadRefreshIntervals = 1.25;
     private const double PresentationLeadIncreaseStepRefreshIntervals = 0.125;
     private const double PresentationLeadDecreaseStepRefreshIntervals = 0.0625;
-    private const double PresentationLeadLateIncreaseThresholdRefreshes = 0.65;
+    private const double PresentationLeadClockLateIncreaseThresholdRefreshes = 0.65;
     private const double PresentationLeadEarlyDecreaseThresholdRefreshes = 1.75;
-    private const double PresentationLeadGoodLateThresholdRefreshes = 0.35;
+    private const double PresentationLeadGoodClockLateThresholdRefreshes = 0.35;
+    private const int PresentationLeadLateSampleIncreaseThreshold = 8;
     private const int PostSeekRecoveryMilliseconds = 450;
     private const int PostSeekUnderfilledRecoveryMilliseconds = 700;
     private const int PostSeekEmptyQueueRecoveryMilliseconds = 900;
@@ -85,10 +86,13 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private const int SoftwareSettleDecodeMaxAttempts = 44;
     private int _presentationDiagnosticFrames;
     private int _presentationDiagnosticDroppedFrames;
+    private int _presentationDiagnosticSelectionSkippedFrames;
+    private int _presentationDiagnosticLateDroppedFrames;
     private double _presentationDiagnosticMaxClockLateMs;
     private double _presentationDiagnosticMaxTargetLateMs;
     private double _presentationDiagnosticMaxEarlyMs;
     private double _presentationDiagnosticLeadMs;
+    private int _presentationDiagnosticClockLateSamples;
     private double _activePresentationLeadRefreshIntervals = double.NaN;
     private long _postSeekRecoveryUntilTimestamp;
     private int _postSeekAdaptiveSuppressionWindowsRemaining;
@@ -755,31 +759,32 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private void PresentationLoop(int generation, CancellationToken cancellationToken)
     {
-        // Target interval is read fresh each tick (see GetDisplayRefreshIntervalSeconds) rather
-        // than cached once, so a monitor change detected by RenderSurface.cs (via
-        // SetDisplayRefreshRate) takes effect on the very next tick instead of waiting for the
-        // next Play/Pause/Seek to restart this thread. This is cheap: the common case is just a
-        // nullable-double field read; the DWM P/Invoke fallback only runs when no override has
-        // been supplied yet. The loop self-corrects against drift rather than sleeping a fixed
-        // amount each pass, since Task/Thread sleep granularity alone is not exact.
+        // Target interval is read fresh each tick so source-FPS or monitor changes take effect
+        // on the next tick. Stage 11 paces primary video at source cadence when FPS is known
+        // instead of polling at display refresh for 24/30fps content.
         const int diagnosticInterval = 120;
+        using var waiter = new PrecisionWaiter();
         var stopwatch = Stopwatch.StartNew();
         var nextTick = stopwatch.Elapsed.TotalSeconds;
         var lastTickSeconds = nextTick;
         var diagnosticTicks = 0;
         var diagnosticMaxGapMs = 0.0;
-        var lastTargetIntervalSeconds = GetDisplayRefreshIntervalSeconds();
+        var diagnosticSumGapMs = 0.0;
+        var lastTargetIntervalSeconds = GetPrimaryPresentationIntervalSeconds();
+
+        if (_configuration.EnableLogging && !waiter.IsHighResolution)
+            Debug.WriteLine("[VideoPipeline] High-resolution presentation timer unavailable; using coarse wait fallback.");
 
         while (!cancellationToken.IsCancellationRequested && generation == _generation)
         {
-            var targetIntervalSeconds = GetDisplayRefreshIntervalSeconds();
+            var targetIntervalSeconds = GetPrimaryPresentationIntervalSeconds();
             if (Math.Abs(targetIntervalSeconds - lastTargetIntervalSeconds) > 0.0001)
             {
                 if (_configuration.EnableLogging)
                 {
                     Debug.WriteLine(
                         $"[VideoPipeline] Presentation target interval changed: {lastTargetIntervalSeconds * 1000.0:F2}ms -> " +
-                        $"{targetIntervalSeconds * 1000.0:F2}ms (monitor or refresh rate change detected)");
+                        $"{targetIntervalSeconds * 1000.0:F2}ms (source FPS or refresh rate change detected)");
                 }
                 lastTargetIntervalSeconds = targetIntervalSeconds;
             }
@@ -788,6 +793,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             var gapMs = (tickNow - lastTickSeconds) * 1000.0;
             lastTickSeconds = tickNow;
             diagnosticMaxGapMs = Math.Max(diagnosticMaxGapMs, gapMs);
+            diagnosticSumGapMs += gapMs;
             diagnosticTicks++;
             if (diagnosticTicks >= diagnosticInterval)
             {
@@ -795,11 +801,16 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 if (_configuration.EnablePerformanceLogging
                     && (_configuration.EnableVerboseLogging || diagnosticMaxGapMs > targetMs * 1.75))
                 {
+                    var displayMs = GetDisplayRefreshIntervalSeconds() * 1000.0;
+                    var frameMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0.0;
+                    var avgGapMs = diagnosticSumGapMs / diagnosticTicks;
                     Debug.WriteLine(
-                        $"[VideoPipeline:Loop] maxTickGap={diagnosticMaxGapMs:F1}ms, target={targetMs:F1}ms");
+                        $"[VideoPipeline:Loop] avgTickGap={avgGapMs:F2}ms, maxTickGap={diagnosticMaxGapMs:F1}ms, " +
+                        $"target={targetMs:F1}ms, sourceFrame={frameMs:F1}ms, displayRefresh={displayMs:F1}ms");
                 }
                 diagnosticTicks = 0;
                 diagnosticMaxGapMs = 0;
+                diagnosticSumGapMs = 0;
             }
 
             if (_isPlaying)
@@ -813,20 +824,56 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                     }
             }
 
+            if (IsSourceCadencePlayback(FramesPerSecond))
+            {
+                var waitSeconds = GetClockLockedPresentationWaitSeconds(targetIntervalSeconds);
+                if (waitSeconds <= 0)
+                    continue;
+
+                waiter.Wait(TimeSpan.FromSeconds(waitSeconds), cancellationToken.WaitHandle);
+                nextTick = stopwatch.Elapsed.TotalSeconds;
+                continue;
+            }
+
             nextTick += targetIntervalSeconds;
             var now = stopwatch.Elapsed.TotalSeconds;
-            var waitSeconds = nextTick - now;
+            var accumulatorWaitSeconds = nextTick - now;
 
-            if (waitSeconds <= 0)
+            if (accumulatorWaitSeconds <= 0)
             {
                 // Fell behind (e.g. a slow frame); resync instead of free-running catch-up ticks.
                 nextTick = now;
                 continue;
             }
 
-            _ = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(waitSeconds));
+            waiter.Wait(TimeSpan.FromSeconds(accumulatorWaitSeconds), cancellationToken.WaitHandle);
         }
     }
+
+    private double GetClockLockedPresentationWaitSeconds(double fallbackIntervalSeconds)
+    {
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder == null)
+            return fallbackIntervalSeconds;
+
+        VideoFrameData? nextFrame = decoder.PeekNextFrame();
+        if (nextFrame == null)
+            return Math.Min(fallbackIntervalSeconds, 0.005);
+
+        var clockPosition = GetPresentationPosition();
+        var selectionLeadSeconds = GetFrameSelectionLeadLimit(decoder.FramesPerSecond);
+        var waitSeconds = nextFrame.PresentationTime - selectionLeadSeconds - clockPosition;
+        if (!double.IsFinite(waitSeconds))
+            return fallbackIntervalSeconds;
+
+        if (waitSeconds <= 0)
+            return 0;
+
+        return Math.Min(waitSeconds, Math.Max(0.001, fallbackIntervalSeconds));
+    }
+
+    private double GetPrimaryPresentationIntervalSeconds() =>
+        VideoPresentationTiming.GetPrimaryPresentationInterval(FramesPerSecond, GetDisplayRefreshIntervalSeconds());
 
     /// <summary>
     /// Resolves the presentation tick interval: prefers an explicitly supplied monitor refresh
@@ -1429,7 +1476,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         DropFramesBeforeCommittedVideoTarget(decoder);
 
-        var maxPresentationTime = targetPosition + GetFrameLeadTolerance(decoder.FramesPerSecond);
+        var maxPresentationTime = Math.Min(
+            targetPosition + GetFrameLeadTolerance(decoder.FramesPerSecond),
+            clockPosition + GetFrameSelectionLeadLimit(decoder.FramesPerSecond));
         VideoFrameData? frameToPresent = null;
         var dequeuedFrames = 0;
 
@@ -1437,6 +1486,12 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         {
             if (nextFrame.PresentationTime > maxPresentationTime)
                 break;
+
+            if (frameToPresent != null
+                && !ShouldAdvanceSelectionToFrame(decoder.FramesPerSecond, clockPosition, frameToPresent.PresentationTime, nextFrame.PresentationTime))
+            {
+                break;
+            }
 
             VideoFrameData? candidateFrame = decoder.GetNextFrame();
             if (candidateFrame == null)
@@ -1455,7 +1510,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (!ShouldSuppressLateFrameDrop() && lateness > MaxPresentLatenessSeconds)
             {
                 decoder.ReturnFrame(frameToPresent);
-                _presentationDiagnosticDroppedFrames += Math.Max(1, dequeuedFrames);
+                var droppedFrames = Math.Max(1, dequeuedFrames);
+                _presentationDiagnosticDroppedFrames += droppedFrames;
+                _presentationDiagnosticLateDroppedFrames += droppedFrames;
                 return;
             }
 
@@ -1465,6 +1522,24 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     }
 
     private static double GetFrameLeadTolerance(double fps) => VideoPresentationTiming.GetPrimaryFrameLeadTolerance(fps);
+
+    private static double GetFrameSelectionLeadLimit(double fps) => VideoPresentationTiming.GetPrimaryFrameSelectionLeadLimit(fps);
+
+    private bool ShouldAdvanceSelectionToFrame(double fps, double clockPosition, double selectedPresentationTime, double nextPresentationTime)
+    {
+        if (!IsSourceCadencePlayback(fps))
+        {
+            return true;
+        }
+
+        var frameDuration = 1.0 / fps;
+        if (clockPosition - selectedPresentationTime < frameDuration)
+        {
+            return false;
+        }
+
+        return nextPresentationTime <= clockPosition;
+    }
 
     private int GetTargetBufferedVideoFrames()
     {
@@ -1487,20 +1562,30 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     {
         _presentationDiagnosticFrames++;
         if (dequeuedFrames > 1)
+        {
             _presentationDiagnosticDroppedFrames += dequeuedFrames - 1;
+            _presentationDiagnosticSelectionSkippedFrames += dequeuedFrames - 1;
+        }
 
         var clockLateMs = Math.Max(0, clockPosition - framePresentationTime) * 1000.0;
         var targetLateMs = Math.Max(0, targetPosition - framePresentationTime) * 1000.0;
         var earlyMs = Math.Max(0, framePresentationTime - clockPosition) * 1000.0;
+        var refreshIntervalMs = GetDisplayRefreshIntervalSeconds() * 1000.0;
 
         _presentationDiagnosticMaxClockLateMs = Math.Max(_presentationDiagnosticMaxClockLateMs, clockLateMs);
         _presentationDiagnosticMaxTargetLateMs = Math.Max(_presentationDiagnosticMaxTargetLateMs, targetLateMs);
         _presentationDiagnosticMaxEarlyMs = Math.Max(_presentationDiagnosticMaxEarlyMs, earlyMs);
+        var clockLateThresholdMs = GetAdaptiveClockLateThresholdMilliseconds(refreshIntervalMs);
+        if (double.IsFinite(clockLateThresholdMs)
+            && clockLateThresholdMs > 0
+            && clockLateMs > clockLateThresholdMs)
+        {
+            _presentationDiagnosticClockLateSamples++;
+        }
 
         if (_presentationDiagnosticFrames < PresentationDiagnosticsFrameInterval)
             return;
 
-        var refreshIntervalMs = GetDisplayRefreshIntervalSeconds() * 1000.0;
         var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0.0;
         var activeLeadRefreshes = GetActivePresentationLeadRefreshIntervals();
         var inSeekRecovery = IsPostSeekRecoveryActive();
@@ -1524,8 +1609,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         {
             Debug.WriteLine(
                 $"[VideoPipeline:Perf] presented={_presentationDiagnosticFrames}, dropped={_presentationDiagnosticDroppedFrames}, " +
+                $"selectionSkips={_presentationDiagnosticSelectionSkippedFrames}, lateDrops={_presentationDiagnosticLateDroppedFrames}, " +
                 $"maxClockLate={_presentationDiagnosticMaxClockLateMs:F1}ms, " +
                 $"maxTargetLate={_presentationDiagnosticMaxTargetLateMs:F1}ms, maxEarly={_presentationDiagnosticMaxEarlyMs:F1}ms, " +
+                $"clockLateSamples={_presentationDiagnosticClockLateSamples}, clockLateThreshold={clockLateThresholdMs:F1}ms, " +
                 $"lead={_presentationDiagnosticLeadMs:F1}ms ({activeLeadRefreshes:F3}x refresh), adaptive={adaptiveAction}, " +
                 $"queued={queuedFrames}/{GetTargetBufferedVideoFrames()}, fps={FramesPerSecond:F2}, " +
                 $"videoFrame={frameIntervalMs:F1}ms, refresh={refreshIntervalMs:F1}ms");
@@ -1539,17 +1626,26 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         if (!double.IsFinite(refreshIntervalMs) || refreshIntervalMs <= 0)
             return "hold";
 
+        if (!ShouldAdaptPresentationLead(refreshIntervalMs))
+            return "hold-source-cadence";
+
         var active = GetActivePresentationLeadRefreshIntervals();
-        var lateThresholdMs = refreshIntervalMs * PresentationLeadLateIncreaseThresholdRefreshes;
-        var goodLateThresholdMs = refreshIntervalMs * PresentationLeadGoodLateThresholdRefreshes;
+        var lateThresholdMs = GetAdaptiveClockLateThresholdMilliseconds(refreshIntervalMs);
+        var goodLateThresholdMs = refreshIntervalMs * PresentationLeadGoodClockLateThresholdRefreshes;
         var earlyDecreaseThresholdMs = refreshIntervalMs * PresentationLeadEarlyDecreaseThresholdRefreshes;
         var previous = active;
 
-        if (_presentationDiagnosticDroppedFrames > 0 || _presentationDiagnosticMaxTargetLateMs > lateThresholdMs)
+        if (_presentationDiagnosticClockLateSamples >= PresentationLeadLateSampleIncreaseThreshold
+            || _presentationDiagnosticMaxClockLateMs > lateThresholdMs * 2.0)
+        {
             active = Math.Min(MaximumPresentationLeadRefreshIntervals, active + PresentationLeadIncreaseStepRefreshIntervals);
-        else if (_presentationDiagnosticMaxTargetLateMs < goodLateThresholdMs
+        }
+        else if (_presentationDiagnosticClockLateSamples == 0
+            && _presentationDiagnosticMaxClockLateMs < goodLateThresholdMs
             && _presentationDiagnosticMaxEarlyMs > earlyDecreaseThresholdMs)
+        {
             active = Math.Max(MinimumPresentationLeadRefreshIntervals, active - PresentationLeadDecreaseStepRefreshIntervals);
+        }
 
         _activePresentationLeadRefreshIntervals = active;
         return Math.Abs(active - previous) < 0.0001
@@ -1559,13 +1655,50 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             : $"decrease {previous:F3}->{active:F3}";
     }
 
+    private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs)
+    {
+        var refreshThresholdMs = double.IsFinite(refreshIntervalMs) && refreshIntervalMs > 0
+            ? refreshIntervalMs * PresentationLeadClockLateIncreaseThresholdRefreshes
+            : 0;
+        var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0;
+        var sourceThresholdMs = frameIntervalMs > 0 ? frameIntervalMs * 0.75 : 0;
+
+        return Math.Max(refreshThresholdMs, sourceThresholdMs);
+    }
+
+    private bool ShouldAdaptPresentationLead(double refreshIntervalMs)
+    {
+        var fps = FramesPerSecond;
+        return !IsSourceCadencePlayback(fps, refreshIntervalMs);
+    }
+
+    private bool IsSourceCadencePlayback(double fps)
+    {
+        var refreshIntervalMs = GetDisplayRefreshIntervalSeconds() * 1000.0;
+        return IsSourceCadencePlayback(fps, refreshIntervalMs);
+    }
+
+    private static bool IsSourceCadencePlayback(double fps, double refreshIntervalMs)
+    {
+        if (!double.IsFinite(fps) || fps <= 0)
+            return false;
+
+        var frameIntervalMs = 1000.0 / fps;
+        return double.IsFinite(refreshIntervalMs)
+            && refreshIntervalMs > 0
+            && frameIntervalMs > refreshIntervalMs * 1.25;
+    }
+
     private void ResetPresentationDiagnostics()
     {
         _presentationDiagnosticFrames = 0;
         _presentationDiagnosticDroppedFrames = 0;
+        _presentationDiagnosticSelectionSkippedFrames = 0;
+        _presentationDiagnosticLateDroppedFrames = 0;
         _presentationDiagnosticMaxClockLateMs = 0;
         _presentationDiagnosticMaxTargetLateMs = 0;
         _presentationDiagnosticMaxEarlyMs = 0;
+        _presentationDiagnosticClockLateSamples = 0;
     }
 
     private void PresentFrame(VideoFrameData frame)

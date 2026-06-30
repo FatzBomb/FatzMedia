@@ -11,26 +11,19 @@ namespace FatzBombMedia.MediaControl;
 /// later stages move that implementation fully into the core project. Framework adapters
 /// should expose this session and provide only surface/lifecycle interop.
 /// </remarks>
-public sealed class MediaControlSession : IMediaControlSession
+/// <remarks>
+/// Creates a core session facade over the supplied media-control implementation.
+/// </remarks>
+/// <param name="implementation">The current media-control implementation.</param>
+/// <param name="ownsImplementation">
+/// True when disposing this session should dispose the wrapped implementation.
+/// Adapter-owned controls should normally pass false so the framework control remains
+/// responsible for its own lifetime.
+/// </param>
+public sealed class MediaControlSession(IMediaControlSession implementation, bool ownsImplementation = false) : IMediaControlSession
 {
-    private readonly IMediaControlSession _implementation;
-    private readonly bool _ownsImplementation;
+    private readonly IMediaControlSession _implementation = implementation ?? throw new ArgumentNullException(nameof(implementation));
     private bool _disposed;
-
-    /// <summary>
-    /// Creates a core session facade over the supplied media-control implementation.
-    /// </summary>
-    /// <param name="implementation">The current media-control implementation.</param>
-    /// <param name="ownsImplementation">
-    /// True when disposing this session should dispose the wrapped implementation.
-    /// Adapter-owned controls should normally pass false so the framework control remains
-    /// responsible for its own lifetime.
-    /// </param>
-    public MediaControlSession(IMediaControlSession implementation, bool ownsImplementation = false)
-    {
-        _implementation = implementation ?? throw new ArgumentNullException(nameof(implementation));
-        _ownsImplementation = ownsImplementation;
-    }
 
     /// <summary>Gets or sets whether loading media should automatically begin playback.</summary>
     public bool PlayOnLoad
@@ -114,11 +107,20 @@ public sealed class MediaControlSession : IMediaControlSession
     /// <summary>Starts or resumes playback.</summary>
     public bool Play() => _implementation.Play();
 
+    /// <summary>Starts or resumes playback asynchronously on the Core control queue.</summary>
+    public Task<bool> PlayAsync() => _implementation.PlayAsync();
+
     /// <summary>Pauses playback.</summary>
     public bool Pause() => _implementation.Pause();
 
+    /// <summary>Pauses playback asynchronously on the Core control queue.</summary>
+    public Task<bool> PauseAsync() => _implementation.PauseAsync();
+
     /// <summary>Stops playback and resets position.</summary>
     public bool Stop() => _implementation.Stop();
+
+    /// <summary>Stops playback asynchronously on the Core control queue.</summary>
+    public Task<bool> StopAsync() => _implementation.StopAsync();
 
     /// <summary>Seeks to a playback position.</summary>
     public bool Seek(TimeSpan position) => _implementation.Seek(position);
@@ -136,6 +138,10 @@ public sealed class MediaControlSession : IMediaControlSession
     public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) =>
         _implementation.ResizePresentationSurface(surfaceId, pixelWidth, pixelHeight);
 
+    /// <summary>Notifies Core that a framework-provided presentation surface is in an active host resize/move loop.</summary>
+    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) =>
+        _implementation.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
+
     /// <summary>Detaches a previously attached framework-provided presentation surface.</summary>
     public bool DetachPresentationSurface(string surfaceId) => _implementation.DetachPresentationSurface(surfaceId);
 
@@ -144,6 +150,20 @@ public sealed class MediaControlSession : IMediaControlSession
     {
         add => _implementation.MediaEnded += value;
         remove => _implementation.MediaEnded -= value;
+    }
+
+    /// <summary>Raised when media playback starts or resumes.</summary>
+    public event EventHandler? MediaStarted
+    {
+        add => _implementation.MediaStarted += value;
+        remove => _implementation.MediaStarted -= value;
+    }
+
+    /// <summary>Raised after Core presents a frame to an attached presentation surface.</summary>
+    public event EventHandler? PresentationFramePresented
+    {
+        add => _implementation.PresentationFramePresented += value;
+        remove => _implementation.PresentationFramePresented -= value;
     }
 
     /// <summary>Raised when media playback is stopped.</summary>
@@ -164,7 +184,7 @@ public sealed class MediaControlSession : IMediaControlSession
             return;
         }
 
-        if (_ownsImplementation)
+        if (ownsImplementation)
         {
             _implementation.Dispose();
         }

@@ -24,9 +24,9 @@ All visual media continues to route through the single media compositor model:
 
 Media types provide optional layers. They do not independently present final frames.
 
-## Current Stage 10 state
+## Current Stage 11 state
 
-Stage 10 now includes:
+The current presentation architecture includes:
 
 - retained Layer 0, Layer 1, and Layer 2 state
 - layer invalidation and lifecycle metadata
@@ -36,8 +36,8 @@ Stage 10 now includes:
 
 The Core project provides the media-control implementation and presentation ownership. Public WPF-facing helpers live in the strict WPF adapter and should not require Core internals.
 
-Current architecture and TODOs:
+Current architecture and validation docs:
 
 - `docs/CURRENT_ARCHITECTURE.md`
-- `docs/STAGE10X_11_TODO.md`
+- `STAGE11_PRESENTATION_PLAN.md`
 - `docs/VALIDATION.md`

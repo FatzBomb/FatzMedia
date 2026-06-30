@@ -1,3 +1,4 @@
+using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,11 +10,18 @@ namespace FatzBombMedia.MediaControl.Wpf;
 public sealed class MediaSurface : Grid
 {
     public const string DefaultSecondarySurfaceId = "secondary";
+    private const int WM_ENTERSIZEMOVE = 0x0231;
+    private const int WM_EXITSIZEMOVE = 0x0232;
 
     private readonly NativeHwndSurfaceHost _surfaceHost;
     private IMediaControlSession? _attachedPrimarySession;
+    private IMediaControlSession? _eventSession;
+    private Window? _ownerWindow;
+    private HwndSource? _ownerHwndSource;
     private bool _primaryAttached;
     private bool _layoutRefreshQueued;
+    private bool _primarySurfaceLiveResize;
+    private volatile bool _showPrimarySurfaceAfterPresentation;
     private SecondaryPresentationWindow? _secondaryWindow;
     private OverlayWindow? _overlayWindow;
 
@@ -22,7 +30,7 @@ public sealed class MediaSurface : Grid
         Background = Brushes.Black;
         ClipToBounds = true;
         _surfaceHost = new NativeHwndSurfaceHost();
-        Children.Add(_surfaceHost);
+        _ = Children.Add(_surfaceHost);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -108,13 +116,11 @@ public sealed class MediaSurface : Grid
     public bool ShowSecondaryOutput()
     {
         if (Player == null)
-        {
             return false;
-        }
 
         if (_secondaryWindow is { IsVisible: true })
         {
-            _secondaryWindow.Activate();
+            _ = _secondaryWindow.Activate();
             return true;
         }
 
@@ -132,9 +138,7 @@ public sealed class MediaSurface : Grid
     public bool CloseSecondaryOutput()
     {
         if (_secondaryWindow == null)
-        {
             return false;
-        }
 
         _secondaryWindow.Closed -= OnSecondaryWindowClosed;
         SecondaryPresentationWindow window = _secondaryWindow;
@@ -149,9 +153,7 @@ public sealed class MediaSurface : Grid
     public void RefreshPresentationLayout()
     {
         if (_layoutRefreshQueued)
-        {
             return;
-        }
 
         _layoutRefreshQueued = true;
         _ = Dispatcher.BeginInvoke(new Action(() =>
@@ -165,22 +167,23 @@ public sealed class MediaSurface : Grid
     private static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
+        surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
         if (e.NewValue is IMediaControlSession session)
         {
+            surface.AttachSessionEvents(session);
             session.VideoDisplayMode = surface.VideoDisplayMode;
         }
 
         surface.AttachOrResizePrimarySurface();
+        surface.UpdateNativeSurfaceVisibility();
     }
 
     private static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface.Player is IMediaControlSession session && e.NewValue is VideoDisplayMode mode)
-        {
             session.VideoDisplayMode = mode;
-        }
     }
 
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -204,12 +207,17 @@ public sealed class MediaSurface : Grid
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AttachOwnerWindowHook();
+        AttachSessionEvents(Player);
         AttachOrResizePrimarySurface();
+        UpdateNativeSurfaceVisibility();
         UpdateOverlayWindow();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        DetachOwnerWindowHook();
+        DetachSessionEvents(Player);
         DetachPrimarySurface(_attachedPrimarySession);
         CloseOverlayWindow();
     }
@@ -232,9 +240,7 @@ public sealed class MediaSurface : Grid
     {
         IMediaControlSession? session = Player;
         if (!IsLoaded || session == null || _surfaceHost.WindowHandle == IntPtr.Zero)
-        {
             return;
-        }
 
         var pixelWidth = Math.Max(1, _surfaceHost.NativeClientWidth);
         var pixelHeight = Math.Max(1, _surfaceHost.NativeClientHeight);
@@ -243,6 +249,7 @@ public sealed class MediaSurface : Grid
         if (_primaryAttached && ReferenceEquals(session, _attachedPrimarySession))
         {
             _ = session.ResizePresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, pixelWidth, pixelHeight);
+            ApplyPrimarySurfaceLiveResize(session);
             return;
         }
 
@@ -256,18 +263,195 @@ public sealed class MediaSurface : Grid
             dpi.DpiScaleX,
             dpi.DpiScaleY));
         _attachedPrimarySession = _primaryAttached ? session : null;
+        if (_primaryAttached)
+            ApplyPrimarySurfaceLiveResize(session);
+
+        UpdateNativeSurfaceVisibility();
     }
 
     private void DetachPrimarySurface(IMediaControlSession? session)
     {
         if (!_primaryAttached || session == null)
-        {
             return;
-        }
+
+        if (_primarySurfaceLiveResize)
+            _ = session.SetPresentationSurfaceLiveResize(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, false);
 
         _ = session.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId);
         _primaryAttached = false;
         _attachedPrimarySession = null;
+        UpdateNativeSurfaceVisibility();
+    }
+
+    private void AttachSessionEvents(IMediaControlSession? session)
+    {
+        if (session == null || ReferenceEquals(session, _eventSession))
+            return;
+
+        DetachSessionEvents(_eventSession);
+        _eventSession = session;
+        session.MediaStarted += OnSessionMediaStarted;
+        session.MediaStopped += OnSessionMediaStopped;
+        session.MediaEnded += OnSessionMediaEnded;
+        session.PresentationFramePresented += OnSessionPresentationFramePresented;
+    }
+
+    private void DetachSessionEvents(IMediaControlSession? session)
+    {
+        if (session == null || !ReferenceEquals(session, _eventSession))
+            return;
+
+        session.MediaStarted -= OnSessionMediaStarted;
+        session.MediaStopped -= OnSessionMediaStopped;
+        session.MediaEnded -= OnSessionMediaEnded;
+        session.PresentationFramePresented -= OnSessionPresentationFramePresented;
+        _showPrimarySurfaceAfterPresentation = false;
+        _eventSession = null;
+    }
+
+    private void OnSessionMediaStarted(object? sender, EventArgs e)
+    {
+        _showPrimarySurfaceAfterPresentation = true;
+        _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
+    }
+
+    private void OnSessionMediaStopped(object? sender, EventArgs e)
+    {
+        _showPrimarySurfaceAfterPresentation = false;
+        _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
+    }
+
+    private void OnSessionMediaEnded(object? sender, EventArgs e)
+    {
+        _showPrimarySurfaceAfterPresentation = false;
+        _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
+    }
+
+    private void OnSessionPresentationFramePresented(object? sender, EventArgs e)
+    {
+        if (!_showPrimarySurfaceAfterPresentation)
+            return;
+
+        _showPrimarySurfaceAfterPresentation = false;
+        _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
+    }
+
+    private void UpdateNativeSurfaceVisibility()
+    {
+        IMediaControlSession? session = Player;
+        var shouldShow = _primaryAttached
+            && session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused }
+            && !_showPrimarySurfaceAfterPresentation;
+
+        if (shouldShow)
+        {
+            if (_surfaceHost.Visibility != Visibility.Visible)
+                _surfaceHost.Visibility = Visibility.Visible;
+
+            _surfaceHost.SetNativeVisible(true);
+            return;
+        }
+
+        _surfaceHost.SetNativeVisible(false);
+        if (_surfaceHost.Visibility != Visibility.Hidden)
+            _surfaceHost.Visibility = Visibility.Hidden;
+    }
+
+    private void AttachOwnerWindowHook()
+    {
+        Window? window = Window.GetWindow(this);
+        if (window == null)
+            return;
+
+        if (!ReferenceEquals(window, _ownerWindow))
+        {
+            DetachOwnerWindowHook();
+            _ownerWindow = window;
+            _ownerWindow.SourceInitialized += OnOwnerWindowSourceInitialized;
+            _ownerWindow.Closed += OnOwnerWindowClosed;
+        }
+
+        AttachOwnerHwndSource(window);
+    }
+
+    private void AttachOwnerHwndSource(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        HwndSource? source = HwndSource.FromHwnd(hwnd);
+        if (source == null || ReferenceEquals(source, _ownerHwndSource))
+            return;
+
+        _ownerHwndSource?.RemoveHook(OnOwnerWindowMessage);
+        _ownerHwndSource = source;
+        _ownerHwndSource.AddHook(OnOwnerWindowMessage);
+    }
+
+    private void DetachOwnerWindowHook()
+    {
+        SetPrimarySurfaceLiveResize(false);
+
+        if (_ownerHwndSource != null)
+        {
+            _ownerHwndSource.RemoveHook(OnOwnerWindowMessage);
+            _ownerHwndSource = null;
+        }
+
+        if (_ownerWindow != null)
+        {
+            _ownerWindow.SourceInitialized -= OnOwnerWindowSourceInitialized;
+            _ownerWindow.Closed -= OnOwnerWindowClosed;
+            _ownerWindow = null;
+        }
+    }
+
+    private void OnOwnerWindowSourceInitialized(object? sender, EventArgs e)
+    {
+        if (sender is Window window)
+            AttachOwnerHwndSource(window);
+    }
+
+    private void OnOwnerWindowClosed(object? sender, EventArgs e) => DetachOwnerWindowHook();
+
+    private IntPtr OnOwnerWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_ENTERSIZEMOVE)
+        {
+            SetPrimarySurfaceLiveResize(true);
+        }
+        else if (msg == WM_EXITSIZEMOVE)
+        {
+            SetPrimarySurfaceLiveResize(false);
+            RefreshPresentationLayout();
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void SetPrimarySurfaceLiveResize(bool isResizing)
+    {
+        if (_primarySurfaceLiveResize == isResizing)
+            return;
+
+        _primarySurfaceLiveResize = isResizing;
+        if (_primaryAttached && _attachedPrimarySession != null)
+        {
+            _ = _attachedPrimarySession.SetPresentationSurfaceLiveResize(
+                MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+                isResizing);
+        }
+    }
+
+    private void ApplyPrimarySurfaceLiveResize(IMediaControlSession session)
+    {
+        if (_primarySurfaceLiveResize)
+        {
+            _ = session.SetPresentationSurfaceLiveResize(
+                MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+                true);
+        }
     }
 
     private void UpdateOverlayWindow()
@@ -284,9 +468,7 @@ public sealed class MediaSurface : Grid
         _overlayWindow.UpdateBounds(this);
 
         if (!_overlayWindow.IsVisible)
-        {
             _overlayWindow.Show();
-        }
     }
 
     private OverlayWindow CreateOverlayWindow()
@@ -302,9 +484,7 @@ public sealed class MediaSurface : Grid
     private void CloseOverlayWindow()
     {
         if (_overlayWindow == null)
-        {
             return;
-        }
 
         _overlayWindow.SetContent(null);
         OverlayWindow window = _overlayWindow;
@@ -342,16 +522,12 @@ public sealed class MediaSurface : Grid
         public void UpdateBounds(FrameworkElement owner)
         {
             if (!owner.IsLoaded || owner.ActualWidth <= 0 || owner.ActualHeight <= 0)
-            {
                 return;
-            }
 
             Point topLeft = owner.PointToScreen(new Point(0, 0));
-            PresentationSource? source = PresentationSource.FromVisual(owner);
+            var source = PresentationSource.FromVisual(owner);
             if (source?.CompositionTarget != null)
-            {
                 topLeft = source.CompositionTarget.TransformFromDevice.Transform(topLeft);
-            }
 
             Left = topLeft.X;
             Top = topLeft.Y;
@@ -368,27 +544,23 @@ public sealed class MediaSurface : Grid
 
         private void ApplyHitTestStyle()
         {
-            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero)
-            {
                 return;
-            }
 
-            int exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            int updated = _hitTestVisible
+            var exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+            var updated = _hitTestVisible
                 ? exStyle & ~NativeMethods.WS_EX_TRANSPARENT
                 : exStyle | NativeMethods.WS_EX_TRANSPARENT;
+
             if (updated != exStyle)
-            {
                 _ = NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, updated);
-            }
         }
     }
 
     private sealed class NativeHwndSurfaceHost : HwndHost
     {
         private const int WS_CHILD = 0x40000000;
-        private const int WS_VISIBLE = 0x10000000;
         private const int WS_CLIPSIBLINGS = 0x04000000;
         private const int WS_CLIPCHILDREN = 0x02000000;
         private const int WM_PAINT = 0x000F;
@@ -412,12 +584,12 @@ public sealed class MediaSurface : Grid
 
         protected override HandleRef BuildWindowCore(HandleRef hwndParent)
         {
-            (int hostWidth, int hostHeight) = GetCurrentClientSize();
+            (var hostWidth, var hostHeight) = GetCurrentClientSize();
             WindowHandle = NativeMethods.CreateWindowEx(
                 0,
                 "static",
                 string.Empty,
-                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                 0,
                 0,
                 hostWidth,
@@ -432,12 +604,20 @@ public sealed class MediaSurface : Grid
             return new HandleRef(this, WindowHandle);
         }
 
+        public void SetNativeVisible(bool isVisible)
+        {
+            if (WindowHandle == IntPtr.Zero)
+                return;
+
+            _ = NativeMethods.ShowWindow(
+                WindowHandle,
+                isVisible ? NativeMethods.SW_SHOW : NativeMethods.SW_HIDE);
+        }
+
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
             if (hwnd.Handle != IntPtr.Zero)
-            {
                 _ = NativeMethods.DestroyWindow(hwnd.Handle);
-            }
 
             WindowHandle = IntPtr.Zero;
             NativeHandleChanged?.Invoke(this, EventArgs.Empty);
@@ -454,9 +634,7 @@ public sealed class MediaSurface : Grid
             if (msg == WM_ERASEBKGND)
             {
                 if (wParam != IntPtr.Zero)
-                {
                     FillNativeBackground(hwnd, wParam);
-                }
 
                 handled = true;
                 return new IntPtr(1);
@@ -475,9 +653,7 @@ public sealed class MediaSurface : Grid
             }
 
             if (msg is WM_SIZE or WM_WINDOWPOSCHANGED)
-            {
                 QueueBoundsChanged();
-            }
 
             handled = false;
             return IntPtr.Zero;
@@ -486,19 +662,15 @@ public sealed class MediaSurface : Grid
         private void QueueBoundsChanged()
         {
             if (WindowHandle == IntPtr.Zero || _boundsUpdateQueued)
-            {
                 return;
-            }
 
             _boundsUpdateQueued = true;
             _ = Dispatcher.BeginInvoke(new Action(() =>
             {
                 _boundsUpdateQueued = false;
-                (int width, int height) = GetCurrentClientSize();
+                (var width, var height) = GetCurrentClientSize();
                 if (width == _lastHostWidth && height == _lastHostHeight)
-                {
                     return;
-                }
 
                 _lastHostWidth = width;
                 _lastHostHeight = height;
@@ -509,11 +681,9 @@ public sealed class MediaSurface : Grid
         private (int width, int height) GetCurrentClientSize()
         {
             if (WindowHandle != IntPtr.Zero && NativeMethods.GetClientRect(WindowHandle, out NativeMethods.RECT rect))
-            {
                 return (
                     Math.Max(1, rect.Right - rect.Left),
                     Math.Max(1, rect.Bottom - rect.Top));
-            }
 
             return (
                 Math.Max(1, (int)Math.Round(ActualWidth)),
@@ -523,15 +693,11 @@ public sealed class MediaSurface : Grid
         private static void FillNativeBackground(IntPtr hwnd, IntPtr hdc)
         {
             if (hwnd == IntPtr.Zero || hdc == IntPtr.Zero || !NativeMethods.GetClientRect(hwnd, out NativeMethods.RECT rect))
-            {
                 return;
-            }
 
-            IntPtr brush = NativeMethods.CreateSolidBrush(0);
+            var brush = NativeMethods.CreateSolidBrush(0);
             if (brush == IntPtr.Zero)
-            {
                 return;
-            }
 
             try
             {

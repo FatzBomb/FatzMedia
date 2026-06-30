@@ -1,12 +1,10 @@
-
-using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Files;
+using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
 using System.Diagnostics;
-using System.IO;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
@@ -147,27 +145,39 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         };
     }
 
-    public void ClearBackground()
-    {
-        ClearBackgroundCore(raiseEvent: true);
-    }
+    public void ClearBackground() => ClearBackgroundCore(raiseEvent: true);
 
     public bool Play()
     {
         ThrowIfDisposed();
-        return _coordinator.Play();
+        var success = _coordinator.Play();
+        if (success)
+        {
+            StartBackgroundVideoPlayback();
+        }
+
+        return success;
     }
 
     public bool Pause()
     {
         ThrowIfDisposed();
-        return _coordinator.Pause();
+        var success = _coordinator.Pause();
+        if (success)
+        {
+            StopBackgroundVideoPlayback(wait: true);
+        }
+
+        return success;
     }
 
     public bool Stop()
     {
         ThrowIfDisposed();
-        return _coordinator.Stop();
+        var success = _coordinator.Stop();
+        StopBackgroundVideoPlayback(wait: true);
+        ResetBackgroundVideoToStart();
+        return success;
     }
 
     public void Close()
@@ -194,9 +204,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
     public void Dispose()
     {
         if (_disposed)
-        {
             return;
-        }
 
         ClearBackgroundCore(raiseEvent: false);
         _backgroundVideoScheduler.Dispose();
@@ -212,20 +220,15 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return RaiseBackgroundFrame(background.Source);
         }
 
-        VideoFrameData? frame = null;
         try
         {
-            using VideoDecoder? decoder = OpenBackgroundDecoder(background);
+            using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: false);
             if (decoder == null)
-            {
                 return false;
-            }
 
-            frame = DecodeFirstBackgroundFrame(decoder);
+            VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
             if (frame == null)
-            {
                 return false;
-            }
 
             RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
             return true;
@@ -239,7 +242,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
 
     private bool StartBackgroundVideo(MediaBackgroundCandidate background)
     {
-        VideoDecoder? decoder = OpenBackgroundDecoder(background);
+        VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
         if (decoder == null)
         {
             return false;
@@ -257,9 +260,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         lock (_backgroundGate)
         {
             _backgroundVideoDecoder = decoder;
-            _backgroundGeneration++;
-            int generation = _backgroundGeneration;
-            _backgroundVideoScheduler.Start(token => BackgroundVideoLoop(generation, token));
+        }
+
+        if (State == MediaPlayerState.Playing)
+        {
+            StartBackgroundVideoPlayback();
         }
 
         return true;
@@ -267,6 +272,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
 
     private void BackgroundVideoLoop(int generation, CancellationToken cancellationToken)
     {
+        using var waiter = new PrecisionWaiter();
         var nextTick = Stopwatch.GetTimestamp();
         while (!cancellationToken.IsCancellationRequested && generation == _backgroundGeneration)
         {
@@ -279,8 +285,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             VideoFrameData? frame = DecodeNextBackgroundVideoFrame(decoder);
             if (frame == null)
             {
-                _ = decoder.Seek(0, exact: false);
-                frame = DecodeNextBackgroundVideoFrame(decoder);
+                frame = RestartBackgroundVideo(decoder);
+                nextTick = Stopwatch.GetTimestamp();
             }
 
             if (frame != null)
@@ -293,12 +299,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             var delayTicks = nextTick - Stopwatch.GetTimestamp();
             if (delayTicks > 0)
             {
-                _ = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(delayTicks / (double)Stopwatch.Frequency));
+                waiter.Wait(TimeSpan.FromSeconds(delayTicks / (double)Stopwatch.Frequency), cancellationToken.WaitHandle);
             }
             else
             {
                 nextTick = Stopwatch.GetTimestamp();
-                _ = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(1));
+                waiter.Wait(TimeSpan.FromMilliseconds(1), cancellationToken.WaitHandle);
             }
         }
     }
@@ -309,17 +315,23 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         {
             VideoFrameData? frame = decoder.GetNextFrame();
             if (frame != null)
-            {
                 return frame;
-            }
 
             if (!decoder.DecodeNextFrame())
-            {
                 break;
-            }
         }
 
         return decoder.GetNextFrame();
+    }
+
+    private static VideoFrameData? RestartBackgroundVideo(VideoDecoder decoder)
+    {
+        if (!decoder.Seek(0, exact: false))
+        {
+            return null;
+        }
+
+        return DecodeFirstBackgroundFrame(decoder);
     }
 
     private static VideoFrameData? DecodeFirstBackgroundFrame(VideoDecoder decoder)
@@ -338,9 +350,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         return decoder.GetNextFrame();
     }
 
-    private VideoDecoder? OpenBackgroundDecoder(MediaBackgroundCandidate background)
+    private VideoDecoder? OpenBackgroundDecoder(MediaBackgroundCandidate background, bool enableHardwareFrameOutput)
     {
-        string? path = background.Source?.FilePath ?? background.Path;
+        var path = background.Source?.FilePath ?? background.Path;
         if (string.IsNullOrWhiteSpace(path) && background.Data is { Length: > 0 })
         {
             path = CreateTempBackgroundPath(background);
@@ -351,7 +363,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return null;
         }
 
-        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput: false);
+        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput);
         if (decoder.Open(path))
         {
             return decoder;
@@ -363,13 +375,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine
 
     private string CreateTempBackgroundPath(MediaBackgroundCandidate background)
     {
-        string extension = Path.GetExtension(background.DisplayName);
+        var extension = Path.GetExtension(background.DisplayName);
         if (string.IsNullOrWhiteSpace(extension))
         {
             extension = background.Kind == MediaBackgroundKind.Video ? ".mp4" : ".png";
         }
 
-        string path = Path.Combine(Path.GetTempPath(), $"fbm-bg-{Guid.NewGuid():N}{extension}");
+        var path = Path.Combine(Path.GetTempPath(), $"fbm-bg-{Guid.NewGuid():N}{extension}");
         File.WriteAllBytes(path, background.Data ?? []);
         _backgroundVideoTempPath = path;
         return path;
@@ -379,6 +391,23 @@ internal sealed class PipelineMediaEngine : IMediaEngine
     {
         try
         {
+            if (frame.IsD3D11HardwareFrame)
+            {
+                BackgroundFrameReady?.Invoke(this, new VideoFrameEventArgs
+                {
+                    Width = frame.Width,
+                    Height = frame.Height,
+                    Stride = frame.Stride,
+                    PtsSeconds = frame.PresentationTime,
+                    FramesPerSecond = framesPerSecond,
+                    D3D11DevicePointer = frame.D3D11DevicePointer,
+                    D3D11DeviceContextPointer = frame.D3D11DeviceContextPointer,
+                    D3D11TexturePointer = frame.D3D11TexturePointer,
+                    D3D11ArraySlice = frame.D3D11ArraySlice
+                });
+                return;
+            }
+
             if (frame.Data == null || frame.Length <= 0 || frame.Width <= 0 || frame.Height <= 0 || frame.Stride < frame.Width * 4)
             {
                 return;
@@ -404,10 +433,60 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         }
     }
 
-    private void ClearBackgroundCore(bool raiseEvent)
+    private void StartBackgroundVideoPlayback()
     {
         _backgroundVideoScheduler.StopAndWait();
+
+        lock (_backgroundGate)
+        {
+            if (_backgroundVideoDecoder == null)
+            {
+                return;
+            }
+
+            _backgroundGeneration++;
+            var generation = _backgroundGeneration;
+            _backgroundVideoScheduler.Start(token => BackgroundVideoLoop(generation, token));
+        }
+    }
+
+    private void StopBackgroundVideoPlayback(bool wait)
+    {
+        if (wait)
+        {
+            _backgroundVideoScheduler.StopAndWait();
+        }
+        else
+        {
+            _backgroundVideoScheduler.Stop();
+        }
+
         _backgroundGeneration++;
+    }
+
+    private void ResetBackgroundVideoToStart()
+    {
+        VideoDecoder? decoder;
+        lock (_backgroundGate)
+        {
+            decoder = _backgroundVideoDecoder;
+        }
+
+        if (decoder == null)
+        {
+            return;
+        }
+
+        VideoFrameData? frame = RestartBackgroundVideo(decoder);
+        if (frame != null)
+        {
+            RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
+        }
+    }
+
+    private void ClearBackgroundCore(bool raiseEvent)
+    {
+        StopBackgroundVideoPlayback(wait: true);
         lock (_backgroundGate)
         {
             _backgroundVideoDecoder?.Dispose();
@@ -442,7 +521,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         }
     }
 
-    private void OnPlaybackEnded(object? sender, EventArgs e) => MediaEnded?.Invoke(this, EventArgs.Empty);
+    private void OnPlaybackEnded(object? sender, EventArgs e)
+    {
+        StopBackgroundVideoPlayback(wait: true);
+        ResetBackgroundVideoToStart();
+        MediaEnded?.Invoke(this, EventArgs.Empty);
+    }
 
     private static bool RejectUnsupported(string path, FileType fileType)
     {
@@ -456,24 +540,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         return OpenImage(source);
     }
 
-    private bool OpenImage(MediaInputSource source)
-    {
-        if (source.Kind == MediaInputSourceKind.FilePath)
-        {
-            return OpenImageFile(source);
-        }
-
-        if (source.IsBgraImage)
-        {
-            return OpenImageBgra(source);
-        }
-
-        return false;
-    }
+    private bool OpenImage(MediaInputSource source) =>
+        source.Kind == MediaInputSourceKind.FilePath ? OpenImageFile(source) : source.IsBgraImage && OpenImageBgra(source);
 
     private bool OpenImageFile(MediaInputSource source)
     {
-        string? imagePath = source.FilePath;
+        var imagePath = source.FilePath;
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
         {
             return false;
@@ -538,7 +610,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return false;
         }
 
-        int length = checked(source.Stride * source.Height);
+        var length = checked(source.Stride * source.Height);
         if (source.BgraPixels.Length < length)
         {
             return false;
@@ -590,7 +662,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return false;
         }
 
-        int length = checked(source.Stride * source.Height);
+        var length = checked(source.Stride * source.Height);
         if (source.BgraPixels.Length < length)
         {
             return false;

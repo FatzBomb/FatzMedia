@@ -2,6 +2,7 @@ using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Graphics;
+using FatzBombMedia.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 
@@ -17,6 +18,7 @@ public class MediaControlPlayer : IMediaControlSession
     private readonly IServiceProvider _serviceProvider;
     private readonly IMediaEngine _mediaEngine;
     private readonly NativeMediaPresentationCoordinator _presentationCoordinator;
+    private readonly MediaControlOperationQueue _controlOperations;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
@@ -48,7 +50,7 @@ public class MediaControlPlayer : IMediaControlSession
     public MediaControlPlayer(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
     {
         Configuration = configuration;
-        string[] resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+        var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
         _serviceProvider = MediaPlayerServiceProvider.Create(Configuration, resolvedNativeLibraryPaths);
         ResolveActualMethods();
 
@@ -62,9 +64,12 @@ public class MediaControlPlayer : IMediaControlSession
         _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, Configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
         File = new MediaFile(_mediaEngine, _presentationCoordinator, Metadata, Controls, Effects, CdgVisuals, archiveService);
+        _controlOperations = new MediaControlOperationQueue("MediaControl");
 
         Controls.MediaEnded += OnControlsMediaEnded;
+        Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
+        _presentationCoordinator.FramePresented += OnPresentationFramePresented;
     }
 
     public MediaControls Controls { get; }
@@ -160,6 +165,18 @@ public class MediaControlPlayer : IMediaControlSession
 
     public static MediaControlPlayer Create(IEnumerable<string> nativeLibraryPaths) => new(nativeLibraryPaths);
 
+    public static Task<MediaControlPlayer> CreateAsync(string? userLibraryPath = null) =>
+        Task.Run(() => new MediaControlPlayer(userLibraryPath));
+
+    public static Task<MediaControlPlayer> CreateAsync(MediaPlayerConfiguration configuration, string? userLibraryPath = null) =>
+        Task.Run(() => new MediaControlPlayer(configuration, userLibraryPath));
+
+    public static Task<MediaControlPlayer> CreateAsync(IEnumerable<string> nativeLibraryPaths) =>
+        Task.Run(() => new MediaControlPlayer(nativeLibraryPaths));
+
+    public static Task<MediaControlPlayer> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
+        Task.Run(() => new MediaControlPlayer(configuration, nativeLibraryPaths));
+
     public bool Load(string path) => File.Load(path);
 
     public bool Load(string path, bool ignoreSidecar = false) => File.Load(path, ignoreSidecar);
@@ -171,23 +188,31 @@ public class MediaControlPlayer : IMediaControlSession
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         File.Load(source, backgroundSource, ignoreSidecar);
 
-    public Task<bool> LoadAsync(string path) => File.LoadAsync(path);
+    public Task<bool> LoadAsync(string path) => _controlOperations.Enqueue(() => File.LoadAsync(path));
 
-    public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) => File.LoadAsync(path, ignoreSidecar);
+    public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
+        _controlOperations.Enqueue(() => File.LoadAsync(path, ignoreSidecar));
 
-    public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) => File.LoadAsync(source, ignoreSidecar);
+    public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
+        _controlOperations.Enqueue(() => File.LoadAsync(source, ignoreSidecar));
 
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        File.LoadAsync(path, backgroundPath, ignoreSidecar);
+        _controlOperations.Enqueue(() => File.LoadAsync(path, backgroundPath, ignoreSidecar));
 
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        File.LoadAsync(source, backgroundSource, ignoreSidecar);
+        _controlOperations.Enqueue(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));
 
     public bool Play() => Controls.Play();
 
+    public Task<bool> PlayAsync() => _controlOperations.Enqueue(Controls.Play);
+
     public bool Pause() => Controls.Pause();
 
+    public Task<bool> PauseAsync() => _controlOperations.Enqueue(Controls.Pause);
+
     public bool Stop() => Controls.Stop();
+
+    public Task<bool> StopAsync() => _controlOperations.Enqueue(Controls.Stop);
 
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
@@ -195,11 +220,9 @@ public class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            bool success = Controls.Seek(seconds);
+            var success = Controls.Seek(seconds);
             if (success)
-            {
                 _presentationCoordinator.RefreshCurrentPosition();
-            }
 
             return success;
         }
@@ -216,11 +239,9 @@ public class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            bool success = await _mediaEngine.SeekAsync(seconds).ConfigureAwait(false);
+            var success = await _mediaEngine.SeekAsync(seconds).ConfigureAwait(false);
             if (success)
-            {
                 _presentationCoordinator.RefreshCurrentPosition();
-            }
 
             return success;
         }
@@ -236,15 +257,11 @@ public class MediaControlPlayer : IMediaControlSession
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
     {
         if (_disposed || surface is null || !surface.IsValid)
-        {
             return false;
-        }
 
-        bool attached = _presentationCoordinator.AttachPresentationSurface(surface);
+        var attached = _presentationCoordinator.AttachPresentationSurface(surface);
         if (attached)
-        {
             _presentationSurfaces[surface.Id] = surface;
-        }
 
         return attached;
     }
@@ -252,37 +269,39 @@ public class MediaControlPlayer : IMediaControlSession
     public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId) || pixelWidth <= 0 || pixelHeight <= 0)
-        {
             return false;
-        }
 
         if (!_presentationSurfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
-        {
             return false;
-        }
+
+        if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
+            return true;
 
         surface = surface.WithSize(pixelWidth, pixelHeight);
-        bool resized = _presentationCoordinator.ResizePresentationSurface(surface.Id, pixelWidth, pixelHeight);
+        var resized = _presentationCoordinator.ResizePresentationSurface(surface.Id, pixelWidth, pixelHeight);
         if (resized)
-        {
             _presentationSurfaces[surface.Id] = surface;
-        }
 
         return resized;
+    }
+
+    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
+            return false;
+
+        return _presentationSurfaces.ContainsKey(surfaceId)
+            && _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
     }
 
     public bool DetachPresentationSurface(string surfaceId)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
-        {
             return false;
-        }
 
-        bool detached = _presentationCoordinator.DetachPresentationSurface(surfaceId);
+        var detached = _presentationCoordinator.DetachPresentationSurface(surfaceId);
         if (detached)
-        {
             _ = _presentationSurfaces.Remove(surfaceId);
-        }
 
         return detached;
     }
@@ -294,6 +313,10 @@ public class MediaControlPlayer : IMediaControlSession
     }
 
     public event EventHandler? MediaEnded;
+
+    public event EventHandler? MediaStarted;
+
+    public event EventHandler? PresentationFramePresented;
 
     public event EventHandler? MediaStopped;
 
@@ -310,9 +333,20 @@ public class MediaControlPlayer : IMediaControlSession
             : RenderingMethod.Software;
     }
 
-    private void OnControlsMediaEnded(object? sender, EventArgs e) => MediaEnded?.Invoke(this, EventArgs.Empty);
+    private void OnControlsMediaEnded(object? sender, EventArgs e)
+    {
+        EventHandler? handler = MediaEnded;
+        if (handler == null)
+            return;
+
+        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+    }
+
+    private void OnControlsMediaStarted(object? sender, EventArgs e) => MediaStarted?.Invoke(this, EventArgs.Empty);
 
     private void OnControlsMediaStopped(object? sender, EventArgs e) => MediaStopped?.Invoke(this, EventArgs.Empty);
+
+    private void OnPresentationFramePresented(object? sender, EventArgs e) => PresentationFramePresented?.Invoke(this, EventArgs.Empty);
 
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
@@ -323,12 +357,8 @@ public class MediaControlPlayer : IMediaControlSession
             .ToArray();
 
         foreach (var path in resolvedPaths)
-        {
             if (!Directory.Exists(path))
-            {
                 throw new DirectoryNotFoundException($"Native library path does not exist: {path}");
-            }
-        }
 
         return resolvedPaths;
     }
@@ -341,16 +371,16 @@ public class MediaControlPlayer : IMediaControlSession
     public void Dispose()
     {
         if (_disposed)
-        {
             return;
-        }
 
         try
         {
             _ = Stop();
             File.Close();
             Controls.MediaEnded -= OnControlsMediaEnded;
+            Controls.MediaStarted -= OnControlsMediaStarted;
             Controls.MediaStopped -= OnControlsMediaStopped;
+            _presentationCoordinator.FramePresented -= OnPresentationFramePresented;
             Controls.Dispose();
             _presentationCoordinator.Dispose();
             _mediaEngine.Dispose();
@@ -362,6 +392,7 @@ public class MediaControlPlayer : IMediaControlSession
         }
         finally
         {
+            _controlOperations.Dispose();
             _disposed = true;
         }
     }

@@ -103,7 +103,7 @@ public readonly partial record struct MediaCompositionFrame
     }
 
     public MediaCompositionLayer[] CreateLayerDescriptors()
-        => EnumerateLayers().ToArray();
+        => [.. EnumerateLayers()];
 
     public string LayerSummary
     {

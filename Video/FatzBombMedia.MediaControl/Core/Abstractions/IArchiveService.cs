@@ -1,6 +1,3 @@
-
-using System.IO;
-
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 /// <summary>
 /// Provides functionality to open and work with archive files.

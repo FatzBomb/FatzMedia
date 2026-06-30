@@ -31,12 +31,12 @@ public sealed class MediaInputSource
     public static MediaInputSource FromFile(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return new MediaInputSource(MediaInputSourceKind.FilePath, System.IO.Path.GetFileName(path), path, null, 0, 0, 0);
+        return new MediaInputSource(MediaInputSourceKind.FilePath, Path.GetFileName(path), path, null, 0, 0, 0);
     }
 
     public static MediaInputSource FromBgra32Image(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, string? displayName = null)
     {
-        int requiredLength = ValidateBgra32Image(bgraPixels.Length, width, height, stride, nameof(bgraPixels));
+        var requiredLength = ValidateBgra32Image(bgraPixels.Length, width, height, stride, nameof(bgraPixels));
         var copy = bgraPixels[..requiredLength].ToArray();
         return FromOwnedBgra32Image(copy, width, height, stride, displayName);
     }
@@ -61,18 +61,14 @@ public sealed class MediaInputSource
 
     private static int ValidateBgra32Image(int bufferLength, int width, int height, int stride, string bufferParameterName)
     {
-        if (width <= 0)
-            throw new ArgumentOutOfRangeException(nameof(width));
-        if (height <= 0)
-            throw new ArgumentOutOfRangeException(nameof(height));
-        if (stride < width * 4)
-            throw new ArgumentOutOfRangeException(nameof(stride));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ArgumentOutOfRangeException.ThrowIfLessThan(stride, width * 4);
 
-        int requiredLength = checked(stride * height);
-        if (bufferLength < requiredLength)
-            throw new ArgumentException("The BGRA pixel buffer is smaller than stride * height.", bufferParameterName);
-
-        return requiredLength;
+        var requiredLength = checked(stride * height);
+        return bufferLength < requiredLength
+            ? throw new ArgumentException("The BGRA pixel buffer is smaller than stride * height.", bufferParameterName)
+            : requiredLength;
     }
 }
 
