@@ -31,7 +31,6 @@ internal static partial class Bootstrap
         var foundOptional = 0;
         var totalRequired = libraryFiles.Count(l => l.isRequired);
         var totalOptional = libraryFiles.Count(l => !l.isRequired);
-        var totalLibraries = libraryFiles.Length;
         List<string> missingRequired = [];
         List<string> missingOptional = [];
         List<string> failedRequired = [];
@@ -132,7 +131,6 @@ internal static partial class Bootstrap
         ];
 
         bool ok;
-        var totalLibraries = libraryFiles.Length;
         var foundPath = DirectoryScanner.LocateFilesDirectory(searchPaths, libraryFiles, CompatibilityLevel.Compatible) ?? string.Empty;
         List<string> missingRequired = [];
 
@@ -148,7 +146,7 @@ internal static partial class Bootstrap
                     Debug.WriteLine($"[FFMPEG] ✅ {dllFile}");
 
                 FileTypes.Video.UnionWith(supportedFileTypes);
-                Debug.WriteLine($"✅ FFmpeg successfully loaded!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: {totalLibraries}/{totalLibraries}]");
+                Debug.WriteLine($"✅ FFmpeg successfully loaded!   [Files found: {libraryFiles.Length}/{libraryFiles.Length}]   [Successful Load: {libraryFiles.Length}/{libraryFiles.Length}]");
                 return true;
             }
             else
@@ -157,7 +155,7 @@ internal static partial class Bootstrap
                     Debug.WriteLine($"[FFMPEG] ⚠️ {dllFile}");
 
                 AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
-                Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {totalLibraries}/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
+                Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {libraryFiles.Length}/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
                 ffmpeg.RootPath = tempPath;
                 return false;
             }
@@ -172,7 +170,7 @@ internal static partial class Bootstrap
             }
 
             AddNativeLoadMessage($"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.");
-            Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{totalLibraries}]   [Successful Load: 0/{totalLibraries}]");
+            Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
             return false;
         }
     }
