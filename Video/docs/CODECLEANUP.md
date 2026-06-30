@@ -16,6 +16,14 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 
 ---
 
+## Cleanup Progress
+
+- [x] Stage 1 — completed 2026-06-30: marked complete from prior work.
+- [x] Stage 2 — completed 2026-06-30: marked complete from prior work.
+- [x] Stage 3 — completed 2026-06-30: removed 26 dead members from MediaControlPlayer, 8 from MediaControls, 2 from MediaFile, 2 from CdgVisuals, 6 enum values. Fixed WPF Player ctor chain. Builds: Debug pass, Release pass.
+
+---
+
 ## 1. API Layer — Confirmed Dead Code
 
 ### 1.1 `MediaControlPlayer.cs` — 26 items
@@ -65,19 +73,19 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 
 | # | Item | Line | Explanation |
 |---|------|------|-------------|
-| 29 | `Audio` property | 10 | Never read externally |
-| 30 | `Video` property | 11 | Never read externally |
-| 31 | `Archive` property | 12 | Never read externally |
-| 32 | `Image` property | 13 | Never read externally |
-| 33 | `Cdg` property | 14 | Never read externally |
-| 34 | `All` computed property | 16 | Computed by concatenating Audio+Video+Archive+Image+Cdg; `Filters` initializer re-concatenates the individuals directly rather than using `All` |
+| 29 | `Audio` property | 10 | Never read externally. **Consumed internally** by `Filters` (line 18-26, both "Supported media" and "Audio" entries) and `All` (line 16). Do NOT remove — verified 2026-06-30. |
+| 30 | `Video` property | 11 | Never read externally. **Consumed internally** by `Filters` ("Supported media" and "Video" entries). Do NOT remove — verified 2026-06-30. |
+| 31 | `Archive` property | 12 | Never read externally. **Consumed internally** by `Filters` ("Supported media" and "Archive" entries). Do NOT remove — verified 2026-06-30. |
+| 32 | `Image` property | 13 | Never read externally. **Consumed internally** by `Filters` ("Supported media" and "Image" entries). Do NOT remove — verified 2026-06-30. |
+| 33 | `Cdg` property | 14 | Never read externally. **Consumed internally** by `Filters` ("Supported media" and "CD+G" entries). Do NOT remove — verified 2026-06-30. |
+| 34 | `All` computed property | 16 | Computed by concatenating Audio+Video+Archive+Image+Cdg; `Filters` initializer re-concatenates the individuals directly rather than using `All`. Zero internal or external consumers. Safe to remove. |
 
 ### 1.5 `MediaPresentationSurfaceRole.cs` — 2 items
 
 | # | Item | Line | Explanation |
 |---|------|------|-------------|
-| 35 | `Secondary` enum value (1) | 12 | Never referenced anywhere |
-| 36 | `Preview` enum value (2) | 15 | Never referenced anywhere |
+| 35 | `Secondary` enum value (1) | 12 | Never referenced anywhere — verified 2026-06-30 |
+| 36 | `Preview` enum value (2) | 15 | Never referenced anywhere — verified 2026-06-30 |
 
 ---
 
@@ -87,7 +95,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 
 | # | Item | Line | Explanation |
 |---|------|------|-------------|
-| 37 | `Seek(TimeSpan)` method | 111 | Only reachable via dead `Position` setter; zero external callers |
+| 37 | `Seek(TimeSpan)` method | 111 | Only reachable via dead `Position` setter; zero external callers. **NOTE: `Seek(double)` at line 116 IS LIVE** — verified called by `MainWindowViewModel.cs:222`. Remove only the TimeSpan overload. |
 | 38 | `Position` setter | 128 | Getter is used; setter is dead |
 | 39 | `State` property | 192 | Duplicated by `MediaControlPlayer.State`; zero external callers |
 | 40 | `IsOpen` property | 197 | Duplicated by `MediaControlPlayer.IsOpen`; zero external callers |
@@ -115,8 +123,8 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 
 | # | Item | Line | Explanation |
 |---|------|------|-------------|
-| 50 | `BackgroundOverrideArgb` property | 28 | Never set or read externally |
-| 51 | `BackgroundWashArgb` property | 42 | Never read externally |
+| 50 | `BackgroundOverrideArgb` property | 28 | Controller passthrough — never set or read externally. Underlying `ICdgEngine.BackgroundOverrideArgb` is LIVE (used by DxCdgStateMachine/DxCdgColorManager). |
+| 51 | `BackgroundWashArgb` property | 42 | Controller passthrough — never read externally. Underlying `ICdgEngine.BackgroundWashArgb` is LIVE (used by compositor/renderer). |
 
 ---
 
@@ -532,24 +540,60 @@ rg -n "LocateFile\(|CleanPaths\(|GetFileType\(|CalculateEffectiveVolume\(|GetBac
 
 **Risk:** low runtime risk; medium API/package risk.
 
+**Verification date:** 2026-06-30 — all items re-traced against solution. See exclusions below.
+
 **Scope:**
 
-- `MediaControlPlayer` dead constructors, `Create*` factories, `SeekAsync`, `LastNativeLoadMessages`, `ActualVideoDecoding`, `ActualRendering`, `PresentationBackend`, `BackgroundAutoDetect`, `NormalizationGain`, `NormalizationGainChanged`, and public controller passthroughs with zero external callers.
-- `MediaControls` dead properties and `Seek(TimeSpan)` wrapper.
-- `MediaFile.ContentType`, `MediaFile.IsLoaded`.
-- `CdgVisuals.BackgroundOverrideArgb`, `BackgroundWashArgb`.
-- `AcceptedMediaTypes.All` and any dead public properties only if `OpenFileDialogFilter` still works without them.
-- Dead enum values: `MediaPresentationSurfaceRole.Preview`, `VideoEngineState.Error`, `DxCdgEngineState.Error`, `DxCdgConstants.Command.None`, `DxCdgConstants.Command.Mask`.
+- `MediaControlPlayer` dead constructors (items 1-5), `Create*` factories (items 6-8), `CreateAsync*` factories (items 9-12), `SeekAsync*` (items 13-14), `LastNativeLoadMessages` (item 15), `ActualVideoDecoding` (item 21), `ActualRendering` (item 22), `PresentationBackend` (item 23), `BackgroundAutoDetect` (item 24), `NormalizationGain` (item 25), `NormalizationGainChanged` (item 26), and public controller passthroughs: `File` (item 16), `Metadata` (item 17), `AcceptedTypes` (item 18), `Filters` (item 19), `Configuration` (item 20).
+- `MediaControls` dead passthrough properties: `State` (item 39), `IsOpen` (item 40), `Content` (item 41), `HasVideo` (item 42), `HasAudio` (item 43), `HasCdg` (item 44), `Position` setter (item 38), and `Seek(TimeSpan)` wrapper (item 37). **DO NOT remove `Seek(double)` — verified LIVE** at `MainWindowViewModel.cs:222`.
+- `MediaFile.ContentType` (item 45), `MediaFile.IsLoaded` (item 46).
+- `CdgVisuals.BackgroundOverrideArgb` (item 50), `CdgVisuals.BackgroundWashArgb` (item 51) — only `CdgVisuals` controller passthroughs; the underlying `ICdgEngine`/`DxCdgEngine`/`DxCdgStateMachine` members are LIVE and must stay.
+- Dead enum values: `MediaPresentationSurfaceRole.Preview` (item 36), `MediaPresentationSurfaceRole.Secondary` (item 35), `VideoEngineState.Error` (item 103), `DxCdgEngineState.Error` (item 107), `DxCdgConstants.Command.None` (item 105), `DxCdgConstants.Command.Mask` (item 106).
+
+**Safe exclusions (do NOT remove):**
+
+- **`AcceptedMediaTypes.Audio`, `Video`, `Archive`, `Image`, `Cdg` (items 29-33)** — verified consumed internally by the LIVE `Filters` property (line 18-26) which feeds `OpenFileDialogFilter` (used by `MainWindow.xaml.cs:67`). These record positional parameters are internal dependencies of live behavior. If removed, the filter string "Supported media|Audio|Video|Archive|Image|CD+G|All files" must be rebuilt from `FileTypes.*` static sets.
+- **`MediaControls.Seek(double)`** — verified LIVE, called by `MainWindowViewModel.cs:222` via `Player?.Controls.Seek(target)`.
+- **`MediaControlPlayer.Filters`** (item 19) — confirmed zero external callers at the *MediaControlPlayer* level (passthrough), but NOTE that `AcceptedMediaTypes.Filters` (line 18) remains live. Removing `MediaControlPlayer.Filters` is safe.
 
 **Trace guards:**
 
 ```powershell
-rg -n "LastNativeLoadMessages|ActualVideoDecoding|ActualRendering|PresentationBackend|NormalizationGainChanged|BackgroundAutoDetect" .
-rg -n "ContentType|IsLoaded|BackgroundOverrideArgb|BackgroundWashArgb|AcceptedTypes|\.Filters\b" .
-rg -n "MediaPresentationSurfaceRole\.Preview|VideoEngineState\.Error|DxCdgEngineState\.Error|Command\.None|Command\.Mask" .
+# Dead constructors / factories — verify zero callers
+rg -n "new MediaControlPlayer\(\)|new MediaControlPlayer\(MediaPlayerConfiguration\)|new MediaControlPlayer\(string" .
+rg -n "MediaControlPlayer\.Create\(|MediaControlPlayer\.CreateAsync\(" .
+
+# Dead API surface on MediaControlPlayer — verify zero external readers
+rg -n "LastNativeLoadMessages|ActualVideoDecoding|ActualRendering|NormalizationGainChanged|BackgroundAutoDetect" .
+rg -n "\.NormalizationGain\b" .
+rg -n "\.SeekAsync\(" .
+rg -n "player\.(File|Metadata|AcceptedTypes|Configuration|Filters)\b|Player\?\.(File|Metadata|AcceptedTypes|Configuration|Filters)\b" .
+
+# MediaControls dead properties — verify no external reads through Controls.*
+rg -n "Controls\.(State|IsOpen|Content|HasVideo|HasAudio|HasCdg)\b" .
+rg -n "Controls\.Seek\(TimeSpan\)" .
+
+# MediaFile dead properties
+rg -n "\.ContentType\b|\.IsLoaded\b" .
+
+# CdgVisuals dead passthroughs — verify no external reads through CdgVisuals.*
+rg -n "\.BackgroundOverrideArgb\b|\.BackgroundWashArgb\b" .
+
+# AcceptedMediaTypes — verify OpenFileDialogFilter survival path
+rg -n "OpenFileDialogFilter" .
+rg -n "Audio\b.*Video\b.*Archive\b.*Image\b.*Cdg\b" FatzBombMedia.MediaControl\Api\AcceptedMediaTypes.cs
+
+# Enum value removal — verify zero references, no switch exhaustiveness fallout
+rg -n "MediaPresentationSurfaceRole\.(Preview|Secondary)" .
+rg -n "VideoEngineState\.Error" .
+rg -n "DxCdgEngineState\.Error" .
+rg -n "Command\.(None|Mask)" .
+
+# WPF adapter — verify Player still compiles after base member removal
+rg -n "new.*CreateAsync|override.*SeekAsync" FatzBombMedia.MediaControl.Wpf
 ```
 
-**Exit criteria:** Debug and Release builds pass. If package compatibility matters, mark this as a breaking-change stage in release notes.
+**Exit criteria:** Debug and Release builds pass. `OpenFileDialogFilter` still produces valid file picker filter string. WPF Player host compiles and launches. If package compatibility matters, mark this as a breaking-change stage in release notes.
 
 ### Stage 4 — Configuration & Capability Pruning
 

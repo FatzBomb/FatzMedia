@@ -194,16 +194,6 @@ public sealed class MediaFile
         _mediaMetadata?.Refresh();
     }
 
-    /// <summary>
-    /// Gets the type of content currently loaded (Audio, Video, CDG, etc.).
-    /// </summary>
-    public MediaContent ContentType => _mediaEngine.Content;
-
-    /// <summary>
-    /// Gets whether any media is currently loaded.
-    /// </summary>
-    public bool IsLoaded => _mediaEngine.IsOpen;
-
     private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
         ArgumentNullException.ThrowIfNull(source);

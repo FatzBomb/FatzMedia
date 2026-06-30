@@ -22,48 +22,21 @@ public class MediaControlPlayer : IMediaControlSession
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
-    public MediaControlPlayer()
-        : this(new MediaPlayerConfiguration(), DLLPath.GetConfiguredNativeLibraryPaths())
-    {
-    }
-
-    public MediaControlPlayer(MediaPlayerConfiguration configuration)
-        : this(configuration, DLLPath.GetConfiguredNativeLibraryPaths())
-    {
-    }
-
-    public MediaControlPlayer(string? userLibraryPath)
-        : this(new MediaPlayerConfiguration(), ToNativeLibraryPathArrayOrDefault(userLibraryPath))
-    {
-    }
-
-    public MediaControlPlayer(IEnumerable<string> nativeLibraryPaths)
-        : this(new MediaPlayerConfiguration(), nativeLibraryPaths)
-    {
-    }
-
-    public MediaControlPlayer(MediaPlayerConfiguration configuration, string? userLibraryPath)
-        : this(configuration, ToNativeLibraryPathArrayOrDefault(userLibraryPath))
-    {
-    }
-
     public MediaControlPlayer(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
     {
-        Configuration = configuration;
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-        _serviceProvider = MediaPlayerServiceProvider.Create(Configuration, resolvedNativeLibraryPaths);
-        ResolveActualMethods();
+        _serviceProvider = MediaPlayerServiceProvider.Create(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
         IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
 
-        AcceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
-        Metadata = new MediaMetadata(_mediaEngine);
+        _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
+        _metadata = new MediaMetadata(_mediaEngine);
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
-        _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, Configuration);
+        _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
-        File = new MediaFile(_mediaEngine, _presentationCoordinator, Metadata, Controls, Effects, CdgVisuals, archiveService);
+        File = new MediaFile(_mediaEngine, _presentationCoordinator, _metadata, Controls, Effects, CdgVisuals, archiveService);
         _controlOperations = new MediaControlOperationQueue("MediaControl");
 
         Controls.MediaEnded += OnControlsMediaEnded;
@@ -74,31 +47,19 @@ public class MediaControlPlayer : IMediaControlSession
 
     public MediaControls Controls { get; }
 
-    public MediaFile File { get; }
+    private MediaFile File { get; }
 
     public MediaEffects Effects { get; }
 
     public CdgVisuals CdgVisuals { get; }
 
-    public MediaMetadata Metadata { get; }
+    private readonly MediaMetadata _metadata;
 
-    public AcceptedMediaTypes AcceptedTypes { get; }
+    private readonly AcceptedMediaTypes _acceptedTypes;
 
-    public IReadOnlyList<MediaFileFilter> Filters => AcceptedTypes.Filters;
-
-    public string OpenFileDialogFilter => AcceptedTypes.OpenFileDialogFilter;
+    public string OpenFileDialogFilter => _acceptedTypes.OpenFileDialogFilter;
 
     public static string LastNativeLoadMessage => Bootstrap.Message;
-
-    public static IReadOnlyList<string> LastNativeLoadMessages => Bootstrap.NativeLoadMessages;
-
-    public MediaPlayerConfiguration Configuration { get; }
-
-    public VideoDecodingMethod ActualVideoDecoding { get; private set; }
-
-    public RenderingMethod ActualRendering { get; private set; }
-
-    public string PresentationBackend => _presentationCoordinator.PresentationBackend;
 
     public bool PlayOnLoad
     {
@@ -118,19 +79,11 @@ public class MediaControlPlayer : IMediaControlSession
         set => _presentationCoordinator.VideoDisplayMode = value;
     }
 
-    public bool BackgroundAutoDetect
-    {
-        get => File.BackgroundAutoDetect;
-        set => File.BackgroundAutoDetect = value;
-    }
-
     public bool Normalize
     {
         get => Effects.Normalize;
         set => Effects.Normalize = value;
     }
-
-    public double NormalizationGain => Effects.NormalizationGain;
 
     public bool IsOpen => _mediaEngine.IsOpen;
 
@@ -157,25 +110,6 @@ public class MediaControlPlayer : IMediaControlSession
     }
 
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
-
-    public static MediaControlPlayer Create(string? userLibraryPath = null) => new(userLibraryPath);
-
-    public static MediaControlPlayer Create(MediaPlayerConfiguration configuration, string? userLibraryPath = null) =>
-        new(configuration, userLibraryPath);
-
-    public static MediaControlPlayer Create(IEnumerable<string> nativeLibraryPaths) => new(nativeLibraryPaths);
-
-    public static Task<MediaControlPlayer> CreateAsync(string? userLibraryPath = null) =>
-        Task.Run(() => new MediaControlPlayer(userLibraryPath));
-
-    public static Task<MediaControlPlayer> CreateAsync(MediaPlayerConfiguration configuration, string? userLibraryPath = null) =>
-        Task.Run(() => new MediaControlPlayer(configuration, userLibraryPath));
-
-    public static Task<MediaControlPlayer> CreateAsync(IEnumerable<string> nativeLibraryPaths) =>
-        Task.Run(() => new MediaControlPlayer(nativeLibraryPaths));
-
-    public static Task<MediaControlPlayer> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
-        Task.Run(() => new MediaControlPlayer(configuration, nativeLibraryPaths));
 
     public bool Load(string path) => File.Load(path);
 
@@ -221,25 +155,6 @@ public class MediaControlPlayer : IMediaControlSession
         try
         {
             var success = Controls.Seek(seconds);
-            if (success)
-                _presentationCoordinator.RefreshCurrentPosition();
-
-            return success;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    public Task<bool> SeekAsync(TimeSpan position) => SeekAsync(position.TotalSeconds);
-
-    public async Task<bool> SeekAsync(double seconds)
-    {
-        try
-        {
-            var success = await _mediaEngine.SeekAsync(seconds).ConfigureAwait(false);
             if (success)
                 _presentationCoordinator.RefreshCurrentPosition();
 
@@ -306,12 +221,6 @@ public class MediaControlPlayer : IMediaControlSession
         return detached;
     }
 
-    public event EventHandler<double>? NormalizationGainChanged
-    {
-        add => Effects.NormalizationGainChanged += value;
-        remove => Effects.NormalizationGainChanged -= value;
-    }
-
     public event EventHandler? MediaEnded;
 
     public event EventHandler? MediaStarted;
@@ -319,19 +228,6 @@ public class MediaControlPlayer : IMediaControlSession
     public event EventHandler? PresentationFramePresented;
 
     public event EventHandler? MediaStopped;
-
-    private void ResolveActualMethods()
-    {
-        GpuCapabilityInfo capabilities = GpuRenderingCapabilities.Capabilities;
-
-        ActualVideoDecoding = capabilities.SupportsD3D11
-            ? VideoDecodingMethod.Hardware
-            : VideoDecodingMethod.Software;
-
-        ActualRendering = capabilities.SupportsD3D11
-            ? RenderingMethod.DirectX11
-            : RenderingMethod.Software;
-    }
 
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
@@ -362,11 +258,6 @@ public class MediaControlPlayer : IMediaControlSession
 
         return resolvedPaths;
     }
-
-    private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
-        string.IsNullOrWhiteSpace(nativeLibraryPath)
-            ? DLLPath.GetConfiguredNativeLibraryPaths()
-            : [nativeLibraryPath];
 
     public void Dispose()
     {

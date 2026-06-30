@@ -106,11 +106,6 @@ public sealed class MediaControls
     }
 
     /// <summary>
-    /// Seeks to the specified playback position.
-    /// </summary>
-    public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
-
-    /// <summary>
     /// Seeks to the specified playback position in seconds.
     /// </summary>
     public bool Seek(double seconds)
@@ -120,13 +115,9 @@ public sealed class MediaControls
     }
 
     /// <summary>
-    /// Gets or sets the current playback position.
+    /// Gets the current playback position.
     /// </summary>
-    public TimeSpan Position
-    {
-        get => TimeSpan.FromSeconds(_mediaEngine.Position);
-        set => Seek(value);
-    }
+    public TimeSpan Position => TimeSpan.FromSeconds(_mediaEngine.Position);
 
     /// <summary>
     /// Gets the total loaded media duration.
@@ -185,36 +176,6 @@ public sealed class MediaControls
     private void StartRendering() => _mediaRenderer?.StartRendering();
 
     private void StopRendering() => _mediaRenderer?.StopRendering();
-
-    /// <summary>
-    /// Gets the current playback state.
-    /// </summary>
-    public MediaPlayerState State => _mediaEngine.State;
-
-    /// <summary>
-    /// Gets whether media is currently open.
-    /// </summary>
-    public bool IsOpen => _mediaEngine.IsOpen;
-
-    /// <summary>
-    /// Gets the type of content currently loaded (Audio, Video, CDG, etc.).
-    /// </summary>
-    public MediaContent Content => _mediaEngine.Content;
-
-    /// <summary>
-    /// Gets whether the media has video content.
-    /// </summary>
-    public bool HasVideo => _mediaEngine.Content.HasFlag(MediaContent.Video);
-
-    /// <summary>
-    /// Gets whether the media has audio content.
-    /// </summary>
-    public bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
-
-    /// <summary>
-    /// Gets whether the media has CDG content.
-    /// </summary>
-    public bool HasCdg => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
 
     /// <summary>
     /// Disposes resources used by MediaControls.

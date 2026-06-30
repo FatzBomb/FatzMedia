@@ -167,9 +167,7 @@ internal static class DxCdgConstants
     /// </summary>
     public enum Command : byte
     {
-        None = 0x00,
-        Graphic = 0x09,
-        Mask = 0x34
+        Graphic = 0x09
     }
 
     /// <summary>

@@ -7,6 +7,5 @@ public enum DxCdgEngineState
     Playing,
     Paused,
     Stopped,
-    Closed,
-    Error
+    Closed
 }

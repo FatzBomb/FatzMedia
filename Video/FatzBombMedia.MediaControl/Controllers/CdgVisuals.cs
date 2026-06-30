@@ -25,28 +25,11 @@ public sealed class CdgVisuals
         }
     } = 100;
 
-    public uint? BackgroundOverrideArgb
-    {
-        get;
-        set
-        {
-            field = value;
-            Apply();
-        }
-    }
-
-    /// <summary>
-    /// Gets the current cached CDG wash color in ARGB format. This is the color Layer 2
-    /// draws across the full viewport behind transparent CDG lyrics.
-    /// </summary>
-    public uint BackgroundWashArgb => _mediaEngine.Cdg?.BackgroundWashArgb ?? 0;
-
     internal void Apply()
     {
         ICdgEngine? cdg = _mediaEngine.Cdg;
         if (cdg == null) return;
 
         cdg.BackgroundOpacity = BackgroundOpacity;
-        cdg.BackgroundOverrideArgb = BackgroundOverrideArgb;
     }
 }

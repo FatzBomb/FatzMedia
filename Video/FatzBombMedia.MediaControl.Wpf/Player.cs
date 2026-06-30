@@ -10,36 +10,12 @@ namespace FatzBombMedia.MediaControl.Wpf;
 /// </summary>
 public sealed class Player : MediaControlPlayer
 {
-    public Player()
-    {
-    }
-
-    public Player(MediaPlayerConfiguration configuration)
-        : base(configuration)
-    {
-    }
-
-    public Player(string? userLibraryPath)
-        : base(userLibraryPath)
-    {
-    }
-
-    public Player(IEnumerable<string> nativeLibraryPaths)
-        : base(nativeLibraryPaths)
-    {
-    }
-
-    public Player(MediaPlayerConfiguration configuration, string? userLibraryPath)
-        : base(configuration, userLibraryPath)
-    {
-    }
-
     public Player(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
         : base(configuration, nativeLibraryPaths)
     {
     }
 
-    public static new Task<Player> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
+    public static Task<Player> CreateAsync(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths) =>
         Task.Run(() => new Player(configuration, nativeLibraryPaths));
 
     public bool Load(ImageSource source, bool ignoreSidecar = false) =>

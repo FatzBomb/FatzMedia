@@ -7,6 +7,5 @@ public enum VideoEngineState
     Playing,
     Paused,
     Stopped,
-    Closed,
-    Error
+    Closed
 }
