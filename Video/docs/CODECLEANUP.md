@@ -21,6 +21,7 @@ Re-audited 2026-06-30. Cross-referenced against prior trace and `AGENTS.md` know
 - [x] Stage 1 — completed 2026-06-30: marked complete from prior work.
 - [x] Stage 2 — completed 2026-06-30: marked complete from prior work.
 - [x] Stage 3 — completed 2026-06-30: removed 26 dead members from MediaControlPlayer, 8 from MediaControls, 2 from MediaFile, 2 from CdgVisuals, 6 enum values. Fixed WPF Player ctor chain. Builds: Debug pass, Release pass.
+- [x] Stage 4 — completed 2026-06-30: removed 6 dead config properties (GpuRenderingMinResolution, MaxGpuMemoryMB, MaxUiSharedSurfaceWidth, MaxUiSharedSurfaceHeight, UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) + 2 enum types (UiSharedSurfacePresentationMode, UiSharedSurfaceSizingMode) from MediaPlayerConfiguration. Removed GetOptimalRenderingMethod + 4 dead GpuCapabilityInfo properties (LegacyUiRenderingTier, SupportsHardwareAcceleration, EstimatedGpuMemoryMB, GpuDescription) from GpuRenderingCapabilities. Removed Player-side assignments in MainWindowViewModel. GpuRenderingCapabilities.cs remains as a zombie class (~173 lines) — no external consumers; schedule full-file deletion for follow-up. Builds: Debug pass, Release pass.
 
 ---
 
@@ -427,7 +428,7 @@ Files that still have live functionality but where most of their public/protecte
 | F11 | `Pipeline\ClockAudioEngine.cs` | 7 / ~16 | `Position`, `Duration`, `Play`, `Pause`, `Stop`, `Seek`, `SetTempo`, `Dispose`, `Normalize` setter — used as active audio engine for karaoke/clock-driven playback |
 | F12 | `Wpf\Player.cs` | 5 / ~12 | `Player(MediaPlayerConfiguration, IEnumerable<string>)` ctor + `CreateAsync` + `ToMediaInputSource` + `Load`/`LoadAsync` overloads — used by `MainWindowViewModel` |
 | F13 | `Core\Configuration\MediaPlayerConfiguration.cs` | 6 / ~30 | `VideoDecodingMethod`, `RenderingMethod`, `EnableLogging`, `EnablePerformanceLogging`, `NativeSwapChainPresentMode`, `PresentationLeadRefreshIntervals` + all constructor params — actively consumed by `VideoPipeline` and `D3D11SwapChainPresenter` |
-| F14 | `Core\Graphics\GpuRenderingCapabilities.cs` | 5 / ~10 | `Capabilities` property, `GpuRenderingMethod` enum, `GpuCapabilityInfo.SupportsD3D11` and `HasDedicatedGpu` — consumed by `MediaControlPlayer` ctor |
+| F14 | `Core\Graphics\GpuRenderingCapabilities.cs` | 10 / ~10 | **ALL dead — zero external consumers in solution.** Whole-solution trace (2026-06-30) found no references to `GpuRenderingCapabilities` from `MediaControlPlayer` or any file outside `GpuRenderingCapabilities.cs` itself. The `Capabilities` property, `DetectCapabilities()`, `CheckD3D11Support()`, `DetectGpuInfoViaDxgi()`, `GpuRenderingMethod` enum, and all `GpuCapabilityInfo` members are self-referencing only — the class produces zero runtime behavior. After Stage 4 removes `GetOptimalRenderingMethod`, the file becomes a zombie class. Remove the entire file in a follow-up stage. |
 | F15 | `Controllers\MediaMetadata.cs` | 3 / 5 | `Refresh()` method — called by `MediaFile`. `Current`, `Summary`, `IsResampling` are dead properties whose data is computed (87 lines in `PopulateFromEngines`) but never read. |
 | F16 | `Api\MediaControlPlayer.cs` | 26 / ~45 | `Controls`, `Effects`, `CdgVisuals`, `OpenFileDialogFilter`, `LastNativeLoadMessage`, `Normalize`, `PlayOnLoad`, `LoopMedia`, `VideoDisplayMode`, `Position`, `Duration`, `Play`/`Pause`/`Stop`/`Seek`/`Load`/`LoadAsync`, interface events, surface management methods — all actively used by WPF `Player` and `MainWindowViewModel` |
 | F17 | `Core\Graphics\Composition\D3D11\D3D11CompositionTargetKind.cs` | 3 / 5 | `FinalPresentation`, `DirectCompositionOverlay` — used by compositor infrastructure |
@@ -603,20 +604,43 @@ rg -n "new.*CreateAsync|override.*SeekAsync" FatzBombMedia.MediaControl.Wpf
 
 **Scope:**
 
-- `MediaPlayerConfiguration.GpuRenderingMinResolution`, `MaxGpuMemoryMB`, `MaxUiSharedSurfaceWidth`, `MaxUiSharedSurfaceHeight`, `UiSharedSurfacePresentationMode`, `UiSharedSurfaceSizingMode` if no consuming code exists.
-- `GpuRenderingCapabilities.GetOptimalRenderingMethod` and dead `GpuCapabilityInfo` properties.
-- Remove Player-side assignments for removed config properties.
+- `MediaPlayerConfiguration.GpuRenderingMinResolution`, `MaxGpuMemoryMB`, `MaxUiSharedSurfaceWidth`, `MaxUiSharedSurfaceHeight`, `UiSharedSurfacePresentationMode`, `UiSharedSurfaceSizingMode` — confirmed zero consumers (2026-06-30).
+- Enum types `UiSharedSurfacePresentationMode` and `UiSharedSurfaceSizingMode` — only used as types for the dead config properties above; remove with them.
+- `GpuRenderingCapabilities.GetOptimalRenderingMethod` and dead `GpuCapabilityInfo` properties (`LegacyUiRenderingTier`, `SupportsHardwareAcceleration`, `EstimatedGpuMemoryMB`, `GpuDescription`).
+- Remove Player-side assignments for removed config properties (`MainWindowViewModel.cs:300-301`).
+- **After this stage:** `GpuRenderingCapabilities.cs` becomes a zombie class with zero external consumers. The remaining `Capabilities`, `DetectCapabilities`, `CheckD3D11Support`, `DetectGpuInfoViaDxgi`, `GpuRenderingMethod` enum, `GpuCapabilityInfo.SupportsD3D11`, and `HasDedicatedGpu` are self-referencing only. Schedule full-file deletion for a follow-up.
 
-**Legacy connection:** these are likely remnants of earlier UI shared-surface/D3DImage or adaptive rendering plans. They should not be removed in the same stage as live compositor code.
+**Exclusions (do NOT remove in this stage):**
+
+- `GpuCapabilityInfo.SupportsD3D11` and `HasDedicatedGpu` — out of scope despite being externally dead (used internally by `DetectCapabilities` and `ToString`). Defer to follow-up zombie-class deletion.
+- `GpuRenderingMethod` enum — out of scope. Only used by dead `GetOptimalRenderingMethod`; defer to follow-up.
+
+**Legacy connection:** these are likely remnants of earlier UI shared-surface/D3DImage or adaptive rendering plans. They should not be removed in the same stage as live compositor code. The full `GpuRenderingCapabilities.cs` file (240 lines) is entirely dead — zero external consumers in the solution — but file deletion is deferred to keep Stage 4 scoped to config/property-level pruning.
 
 **Trace guards:**
 
 ```powershell
+# Existing guards from plan:
 rg -n "GpuRenderingMinResolution|MaxGpuMemoryMB|MaxUiSharedSurfaceWidth|MaxUiSharedSurfaceHeight|UiSharedSurfacePresentationMode|UiSharedSurfaceSizingMode" .
 rg -n "GetOptimalRenderingMethod|LegacyUiRenderingTier|SupportsHardwareAcceleration|EstimatedGpuMemoryMB|GpuDescription" .
+
+# Added 2026-06-30 — whole-solution guards for enum types and zombie-class scope:
+rg -n "UiSharedSurfacePresentationMode" . -g "*.cs"
+rg -n "UiSharedSurfaceSizingMode" . -g "*.cs"
+rg -n "HostRenderEvent|SourceCapped|DisplayRectangle" .
+rg -n "GpuRenderingMethod" . -g "*.cs"
+rg -n "GpuCapabilityInfo" . -g "*.cs"
+rg -n "GpuRenderingCapabilities" . -g "*.cs"
+# Confirm no XAML/config/reflection hidden references:
+rg -n "UiSharedSurface|GpuRenderingMin|MaxGpuMemory|SharedSurfaceSizing" . -g "*.xaml"
+rg -n "UiSharedSurface|GpuRenderingMin|MaxGpuMemory" . -g "*.json"
+
+# Post-removal sanity — verify GpuRenderingCapabilities.cs zombie status:
+rg -n "GpuRenderingCapabilities|GpuCapabilityInfo|GpuRenderingMethod" . -g "*.cs"
+# Expected result: plan doc + GpuRenderingCapabilities.cs only (zero external callers)
 ```
 
-**Exit criteria:** Debug and Release builds pass; Player still constructs `MediaPlayerConfiguration` cleanly.
+**Exit criteria:** Debug and Release builds pass; Player still constructs `MediaPlayerConfiguration` cleanly; `UiSharedSurfacePresentationMode` and `UiSharedSurfaceSizingMode` enum types are fully removed (not just the config properties); `GpuRenderingCapabilities.cs` compiles without `GetOptimalRenderingMethod` and the 4 dead `GpuCapabilityInfo` properties; `ToString()` is updated; no dead property assignments remain in `MainWindowViewModel.cs`. WPF adapter boundary remains clean.
 
 ### Stage 5 — Metadata Controller Decoupling Decision
 

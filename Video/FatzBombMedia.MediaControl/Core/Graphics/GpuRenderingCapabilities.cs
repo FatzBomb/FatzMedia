@@ -33,45 +33,6 @@ public static class GpuRenderingCapabilities
     }
 
     /// <summary>
-    /// Determines the optimal rendering method for the given content parameters.
-    /// </summary>
-    /// <param name="width">Content width in pixels</param>
-    /// <param name="height">Content height in pixels</param>
-    /// <returns>Recommended rendering method</returns>
-    public static GpuRenderingMethod GetOptimalRenderingMethod(int width, int height)
-    {
-        var pixelCount = width * height;
-        GpuCapabilityInfo capabilities = Capabilities;
-
-        // Since we simplified to always use best quality settings, use hardcoded optimal values
-        // Always try GPU rendering for best quality (no minimum resolution limit)
-        var gpuRenderingMinResolution = 0;
-
-        if (pixelCount < gpuRenderingMinResolution)
-        {
-            Debug.WriteLine($"[GPU] Small resolution {width}x{height}, using CPU rendering");
-            return GpuRenderingMethod.CpuFallback;
-        }
-
-        // Always enable GPU rendering for best quality
-        var enableGpuRendering = true;
-
-        if (enableGpuRendering)
-        {
-            // Check DirectX 11 support (primary method)
-            if (capabilities.SupportsD3D11)
-            {
-                Debug.WriteLine($"[GPU] Using D3D11-accelerated rendering for {width}x{height} content (auto-selected)");
-                return GpuRenderingMethod.D3D11;
-            }
-        }
-
-        // Fallback to CPU rendering
-        Debug.WriteLine($"[GPU] No GPU acceleration available, using optimized CPU rendering for {width}x{height}");
-        return GpuRenderingMethod.CpuFallback;
-    }
-
-    /// <summary>
     /// Detects system GPU capabilities and DirectX support.
     /// </summary>
     private static void DetectCapabilities()
@@ -80,10 +41,6 @@ public static class GpuRenderingCapabilities
         {
             _capabilities = new GpuCapabilityInfo
             {
-                // Core capability detection must not depend on any UI framework. Treat a successfully-created
-                // D3D11 device as the hardware acceleration signal.
-                LegacyUiRenderingTier = 0,
-
                 // DirectX 11 detection - check if D3D11 DLLs exist and can be loaded
                 SupportsD3D11 = CheckD3D11Support()
             };
@@ -94,8 +51,7 @@ public static class GpuRenderingCapabilities
             // Try to get more accurate GPU info via DXGI
             DetectGpuInfoViaDxgi();
 
-            _capabilities.SupportsHardwareAcceleration = _capabilities.SupportsD3D11;
-            Debug.WriteLine($"[GPU] Capabilities: D3D11={_capabilities.SupportsD3D11}, Dedicated={_capabilities.HasDedicatedGpu}, VRAM=~{_capabilities.EstimatedGpuMemoryMB}MB");
+            Debug.WriteLine($"[GPU] Capabilities: D3D11={_capabilities.SupportsD3D11}, Dedicated={_capabilities.HasDedicatedGpu}");
         }
         catch (Exception ex)
         {
@@ -162,8 +118,6 @@ public static class GpuRenderingCapabilities
                     // Convert dedicated video memory from bytes to MB
                     var dedicatedMemoryMB = (int)(desc.DedicatedVideoMemory.Value / (1024 * 1024));
 
-                    _capabilities.EstimatedGpuMemoryMB = Math.Max(dedicatedMemoryMB, 128); // At least 128MB
-                    _capabilities.GpuDescription = desc.Description;
                     _capabilities.HasDedicatedGpu = dedicatedMemoryMB > 256; // Assume dedicated if > 256MB VRAM
 
                     Debug.WriteLine($"[GPU] Detected: {desc.Description} with {dedicatedMemoryMB}MB VRAM");
@@ -177,7 +131,6 @@ public static class GpuRenderingCapabilities
         catch (Exception ex)
         {
             Debug.WriteLine($"[GPU] DXGI GPU info detection failed: {ex.Message}");
-            _capabilities.EstimatedGpuMemoryMB = _capabilities.HasDedicatedGpu ? 512 : 128;
         }
     }
 }
@@ -187,16 +140,6 @@ public static class GpuRenderingCapabilities
 /// </summary>
 public sealed class GpuCapabilityInfo
 {
-    /// <summary>
-    /// Legacy UI rendering tier value. Core detection no longer depends on a UI framework; this remains for compatibility.
-    /// </summary>
-    public int LegacyUiRenderingTier { get; internal set; } = 0;
-
-    /// <summary>
-    /// Whether any form of hardware acceleration is supported.
-    /// </summary>
-    public bool SupportsHardwareAcceleration { get; internal set; } = false;
-
     /// <summary>
     /// Whether DirectX 11 is available and supported.
     /// </summary>
@@ -208,19 +151,9 @@ public sealed class GpuCapabilityInfo
     public bool HasDedicatedGpu { get; internal set; } = false;
 
     /// <summary>
-    /// Estimated GPU memory in MB.
-    /// </summary>
-    public int EstimatedGpuMemoryMB { get; internal set; } = 128;
-
-    /// <summary>
-    /// GPU description string from DXGI.
-    /// </summary>
-    public string GpuDescription { get; internal set; } = "Unknown";
-
-    /// <summary>
     /// Gets a summary string of GPU capabilities for debugging.
     /// </summary>
-    public override string ToString() => $"D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}, VRAM: {EstimatedGpuMemoryMB}MB, GPU: {GpuDescription}";
+    public override string ToString() => $"D3D11: {SupportsD3D11}, Dedicated: {HasDedicatedGpu}";
 }
 
 /// <summary>

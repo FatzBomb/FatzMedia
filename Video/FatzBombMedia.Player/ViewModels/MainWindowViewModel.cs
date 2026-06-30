@@ -296,9 +296,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             {
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
-                EnableVerboseLogging = false,
-                UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop,
-                UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative
+                EnableVerboseLogging = false
             };
 
             var player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);

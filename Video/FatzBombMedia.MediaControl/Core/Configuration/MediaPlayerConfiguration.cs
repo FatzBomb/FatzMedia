@@ -68,54 +68,6 @@ public enum NativeSwapChainPresentMode
     Immediate
 }
 
-
-/// <summary>
-/// UI-backed shared-surface presentation scheduling style. HostRenderEvent follows a
-/// host render-event pattern where the adapter requests the next DirectX surface update.
-/// IndependentPresentationLoop keeps the older worker-thread presentation scheduler.
-/// </summary>
-public enum UiSharedSurfacePresentationMode
-{
-    /// <summary>
-    /// Present UI-backed frames from the video pipeline's independent presentation loop.
-    /// This is the stable default because host-render-event presentation produced resize
-    /// flicker/stutter in real playback tests.
-    /// </summary>
-    IndependentPresentationLoop,
-
-    /// <summary>
-    /// Experimental mode: present UI-backed frames when the active adapter raises its render event.
-    /// Kept for comparison only; do not use as the default until it is proven smoother.
-    /// </summary>
-    HostRenderEvent
-}
-
-/// <summary>
-/// Controls how large the UI-backed shared presentation surface should be.
-/// </summary>
-public enum UiSharedSurfaceSizingMode
-{
-    /// <summary>
-    /// Keep the shared UI surface at the decoded/source media size. The host performs final
-    /// layout scaling. This avoids expensive D3D9 shared-surface churn during window resize and
-    /// is the stable default for overlay-friendly UI playback.
-    /// </summary>
-    SourceNative,
-
-    /// <summary>
-    /// Keep the shared UI surface source-sized, but cap very large sources to the configured
-    /// maximum size while preserving aspect ratio. This is intended for laptop/performance-friendly
-    /// UI playback of 4K/oversized sources without using a window-sized interop surface.
-    /// </summary>
-    SourceCapped,
-
-    /// <summary>
-    /// Experimental: recreate the shared UI surface at the displayed media rectangle size.
-    /// This can reduce host scaling, but it is expensive during resize and may flicker/stutter.
-    /// </summary>
-    DisplayRectangle
-}
-
 /// <summary>
 /// Immutable configuration for a MediaPlayer instance.
 /// These settings are determined at creation time and cannot be changed during playback.
@@ -132,16 +84,6 @@ public readonly record struct MediaPlayerConfiguration
     /// Rendering method for this MediaPlayer instance.
     /// </summary>
     public RenderingMethod Rendering { get; init; }
-
-    /// <summary>
-    /// Minimum resolution threshold for GPU rendering decisions.
-    /// </summary>
-    public int GpuRenderingMinResolution { get; init; }
-
-    /// <summary>
-    /// Maximum GPU memory usage in MB for this instance.
-    /// </summary>
-    public int MaxGpuMemoryMB { get; init; }
 
     /// <summary>
     /// Whether useful state-change and warning logging is enabled for this instance.
@@ -178,55 +120,18 @@ public readonly record struct MediaPlayerConfiguration
     public NativeSwapChainPresentMode NativeSwapChainPresentMode { get; init; }
 
     /// <summary>
-    /// Controls how the UI-backed presentation path is scheduled. The stable default
-    /// is the independent presentation loop. HostRenderEvent remains available as an
-    /// experiment, but it should be tested with SourceNative or SourceCapped sizing so resize-driven
-    /// shared-surface recreation does not pollute the result. Native HWND mode ignores this and
-    /// continues to use the DXGI swap-chain presentation loop.
-    /// </summary>
-    public UiSharedSurfacePresentationMode UiSharedSurfacePresentationMode { get; init; }
-
-    /// <summary>
-    /// Controls whether the UI-backed shared surface stays at the source media size, is capped
-    /// from the source size for laptop/performance-friendly playback, or is recreated to match the
-    /// displayed rectangle. SourceNative is the stable default because real-world testing showed
-    /// display-sized surface recreation causes resize flicker and can increase stutter.
-    /// </summary>
-    public UiSharedSurfaceSizingMode UiSharedSurfaceSizingMode { get; init; }
-
-    /// <summary>
-    /// Maximum UI-backed shared surface width used when <see cref="UiSharedSurfaceSizingMode"/> is
-    /// <see cref="UiSharedSurfaceSizingMode.SourceCapped"/>. The source aspect
-    /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
-    /// </summary>
-    public int MaxUiSharedSurfaceWidth { get; init; }
-
-    /// <summary>
-    /// Maximum UI-backed shared surface height used when <see cref="UiSharedSurfaceSizingMode"/> is
-    /// <see cref="UiSharedSurfaceSizingMode.SourceCapped"/>. The source aspect
-    /// ratio is preserved and smaller sources are never upscaled merely to hit this cap.
-    /// </summary>
-    public int MaxUiSharedSurfaceHeight { get; init; }
-
-    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
-    /// Uses automatic detection for video decoding and rendering with generous memory limits.
+    /// Uses automatic detection for video decoding and rendering.
     /// </summary>
     public MediaPlayerConfiguration()
     {
         VideoDecoding = VideoDecodingMethod.Auto;
         Rendering = RenderingMethod.Auto;
-        GpuRenderingMinResolution = 0;
-        MaxGpuMemoryMB = 1024;
         EnableLogging = false;
         EnablePerformanceLogging = false;
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
-        UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop;
-        UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative;
-        MaxUiSharedSurfaceWidth = 1920;
-        MaxUiSharedSurfaceHeight = 1080;
     }
 
     /// <summary>
@@ -236,17 +141,11 @@ public readonly record struct MediaPlayerConfiguration
     {
         VideoDecoding = videoDecoding;
         Rendering = rendering;
-        GpuRenderingMinResolution = 0;
-        MaxGpuMemoryMB = 1024;
         EnableLogging = false;
         EnablePerformanceLogging = false;
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
-        UiSharedSurfacePresentationMode = UiSharedSurfacePresentationMode.IndependentPresentationLoop;
-        UiSharedSurfaceSizingMode = UiSharedSurfaceSizingMode.SourceNative;
-        MaxUiSharedSurfaceWidth = 1920;
-        MaxUiSharedSurfaceHeight = 1080;
     }
 
     /// <summary>
