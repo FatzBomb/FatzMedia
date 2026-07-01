@@ -24,7 +24,7 @@ All visual media continues to route through the single media compositor model:
 
 Media types provide optional layers. They do not independently present final frames.
 
-## Current Stage 11 state
+## Current Presentation State
 
 The current presentation architecture includes:
 
@@ -39,5 +39,5 @@ The Core project provides the media-control implementation and presentation owne
 Current architecture and validation docs:
 
 - `docs/CURRENT_ARCHITECTURE.md`
-- `STAGE11_PRESENTATION_PLAN.md`
+- `docs/ProjectAnalysisRoadmap [2026-06-30].md`
 - `docs/VALIDATION.md`

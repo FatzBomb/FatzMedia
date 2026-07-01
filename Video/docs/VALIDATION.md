@@ -29,11 +29,7 @@ Expected:
 - No WPF adapter references to renderer/pipeline/internal CDG/D3D11 presentation code.
 - Core does not reference WPF UI/bitmap types.
 
-After CDG naming work, also verify no stale `DxCdg` references remain:
-
-```powershell
-rg -n "DxCdg|DXCDG|dxcdg" .
-```
+After Cdg naming work, also run the stale legacy Cdg-name guard from the active roadmap.
 
 Expected:
 
@@ -473,6 +469,6 @@ A major stage is not done until:
 - Presentation parity script passes.
 - Relevant smoke tests pass.
 - Relevant extended tests pass.
-- No stale `DxCdg` references remain.
+- No stale legacy Cdg names remain.
 - CDG, video, audio, image, sidecar background, secondary output, resize/fullscreen, and seek behavior are validated if touched.
 - Any known limitations are documented.

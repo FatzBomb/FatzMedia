@@ -18,8 +18,8 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 
 | Project | Role | Key constraint |
 |---------|------|---------------|
-| `FatzBombMedia.MediaControl` (Core) | UI-agnostic engine — audio/video/CDG, DxCdg, D3D11 composition, swap chains, final presentation | No WPF references. No `System.Windows.*`, `ImageSource`, `Dispatcher`, etc. |
-| `FatzBombMedia.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | Must NOT reference Core renderer, pipeline, DxCdg, video-frame, or D3D11 types |
+| `FatzBombMedia.MediaControl` (Core) | UI-agnostic engine — audio/video/Cdg, D3D11 composition, swap chains, final presentation | No WPF references. No `System.Windows.*`, `ImageSource`, `Dispatcher`, etc. |
+| `FatzBombMedia.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | Must NOT reference Core renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
 | `FatzBombMedia.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
 ## LangVersion & Runtime Features
@@ -32,7 +32,7 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 
 ## Architecture Rules
 
-- **Adapters own zero rendering** — `MediaSurface` and `SecondaryPresentationWindow` create HWND surfaces and pass `MediaPresentationSurfaceDescriptor` to Core. They must never reference pipelines, decoders, frame data, DxCdg state, or D3D11 resources.
+- **Adapters own zero rendering** — `MediaSurface` and `SecondaryPresentationWindow` create HWND surfaces and pass `MediaPresentationSurfaceDescriptor` to Core. They must never reference pipelines, decoders, frame data, internal Cdg state, or D3D11 resources.
 - **`Player : MediaControlPlayer`** in WPF project inherits Core commands, properties, events automatically. WPF-specific additions are limited to `ImageSource`→`MediaInputSource` conversions.
 - **`.ConfigureAwait(false)` required** in all async pipeline code. Host app marshals events to UI thread explicitly.
 
@@ -43,12 +43,6 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 - `VideoPipeline.Open(path)` blocks the calling thread — creates decoder, opens audio engine, decodes first frame synchronously.
 - `MediaEnded` / `MediaStopped` events fire from background threads (BASS callback / presentation loop). Handlers must marshal to UI thread.
 - Seek is correctly non-blocking — runs on dedicated background seek threads with latest-wins pump.
-
-## Known Dead Code (Don't Add Callers)
-
-- `MediaControlSession.cs` — unused facade for future "Stage 10S", never instantiated
-- `MediaControlPlayer.Create(...)` — 3 static factory methods, never called
-- `MediaControlPlayer.SeekAsync(...)` — not in `IMediaControlSession`, never called
 
 ## Key Entrypoints
 
@@ -66,10 +60,10 @@ No tests or CI exist. Only verification paths:
 
 1. `dotnet build` succeeds (no warnings in Release)
 2. Manual smoke test via Player (see `docs/VALIDATION.md` for 15-item checklist)
-3. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBombMedia.MediaControl.Core.*` namespaces that are renderer/pipeline/DxCdg/D3D11 (should be none)
+3. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBombMedia.MediaControl.Core.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
 
 ## Docs That Matter
 
 - `docs/CURRENT_ARCHITECTURE.md` — ownership boundaries and runtime flow
 - `docs/VALIDATION.md` — smoke test checklist
-- `STAGE11_PRESENTATION_PLAN.md` — active stage plan and validation criteria
+- `docs/ProjectAnalysisRoadmap [2026-06-30].md` — active staged roadmap and validation criteria

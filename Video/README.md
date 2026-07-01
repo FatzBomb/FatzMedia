@@ -6,7 +6,7 @@ FatzBombMedia is a media-control solution with a UI-agnostic Core engine, a stri
 
 | Project | Purpose |
 |---|---|
-| `FatzBombMedia.MediaControl` | Core playback, commands, media state, sidecar detection, DxCdg, retained layers, D3D11 composition, swap chains, presentation targets, and final rendering. |
+| `FatzBombMedia.MediaControl` | Core playback, commands, media state, sidecar detection, Cdg, retained layers, D3D11 composition, swap chains, presentation targets, and final rendering. |
 | `FatzBombMedia.MediaControl.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It must not own renderer, pipeline, layer, timing, or final presentation logic. |
 | `FatzBombMedia.Player` | WPF validation host used to exercise the Core engine through the WPF adapter. |
 
@@ -24,6 +24,6 @@ BASS and FFmpeg native DLLs are not included. The host app/test shell supplies t
 
 ## Active Docs
 
-- `STAGE11_PRESENTATION_PLAN.md`
+- `docs/ProjectAnalysisRoadmap [2026-06-30].md`
 - `docs/CURRENT_ARCHITECTURE.md`
 - `docs/VALIDATION.md`

@@ -45,16 +45,23 @@ Recommended first stage: capture a runtime profiling baseline, then apply the sm
 allocation fix first (`RefreshBackgroundWashUnsafe` reading cached wash color directly). Keep
 measurement, allocation fixes, naming cleanup, and behavior changes strictly separate.
 
-The `COMPARISON.md` update adds several roadmap-level quality findings that should be treated
-as safety rails before deeper work: automated tests/CI are missing, structured error reporting
-is still absent, shared `MediaState` ownership remains distributed, `VideoPipeline.cs` is still a
-large multi-concern file, and unsafe FFmpeg lifetime handling deserves a focused audit. Those
-items should be added as staged work without diluting the existing profiling/allocation plan.
+The comparison work adds several roadmap-level quality findings that should be treated as safety
+rails before deeper work: automated tests/CI are missing, structured error reporting is still
+absent, shared `MediaState` ownership remains distributed, `VideoPipeline.cs` is still a large
+multi-concern file, and unsafe FFmpeg lifetime handling deserves a focused audit. Those items
+should be added as staged work without diluting the existing profiling/allocation plan.
 
 The active cleanup tracker adds two deferred architecture decisions that should remain in the
 roadmap: removing the `RenderPipeline` → concrete `VideoPipeline` cast without leaking renderer
 concerns into public `IVideoEngine`, and deciding whether `ClockAudioEngine` should remain a
 virtual clock/audio adapter or be split behind narrower transport/clock abstractions.
+
+## Roadmap Progress
+
+- [x] Stage 0 — completed 2026-06-30: Baseline docs and solution item references now point at
+  the active roadmap; stale dead-code guidance, deleted-doc references, and legacy Cdg-name docs
+  drift were removed. Checks: Debug pass, Release pass, boundary pass, parity pass, stale legacy
+  Cdg-name search clean.
 
 ## 2. Scope and Method
 
@@ -324,9 +331,9 @@ emitted in draw order by `MediaCompositionFrame.Layers.cs:12`.
   structured reason.
 - **Risk:** High for supportability; Medium for runtime correctness.
 - **Category:** Reliability / Observability / Public API
-- **Evidence:** `COMPARISON.md` calls this one of FatzBombMedia's weakest architectural choices:
-  host apps often receive boolean failure while details are only written to debug output. VLC's
-  engine exposes programmatic error details rather than relying only on debugger output.
+- **Evidence:** The Section 14 VLC comparison reinforces this supportability issue: host apps
+  often receive boolean failure while details are only written to debug output. VLC's engine
+  exposes programmatic error details rather than relying only on debugger output.
 - **Why it matters:** A host needs to distinguish missing native DLLs, unsupported codecs,
   corrupt archives, decode failures, device loss, and user-cancel/normal stop cases. Debug output
   disappears in normal production usage and cannot drive UI error messages or telemetry.
@@ -392,9 +399,9 @@ emitted in draw order by `MediaCompositionFrame.Layers.cs:12`.
   and presentation-loop related callbacks.
 - **Risk:** Medium
 - **Category:** Threading / Public API
-- **Evidence:** `COMPARISON.md` notes public events can fire from background/media threads and
-  synchronous APIs can block in selected paths, while async APIs are safer. This may be documented
-  but should be made explicit and testable.
+- **Evidence:** This roadmap identifies that public events can fire from background/media threads
+  and synchronous APIs can block in selected paths, while async APIs are safer. This may be
+  documented but should be made explicit and testable.
 - **Why it matters:** WPF/WinUI/Avalonia hosts must know which events require UI dispatch. Silent
   cross-thread UI updates are a common integration failure.
 - **Recommendation:** Document and optionally expose a configurable dispatcher/synchronization
@@ -493,11 +500,11 @@ emitted in draw order by `MediaCompositionFrame.Layers.cs:12`.
 ### Finding: `AGENTS.md` "Known Dead Code" list is stale
 
 - **Area:** Documentation
-- **Files:** `AGENTS.md:48-51`; `docs/CODECLEANUP.md`
+- **Files:** `AGENTS.md:48-51`
 - **Risk:** Low (misleading guidance)
 - **Category:** Legacy (doc drift)
-- **Evidence:** All three listed items are already deleted — no `MediaControlSession.cs`, no
-  `MediaControlPlayer.Create`, no `MediaControlPlayer.SeekAsync` (`rg` → 0 hits each).
+- **Evidence:** All three listed items are already deleted; whole-repo source searches find no
+  live definitions or call sites for the removed facade/factory/async-player API entries.
 - **Why it matters:** Actively misleads future cleanup work.
 - **Recommendation:** Update/remove the "Known Dead Code" section.
 - **Suggested action:** Remove (doc)
@@ -506,7 +513,7 @@ emitted in draw order by `MediaCompositionFrame.Layers.cs:12`.
 ### Misplaced code
 
 No layer violations found in Core. No `System.Windows.*`/`ImageSource`/`Dispatcher`/`D3DImage`
-in Core source (only in the WPF-boundary guard script and `README.md`/`Comparison.md` text).
+in Core source (only in the WPF-boundary guard script and README/roadmap text).
 Audio normalization living in `Core/Audio` is appropriate engine-layer placement.
 
 ### Cleared suspects (NOT dead — confirmed live)
@@ -519,10 +526,10 @@ both FramePresenters, all five `*Presenter` classes, `VideoAudioEngine`, `ClockA
 
 ## 11. Complete File / Self-Contained Dead-Code Findings
 
-- **No fully-dead files found** in Core. The only file-level candidate is documentation:
-  `Comparison.md` (repo root) references removed classes (`OptimizedGraphicsRenderer.cs`,
+- **No fully-dead files found** in Core. The only file-level candidate was historical
+  documentation that referenced removed classes (`OptimizedGraphicsRenderer.cs`,
   `D3D9InteropSurface.cs`, `VorticeD3D11WpfImagePresenter.cs`, `WpfD3DImageSurfaceSizingMode`)
-  that do not exist in the current tree → stale design doc.
+  that do not exist in the current tree.
 - `D3D11PresentationBackendKind` enum has a clean gap at value `1` (removed legacy
   `D3DImage`→`UiSharedSurface` WPF shared-surface backend, deleted in commit `d57f8c1`). `rg`
   found no stale references to the removed value — gap is safe, documented here for history.
@@ -739,7 +746,7 @@ a first-class CDG path. Most differences reflect divergent goals.
 | DC1 | `IMediaEngine.SeekAsync` unused | Dead Code | Low | Remove/Keep |
 | DC2 | `CompatibilityInfo` unread members | Dead Code | Low | Investigate |
 | DOC1 | `AGENTS.md` stale "Known Dead Code" | Legacy | Low | Remove (doc) |
-| DOC2 | `Comparison.md` references removed classes | Legacy | Low | Remove (doc) |
+| DOC2 | Historical comparison notes referenced removed classes | Legacy | Low | Remove (doc) |
 
 ## 16. Recommended Smoke Tests and Validation
 
@@ -789,7 +796,8 @@ then use the manual host smoke tests for renderer/media behavior. After any stag
 - Separate dead-code removal, performance, naming, and behavior into distinct stages.
 - Keep renderer/present-path changes isolated and high-care.
 - Stop and report if any whole-repo guard reveals unexpected live usage.
-- Update docs (`CODECLEANUP.md`, `AGENTS.md`, `CURRENT_ARCHITECTURE.md`) after relevant stages.
+- Update active docs (`AGENTS.md`, `README.md`, `docs/CURRENT_ARCHITECTURE.md`,
+  `docs/VALIDATION.md`) after relevant stages.
 - Preserve deliberate strengths: D3D11 CDG compositor, DirectComposition split, dirty-rect
   uploads, palette revision tracking, latest-wins seek, sidecar backgrounds, archive pairing,
   pitch/tempo/normalization, and strict Core/WPF separation.
@@ -820,16 +828,45 @@ then use the manual host smoke tests for renderer/media behavior. After any stag
 
 - **Goal:** Establish a clean baseline; fix misleading docs without touching source.
 - **Risk:** Low
-- **Scope:** Update `AGENTS.md` "Known Dead Code" (all items already gone); mark/trim
-  `Comparison.md` as historical; note the `ImmediateContext` refcount assumption.
+- **Status:** Completed — 2026-06-30
+- **Scope:** Update `AGENTS.md` dead-code guidance (all entries already gone), remove stale
+  legacy Cdg-name and deleted-doc references, point active docs and solution items at this
+  roadmap, and preserve the `ImmediateContext` refcount audit note.
 - **Do not touch:** Any `.cs`/`.xaml`/`.csproj`.
-- **Likely files affected:** `AGENTS.md`, `Comparison.md`, `docs/CODECLEANUP.md`.
-- **Required whole-repo guards:** Re-confirm `rg` 0-hits for the three legacy symbols.
+- **Likely files affected:** `AGENTS.md`, `README.md`, `FatzBombMedia.MediaControl/README.md`,
+  `docs/VALIDATION.md`, `FatzBombMedia.sln`, and this roadmap.
+- **Required whole-repo guards:** Re-confirm source 0-hits for the three removed AGENTS entries;
+  confirm the stale legacy Cdg-name, deleted stage-plan filename, and deleted comparison/cleanup
+  doc-name guards are clean.
 - **Graphify usage:** Confirm current live coordinator chain.
 - **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`.
 - **Smoke tests:** None (docs only).
 - **Stop conditions:** Any of the "already deleted" symbols actually still present.
 - **Exit criteria:** Docs reflect reality; baseline build green.
+
+**Latest review findings — 2026-06-30:**
+
+- **Readiness:** Proceed with expanded docs/solution-text cleanup.
+- **Safety/Risk:** Low. The stage is limited to markdown and solution item text. No `.cs`,
+  `.xaml`, or `.csproj` files are in scope.
+- **Verified ready items:** The removed AGENTS dead-code entries have no live source definitions or
+  call sites. The live `IMediaControlSession` interface remains separate and is still used by the
+  WPF adapter and presentation-parity guard. The `ImmediateContext` refcount assumption remains
+  documented in Section 7 as a roadmap-level audit note only.
+- **Expanded in-scope items:** Remove stale legacy Cdg-name references from active docs; replace
+  deleted stage-plan file citations with this active roadmap; remove references to deleted
+  comparison/cleanup docs; and update the solution's Docs item list to include this roadmap.
+- **Exclusions / deferred items:** Historical Stage-N labels inside Core source comments,
+  `VorticeD3D11Renderer` XML-doc crefs, `[VorticeD3D11...]` diagnostic prefixes, and the Player
+  README sample diagnostic remain deferred to Stage 6 or a dedicated source-comment cleanup stage.
+- **Required whole-solution guards:** Source searches for the three removed AGENTS entries; stale
+  legacy Cdg-name search; deleted stage-plan filename search; deleted comparison/cleanup doc-name
+  search; build; Release build; WPF-boundary script; presentation-parity script.
+- **Expected build fallout:** None. The edits are markdown and solution item text only.
+- **Required validation/smoke tests:** None. This stage is docs/text only; build and guard scripts
+  are sufficient.
+- **Recommendation:** Proceed with exclusions. Do not touch `.cs`, `.xaml`, or `.csproj` files in
+  this stage.
 
 ### Stage 0P — Runtime Profiling Baseline (measurement only)
 
