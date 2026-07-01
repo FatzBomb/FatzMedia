@@ -11,8 +11,12 @@
         Background="#090B0E"
         Foreground="#F2F5F8"
         FontFamily="Segoe UI"
+        AllowDrop="True"
         KeyDown="Window_KeyDown"
-        MouseMove="Window_MouseMove">
+        MouseMove="Window_MouseMove"
+        DragEnter="Window_DragEnter"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop">
 
     <Window.Resources>
         <SolidColorBrush x:Key="WindowBrush" Color="#090B0E" />

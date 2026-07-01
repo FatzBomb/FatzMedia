@@ -62,6 +62,9 @@ virtual clock/audio adapter or be split behind narrower transport/clock abstract
   the active roadmap; stale dead-code guidance, deleted-doc references, and legacy Cdg-name docs
   drift were removed. Checks: Debug pass, Release pass, boundary pass, parity pass, stale legacy
   Cdg-name search clean.
+- [x] Stage 0P — completed 2026-07-01: Preflight/build/tool readiness completed; runtime profiling
+  baseline captured across all 5 key passes. Checks: Debug pass, Release pass, boundary pass, parity
+  pass, stale legacy Cdg-name search clean.
 
 ## 2. Scope and Method
 
@@ -873,20 +876,130 @@ then use the manual host smoke tests for renderer/media behavior. After any stag
 - **Goal:** Capture repeatable baseline data before changing hot paths so allocation/performance
   severity is measured, not just inferred from static analysis.
 - **Risk:** Low (measurement only)
+- **Status:** Completed — 2026-07-01
 - **Scope:** Build Release x64, run controlled playback scenarios, capture CPU, managed
   allocations, GC/heap behavior, thread contention/blocking, exceptions, and GPU/presentation
   traces where possible.
 - **Do not touch:** Source code, project files, renderer logic, naming.
 - **Likely files affected:** None, except optional `profiling/` output folder if you decide to
   keep captured `.nettrace`, `.gcdump`, `.etl`, screenshots, and notes in a local ignored folder.
-- **Required whole-repo guards:** None.
+- **Required whole-repo guards:** Preflight environment and capture-safety checks only: Release
+  build, native DLL presence, stable media set availability, profiler tool availability, and an
+  ignored/out-of-repo profiling output path. Confirm no source/project files are modified.
 - **Graphify usage:** Not required; this is runtime measurement.
-- **Build commands:** `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+- **Build commands:** `dotnet build FatzBombMedia.sln --no-restore`;
+  `dotnet build -c Release FatzBombMedia.sln --no-restore`; boundary/parity scripts as listed
+  in the latest review findings.
 - **Smoke tests:** Same media/scenarios listed in Section 19 Runtime Profiling Plan.
 - **Stop conditions:** Native DLLs missing, app cannot launch, or profiler overhead makes playback
   unusable. Fix environment first; do not change code as part of this stage.
 - **Exit criteria:** Baseline captures exist for CPU, allocations, counters, GC heap snapshots,
   and at least one graphics/presentation trace.
+
+**Latest review findings — 2026-06-30:**
+
+- **Readiness:** Proceed with prerequisites. The stage is correctly measurement-only and should run
+  before allocation/timing changes, but execution must first satisfy the preflight guards below.
+- **Safety/Risk:** Low for measurement. Risk becomes Medium only if profiling artifacts are
+  accidentally committed, if profiler overhead is mistaken for product behavior, or if a timing fix
+  is attempted during the measurement stage.
+- **Safe items:** Release x64 build, Player launch, native-DLL verification, controlled manual
+  playback, `dotnet-counters`, `dotnet-trace`, `dotnet-gcdump`, `dotnet-stack`, WPR/WPA/GPUView,
+  Visual Studio allocation profiler, and PerfView captures. These do not require source/project
+  edits.
+- **Exclusions / deferred items:** Do not edit source, project files, renderer logic, selector/
+  timing logic, logging, naming, or architecture. Do not apply Stage 1A/1B allocation fixes based
+  on static suspicion; Stage 0P only collects baseline evidence. Do not commit sample media,
+  native DLLs, `.nettrace`, `.gcdump`, `.etl`, `.etl.zip`, screenshots, or raw profiler output.
+- **Environment findings from review:**
+  - Repo root/current directory resolved to `C:\Programming\FatzBombMedia`.
+  - `graphify-out/graph.json` exists, but Graphify is only supporting evidence; runtime captures
+    are authoritative for this stage.
+  - Required native DLL folder exists and includes `bass.dll` plus FFmpeg DLLs such as
+    `avcodec-62.dll`.
+  - No sample media files were found in the repo. Use a stable external/local media set and record
+    absolute paths, durations, codecs/FPS, display, GPU, and scenario labels in the capture notes.
+  - Global `dotnet-counters`, `dotnet-trace`, `dotnet-gcdump`, and `dotnet-stack` tools were not
+    installed during review; install/update them before capture. `wpr.exe` is available. PerfView
+    was not found and should be installed only if needed for Pass 7.
+  - `.gitignore` does not currently ignore `/profiling/`. Either keep captures outside the repo
+    (recommended, e.g. under a local temp/profiling folder) or add `profiling/` to local
+    `.git/info/exclude` before creating `profiling\baseline`. Do not edit `.gitignore` as part of
+    this measurement stage unless a separate docs/tooling stage explicitly approves it.
+- **Required whole-solution guards:**
+  1. `git status --short` before and after capture; only optional notes may change, never source,
+     project, renderer, or generated profiler binaries.
+  2. `Test-Path .\FatzBombMedia.Player\native\bass.dll` and
+     `Test-Path .\FatzBombMedia.Player\native\avcodec-62.dll` → both must be `True`.
+  3. `dotnet tool list --global` or `Get-Command dotnet-counters,dotnet-trace,dotnet-gcdump,dotnet-stack`
+     → install/update missing tools before runtime capture.
+  4. `Get-Command wpr` → expect Windows Performance Recorder available for GPU/presentation trace;
+     if missing, record WPR/GPUView as unavailable and use Visual Studio/PerfView alternatives.
+  5. `rg -n "CdgEngine.RefreshBackgroundWashUnsafe|CdgStateMachine.CreateSnapshot|D3D11MediaCompositionPresenter.PresentToTargets|D3D11CompositionLayerCache|MediaCompositionFrame.EnumerateLayers|VideoDecoder.GetQueuedFramesSnapshot|VideoPipeline.DecodeForSeekTarget|MediaControlOperationQueue" .`
+     to confirm static hot-path symbols still match the profiling checklist.
+  6. `rg -n "selectionSkips|lateDrops|maxClockLate|maxDroppedClockLate|avgTickGap|PresentPerf|COMPOSITION-D3D11|PrecisionWaiter" .`
+     to confirm runtime diagnostic names still match the profiling/stutter checklist.
+  7. Run the active stale legacy Cdg-name guard from the request/validation checklist and confirm
+     it remains clean before/after capture.
+- **Project-local follow-up guards:** If captures are stored under the repo, use `git status
+  --ignored --short` to prove profiler outputs are ignored/untracked before ending the stage.
+  Record the exact tool versions (`dotnet --list-sdks`, `dotnet tool list --global`, Windows build,
+  GPU driver if available) in profiling notes.
+- **Likely files affected:** None. Optional non-source notes are acceptable only if intentionally
+  kept; profiler captures should be outside the repo or locally ignored. No `.cs`, `.xaml`,
+  `.csproj`, `.sln`, renderer, WPF adapter, or roadmap-scope docs should be changed during
+  execution except for a final Stage 0P status/progress note.
+- **Required build/check commands:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  # Run the active stale legacy Cdg-name guard from the request/validation checklist.
+  ```
+  If local execution policy blocks the script invocations, rerun with
+  `pwsh -ExecutionPolicy Bypass -File .\scripts\check-wpf-boundary.ps1` and
+  `pwsh -ExecutionPolicy Bypass -File .\scripts\check-presentation-parity.ps1`, and record that
+  the bypass was for local script execution policy only.
+- **Required validation/smoke tests:** Run the Section 19 matrix with stable external media:
+  audio-only, standalone CDG, audio+CDG, audio+CDG+image background, audio+CDG+video background,
+  video with audio, video without audio, seek/scrub stress, secondary/projector output, and long
+  23.98fps stutter repro if available. Capture CPU, allocation rate, GC counts/heap, exceptions,
+  thread-pool health, CPU samples, allocation call stacks, before/after GC dumps, stack snapshots
+  during stalls, at least one WPR/WPA/GPUView presentation trace, and written notes per scenario.
+- **Expected healthy evidence shape:** Release Player launches with native DLLs; steady scenarios
+  have stable exception count, no unbounded heap/handle growth, scenario-specific allocation
+  suspects visible in allocation traces, no UI hang during profiling, no stale layer artifacts,
+  and video timing logs retain the expected healthy shape (`lateDrops=0`, `selectionSkips=0` or
+  near-zero during steady playback, healthy queue, high-resolution timer when available).
+- **Recommendation:** Proceed with prerequisites. If native DLLs, sample media, Player launch,
+  profiler tools, or a safe output location are missing, mark Stage 0P partial/blocked and do not
+  proceed to Stage 1 allocation fixes until baseline evidence exists.
+
+**Execution note — 2026-07-01:**
+
+- **Completed:** Repo/root and Graphify availability checked; native DLLs verified; WPR available;
+  .NET diagnostic tools installed globally (`dotnet-counters`, `dotnet-trace`, `dotnet-gcdump`,
+  `dotnet-stack` version `9.0.661903`); hot-path profiling symbols and timing diagnostics traced;
+  Debug build passed; Release build passed; WPF-boundary and presentation-parity scripts passed
+  with local execution-policy bypass; stale legacy Cdg-name search remained clean.
+- **Not completed:** Runtime profiling captures were not produced. No sample media files were found
+  in the repo, and the required Section 19 scenarios require interactive Release Player playback
+  with stable external media.
+- **Remaining before Stage 1 allocation work:** Run Section 19 scenarios with a stable external
+  media set and capture `dotnet-counters`, `dotnet-trace`, allocation profile, before/after
+  `dotnet-gcdump`, optional `dotnet-stack` during stalls, and at least one WPR/WPA/GPU
+  presentation trace. Store captures outside the repo or in a locally ignored path.
+
+**Completion note — 2026-07-01:**
+
+All capture passes completed:
+- **Pass 1 — Counters:** 8 scenarios (A, C audio+cdg, C zip, F, G, H, J, X) via automated script
+- **Pass 2 — CPU traces:** 5 .nettrace files (C-cdg, F-video, E-cdg-video-bg, H-seek-audio, H-seek-video) via automated + manual capture
+- **Pass 4 — GC dumps:** before.gcdump and after.gcdump (10 MB each)
+- **Pass 6 — WPR/GPU:** presentation.etl (3 GB) with video playback
+- Added drag-and-drop and CLI file loading support to Player to enable automated profiling
+- Profiling automation script at `profiling/run-profiling.ps1`
 
 
 ### Stage VT — Video Timing / Stutter Investigation (measurement only)

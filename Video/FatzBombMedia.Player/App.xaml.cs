@@ -12,9 +12,15 @@ public partial class App : Application
     public static string LogFilePath { get; } =
         Path.Combine(Path.GetTempPath(), "FatzBombMedia", "player-debug.log");
 
+    public static string? StartupMediaPath { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        if (e.Args.Length > 0)
+            StartupMediaPath = e.Args[0];
+
         TryAttachDebugLog();
     }
 

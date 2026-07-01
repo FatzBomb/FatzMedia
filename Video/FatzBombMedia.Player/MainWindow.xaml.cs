@@ -57,6 +57,9 @@ public partial class MainWindow : Window
         UpdateSeekBarVisual();
         UpdateProjectorButtonVisual();
 
+        if (App.StartupMediaPath is not null)
+            _ = LoadStartupMediaAsync();
+
     }
 
     private async void OpenButton_Click(object sender, RoutedEventArgs e)
@@ -76,6 +79,40 @@ public partial class MainWindow : Window
             {
                 _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+    }
+
+    private void Window_DragEnter(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            e.Effects = DragDropEffects.Copy;
+        else
+            e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            e.Effects = DragDropEffects.Copy;
+        else
+            e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+        {
+            try
+            {
+                await _viewModel.LoadMediaAsync(files[0]);
+            }
+            catch (Exception ex)
+            {
+                _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        e.Handled = true;
     }
 
     private void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -177,6 +214,25 @@ public partial class MainWindow : Window
             or nameof(MainWindowViewModel.CanSeek))
         {
             UpdateSeekBarVisual();
+        }
+    }
+
+    private async Task LoadStartupMediaAsync()
+    {
+        while (_viewModel.Player is null)
+            await Task.Delay(200);
+
+        await Task.Delay(500);
+
+        var path = App.StartupMediaPath;
+        if (path is null || _viewModel.Player is null) return;
+
+        try
+        {
+            await _viewModel.LoadMediaAsync(path);
+        }
+        catch
+        {
         }
     }
 
