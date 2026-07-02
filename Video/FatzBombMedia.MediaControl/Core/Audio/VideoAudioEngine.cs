@@ -11,6 +11,9 @@ namespace FatzBombMedia.MediaControl.Core.Audio;
 
 internal sealed unsafe class VideoAudioEngine : IAudioEngine
 {
+    private const double AudioBufferHighWatermarkSeconds = 4.0;
+    private const double AudioBufferLowWatermarkSeconds = 2.0;
+
     private readonly Lock _sync = new();
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
@@ -32,6 +35,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private bool _normalize = true;
     private string? _tempPath;
     private long _pushedAudioFrameCount;
+    private double _lastPushedAudioEndSeconds;
+    private long _positionSnapshotBits;
+    private long _positionSnapshotTimestamp;
+    private long _positionSnapshotDurationBits;
+    private int _positionSnapshotAvailable;
+    private int _positionSnapshotPlaying;
+    private int _positionSnapshotTempoPercent;
+    private bool _audioPushThrottled;
     private bool _disposed;
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
@@ -76,17 +87,38 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         {
             lock (_sync)
             {
-                if (PlayHandle == 0)
-                {
-                    return _positionBaseSeconds;
-                }
-
-                var bytes = Bass.ChannelGetPosition(PlayHandle);
-                var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
-                return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
+                var position = GetPositionCore();
+                PublishPositionSnapshot(position);
+                return position;
             }
         }
         set => Seek(value);
+    }
+
+    internal bool TryGetPositionSnapshot(out double position)
+    {
+        if (Volatile.Read(ref _positionSnapshotAvailable) == 0)
+        {
+            position = 0;
+            return false;
+        }
+
+        position = BitConverter.Int64BitsToDouble(Interlocked.Read(ref _positionSnapshotBits));
+        if (Volatile.Read(ref _positionSnapshotPlaying) != 0)
+        {
+            var timestamp = Interlocked.Read(ref _positionSnapshotTimestamp);
+            var elapsedSeconds = (Stopwatch.GetTimestamp() - timestamp) / (double)Stopwatch.Frequency;
+            if (double.IsFinite(elapsedSeconds) && elapsedSeconds > 0)
+            {
+                var tempoPercent = Volatile.Read(ref _positionSnapshotTempoPercent);
+                var rate = Math.Max(0.01, 1.0 + (tempoPercent / 100.0));
+                position += elapsedSeconds * rate;
+            }
+        }
+
+        var duration = BitConverter.Int64BitsToDouble(Interlocked.Read(ref _positionSnapshotDurationBits));
+        position = duration > 0 ? Math.Clamp(position, 0, duration) : Math.Max(0, position);
+        return true;
     }
 
     public event EventHandler<double>? NormalizationGainChanged;
@@ -103,6 +135,42 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool Init(int device = -1, int sampleRate = 44100) => true;
 
     private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && PlayHandle != 0;
+
+    private double GetPositionCore()
+    {
+        if (PlayHandle == 0)
+        {
+            return _positionBaseSeconds;
+        }
+
+        var bytes = Bass.ChannelGetPosition(PlayHandle);
+        var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
+        return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
+    }
+
+    private void PublishPositionSnapshot(double position)
+    {
+        var cleanPosition = double.IsFinite(position) && position > 0 ? position : 0;
+        if (Duration > 0)
+            cleanPosition = Math.Min(cleanPosition, Duration);
+
+        Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
+        Interlocked.Exchange(ref _positionSnapshotDurationBits, BitConverter.DoubleToInt64Bits(Duration));
+        Interlocked.Exchange(ref _positionSnapshotBits, BitConverter.DoubleToInt64Bits(cleanPosition));
+        Volatile.Write(ref _positionSnapshotTempoPercent, CurrentTempo);
+        Volatile.Write(ref _positionSnapshotPlaying, State == AudioEngineState.Playing ? 1 : 0);
+        Volatile.Write(ref _positionSnapshotAvailable, IsOpenCore ? 1 : 0);
+    }
+
+    private void ClearPositionSnapshot()
+    {
+        Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
+        Interlocked.Exchange(ref _positionSnapshotDurationBits, 0);
+        Interlocked.Exchange(ref _positionSnapshotBits, 0);
+        Volatile.Write(ref _positionSnapshotTempoPercent, 0);
+        Volatile.Write(ref _positionSnapshotPlaying, 0);
+        Volatile.Write(ref _positionSnapshotAvailable, 0);
+    }
 
     public bool Open(string filePath)
     {
@@ -147,6 +215,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
             Duration = _formatContext->duration > 0 ? _formatContext->duration / (double)ffmpeg.AV_TIME_BASE : 0;
             State = AudioEngineState.Stopped;
+            PublishPositionSnapshot(_positionBaseSeconds);
             Opened?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
             return true;
@@ -195,6 +264,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             return false;
         }
 
+        if (IsAudioBufferThrottledCore())
+        {
+            return false;
+        }
+
         AVPacket* packet = ffmpeg.av_packet_alloc();
         if (packet == null)
         {
@@ -207,7 +281,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             {
                 if (packet->stream_index == _audioStreamIndex)
                 {
-                    return ProcessAudioPacket(packet);
+                    var processed = ProcessAudioPacket(packet);
+                    if (processed)
+                        PublishPositionSnapshot(GetPositionCore());
+                    return processed;
                 }
 
                 ffmpeg.av_packet_unref(packet);
@@ -241,6 +318,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (success)
         {
             SetState(AudioEngineState.Playing);
+            PublishPositionSnapshot(GetPositionCore());
         }
 
         return success;
@@ -265,6 +343,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (success)
         {
             SetState(AudioEngineState.Paused);
+            PublishPositionSnapshot(GetPositionCore());
         }
 
         return success;
@@ -292,8 +371,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             _ = Bass.ChannelSetPosition(_bassStream, 0);
         }
 
+        ResetAudioBufferTracking();
         _ = SeekDecoder(0);
         SetState(AudioEngineState.Stopped);
+        PublishPositionSnapshot(0);
         PositionChanged?.Invoke(this, 0);
         return true;
     }
@@ -334,11 +415,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
 
         _positionBaseSeconds = target;
+        ResetAudioBufferTracking();
         if (resumePlayback && wasPlaying && PlayHandle != 0)
         {
             _ = Bass.ChannelPlay(PlayHandle);
             SetState(AudioEngineState.Playing);
         }
+
+        PublishPositionSnapshot(target);
 
         PositionChanged?.Invoke(this, target);
         return true;
@@ -439,7 +523,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         _discardAudioBeforeSeconds = null;
         _positionBaseSeconds = 0;
         _pushedAudioFrameCount = 0;
+        _lastPushedAudioEndSeconds = 0;
+        _audioPushThrottled = false;
         Duration = 0;
+        ClearPositionSnapshot();
         CleanupTempPath();
         SetState(AudioEngineState.Stopped);
         Closed?.Invoke(this, EventArgs.Empty);
@@ -471,6 +558,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             CurrentTempo = Math.Clamp(percent, -95, 5000);
             if (PlayHandle != 0)
                 Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
+            if (IsOpenCore)
+                PublishPositionSnapshot(GetPositionCore());
         }
     }
 
@@ -605,6 +694,49 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return processed;
     }
 
+    private bool IsAudioBufferThrottledCore()
+    {
+        var bufferedSeconds = GetBufferedAudioSecondsCore();
+        if (!double.IsFinite(bufferedSeconds) || bufferedSeconds <= 0)
+        {
+            _audioPushThrottled = false;
+            return false;
+        }
+
+        if (_audioPushThrottled)
+        {
+            if (bufferedSeconds > AudioBufferLowWatermarkSeconds)
+            {
+                return true;
+            }
+
+            _audioPushThrottled = false;
+            return false;
+        }
+
+        if (bufferedSeconds >= AudioBufferHighWatermarkSeconds)
+        {
+            _audioPushThrottled = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private double GetBufferedAudioSecondsCore()
+    {
+        if (_lastPushedAudioEndSeconds <= 0)
+            return 0;
+
+        return Math.Max(0, _lastPushedAudioEndSeconds - GetPositionCore());
+    }
+
+    private void ResetAudioBufferTracking()
+    {
+        _lastPushedAudioEndSeconds = _positionBaseSeconds;
+        _audioPushThrottled = false;
+    }
+
     private void PushAudioFrame()
     {
         var framePosition = GetFramePositionSeconds(_frame);
@@ -636,9 +768,21 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         try
         {
             Marshal.Copy((IntPtr)output, data, 0, byteCount);
-            if (Bass.StreamPutData(_bassStream, data, byteCount) > 0)
+            var written = Bass.StreamPutData(_bassStream, data, byteCount);
+            if (written > 0)
             {
                 _pushedAudioFrameCount++;
+                if (_sampleRate > 0)
+                {
+                    var frameDuration = samples / (double)_sampleRate;
+                    var frameEndPosition = framePosition + frameDuration;
+                    if (!double.IsFinite(frameEndPosition) || frameEndPosition < _lastPushedAudioEndSeconds)
+                    {
+                        frameEndPosition = _lastPushedAudioEndSeconds + frameDuration;
+                    }
+
+                    _lastPushedAudioEndSeconds = frameEndPosition;
+                }
             }
         }
         finally

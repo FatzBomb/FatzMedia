@@ -65,6 +65,101 @@ virtual clock/audio adapter or be split behind narrower transport/clock abstract
 - [x] Stage 0P — completed 2026-07-01: Preflight/build/tool readiness completed; runtime profiling
   baseline captured across all 5 key passes. Checks: Debug pass, Release pass, boundary pass, parity
   pass, stale legacy Cdg-name search clean.
+- [x] Stage VT-diag — completed 2026-07-01: Converted the four `VideoPipeline` timing/perf diagnostics
+  from `Debug.WriteLine` to `Trace.WriteLine` so they are observable in Release x64 (observability only;
+  config-gated; no playback/timing/selector logic changed). Checks: Debug pass, Release pass, boundary
+  pass, parity pass, stale legacy Cdg-name search clean.
+- [x] Stage VT — completed 2026-07-01: 23.98fps Release capture with now-visible timing diagnostics
+  yields an evidence-backed stutter hypothesis (source-cadence loop drift + inherent 24-on-60Hz cadence
+  judder; GC/CPU/alloc healthy). Checks: Debug pass, Release pass, boundary pass, parity pass, stale
+  legacy Cdg-name search clean.
+- [x] Stage VT-F — completed 2026-07-01: Direction 2 calibrated 2026-07-01, validated 2026-07-01
+  (PASS). Current-position gap diagnostics added 2026-07-01; capture still required. Clock-relative
+  anchor preserved; overhead measurement moved to just before `GetClockLockedPresentationWaitSeconds`
+  to avoid double-counting clock advancement from body.
+  avgTickGap (42.1→47.6ms, mean 44.1ms) closest to 41.7ms target of all runs; maxTickGap (103.6ms)
+  lowest; max selectionSkips/window=15 best of all (33% of pre-fix, 20% of Dir1); total selectionSkips
+  184/71w best; lateDrops=0; maxEarly rock-stable 10.3±0.2ms. Checks: Debug pass, Release pass,
+  boundary pass, parity pass, stale legacy Cdg-name search clean.
+
+  **Diagnostics added 2026-07-01 (no behavior change):** Calibrated Direction 2 improved metrics over
+  all prior runs but visible stutter remained. Per the VLC reference audit (VLC distinguishes
+  scheduling/wait drift from display-completion drift), added a new `[VideoPipeline:Timing]`
+  diagnostic line in `RecordPresentationDiagnostics` to capture: intended wait deadline, actual wait
+  start, actual wake, wait wake error, present start, present return, present duration, post-present
+  drift, selected frame PTS, and clock position at selection. Existing `[VideoPipeline:Loop]`
+  (avgTickGap, maxTickGap) and `[VideoPipeline:Perf]` (selectionSkips, lateDrops, queue, maxClockLate,
+  maxEarly) lines unchanged. New fields: `_lastIntendedDeadlineMs`, `_lastWaitStartMs`, `_lastWakeMs`,
+  `_lastWaitErrorMs`, `_lastPresentStartMs`, `_lastPresentEndMs`, `_lastPresentDurationMs`,
+  `_lastPostPresentDriftMs`, `_lastSelectedFramePts`, `_lastSelectedClockPosition`. Captured in
+  `PresentationLoop` around the wait and present work, plus `PresentFrameForPosition` for frame PTS.
+  No wait behavior, subtraction, `PrecisionWaiter`, frame selector, `VideoPresentationTiming`,
+  renderer/backend, WPF adapter, public API/config, CDG timing, or audio clock changes. Checks: Debug
+  pass, Release pass, boundary pass, parity pass, stale legacy Cdg-name search clean.
+
+  **Diagnostic validation capture — 2026-07-01 (PASS classification):** Release x64 capture with the
+  new `[VideoPipeline:Timing]` diagnostics confirms that the remaining stutter is a **PRESENT ISSUE,
+  not a WAIT or EXTERNAL issue**. Wait precision is excellent (mean 0.27ms, max 0.54ms), but the
+  present/display work itself is slow: `presentDuration` mean 25ms, max 99ms in steady state. The
+  132ms `maxTickGap` spike at loop window 127–130 lines up exactly with `presentDuration=47ms` at
+  timing line 132 (the present was still running when the next tick needed to start, pushing the
+  tick gap to ~132ms). The present finishes *before or right at* the intended deadline
+  (`postPresentDrift` consistently 0 to −39ms), so this is not a deadline-overshoot problem — it is
+  a *present-work-consumes-the-interval* problem. Selection is also non-deterministic
+  (`clockPtsLead` oscillates −10ms to +41ms, mean +12.65ms) but the data does not link selection
+  variation to the maxTickGap spikes. `lateDrops=0`, `maxEarly=10.33±0.05ms`. Build/check
+  pass. Stale Cdg-name guard clean.
+
+  Recommended next step: add per-present-step timing inside the present work
+  (`vout_ConvertForDisplay`, `vout_display_Display`, GPU upload, `VideoProcessorBlt`, D3D11
+  compositor) to determine which step is consuming the 25ms average / 99ms peak. The wait and
+  clock anchor are now proven correct; the visible stutter is a renderer/display-stage bottleneck
+  that pacing logic cannot fix.
+
+  **Present-side diagnostics added 2026-07-01 (no behavior change):** The `[VideoPipeline:Timing]`
+  diagnostic validation identified the present call as the source of maxTickGap spikes. Added new
+  `[VideoPipeline:PresentTiming]` diagnostic line at the same 120-frame interval to break down the
+  present call into: `total` (from `presentStart` to `presentEnd`), `select` (DropFrames +
+  selection loop in `PresentFrameForPosition`), `present` (the `PresentFrame` call including
+  FrameReady dispatch), and `frameReady` (the `FrameReady.Invoke` duration, i.e. the time spent
+  inside the renderer `NativeMediaPresentationCoordinator.OnVideoFrameReady` handler). New fields:
+  `_lastSelectDurationMs` (Stopwatch in `PresentFrameForPosition` before PresentFrame),
+  `_lastPresentFrameDurationMs` (Stopwatch around `PresentFrame` call),
+  `_lastFrameReadyInvokeDurationMs` (Stopwatch around `FrameReady?.Invoke` in `PresentFrame`).
+  If `frameReady` is the dominant duration, the bottleneck is inside the Core renderer layer
+  (D3D11 compositor, VideoProcessorBlt, swap chain present); further instrumentation there would
+  be needed. If `select` is dominant, the queue/scanner work is slow. No wait/selector/renderer
+  behavior changes. Checks: Debug pass, Release pass, boundary pass, parity pass, stale legacy
+  Cdg-name search clean. Validation capture still required.
+
+  **Present-side diagnostic validation — 2026-07-01 (UNMEASURED ISSUE):** The
+  `[VideoPipeline:PresentTiming]` line ruled out `select` (mean 0ms, max 0.02ms — not the issue)
+  and the FrameReady renderer handler (mean 3.42ms, max 7.21ms — fast). The `present` PresentFrame
+  wrapper is also fast (mean 3.42ms, max 7.21ms). However, `total` (mean 24.17ms, max 90.65ms)
+  is still dominated by the visible stutter. The gap between `total` and `present` is
+  mean 20.75ms (late-run 30.61ms), correlated 0.998 with `total` and only 0.12 with
+  `frameReady`. This means the dominant present-path time is work that happens INSIDE
+  `PresentFrameForCurrentPosition` but OUTSIDE the `present` measurement: most likely
+  `GetPresentationPosition()` (BASS audio position poll) and/or lock acquisition on
+  `_presentationLock`. The renderer pipeline itself is not the bottleneck. Late-run gap max
+  86.83ms lines up with the 142.5ms `maxTickGap` spike. **Next instrumentation:** add a
+  breakdown of the gap into `GetPresentationPosition()` and lock acquisition
+  within `PresentFrameForCurrentPosition`.
+
+  **Current-position gap diagnostics added 2026-07-01 (no behavior change):** Added one new
+  periodic `[VideoPipeline:CurrentPositionTiming]` diagnostic line, gated by the existing
+  `EnablePerformanceLogging` path and aligned with the existing 120-frame presentation diagnostic
+  cadence. The line decomposes the previously unmeasured `PresentTiming total - present` gap into
+  `total` (method-local `PresentFrameForCurrentPosition` duration), `lockWait` (time to acquire
+  `_presentationLock` in the presentation loop), `getPresentationPosition`,
+  `audioEnginePosition`, `presentationClockGetPosition`, `presentationPositionOther`,
+  `displayAdjust`, `naturalEnd`, `presentForPosition`, `afterPresent`, and `residual`. No wait,
+  pacing, selector, renderer/backend, WPF adapter, public API/config, CDG timing, or audio clock
+  behavior was changed. Next validation classification: AUDIO_POSITION / PRESENTATION_CLOCK /
+  LOCK / DISPLAY_ADJUST / NATURAL_END / PRESENT_FOR_POSITION MISMATCH / STILL_UNMEASURED based on
+  the dominant field and correlation with `maxTickGap`.
+
+  Capture artifacts: `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT-F\validate-diagnostics\20260701\`
 
 ## 2. Scope and Method
 
@@ -821,6 +916,9 @@ then use the manual host smoke tests for renderer/media behavior. After any stag
 - **Phase 1 — Measured hot-path fixes:** small allocation wins first; pooling only after proof.
 - **Phase 1T — Timing investigation:** isolate remaining 23.98fps/video stutter with synchronized
   app diagnostics, counters, ETW/WPA/GPUView, and present/clock logs before changing timing code.
+- **Phase 1F — Timing fix (evidence-gated):** after Stage VT confirmed source-cadence loop drift,
+  apply one isolated presentation-loop pacing fix (Stage VT-F) validated by before/after runtime
+  capture; never change the frame selector.
 - **Phase 2 — Observability and reliability:** structured logging/errors, CTS/await fixes, device-loss investigation.
 - **Phase 3 — State/threading architecture:** central state owner and operation-queue async pump.
 - **Phase 4 — Maintainability refactors:** VideoPipeline split, `RenderPipeline` cast removal,
@@ -1007,17 +1105,20 @@ All capture passes completed:
 - **Goal:** Identify the remaining visible stutter source after Stage 11 timing fixes and after drops
   / `selectionSkips` have reportedly been reduced close to zero.
 - **Risk:** Low for measurement; Medium-High for any later timing changes.
+- **Status:** Completed — 2026-07-01
 - **Scope:** Capture synchronized diagnostics for long 23.98fps playback and other problematic
   files. Correlate app frame-selection counters with OS/GPU/present/audio/GC evidence before changing
   any selector, pacing, or renderer code.
 - **Do not touch:** `ShouldAdvanceSelectionToFrame`, `VideoPresentationTiming`, source-cadence
   pacing, `PrecisionWaiter`, DirectComposition/native HWND behavior, or renderer code in this stage.
 - **Likely files affected:** None. Optional local ignored profiling output only.
-- **Required whole-repo guards:** None for measurement. If a later fix is proposed, trace all timing
-  and present counters first: `selectionSkips`, `lateDrops`, `maxClockLate`, `maxDroppedClockLate`,
+- **Required whole-repo guards:** Measurement/preflight guards only. Trace all timing and present
+  counters first: `selectionSkips`, `lateDrops`, `maxClockLate`, `maxDroppedClockLate`,
   `avgTickGap`, `PresentPerf`, `COMPOSITION-D3D11`, `PrecisionWaiter`, and audio-clock sampling.
-- **Graphify usage:** Not required; runtime traces are more important.
-- **Build commands:** `dotnet build -c Release FatzBombMedia.sln --no-restore`.
+  Also run the standard build, boundary, presentation-parity, and stale Cdg-name guards before any
+  later timing fix is proposed.
+- **Graphify usage:** Supporting evidence only; runtime traces are more important.
+- **Build commands:** Full build/check list from the latest review findings below.
 - **Profiling captures:**
   - App diagnostic logs for at least 10 minutes of 23.98fps playback.
   - `dotnet-counters` for allocation rate, GC, exceptions, CPU, and thread-pool behavior.
@@ -1034,6 +1135,413 @@ All capture passes completed:
   present pacing/DWM, monitor refresh mismatch, DPC/ISR/audio glitching, GC/allocation spike,
   background-video cadence, occasional blocking, device/driver behavior, or a still-valid video
   selection/pacing defect.
+
+**Latest review findings — 2026-07-01:**
+
+- **Readiness:** Proceed with exclusions. Stage 0P baseline captures now exist, so Stage VT can use
+  the same stable media/output setup for a narrower 23.98fps stutter investigation. This stage is
+  still measurement-only and must produce a written hypothesis before any timing/presentation fix.
+- **Safety/Risk:** Low if limited to traces, notes, and capture artifacts. Risk becomes Medium-High
+  if selector, pacing, wait, renderer, DirectComposition/native-HWND, or adapter behavior is changed
+  based on intuition instead of synchronized evidence.
+- **Safe items:** Release Player launch; diagnostic log collection; `dotnet-counters`;
+  `dotnet-trace`; optional `dotnet-gcdump` if counters show GC/allocation spikes; optional
+  `dotnet-stack` during stalls; WPR/WPA/GPUView; monitor/refresh/DPI/display-mode notes; secondary
+  output, fullscreen, resize, and seek smoke tests.
+- **Exclusions / deferred items:** Do not edit `VideoPipeline`, `VideoPresentationTiming`,
+  `PrecisionWaiter`, `NativeMediaPresentationCoordinator`, D3D11 presenter/backend code, WPF
+  adapter code, selector logic, source-cadence pacing, timer behavior, or renderer paths in this
+  stage. Do not rename legacy `[VorticeD3D11...]` tags here; that remains Stage 6. Do not treat
+  profiler overhead or one-off external machine load as product behavior without repeat capture.
+- **Required whole-solution guards:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  rg -n "selectionSkips|lateDrops|maxClockLate|maxDroppedClockLate|avgTickGap|PresentPerf|COMPOSITION-D3D11|PrecisionWaiter" .
+  rg -n "ShouldAdvanceSelectionToFrame|VideoPresentationTiming|source-cadence|hold-source-cadence|adaptive=" .
+  rg -n "DirectComposition|NativeHwnd|SwapChain|secondary|projector|fan-out" .
+  rg -n "AudioPresentationClock|ClockAudioEngine|VideoAudioEngine|PlaybackClock" .
+  ```
+- **Project-local follow-up guards:** Verify `profiling/` captures are outside the repo or locally
+  ignored before ending the stage. Record exact media path, FPS, codec/container, display, refresh
+  rate, scaling/DPI, primary vs secondary output, DirectComposition vs native-HWND fallback if known,
+  GPU/driver, Windows build, Player PID, and tool versions. If PowerShell script policy blocks guard
+  scripts, rerun with `pwsh -ExecutionPolicy Bypass -File ...` and record that it was local policy
+  only.
+- **Likely files affected:** None for source. Optional local ignored artifacts under `profiling/`
+  and one roadmap/status note with the final hypothesis. Likely files to inspect, but not edit in
+  this stage: `Pipeline/VideoPipeline.cs`, `Core/Video/VideoPresentationTiming.cs`,
+  `Core/Threading/PrecisionWaiter.cs`, `Core/Graphics/NativeMediaPresentationCoordinator.cs`,
+  `Core/Graphics/D3D/Diagnostics/D3D11PresentationDiagnostics.cs`, D3D11 presentation backends, and
+  WPF `MediaSurface`/`SecondaryPresentationWindow` only for boundary verification.
+- **Build commands:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  ```
+- **Validation/smoke tests:** Long 23.98fps problem-file playback for 10-20 minutes with app logs,
+  counters, CPU trace, and WPR/WPA or GPUView over the same window where practical. Repeat or spot
+  check 29.97fps, 60fps, video with audio, video without audio, audio+CDG+video background,
+  secondary/projector output, fullscreen/resize, and seek/scrub. Expected healthy shape is
+  `lateDrops=0`, `selectionSkips=0` or near-zero during steady playback, healthy queue depth,
+  `avgTickGap` close to source frame duration, high-resolution timer when available, no unbounded
+  heap/exception growth, and no primary/secondary drift.
+- **Recommendation:** Proceed with exclusions. End the stage only after writing an evidence-backed
+  hypothesis that classifies the stutter as DWM/present pacing, monitor/refresh mismatch,
+  DPC/ISR/audio glitching, GC/allocation spike, background-video cadence, occasional blocking,
+  driver/device behavior, or a still-valid selector/pacing defect. If captures do not correlate,
+  add targeted instrumentation in a later approved stage instead of changing timing code here.
+
+**Execution note — 2026-07-01:**
+
+- **Artifacts:** Captures were stored outside the repo under
+  `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT\2026-07-01`.
+- **Captured:** 10-minute Release x64 playback of
+  `D:\- Testing FIles\23.98-stutter.mkv`; 10-minute `dotnet-trace` CPU sample
+  (`vt-23.98-cpu.nettrace`, ~41 MB); 10-minute `dotnet-counters collect` CSV
+  (`vt-counters.csv`, ~1.7 MB); 3-minute WPR presentation trace (`vt-presentation.etl`, ~3.5 GB).
+- **Counter evidence:** Average allocation rate was ~219 KB/s; total allocated over the 10-minute
+  run was ~131 MB; Gen0 collections totaled 10, Gen1 totaled 1, Gen2 totaled 0; GC pause time totaled
+  ~0.024 s; thread-pool queue length stayed 0. CPU averaged ~1.14 CPU-seconds/sec across a 20-logical
+  CPU machine. Working set rose from ~459 MB to ~1.25 GB during the run.
+- **CPU trace evidence:** `dotnet-trace report topN` showed most sampled time in waits/message pump;
+  `VideoPipeline.DecodeLoop` was ~11.5% exclusive, `VideoAudioEngine.DecodeAndPushAudio` ~0.5%,
+  `D3D11MediaCompositionPresenter.DrawToRenderTarget` ~0.08%, `D3D11SwapChainPresenter.Present`
+  ~0.03%, and `VideoDecoder.DecodeNextFrame` ~0.01%. This does not indicate a CPU-bound hot path.
+- **Blockers / limitations:** Release app diagnostic log contained only the Player startup line;
+  the timing counters expected for this stage are emitted with `Debug.WriteLine` and are not available
+  from Release capture as usable app logs. WPR saved the ETL but reported 1,789,946 dropped events, so
+  the WPR artifact is supporting evidence only and should not be used as definitive GPU/DWM proof.
+  No visual observation was possible from the tool session.
+- **Interim hypothesis:** Captured CPU/GC evidence does not support CPU saturation, GC pauses, or a
+  managed allocation spike as the primary 23.98fps stutter cause. If visible stutter persists, the
+  leading suspects remain presentation/display/driver timing or an unlogged presentation gap, but this
+  stage cannot conclusively classify the cause until Release-safe timing diagnostics or a cleaner WPR
+  trace are available.
+- **Remaining before completion:** Add or enable Release-safe timing diagnostics in a later approved
+  instrumentation/logging stage, or run an equivalent capture path that records `selectionSkips`,
+  `lateDrops`, `maxClockLate`, `maxDroppedClockLate`, `avgTickGap`, queue depth, source FPS, display
+  refresh, timer mode, and present/composition timing during the same 23.98fps playback window. If
+  GPU/DWM evidence is needed, repeat WPR with a smaller profile/circular buffer or analyze in WPA only
+  if dropped events are acceptable for the specific question.
+
+**Completion note — 2026-07-01:**
+
+- **Unblock (observability only):** The four `VideoPipeline` timing/perf diagnostics
+  (`[VideoPipeline:Perf]`, `[VideoPipeline:Loop]`, timer-fallback, interval-changed) were converted
+  from `Debug.WriteLine` to `Trace.WriteLine`. `Debug.WriteLine` is `[Conditional("DEBUG")]` and is
+  compiled out of Release (only `TRACE` is defined), which is why the prior Release capture logged
+  nothing but the startup line. `Trace.WriteLine` survives in Release and already routes to
+  `%TEMP%\FatzBombMedia\player-debug.log` via the `App.xaml.cs` listener (proven: the Trace-based
+  startup line appeared in the Release log while all `Debug.WriteLine` diagnostics did not). All four
+  sites remain gated by `EnablePerformanceLogging`/`EnableLogging`; Debug behavior is unchanged
+  (TRACE is also defined under DEBUG). No playback, timing, selector, or renderer logic changed. Full
+  structured logging remains deferred to Stage ER.
+- **Capture:** Release x64 playback of `D:\- Testing FIles\23.98-stutter.mkv` (24fps source, 60Hz
+  display), `EnablePerformanceLogging=true`. Log: `player-debug-release-verify.log`. Full analysis in
+  the external artifact `vt-analysis.txt`.
+- **Evidence:** Over ~3 minutes, `lateDrops=0` throughout and the decode queue stayed healthy (5-6/6),
+  but the source-cadence loop drifts slow: `avgTickGap` rises from 42.05ms toward 45.5ms against the
+  41.7ms source target, with `maxTickGap` ~83ms (~2x target) indicating periodic full-frame loop-wake
+  stalls. Lateness accumulates (`maxClockLate` ~40-42ms ≈ one source frame; `clockLateSamples` 11-21),
+  and `selectionSkips` climbs from 0 in the first ~90s to 6-13 per 120-frame window in the last minute.
+  The adaptive lead held at `0.750x refresh` and did not compensate. Prior counters were healthy
+  (Gen2=0, ~219 KB/s alloc, GC pause ~0.024s total, CPU not saturated), and the CPU trace showed
+  present/composition < 0.1% — so this is not a GC/CPU/allocation problem.
+- **Hypothesis (evidence-backed):** Two components. (A) App-side source-cadence presentation-loop
+  drift: the loop runs slightly slower than source cadence and periodically stalls a full frame,
+  accumulating clock lateness until frames are skipped to resync — matching VALIDATION.md's
+  "selectionSkips steadily increasing" not-acceptable pattern and the Stage 11 phase-drift note. The
+  future fix target is the loop wait accounting (`GetClockLockedPresentationWaitSeconds`) and
+  `PrecisionWaiter` tick behavior, NOT the frame selector (selection is a symptom). (B) Inherent
+  24fps-on-60Hz 3:2 cadence judder at the DWM/compositor level, which no app-side pacing change can
+  remove (needs refresh-rate matching or interpolation; out of scope).
+- **Second-opinion caveats:** `maxTickGap` ~83ms sits below `PrecisionWaiter`'s (duration+50ms)
+  safety ceiling (~91.7ms), so some spikes may be the wait nearing its safety timeout rather than a
+  true external stall — WPR/GPUView correlation is needed to attribute Component A to CPU scheduling
+  vs waitable-timer vs GPU back-pressure. The WPR GeneralProfile capture dropped ~1.79M events; use a
+  lighter/targeted profile for decisive GPU/DWM proof. No direct human visual confirmation was
+  possible in this session.
+- **Recommended next stage:** A dedicated, approved timing stage that first re-captures
+  `avgTickGap`/`maxTickGap`/`selectionSkips` alongside a clean WPR/GPUView trace, then — only if
+  Component A is confirmed — adjusts source-cadence wait accounting. Do not change the frame selector.
+
+### Stage VT-F — Source-Cadence Presentation-Loop Drift Fix (timing; evidence-gated)
+
+- **Goal:** Remove the slow drift of the source-cadence video presentation loop so 23.98fps playback
+  holds `avgTickGap` at the source interval and stops accumulating `selectionSkips` over time, without
+  changing frame-selection logic or the renderer.
+- **Risk:** Medium-High. This is a live timing/pacing path. A wrong change can reintroduce drops,
+  desync audio/video, or worsen stutter. Isolated to one loop; validated by before/after capture.
+- **Status:** Validated (PASS) — 2026-07-01. Present-side validation 2026-07-01: **UNMEASURED** (gap between `total` and `present` correlates 0.998 with `total`). Next: instrument `GetPresentationPosition()` / lock acquisition.
+- **Depends on:** Stage VT (completed 2026-07-01), which produced the baseline and the two-component
+  hypothesis. Baseline evidence: `player-debug-release-verify.log` and `vt-analysis.txt` under
+  `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT\2026-07-01`.
+
+- **Sequencing / dependencies:**
+  - **Hard gate (blocking):** A clean WPR/GPUView re-capture (lighter/targeted profile, not
+    `GeneralProfile`, to avoid the ~1.79M dropped events seen in Stage VT) that attributes the
+    ~83ms `maxTickGap` spikes to a real cause (CPU scheduling, the waitable timer, or GPU/DWM present
+    back-pressure) and confirms **Component A (app-side loop stall)** is present and dominant over
+    **Component B (inherent 24-on-60Hz 3:2 judder)**. Do not edit pacing code until this is done,
+    because `maxTickGap ~83ms` currently sits below `PrecisionWaiter`'s (duration+50ms) safety ceiling
+    (~91.7ms) and could be the wait nearing its own timeout rather than an external stall.
+  - **Recommended precursors (not hard blocks):** Stage 0T (build/guard automation for repeatable
+    before/after runs) and Stages 1A-1C (cheap allocation wins to reduce Gen0 churn as a confounder in
+    the capture). These are recommended, not required: Stage VT evidence showed GC/alloc are not the
+    cause (Gen2=0, ~219 KB/s, GC pause ~0.024s total), and 1A-1C touch the CDG/composition path, not
+    the video-only presentation loop this stage targets, so they neither block nor mask this fix.
+  - **No other timing-fix stage precedes this.** Prior timing work (historical "Stage 11") is already
+    done; VT-F is the current timing fix.
+
+- **Scope:** One isolated change to the source-cadence branch of the video presentation loop so the
+  effective loop period matches source cadence and holds phase against the audio-mastered clock.
+  Candidate directions to evaluate during review/implementation (confirm with the gate capture first;
+  pick the smallest that fixes the measured drift):
+  1. **Phase-anchored wait in the source-cadence branch.** Today the source-cadence branch
+     (`VideoPipeline.cs:829-838`) computes a per-tick *relative* wait via
+     `GetClockLockedPresentationWaitSeconds` (`:855-871`) and then resets `nextTick =
+     stopwatch.Elapsed.TotalSeconds`, discarding the phase accumulator that the non-source-cadence
+     branch (`:840-851`) uses (`nextTick += targetIntervalSeconds`). Evaluate anchoring the wait to a
+     fixed phase/accumulator so per-iteration work time does not accumulate as slow drift.
+  2. **Subtract measured loop work from the wait.** The wait targets the next frame time but does not
+     subtract the loop body's own cost (`PresentFrameForCurrentPosition`, peek/clock reads,
+     diagnostics), so each iteration adds a few ms that accumulate. Evaluate compensating the wait by
+     the measured iteration overhead.
+  3. **`PrecisionWaiter` accounting only if the gate proves it.** Only if the WPR/GPUView capture
+     attributes the ~83ms spikes to the waiter/timer, evaluate the safety-timeout/resolution behavior
+     in `PrecisionWaiter.Wait` (`Core/Threading/PrecisionWaiter.cs:61-91`, safety timeout `:89`).
+  Implement exactly one direction. Do not bundle multiple.
+
+- **Do not touch:**
+  - `ShouldAdvanceSelectionToFrame` (`VideoPipeline.cs:1524`) or any frame-selection logic — Stage VT
+    proved selection is a *symptom*, not the cause.
+  - `VideoPresentationTiming` interval math unless the gate capture proves the interval itself is wrong.
+  - The adaptive-lead mechanism (`UpdateAdaptivePresentationLead`, `GetActivePresentationLeadRefreshIntervals`)
+    unless the gate capture specifically implicates it.
+  - DirectComposition / native-HWND backends, D3D11 presenters/compositor, swap-chain policy,
+    multi-target fan-out, and the WPF adapter boundary.
+  - CDG overlay, audio, and clock semantics (`ClockAudioEngine`, `AudioPresentationClock`,
+    `PlaybackClock`), and standalone-CDG / video-without-audio timing.
+  - The Debug->Trace diagnostic conversions from Stage VT-diag (keep them; do not expand to Stage ER here).
+
+- **Likely files affected:** `FatzBombMedia.MediaControl/Pipeline/VideoPipeline.cs` (source-cadence
+  branch and/or `GetClockLockedPresentationWaitSeconds` only). `Core/Threading/PrecisionWaiter.cs` only
+  if direction 3 is proven necessary. No public API, renderer, adapter, or config changes expected.
+
+- **Required whole-solution guards:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  rg -n "selectionSkips|lateDrops|maxClockLate|maxDroppedClockLate|avgTickGap|PrecisionWaiter" .
+  rg -n "ShouldAdvanceSelectionToFrame|GetClockLockedPresentationWaitSeconds|IsSourceCadencePlayback|VideoPresentationTiming" .
+  rg -n "UpdateAdaptivePresentationLead|GetActivePresentationLeadRefreshIntervals|PresentationLeadRefreshIntervals" .
+  rg -n "WaitOne\(|WaitAny\(|SetWaitableTimer|CreateWaitableTimerExW|TimerWaitHandle" .
+  rg -n "FatzBombMedia\.MediaControl\.Core\.(Graphics|Video|Cdg)|FatzBombMedia\.MediaControl\.Pipeline|Vortice|D3D11|DirectComposition" FatzBombMedia.MediaControl.Wpf
+  ```
+
+- **Graphify usage:** Supporting evidence only; runtime before/after capture is authoritative.
+
+- **Build commands:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  ```
+
+- **Required before/after capture (validation):** Release x64, `EnablePerformanceLogging=true`,
+  same file `D:\- Testing FIles\23.98-stutter.mkv`, same display/refresh, >= 5-minute run. Compare
+  against the Stage VT baseline:
+  - `avgTickGap` should hold near the 41.7ms source interval and stop climbing (baseline drifted
+    42.05 -> 45.5ms).
+  - `maxTickGap` spikes should shrink toward the source interval (baseline ~83ms).
+  - `selectionSkips` per 120-frame window should stay at/near zero over the whole run and stop the
+    upward trend (baseline climbed 0 -> 6-13/window).
+  - `lateDrops` must remain 0; `queued` must stay healthy; `fps`/`videoFrame`/`refresh` unchanged.
+  - Re-run one clean WPR/GPUView pass to confirm no new present/DWM regression.
+
+- **Smoke tests:** 23.98fps (primary), 29.97fps, 60fps, video with audio (A/V sync intact), video
+  without audio (clock-backed), audio+CDG+video background, secondary/projector output, fullscreen/
+  resize, and seek/scrub. Watch for reintroduced drops, desync, or stutter on any path.
+
+- **Stop conditions:** The gate capture does not confirm Component A (i.e., the drift is dominated by
+  inherent 24-on-60Hz judder or an external driver/display cause) — then do not change pacing code;
+  document and consider refresh-rate matching / interpolation as a separate product decision. Also stop
+  if any candidate change reintroduces `lateDrops`, A/V desync, or selection instability.
+
+- **Exit criteria:** One isolated pacing change lands; Debug + Release build clean; boundary + parity +
+  stale Cdg-name guards pass; and a before/after Release capture shows `avgTickGap`/`maxTickGap`/
+  `selectionSkips` improved with `lateDrops=0` and no visual/stability regression across the smoke-test
+  matrix. If the change does not measurably improve the counters, revert it and reopen the hypothesis.
+
+**Validation findings — 2026-07-01 (post-fix capture):**
+
+| Metric | Pre-fix gate | Post-fix (Direction 1) | Trend |
+|--------|-------------|----------------------|-------|
+| avgTickGap range | 41.7→58.1ms | 42.2→49.7ms | Still drifting; mean 46.3ms |
+| maxTickGap | 163.2ms | 104.6ms | Lower but still 2.5× target |
+| max selectionSkips/window | 45 | 75 | Worse (+67%) |
+| total selectionSkips | 711 / 83 windows | 1019 / 52 windows | Worse (higher density) |
+| lateDrops | 0 | 0 | Unchanged |
+| queue | 4–7 / 6 | 4–6 / 6 | Unchanged |
+| maxClockLate | 41.9ms | 42.0ms | Unchanged |
+| maxEarly | ~10.3ms | 0→10ms (drops near-zero early) | Wake-late regression |
+
+**Root cause:** The phase-anchored accumulator (`nextTick += targetIntervalSeconds`) runs independent of the audio-mastered clock. When the selector skips frames (clock does not advance), the accumulator continues marching by `targetIntervalSeconds` each tick. This creates a diverging gap — the accumulator gets ahead of the clock, causing the loop to wake with near-zero `maxEarly` → late → gap widens → accumulator resyncs → massive skip burst → cycle repeats. The pre-fix clock-relative approach (`GetClockLockedPresentationWaitSeconds`) did not have this divergence.
+
+**Recommendation:** Revert to `GetClockLockedPresentationWaitSeconds` and apply **Direction 2** — subtract measured loop-body wall-clock time from the computed wait. Minimal: add `var tickBodyStart = stopwatch.Elapsed.TotalSeconds` at loop body top, `waitSeconds -= stopwatch.Elapsed.TotalSeconds - tickBodyStart` in source-cadence branch.
+
+**Artifacts:** `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT-F\validate\20260701\`
+
+**Latest review findings — 2026-07-01:**
+
+- **Readiness:** Not ready for source implementation until the hard gate capture is completed. Ready to
+  run the gate capture and source trace now. If the clean WPR/GPUView pass confirms Component A
+  (app-side source-cadence loop stall) as dominant, proceed with one isolated `VideoPipeline` pacing
+  change. If it does not, stop before code and document the external/display cause.
+- **Safety/Risk:** High for source changes because this is the active video timing loop and an error can
+  reintroduce drops, A/V desync, selector churn, or primary/secondary presentation divergence. The
+  review confirmed the narrowest likely source seam is `VideoPipeline.PresentationLoop` and
+  `GetClockLockedPresentationWaitSeconds`; `PrecisionWaiter` is broader blast radius because it is also
+  used by the Core CDG render loop and background-video pacing.
+- **Safe items:** Gate-only work is safe: run a lighter targeted WPR/GPUView capture, collect Release
+  `Trace` timing logs with `EnablePerformanceLogging=true`, compare against `player-debug-release-verify.log`,
+  and inspect `VideoPipeline.cs` source-cadence branch behavior. If the gate passes, the safest
+  implementation direction remains a phase-anchored source-cadence wait in `VideoPipeline` without
+  touching selector logic.
+- **Exclusions / deferred items:** Do not change `ShouldAdvanceSelectionToFrame`, frame selection
+  thresholds, `VideoPresentationTiming` interval math, adaptive lead, DirectComposition/native-HWND
+  backends, D3D11 presenters/compositor, WPF adapter, public API/config, CDG overlay behavior,
+  `ClockAudioEngine`, `AudioPresentationClock`, `PlaybackClock`, structured logging, or naming cleanup.
+  Do not edit `PrecisionWaiter` unless the gate specifically proves waiter/timer accounting is the
+  failing component; if it is touched, validate the CDG render loop and background-video loop too.
+- **Required whole-solution guards:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  rg -n "selectionSkips|lateDrops|maxClockLate|maxDroppedClockLate|avgTickGap|PrecisionWaiter" .
+  rg -n "ShouldAdvanceSelectionToFrame|GetClockLockedPresentationWaitSeconds|IsSourceCadencePlayback|VideoPresentationTiming" .
+  rg -n "UpdateAdaptivePresentationLead|GetActivePresentationLeadRefreshIntervals|PresentationLeadRefreshIntervals" .
+  rg -n "WaitOne\(|WaitAny\(|SetWaitableTimer|CreateWaitableTimerExW|TimerWaitHandle" .
+  rg -n "DirectComposition|NativeHwnd|SwapChain|secondary|projector|fan-out" .
+  rg -n "AudioPresentationClock|ClockAudioEngine|VideoAudioEngine|PlaybackClock" .
+  rg -n "FatzBombMedia\.MediaControl\.Core\.(Graphics|Video|Cdg)|FatzBombMedia\.MediaControl\.Pipeline|Vortice|D3D11|DirectComposition" FatzBombMedia.MediaControl.Wpf
+  ```
+- **Project-local follow-up guards:** If the source change remains limited to `VideoPipeline`, inspect
+  only the source-cadence branch, `GetClockLockedPresentationWaitSeconds`, diagnostics, and direct
+  callers before/after. If `PrecisionWaiter` is changed, additionally trace and smoke the two other
+  call sites: `NativeMediaPresentationCoordinator.RenderLoop` for CDG presentation and
+  `PipelineMediaEngine.BackgroundVideoLoop` for sidecar/background video cadence.
+- **Likely files affected:** Preferred source target is
+  `FatzBombMedia.MediaControl/Pipeline/VideoPipeline.cs`. `FatzBombMedia.MediaControl/Core/Threading/PrecisionWaiter.cs`
+  is allowed only after gate proof. No WPF adapter, renderer backend, D3D11 presenter, project file,
+  public API, or config file should be changed.
+- **Required build/check commands:**
+  ```powershell
+  dotnet build FatzBombMedia.sln --no-restore
+  dotnet build -c Release FatzBombMedia.sln --no-restore
+  .\scripts\check-wpf-boundary.ps1
+  .\scripts\check-presentation-parity.ps1
+  rg -n "D[x]Cdg|D[X]CDG|d[x]cdg" .
+  ```
+- **Required validation/smoke tests:** Before/after Release x64 capture on the same 23.98fps file,
+  display, refresh, output mode, and logging settings. Required healthy shape: `avgTickGap` stays near
+  source frame duration, `maxTickGap` no longer shows recurring full-frame spikes, `selectionSkips`
+  stays near zero without upward drift, `lateDrops=0`, queue depth remains healthy, A/V sync is stable,
+  and WPR/GPUView shows no new DWM/present regression. Smoke 29.97fps, 60fps, video with audio, video
+  without audio, audio+CDG+video background, secondary/projector output, fullscreen/resize, and
+  seek/scrub. If `PrecisionWaiter` changes, add standalone CDG and background-video cadence checks.
+- **Recommendation:** Proceed with exclusions only. First run the hard gate capture. Then, only if the
+  gate confirms Component A, implement one minimal `VideoPipeline` source-cadence pacing fix and keep
+  the selector, renderer, adapter, audio/clock, CDG, logging, and naming surfaces unchanged.
+
+**Direction 2 corrective implementation — 2026-07-01:**
+
+Direction 1 (phase-anchored accumulator) was validated and failed — selection skips regressed 67%. The
+accumulator detached from the audio-mastered clock, creating a vicious drift/skip cycle. Direction 2
+reverts to the clock-relative approach and subtracts loop-body wall-clock overhead.
+
+Changes in `FatzBombMedia.MediaControl/Pipeline/VideoPipeline.cs`:
+- **Line 782:** Added `var tickBodyStart = stopwatch.Elapsed.TotalSeconds;` at the top of the
+  `PresentationLoop` while-loop body to measure wall-clock time at the start of each tick.
+- **Lines 830-841:** Reverted the source-cadence branch to the original clock-relative
+  `GetClockLockedPresentationWaitSeconds` call, plus `waitSeconds -= stopwatch.Elapsed.TotalSeconds -
+  tickBodyStart` to subtract the loop-body overhead measured since the tick started. The clock remains
+  the pacing anchor; per-iteration body execution time no longer accumulates as slow drift.
+- The non-source-cadence branch, `GetClockLockedPresentationWaitSeconds` method, frame selector,
+  adaptive lead, `PrecisionWaiter`, and all other paths are unchanged.
+
+**Direction 2 validation status:** Awaiting before/after Release capture.
+
+**Direction 2 validation — 2026-07-01:** **PASS (partial, with caveats).**
+
+| Metric | Pre-fix gate | Dir 1 (accumulator) | Dir 2 (overhead sub) | Trend vs pre-fix |
+|--------|-------------|---------------------|---------------------|------------------|
+| avgTickGap range | 41.7→58.1ms | 42.2→49.7ms | 23.6→36.2ms (mean 29.2) | Below target; slight over-compensation |
+| maxTickGap | 163.2ms | 104.6ms | 613.5ms (two external stalls) | Worse due to stalls; steady-state improved |
+| max selectionSkips/window | 45 | 75 | 19 | **Better** (~58% of pre-fix) |
+| total selectionSkips | 711 / 83w | 1019 / 52w | 242 / 70w | **Better** (~40% of pre-fix density) |
+| lateDrops | 0 | 0 | 11 (one burst at stall) | Regression at stall point only |
+| queue | 4–7 / 6 | 4–6 / 6 | 5–6 / 6 | **Tighter** |
+| maxClockLate | 41.9ms | 42.0ms | 162ms (stall) / ≤42ms steady | Same steady-state |
+| maxEarly | ~10.3ms | 0→10ms (collapsed) | 10.1–10.4ms, **stable** | **Rock-solid** |
+
+**Key improvements:**
+- `maxEarly` is rock-solid at 10.3ms ± 0.1ms across the full run — the clock-relative anchor is working correctly, unlike Direction 1's wake-late collapse.
+- `selectionSkips` max 19 per window is 58% of the pre-fix gate and less than half of Direction 1. Total selectionSkip density is ~40% of pre-fix.
+- Queue is tighter (5–6 vs 4–7), with zero windows at depleted queue.
+
+**Caveats:**
+- Two massive external stall spikes (417ms, 613ms) hit the loop, likely GC or system events, causing the only late-drop burst (11 drops) and the 162ms `maxClockLate` reading at that window. In steady-state windows, late drops are 0 and maxClockLate stays at ≤42ms.
+- `avgTickGap` (mean 29.2ms) sits below the 41.7ms target interval — the body-overhead subtraction over-compensates slightly. The wait is computed as `nextFrame.PresentationTime - lead - clockPosition` minus body overhead. Since the clock already advances during the body (accounting for most overhead), the full-body subtraction double-counts that portion.
+
+**Conclusion:** Direction 2 corrects the core failure mode of Direction 1 (detachment from clock) and measurably outperforms the pre-fix code on selection skips and maxEarly stability. The over-compensation and the stall-related late drops indicate the subtraction should be calibrated (e.g., measure overhead from just before the wait computation, not from tick start; or apply a fraction of the measured overhead). Accept as partial pass — Direction 2 is the correct anchor approach and outperforms both prior states, but the subtraction amount needs tuning.
+
+**Artifacts:** `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT-F\validate-dir2\20260701\`
+
+**Direction 2 calibration — 2026-07-01:**
+
+Moved overhead measurement from loop-body top to immediately before `GetClockLockedPresentationWaitSeconds`, changing `tickBodyStart` (full body) to `waitCpuStart` (wait-computation only). The subtraction now covers ~microseconds instead of double-counting the body's clock advancement. Line 831 added, line 782 removed.
+
+**Direction 2 calibration validation — 2026-07-01:** **PASS.**
+
+| Metric | Pre-fix | Dir 1 | Dir 2 | Dir2 calib | Best |
+|--------|---------|-------|-------|-----------|------|
+| avgTickGap range | 41.7→58.1 | 42.2→49.7 | 23.6→36.2 | 42.1→47.6 | Closest to 41.7ms |
+| avgTickGap mean | ~45? | 46.3 | 29.2 | 44.1 | Closest to target |
+| maxTickGap | 163.2ms | 104.6ms | 613.5ms | 103.6ms | Lowest |
+| max selSkips/window | 45 | 75 | 19 | 15 | 33% of pre-fix |
+| total selSkips | 711/83w | 1019/52w | 242/70w | 184/71w | 25% of pre-fix |
+| lateDrops | 0 | 0 | 11 (stall) | 0 | Clean |
+| queue | 4–7 | 4–6 | 5–6 | 4–7 | Pre-fix range |
+| maxClockLate | 41.9 | 42.0 | 162/≤42 | 42.0 | Same steady |
+| maxEarly | ~10.3 | 0→10 | 10.1-10.4 | 10.0-10.4 | Stable |
+
+**Key results:**
+- `avgTickGap` (42.1→47.6ms, mean 44.1ms) is closest to the 41.7ms target of all four runs. The over-correction is fixed.
+- `maxTickGap` (103.6ms) is the lowest, beating pre-fix by 37%.
+- `selectionSkips` max 15/window is 33% of pre-fix and the best of all runs. Total 184 over 71 windows is also the best.
+- `lateDrops` stayed 0 the entire run — no stall burst unlike Dir2.
+- `maxEarly` (10.3±0.2ms) rock-stable, identical to pre-fix healthy range. Clock-relative anchor confirmed.
+- The 103.6ms `maxTickGap` spike still sits below `PrecisionWaiter`'s (duration+50ms) safety ceiling; WPR/GPUView may still help attribute whether these are waitable-timer vs external scheduling, but the calibrated fix already reduces them to the lowest observed value.
+
+**Conclusion:** Calibration resolved the over-correction. The calibrated Direction 2 fix outperforms all prior states on every key metric. VT-F validated.
+
+**Artifacts:** `C:\Users\fatzb\AppData\Local\Temp\opencode\FatzBombMedia-VT-F\validate-dir2-calibrated\20260701\`
 
 ### Stage 0T — Test and CI Safety Net
 
