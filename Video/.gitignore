@@ -6,6 +6,7 @@ obj/
 *.nupkg
 *.snupkg
 graphify.bat
+graphify-run.ps1
 profiling/
 
 # Ignore the massive sea of root-level architectural notes
