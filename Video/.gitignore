@@ -5,6 +5,7 @@ obj/
 *.suo
 *.nupkg
 *.snupkg
+graphify.bat
 profiling/
 
 # Ignore the massive sea of root-level architectural notes
