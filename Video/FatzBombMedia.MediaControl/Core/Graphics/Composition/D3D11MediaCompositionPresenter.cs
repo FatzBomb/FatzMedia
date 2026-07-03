@@ -25,6 +25,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
     private readonly D3D11CompositionLayerCache _layerCache = new();
     private readonly D3D11CompositionTargetRegistry _targetRegistry = new();
+    private readonly List<D3D11PresentationTargetSnapshot> _scratchValidTargets = [];
+    private readonly List<D3D11PresentationTargetSnapshot> _scratchPresentationTargets = [];
 
     private ID3D11PixelShader? _backgroundPixelShader;
     private ID3D11PixelShader? _solidPixelShader;
@@ -33,6 +35,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private ID3D11VertexShader? _vertexShader;
     private ID3D11PixelShader? _pixelShader;
     private ID3D11Buffer? _constantBuffer;
+    private static readonly int CdgShaderConstantsSize = Marshal.SizeOf<CdgShaderConstants>();
     private ID3D11SamplerState? _samplerState;
     private ID3D11BlendState? _blendState;
     private ID3D11BlendState? _premultipliedBlendState;
@@ -63,6 +66,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _pipelineFailed = false;
         _layerCache.Reset();
         _targetRegistry.Reset();
+        _scratchValidTargets.Clear();
+        _scratchPresentationTargets.Clear();
         ReleaseResources();
     }
 
@@ -237,9 +242,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         try
         {
             var passStart = Stopwatch.GetTimestamp();
-            var validTargets = targets
-                .Where(static target => target.IsValid)
-                .ToList();
+            _scratchValidTargets.Clear();
+            foreach (D3D11PresentationTargetSnapshot target in targets)
+                if (target.IsValid)
+                    _scratchValidTargets.Add(target);
+
+            List<D3D11PresentationTargetSnapshot> validTargets = _scratchValidTargets;
             if (validTargets.Count == 0)
             {
                 Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: no valid targets reason={frame.Reason}.");
@@ -248,9 +256,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
             _targetRegistry.Capture(validTargets.Select(static target => target.ToCompositionTargetDescriptor()));
             D3D11CompositionTargetPlan targetPlan = _targetRegistry.CreatePlan();
-            var presentationTargets = validTargets
-                .Where(target => targetPlan.ShouldPresentTarget(target.TargetId))
-                .ToList();
+            _scratchPresentationTargets.Clear();
+            foreach (D3D11PresentationTargetSnapshot target in validTargets)
+                if (targetPlan.ShouldPresentTarget(target.TargetId))
+                    _scratchPresentationTargets.Add(target);
+
+            List<D3D11PresentationTargetSnapshot> presentationTargets = _scratchPresentationTargets;
             if (presentationTargets.Count == 0)
             {
                 Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: target plan has no active presentation targets reason={frame.Reason}.");
@@ -343,7 +354,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private bool EnsureCompositionBackgroundFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame, D3D11VideoProcessorPresenter? videoProcessorPresenter)
     {
         D3D11CompositionLayerState? backgroundLayer = _layerCache.TryGet(MediaCompositionLayerId.Background);
-        MediaCompositionLayer? descriptor = frame.EnumerateLayers().FirstOrDefault(static layer => layer.Id == MediaCompositionLayerId.Background);
+        MediaCompositionLayer? descriptor = frame.TryGetBackgroundLayer();
 
         if (frame.HasD3D11Background)
         {
@@ -475,7 +486,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             return true;
 
         D3D11CompositionLayerState? overlayLayer = _layerCache.TryGet(MediaCompositionLayerId.Overlay);
-        MediaCompositionLayer? descriptor = frame.EnumerateLayers().FirstOrDefault(static layer => layer.Id == MediaCompositionLayerId.Overlay);
+        MediaCompositionLayer? descriptor = frame.TryGetOverlayLayer();
         if (overlayLayer == null || descriptor == null || descriptor.CdgSnapshot == null)
             return false;
 
@@ -762,7 +773,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         var right = left + Math.Max(1, (int)Math.Round(destinationRect.Width));
         var bottom = top + Math.Max(1, (int)Math.Round(destinationRect.Height));
 
-        Span<byte> constantBytes = stackalloc byte[Marshal.SizeOf<CdgShaderConstants>()];
+        Span<byte> constantBytes = stackalloc byte[CdgShaderConstantsSize];
         var constants = new CdgShaderConstants
         {
             DestinationRect = new Vector4(
@@ -808,7 +819,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             {
                 var constantBufferDescription = new BufferDescription
                 {
-                    ByteWidth = (uint)Marshal.SizeOf<CdgShaderConstants>(),
+                    ByteWidth = (uint)CdgShaderConstantsSize,
                     Usage = ResourceUsage.Default,
                     BindFlags = BindFlags.ConstantBuffer,
                     CPUAccessFlags = CpuAccessFlags.None,
@@ -1133,11 +1144,19 @@ float4 PSMain(VertexOut input) : SV_TARGET
     float normalizedIndex = IndexTexture.Sample(PointSampler, input.TexCoord).r;
     float paletteIndex = clamp(floor((normalizedIndex * 255.0f) + 0.5f), 0.0f, PaletteInfo.x - 1.0f);
 
+    // Until a CDG memory-preset establishes the background color (PaletteInfo.y < 0), the entire
+    // overlay is transparent so any underlying background shows through instead of an opaque black
+    // plane built from the default palette.
+    if (PaletteInfo.y < 0.0f)
+    {
+        return float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
     // The active CDG path clears the target to the background/wash color first.
     // Only the current CDG background index is transparent in the foreground pass.
     // Do not automatically hide index 0; CDG files may legitimately use color 0 as
     // a lyric/tile color when a different background index is active.
-    if (PaletteInfo.y >= 0.0f && abs(paletteIndex - PaletteInfo.y) < 0.5f)
+    if (abs(paletteIndex - PaletteInfo.y) < 0.5f)
     {
         return float4(0.0f, 0.0f, 0.0f, 0.0f);
     }

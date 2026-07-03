@@ -83,26 +83,19 @@ public partial class MainWindow : Window
 
     private void Window_DragEnter(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            e.Effects = DragDropEffects.Copy;
-        else
-            e.Effects = DragDropEffects.None;
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            e.Effects = DragDropEffects.Copy;
-        else
-            e.Effects = DragDropEffects.None;
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
-        {
             try
             {
                 await _viewModel.LoadMediaAsync(files[0]);
@@ -111,7 +104,6 @@ public partial class MainWindow : Window
             {
                 _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-        }
         e.Handled = true;
     }
 

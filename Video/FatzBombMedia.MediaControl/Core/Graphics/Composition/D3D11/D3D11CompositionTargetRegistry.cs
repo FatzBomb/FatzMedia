@@ -9,6 +9,7 @@ internal sealed class D3D11CompositionTargetRegistry
 {
     private readonly Dictionary<string, D3D11CompositionTargetState> _targets = [];
     private readonly List<string> _scratchActiveIds = [];
+    private readonly List<D3D11CompositionTargetUpdate> _scratchTargetUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool HasMultipleActiveTargets => _targets.Values.Count(static target => target.IsActive) > 1;
@@ -44,13 +45,20 @@ internal sealed class D3D11CompositionTargetRegistry
 
     public D3D11CompositionTargetPlan CreatePlan()
     {
-        IEnumerable<D3D11CompositionTargetUpdate> updates = _targets.Values
-            .Where(static target => target.IsActive || target.WasDeactivated)
-            .OrderBy(static target => target.Descriptor.Kind)
-            .ThenBy(static target => target.Id, StringComparer.Ordinal)
-            .Select(static target => target.CreateUpdatePlanEntry());
+        _scratchTargetUpdates.Clear();
+        foreach (D3D11CompositionTargetState target in _targets.Values)
+        {
+            if (target.IsActive || target.WasDeactivated)
+                _scratchTargetUpdates.Add(target.CreateUpdatePlanEntry());
+        }
 
-        return new D3D11CompositionTargetPlan(CaptureSequence, updates);
+        _scratchTargetUpdates.Sort(static (a, b) =>
+        {
+            var c = a.Kind.CompareTo(b.Kind);
+            return c != 0 ? c : string.Compare(a.Id, b.Id, StringComparison.Ordinal);
+        });
+
+        return new D3D11CompositionTargetPlan(CaptureSequence, _scratchTargetUpdates);
     }
 
 
@@ -70,6 +78,7 @@ internal sealed class D3D11CompositionTargetRegistry
     {
         _targets.Clear();
         _scratchActiveIds.Clear();
+        _scratchTargetUpdates.Clear();
         CaptureSequence = 0;
     }
 

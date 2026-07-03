@@ -19,61 +19,59 @@ internal static class MediaBackgroundResolver
     {
         using IArchiveHandle archive = archiveService.Open(sourcePath);
         IArchiveEntryInfo[] entries = [.. archive.Entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Key))];
+        List<MediaBackgroundMatch> matches = [];
 
-        var mediaBases = entries
-            .Where(entry => FileTypes.IsAudio(entry.Key) || FileTypes.IsCdg(entry.Key))
-            .Select(entry => Path.GetFileNameWithoutExtension(entry.Key))
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (IArchiveEntryInfo entry in entries)
+        {
+            MediaBackgroundKind? kind = GetBackgroundKind(entry.Key);
+            if (kind != null)
+                matches.Add(MediaBackgroundMatch.FromArchiveEntry(kind.Value, entry));
+        }
 
-        var backgroundEntries = entries
-            .Select(entry => new
-            {
-                Entry = entry,
-                Kind = GetBackgroundKind(entry.Key),
-                BaseName = Path.GetFileNameWithoutExtension(entry.Key)
-            })
-            .Where(item => item.Kind != null)
-            .ToArray();
+        CollectSidecarBackgrounds(sourcePath, matches);
 
-        var selected = backgroundEntries
-            .Where(item => !string.IsNullOrWhiteSpace(item.BaseName) && mediaBases.Contains(item.BaseName))
-            .OrderBy(item => GetKindPriority(item.Kind!.Value))
-            .ThenBy(item => item.Entry.Key, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault()
-            ?? backgroundEntries
-                .OrderBy(item => GetKindPriority(item.Kind!.Value))
-                .ThenBy(item => item.Entry.Key, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-
-        return selected != null
-            ? MediaBackgroundCandidate.FromArchiveEntry(selected.Kind!.Value, selected.Entry)
-            : ResolveSidecarBackground(sourcePath);
+        MediaBackgroundMatch? selected = SelectRandom(matches);
+        return selected?.ToCandidate();
     }
 
     private static MediaBackgroundCandidate? ResolveSidecarBackground(string sourcePath)
     {
+        List<MediaBackgroundMatch> matches = [];
+        CollectSidecarBackgrounds(sourcePath, matches);
+        MediaBackgroundMatch? selected = SelectRandom(matches);
+        return selected?.ToCandidate();
+    }
+
+    private static void CollectSidecarBackgrounds(string sourcePath, List<MediaBackgroundMatch> matches)
+    {
         var directory = Path.GetDirectoryName(sourcePath);
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-        {
-            return null;
-        }
+            return;
 
         var sourceBase = Path.GetFileNameWithoutExtension(sourcePath);
+        CollectSidecarBackgrounds(directory, sourceBase, matches);
+    }
+
+    private static void CollectSidecarBackgrounds(string directory, string sourceBase, List<MediaBackgroundMatch> matches)
+    {
+        if (string.IsNullOrWhiteSpace(sourceBase))
+        {
+            return;
+        }
+
         foreach (MediaBackgroundKind kind in PreferredKindOrder())
         {
             foreach (var extension in GetExtensions(kind))
             {
                 var candidatePath = Path.Combine(directory, sourceBase + extension);
                 if (File.Exists(candidatePath))
-                {
-                    return MediaBackgroundCandidate.FromPath(kind, candidatePath);
-                }
+                    matches.Add(MediaBackgroundMatch.FromPath(kind, candidatePath));
             }
         }
-
-        return null;
     }
+
+    private static MediaBackgroundMatch? SelectRandom(IReadOnlyList<MediaBackgroundMatch> matches) =>
+        matches.Count == 0 ? null : matches[Random.Shared.Next(matches.Count)];
 
     private static MediaBackgroundKind? GetBackgroundKind(string path) => FileTypes.IsVideo(path)
         ? MediaBackgroundKind.Video
@@ -89,5 +87,14 @@ internal static class MediaBackgroundResolver
 
     private static HashSet<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
-    private static int GetKindPriority(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? 0 : 1;
+    private readonly record struct MediaBackgroundMatch(MediaBackgroundKind Kind, string? Path, IArchiveEntryInfo? Entry)
+    {
+        public static MediaBackgroundMatch FromPath(MediaBackgroundKind kind, string path) => new(kind, path, Entry: null);
+
+        public static MediaBackgroundMatch FromArchiveEntry(MediaBackgroundKind kind, IArchiveEntryInfo entry) => new(kind, Path: null, entry);
+
+        public MediaBackgroundCandidate ToCandidate() => Entry != null
+            ? MediaBackgroundCandidate.FromArchiveEntry(Kind, Entry)
+            : MediaBackgroundCandidate.FromPath(Kind, Path!);
+    }
 }

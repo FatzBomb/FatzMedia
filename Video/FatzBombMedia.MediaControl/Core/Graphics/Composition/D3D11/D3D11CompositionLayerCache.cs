@@ -13,6 +13,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     private readonly Dictionary<MediaCompositionLayerId, D3D11CompositionLayerState> _layers = [];
     private readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
     private readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
+    private readonly List<D3D11CompositionLayerUpdate> _scratchUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool LastCaptureHadVisibleLayers { get; private set; }
@@ -40,7 +41,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
         LastCaptureHadVisibleLayers = _scratchActiveIds.Count > 0;
 
-        foreach (MediaCompositionLayerId existingId in _layers.Keys.ToArray())
+        foreach (MediaCompositionLayerId existingId in _layers.Keys)
         {
             if (!_scratchActiveIds.Contains(existingId))
             {
@@ -58,17 +59,24 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
 
     public D3D11CompositionLayerUpdatePlan CreateUpdatePlan()
     {
-        IEnumerable<D3D11CompositionLayerUpdate> updates = _layers.Values
-            .Where(static layer => layer.IsActive || layer.WasDeactivated)
-            .OrderBy(static layer => layer.Descriptor?.Order ?? int.MaxValue)
-            .ThenBy(static layer => layer.Id)
-            .Select(static layer => layer.CreateUpdatePlanEntry());
+        _scratchUpdates.Clear();
+        foreach (D3D11CompositionLayerState layer in _layers.Values)
+        {
+            if (layer.IsActive || layer.WasDeactivated)
+                _scratchUpdates.Add(layer.CreateUpdatePlanEntry());
+        }
+
+        _scratchUpdates.Sort(static (a, b) =>
+        {
+            var c = a.Order.CompareTo(b.Order);
+            return c != 0 ? c : a.Id.CompareTo(b.Id);
+        });
 
         return new D3D11CompositionLayerUpdatePlan(
             CaptureSequence,
             LastCaptureIsClearOnly,
             LastCaptureDeactivatedLayers,
-            updates);
+            _scratchUpdates);
     }
 
 
@@ -117,6 +125,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
             layer.Clear();
 
         _scratchDeactivatedIds.Clear();
+        _scratchUpdates.Clear();
         LastCaptureHadVisibleLayers = false;
         CaptureSequence = 0;
     }

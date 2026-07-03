@@ -280,7 +280,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             {
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
-                EnableVerboseLogging = false
+                EnableVerboseLogging = true
             };
 
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);

@@ -298,7 +298,7 @@ public sealed class MediaSurface : Grid
 
     private void OnSessionMediaStarted(object? sender, EventArgs e)
     {
-        _showPrimarySurfaceAfterPresentation = true;
+        _showPrimarySurfaceAfterPresentation = !IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession);
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
@@ -310,13 +310,19 @@ public sealed class MediaSurface : Grid
 
     private void OnSessionMediaEnded(object? sender, EventArgs e)
     {
+        if (IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession))
+            return;
+
         _showPrimarySurfaceAfterPresentation = false;
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
     private void OnSessionPresentationFramePresented(object? sender, EventArgs e)
     {
-        if (!_showPrimarySurfaceAfterPresentation)
+        // This event is raised from Core's native present/render thread, NOT the WPF UI thread.
+        // Do not touch the Player dependency property here; read the plain, thread-safe _eventSession
+        // reference instead. All UI-affine work is marshaled to the UI thread below.
+        if (!_showPrimarySurfaceAfterPresentation && !HasStoppedStandaloneVisual(_eventSession))
             return;
 
         _showPrimarySurfaceAfterPresentation = false;
@@ -327,7 +333,7 @@ public sealed class MediaSurface : Grid
     {
         IMediaControlSession? session = Player;
         var shouldShow = _primaryAttached
-            && session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused }
+            && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
             && !_showPrimarySurfaceAfterPresentation;
 
         if (shouldShow)
@@ -343,6 +349,25 @@ public sealed class MediaSurface : Grid
         if (_surfaceHost.Visibility != Visibility.Hidden)
             _surfaceHost.Visibility = Visibility.Hidden;
     }
+
+    // A standalone visual without an audio stream (image, or video/CDG with no audio) is presented to
+    // the swap chain by Core on load but never enters Playing/Paused, so show the native surface for it.
+    // The Stopped gate keeps this from re-dispatching on every presented frame during no-audio playback.
+    private static bool HasStandaloneVisual(IMediaControlSession? session) =>
+        session is { IsOpen: true }
+        && !session.Content.HasFlag(MediaContent.Audio)
+        && (session.Content.HasFlag(MediaContent.Image)
+            || session.Content.HasFlag(MediaContent.Video)
+            || session.Content.HasFlag(MediaContent.Cdg));
+
+    private static bool HasStoppedStandaloneVisual(IMediaControlSession? session) =>
+        session is { State: MediaPlayerState.Stopped } && HasStandaloneVisual(session);
+
+    private static bool IsLoopingVisualPlayback(IMediaControlSession? session) =>
+        session is { IsOpen: true, LoopMedia: true }
+        && (session.Content.HasFlag(MediaContent.Video)
+            || session.Content.HasFlag(MediaContent.Cdg)
+            || session.Content.HasFlag(MediaContent.Image));
 
     private void AttachOwnerWindowHook()
     {

@@ -104,4 +104,74 @@ public readonly partial record struct MediaCompositionFrame
 
     private static long StableColorRevision(uint argb)
         => unchecked((long)(ulong)argb);
+
+    internal MediaCompositionLayer? TryGetBackgroundLayer() =>
+        HasBackground
+            ? new MediaCompositionLayer
+            {
+                Id = MediaCompositionLayerId.Background,
+                Kind = MediaCompositionLayerKind.Background,
+                SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
+                Order = 0,
+                Revision = BackgroundRevision,
+                Width = BackgroundWidth,
+                Height = BackgroundHeight,
+                Stride = BackgroundStride,
+                StretchMode = EffectiveBackgroundStretchMode,
+                Opacity = 1.0d,
+                BgraPixels = BackgroundBgra
+            }
+            : HasD3D11Background
+                ? new MediaCompositionLayer
+                {
+                    Id = MediaCompositionLayerId.Background,
+                    Kind = MediaCompositionLayerKind.Background,
+                    SourceKind = MediaCompositionLayerSourceKind.D3D11Texture,
+                    Order = 0,
+                    Revision = BackgroundRevision,
+                    Width = BackgroundD3D11Width,
+                    Height = BackgroundD3D11Height,
+                    Stride = BackgroundD3D11Width > 0 ? BackgroundD3D11Width * 4 : 0,
+                    StretchMode = EffectiveBackgroundStretchMode,
+                    Opacity = 1.0d,
+                    D3D11TexturePointer = BackgroundD3D11TexturePointer,
+                    D3D11ArraySlice = BackgroundD3D11ArraySlice,
+                    FramesPerSecond = BackgroundD3D11FramesPerSecond
+                }
+                : HasRetainedBackground
+                    ? new MediaCompositionLayer
+                    {
+                        Id = MediaCompositionLayerId.Background,
+                        Kind = MediaCompositionLayerKind.Background,
+                        SourceKind = MediaCompositionLayerSourceKind.RetainedD3D11Texture,
+                        Order = 0,
+                        Revision = BackgroundRevision,
+                        Width = BackgroundWidth,
+                        Height = BackgroundHeight,
+                        Stride = BackgroundStride,
+                        StretchMode = EffectiveBackgroundStretchMode,
+                        Opacity = 1.0d
+                    }
+                    : null;
+
+    internal MediaCompositionLayer? TryGetOverlayLayer()
+    {
+        CdgRenderSnapshot? overlay = CdgOverlay;
+        return HasCdgOverlay && overlay != null
+            ? new MediaCompositionLayer
+            {
+                Id = MediaCompositionLayerId.Overlay,
+                Kind = MediaCompositionLayerKind.Overlay,
+                SourceKind = MediaCompositionLayerSourceKind.CdgSnapshot,
+                Order = 2,
+                Revision = overlay.Revision,
+                Width = overlay.Width,
+                Height = overlay.Height,
+                Stride = overlay.Width,
+                StretchMode = MediaCompositionStretchMode.UniformFit,
+                Opacity = 1.0d,
+                CdgSnapshot = overlay
+            }
+            : null;
+    }
 }

@@ -76,3 +76,8 @@ public interface IMediaEngine : IDisposable
     /// <summary>Raised when Core background state has been cleared.</summary>
     event EventHandler? BackgroundCleared;
 }
+
+internal interface ILoopPlaybackControl
+{
+    bool LoopPlayback { get; set; }
+}

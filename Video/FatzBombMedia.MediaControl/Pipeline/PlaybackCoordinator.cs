@@ -35,6 +35,12 @@ internal sealed class PlaybackCoordinator : IDisposable
     public ICdgEngine? Cdg => _session.Cdg?.IsOpen == true ? _session.Cdg.Engine : null;
     public IVideoEngine? Video => _session.Video?.IsOpen == true ? _session.Video : null;
 
+    public bool LoopPlayback
+    {
+        get => _session.Video?.LoopPlayback == true;
+        set => _session.Video?.LoopPlayback = value;
+    }
+
     /// <summary>
     /// Supplies the actual monitor refresh rate to the underlying video pipeline regardless of
     /// whether a file is currently open, since the pipeline instance itself is stable for the
@@ -53,21 +59,13 @@ internal sealed class PlaybackCoordinator : IDisposable
         {
             var duration = 0.0;
             if (_session.Audio?.IsOpen == true)
-            {
                 duration = Math.Max(duration, _session.Audio.DurationSeconds);
-            }
             if (_session.Cdg?.IsOpen == true)
-            {
                 duration = Math.Max(duration, _session.Cdg.DurationSeconds);
-            }
             if (_session.Video?.IsOpen == true)
-            {
                 duration = Math.Max(duration, _session.Video.Duration);
-            }
             if (duration <= 0)
-            {
                 duration = _session.Clock.DurationSeconds;
-            }
             return duration;
         }
     }
@@ -97,9 +95,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenAudioCdg(IArchiveEntryInfo audioEntry, IArchiveEntryInfo cdgEntry)
     {
         if (_session.Audio?.Open(audioEntry) != true || _session.Cdg == null)
-        {
             return false;
-        }
 
         _session.Cdg.OpenPaired(cdgEntry, _session.Audio.PlayHandle);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg | MediaContent.Archive, audioEntry.Key, DurationSeconds);
@@ -109,9 +105,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenStandaloneCdg(string cdgPath)
     {
         if (_session.Cdg == null)
-        {
             return false;
-        }
 
         _session.Cdg.OpenStandalone(cdgPath);
         return true;
@@ -120,9 +114,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenStandaloneCdg(IArchiveEntryInfo cdgEntry)
     {
         if (_session.Cdg == null)
-        {
             return false;
-        }
 
         _session.Cdg.OpenStandalone(cdgEntry);
         return true;
@@ -135,22 +127,16 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool Play()
     {
         if (_session.Video?.IsOpen == true)
-        {
             return _session.Video.Play();
-        }
 
         var hasAudio = _session.Audio?.IsOpen == true;
         var hasCdg = _session.Cdg?.IsOpen == true;
         var success = false;
 
         if (hasAudio)
-        {
             success |= _session.Audio!.Play();
-        }
         if (hasCdg)
-        {
             success |= _session.Cdg!.Play();
-        }
 
         return success;
     }
@@ -158,38 +144,26 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool Pause()
     {
         if (_session.Video?.IsOpen == true)
-        {
             return _session.Video.Pause();
-        }
 
         var success = false;
         if (_session.Audio?.IsOpen == true)
-        {
             success |= _session.Audio.Pause();
-        }
         if (_session.Cdg?.IsOpen == true)
-        {
             success |= _session.Cdg.Pause();
-        }
         return success;
     }
 
     public bool Stop()
     {
         if (_session.Video?.IsOpen == true)
-        {
             return _session.Video.Stop();
-        }
 
         var success = false;
         if (_session.Audio?.IsOpen == true)
-        {
             success |= _session.Audio.Stop();
-        }
         if (_session.Cdg?.IsOpen == true)
-        {
             success |= _session.Cdg.Stop();
-        }
         return success;
     }
 
@@ -198,28 +172,20 @@ internal sealed class PlaybackCoordinator : IDisposable
         var target = NormalizeSeekTarget(positionSeconds);
 
         if (_session.Video?.IsOpen == true)
-        {
             return _session.Video.Seek(target);
-        }
 
         var success = false;
         if (_session.Audio?.IsOpen == true)
-        {
             success |= _session.Audio.Seek(target);
-        }
         if (_session.Cdg?.IsOpen == true)
-        {
             success |= _session.Cdg.Seek(target);
-        }
         return success;
     }
 
     private double NormalizeSeekTarget(double seconds)
     {
         if (!double.IsFinite(seconds) || seconds <= 0)
-        {
             return 0;
-        }
 
         var duration = DurationSeconds;
         return duration > 0 ? Math.Clamp(seconds, 0, duration) : seconds;

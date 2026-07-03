@@ -235,13 +235,13 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 
     private bool RefreshBackgroundWashUnsafe()
     {
-        CdgRenderSnapshot snapshot = _cdgState.CreateSnapshot(consumeDirtyRegions: false);
-        if (snapshot.BackgroundWashArgb == _backgroundWashArgb)
+        var washArgb = _cdgState.BackgroundWashArgb;
+        if (washArgb == _backgroundWashArgb)
         {
             return false;
         }
 
-        _backgroundWashArgb = snapshot.BackgroundWashArgb;
+        _backgroundWashArgb = washArgb;
         return true;
     }
 

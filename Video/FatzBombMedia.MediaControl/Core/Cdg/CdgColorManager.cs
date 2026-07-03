@@ -255,6 +255,14 @@ internal sealed class CdgColorManager
 
     private uint CalculateBackgroundWashArgb()
     {
+        // Until a CDG memory-preset establishes the background color, the CDG plane is transparent so
+        // any underlying background (sidecar image/video) shows through instead of the opaque default
+        // palette fill. A host-supplied background override still forces a visible wash.
+        if (BackgroundColorIndex < 0 && !BackgroundOverrideArgb.HasValue)
+        {
+            return 0;
+        }
+
         var bgIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
         Color baseColor = _colorTable[bgIndex];
 

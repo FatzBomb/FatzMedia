@@ -58,6 +58,7 @@ internal sealed unsafe class VideoDecoder(
     public string? HardwareAccelerationMethod { get; private set; }
     public IntPtr D3D11DevicePointer { get; private set; }
     public IntPtr D3D11DeviceContextPointer { get; private set; }
+    public bool EndOfStream { get; private set; }
 
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
@@ -118,6 +119,7 @@ internal sealed unsafe class VideoDecoder(
     public bool DecodeNextFrame()
     {
         if (_fmt == null || _packet == null) return false;
+        if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
 
         var readResult = ffmpeg.av_read_frame(_fmt, _packet);
@@ -126,6 +128,7 @@ internal sealed unsafe class VideoDecoder(
             if (readResult == ffmpeg.AVERROR_EOF)
             {
                 ProcessRemainingFrames();
+                EndOfStream = true;
                 return false; // No more frames
             }
             return false; // Error
@@ -147,6 +150,8 @@ internal sealed unsafe class VideoDecoder(
     public VideoFrameData? PeekNextFrame() => _frameQueue.TryPeek(out VideoFrameData? frame) ? frame : null;
 
     public VideoFrameData[] GetQueuedFramesSnapshot() => [.. _frameQueue];
+
+    public IEnumerable<VideoFrameData> EnumerateQueuedFrames() => _frameQueue;
 
     public int FrameCount => _frameQueue.Count;
 
@@ -867,6 +872,7 @@ internal sealed unsafe class VideoDecoder(
         _streamStartSeconds = 0;
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
+        EndOfStream = false;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         D3D11DevicePointer = IntPtr.Zero;
@@ -920,6 +926,7 @@ internal sealed unsafe class VideoDecoder(
             if (_enableVerboseLogging) Debug.WriteLine("[VideoDecoder] Flushed codec buffers after seek");
         }
         ClearFrameQueue();
+        EndOfStream = false;
     }
 
     public void ReturnFrame(VideoFrameData? frame)
@@ -958,6 +965,7 @@ internal sealed unsafe class VideoDecoder(
             return false;
 
         Flush();
+        EndOfStream = false;
         _discardFramesBeforeSeconds = exact ? target : null;
         return true;
     }

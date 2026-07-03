@@ -77,10 +77,7 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
     public void SetPitch(int semitones) =>
         throw new NotSupportedException("ClockAudioEngine does not support pitch control.");
 
-    public void SetTempo(int percent)
-    {
-        _clock.SetTempo(percent);
-    }
+    public void SetTempo(int percent) => _clock.SetTempo(percent);
 
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) =>
         throw new NotSupportedException("ClockAudioEngine does not support peak analysis.");
@@ -93,9 +90,7 @@ internal sealed class ClockAudioEngine(PlaybackClock clock) : IAudioEngine
     private void SetState(AudioEngineState state)
     {
         if (State == state)
-        {
             return;
-        }
 
         State = state;
         StateChanged?.Invoke(this, state);

@@ -61,7 +61,7 @@ internal sealed class AudioNormalizer
         const float blockSeconds = 0.25f;
         const int maxSamples = 24;
 
-        return await Task.Run(() => AnalyzePeakInternal(handle, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken);
+        return await Task.Run(() => AnalyzePeakInternal(handle, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -74,7 +74,7 @@ internal sealed class AudioNormalizer
     public async Task<double> AnalyzePeakAsync(int handle, bool updateGain = true, CancellationToken cancellationToken = default) =>
         handle == 0
             ? 0.0
-            : await Task.Run(() => AnalyzePeakFull(handle, updateGain, cancellationToken), cancellationToken);
+            : await Task.Run(() => AnalyzePeakFull(handle, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Resets the normalization gain to default value. Thread-safe operation.

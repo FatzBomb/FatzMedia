@@ -370,7 +370,7 @@ public sealed class AudioEngine : IAudioEngine
 
         // Just set volume directly - gain is handled separately by FX
         // No need for CalculateEffectiveVolume anymore
-        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Volume, volume01);
+        _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Volume, volume01);
     }
 
     /// <inheritdoc/>
@@ -381,7 +381,7 @@ public sealed class AudioEngine : IAudioEngine
         if (playHandle == 0) return;
 
         semitones = Math.Clamp(semitones, -60, 60);
-        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Pitch, semitones);
+        _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Pitch, semitones);
     }
 
     /// <inheritdoc/>
@@ -393,21 +393,21 @@ public sealed class AudioEngine : IAudioEngine
 
         percent = Math.Clamp(percent, -95, 5000);
         CurrentTempo = percent; // Track the current tempo setting
-        MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
+        _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
     }
 
     /// <inheritdoc/>
     public async Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakQuickAsync(handle, cancellationToken: cancellationToken);
+        return await _normalizer.AnalyzePeakQuickAsync(handle, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async Task<double> AnalyzePeakAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakAsync(handle, cancellationToken: cancellationToken);
+        return await _normalizer.AnalyzePeakAsync(handle, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

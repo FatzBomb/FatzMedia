@@ -327,25 +327,20 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     {
         StopCompletionMonitor();
         if (!IsOpen || _isPairedWithAudio || DurationSeconds <= 0)
-        {
             return;
-        }
 
         _ = Interlocked.Exchange(ref _completionSignaled, 0);
         var generation = Interlocked.Increment(ref _completionGeneration);
         var cts = new CancellationTokenSource();
         _completionCts = cts;
-        _ = MonitorCompletionAsync(generation, cts.Token);
+        _ = MonitorCompletionAsync(generation, cts);
     }
 
     private void StopCompletionMonitor()
     {
-        CancellationTokenSource? cts = _completionCts;
-        _completionCts = null;
+        CancellationTokenSource? cts = Interlocked.Exchange(ref _completionCts, null);
         if (cts == null)
-        {
             return;
-        }
 
         try
         {
@@ -356,8 +351,9 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         }
     }
 
-    private async Task MonitorCompletionAsync(int generation, CancellationToken cancellationToken)
+    private async Task MonitorCompletionAsync(int generation, CancellationTokenSource cts)
     {
+        CancellationToken cancellationToken = cts.Token;
         try
         {
             while (!cancellationToken.IsCancellationRequested && generation == _completionGeneration)
@@ -374,14 +370,17 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         catch (OperationCanceledException)
         {
         }
+        finally
+        {
+            _ = Interlocked.CompareExchange(ref _completionCts, null, cts);
+            cts.Dispose();
+        }
     }
 
     private void CompleteStandalonePlayback(int generation)
     {
         if (generation != _completionGeneration || Interlocked.Exchange(ref _completionSignaled, 1) != 0)
-        {
             return;
-        }
 
         Clock.Pause();
         Engine.Pause();
@@ -393,8 +392,6 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     private static void ThrowIfInvalidPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
             throw new FileNotFoundException("CDG file was not found.", path);
-        }
     }
 }

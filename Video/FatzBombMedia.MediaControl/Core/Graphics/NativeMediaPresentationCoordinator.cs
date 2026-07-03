@@ -432,7 +432,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (!IsValidBgraFrame(e))
             return;
 
-        SetCompositionLayer0Frame(e, MediaCompositionStretchMode.UniformFit);
+        // A standalone image is Layer 0 (base) content, so it honors the same host-selected display
+        // stretch mode as primary video instead of a fixed UniformFit.
+        SetCompositionLayer0Frame(e, _primaryStretchMode);
         _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core image frame"));
     }
 
@@ -445,6 +447,12 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             {
                 if (!ShouldPresentVisualLayers)
                     return;
+
+                if (!HasReadyCdgSnapshotForBackgroundPresentation())
+                {
+                    RequestCdgPresentation(consumeDirtyRegions: false, retainedRefresh: true, "background waiting for cdg");
+                    return;
+                }
 
                 PresentRetainedCdgFrame();
                 return;
@@ -459,6 +467,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             if (HasCdgContent && !ShouldPresentVisualLayers)
             {
                 StoreRetainedHardwareBackgroundFrame(e, MediaCompositionStretchMode.UniformToFill);
+                return;
+            }
+
+            if (HasCdgContent && !HasReadyCdgSnapshotForBackgroundPresentation())
+            {
+                StoreRetainedHardwareBackgroundFrame(e, MediaCompositionStretchMode.UniformToFill);
+                RequestCdgPresentation(consumeDirtyRegions: false, retainedRefresh: true, "hardware background waiting for cdg");
                 return;
             }
 
@@ -534,12 +549,27 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, MediaCompositionStretchMode.UniformToFill);
+            if (!HasReadyCdgSnapshotForBackgroundPresentation())
+            {
+                RequestCdgPresentation(consumeDirtyRegions: false, retainedRefresh: true, "video background waiting for cdg");
+                return;
+            }
+
             PresentRetainedCdgFrame();
             return;
         }
 
         if (e.IsD3D11HardwareFrame)
+        {
+            if (!HasReadyCdgSnapshotForBackgroundPresentation())
+            {
+                StoreRetainedHardwareBackgroundFrame(e, MediaCompositionStretchMode.UniformToFill);
+                RequestCdgPresentation(consumeDirtyRegions: false, retainedRefresh: true, "hardware video background waiting for cdg");
+                return;
+            }
+
             RenderHardwareVideoCompositionFrame(e, forceZoomToFill: true, "hardware video + cdg");
+        }
     }
 
     private void OnCdgBackgroundWashChanged(object? sender, EventArgs e) =>
@@ -689,7 +719,9 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         string reason) =>
             !TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null
                 ? CompositionPresentResult.Failed
-                : PresentMediaCompositionNoLock(BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
+                : HasCompositionBackgroundNoLock() && !IsCdgSnapshotReadyForBackgroundPresentation(snapshot)
+                    ? CompositionPresentResult.Deferred
+                    : PresentMediaCompositionNoLock(BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
@@ -775,11 +807,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             lock (_cdgPresentationGate)
                 snapshot = _lastCdgSnapshot;
 
-            if (snapshot != null)
+            if (snapshot != null && IsCdgSnapshotReadyForBackgroundPresentation(snapshot))
                 return true;
         }
 
-        if (TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out snapshot))
+        if (TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out snapshot)
+            && snapshot != null
+            && IsCdgSnapshotReadyForBackgroundPresentation(snapshot))
             return true;
 
         if (hadPending)
@@ -787,6 +821,30 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         return false;
     }
+
+    private bool HasReadyCdgSnapshotForBackgroundPresentation()
+    {
+        lock (_cdgPresentationGate)
+            return _lastCdgSnapshot != null && IsCdgSnapshotReadyForBackgroundPresentation(_lastCdgSnapshot);
+    }
+
+    private bool HasCompositionBackgroundNoLock()
+    {
+        var hasBgra = !_compositionBackgroundBgra.IsEmpty
+            && _compositionBackgroundWidth > 0
+            && _compositionBackgroundHeight > 0
+            && _compositionBackgroundStride >= _compositionBackgroundWidth * 4;
+
+        var hasRetainedGpu = _compositionBackgroundIsRetainedGpu
+            && _compositionBackgroundWidth > 0
+            && _compositionBackgroundHeight > 0;
+
+        return hasBgra || hasRetainedGpu;
+    }
+
+    private static bool IsCdgSnapshotReadyForBackgroundPresentation(CdgRenderSnapshot snapshot) =>
+        snapshot.BackgroundColorIndex >= 0
+        || ((snapshot.BackgroundWashArgb >> 24) & 0xFF) != 0;
 
     private bool TryCreateAndCacheCdgSnapshot(bool consumeDirtyRegions, out CdgRenderSnapshot? snapshot)
     {
@@ -822,6 +880,15 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             && frame != null)
         {
             PresentCoreImageFrame(frame);
+            return;
+        }
+
+        // Re-present the retained current video frame so a stopped/first-frame poster reaches a newly
+        // attached or resized surface. The first decoded frame is produced during Open before the
+        // coordinator subscribes to FrameReady, so without this reissue a stopped video shows nothing.
+        if (_mediaEngine.Content.HasFlag(MediaContent.Video))
+        {
+            _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true, forceReissue: true);
             return;
         }
 
@@ -1033,7 +1100,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private bool ShouldPresentVisualLayers =>
         _isRenderingActive
-        || _mediaEngine.State is MediaPlayerState.Playing or MediaPlayerState.Paused;
+        || _mediaEngine.State is MediaPlayerState.Playing or MediaPlayerState.Paused
+        || HasStoppedStandaloneVisualContent;
+
+    // Standalone visual media without an audio stream (CDG or video with no audio) never enters
+    // Playing/Paused on load, but should still show its first visual frame while stopped, like an image.
+    private bool HasStoppedStandaloneVisualContent =>
+        _mediaEngine.State == MediaPlayerState.Stopped
+        && !_mediaEngine.Content.HasFlag(MediaContent.Audio)
+        && (_mediaEngine.Content.HasFlag(MediaContent.Video)
+            || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
 
     private bool ShouldPresentImmediatelyAfterPrimaryResize() =>
         !_isRenderingActive

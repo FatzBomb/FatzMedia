@@ -116,6 +116,8 @@ public class MediaControlPlayer : IMediaControlSession
 
     public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => File.Load(path, backgroundPath, ignoreSidecar);
 
+    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => File.Load(path, backgroundPaths, ignoreSidecar);
+
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         File.Load(source, backgroundSource, ignoreSidecar);
 
@@ -129,6 +131,9 @@ public class MediaControlPlayer : IMediaControlSession
 
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
         _controlOperations.Enqueue(() => File.LoadAsync(path, backgroundPath, ignoreSidecar));
+
+    public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
+        _controlOperations.Enqueue(() => File.LoadAsync(path, backgroundPaths, ignoreSidecar));
 
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         _controlOperations.Enqueue(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));

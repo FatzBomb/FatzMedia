@@ -8,7 +8,7 @@ using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
@@ -50,6 +50,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine
     public MediaPlayerState State => _coordinator.State.PlaybackState;
     public bool IsOpen => _coordinator.State.IsOpen;
     public double Duration => _coordinator.DurationSeconds;
+
+    public bool LoopPlayback
+    {
+        get => _coordinator.LoopPlayback;
+        set => _coordinator.LoopPlayback = value;
+    }
 
 
     public event EventHandler? MediaEnded;
@@ -240,11 +246,26 @@ internal sealed class PipelineMediaEngine : IMediaEngine
             return false;
         }
 
+        if (_configuration.EnableVerboseLogging)
+        {
+            Trace.WriteLine(
+                $"[BackgroundVideo] Opened sidecar video: duration={decoder.DurationSeconds:F3}s, fps={decoder.FramesPerSecond:F2}, " +
+                $"codec={decoder.CodecName}, hwFrameOutput=true, isHardwareAccelerated={decoder.IsHardwareAccelerated}, " +
+                $"width={decoder.Width}, height={decoder.Height}, source={background.DisplayName}");
+        }
+
         VideoFrameData? firstFrame = DecodeFirstBackgroundFrame(decoder);
         if (firstFrame == null)
         {
             decoder.Dispose();
             return false;
+        }
+
+        if (_configuration.EnableVerboseLogging)
+        {
+            Trace.WriteLine(
+                $"[BackgroundVideo] First frame: pts={firstFrame.PresentationTime:F3}s, hw={firstFrame.IsD3D11HardwareFrame}, " +
+                $"width={firstFrame.Width}, height={firstFrame.Height}");
         }
 
         RaiseBackgroundFrame(decoder, firstFrame, decoder.FramesPerSecond);
@@ -266,6 +287,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine
     {
         using var waiter = new PrecisionWaiter();
         var nextTick = Stopwatch.GetTimestamp();
+        var startTimestamp = nextTick;
+        var lastPresentedPts = double.NaN;
+        var maxPresentedPts = double.NaN;
+        var iterationCount = 0;
+        var restartCount = 0;
         while (!cancellationToken.IsCancellationRequested && generation == _backgroundGeneration)
         {
             VideoDecoder? decoder = _backgroundVideoDecoder;
@@ -274,18 +300,40 @@ internal sealed class PipelineMediaEngine : IMediaEngine
                 return;
             }
 
-            VideoFrameData? frame = DecodeNextBackgroundVideoFrame(decoder);
+            VideoFrameData? frame = DecodeNextBackgroundVideoFrame(decoder, restartCount: restartCount, lastPresentedPts: lastPresentedPts, iterationCount: iterationCount, startTimestamp: startTimestamp);
             if (frame == null)
             {
+                restartCount++;
+                if (_configuration.EnableVerboseLogging)
+                {
+                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    Trace.WriteLine(
+                        $"[BackgroundVideo] Restart #{restartCount} at {elapsedSec:F2}s, lastPts={lastPresentedPts:F3}s, maxPts={maxPresentedPts:F3}s, " +
+                        $"iterations={iterationCount}, queueDepth={decoder.FrameCount}, fps={decoder.FramesPerSecond:F2}");
+                }
+
                 frame = RestartBackgroundVideo(decoder);
                 nextTick = Stopwatch.GetTimestamp();
             }
 
             if (frame != null)
             {
+                lastPresentedPts = frame.PresentationTime;
+                if (double.IsNaN(maxPresentedPts) || frame.PresentationTime > maxPresentedPts)
+                    maxPresentedPts = frame.PresentationTime;
+
                 RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
+
+                if (_configuration.EnableVerboseLogging && iterationCount > 0 && iterationCount % 60 == 0)
+                {
+                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    Trace.WriteLine(
+                        $"[BackgroundVideo] iter={iterationCount}, elapsed={elapsedSec:F2}s, pts={frame.PresentationTime:F3}s, " +
+                        $"hw={frame.IsD3D11HardwareFrame}, queueDepth={decoder.FrameCount}");
+                }
             }
 
+            iterationCount++;
             var interval = VideoPresentationTiming.GetBackgroundPresentationInterval(decoder.FramesPerSecond);
             nextTick += Math.Max(1L, (long)(interval * Stopwatch.Frequency));
             var delayTicks = nextTick - Stopwatch.GetTimestamp();
@@ -301,8 +349,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine
         }
     }
 
-    private VideoFrameData? DecodeNextBackgroundVideoFrame(VideoDecoder decoder)
+    private VideoFrameData? DecodeNextBackgroundVideoFrame(VideoDecoder decoder, int restartCount, double lastPresentedPts, int iterationCount, long startTimestamp)
     {
+        var attempts = 0;
         for (var i = 0; i < 120; i++)
         {
             VideoFrameData? frame = decoder.GetNextFrame();
@@ -310,14 +359,42 @@ internal sealed class PipelineMediaEngine : IMediaEngine
                 return frame;
 
             if (!decoder.DecodeNextFrame())
+            {
+                if (_configuration.EnableVerboseLogging)
+                {
+                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    Trace.WriteLine(
+                        $"[BackgroundVideo] DecodeNextFrame returned false at iter={iterationCount}, elapsed={elapsedSec:F2}s, " +
+                        $"lastPts={lastPresentedPts:F3}s, attempts={attempts}, queueDepth={decoder.FrameCount}");
+                }
+
                 break;
+            }
+
+            attempts++;
         }
 
-        return decoder.GetNextFrame();
+        VideoFrameData? finalFrame = decoder.GetNextFrame();
+        if (finalFrame == null && _configuration.EnableVerboseLogging)
+        {
+            var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+            Trace.WriteLine(
+                $"[BackgroundVideo] No frame produced before restart: restart#{restartCount}, elapsed={elapsedSec:F2}s, " +
+                $"lastPts={lastPresentedPts:F3}s, queueDepth={decoder.FrameCount}");
+        }
+
+        return finalFrame;
     }
 
-    private static VideoFrameData? RestartBackgroundVideo(VideoDecoder decoder) =>
-        !decoder.Seek(0, exact: false) ? null : DecodeFirstBackgroundFrame(decoder);
+    private VideoFrameData? RestartBackgroundVideo(VideoDecoder decoder)
+    {
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine(
+                $"[BackgroundVideo] Seek(0) called, duration={decoder.DurationSeconds:F3}s, fps={decoder.FramesPerSecond:F2}, " +
+                $"codec={decoder.CodecName}");
+
+        return !decoder.Seek(0, exact: false) ? null : DecodeFirstBackgroundFrame(decoder);
+    }
 
     private static VideoFrameData? DecodeFirstBackgroundFrame(VideoDecoder decoder)
     {

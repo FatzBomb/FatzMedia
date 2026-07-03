@@ -21,6 +21,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
     private readonly Lock _presentationLock = new();
+    private VideoFrameEventArgs? _loopStartFrameSnapshot;
     private double? _overrideRefreshHz;
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
@@ -96,34 +97,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private double _activePresentationLeadRefreshIntervals = double.NaN;
     private long _postSeekRecoveryUntilTimestamp;
     private int _postSeekAdaptiveSuppressionWindowsRemaining;
-    private double _lastIntendedDeadlineMs;
-    private double _lastWaitStartMs;
-    private double _lastWakeMs;
-    private double _lastWaitErrorMs;
-    private double _lastPresentStartMs;
-    private double _lastPresentEndMs;
-    private double _lastPresentDurationMs;
-    private double _lastPostPresentDriftMs;
-    private double _lastSelectedFramePts;
-    private double _lastSelectedClockPosition;
-    private double _lastSelectDurationMs;
-    private double _lastPresentFrameDurationMs;
-    private double _lastFrameReadyInvokeDurationMs;
-    private double _lastCurrentPositionTotalDurationMs;
-    private double _lastCurrentPositionLockWaitMs;
-    private double _lastGetPresentationPositionDurationMs;
-    private double _lastAudioEnginePositionDurationMs;
-    private double _lastPresentationClockGetPositionDurationMs;
-    private double _lastPresentationPositionOtherDurationMs;
-    private double _lastDisplayAdjustDurationMs;
-    private double _lastNaturalEndDurationMs;
-    private double _lastPresentForPositionDurationMs;
-    private double _lastAfterPresentDurationMs;
-    private double _lastCurrentPositionResidualMs;
-    private bool _pendingCurrentPositionTimingLog;
 
     public IAudioEngine? Audio => _audioEngine;
     public bool HasAudio => _audioEngine?.IsOpen == true;
+    public bool LoopPlayback { get; set; }
     public bool IsOpen => _isOpen;
     public double Duration { get; private set; }
     public double FramesPerSecond => _videoDecoder?.FramesPerSecond ?? 0;
@@ -190,6 +167,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         Close();
         _generation++;
+        _loopStartFrameSnapshot = null;
         _videoDecoder = VideoDecoder.FromConfiguration(_configuration);
         if (!_videoDecoder.Open(path))
         {
@@ -220,7 +198,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (!DecodeUntilFrameAvailable())
                 _ = TryFallbackToSoftwareVideo(path);
 
-            PresentFrameForCurrentPosition();
+            _ = PresentFrameForCurrentPosition();
         }
 
         ResetAdaptiveVideoSeekTiming();
@@ -258,6 +236,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (_isPlaying)
                 return true;
 
+            _ = TryPrepareLoopRestartAtBeginning();
+
             if (HasAudio)
             {
                 if (!_audioEngine!.Play() && _configuration.EnableLogging)
@@ -280,6 +260,94 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             RaiseState(VideoEngineState.Playing);
             return true;
         }
+    }
+
+    private bool TryPrepareLoopRestartAtBeginning()
+    {
+        if (Duration <= 0)
+            return false;
+
+        var currentPosition = GetCurrentTransportPosition();
+        return currentPosition >= Duration - GetEndToleranceSeconds() && TryRestartLoopPlayback(currentPosition, "transport start");
+    }
+
+    private double GetCurrentTransportPosition() => HasAudio ? _audioEngine!.Position : _clock.PositionSeconds;
+
+    private bool TryRestartLoopPlayback(double currentPosition, string reason)
+    {
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder == null || Duration <= 0)
+            return false;
+
+        var loopBoundary = GetLoopBoundarySeconds(decoder);
+        var loopTarget = GetLoopOverflowPosition(currentPosition, loopBoundary);
+
+        lock (_seekPumpLock)
+        {
+            _pendingSeekSeconds = null;
+            _minimumCommittedVideoPresentationSeconds = double.NaN;
+        }
+
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine(
+                $"[VideoPipeline:LoopRestart] {reason}: current={currentPosition:F3}s, boundary={loopBoundary:F3}s, target={loopTarget:F3}s, " +
+                $"duration={Duration:F3}s, eof={decoder.EndOfStream}, queued={decoder.FrameCount}, fps={FramesPerSecond:F2}, " +
+                $"hw={IsHardwareAccelerated}, codec={CodecName}");
+
+        var presentedSnapshot = TryPresentLoopStartSnapshot(loopTarget);
+        VideoFrameData? firstLoopFrame;
+        lock (_decodeLock)
+        {
+            // Keep the retained current frame alive until a replacement is presented. Releasing it
+            // before seek can blank hardware-backed presentation surfaces at loop boundaries.
+            if (!decoder.Seek(loopTarget, exact: false))
+            {
+                if (_configuration.EnableLogging)
+                    Debug.WriteLine("[VideoPipeline:LoopRestart] Decoder seek failed.");
+
+                return false;
+            }
+
+            _ = DecodeUntilFrameAvailable();
+            firstLoopFrame = decoder.GetNextFrame();
+        }
+
+        if (firstLoopFrame != null)
+            PresentFrame(firstLoopFrame, forceReissue: true);
+
+        if (HasAudio)
+        {
+            _ = _audioEngine!.Seek(loopTarget, resumePlayback: false);
+            if (_isPlaying)
+            {
+                if (!_audioEngine.Play() && _configuration.EnableLogging)
+                    Debug.WriteLine("[VideoPipeline:LoopRestart] audio Play() returned false during loop restart");
+                _presentationClock.Start(_audioEngine.Position);
+            }
+            else
+                _presentationClock.Reset(loopTarget);
+        }
+        else
+        {
+            if (_isPlaying)
+                _clock.Start(loopTarget);
+            else
+                _clock.Seek(loopTarget);
+        }
+
+        BeginPostSeekPresentationRecovery();
+        _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
+        _state.SetPosition(loopTarget);
+        PositionChanged?.Invoke(this, loopTarget);
+        if (firstLoopFrame == null && !presentedSnapshot)
+            _ = PresentFrameForCurrentPosition(forceReissue: true);
+
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine(
+                $"[VideoPipeline:LoopRestart] Restart prepared; queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}, " +
+                $"snapshot={presentedSnapshot}, decodedFirst={firstLoopFrame != null}.");
+
+        return true;
     }
 
     public bool Pause()
@@ -327,7 +395,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 _ = (_videoDecoder?.Seek(0));
                 _ = DecodeUntilFrameAvailable();
                 lock (_presentationLock)
-                    PresentFrameForCurrentPosition();
+                    _ = PresentFrameForCurrentPosition();
             }
 
             _state.SetPosition(0);
@@ -701,6 +769,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             _presentationClock.Reset(0);
             ResetPresentationTimingController();
             Duration = 0;
+            _loopStartFrameSnapshot = null;
             CleanupTempPath();
             RaiseState(VideoEngineState.Closed);
             Closed?.Invoke(this, EventArgs.Empty);
@@ -716,7 +785,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         GC.SuppressFinalize(this);
     }
 
-    internal void RenderCurrentFrame(bool allowWhilePlaying = false)
+    internal void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false)
     {
         if (!_isOpen || (!allowWhilePlaying && _isPlaying))
             return;
@@ -748,7 +817,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (!_isOpen || _videoDecoder is null)
                 return;
 
-            PresentFrameForCurrentPosition();
+            _ = PresentFrameForCurrentPosition(forceReissue);
         }
     }
 
@@ -842,25 +911,25 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
             if (_isPlaying)
             {
-                var presentStartSec = stopwatch.Elapsed.TotalSeconds;
-                var lockWaitStartTimestamp = Stopwatch.GetTimestamp();
+                var restartedLoop = false;
                 lock (_presentationLock)
                 {
-                    var lockAcquiredTimestamp = Stopwatch.GetTimestamp();
                     if (generation == _generation && _isPlaying)
                     {
-                        var currentPosition = PresentFrameForCurrentPosition(GetElapsedMilliseconds(lockWaitStartTimestamp, lockAcquiredTimestamp));
-                        var naturalEndStartTimestamp = Stopwatch.GetTimestamp();
-                        var reachedNaturalEnd = HasReachedNaturalEnd(currentPosition);
-                        _lastNaturalEndDurationMs = GetElapsedMilliseconds(naturalEndStartTimestamp, Stopwatch.GetTimestamp());
-                        WriteCurrentPositionTimingIfPending();
-                        if (reachedNaturalEnd)
+                        var currentPosition = PresentFrameForCurrentPosition();
+                        if (ShouldRestartLoopPlayback(currentPosition))
+                        {
+                            restartedLoop = TryRestartLoopPlayback(currentPosition, "presentation eof");
+                        }
+                        else if (HasReachedPlaybackEnd(currentPosition))
+                        {
                             CompletePlaybackAtEnd();
+                        }
                     }
                 }
-                _lastPresentStartMs = presentStartSec * 1000.0;
-                _lastPresentEndMs = stopwatch.Elapsed.TotalSeconds * 1000.0;
-                _lastPresentDurationMs = _lastPresentEndMs - _lastPresentStartMs;
+
+                if (restartedLoop)
+                    nextTick = stopwatch.Elapsed.TotalSeconds;
             }
 
             if (IsSourceCadencePlayback(FramesPerSecond))
@@ -870,22 +939,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 waitSeconds -= stopwatch.Elapsed.TotalSeconds - waitCpuStart;
 
                 if (waitSeconds <= 0)
-                {
-                    _lastIntendedDeadlineMs = (waitCpuStart + waitSeconds) * 1000.0;
-                    _lastWaitStartMs = waitCpuStart * 1000.0;
-                    _lastWakeMs = stopwatch.Elapsed.TotalSeconds * 1000.0;
-                    _lastWaitErrorMs = _lastWakeMs - _lastIntendedDeadlineMs;
-                    _lastPostPresentDriftMs = _lastPresentEndMs - _lastIntendedDeadlineMs;
                     continue;
-                }
 
-                var intendedDeadlineSec = waitCpuStart + waitSeconds;
-                _lastIntendedDeadlineMs = intendedDeadlineSec * 1000.0;
-                _lastWaitStartMs = waitCpuStart * 1000.0;
                 waiter.Wait(TimeSpan.FromSeconds(waitSeconds), cancellationToken.WaitHandle);
-                _lastWakeMs = stopwatch.Elapsed.TotalSeconds * 1000.0;
-                _lastWaitErrorMs = _lastWakeMs - _lastIntendedDeadlineMs;
-                _lastPostPresentDriftMs = _lastPresentEndMs - _lastIntendedDeadlineMs;
                 nextTick = stopwatch.Elapsed.TotalSeconds;
                 continue;
             }
@@ -1101,71 +1157,22 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         return DecodeUntilFrameAvailable();
     }
 
-    private double PresentFrameForCurrentPosition(double lockWaitMs = 0)
+    private double PresentFrameForCurrentPosition(bool forceReissue = false)
     {
-        _lastCurrentPositionLockWaitMs = lockWaitMs;
-        var totalStartTimestamp = Stopwatch.GetTimestamp();
         var clockPosition = GetPresentationPosition();
-        var displayAdjustStartTimestamp = Stopwatch.GetTimestamp();
         var targetPosition = GetDisplayAdjustedPresentationPosition(clockPosition);
-        _lastDisplayAdjustDurationMs = GetElapsedMilliseconds(displayAdjustStartTimestamp, Stopwatch.GetTimestamp());
-        var presentForPositionStartTimestamp = Stopwatch.GetTimestamp();
-        PresentFrameForPosition(targetPosition, clockPosition);
-        _lastPresentForPositionDurationMs = GetElapsedMilliseconds(presentForPositionStartTimestamp, Stopwatch.GetTimestamp());
-        var afterPresentStartTimestamp = Stopwatch.GetTimestamp();
-        var endTimestamp = Stopwatch.GetTimestamp();
-        _lastAfterPresentDurationMs = GetElapsedMilliseconds(afterPresentStartTimestamp, endTimestamp);
-        _lastCurrentPositionTotalDurationMs = GetElapsedMilliseconds(totalStartTimestamp, endTimestamp);
-        _lastCurrentPositionResidualMs = _lastCurrentPositionTotalDurationMs
-            - _lastGetPresentationPositionDurationMs
-            - _lastDisplayAdjustDurationMs
-            - _lastPresentForPositionDurationMs
-            - _lastAfterPresentDurationMs;
+        PresentFrameForPosition(targetPosition, clockPosition, forceReissue);
         return clockPosition;
     }
 
     private double GetPresentationPosition()
     {
-        var totalStartTimestamp = Stopwatch.GetTimestamp();
-        _lastAudioEnginePositionDurationMs = 0;
-        _lastPresentationClockGetPositionDurationMs = 0;
-
-        var audioEngine = _audioEngine;
-        double position;
-        if (audioEngine is not null)
-        {
-            var audioStartTimestamp = Stopwatch.GetTimestamp();
-            var hasAudioPosition = audioEngine.TryGetPositionSnapshot(out var audioPosition);
-            _lastAudioEnginePositionDurationMs = GetElapsedMilliseconds(audioStartTimestamp, Stopwatch.GetTimestamp());
-
-            if (hasAudioPosition)
-            {
-                if (_isPlaying)
-                {
-                    var clockStartTimestamp = Stopwatch.GetTimestamp();
-                    position = _presentationClock.GetPosition(audioPosition, Duration);
-                    _lastPresentationClockGetPositionDurationMs = GetElapsedMilliseconds(clockStartTimestamp, Stopwatch.GetTimestamp());
-                }
-                else
-                {
-                    position = audioPosition;
-                }
-            }
-            else
-            {
-                position = _clock.PositionSeconds;
-            }
-        }
-        else
-        {
-            position = _clock.PositionSeconds;
-        }
-
-        _lastGetPresentationPositionDurationMs = GetElapsedMilliseconds(totalStartTimestamp, Stopwatch.GetTimestamp());
-        _lastPresentationPositionOtherDurationMs = _lastGetPresentationPositionDurationMs
-            - _lastAudioEnginePositionDurationMs
-            - _lastPresentationClockGetPositionDurationMs;
-        return position;
+        VideoAudioEngine? audioEngine = _audioEngine;
+        return audioEngine is not null && audioEngine.TryGetPositionSnapshot(out var audioPosition)
+            ? _isPlaying
+                ? _presentationClock.GetPosition(audioPosition, Duration)
+                : audioPosition
+            : _clock.PositionSeconds;
     }
 
     private double GetDisplayAdjustedPresentationPosition(double clockPosition)
@@ -1317,16 +1324,56 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         return decodedFrames;
     }
 
-    private bool HasReachedNaturalEnd(double position)
-    {
-        if (!_isPlaying || Duration <= 0)
-            return false;
+    private bool HasReachedNaturalEnd(double position) =>
+        _isPlaying && Duration > 0 && position >= Duration - GetEndToleranceSeconds();
 
-        var tolerance = FramesPerSecond > 0
+    private double GetEndToleranceSeconds() => FramesPerSecond > 0
             ? Math.Clamp(1.0 / FramesPerSecond, 0.02, 0.12)
             : 0.05;
 
-        return position >= Duration - tolerance;
+    private bool ShouldRestartLoopPlayback(double currentPosition)
+    {
+        if (!LoopPlayback || !_isPlaying || Duration <= 0)
+            return false;
+
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder == null)
+            return false;
+
+        var tolerance = GetEndToleranceSeconds();
+        var loopBoundary = GetLoopBoundarySeconds(decoder);
+        if (decoder.EndOfStream && decoder.FrameCount == 0 && currentPosition >= loopBoundary - tolerance)
+            return true;
+
+        // Metadata and EOF signaling can be imperfect. If playback has moved beyond the nominal
+        // boundary with no queued frames, restart rather than freezing forever on the retained frame.
+        return decoder.FrameCount == 0 && currentPosition >= loopBoundary + tolerance;
+    }
+
+    private bool HasReachedPlaybackEnd(double currentPosition)
+    {
+        if (HasReachedNaturalEnd(currentPosition))
+            return true;
+
+        VideoDecoder? decoder = _videoDecoder;
+        return decoder != null && decoder.EndOfStream && decoder.FrameCount <= 0 && (!HasAudio || currentPosition >= GetLoopBoundarySeconds(decoder) - GetEndToleranceSeconds());
+    }
+
+    private double GetLoopBoundarySeconds(VideoDecoder decoder)
+    {
+        var videoDuration = decoder.DurationSeconds;
+        return double.IsFinite(videoDuration) && videoDuration > 0
+            ? Duration > 0 ? Math.Min(Duration, videoDuration) : videoDuration
+            : Duration;
+    }
+
+    private double GetLoopOverflowPosition(double currentPosition, double loopBoundary)
+    {
+        if (!double.IsFinite(currentPosition) || !double.IsFinite(loopBoundary) || loopBoundary <= 0)
+            return 0;
+
+        var overflow = currentPosition - loopBoundary;
+        return overflow <= 0 ? 0 : overflow >= loopBoundary ? overflow % loopBoundary : overflow;
     }
 
     private void CompletePlaybackAtEnd()
@@ -1439,7 +1486,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
     {
-        foreach (VideoFrameData frame in decoder.GetQueuedFramesSnapshot())
+        foreach (VideoFrameData frame in decoder.EnumerateQueuedFrames())
             if (IsSeekFrameAcceptable(frame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
                 return true;
 
@@ -1574,13 +1621,12 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
 
-    private void PresentFrameForPosition(double targetPosition, double clockPosition)
+    private void PresentFrameForPosition(double targetPosition, double clockPosition, bool forceReissue = false)
     {
         VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return;
 
-        var selectStartSec = Stopwatch.GetTimestamp();
         DropFramesBeforeCommittedVideoTarget(decoder);
 
         var maxPresentationTime = Math.Min(
@@ -1623,14 +1669,16 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 return;
             }
 
-            _lastSelectedFramePts = frameToPresent.PresentationTime;
-            _lastSelectedClockPosition = clockPosition;
-            _lastSelectDurationMs = (Stopwatch.GetTimestamp() - selectStartSec) * 1000.0 / Stopwatch.Frequency;
-            var presentStartSec = Stopwatch.GetTimestamp();
-            PresentFrame(frameToPresent);
-            _lastPresentFrameDurationMs = (Stopwatch.GetTimestamp() - presentStartSec) * 1000.0 / Stopwatch.Frequency;
+            PresentFrame(frameToPresent, forceReissue);
             RecordPresentationDiagnostics(dequeuedFrames, targetPosition, clockPosition, frameToPresent.PresentationTime, decoder.FrameCount);
+            return;
         }
+
+        // No newer frame was ready. When a host explicitly asks to refresh (attach/resize/display-mode
+        // change), re-raise the retained current frame so a stopped/first-frame visual reaches a newly
+        // attached surface even though its timestamp matches the last presented frame.
+        if (forceReissue)
+            ReissueCurrentFrame();
     }
 
     private static double GetFrameLeadTolerance(double fps) => VideoPresentationTiming.GetPrimaryFrameLeadTolerance(fps);
@@ -1715,50 +1763,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 $"videoFrame={frameIntervalMs:F1}ms, refresh={refreshIntervalMs:F1}ms");
         }
 
-        if (_configuration.EnablePerformanceLogging)
-        {
-            var selectedPtsMs = _lastSelectedFramePts * 1000.0;
-            var clockAtSelectMs = _lastSelectedClockPosition * 1000.0;
-            var clockPtsLeadMs = clockAtSelectMs - selectedPtsMs;
-            Trace.WriteLine(
-                $"[VideoPipeline:Timing] selectedPts={selectedPtsMs:F2}ms, clockAtSelect={clockAtSelectMs:F2}ms, " +
-                $"clockPtsLead={clockPtsLeadMs:F2}ms, " +
-                $"intendedDeadline={_lastIntendedDeadlineMs:F2}ms, waitStart={_lastWaitStartMs:F2}ms, " +
-                $"wake={_lastWakeMs:F2}ms, waitError={_lastWaitErrorMs:F2}ms, " +
-                $"presentStart={_lastPresentStartMs:F2}ms, presentEnd={_lastPresentEndMs:F2}ms, " +
-                $"presentDuration={_lastPresentDurationMs:F2}ms, " +
-                $"postPresentDrift={_lastPostPresentDriftMs:F2}ms");
-        }
-
-        if (_configuration.EnablePerformanceLogging)
-        {
-            Trace.WriteLine(
-                $"[VideoPipeline:PresentTiming] total={_lastPresentDurationMs:F2}ms, " +
-                $"select={_lastSelectDurationMs:F2}ms, present={_lastPresentFrameDurationMs:F2}ms, " +
-                $"frameReady={_lastFrameReadyInvokeDurationMs:F2}ms");
-        }
-
-        _pendingCurrentPositionTimingLog = _configuration.EnablePerformanceLogging;
-
         ResetPresentationDiagnostics();
-    }
-
-    private void WriteCurrentPositionTimingIfPending()
-    {
-        if (!_pendingCurrentPositionTimingLog)
-            return;
-
-        _pendingCurrentPositionTimingLog = false;
-        Trace.WriteLine(
-            $"[VideoPipeline:CurrentPositionTiming] total={_lastCurrentPositionTotalDurationMs:F2}ms, " +
-            $"lockWait={_lastCurrentPositionLockWaitMs:F2}ms, " +
-            $"getPresentationPosition={_lastGetPresentationPositionDurationMs:F2}ms, " +
-            $"audioEnginePosition={_lastAudioEnginePositionDurationMs:F2}ms, " +
-            $"presentationClockGetPosition={_lastPresentationClockGetPositionDurationMs:F2}ms, " +
-            $"presentationPositionOther={_lastPresentationPositionOtherDurationMs:F2}ms, " +
-            $"displayAdjust={_lastDisplayAdjustDurationMs:F2}ms, naturalEnd={_lastNaturalEndDurationMs:F2}ms, " +
-            $"presentForPosition={_lastPresentForPositionDurationMs:F2}ms, " +
-            $"afterPresent={_lastAfterPresentDurationMs:F2}ms, residual={_lastCurrentPositionResidualMs:F2}ms");
     }
 
     private string UpdateAdaptivePresentationLead(double refreshIntervalMs)
@@ -1834,11 +1839,14 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         _presentationDiagnosticClockLateSamples = 0;
     }
 
-    private void PresentFrame(VideoFrameData frame)
+    private void PresentFrame(VideoFrameData frame, bool forceReissue = false)
     {
         if (_currentFrame?.PresentationTime == frame.PresentationTime)
         {
             _videoDecoder?.ReturnFrame(frame);
+            if (forceReissue)
+                ReissueCurrentFrame();
+
             return;
         }
 
@@ -1846,29 +1854,71 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         _currentFrame = frame;
         try
         {
-            var invokeStartSec = Stopwatch.GetTimestamp();
-            FrameReady?.Invoke(this, new VideoFrameEventArgs
-            {
-                PixelData = frame.Data != null
-                    ? new ReadOnlyMemory<byte>(frame.Data, 0, frame.Length)
-                    : ReadOnlyMemory<byte>.Empty,
-                Width = frame.Width,
-                Height = frame.Height,
-                Stride = frame.Stride,
-                PtsSeconds = frame.PresentationTime,
-                FramesPerSecond = FramesPerSecond,
-                D3D11DevicePointer = frame.D3D11DevicePointer,
-                D3D11DeviceContextPointer = frame.D3D11DeviceContextPointer,
-                D3D11TexturePointer = frame.D3D11TexturePointer,
-                D3D11ArraySlice = frame.D3D11ArraySlice
-            });
-            _lastFrameReadyInvokeDurationMs = (Stopwatch.GetTimestamp() - invokeStartSec) * 1000.0 / Stopwatch.Frequency;
+            RaiseFrameReady(frame);
         }
         finally
         {
             _videoDecoder?.ReturnFrame(previousFrame);
         }
     }
+
+    private void ReissueCurrentFrame()
+    {
+        if (_currentFrame != null)
+            RaiseFrameReady(_currentFrame);
+    }
+
+    private bool TryPresentLoopStartSnapshot(double loopTarget)
+    {
+        VideoFrameEventArgs? snapshot = _loopStartFrameSnapshot;
+        if (snapshot == null || loopTarget > GetEndToleranceSeconds())
+            return false;
+
+        FrameReady?.Invoke(this, snapshot);
+        return true;
+    }
+
+    private void RaiseFrameReady(VideoFrameData frame)
+    {
+        CacheLoopStartFrameSnapshot(frame);
+        FrameReady?.Invoke(this, CreateFrameEventArgs(frame));
+    }
+
+    private void CacheLoopStartFrameSnapshot(VideoFrameData frame)
+    {
+        if (_loopStartFrameSnapshot != null || frame.Data == null || frame.Length <= 0 || frame.PresentationTime > GetEndToleranceSeconds())
+            return;
+
+        var length = Math.Min(frame.Length, frame.Data.Length);
+        var copy = new byte[length];
+        Buffer.BlockCopy(frame.Data, 0, copy, 0, length);
+        _loopStartFrameSnapshot = new VideoFrameEventArgs
+        {
+            PixelData = copy,
+            PixelDataCanBeRetained = true,
+            Width = frame.Width,
+            Height = frame.Height,
+            Stride = frame.Stride,
+            PtsSeconds = frame.PresentationTime,
+            FramesPerSecond = FramesPerSecond
+        };
+    }
+
+    private VideoFrameEventArgs CreateFrameEventArgs(VideoFrameData frame) => new()
+    {
+        PixelData = frame.Data != null
+            ? new ReadOnlyMemory<byte>(frame.Data, 0, frame.Length)
+            : ReadOnlyMemory<byte>.Empty,
+        Width = frame.Width,
+        Height = frame.Height,
+        Stride = frame.Stride,
+        PtsSeconds = frame.PresentationTime,
+        FramesPerSecond = FramesPerSecond,
+        D3D11DevicePointer = frame.D3D11DevicePointer,
+        D3D11DeviceContextPointer = frame.D3D11DeviceContextPointer,
+        D3D11TexturePointer = frame.D3D11TexturePointer,
+        D3D11ArraySlice = frame.D3D11ArraySlice
+    };
 
     private void ReleaseCurrentFrame()
     {

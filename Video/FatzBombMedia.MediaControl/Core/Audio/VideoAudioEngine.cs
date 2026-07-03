@@ -154,9 +154,9 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (Duration > 0)
             cleanPosition = Math.Min(cleanPosition, Duration);
 
-        Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
-        Interlocked.Exchange(ref _positionSnapshotDurationBits, BitConverter.DoubleToInt64Bits(Duration));
-        Interlocked.Exchange(ref _positionSnapshotBits, BitConverter.DoubleToInt64Bits(cleanPosition));
+        _ = Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
+        _ = Interlocked.Exchange(ref _positionSnapshotDurationBits, BitConverter.DoubleToInt64Bits(Duration));
+        _ = Interlocked.Exchange(ref _positionSnapshotBits, BitConverter.DoubleToInt64Bits(cleanPosition));
         Volatile.Write(ref _positionSnapshotTempoPercent, CurrentTempo);
         Volatile.Write(ref _positionSnapshotPlaying, State == AudioEngineState.Playing ? 1 : 0);
         Volatile.Write(ref _positionSnapshotAvailable, IsOpenCore ? 1 : 0);
@@ -164,9 +164,9 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private void ClearPositionSnapshot()
     {
-        Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
-        Interlocked.Exchange(ref _positionSnapshotDurationBits, 0);
-        Interlocked.Exchange(ref _positionSnapshotBits, 0);
+        _ = Interlocked.Exchange(ref _positionSnapshotTimestamp, Stopwatch.GetTimestamp());
+        _ = Interlocked.Exchange(ref _positionSnapshotDurationBits, 0);
+        _ = Interlocked.Exchange(ref _positionSnapshotBits, 0);
         Volatile.Write(ref _positionSnapshotTempoPercent, 0);
         Volatile.Write(ref _positionSnapshotPlaying, 0);
         Volatile.Write(ref _positionSnapshotAvailable, 0);
@@ -537,7 +537,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         lock (_sync)
         {
             _volume = Math.Clamp(volume01, 0.0, 1.0);
-            ApplyVolume();
+            _ = ApplyVolume();
         }
     }
 
@@ -547,7 +547,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         {
             _pitch = Math.Clamp(semitones, -60, 60);
             if (PlayHandle != 0)
-                Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
+                _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
         }
     }
 
@@ -557,7 +557,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         {
             CurrentTempo = Math.Clamp(percent, -95, 5000);
             if (PlayHandle != 0)
-                Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
+                _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
             if (IsOpenCore)
                 PublishPositionSnapshot(GetPositionCore());
         }
@@ -706,9 +706,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (_audioPushThrottled)
         {
             if (bufferedSeconds > AudioBufferLowWatermarkSeconds)
-            {
                 return true;
-            }
 
             _audioPushThrottled = false;
             return false;
@@ -723,13 +721,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return false;
     }
 
-    private double GetBufferedAudioSecondsCore()
-    {
-        if (_lastPushedAudioEndSeconds <= 0)
-            return 0;
-
-        return Math.Max(0, _lastPushedAudioEndSeconds - GetPositionCore());
-    }
+    private double GetBufferedAudioSecondsCore() =>
+        _lastPushedAudioEndSeconds <= 0
+            ? 0
+            : Math.Max(0, _lastPushedAudioEndSeconds - GetPositionCore());
 
     private void ResetAudioBufferTracking()
     {
@@ -743,9 +738,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (_discardAudioBeforeSeconds.HasValue)
         {
             if (framePosition < _discardAudioBeforeSeconds.Value)
-            {
                 return;
-            }
 
             _discardAudioBeforeSeconds = null;
         }

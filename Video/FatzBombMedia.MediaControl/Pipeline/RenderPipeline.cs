@@ -53,11 +53,11 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
         _cdg.RenderAtSeconds(currentPosition, force);
     }
 
-    public void RenderVideoAtCurrentPosition(bool allowWhilePlaying = false)
+    public void RenderVideoAtCurrentPosition(bool allowWhilePlaying = false, bool forceReissue = false)
     {
         if (_video is VideoPipeline videoPipeline && _mediaEngine.Content.HasFlag(MediaContent.Video))
         {
-            videoPipeline.RenderCurrentFrame(allowWhilePlaying);
+            videoPipeline.RenderCurrentFrame(allowWhilePlaying, forceReissue);
         }
     }
 

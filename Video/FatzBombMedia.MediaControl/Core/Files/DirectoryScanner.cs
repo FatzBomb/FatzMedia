@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace FatzBombMedia.MediaControl.Core.Files;
 
 /// <summary>
@@ -102,7 +104,10 @@ public static class DirectoryScanner
                 foreach (var d in Directory.EnumerateDirectories(searchPath, "*", EnumerateDirsNoRecurse))
                     dirQueue.Enqueue(d);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                TraceScanSkip("enumerating child directories", searchPath, ex);
+            }
 
             while (dirQueue.Count > 0)
             {
@@ -113,7 +118,10 @@ public static class DirectoryScanner
                         foreach (var child in Directory.EnumerateDirectories(dir, "*", EnumerateDirsNoRecurse))
                             dirQueue.Enqueue(child);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        TraceScanSkip("enumerating child directories", dir, ex);
+                    }
 
                 var matched = 0;
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -132,11 +140,17 @@ public static class DirectoryScanner
                             return dir;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    TraceScanSkip("enumerating files", dir, ex);
+                }
             }
         }
         return null;
     }
+
+    private static void TraceScanSkip(string operation, string path, Exception exception) =>
+        Trace.WriteLine($"[DirectoryScanner] Skipped {operation} in '{path}': {exception.GetType().Name}: {exception.Message}");
 
     /// <summary>
     /// Locates multiple files and returns a dictionary mapping file names to their full paths.

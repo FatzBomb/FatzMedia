@@ -24,7 +24,16 @@ public sealed class MediaControls
     /// <summary>
     /// Gets or sets whether media should loop continuously.
     /// </summary>
-    public bool LoopMedia { get; set; } = false;
+    public bool LoopMedia
+    {
+        get;
+        set
+        {
+            field = value;
+            if (_mediaEngine is ILoopPlaybackControl loopPlaybackControl)
+                loopPlaybackControl.LoopPlayback = value;
+        }
+    }
 
 
     /// <summary>
@@ -152,7 +161,12 @@ public sealed class MediaControls
             {
                 System.Diagnostics.Debug.WriteLine("[MediaControls] Looping media");
 
-                _mediaEngine.Position = 0;
+                // Video owns an atomic loop restart in VideoPipeline.Play(). Queueing the generic
+                // async seek first lets the seek pump race the restart and can blank the native video
+                // surface. Non-video pipelines still need the existing seek-before-play behavior.
+                if (!_mediaEngine.Content.HasFlag(MediaContent.Video))
+                    _mediaEngine.Position = 0;
+
                 if (_mediaEngine.Play())
                 {
                     StartRendering();

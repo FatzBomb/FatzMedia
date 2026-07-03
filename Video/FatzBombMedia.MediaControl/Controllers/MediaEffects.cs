@@ -14,6 +14,14 @@ public sealed class MediaEffects
 
     private bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
 
+    // Clock-backed media (video or CDG without a real audio stream) drives timing through the virtual
+    // PlaybackClock via ClockAudioEngine, which supports tempo. Volume/pitch/normalization remain
+    // real-audio only.
+    private bool HasClockBackedTempo => !HasAudio
+        && (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
+
+    private bool SupportsTempo => HasAudio || HasClockBackedTempo;
+
     internal MediaEffects(IMediaEngine mediaEngine)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
@@ -44,8 +52,10 @@ public sealed class MediaEffects
             _subscribedAudioEngine.Normalize = Normalize;
             _subscribedAudioEngine.SetVolume(Volume);
             _subscribedAudioEngine.SetPitch(Pitch);
-            _subscribedAudioEngine.SetTempo(_tempo - 100);
         }
+
+        if (SupportsTempo)
+            _subscribedAudioEngine.SetTempo(_tempo - 100);
     }
 
     internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
@@ -83,11 +93,11 @@ public sealed class MediaEffects
     /// </summary>
     public int Tempo
     {
-        get => HasAudio ? Audio.CurrentTempo + 100 : _tempo;
+        get => SupportsTempo ? Audio.CurrentTempo + 100 : _tempo;
         set
         {
             _tempo = Math.Clamp(value, 5, 5000);
-            if (HasAudio)
+            if (SupportsTempo)
                 Audio.SetTempo(_tempo - 100);
         }
     }

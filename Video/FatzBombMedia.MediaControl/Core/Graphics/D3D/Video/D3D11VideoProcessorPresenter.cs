@@ -28,6 +28,17 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private double _videoProcessorFps;
     private IntPtr _videoProcessorOutputTexturePointer;
 
+    private readonly VideoProcessorStream[] _streams =
+    [
+        new VideoProcessorStream
+        {
+            Enable = true,
+            OutputIndex = 0,
+            InputFrameOrField = 0,
+            InputSurface = null
+        }
+    ];
+
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
         ID3D11Texture2D presentationTexture,
@@ -112,18 +123,9 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, Source, Destination);
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
 
-        VideoProcessorStream[] streams =
-        [
-            new VideoProcessorStream
-            {
-                Enable = true,
-                OutputIndex = 0,
-                InputFrameOrField = 0,
-                InputSurface = inputView
-            }
-        ];
+        _streams[0].InputSurface = inputView;
 
-        Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, streams);
+        Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, _streams);
         if (result.Failure)
         {
             Debug.WriteLine($"[VorticeD3D11] Video processor blit failed: {result}");
@@ -148,6 +150,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         _videoProcessorOutputHeight = 0;
         _videoProcessorOutputTexturePointer = IntPtr.Zero;
         _videoProcessorFps = 0;
+        _streams[0].InputSurface = null;
     }
 
     public void Dispose() => Reset();

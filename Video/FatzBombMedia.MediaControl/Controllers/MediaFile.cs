@@ -66,6 +66,16 @@ public sealed class MediaFile
             ignoreSidecar);
 
     /// <summary>
+    /// Loads a media file with one randomly selected explicit background path. Unless ignored, a
+    /// discovered sidecar/archive background takes precedence over the explicit background paths.
+    /// </summary>
+    public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
+        LoadAsync(
+            MediaInputSource.FromFile(path),
+            SelectExplicitBackground(backgroundPaths),
+            ignoreSidecar);
+
+    /// <summary>
     /// Loads media from a neutral Core source with an optional explicit neutral background source.
     /// </summary>
     public async Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
@@ -73,7 +83,7 @@ public sealed class MediaFile
         var loadGeneration = BeginLoadOperation();
         var success = LoadCore(source, backgroundSource, ignoreSidecar);
         if (success && PlayOnLoad)
-            await HandlePlayOnLoadAsync(loadGeneration);
+            await HandlePlayOnLoadAsync(loadGeneration).ConfigureAwait(false);
 
         return success;
     }
@@ -106,6 +116,16 @@ public sealed class MediaFile
             ignoreSidecar);
 
     /// <summary>
+    /// Loads a media file with one randomly selected explicit background path. Unless ignored, a
+    /// discovered sidecar/archive background takes precedence over the explicit background paths.
+    /// </summary>
+    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
+        Load(
+            MediaInputSource.FromFile(path),
+            SelectExplicitBackground(backgroundPaths),
+            ignoreSidecar);
+
+    /// <summary>
     /// Loads media from a neutral Core source with an optional explicit neutral background source.
     /// </summary>
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
@@ -129,7 +149,7 @@ public sealed class MediaFile
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Waiting for quick normalization...");
 
             // Wait for quick normalization to complete (max 2 seconds)
-            await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2));
+            await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 
             if (!IsCurrentLoadOperation(loadGeneration))
             {
@@ -178,7 +198,7 @@ public sealed class MediaFile
         {
             // Wait for gain change or timeout
             while (!gainChanged && !audioEngine.IsNormalizationReady && DateTime.UtcNow - startTime < timeout)
-                await Task.Delay(50); // Check every 50ms
+                await Task.Delay(50).ConfigureAwait(false); // Check every 50ms
 
             if (!gainChanged)
                 System.Diagnostics.Debug.WriteLine("[MediaFile] Quick normalization timeout - proceeding with playback");
@@ -240,8 +260,11 @@ public sealed class MediaFile
     private void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
     {
         MediaBackgroundCandidate? background = ResolveCoreBackground(source, backgroundSource, ignoreSidecar);
+        if (background == null)
+            return;
+
         var setBackgroundResult = _mediaEngine.SetBackground(background);
-        if (!setBackgroundResult && background != null)
+        if (!setBackgroundResult)
             System.Diagnostics.Debug.WriteLine("[MediaFile] SetBackground failed");
     }
 
@@ -277,5 +300,23 @@ public sealed class MediaFile
         return backgroundSource.IsBgraImage
             ? MediaBackgroundCandidate.FromSource(MediaBackgroundKind.Image, backgroundSource)
             : null;
+    }
+
+    private static MediaInputSource? SelectExplicitBackground(IReadOnlyList<string> backgroundPaths)
+    {
+        ArgumentNullException.ThrowIfNull(backgroundPaths);
+        List<string> candidates = [];
+        foreach (var path in backgroundPaths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                continue;
+
+            if (Core.Files.FileTypes.IsVideo(path) || Core.Files.FileTypes.IsImage(path))
+                candidates.Add(path);
+        }
+
+        return candidates.Count == 0
+            ? null
+            : MediaInputSource.FromFile(candidates[Random.Shared.Next(candidates.Count)]);
     }
 }
