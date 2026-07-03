@@ -6,14 +6,15 @@ obj/
 *.nupkg
 *.snupkg
 graphify.bat
-graphify-run.ps1
+graphify.ps1
 profiling/
 
 # Ignore the massive sea of root-level architectural notes
 /*-NOTES.md
 
 # Ignore local AI configurations
-graphify_out/
+graphify_out*/
+graphify-out*/
 
 # Remove Hash for Code Cleanup, add for normal use
 # *.md
