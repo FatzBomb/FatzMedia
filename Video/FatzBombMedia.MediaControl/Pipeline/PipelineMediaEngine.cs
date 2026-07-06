@@ -8,7 +8,7 @@ using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, Core.Abstractions.IMediaErrorSource
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
@@ -21,6 +21,20 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
     private VideoFrameEventArgs? _currentImageFrame;
     private volatile int _backgroundGeneration;
     private bool _disposed;
+
+    event Action<MediaErrorInfo>? Core.Abstractions.IMediaErrorSource.ErrorOccurred
+    {
+        add => _errorOccurred += value;
+        remove => _errorOccurred -= value;
+    }
+
+    private event Action<MediaErrorInfo>? _errorOccurred;
+
+    private void RaiseError(MediaErrorCode code, string message, string? sourcePath = null, Exception? innerException = null)
+    {
+        Debug.WriteLine($"[PipelineMediaEngine] Error {code}: {message}");
+        _errorOccurred?.Invoke(new MediaErrorInfo(code, message, sourcePath, innerException));
+    }
 
     public PipelineMediaEngine(
         IAudioEngine audioEngine,
@@ -89,11 +103,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
             Debug.WriteLine($"[PipelineMediaEngine] File not found: {path}");
+            RaiseError(MediaErrorCode.FileNotFound, $"File not found: {path}", path);
             return false;
         }
 
         using FileTree fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
-        return fileTree.Type switch
+        var opened = fileTree.Type switch
         {
             FileType.Audio when !string.IsNullOrWhiteSpace(fileTree.AudioPath) =>
                 _coordinator.OpenAudio(fileTree.AudioPath),
@@ -115,6 +130,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
                 OpenImage(fileTree.ImagePath),
             _ => RejectUnsupported(path, fileTree.Type)
         };
+
+        if (!opened)
+        {
+            var code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
+                ? MediaErrorCode.UnsupportedFormat
+                : MediaErrorCode.OpenFailed;
+            RaiseError(code, $"Failed to open media: {Path.GetFileName(path)}", path);
+        }
+
+        return opened;
     }
 
     public bool Open(MediaInputSource source)
@@ -126,8 +151,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
         {
             MediaInputSourceKind.FilePath when !string.IsNullOrWhiteSpace(source.FilePath) => Open(source.FilePath),
             MediaInputSourceKind.Bgra32Image => OpenImage(source),
-            _ => false
+            _ => RejectUnknownSource(source)
         };
+    }
+
+    private bool RejectUnknownSource(MediaInputSource source)
+    {
+        RaiseError(MediaErrorCode.UnsupportedFormat, $"Unsupported media source kind: {source.Kind}", source.DisplayName);
+        return false;
     }
 
     public bool SetBackground(MediaBackgroundCandidate? background)
@@ -581,15 +612,24 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl
     {
         var imagePath = source.FilePath;
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+        {
+            RaiseError(MediaErrorCode.FileNotFound, $"Image file not found: {imagePath}", imagePath);
             return false;
+        }
 
         using VideoDecoder? decoder = OpenImageDecoder(imagePath);
         if (decoder == null)
+        {
+            RaiseError(MediaErrorCode.OpenFailed, $"Failed to open image decoder: {imagePath}", imagePath);
             return false;
+        }
 
         VideoFrameData? frame = DecodeFirstBackgroundFrame(decoder);
         if (frame == null)
+        {
+            RaiseError(MediaErrorCode.DecodeFailed, $"Failed to decode image frame: {imagePath}", imagePath);
             return false;
+        }
 
         try
         {

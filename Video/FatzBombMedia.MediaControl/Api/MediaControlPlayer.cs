@@ -42,6 +42,9 @@ public class MediaControlPlayer : IMediaControlSession
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
+
+        if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
+            errorSource.ErrorOccurred += OnEngineErrorOccurred;
     }
 
     public MediaControls Controls { get; }
@@ -225,6 +228,8 @@ public class MediaControlPlayer : IMediaControlSession
 
     public event EventHandler? MediaStopped;
 
+    public event EventHandler<MediaErrorEventArgs>? MediaError;
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         EventHandler? handler = MediaEnded;
@@ -254,6 +259,16 @@ private void OnControlsMediaStarted(object? sender, EventArgs e)
 
     private void OnPresentationFramePresented(object? sender, EventArgs e) => PresentationFramePresented?.Invoke(this, EventArgs.Empty);
 
+    private void OnEngineErrorOccurred(MediaErrorInfo info)
+    {
+        EventHandler<MediaErrorEventArgs>? handler = MediaError;
+        if (handler == null)
+            return;
+
+        var args = new MediaErrorEventArgs(info.Code, info.Message, info.SourcePath, info.InnerException);
+        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
+    }
+
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
@@ -282,6 +297,8 @@ private void OnControlsMediaStarted(object? sender, EventArgs e)
             Controls.MediaStarted -= OnControlsMediaStarted;
             Controls.MediaStopped -= OnControlsMediaStopped;
             _presentationCoordinator.FramePresented -= OnPresentationFramePresented;
+            if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
+                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
             Controls.Dispose();
             _presentationCoordinator.Dispose();
             _mediaEngine.Dispose();

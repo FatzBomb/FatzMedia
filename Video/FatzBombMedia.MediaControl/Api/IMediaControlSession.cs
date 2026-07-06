@@ -127,4 +127,12 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised when media playback is stopped.</summary>
     event EventHandler? MediaStopped;
+
+    /// <summary>
+    /// Raised when a high-value failure occurs inside the media engine. Carries typed
+    /// error information so hosts can diagnose failures without relying on <c>false</c>
+    /// returns or Debug-only output. May fire from background threads; hosts must marshal
+    /// to the UI thread before touching view state.
+    /// </summary>
+    event EventHandler<MediaErrorEventArgs>? MediaError;
 }

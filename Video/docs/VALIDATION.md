@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-06-30
+Updated: 2026-07-06
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
