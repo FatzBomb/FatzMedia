@@ -23,11 +23,22 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private const int CdgPresentationCadenceHz = CdgConstants.PacketsPerSecond / CdgPacketsPerSector;
     private static readonly long CdgPresentationIntervalTicks = Math.Max(1L, Stopwatch.Frequency / CdgPresentationCadenceHz);
 
+    private const string DeviceLostDiagnosticCategory = "D3D11.DeviceLost";
+    private const string DeviceLostRecoveryFailedDiagnosticCategory = "D3D11.DeviceLost.RecoveryFailed";
+    private const int DeviceLostRecoveryMaxAttempts = 3;
+    private static readonly TimeSpan[] DeviceLostRecoveryBackoffDelays =
+    [
+        TimeSpan.FromMilliseconds(250),
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromSeconds(1),
+    ];
+
     private readonly IMediaEngine _mediaEngine;
     private readonly MediaPlayerConfiguration _configuration;
     private readonly RenderPipeline _renderPipeline;
     private readonly NativeD3D11PresentationBridge _presenter;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
+    private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _lock = new();
     private readonly Lock _cdgPresentationGate = new();
@@ -36,6 +47,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
     private bool _disposed;
+    private int _recoveryInProgress;
     private ReadOnlyMemory<byte> _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
     private byte[]? _compositionBackgroundCopyBuffer;
     private int _compositionBackgroundWidth;
@@ -58,6 +70,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _presenter = new NativeD3D11PresentationBridge(configuration);
         _presenter.FramePresented += OnFramePresented;
+        DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
         _mediaEngine.ImageFrameReady += OnCoreImageFrameReady;
         _mediaEngine.BackgroundFrameReady += OnCoreBackgroundFrameReady;
@@ -352,6 +365,104 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     {
         foreach (MediaPresentationSurfaceDescriptor surface in _surfaces.Values)
             _ = AttachSurfaceNoLock(surface);
+    }
+
+    /// <summary>
+    /// Observes the process-wide diagnostic feed for the device-lost condition raised by
+    /// <c>D3D11SwapChainPresenter</c>/<c>D3D11DirectCompositionSingleTargetBackend</c> and starts
+    /// recovery. This handler runs synchronously on whatever thread raised the diagnostic
+    /// (a presentation thread, potentially already inside <see cref="_lock"/>), so it must only
+    /// set a debounce guard and hand off to <see cref="_recoveryScheduler"/> rather than rebuild
+    /// resources inline.
+    /// </summary>
+    private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
+    {
+        if (_disposed
+            || info.Level != MediaDiagnosticLevel.Error
+            || !string.Equals(info.Category, DeviceLostDiagnosticCategory, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)
+        {
+            _recoveryScheduler.Start(RunDeviceLostRecovery);
+        }
+    }
+
+    /// <summary>
+    /// Recovers from a detected device-lost condition by tearing down and rebuilding the D3D11
+    /// device, swap chains, and DirectComposition/secondary targets against the existing HWNDs
+    /// already retained in <see cref="_surfaces"/>. Runs on a dedicated worker thread so it never
+    /// executes inline with (or blocks) either presentation loop. Retries a bounded number of times
+    /// with backoff before giving up and raising a terminal diagnostic.
+    /// </summary>
+    private void RunDeviceLostRecovery(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            var wasRenderingActive = _isRenderingActive;
+            StopRendering();
+
+            var recovered = false;
+            for (var attempt = 1; attempt <= DeviceLostRecoveryMaxAttempts && !cancellationToken.IsCancellationRequested; attempt++)
+            {
+                if (attempt > 1)
+                {
+                    var delay = DeviceLostRecoveryBackoffDelays[Math.Min(attempt - 2, DeviceLostRecoveryBackoffDelays.Length - 1)];
+                    if (cancellationToken.WaitHandle.WaitOne(delay))
+                    {
+                        break;
+                    }
+                }
+
+                lock (_lock)
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+
+                    _presenter.CleanupResources();
+                    recovered = EnsureD3D11();
+                    RecreateAttachedSurfacesNoLock();
+                }
+
+                if (recovered)
+                {
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DeviceLostDiagnosticCategory, $"GPU device recovered after {attempt} attempt(s).");
+                    break;
+                }
+
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, DeviceLostDiagnosticCategory, $"Device-lost recovery attempt {attempt}/{DeviceLostRecoveryMaxAttempts} failed.");
+            }
+
+            if (recovered)
+            {
+                if (wasRenderingActive)
+                {
+                    StartRendering();
+                }
+
+                PresentCurrentComposition("device-lost recovery completed");
+            }
+            else if (!cancellationToken.IsCancellationRequested)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Error,
+                    DeviceLostRecoveryFailedDiagnosticCategory,
+                    $"GPU device-lost recovery failed after {DeviceLostRecoveryMaxAttempts} attempts. Presentation will remain unavailable until the host reinitializes.");
+            }
+        }
+        finally
+        {
+            _ = Interlocked.Exchange(ref _recoveryInProgress, 0);
+        }
     }
 
     private void AttachVideoIfAvailable()
@@ -1138,8 +1249,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _mediaEngine.BackgroundFrameReady -= OnCoreBackgroundFrameReady;
         _mediaEngine.BackgroundCleared -= OnCoreBackgroundCleared;
         _presenter.FramePresented -= OnFramePresented;
+        DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
         _presenter.Dispose();
         _presentationScheduler.Dispose();
+        _recoveryScheduler.Dispose();
         _disposed = true;
     }
 }
