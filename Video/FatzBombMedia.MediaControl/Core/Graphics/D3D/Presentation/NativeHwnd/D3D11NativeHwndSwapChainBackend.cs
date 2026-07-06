@@ -23,6 +23,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     private int _pendingWidth;
     private int _pendingHeight;
     private bool _resizePending;
+    private bool _deviceLostReported;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
     public bool IsActive => _swapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -108,7 +109,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             configuration,
             liveResizeFlag,
             syncImmediate,
-            diagnostics);
+            diagnostics,
+            ref _deviceLostReported);
 
     private bool ResizeCore(int width, int height)
     {
@@ -176,6 +178,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         _pendingWidth = 0;
         _pendingHeight = 0;
         _resizePending = false;
+        _deviceLostReported = false;
     }
 
     public void Dispose() => Cleanup();

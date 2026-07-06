@@ -18,7 +18,8 @@ internal static class D3D11SwapChainPresenter
         MediaPlayerConfiguration configuration,
         int liveResizeFlag,
         bool syncImmediate,
-        D3D11PresentationDiagnostics diagnostics)
+        D3D11PresentationDiagnostics diagnostics,
+        ref bool deviceLostReported)
     {
         if (swapChain == null)
         {
@@ -42,7 +43,24 @@ internal static class D3D11SwapChainPresenter
             diagnostics.RecordNativePresent(D3D11PresentationDiagnostics.ElapsedMilliseconds(presentStart), (int)syncInterval);
             if (result.Failure)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {result}");
+                if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+                {
+                    // Latch owned by the caller: report once per loss episode so a failing
+                    // present loop does not spam an identical diagnostic every frame.
+                    if (!deviceLostReported)
+                    {
+                        deviceLostReported = true;
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"Swap-chain Present detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain)}");
+                    }
+                }
+                else
+                {
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {result}");
+                }
+            }
+            else if (deviceLostReported)
+            {
+                deviceLostReported = false;
             }
         }
         catch (Exception ex)

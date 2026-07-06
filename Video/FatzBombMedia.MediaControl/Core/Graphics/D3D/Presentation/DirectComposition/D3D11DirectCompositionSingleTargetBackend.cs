@@ -27,6 +27,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     private IDXGISwapChain? _baseSwapChain;
     private int _pendingWidth;
     private int _pendingHeight;
+    private bool _baseDeviceLostReported;
+    private bool _overlayDeviceLostReported;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -179,7 +181,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             configuration,
             liveResizeFlag,
             syncImmediate,
-            diagnostics);
+            diagnostics,
+            ref _baseDeviceLostReported);
 
         Commit();
         ReacquireBaseBackBuffer();
@@ -195,10 +198,25 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
         if (result.Failure)
         {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
+            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            {
+                // Latch owned by this instance: report once per loss episode so a failing
+                // overlay present loop does not spam an identical diagnostic every frame.
+                if (!_overlayDeviceLostReported)
+                {
+                    _overlayDeviceLostReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition overlay Present detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, _target.OverlaySwapChain)}");
+                }
+            }
+            else
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
+            }
+
             return false;
         }
 
+        _overlayDeviceLostReported = false;
         Commit();
         ReacquireOverlayBackBuffer();
         return true;
@@ -258,6 +276,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         _pendingWidth = 0;
         _pendingHeight = 0;
         HasPendingResize = false;
+        _baseDeviceLostReported = false;
+        _overlayDeviceLostReported = false;
     }
 
     public void Dispose() => Cleanup();
