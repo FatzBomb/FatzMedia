@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using Vortice.DirectComposition;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -21,6 +22,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
     private IDCompositionVisual? _overlayVisual;
     private int _outputWidth;
     private int _outputHeight;
+    private bool _deviceLostReported;
 
     public IDXGISwapChain1? OverlaySwapChain { get; private set; }
     public ID3D11Texture2D? OverlayTexture { get; private set; }
@@ -56,7 +58,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
             _outputWidth = Math.Max(1, contentWidth);
             _outputHeight = Math.Max(1, contentHeight);
             ApplyTransforms(contentWidth, contentHeight);
-            _ = _compositionDevice.Commit();
+            CommitCore("Create");
             return true;
         }
         catch (Exception ex)
@@ -77,7 +79,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         _outputWidth = Math.Max(1, contentWidth);
         _outputHeight = Math.Max(1, contentHeight);
         ApplyTransforms(contentWidth, contentHeight);
-        _ = _compositionDevice.Commit();
+        CommitCore("SetContentSize");
     }
 
     public void ReleaseOverlayBackBuffer()
@@ -97,7 +99,38 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         OverlayTexture = OverlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
-    public void Commit() => _compositionDevice?.Commit();
+    public void Commit() => CommitCore("Commit");
+
+    private void CommitCore(string caller)
+    {
+        if (_compositionDevice == null)
+        {
+            return;
+        }
+
+        Result result = _compositionDevice.Commit();
+        if (result.Failure)
+        {
+            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            {
+                // Latch owned by this instance: report once per loss episode so repeated
+                // Commit calls (every frame, via the per-frame Commit path) do not spam.
+                if (!_deviceLostReported)
+                {
+                    _deviceLostReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {caller} Commit detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
+                }
+            }
+            else if (configuration.EnableLogging)
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition {caller} Commit failed: {result}");
+            }
+
+            return;
+        }
+
+        _deviceLostReported = false;
+    }
 
     private void ApplyTransforms(int contentWidth, int contentHeight)
     {
@@ -136,5 +169,6 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         _compositionDevice = null;
         _outputWidth = 0;
         _outputHeight = 0;
+        _deviceLostReported = false;
     }
 }

@@ -5,6 +5,7 @@ using Vortice.DXGI;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Device;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.SwapChain;
+using SharpGen.Runtime;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 
@@ -136,12 +137,33 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             TargetTexture?.Dispose();
             TargetTexture = null;
 
-            _ = _swapChain.ResizeBuffers(
+            Result resizeResult = _swapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
+
+            if (resizeResult.Failure)
+            {
+                if (D3D11DeviceLostClassifier.IsDeviceLost(resizeResult))
+                {
+                    // Latch shared with Present: same swap chain, same loss episode.
+                    if (!_deviceLostReported)
+                    {
+                        _deviceLostReported = true;
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"Native HWND swap-chain ResizeBuffers detected GPU device lost: {D3D11DeviceLostClassifier.Describe(resizeResult, _swapChain)}");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain ResizeBuffers failed: {resizeResult}");
+                }
+            }
+            else if (_deviceLostReported)
+            {
+                _deviceLostReported = false;
+            }
 
             TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
             Width = width;

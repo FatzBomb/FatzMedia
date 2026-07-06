@@ -140,19 +140,21 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             TargetTexture = null;
             _target.ReleaseOverlayBackBuffer();
 
-            _ = _baseSwapChain.ResizeBuffers(
+            Result baseResizeResult = _baseSwapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
+            ReportResizeIfDeviceLost(baseResizeResult, _baseSwapChain, "base", ref _baseDeviceLostReported);
 
-            _ = _target.OverlaySwapChain.ResizeBuffers(
+            Result overlayResizeResult = _target.OverlaySwapChain.ResizeBuffers(
                 0,
                 (uint)width,
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
+            ReportResizeIfDeviceLost(overlayResizeResult, _target.OverlaySwapChain, "overlay", ref _overlayDeviceLostReported);
 
             TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
             _target.ReacquireOverlayBackBuffer();
@@ -172,6 +174,30 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             Debug.WriteLine($"[VorticeD3D11] DirectComposition resize failed: {ex.Message}");
             return false;
         }
+    }
+
+    private static void ReportResizeIfDeviceLost(Result result, IDXGISwapChain? swapChain, string chainName, ref bool alreadyReported)
+    {
+        if (result.Failure)
+        {
+            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            {
+                // Latch shared with Present for the same chain: same loss episode.
+                if (!alreadyReported)
+                {
+                    alreadyReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {chainName} ResizeBuffers detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain)}");
+                }
+            }
+            else
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition {chainName} ResizeBuffers failed: {result}");
+            }
+
+            return;
+        }
+
+        alreadyReported = false;
     }
 
     public void Present(int liveResizeFlag, bool syncImmediate)
