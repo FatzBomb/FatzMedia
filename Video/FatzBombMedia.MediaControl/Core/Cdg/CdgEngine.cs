@@ -16,7 +16,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 
     private CdgPacket[] _packets = [];
     private int _startPacketIndex;
-    private int _lastRenderLogSecond = -1;
     private uint _backgroundWashArgb;
     private bool _disposed;
 
@@ -122,7 +121,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         _packets = [.. InitializeCdgStream(ms)];
         ResetInternal();
         State = CdgEngineState.Ready;
-        Debug.WriteLine($"[CdgEngine] Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
@@ -136,7 +134,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         _packets = [.. InitializeCdgStream(ms)];
         ResetInternal();
         State = CdgEngineState.Ready;
-        Debug.WriteLine($"[CdgEngine] Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
@@ -193,13 +190,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
             if (hasChanges || rebuiltFromStart || (endIndex == 0 && _packets.Length > 0))
             {
                 washChanged = RefreshBackgroundWashUnsafe();
-                var logSecond = (int)seconds;
-                if (logSecond != _lastRenderLogSecond)
-                {
-                    _lastRenderLogSecond = logSecond;
-                    Debug.WriteLine($"[CdgEngine] Frame invalidated at {seconds:F3}s, packet {endIndex}/{_packets.Length}, changed={hasChanges}, rebuilt={rebuiltFromStart}, revision={_cdgState.Revision}");
-                }
-
                 shouldInvalidate = true;
             }
         }
@@ -219,7 +209,6 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         lock (_renderLock)
         {
             ResetPacketStateForReplay();
-            _lastRenderLogSecond = -1;
             washChanged = RefreshBackgroundWashUnsafe();
         }
 

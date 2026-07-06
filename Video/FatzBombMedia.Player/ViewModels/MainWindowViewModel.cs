@@ -4,6 +4,8 @@ using FatzBombMedia.MediaControl;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Wpf;
 using FatzBombMedia.Player.Configuration;
+using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Threading;
 
 using FatzMediaPlayer = FatzBombMedia.MediaControl.Wpf.Player;
@@ -85,6 +87,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string StatusText { get; private set; } = "Native media engine is initializing.";
+
+    public ObservableCollection<DiagnosticLogEntry> DiagnosticLog { get; } = [];
+
+    private static void AppendToLog(ObservableCollection<DiagnosticLogEntry> log, DiagnosticLogEntry entry)
+    {
+        log.Add(entry);
+        while (log.Count > 200)
+            log.RemoveAt(0);
+    }
 
     public double Volume
     {
@@ -299,6 +310,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.LoopMedia = LoopPlayback;
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             Player = player;
+            player.MediaDiagnostic += OnPlayerDiagnostic;
+            player.MediaError += OnPlayerError;
             StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
         }
         catch (Exception ex)
@@ -403,6 +416,37 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : $"{time.Minutes}:{time.Seconds:00}";
     }
 
+    private void OnPlayerDiagnostic(object? sender, MediaDiagnosticEventArgs e)
+    {
+        if (Application.Current?.Dispatcher is not null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(() => HandleDiagnostic(e.Level, e.Category, e.Message));
+            return;
+        }
+
+        HandleDiagnostic(e.Level, e.Category, e.Message);
+    }
+
+    private void OnPlayerError(object? sender, MediaErrorEventArgs e)
+    {
+        if (Application.Current?.Dispatcher is not null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(() => HandleDiagnostic(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message));
+            return;
+        }
+
+        HandleDiagnostic(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
+    }
+
+    private void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
+    {
+        var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
+        AppendToLog(DiagnosticLog, entry);
+
+        if (level >= MediaDiagnosticLevel.Warning)
+            StatusText = $"[{level}] {category}: {message}";
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -410,6 +454,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _disposed = true;
         _positionTimer.Stop();
         _positionTimer.Tick -= PositionTimer_Tick;
-        Player?.Dispose();
+        if (Player is { } player)
+        {
+            player.MediaDiagnostic -= OnPlayerDiagnostic;
+            player.MediaError -= OnPlayerError;
+            player.Dispose();
+        }
     }
 }

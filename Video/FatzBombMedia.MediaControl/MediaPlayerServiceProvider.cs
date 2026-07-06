@@ -2,7 +2,6 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl;
 
@@ -54,16 +53,13 @@ public static class MediaPlayerServiceProvider
 
             if (!audioEngine.Init(-1, 44100))
             {
-                Debug.WriteLine("[MediaPlayerServiceProvider] ❌ Failed to initialize global BASS");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", "Failed to initialize global BASS");
             }
             else
             {
-                Debug.WriteLine("[MediaPlayerServiceProvider] ✅ Global BASS initialized successfully");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "Global BASS initialized successfully");
             }
 
-            Debug.WriteLine("[MediaPlayerServiceProvider] Created AudioEngine for pipeline audio slice");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
             return audioEngine;
         });

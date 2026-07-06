@@ -61,7 +61,6 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition target creation failed: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"DirectComposition target creation failed: {ex.Message}", innerException: ex);
             Dispose();
             return false;

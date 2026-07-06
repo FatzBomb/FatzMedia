@@ -164,11 +164,11 @@ public sealed class MediaFile
             if (playSuccess)
                 System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Playback started successfully");
             else
-                System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Failed to start playback");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "PlayOnLoad: Failed to start playback");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MediaFile] PlayOnLoad error: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaFile", $"PlayOnLoad error: {ex.Message}", innerException: ex);
         }
     }
 
@@ -237,14 +237,13 @@ public sealed class MediaFile
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
             if (!(_mediaControls?.Stop() ?? false))
-                System.Diagnostics.Debug.WriteLine("[MediaFile] Stop failed or returned false");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "Stop failed or returned false");
         }
 
         _mediaEngine.ClearBackground();
         var success = _mediaEngine.Open(source);
         if (!success)
         {
-            System.Diagnostics.Debug.WriteLine($"[MediaFile] Failed to load: {source.DisplayName}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaFile", $"Failed to load: {source.DisplayName}", sourcePath: source.FilePath);
             return false;
         }
@@ -266,7 +265,7 @@ public sealed class MediaFile
 
         var setBackgroundResult = _mediaEngine.SetBackground(background);
         if (!setBackgroundResult)
-            System.Diagnostics.Debug.WriteLine("[MediaFile] SetBackground failed");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "SetBackground failed");
     }
 
     private MediaBackgroundCandidate? ResolveCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)

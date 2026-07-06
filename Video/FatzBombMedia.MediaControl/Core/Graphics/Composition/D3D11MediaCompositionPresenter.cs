@@ -175,7 +175,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Hardware background copy failed: {ex.GetType().Name}: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Composition", $"Hardware background copy failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
             ClearBackgroundFrame();
             return false;
@@ -346,7 +345,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Visible target present failed: {ex.GetType().Name}: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Visible target present failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
             Reset();
             return false;

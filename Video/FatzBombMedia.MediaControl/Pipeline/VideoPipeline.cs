@@ -302,9 +302,6 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             // before seek can blank hardware-backed presentation surfaces at loop boundaries.
             if (!decoder.Seek(loopTarget, exact: false))
             {
-                if (_configuration.EnableLogging)
-                    Debug.WriteLine("[VideoPipeline:LoopRestart] Decoder seek failed.");
-
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Decoder seek failed during loop restart");
                 return false;
             }
@@ -321,10 +318,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             _ = _audioEngine!.Seek(loopTarget, resumePlayback: false);
             if (_isPlaying)
             {
-                if (!_audioEngine.Play() && _configuration.EnableLogging)
-                    Debug.WriteLine("[VideoPipeline:LoopRestart] audio Play() returned false during loop restart");
-
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during loop restart");
+                if (!_audioEngine!.Play())
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during loop restart");
                 _presentationClock.Start(_audioEngine.Position);
             }
             else
@@ -493,9 +488,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 if (HasAudio && wasPlaying)
                 {
                     _ = _audioEngine!.PrebufferAudio();
-                    if (!_audioEngine.Play() && _configuration.EnableLogging)
-                        Debug.WriteLine("[VideoPipeline] audio Play() returned false during post-seek resume");
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during post-seek resume");
+                    if (!_audioEngine.Play())
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during post-seek resume");
                     _presentationClock.Start(_audioEngine.Position);
                 }
                 else if (!HasAudio && wasPlaying)
@@ -1144,13 +1138,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         if (_videoDecoder == null || string.IsNullOrWhiteSpace(_videoDecoder.HardwareAccelerationMethod))
             return false;
 
-        if (_configuration.EnableLogging) Debug.WriteLine($"[VideoPipeline] Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}.");
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}", sourcePath: path);
         _videoDecoder.Dispose();
         _videoDecoder = new VideoDecoder(VideoDecodingMethod.Software, true, _configuration.EnableLogging, _configuration.EnablePerformanceLogging, _configuration.EnableVerboseLogging);
         if (!_videoDecoder.Open(path))
         {
-            if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Software video fallback failed.");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
             _videoDecoder.Dispose();
             _videoDecoder = null;

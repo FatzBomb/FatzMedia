@@ -79,7 +79,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VorticeD3D11] Failed to create DirectComposition backend: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to create DirectComposition backend: {ex.Message}", innerException: ex);
             Cleanup();
             return false;

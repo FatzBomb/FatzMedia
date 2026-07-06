@@ -660,7 +660,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         _bassStream = Bass.CreateStream(_sampleRate, _channels, flags, StreamProcedureType.Push);
         if (_bassStream == 0)
         {
-            Debug.WriteLine($"[VideoAudioEngine] Failed to create BASS push stream: {Bass.LastError}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create BASS push stream: {Bass.LastError}");
             return false;
         }
@@ -668,7 +667,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         PlayHandle = BassFx.TempoCreate(_bassStream, BassFlags.Default);
         if (PlayHandle == 0)
         {
-            Debug.WriteLine($"[VideoAudioEngine] Failed to create tempo stream: {Bass.LastError}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create tempo stream: {Bass.LastError}");
             return false;
         }
@@ -865,7 +863,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VideoAudioEngine] Failed to delete temp audio source: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoAudioEngine", $"Failed to delete temp audio source: {ex.Message}", innerException: ex);
         }
         finally

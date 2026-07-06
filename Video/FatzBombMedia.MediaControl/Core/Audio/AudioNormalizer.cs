@@ -93,7 +93,6 @@ internal sealed class AudioNormalizer
     {
         var gain = CalculateGainFromPeak(peak);
         SetNormalizationGain(gain, forceNotify);
-        Debug.WriteLine($"[AudioNormalizer] Peak analysis: peak={peak:F4}, target={NormalizationTarget}, gain={gain:F3}");
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioNormalizer", $"Peak analysis: peak={peak:F4}, target={NormalizationTarget}, gain={gain:F3}");
         return gain;
     }
@@ -126,20 +125,17 @@ internal sealed class AudioNormalizer
 
             if (_gainFxHandle != 0)
             {
-                Debug.WriteLine($"[AudioNormalizer] Gain FX created: handle={_gainFxHandle}");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioNormalizer", $"Gain FX created: handle={_gainFxHandle}");
                 return true;
             }
             else
             {
-                Debug.WriteLine($"[AudioNormalizer] Failed to create gain FX: {MBass.LastError}");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioNormalizer", $"Failed to create gain FX: {MBass.LastError}");
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AudioNormalizer] Exception creating gain FX: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioNormalizer", $"Exception creating gain FX: {ex.Message}", innerException: ex);
             return false;
         }
@@ -173,13 +169,11 @@ internal sealed class AudioNormalizer
                 Debug.WriteLine($"Applied gain {_gainParam.fTarget:F3}");
             else
             {
-                Debug.WriteLine($"[AudioNormalizer] Failed to apply gain: {MBass.LastError}");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioNormalizer", $"Failed to apply gain: {MBass.LastError}");
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AudioNormalizer] Exception applying gain: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioNormalizer", $"Exception applying gain: {ex.Message}", innerException: ex);
         }
     }

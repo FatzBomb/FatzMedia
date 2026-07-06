@@ -74,7 +74,6 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
             TimeSpan waitTimeout = timeout ?? TimeSpan.FromSeconds(2);
             if (!task.Wait(waitTimeout))
             {
-                Debug.WriteLine($"[PlaybackScheduler:{name}] Worker did not stop within {waitTimeout.TotalMilliseconds:F0}ms.");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlaybackScheduler", $"[{name}] Worker did not stop within {waitTimeout.TotalMilliseconds:F0}ms.");
                 disposeCancellationSource = false;
                 DisposeCancellationSourceWhenTaskCompletes(cts, task);
@@ -85,12 +84,10 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
         }
         catch (AggregateException ex)
         {
-            Debug.WriteLine($"[PlaybackScheduler:{name}] Worker stopped with error: {ex.GetBaseException().Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlaybackScheduler", $"[{name}] Worker stopped with error: {ex.GetBaseException().Message}", innerException: ex);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[PlaybackScheduler:{name}] Worker wait failed: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PlaybackScheduler", $"[{name}] Worker wait failed: {ex.Message}", innerException: ex);
         }
         finally
@@ -194,7 +191,6 @@ internal sealed class PlaybackScheduler(string name) : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[PlaybackScheduler:{name}] Worker failed: {ex.Message}");
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "PlaybackScheduler", $"[{name}] Worker failed: {ex.Message}", innerException: ex);
         }
     }

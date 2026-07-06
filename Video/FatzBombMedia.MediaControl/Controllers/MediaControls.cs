@@ -183,7 +183,7 @@ public sealed class MediaControls
         catch (Exception ex)
         {
             _handlingMediaEnd = false;
-            System.Diagnostics.Debug.WriteLine($"[MediaControls] Error handling media end: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error handling media end: {ex.Message}", innerException: ex);
         }
     }
 
