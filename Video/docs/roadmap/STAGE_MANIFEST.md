@@ -2,7 +2,6 @@
 
 All runnable stage files live directly in `stages/`.
 
-- `005A_BACKLOG_DeviceLostDetection.md`
 - `005B_BACKLOG_DeviceLostRecovery.md`
 - `006A_BACKLOG_AudioLatencyFeedback.md`
 - `006B_BACKLOG_AudioDeviceHotplug.md`
