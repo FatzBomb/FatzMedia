@@ -169,7 +169,7 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool Seek(double positionSeconds)
     {
-        var target = NormalizeSeekTarget(positionSeconds);
+        var target = SeekHelpers.NormalizeSeekTarget(positionSeconds, DurationSeconds);
 
         if (_session.Video?.IsOpen == true)
             return _session.Video.Seek(target);
@@ -180,15 +180,6 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Cdg?.IsOpen == true)
             success |= _session.Cdg.Seek(target);
         return success;
-    }
-
-    private double NormalizeSeekTarget(double seconds)
-    {
-        if (!double.IsFinite(seconds) || seconds <= 0)
-            return 0;
-
-        var duration = DurationSeconds;
-        return duration > 0 ? Math.Clamp(seconds, 0, duration) : seconds;
     }
 
     public void Close() => _session.Clear();

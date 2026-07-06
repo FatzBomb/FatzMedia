@@ -56,4 +56,8 @@
 		<None Include="README.md" Pack="true" PackagePath="" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="FatzBombMedia.MediaControl.Tests" />
+	</ItemGroup>
+
 </Project>

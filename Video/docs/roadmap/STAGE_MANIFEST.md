@@ -2,7 +2,6 @@
 
 All runnable stage files live directly in `stages/`.
 
-- `003B_ACTIVE_MediaStateOwnershipMap.md`
 - `004A_BACKLOG_ErrorSurface.md`
 - `004B_BACKLOG_ReleaseDiagnostics.md`
 - `005A_BACKLOG_DeviceLostDetection.md`
@@ -11,7 +10,6 @@ All runnable stage files live directly in `stages/`.
 - `006B_BACKLOG_AudioDeviceHotplug.md`
 - `007A_BACKLOG_PresentOutsideLocks.md`
 - `007B_BACKLOG_HardwareFrameReleaseSafety.md`
-- `008A_BACKLOG_PureLogicTests.md`
 - `009A_FUTURE_BackgroundSidecarVideoFrameReuse.md`
 - `010A_FUTURE_SoftwareVideoUploadCopyPath.md`
 - `011A_FUTURE_SeamlessPrimaryVideoLooping.md`
