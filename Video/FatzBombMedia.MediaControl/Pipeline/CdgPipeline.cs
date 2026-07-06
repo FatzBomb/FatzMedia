@@ -208,6 +208,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
         catch (Exception ex)
         {
             Debug.WriteLine($"[CdgPipeline] Seek worker join failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "CdgPipeline", $"Seek worker join failed: {ex.Message}", innerException: ex);
         }
 
         _seekThread = null;
@@ -249,6 +250,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[CdgPipeline] Seek pump error: {ex.Message}");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "CdgPipeline", $"Seek pump error: {ex.Message}", innerException: ex);
                 }
 
                 lastProcessedTarget = normalizedTarget;

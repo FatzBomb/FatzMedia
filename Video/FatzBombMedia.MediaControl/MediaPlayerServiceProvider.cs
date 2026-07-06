@@ -53,11 +53,18 @@ public static class MediaPlayerServiceProvider
             var audioEngine = new Core.Audio.AudioEngine();
 
             if (!audioEngine.Init(-1, 44100))
+            {
                 Debug.WriteLine("[MediaPlayerServiceProvider] ❌ Failed to initialize global BASS");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", "Failed to initialize global BASS");
+            }
             else
+            {
                 Debug.WriteLine("[MediaPlayerServiceProvider] ✅ Global BASS initialized successfully");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "Global BASS initialized successfully");
+            }
 
             Debug.WriteLine("[MediaPlayerServiceProvider] Created AudioEngine for pipeline audio slice");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
             return audioEngine;
         });
 

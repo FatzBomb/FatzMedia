@@ -43,11 +43,13 @@ internal static class D3D11SwapChainPresenter
             if (result.Failure)
             {
                 Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain Present failed: {result}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {result}");
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain Present failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {ex.Message}", innerException: ex);
         }
     }
 }

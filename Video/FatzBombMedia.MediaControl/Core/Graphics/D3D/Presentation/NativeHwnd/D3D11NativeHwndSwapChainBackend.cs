@@ -65,6 +65,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         catch (Exception ex)
         {
             Debug.WriteLine($"[VorticeD3D11] Failed to create native HWND swap-chain backend: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to create native HWND swap-chain backend: {ex.Message}", innerException: ex);
             Cleanup();
             return false;
         }

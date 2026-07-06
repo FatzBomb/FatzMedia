@@ -596,6 +596,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private static bool RejectUnsupported(string path, FileType fileType)
     {
         Debug.WriteLine($"[PipelineMediaEngine] Current pipeline supports audio, CDG, video, image, and memory-backed archive entries. Rejected {Path.GetFileName(path)} ({fileType}).");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PipelineMediaEngine", $"Rejected {Path.GetFileName(path)} ({fileType})", sourcePath: path);
         return false;
     }
 

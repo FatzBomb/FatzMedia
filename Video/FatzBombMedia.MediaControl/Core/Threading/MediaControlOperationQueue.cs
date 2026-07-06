@@ -108,6 +108,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker exited with error: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaControlOperationQueue", $"[{_name}] Worker exited with error: {ex.Message}", innerException: ex);
         }
         finally
         {
@@ -132,6 +133,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
             if (!_workerTask.Wait(TimeSpan.FromSeconds(2)))
             {
                 Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker did not stop within 2000ms.");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker did not stop within 2000ms.");
                 _ = ObserveWorkerCompletionAsync();
                 return;
             }
@@ -141,10 +143,12 @@ internal sealed class MediaControlOperationQueue : IDisposable
         catch (AggregateException ex)
         {
             Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker stopped with error: {ex.GetBaseException().Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker stopped with error: {ex.GetBaseException().Message}", innerException: ex);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker wait failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker wait failed: {ex.Message}", innerException: ex);
         }
     }
 
@@ -157,6 +161,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker stopped with error: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlOperationQueue", $"[{_name}] Worker stopped with error: {ex.Message}", innerException: ex);
         }
     }
 }

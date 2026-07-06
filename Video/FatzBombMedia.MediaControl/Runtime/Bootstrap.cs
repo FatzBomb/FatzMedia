@@ -66,6 +66,7 @@ internal static partial class Bootstrap
             {
                 Message = $"[Bootstrap] ❌ Exception during initialization: {ex.Message}";
                 Debug.WriteLine(Message);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Exception during initialization: {ex.Message}", innerException: ex);
                 _isInitialized = false;
                 _ = Interlocked.Exchange(ref _initOnce, 0);
                 return IsInitialized;
@@ -104,6 +105,7 @@ internal static partial class Bootstrap
                 return Path.GetFullPath(path);
 
             Debug.WriteLine($"[Bootstrap] ❌ Specified path does not exist: '{path}'");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Specified path does not exist: '{path}'");
             return null;
         }
 
@@ -112,6 +114,7 @@ internal static partial class Bootstrap
         if (!Directory.Exists(candidate))
         {
             Debug.WriteLine($"[Bootstrap] ❌ Specified path does not exist: '{candidate}'");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"AppBase relative path does not exist: '{candidate}'");
             return null;
         }
 

@@ -123,6 +123,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         ResetInternal();
         State = CdgEngineState.Ready;
         Debug.WriteLine($"[CdgEngine] Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
     }
@@ -136,6 +137,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         ResetInternal();
         State = CdgEngineState.Ready;
         Debug.WriteLine($"[CdgEngine] Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
         InvalidateFrame();
         Opened?.Invoke(this, EventArgs.Empty);
     }

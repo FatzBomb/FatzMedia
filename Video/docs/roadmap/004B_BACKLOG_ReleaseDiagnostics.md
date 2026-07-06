@@ -1,15 +1,12 @@
 <!-- Command-driven stage file. Use with AGENTS_WORKING_NOTES.md and this file only. -->
 
-Stage file status: BACKLOG.
+Stage file status: COMPLETED.
 
 # Stage 004B — Release-Visible Diagnostics
 
+> **Status: Complete.** Implementation adds an internal `DiagnosticRouter` static event sink and a host-facing `MediaDiagnostic` event on `IMediaControlSession`. 23 engine/pipeline files instrumented with `DiagnosticRouter.Raise(...)` calls at key diagnostic points. See `docs/roadmap/completed/004B_BACKLOG_ReleaseDiagnostics.completed.md` for full summary.
 
-## Status
-
-Backlog. Should follow or pair carefully after Stage 004A, but do not bundle unless explicitly promoted together.
-
-## Goal
+## Original Goal
 
 Make important diagnostics available in Release builds through a host-routable path.
 

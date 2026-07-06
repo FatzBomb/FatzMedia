@@ -104,6 +104,7 @@ internal sealed class AudioStreamManager : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioStreamManager] OpenFromPath failed for '{filePath}': {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"OpenFromPath failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
             Close(); // Ensure cleanup on failure
             return false;
         }
@@ -147,6 +148,7 @@ internal sealed class AudioStreamManager : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioStreamManager] OpenFromArchive failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"OpenFromArchive failed: {ex.Message}", innerException: ex);
             Close(); // Ensure cleanup on failure
             return false;
         }
@@ -290,6 +292,7 @@ internal sealed class AudioStreamManager : IDisposable
         {
             PlayHandle = _sourceHandle;
             Debug.WriteLine("[AudioStreamManager] Tempo stream creation failed, using source stream");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioStreamManager", "Tempo stream creation failed, using source stream");
         }
     }
 

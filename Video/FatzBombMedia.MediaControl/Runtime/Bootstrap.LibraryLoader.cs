@@ -49,6 +49,7 @@ internal static partial class Bootstrap
                     {
                         FileTypes.Audio.UnionWith(extensions);
                         Debug.WriteLine($"[BASS] ✅ {dllFile}");
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"{dllFile} loaded from {loadPath}");
                         if (isRequired)
                             foundRequired++;
                         else
@@ -59,11 +60,13 @@ internal static partial class Bootstrap
                         {
                             failedRequired.Add(dllFile);
                             Debug.WriteLine($"[BASS] ❌ {dllFile} from {loadPath} [LOADING FAILED]");
+                            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "BASS", $"{dllFile} loading failed from {loadPath} (required)");
                         }
                         else
                         {
                             failedOptional.Add(dllFile);
                             Debug.WriteLine($"[BASS] ⚠️ {dllFile} from {loadPath} [LOADING FAILED]");
+                            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} loading failed from {loadPath} (optional)");
                         }
                 }
             }
@@ -73,11 +76,13 @@ internal static partial class Bootstrap
                 {
                     missingRequired.Add(dllFile);
                     Debug.WriteLine($"[BASS] ❌ {dllFile} [REQUIRED: File not found!]");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "BASS", $"{dllFile} not found (required)");
                 }
                 else
                 {
                     missingOptional.Add(dllFile);
                     Debug.WriteLine($"[BASS] ⚠️ {dllFile} [OPTIONAL: File not found! Supports {string.Join(',', extensions)} playback.]");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} not found (optional)");
                 }
 
             }
@@ -90,6 +95,7 @@ internal static partial class Bootstrap
             {
                 BassPath = commonPath;
                 Debug.WriteLine($"[BASS] ✅ Common path for all required libraries: {BassPath}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"Common path for required libraries: {BassPath}");
             }
         }
 
@@ -106,6 +112,10 @@ internal static partial class Bootstrap
         successMessage = loadSuccess ? "✅ Bass Loaded!" : "❌ Bass Failed!!!";
         successMessage += $"  [Required: {foundRequired}/{totalRequired}]  [Optional: {foundOptional}/{totalOptional}]";
         Debug.WriteLine($"[RESULT] {successMessage}");
+        DiagnosticRouter.Raise(
+            loadSuccess ? MediaDiagnosticLevel.Info : MediaDiagnosticLevel.Error,
+            "Bootstrap",
+            loadSuccess ? "BASS loaded successfully" : $"BASS failed: {successMessage}");
 
         return loadSuccess;
     }
@@ -137,6 +147,7 @@ internal static partial class Bootstrap
         if (!string.IsNullOrEmpty(foundPath))
         {
             Debug.WriteLine($"[FFMPEG] ✅ Path found: {foundPath}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", $"Path found: {foundPath}");
             var tempPath = ffmpeg.RootPath;
             ffmpeg.RootPath = foundPath;
             unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
@@ -147,6 +158,7 @@ internal static partial class Bootstrap
 
                 FileTypes.Video.UnionWith(supportedFileTypes);
                 Debug.WriteLine($"✅ FFmpeg successfully loaded!   [Files found: {libraryFiles.Length}/{libraryFiles.Length}]   [Successful Load: {libraryFiles.Length}/{libraryFiles.Length}]");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", "All FFmpeg libraries loaded successfully");
                 return true;
             }
             else
@@ -156,6 +168,7 @@ internal static partial class Bootstrap
 
                 AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
                 Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {libraryFiles.Length}/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", "FFmpeg libraries found but failed to initialize");
                 ffmpeg.RootPath = tempPath;
                 return false;
             }
@@ -170,6 +183,7 @@ internal static partial class Bootstrap
             }
 
             AddNativeLoadMessage($"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", $"FFmpeg libraries not found: {string.Join(", ", missingRequired)}");
             Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
             return false;
         }

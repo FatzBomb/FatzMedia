@@ -520,6 +520,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         catch (Exception ex)
         {
             Debug.WriteLine($"[NativeMediaPresentationCoordinator] Video frame present failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Video frame present failed: {ex.Message}", innerException: ex);
         }
     }
 
@@ -913,6 +914,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         {
             if (_configuration.EnableLogging)
                 Debug.WriteLine($"[NativeMediaPresentationCoordinator] Composition present failed reason={frame.Reason}");
+
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}");
 
             return CompositionPresentResult.Failed;
         }

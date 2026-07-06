@@ -245,6 +245,7 @@ public sealed class MediaFile
         if (!success)
         {
             System.Diagnostics.Debug.WriteLine($"[MediaFile] Failed to load: {source.DisplayName}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaFile", $"Failed to load: {source.DisplayName}", sourcePath: source.FilePath);
             return false;
         }
 

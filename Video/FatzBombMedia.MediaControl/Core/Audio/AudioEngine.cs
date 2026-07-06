@@ -149,6 +149,7 @@ public sealed class AudioEngine : IAudioEngine
             if (_bassInitialized)
             {
                 Debug.WriteLine($"[AudioEngine] BASS already initialized on this engine");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", "BASS already initialized on this engine");
                 return true;
             }
 
@@ -156,6 +157,7 @@ public sealed class AudioEngine : IAudioEngine
             if (MBass.GetInfo(out BassInfo existingInfo) && existingInfo.SampleRate > 0)
             {
                 Debug.WriteLine($"[AudioEngine] ✅ Using existing global BASS instance: {existingInfo.SampleRate}Hz");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using existing global BASS instance: {existingInfo.SampleRate}Hz");
                 _bassInitialized = true;
                 _currentDevice = device;
                 _currentDeviceSampleRate = existingInfo.SampleRate;
@@ -171,16 +173,19 @@ public sealed class AudioEngine : IAudioEngine
                 _currentDeviceSampleRate = sampleRate;
 
                 Debug.WriteLine($"[AudioEngine] ✅ Initialized BASS globally: device={device}, sampleRate={sampleRate} Hz");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Initialized BASS globally: device={device}, sampleRate={sampleRate} Hz");
             }
             else
             {
                 Debug.WriteLine($"[AudioEngine] ❌ Failed to initialize BASS: {MBass.LastError}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Failed to initialize BASS: {MBass.LastError}");
             }
             return success;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioEngine] Init failed: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Init failed: {ex.Message}", innerException: ex);
             return false;
         }
     }
@@ -203,6 +208,7 @@ public sealed class AudioEngine : IAudioEngine
                 if (!Init(_currentDevice, sessionOptimalRate))
                 {
                     Debug.WriteLine("[AudioEngine] Failed to initialize BASS with session-optimal sample rate");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", "Failed to initialize BASS with session-optimal sample rate");
                     return false;
                 }
                 _bassInitialized = true;
@@ -220,6 +226,7 @@ public sealed class AudioEngine : IAudioEngine
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
                     Debug.WriteLine($"[AudioEngine] Gain FX setup on handle {playHandle}");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle}");
                 }
 
                 LogAudioInfo(filePath);
@@ -237,6 +244,7 @@ public sealed class AudioEngine : IAudioEngine
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioEngine] Open failed for '{filePath}': {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Open failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
             return false;
         }
     }
@@ -257,6 +265,7 @@ public sealed class AudioEngine : IAudioEngine
                 if (!Init(_currentDevice))
                 {
                     Debug.WriteLine("[AudioEngine] Failed to initialize BASS for archive entry");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", "Failed to initialize BASS for archive entry");
                     return false;
                 }
                 _bassInitialized = true;
@@ -275,6 +284,7 @@ public sealed class AudioEngine : IAudioEngine
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
                     Debug.WriteLine($"[AudioEngine] Gain FX setup on handle {playHandle} (archive)");
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle} (archive)");
                 }
 
                 LogAudioInfo($"Archive: {archiveEntry.Key}");
@@ -292,6 +302,7 @@ public sealed class AudioEngine : IAudioEngine
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioEngine] Open failed for archive entry '{archiveEntry.Key}': {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Open failed for archive entry '{archiveEntry.Key}': {ex.Message}", sourcePath: archiveEntry.Key, innerException: ex);
             return false;
         }
     }
@@ -424,6 +435,7 @@ public sealed class AudioEngine : IAudioEngine
         if (_bassInitialized)
         {
             Debug.WriteLine("[AudioEngine] AudioEngine disposed (global BASS instance preserved)");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", "Disposed (global BASS instance preserved)");
             _bassInitialized = false;
         }
 
@@ -456,6 +468,7 @@ public sealed class AudioEngine : IAudioEngine
         if (_playbackEndSyncHandle == 0)
         {
             Debug.WriteLine($"[AudioEngine] Failed to attach playback end sync: {MBass.LastError}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Failed to attach playback end sync: {MBass.LastError}");
         }
     }
 
@@ -506,10 +519,14 @@ public sealed class AudioEngine : IAudioEngine
             {
                 Debug.WriteLine($"  ? BASS will resample from {channelInfo.Frequency} Hz to {_currentDeviceSampleRate} Hz");
             }
+
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine",
+                $"Audio opened: {Path.GetFileName(filePath)} ({channelInfo.Frequency}Hz, {channelInfo.Channels}ch, device {_currentDeviceSampleRate}Hz)");
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioEngine] Error logging audio info: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Error logging audio info: {ex.Message}", innerException: ex);
         }
     }
 
@@ -520,6 +537,7 @@ public sealed class AudioEngine : IAudioEngine
         if (NormalizationGainCache.TryGetValue(cacheKey, out var cachedGain))
         {
             Debug.WriteLine($"[AudioEngine] Using cached normalization gain {cachedGain:F3} ({sourceLabel})");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using cached normalization gain {cachedGain:F3} ({sourceLabel})");
             _normalizationReady = true;
             _normalizer.SetNormalizationGain(cachedGain, forceNotify: true);
             if (Normalize)
@@ -551,20 +569,24 @@ public sealed class AudioEngine : IAudioEngine
         try
         {
             Debug.WriteLine($"[AudioEngine] Quick normalization analysis starting with handle {analysisHandle} ({sourceLabel})");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Quick normalization analysis starting ({sourceLabel})");
             var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
             ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, isFinal: false, cancellationToken: cancellationToken);
 
             Debug.WriteLine($"[AudioEngine] Deep normalization analysis starting ({sourceLabel})");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Deep normalization analysis starting ({sourceLabel})");
             var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
             ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, isFinal: true, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException)
         {
             Debug.WriteLine($"[AudioEngine] Normalization analysis cancelled ({sourceLabel})");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Normalization analysis cancelled ({sourceLabel})");
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[AudioEngine] Normalization analysis failed ({sourceLabel}): {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Normalization analysis failed ({sourceLabel}): {ex.Message}", innerException: ex);
         }
     }
 
@@ -581,6 +603,7 @@ public sealed class AudioEngine : IAudioEngine
             _normalizer.SetNormalizeEnabled(true);
 
         Debug.WriteLine($"[AudioEngine] {(isFinal ? "Deep" : "Quick")} normalization complete, gain={gain:F3} ({sourceLabel})");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"{(isFinal ? "Deep" : "Quick")} normalization complete, gain={gain:F3} ({sourceLabel})");
     }
 
     private bool IsCurrentNormalizationAnalysis(int generation, CancellationToken cancellationToken) => !_disposed

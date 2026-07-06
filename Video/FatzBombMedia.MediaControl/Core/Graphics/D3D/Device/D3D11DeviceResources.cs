@@ -62,6 +62,7 @@ internal sealed class D3D11DeviceResources : IDisposable
             if (result.Failure || Device == null || Context == null)
             {
                 Debug.WriteLine($"[VorticeD3D11] Failed to create D3D11 device: {result}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to create D3D11 device: {result}");
                 return false;
             }
 
@@ -73,6 +74,7 @@ internal sealed class D3D11DeviceResources : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[VorticeD3D11] Failed to initialize: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to initialize: {ex.Message}", innerException: ex);
             Cleanup();
             return false;
         }
@@ -102,6 +104,7 @@ internal sealed class D3D11DeviceResources : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[VorticeD3D11] Failed to attach native D3D11 device: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"Failed to attach native D3D11 device: {ex.Message}", innerException: ex);
             Cleanup();
             return false;
         }

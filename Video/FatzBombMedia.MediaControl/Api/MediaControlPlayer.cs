@@ -45,6 +45,8 @@ public class MediaControlPlayer : IMediaControlSession
 
         if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
             errorSource.ErrorOccurred += OnEngineErrorOccurred;
+
+        DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
     }
 
     public MediaControls Controls { get; }
@@ -230,6 +232,8 @@ public class MediaControlPlayer : IMediaControlSession
 
     public event EventHandler<MediaErrorEventArgs>? MediaError;
 
+    public event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         EventHandler? handler = MediaEnded;
@@ -269,6 +273,16 @@ private void OnControlsMediaStarted(object? sender, EventArgs e)
         _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
     }
 
+    private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
+    {
+        EventHandler<MediaDiagnosticEventArgs>? handler = MediaDiagnostic;
+        if (handler == null)
+            return;
+
+        var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);
+        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
+    }
+
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
@@ -297,6 +311,7 @@ private void OnControlsMediaStarted(object? sender, EventArgs e)
             Controls.MediaStarted -= OnControlsMediaStarted;
             Controls.MediaStopped -= OnControlsMediaStopped;
             _presentationCoordinator.FramePresented -= OnPresentationFramePresented;
+            DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
             if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
                 errorSource.ErrorOccurred -= OnEngineErrorOccurred;
             Controls.Dispose();

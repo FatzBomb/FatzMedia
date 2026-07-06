@@ -135,4 +135,15 @@ public interface IMediaControlSession : IDisposable
     /// to the UI thread before touching view state.
     /// </summary>
     event EventHandler<MediaErrorEventArgs>? MediaError;
+
+    /// <summary>
+    /// Raised when an engine component produces a host-routable diagnostic. Carries
+    /// a severity level and category so hosts can filter and route diagnostics without
+    /// relying on Debug-only output. Contains non-error informational messages such as
+    /// decoder configuration, native library load outcomes, and state transitions in
+    /// addition to warning- and error-level diagnostics. Fires in both Debug and Release
+    /// builds. May fire from background threads; hosts must marshal to the UI thread
+    /// before touching view state.
+    /// </summary>
+    event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
 }
