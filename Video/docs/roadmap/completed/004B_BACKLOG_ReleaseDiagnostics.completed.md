@@ -114,3 +114,51 @@ Build/validation status: **Not provided** — changes are uncommitted in the wor
 - **Per-frame or high-frequency diagnostic points** were not added (stage explicitly forbids spam). The periodic video summary log is preserved as-is.
 - **Build and test validation** needs to be run to confirm zero regressions across 23 modified files and new test file.
 - Manual smoke test via Player host recommended for Release-build diagnostic visibility.
+
+## Follow-Up (2026-07-06 — Commit `b74c1a2`)
+
+Four follow-up items completed after the initial stage was merged:
+
+### 1. Host Subscription (`MainWindowViewModel`)
+- **New file:** `FatzBombMedia.Player/ViewModels/DiagnosticLogEntry.cs` — `sealed record` with `Timestamp`, `Level`, `Category`, `Message`.
+- **Modified:** `MainWindowViewModel.cs` — subscribes to `Player.MediaDiagnostic` and `Player.MediaError` events on player creation.
+- **`DiagnosticLog`** (`ObservableCollection<DiagnosticLogEntry>`) — 200-entry FIFO buffer. Log entries from both `MediaDiagnostic` and `MediaError` events are routed through a common `HandleDiagnostic` method.
+- **`StatusText`** updates for `Warning`/`Error` level entries: `"[{level}] {category}: {message}"`.
+- **Cleanup:** Unsubscribes from both events in `Dispose()`. Uses `Application.Current.Dispatcher.Invoke` for cross-thread event marshaling (same pattern as existing UI-thread ops).
+
+### 2. Dual-Emit Cleanup
+- **~50 `Debug.WriteLine` lines removed** from the 23 files instrumented in the original stage.
+- Each removal site kept its `DiagnosticRouter.Raise(...)` call — no diagnostic coverage was lost.
+- Files cleaned: `AudioEngine.cs`, `AudioNormalizer.cs`, `AudioStreamManager.cs`, `VideoAudioEngine.cs`, `CdgEngine.cs`, `D3D11MediaCompositionPresenter.cs`, `D3D11DeviceResources.cs`, `D3D11DirectCompositionSingleTargetBackend.cs`, `D3D11DirectCompositionTarget.cs`, `D3D11NativeHwndSwapChainBackend.cs`, `D3D11SwapChainPresenter.cs`, `NativeMediaPresentationCoordinator.cs`, `MediaControlOperationQueue.cs`, `MediaPlayerServiceProvider.cs`, `CdgPipeline.cs`, `PipelineMediaEngine.cs`, `PlaybackScheduler.cs`, `VideoPipeline.cs`, `Bootstrap.LibraryLoader.cs`, `Bootstrap.cs`.
+
+### 3. Missed Promotion Sites
+5 additional sites in `MediaFile` and `MediaControls` that had `Debug.WriteLine` but no `DiagnosticRouter.Raise` were promoted:
+
+| File | Site | Level |
+|------|------|-------|
+| `MediaFile.cs` | `PlayOnLoad`: "Failed to start playback" | Warning |
+| `MediaFile.cs` | `PlayOnLoad` exception | Error |
+| `MediaFile.cs` | `LoadAndPlay`: "Stop failed or returned false" | Warning |
+| `MediaFile.cs` | `SetBackground`: "SetBackground failed" | Warning |
+| `MediaControls.cs` | Error handling media end exception | Warning |
+
+No new dual-emit sites were introduced — these replaced `Debug.WriteLine` directly with `DiagnosticRouter.Raise` (no carry-over `Debug.WriteLine`).
+
+### 4. CdgEngine Dead Code Removal
+- Removed `_lastRenderLogSecond` field (int) — was tracking the last-logged second for per-second frame invalidation debug output.
+- Removed its initialization in `ResetInternal()`.
+- Removed the per-second `Debug.WriteLine` guard block inside the frame invalidation path — the existing `DiagnosticRouter.Raise(...)` for CDG load events remains.
+
+### Files Changed (Follow-Up)
+- 1 new file: `DiagnosticLogEntry.cs`
+- 23 modified files: `MainWindowViewModel.cs` + 22 Core files (20 Debug.WriteLine cleanups + 2 promotion-only files)
+- Stats: 62 insertions, 113 deletions (net -51 lines)
+
+### Validation
+- **Not provided** — changes are from the committed follow-up. No build/test results available in this session.
+
+### Behavior Notes
+- Host subscription is entirely additive — no existing behavior changed.
+- Dual-emit removal is safe: `DiagnosticRouter.Raise` exists at every former `Debug.WriteLine` site. No diagnostic loss.
+- CdgEngine dead code removal is pure cleanup — `_lastRenderLogSecond` was a write-only field read only by a now-removed `Debug.WriteLine`. No behavior change.
+- The WPF adapter remains untouched — all changes are in Core (DiagnosticRouter cleanup) and Player (host subscription).

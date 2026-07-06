@@ -2,8 +2,6 @@
 
 All runnable stage files live directly in `stages/`.
 
-- `004A_BACKLOG_ErrorSurface.md`
-- `004B_BACKLOG_ReleaseDiagnostics.md`
 - `005A_BACKLOG_DeviceLostDetection.md`
 - `005B_BACKLOG_DeviceLostRecovery.md`
 - `006A_BACKLOG_AudioLatencyFeedback.md`
