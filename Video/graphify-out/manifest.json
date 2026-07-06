@@ -50,14 +50,14 @@
     "semantic_hash": "da5ba5dc377cc74227388b40680d7663"
   },
   "FatzBombMedia.MediaControl/Api/IMediaControlSession.cs": {
-    "mtime": 1782777926.2189493,
-    "ast_hash": "da556efb2f50988eecf1927aa978e7f6",
-    "semantic_hash": "da556efb2f50988eecf1927aa978e7f6"
+    "mtime": 1783327744.932125,
+    "ast_hash": "81f9174d5d8367ba4dcaf03d6c507f0b",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Api/MediaControlPlayer.cs": {
-    "mtime": 1782986751.1640508,
-    "ast_hash": "eea8ebe84a1b8dabf4dafa2f06e5e3af",
-    "semantic_hash": "eea8ebe84a1b8dabf4dafa2f06e5e3af"
+    "mtime": 1783327778.3022597,
+    "ast_hash": "d19f2f71f8fa708c4bcdb93ec4b6f318",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Api/MediaFileFilter.cs": {
     "mtime": 1782691372.0,
@@ -505,9 +505,9 @@
     "semantic_hash": "5ed2c9ec7a251daf41fbae548ce1d406"
   },
   "FatzBombMedia.MediaControl/Core/Threading/MediaControlOperationQueue.cs": {
-    "mtime": 1782847717.44547,
-    "ast_hash": "a57ad27ee26dbd3a804529a964aa9a2a",
-    "semantic_hash": "a57ad27ee26dbd3a804529a964aa9a2a"
+    "mtime": 1783116836.9309168,
+    "ast_hash": "faae2bed4c46c9f46d552595e9b41d17",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Core/Threading/PrecisionWaiter.cs": {
     "mtime": 1782802399.47356,
@@ -530,9 +530,9 @@
     "semantic_hash": "b5fac4f2f8a1d92e4ad0f29779a63ccb"
   },
   "FatzBombMedia.MediaControl/FatzBombMedia.MediaControl.csproj": {
-    "mtime": 1782859322.6814206,
-    "ast_hash": "15a4bfd0c295af7e0a24dfa11fd52083",
-    "semantic_hash": "15a4bfd0c295af7e0a24dfa11fd52083"
+    "mtime": 1783313034.899955,
+    "ast_hash": "1de8bca91a0f4d1e08483e344f45d0a4",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/MediaPlayerServiceProvider.cs": {
     "mtime": 1782857594.6317809,
@@ -540,9 +540,9 @@
     "semantic_hash": "f19f10d195e72a4bda1d56937f46dc24"
   },
   "FatzBombMedia.MediaControl/Pipeline/AudioPipeline.cs": {
-    "mtime": 1782815305.1085918,
-    "ast_hash": "e01b129dfe77e2dbda3069e4d76ad4b4",
-    "semantic_hash": "e01b129dfe77e2dbda3069e4d76ad4b4"
+    "mtime": 1783311582.432825,
+    "ast_hash": "79c086faffd8edf9c28ebfd77f788f1f",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Pipeline/AudioPresentationClock.cs": {
     "mtime": 1782691372.0,
@@ -565,14 +565,14 @@
     "semantic_hash": "618a193d5d8043037cedb7cb3f85ae95"
   },
   "FatzBombMedia.MediaControl/Pipeline/MediaState.cs": {
-    "mtime": 1782815294.2457318,
-    "ast_hash": "29212a3546fce27be72e1258697cd15c",
-    "semantic_hash": "29212a3546fce27be72e1258697cd15c"
+    "mtime": 1783310994.51445,
+    "ast_hash": "82ae433538ff7a41da8d18968ac0f46f",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Pipeline/PipelineMediaEngine.cs": {
-    "mtime": 1783102724.2733715,
-    "ast_hash": "e57239f5a02bbe51fefadb7ffa1e0ba9",
-    "semantic_hash": "e57239f5a02bbe51fefadb7ffa1e0ba9"
+    "mtime": 1783327839.5335069,
+    "ast_hash": "1e6f39d059dbf5c79c2ece935d42acea",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Pipeline/PlaybackClock.cs": {
     "mtime": 1782691372.0,
@@ -580,9 +580,9 @@
     "semantic_hash": "261e815b043e03b0ad31898ef5a912db"
   },
   "FatzBombMedia.MediaControl/Pipeline/PlaybackCoordinator.cs": {
-    "mtime": 1783102724.2273705,
-    "ast_hash": "3a5e0d40b358ba4654c008bcabaface2",
-    "semantic_hash": "3a5e0d40b358ba4654c008bcabaface2"
+    "mtime": 1783319253.1408997,
+    "ast_hash": "04c214409bdc938a9cff994dd477d046",
+    "semantic_hash": ""
   },
   "FatzBombMedia.MediaControl/Pipeline/PlaybackScheduler.cs": {
     "mtime": 1782691372.0,
@@ -635,9 +635,9 @@
     "semantic_hash": "8d67ddbf63790ddb12dd2a05274e53c9"
   },
   "FatzBombMedia.sln": {
-    "mtime": 1782864859.6932366,
-    "ast_hash": "3f9aad96acb5d04f9fc4fe24d309ee4c",
-    "semantic_hash": "3f9aad96acb5d04f9fc4fe24d309ee4c"
+    "mtime": 1783313044.5750158,
+    "ast_hash": "06cb74911801a033a78082e4791d2ceb",
+    "semantic_hash": ""
   },
   "scripts/check-presentation-parity.ps1": {
     "mtime": 1782859737.137656,
@@ -648,5 +648,310 @@
     "mtime": 1782859728.252619,
     "ast_hash": "a1b36165557634a4707ca93d0f413a0a",
     "semantic_hash": "a1b36165557634a4707ca93d0f413a0a"
+  },
+  "FatzBombMedia.MediaControl.Tests/AudioPresentationClockTests.cs": {
+    "mtime": 1783313247.9046803,
+    "ast_hash": "1b5ded9ddc1d2a7b1b47f0d6e7874da3",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/CdgDirtyRectTests.cs": {
+    "mtime": 1783313167.4536984,
+    "ast_hash": "eaaff2788084fabd9abb9e196c832a63",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/CdgStateMachineTests.cs": {
+    "mtime": 1783313511.3687503,
+    "ast_hash": "2028cd4d801404da3eac68201a91cba0",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/FatzBombMedia.MediaControl.Tests.csproj": {
+    "mtime": 1783313352.8919132,
+    "ast_hash": "c7f5a63530ee57c4993da4b5957cf9a3",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/FileTypesTests.cs": {
+    "mtime": 1783313471.5241432,
+    "ast_hash": "3d6cb5e336fcabe331309d5ad56384af",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/MediaBackgroundResolverTests.cs": {
+    "mtime": 1783319282.6540484,
+    "ast_hash": "ebb8e84eb384a07decad3c65f128cd07",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/MediaErrorEventArgsTests.cs": {
+    "mtime": 1783328760.562472,
+    "ast_hash": "f249a7e84109efa804381d3f276595a5",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/MediaStateTests.cs": {
+    "mtime": 1783313550.4137645,
+    "ast_hash": "01b4859d3dc6e47418264d853b431c9f",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl.Tests/SeekHelpersTests.cs": {
+    "mtime": 1783319261.0062525,
+    "ast_hash": "5a559e346eb8052622f2910e91a4d02e",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/Api/MediaErrorCode.cs": {
+    "mtime": 1783327726.3921754,
+    "ast_hash": "c4126dfaa6421924845b01f7adb5b7b6",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/Api/MediaErrorEventArgs.cs": {
+    "mtime": 1783327731.2630694,
+    "ast_hash": "9db0a08aac171b714c84ae318987d1f3",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/Core/Abstractions/IMediaErrorSource.cs": {
+    "mtime": 1783327740.3277538,
+    "ast_hash": "57dc92dc3d022a314ab58dfebdc840bc",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/Core/MediaErrorInfo.cs": {
+    "mtime": 1783327740.363766,
+    "ast_hash": "01a05e9f96b478950d408108ed3c02f2",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/Pipeline/SeekHelpers.cs": {
+    "mtime": 1783319246.8348558,
+    "ast_hash": "e9f680545810623ad3534f85a3b93fb6",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1783199906.870795,
+    "ast_hash": "94116025d209203f1f3f8673afe8bb7a",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.MediaControl/README.md": {
+    "mtime": 1782864859.6882253,
+    "ast_hash": "1cb658bb1c26bbfa8622b34d85a92f88",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.Player/README.md": {
+    "mtime": 1782859322.529421,
+    "ast_hash": "e05aa6d753d6eb7df04357528fe6eca4",
+    "semantic_hash": ""
+  },
+  "FatzBombMedia.Player/native/README.md": {
+    "mtime": 1782712498.304583,
+    "ast_hash": "ddf5f60311eb2c57aefd38fd71292de6",
+    "semantic_hash": ""
+  },
+  "LICENSE.txt": {
+    "mtime": 1782863458.4103017,
+    "ast_hash": "9ae6fa9ea081653ed36b7d188cf40be8",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1782864859.6862257,
+    "ast_hash": "0a7f31eddba86e5c05c5b902a95de0a8",
+    "semantic_hash": ""
+  },
+  "docs/AGENTS_WORKING_NOTES.md": {
+    "mtime": 1783148329.4347076,
+    "ast_hash": "b12e46db9f4a13b01a53efccea9b8ba2",
+    "semantic_hash": ""
+  },
+  "docs/CURRENT_ARCHITECTURE.md": {
+    "mtime": 1782859322.5784276,
+    "ast_hash": "17e2c0590b63b79c96b187b512187203",
+    "semantic_hash": ""
+  },
+  "docs/README.md": {
+    "mtime": 1783148331.541787,
+    "ast_hash": "e6599868f5b69650d1941696b9968c55",
+    "semantic_hash": ""
+  },
+  "docs/VALIDATION.md": {
+    "mtime": 1783329325.6176944,
+    "ast_hash": "54defd8f79403bc50eddfa6317432a0b",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/004B_BACKLOG_ReleaseDiagnostics.md": {
+    "mtime": 1783148265.9952488,
+    "ast_hash": "beb2a74be3098235af59eafaddb8062f",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/005A_BACKLOG_DeviceLostDetection.md": {
+    "mtime": 1783148266.0032432,
+    "ast_hash": "1cdebce4fa281551911870f3bdb32b53",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/005B_BACKLOG_DeviceLostRecovery.md": {
+    "mtime": 1783148266.01125,
+    "ast_hash": "d7637fce394e1a9d166fd5d4e28dce24",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/006A_BACKLOG_AudioLatencyFeedback.md": {
+    "mtime": 1783148266.0202427,
+    "ast_hash": "be255832185c6205b37a654848530260",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/006B_BACKLOG_AudioDeviceHotplug.md": {
+    "mtime": 1783148266.0282502,
+    "ast_hash": "ac7debcf9a86a062ed43ee12a9269cce",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/007A_BACKLOG_PresentOutsideLocks.md": {
+    "mtime": 1783148266.0372524,
+    "ast_hash": "8692ecf1b8fed9057ecb07d634d2ceea",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/007B_BACKLOG_HardwareFrameReleaseSafety.md": {
+    "mtime": 1783148266.0452454,
+    "ast_hash": "6934e83424cc011273e39a5f3f09c997",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/009A_FUTURE_BackgroundSidecarVideoFrameReuse.md": {
+    "mtime": 1783148266.0616534,
+    "ast_hash": "186a62e1f492f141a8ffac46db0e7e9f",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/010A_FUTURE_SoftwareVideoUploadCopyPath.md": {
+    "mtime": 1783148266.069645,
+    "ast_hash": "b8039db7b1ce3f10dfef56537f975d70",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/011A_FUTURE_SeamlessPrimaryVideoLooping.md": {
+    "mtime": 1783148266.0776434,
+    "ast_hash": "30caebebda69d4902d2540a49ab4768a",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/012A_FUTURE_SharedDemuxerInputLayer.md": {
+    "mtime": 1783148266.0866535,
+    "ast_hash": "4628c829de43562bea4779d84adf2fb4",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/013A_FUTURE_GeneralSubtitleEngineBeyondCDG.md": {
+    "mtime": 1783148266.0959496,
+    "ast_hash": "8575925bb750d1eaf51f7d5cadc24fab",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/014A_FUTURE_StreamingNetworkPlayback.md": {
+    "mtime": 1783148266.1059582,
+    "ast_hash": "f3e268c44923643a300e4ff71a33fb9a",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/015A_FUTURE_BroadVideoPipelineSplit.md": {
+    "mtime": 1783148266.113949,
+    "ast_hash": "0232743d5ea0618cc1559464c1907650",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/016A_FUTURE_ClockAudioEngineAbstractionSplit.md": {
+    "mtime": 1783148266.122958,
+    "ast_hash": "686652c701bbab070f75a7de67016284",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/017A_FUTURE_DisplayRateCompositorRewrite.md": {
+    "mtime": 1783148266.1309493,
+    "ast_hash": "04b8e5843001ed4937c262d2432dcea8",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/018A_FUTURE_CDGSnapshotOwnershipRedesignPooling.md": {
+    "mtime": 1783148266.1389532,
+    "ast_hash": "3b7d143b8d3120f8fd89191350dde2be",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/019A_FUTURE_VideoFrameEventArgsReuseApiRedesign.md": {
+    "mtime": 1783148266.1475313,
+    "ast_hash": "066bd371f1f73b7068c93cb06e2b33a3",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/020A_FUTURE_FullAudioFilterFramework.md": {
+    "mtime": 1783148266.1557887,
+    "ast_hash": "b91ae00ebcaffcc356f352efb0b3f638",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/021A_FUTURE_CrossPlatformRendererAbstraction.md": {
+    "mtime": 1783148266.164788,
+    "ast_hash": "1943bab7ad61a2e98dbc2012375543ce",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/022A_FUTURE_ThreadModelProfilingReductionGate.md": {
+    "mtime": 1783148266.1727889,
+    "ast_hash": "9b1a4a7b902fb5bc4852503cbb483fcf",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/STAGE_MANIFEST.md": {
+    "mtime": 1783319581.1088793,
+    "ast_hash": "8725b0c0bb8849bbe61709264efeebf3",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/003B_ACTIVE_MediaStateOwnershipMap.md": {
+    "mtime": 1783312236.207824,
+    "ast_hash": "492a26e6e8b3602ae5cd629ff83cc802",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/004A_BACKLOG_ErrorSurface.completed.md": {
+    "mtime": 1783329291.2283597,
+    "ast_hash": "53b50ad38536c043581a42d2d4d6e80f",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/004A_BACKLOG_ErrorSurface.md": {
+    "mtime": 1783148265.9872408,
+    "ast_hash": "a0be40d14b33ca045af5cf90f0dacd59",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/008A_BACKLOG_PureLogicTests.completed.md": {
+    "mtime": 1783319438.8825655,
+    "ast_hash": "12f1c1d9ece290974e9249134f4200db",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/STAGE_001_AllocationCleanup.completed.md": {
+    "mtime": 1783148265.9346132,
+    "ast_hash": "6006681cf6f6f7bc975d78fa6ae05465",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/STAGE_002_MediaLoadingReliability.completed.md": {
+    "mtime": 1783148265.942729,
+    "ast_hash": "cdcaf6ae3d751b86bf5199694ade4f84",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/STAGE_003A_OperationQueue.completed.md": {
+    "mtime": 1783148265.9497297,
+    "ast_hash": "9f522f6828e5256ad8489d942229a0fc",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/completed/STAGE_003B-003E_MediaStateOwnershipThroughMarshaling.completed.md": {
+    "mtime": 1783312232.083129,
+    "ast_hash": "2e68c93f49740c22d554c7ba0cea57bd",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/README.md": {
+    "mtime": 1783148265.970243,
+    "ast_hash": "021113c8b8ec8bb86bd040d8f7bf6133",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/003B_ACTIVE_MediaStateOwnershipMap/2026-07-05.md": {
+    "mtime": 1783283215.9433534,
+    "ast_hash": "afaa5a8830283040bf0581bb8a529273",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/003C_MediaState_ThreadSafeAccessors/2026-07-05.md": {
+    "mtime": 1783311054.1136792,
+    "ast_hash": "d912a10866e309671e948826d305cde2",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/003D_ConsolidateSetOpenedOwnership/2026-07-05.md": {
+    "mtime": 1783311647.1339073,
+    "ast_hash": "2bba211f19830daae42317f3d042c6c5",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/003E_UnifyEventMarshaling/2026-07-05.md": {
+    "mtime": 1783311659.520135,
+    "ast_hash": "57a561d9211efffae48c80e930e18f6c",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/004A_BACKLOG_ErrorSurface/2026-07-06.md": {
+    "mtime": 1783328845.6320262,
+    "ast_hash": "dfc37dd35cc949576f509db7a875ad72",
+    "semantic_hash": ""
+  },
+  "docs/roadmap/updates/completed/008A_BACKLOG_PureLogicTests/2026-07-06.md": {
+    "mtime": 1783319333.7682016,
+    "ast_hash": "761f81b63a88372f7acc85ec0f33180d",
+    "semantic_hash": ""
   }
 }

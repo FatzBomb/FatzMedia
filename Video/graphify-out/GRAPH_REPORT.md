@@ -1,15 +1,16 @@
-# Graph Report - .  (2026-07-03)
+# Graph Report - FatzBombMedia  (2026-07-06)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 190 files · ~78,370 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1471 nodes · 3215 edges · 103 communities (77 shown, 26 thin omitted)
+- 1541 nodes · 3312 edges · 111 communities (83 shown, 28 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 6 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b6b4c7eb`
+- Built from commit: `645f0d72`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -86,15 +87,21 @@
 - [[_COMMUNITY_Frame Upload Resources|Frame Upload Resources]]
 - [[_COMMUNITY_FatzMedia vs VLC Analysis|FatzMedia vs VLC Analysis]]
 - [[_COMMUNITY_Player Validation Host|Player Validation Host]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Community 105|Community 105]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `VideoPipeline` - 123 edges
 2. `NativeMediaPresentationCoordinator` - 83 edges
 3. `VideoDecoder` - 73 edges
-4. `VideoAudioEngine` - 58 edges
-5. `D3D11MediaCompositionPresenter` - 52 edges
-6. `MediaSurface` - 49 edges
-7. `PipelineMediaEngine` - 48 edges
+4. `PipelineMediaEngine` - 59 edges
+5. `VideoAudioEngine` - 58 edges
+6. `D3D11MediaCompositionPresenter` - 52 edges
+7. `MediaSurface` - 49 edges
 8. `MainWindow` - 47 edges
 9. `D3D11DeviceResources` - 43 edges
 10. `D3D11RendererPresentationServices` - 37 edges
@@ -102,14 +109,14 @@
 ## Surprising Connections (you probably didn't know these)
 - `MediaSurface` --references--> `IMediaControlSession`  [EXTRACTED]
   FatzBombMedia.MediaControl.Wpf/MediaSurface.cs → FatzBombMedia.MediaControl/Api/IMediaControlSession.cs
-- `Player` --inherits--> `MediaControlPlayer`  [EXTRACTED]
-  FatzBombMedia.MediaControl.Wpf/Player.cs → FatzBombMedia.MediaControl/Api/MediaControlPlayer.cs
 - `SecondaryPresentationWindow` --references--> `IMediaControlSession`  [EXTRACTED]
   FatzBombMedia.MediaControl.Wpf/SecondaryPresentationWindow.cs → FatzBombMedia.MediaControl/Api/IMediaControlSession.cs
+- `Player` --inherits--> `MediaControlPlayer`  [EXTRACTED]
+  FatzBombMedia.MediaControl.Wpf/Player.cs → FatzBombMedia.MediaControl/Api/MediaControlPlayer.cs
+- `PipelineMediaEngine` --implements--> `IMediaErrorSource`  [EXTRACTED]
+  FatzBombMedia.MediaControl/Pipeline/PipelineMediaEngine.cs → FatzBombMedia.MediaControl/Core/Abstractions/IMediaErrorSource.cs
 - `PipelineMediaEngine` --implements--> `ILoopPlaybackControl`  [EXTRACTED]
   FatzBombMedia.MediaControl/Pipeline/PipelineMediaEngine.cs → FatzBombMedia.MediaControl/Core/Abstractions/IMediaEngine.cs
-- `Player (WPF Host)` --implements--> `MediaControlPlayer (Base Class)`  [EXTRACTED]
-  FatzBombMedia.MediaControl.Wpf/Player.cs → FatzBombMedia.MediaControl/Api/MediaControlPlayer.cs
 
 ## Import Cycles
 - None detected.
@@ -119,27 +126,27 @@
 - **Visual Composition and Presentation Path** — engine_native_media_presentation_coordinator, engine_d3d11mediacompositionpresenter, engine_d3d11videoprocessorpresenter, engine_video_decoder, engine_video_pipeline [INFERRED 0.80]
 - **Karaoke Media Loading and Sync Flow** — engine_cdg_pipeline, engine_cdgstatemachine, engine_audio_engine, engine_media_file, engine_native_media_presentation_coordinator [EXTRACTED 1.00]
 
-## Communities (103 total, 26 thin omitted)
+## Communities (111 total, 28 thin omitted)
 
 ### Community 0 - "Video Pipeline Seeks"
 Cohesion: 0.05
 Nodes (3): DWM_TIMING_INFO, VideoPipeline, VideoEngineState
 
 ### Community 1 - "FFmpeg Video Decoding"
-Cohesion: 0.05
-Nodes (17): ArrayPool, AVBufferRef, AVCodec, AVCodecContext, AVCodecContext_get_format, AVCodecID, AVFrame, AVHWDeviceType (+9 more)
+Cohesion: 0.08
+Nodes (15): ArrayPool, AVBufferRef, AVCodec, AVCodecContext, AVCodecContext_get_format, AVCodecID, AVFormatContext, AVHWDeviceType (+7 more)
 
 ### Community 2 - "Presentation Surface Management"
 Cohesion: 0.08
-Nodes (10): VideoFrameEventArgs, NativeHwnd(), WithSize(), CompositionPresentResult, NativeMediaPresentationCoordinator, MediaCompositionStretchMode, MediaPresentationSurfaceDescriptor, MediaPresentationSurfaceRole (+2 more)
+Nodes (9): VideoFrameEventArgs, NativeHwnd(), WithSize(), CompositionPresentResult, NativeMediaPresentationCoordinator, MediaPresentationSurfaceDescriptor, MediaPresentationSurfaceRole, ReadOnlyMemory (+1 more)
 
 ### Community 3 - "D3D11 Rendering Bridge"
-Cohesion: 0.06
-Nodes (8): D3D11PresentationTargetSnapshot, NativeD3D11PresentationBridge, DirectCompositionOverlaySplitBaseState, DirectCompositionOverlaySplitOverlayState, Lock, MediaCompositionFrame, D3D11RendererPresentationServices, ID3D11PresentationSurfaceProvider
+Cohesion: 0.14
+Nodes (5): D3D11PresentationTargetSnapshot, DirectCompositionOverlaySplitBaseState, DirectCompositionOverlaySplitOverlayState, MediaCompositionFrame, D3D11RendererPresentationServices
 
 ### Community 4 - "Video Audio Engine"
 Cohesion: 0.09
-Nodes (6): VideoAudioEngine, AVFormatContext, AVPacket, AVStream, FFmpeg, SwrContext
+Nodes (5): VideoAudioEngine, AVFrame, AVPacket, AVStream, SwrContext
 
 ### Community 5 - "Main Window FullScreen"
 Cohesion: 0.08
@@ -150,47 +157,39 @@ Cohesion: 0.09
 Nodes (7): AudioEngine, AudioStreamManager, BassFlags, ConcurrentDictionary, BASS, MethodImpl, SyncProcedure
 
 ### Community 7 - "Media Types & Composition"
-Cohesion: 0.07
-Nodes (16): AcceptedMediaTypes, FromCurrentRuntime(), Sorted(), CompatibilityLevel, D3D11CompositionTargetRegistry, D3D11CompositionTargetState, D3D11CompositionTargetDescriptor, D3D11CompositionTargetDirtyFlags (+8 more)
+Cohesion: 0.26
+Nodes (6): CompatibilityLevel, D3D11PresentationBackendTarget, EnumerationOptions, Exception, DirectoryScanner, IEnumerable
 
 ### Community 8 - "Presentation Diagnostics & Clock"
-Cohesion: 0.09
-Nodes (6): D3D11PresentationDiagnostics, double, AudioPresentationClock, PlaybackClock, Stopwatch, VideoPresentationTiming
-
-### Community 9 - "Audio Pipeline Libraries"
-Cohesion: 0.09
-Nodes (7): AudioEngineState, PlayerNativeLibraries, MediaContent, MediaPlayerState, AudioPipeline, MediaState, string
+Cohesion: 0.11
+Nodes (5): double, AudioPresentationClock, PlaybackClock, Stopwatch, VideoPresentationTiming
 
 ### Community 11 - "D3D11 Video Processing"
 Cohesion: 0.12
 Nodes (12): Destination, ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator, ID3D11VideoProcessorOutputView, Rational, RawRect (+4 more)
 
 ### Community 12 - "Win32 Native Methods"
-Cohesion: 0.18
+Cohesion: 0.25
 Nodes (6): DllImport, NativeMethods, IntPtr, MarshalAs, PAINTSTRUCT, RECT
 
 ### Community 14 - "Media Background Resolver"
-Cohesion: 0.14
-Nodes (8): FromArchiveEntry(), FromPath(), MediaBackgroundResolver, ToCandidate(), FileTypes, HashSet, MediaBackgroundKind, MediaBackgroundMatch
+Cohesion: 0.25
+Nodes (6): FromArchiveEntry(), FromPath(), MediaBackgroundResolver, ToCandidate(), MediaBackgroundKind, MediaBackgroundMatch
 
 ### Community 15 - "Media Surface Window Hooks"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (5): DependencyProperty, MediaSurface, HwndSource, RoutedEventArgs, Window
 
 ### Community 16 - "Main Window ViewModel"
 Cohesion: 0.13
 Nodes (5): DateTime, DispatcherTimer, FatzMediaPlayer, ObservableObject, MainWindowViewModel
 
-### Community 17 - "Media Control Session"
-Cohesion: 0.09
-Nodes (5): IMediaControlSession, FatzBombMedia.MediaControl (Core Engine), FatzBombMedia.MediaControl.Wpf (WPF Adapter), MediaControlPlayer (Base Class), Player (WPF Host)
-
 ### Community 18 - "CD-G State Machine"
-Cohesion: 0.19
-Nodes (7): byte, ClampToFrame(), CdgStateMachine, CdgDirtyRect, CdgPacket, Span, uint
+Cohesion: 0.06
+Nodes (16): byte, CdgColorManager, CdgConstants, ClampToFrame(), CdgEngine, CdgStateMachine, ICdgSnapshotSource, CdgDirtyRect (+8 more)
 
 ### Community 19 - "D3D11 Composition Presenter"
-Cohesion: 0.14
+Cohesion: 0.12
 Nodes (9): Color4, D3D11MediaCompositionPresenter, ID3D11BlendState, ID3D11Buffer, ID3D11PixelShader, ID3D11RasterizerState, ID3D11SamplerState, ID3D11VertexShader (+1 more)
 
 ### Community 20 - "Project Configuration & Dependencies"
@@ -198,47 +197,51 @@ Cohesion: 0.11
 Nodes (17): Docs, net10.0-windows7.0, Microsoft.NET.Sdk, net10.0-windows7.0, Microsoft.NET.Sdk, net10.0-windows7.0, Microsoft.NET.Sdk, CommunityToolkit.Mvvm (8.4.2) (+9 more)
 
 ### Community 21 - "D3D11 Backend Set"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (4): D3D11PresentationBackendKind, Func, D3D11PresentationBackendSet, ID3D11PresentationBackend
 
 ### Community 22 - "D3D11 Layer State"
 Cohesion: 0.22
 Nodes (4): BindFlags, D3D11CompositionLayerState, ID3D11Device, MediaCompositionLayerDirtyFlags
 
+### Community 23 - "CD-G Engine"
+Cohesion: 0.12
+Nodes (11): FileType, IArchiveService, IAudioEngine, ILoopPlaybackControl, MediaInputSource, PipelineMediaEngine, PlaybackCoordinator, PlaybackScheduler (+3 more)
+
+### Community 24 - "Media Control Player"
+Cohesion: 0.13
+Nodes (5): MediaControlPlayer, IMediaEngine, MediaControlOperationQueue, MediaErrorInfo, NativeMediaPresentationCoordinator
+
 ### Community 25 - "Media Surface Overlay"
 Cohesion: 0.19
 Nodes (5): ContentPresenter, DependencyObject, DependencyPropertyChangedEventArgs, OverlayWindow, FrameworkElement
 
 ### Community 26 - "DirectComposition Single Backend"
-Cohesion: 0.20
-Nodes (3): D3D11DirectCompositionSingleTargetBackend, IDXGISwapChain, D3D11SwapChainPresenter
+Cohesion: 0.06
+Nodes (16): AlphaMode, D3D11PresentationDiagnostics, D3D11DirectCompositionSingleTargetBackend, D3D11DirectCompositionTarget, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual, IDXGIDevice (+8 more)
 
 ### Community 27 - "Playback Coordinator"
 Cohesion: 0.15
 Nodes (4): IArchiveEntryInfo, Dispose, PlaybackCoordinator, void
 
 ### Community 28 - "CD-G Color Manager"
-Cohesion: 0.23
-Nodes (3): CdgColorManager, Color, ReadOnlySpan
+Cohesion: 0.11
+Nodes (18): 10. Renderer / Presentation Validation, 11. Automated Architecture Checks, 12. Long-Run Stability Validation, 13. Completion Criteria For Major Stages, 1. Build And Boundary, 2. Runtime Test Setup, 3. Routine Player Smoke Tests, 4. CDG-Specific Validation (+10 more)
 
 ### Community 29 - "Media Engine Interface"
-Cohesion: 0.12
-Nodes (3): ILoopPlaybackControl, IMediaEngine, CdgVisuals
+Cohesion: 0.08
+Nodes (5): ILoopPlaybackControl, IMediaEngine, CdgVisuals, MediaEffects, TimeSpan
 
 ### Community 30 - "Composition Layer Update Plan"
-Cohesion: 0.18
+Cohesion: 0.20
 Nodes (3): D3D11CompositionLayerUpdatePlan, D3D11CompositionTargetPlan, D3D11CompositionLayerUpdate
 
-### Community 31 - "Audio Peak Analysis"
-Cohesion: 0.26
-Nodes (3): CancellationToken, LevelRetrievalFlags, Task
-
 ### Community 32 - "Bootstrap Library Loading"
-Cohesion: 0.21
-Nodes (4): bool, List, Bootstrap, Bootstrap
+Cohesion: 0.09
+Nodes (9): bool, LibraryImport, D3D11NativeHwndSwapChainBackend, Bootstrap, Bootstrap, SafeWaitHandle, PrecisionWaiter, TimerWaitHandle (+1 more)
 
 ### Community 34 - "D3D11 Device Resources"
-Cohesion: 0.25
+Cohesion: 0.21
 Nodes (4): D3D11DeviceResources, ID3D11Multithread, MediaPlayerConfiguration, D3D11PresentationFramePresenter
 
 ### Community 35 - "Native HWND Surface Host"
@@ -246,36 +249,36 @@ Cohesion: 0.20
 Nodes (6): NativeHwndSurfaceHost, HandleRef, height, HwndHost, SizeChangedInfo, width
 
 ### Community 37 - "Archive Service Adapter"
-Cohesion: 0.18
-Nodes (6): IArchiveHandle, IArchiveService, SharpArchiveAdapter, SharpArchiveEntryInfo, SharpArchiveHandle, Stream
+Cohesion: 0.21
+Nodes (5): IArchiveHandle, IArchiveService, SharpArchiveAdapter, SharpArchiveEntryInfo, SharpArchiveHandle
 
 ### Community 39 - "DirectComposition Target"
-Cohesion: 0.22
-Nodes (6): D3D11DirectCompositionTarget, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual, IDXGIDevice, IDXGISwapChain1
+Cohesion: 0.20
+Nodes (5): D3D11CompositionTargetState, D3D11CompositionTargetDescriptor, D3D11CompositionTargetDirtyFlags, D3D11CompositionTargetUpdate, ToCompositionTargetDescriptor()
 
 ### Community 40 - "Audio Normalizer"
-Cohesion: 0.23
-Nodes (3): AudioNormalizer, ThreadLocal, VolumeParameters
+Cohesion: 0.18
+Nodes (4): AudioNormalizer, LevelRetrievalFlags, ThreadLocal, VolumeParameters
 
 ### Community 41 - "Playback Scheduler"
 Cohesion: 0.35
 Nodes (3): CancellationTokenSource, Cts, PlaybackScheduler
 
 ### Community 42 - "Native HWND Swap Chain"
-Cohesion: 0.21
-Nodes (3): CdgConstants, int, D3D11NativeHwndSwapChainBackend
+Cohesion: 0.24
+Nodes (5): Fact, MediaErrorEventArgsTests, InlineData, MediaErrorCode, Theory
 
 ### Community 44 - "Service Provider & Libraries"
-Cohesion: 0.26
+Cohesion: 0.21
 Nodes (5): DLLPath, MediaPlayerServiceProvider, IReadOnlyList, IServiceCollection, IServiceProvider
 
 ### Community 45 - "Media Control Operation Queue"
-Cohesion: 0.18
-Nodes (6): BlockingCollection, FileTree, FileTreeBuilder, IDisposable, Thread, MediaControlOperationQueue
+Cohesion: 0.33
+Nodes (3): BlockingCollection, Thread, MediaControlOperationQueue
 
 ### Community 46 - "D3D11 Rendering Draw Calls"
-Cohesion: 0.32
-Nodes (4): ID3D11DeviceContext, ID3D11RenderTargetView, ID3D11ShaderResourceView, Vector4
+Cohesion: 0.20
+Nodes (5): CdgRenderSnapshot, ID3D11DeviceContext, ID3D11RenderTargetView, ID3D11ShaderResourceView, Vector4
 
 ### Community 47 - "CDG Composition Frame"
 Cohesion: 0.18
@@ -286,12 +289,12 @@ Cohesion: 0.25
 Nodes (6): compat, CompatibilityInfo, CpuType, FileCpuType, BinaryCompatibility, match
 
 ### Community 49 - "Viewport Geometry Mapping"
-Cohesion: 0.35
-Nodes (3): ViewportGeometry, RectD, ViewportMapping
+Cohesion: 0.25
+Nodes (4): ViewportGeometry, MediaCompositionStretchMode, RectD, ViewportMapping
 
 ### Community 52 - "Swap Chain Factory"
-Cohesion: 0.22
-Nodes (6): AlphaMode, IDXGIFactory, D3D11SwapChainFactory, SwapChainDescription, SwapChainDescription1, SwapEffect
+Cohesion: 0.27
+Nodes (3): MediaContent, MediaPlayerState, MediaState
 
 ### Community 53 - "Application Startup & Exit"
 Cohesion: 0.22
@@ -301,29 +304,49 @@ Nodes (6): Application, ExitEventArgs, App, StartupEventArgs, StreamWriter, Text
 Cohesion: 0.27
 Nodes (7): EnumerateLayers(), StableColorRevision(), TryGetBackgroundLayer(), TryGetOverlayLayer(), From(), D3D11CompositionLayerSchedule, MediaCompositionLayer
 
+### Community 55 - "Composition Layer Cache"
+Cohesion: 0.24
+Nodes (3): D3D11CompositionLayerCache, List, MediaCompositionLayerId
+
 ### Community 56 - "Precision Timer"
-Cohesion: 0.36
-Nodes (5): LibraryImport, SafeWaitHandle, PrecisionWaiter, TimerWaitHandle, WaitHandle
+Cohesion: 0.22
+Nodes (8): First Safe Step, Goal, Intended Direction, Not Allowed, Stage 004A — Typed Error Surface, Status, Validation, Why This Matters
+
+### Community 62 - "CDG Render Snapshot"
+Cohesion: 0.25
+Nodes (7): Behavior Notes, Completed Stage — 004A Typed Error Surface, Deferred / Follow-Up Items, Files Changed, Original Goal, Validation, What Changed
+
+### Community 64 - "Media Session Attachments"
+Cohesion: 0.17
+Nodes (4): FileTree, FileTreeBuilder, IDisposable, MediaSession
+
+### Community 104 - "Community 104"
+Cohesion: 0.50
+Nodes (3): AcceptedMediaTypes, FromCurrentRuntime(), Sorted()
+
+### Community 106 - "Community 106"
+Cohesion: 0.40
+Nodes (3): FatzBombMedia.MediaControl (Core Engine), FatzBombMedia.MediaControl.Wpf (WPF Adapter), Player (WPF Host)
 
 ## Knowledge Gaps
-- **18 isolated node(s):** `net10.0-windows7.0`, `Microsoft.NET.Sdk`, `net10.0-windows7.0`, `ManagedBass (4.0.2)`, `ManagedBass.Fx (4.0.2)` (+13 more)
+- **49 isolated node(s):** `1. Build And Boundary`, `2. Runtime Test Setup`, `3. Routine Player Smoke Tests`, `4. CDG-Specific Validation`, `5. Video Timing / Stutter Validation` (+44 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **26 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `VideoPipeline` connect `Video Pipeline Seeks` to `Media Session Attachments`, `Bootstrap Library Loading`, `Presentation Surface Management`, `D3D11 Rendering Bridge`, `Video Audio Engine`, `D3D11 Device Resources`, `FFmpeg Video Decoding`, `Presentation Diagnostics & Clock`, `Audio Pipeline Libraries`, `Native HWND Swap Chain`, `Playback Scheduler`, `CD-G Pipeline Playback`, `Media Control Operation Queue`, `Video Engine Presentation`, `Render Pipeline CDG Video`, `Video Engine Interface`, `Playback Coordinator`?**
-  _High betweenness centrality (0.176) - this node is a cross-community bridge._
-- **Why does `NativeMediaPresentationCoordinator` connect `Presentation Surface Management` to `Video Pipeline Seeks`, `D3D11 Rendering Bridge`, `Media Types & Composition`, `Audio Pipeline Libraries`, `D3D11 Surface Controller`, `CD-G State Machine`, `D3D11 Composition Presenter`, `Media Control Player`, `Media Engine Interface`, `Bootstrap Library Loading`, `D3D11 Device Resources`, `Media Control Event Handlers`, `Playback Scheduler`, `Native HWND Swap Chain`, `Media Control Operation Queue`, `CDG Composition Frame`, `Render Pipeline CDG Video`, `Video Engine Interface`, `CDG Engine Interface`, `CDG Render Snapshot`, `Render Coordinator Interface`?**
-  _High betweenness centrality (0.129) - this node is a cross-community bridge._
-- **Why does `D3D11MediaCompositionPresenter` connect `D3D11 Composition Presenter` to `Bootstrap Library Loading`, `Presentation Surface Management`, `Media Types & Composition`, `Presentation Diagnostics & Clock`, `Audio Pipeline Libraries`, `Native HWND Swap Chain`, `D3D11 Rendering Draw Calls`, `Viewport Geometry Mapping`, `Video Engine Presentation`, `Composition Layer Cache`, `CDG Render Snapshot`, `Render Pipeline CDG Video`, `Composition Layer Update Plan`?**
-  _High betweenness centrality (0.103) - this node is a cross-community bridge._
-- **What connects `net10.0-windows7.0`, `Microsoft.NET.Sdk`, `net10.0-windows7.0` to the rest of the system?**
-  _18 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `VideoPipeline` connect `Video Pipeline Seeks` to `Media Session Attachments`, `Bootstrap Library Loading`, `Presentation Surface Management`, `D3D11 Device Resources`, `Video Audio Engine`, `FFmpeg Video Decoding`, `Presentation Diagnostics & Clock`, `Playback Scheduler`, `Community 105`, `CD-G Pipeline Playback`, `Media Control Operation Queue`, `CD-G State Machine`, `Video Engine Presentation`, `Swap Chain Factory`, `Render Pipeline CDG Video`, `Video Engine Interface`, `Playback Coordinator`?**
+  _High betweenness centrality (0.155) - this node is a cross-community bridge._
+- **Why does `NativeMediaPresentationCoordinator` connect `Presentation Surface Management` to `Video Pipeline Seeks`, `D3D11 Surface Controller`, `CD-G State Machine`, `D3D11 Composition Presenter`, `Media Control Player`, `Media Engine Interface`, `Bootstrap Library Loading`, `D3D11 Device Resources`, `Media Control Event Handlers`, `Playback Scheduler`, `D3D11 Rendering Draw Calls`, `CDG Composition Frame`, `Viewport Geometry Mapping`, `Media Controls`, `Render Pipeline CDG Video`, `Video Engine Interface`, `CDG Engine Interface`, `Media Session Attachments`, `D3D11 Frame Presenter`, `Media Effects Normalization`, `Community 105`?**
+  _High betweenness centrality (0.091) - this node is a cross-community bridge._
+- **Why does `D3D11MediaCompositionPresenter` connect `D3D11 Composition Presenter` to `Bootstrap Library Loading`, `Presentation Surface Management`, `Media Effects Normalization`, `Presentation Diagnostics & Clock`, `Community 105`, `D3D11 Rendering Draw Calls`, `Viewport Geometry Mapping`, `CD-G State Machine`, `Video Engine Presentation`, `Composition Layer Cache`, `Render Pipeline CDG Video`, `Composition Layer Update Plan`?**
+  _High betweenness centrality (0.081) - this node is a cross-community bridge._
+- **What connects `1. Build And Boundary`, `2. Runtime Test Setup`, `3. Routine Player Smoke Tests` to the rest of the system?**
+  _49 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Video Pipeline Seeks` be split into smaller, more focused modules?**
   _Cohesion score 0.05339805825242718 - nodes in this community are weakly interconnected._
 - **Should `FFmpeg Video Decoding` be split into smaller, more focused modules?**
-  _Cohesion score 0.0547008547008547 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08013468013468013 - nodes in this community are weakly interconnected._
 - **Should `Presentation Surface Management` be split into smaller, more focused modules?**
-  _Cohesion score 0.07847082494969819 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07908902691511387 - nodes in this community are weakly interconnected._
