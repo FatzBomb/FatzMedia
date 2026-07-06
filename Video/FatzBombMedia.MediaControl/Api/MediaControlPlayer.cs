@@ -234,9 +234,23 @@ public class MediaControlPlayer : IMediaControlSession
         _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
     }
 
-    private void OnControlsMediaStarted(object? sender, EventArgs e) => MediaStarted?.Invoke(this, EventArgs.Empty);
+private void OnControlsMediaStarted(object? sender, EventArgs e)
+    {
+        EventHandler? handler = MediaStarted;
+        if (handler == null)
+            return;
 
-    private void OnControlsMediaStopped(object? sender, EventArgs e) => MediaStopped?.Invoke(this, EventArgs.Empty);
+        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+    }
+
+    private void OnControlsMediaStopped(object? sender, EventArgs e)
+    {
+        EventHandler? handler = MediaStopped;
+        if (handler == null)
+            return;
+
+        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+    }
 
     private void OnPresentationFramePresented(object? sender, EventArgs e) => PresentationFramePresented?.Invoke(this, EventArgs.Empty);
 

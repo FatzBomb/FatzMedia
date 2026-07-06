@@ -84,7 +84,7 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
-        if (_session.Audio?.Open(audioPath) != true || _session.Cdg == null)
+        if (_session.Audio?.Open(audioPath, ownState: false) != true || _session.Cdg == null)
             return false;
 
         _session.Cdg.OpenPaired(cdgPath, _session.Audio.PlayHandle);
@@ -94,7 +94,7 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool OpenAudioCdg(IArchiveEntryInfo audioEntry, IArchiveEntryInfo cdgEntry)
     {
-        if (_session.Audio?.Open(audioEntry) != true || _session.Cdg == null)
+        if (_session.Audio?.Open(audioEntry, ownState: false) != true || _session.Cdg == null)
             return false;
 
         _session.Cdg.OpenPaired(cdgEntry, _session.Audio.PlayHandle);

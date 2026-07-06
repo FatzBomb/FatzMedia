@@ -1,22 +1,24 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading.Channels;
 
 namespace FatzBombMedia.MediaControl.Core.Threading;
 
 internal sealed class MediaControlOperationQueue : IDisposable
 {
-    private readonly BlockingCollection<Action> _queue = new(new ConcurrentQueue<Action>());
-    private readonly Thread _workerThread;
+    private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = false
+    });
+    private readonly AsyncLocal<bool> _isWorkerContext = new();
+    private readonly Task _workerTask;
+    private readonly string _name;
     private int _disposed;
 
     public MediaControlOperationQueue(string name)
     {
-        _workerThread = new Thread(Run)
-        {
-            IsBackground = true,
-            Name = $"FatzBombMedia.{name}"
-        };
-        _workerThread.Start();
+        _name = string.IsNullOrWhiteSpace(name) ? "MediaControl" : name;
+        _workerTask = Task.Run(RunAsync);
     }
 
     public Task<T> Enqueue<T>(Func<T> operation)
@@ -27,23 +29,22 @@ internal sealed class MediaControlOperationQueue : IDisposable
             return Task.FromException<T>(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
 
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        try
+
+        if (!_queue.Writer.TryWrite(() =>
         {
-            _queue.Add(() =>
+            try
             {
-                try
-                {
-                    _ = completion.TrySetResult(operation());
-                }
-                catch (Exception ex)
-                {
-                    _ = completion.TrySetException(ex);
-                }
-            });
-        }
-        catch (InvalidOperationException ex)
+                _ = completion.TrySetResult(operation());
+            }
+            catch (Exception ex)
+            {
+                _ = completion.TrySetException(ex);
+            }
+
+            return Task.CompletedTask;
+        }))
         {
-            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue), ex));
+            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
         }
 
         return completion.Task;
@@ -53,7 +54,27 @@ internal sealed class MediaControlOperationQueue : IDisposable
     {
         ArgumentNullException.ThrowIfNull(operation);
 
-        return Enqueue(() => operation().GetAwaiter().GetResult());
+        if (Volatile.Read(ref _disposed) != 0)
+            return Task.FromException<T>(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!_queue.Writer.TryWrite(async () =>
+        {
+            try
+            {
+                _ = completion.TrySetResult(await operation().ConfigureAwait(false));
+            }
+            catch (Exception ex)
+            {
+                _ = completion.TrySetException(ex);
+            }
+        }))
+        {
+            _ = completion.TrySetException(new ObjectDisposedException(nameof(MediaControlOperationQueue)));
+        }
+
+        return completion.Task;
     }
 
     public Task Enqueue(Action operation)
@@ -67,19 +88,30 @@ internal sealed class MediaControlOperationQueue : IDisposable
         });
     }
 
-    private void Run()
+    private async Task RunAsync()
     {
+        _isWorkerContext.Value = true;
         try
         {
-            foreach (Action operation in _queue.GetConsumingEnumerable())
-                operation();
-        }
-        catch (ObjectDisposedException)
-        {
+            await foreach (Func<Task> operation in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                try
+                {
+                    await operation().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Operation failed after completion handling: {ex.Message}");
+                }
+            }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlOperationQueue] Worker exited with error: {ex.Message}");
+            Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker exited with error: {ex.Message}");
+        }
+        finally
+        {
+            _isWorkerContext.Value = false;
         }
     }
 
@@ -88,10 +120,43 @@ internal sealed class MediaControlOperationQueue : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        _queue.CompleteAdding();
-        if (!ReferenceEquals(Thread.CurrentThread, _workerThread) && _workerThread.IsAlive)
-            _ = _workerThread.Join(TimeSpan.FromSeconds(2));
+        _ = _queue.Writer.TryComplete();
+        if (_isWorkerContext.Value)
+        {
+            _ = ObserveWorkerCompletionAsync();
+            return;
+        }
 
-        _queue.Dispose();
+        try
+        {
+            if (!_workerTask.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker did not stop within 2000ms.");
+                _ = ObserveWorkerCompletionAsync();
+                return;
+            }
+
+            _ = _workerTask.Exception;
+        }
+        catch (AggregateException ex)
+        {
+            Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker stopped with error: {ex.GetBaseException().Message}");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker wait failed: {ex.Message}");
+        }
+    }
+
+    private async Task ObserveWorkerCompletionAsync()
+    {
+        try
+        {
+            await _workerTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlOperationQueue:{_name}] Worker stopped with error: {ex.Message}");
+        }
     }
 }

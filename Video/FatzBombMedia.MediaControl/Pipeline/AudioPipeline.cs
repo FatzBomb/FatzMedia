@@ -9,6 +9,7 @@ internal sealed class AudioPipeline : IDisposable
     private string? _sourcePath;
     private string? _pendingOpenPath;
     private bool _disposed;
+    private bool _ownStateForCurrentOpen = true;
 
     public AudioPipeline(IAudioEngine audioEngine, MediaState? state = null, bool ownsAudioEngine = false)
     {
@@ -42,7 +43,9 @@ internal sealed class AudioPipeline : IDisposable
         }
     }
 
-    public bool Open(string path)
+    public bool Open(string path) => Open(path, ownState: true);
+
+    internal bool Open(string path, bool ownState)
     {
         ThrowIfDisposed();
 
@@ -54,6 +57,7 @@ internal sealed class AudioPipeline : IDisposable
         Close();
 
         _pendingOpenPath = path;
+        _ownStateForCurrentOpen = ownState;
         if (!Engine.Open(path))
         {
             _pendingOpenPath = null;
@@ -64,17 +68,23 @@ internal sealed class AudioPipeline : IDisposable
         _sourcePath = path;
         _pendingOpenPath = null;
         IsOpen = true;
-        State.SetOpened(MediaContent.Audio, path, Engine.Duration);
+        if (ownState)
+        {
+            State.SetOpened(MediaContent.Audio, path, Engine.Duration);
+        }
         return true;
     }
 
-    public bool Open(IArchiveEntryInfo archiveEntry)
+    public bool Open(IArchiveEntryInfo archiveEntry) => Open(archiveEntry, ownState: true);
+
+    internal bool Open(IArchiveEntryInfo archiveEntry, bool ownState)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(archiveEntry);
 
         Close();
 
+        _ownStateForCurrentOpen = ownState;
         if (!Engine.Open(archiveEntry))
         {
             State.Reset();
@@ -83,7 +93,10 @@ internal sealed class AudioPipeline : IDisposable
 
         _sourcePath = archiveEntry.Key;
         IsOpen = true;
-        State.SetOpened(MediaContent.Audio, archiveEntry.Key, Engine.Duration);
+        if (ownState)
+        {
+            State.SetOpened(MediaContent.Audio, archiveEntry.Key, Engine.Duration);
+        }
         return true;
     }
 
@@ -187,7 +200,10 @@ internal sealed class AudioPipeline : IDisposable
     {
         _sourcePath = _pendingOpenPath ?? _sourcePath ?? State.SourcePath;
         IsOpen = true;
-        State.SetOpened(MediaContent.Audio, _sourcePath, Engine.Duration);
+        if (_ownStateForCurrentOpen)
+        {
+            State.SetOpened(MediaContent.Audio, _sourcePath, Engine.Duration);
+        }
     }
 
     private void OnAudioClosed(object? sender, EventArgs e)
