@@ -63,10 +63,9 @@ internal static class CoreAudioDefaultEndpointReader
 
             PropertyKey key = PkeyDeviceFriendlyName;
             hr = propertyStore.GetValue(ref key, out variant);
-            if (hr < 0 || variant.VarType != VarEnum.VT_LPWSTR || variant.Pointer == IntPtr.Zero)
-                return null;
-
-            return Marshal.PtrToStringUni(variant.Pointer);
+            return hr < 0 || variant.VarType != VarEnum.VT_LPWSTR || variant.Pointer == IntPtr.Zero
+                ? null
+                : Marshal.PtrToStringUni(variant.Pointer);
         }
         catch
         {
@@ -85,8 +84,10 @@ internal static class CoreAudioDefaultEndpointReader
             _ = Marshal.ReleaseComObject(value);
     }
 
+#pragma warning disable SYSLIB1054 // DllImport → LibraryImport is non-trivial for COM interop; suppress on proven- working code.
     [DllImport("Ole32.dll")]
     private static extern int PropVariantClear(ref PropVariant pvar);
+#pragma warning restore SYSLIB1054
 
     private enum EDataFlow
     {
@@ -101,6 +102,8 @@ internal static class CoreAudioDefaultEndpointReader
         Multimedia = 1,
         Communications = 2,
     }
+
+#pragma warning disable SYSLIB1096 // ComImport → GeneratedComInterface is non-trivial for proven COM interop.
 
     [ComImport]
     [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
@@ -161,6 +164,8 @@ internal static class CoreAudioDefaultEndpointReader
         [PreserveSig]
         int Commit();
     }
+
+#pragma warning restore SYSLIB1096
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct PropertyKey(Guid formatId, int propertyId)
