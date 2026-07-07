@@ -69,20 +69,12 @@ internal static partial class NativeMethods
     internal struct PAINTSTRUCT
     {
         public IntPtr Hdc;
-
-        // Win32 BOOL is 4 bytes, not C# bool.
         public int Erase;
-
         public RECT RcPaint;
-
-        // Reserved fields, also Win32 BOOL-sized.
         public int Restore;
         public int IncUpdate;
-
-        // BYTE rgbReserved[32]
         public RgbReservedBuffer RgbReserved;
-
-        public bool ShouldErase => Erase != 0;
+        public readonly bool ShouldErase => Erase != 0;
     }
 
     [StructLayout(LayoutKind.Sequential, Size = 32)]
