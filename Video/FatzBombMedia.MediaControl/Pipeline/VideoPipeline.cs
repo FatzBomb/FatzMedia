@@ -2,6 +2,7 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Audio;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
 using System.Diagnostics;
@@ -18,6 +19,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private readonly Lock _decodeLock = new();
     private readonly PlaybackScheduler _decodeScheduler = new("VideoDecode");
     private readonly PlaybackScheduler _presentationScheduler = new("VideoPresentation");
+    private readonly PlaybackScheduler _decoderRecoveryScheduler = new("DecoderDeviceLostRecovery");
+    private string? _currentVideoPath;
+    private int _decoderRecoveryInProgress;
+    private volatile bool _hardwareDecodeDisabledByDeviceLoss;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
     private readonly Lock _presentationLock = new();
@@ -46,6 +51,16 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private const int MinBufferedVideoFrames = 4;
     private const long MaxBufferedVideoBytes = 96L * 1024 * 1024;
     private const int MaxVideoPacketsPerDecodePass = 3;
+    private const string DecoderDeviceLostCategory = "Decoder.DeviceLost";
+    private const string DecoderDeviceLostRecoveryFailedCategory = "Decoder.DeviceLost.RecoveryFailed";
+    private const int DecoderRecoveryMaxAttempts = 3;
+    private static readonly TimeSpan[] DecoderRecoveryBackoffDelays =
+    [
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(2),
+    ];
+    private static readonly TimeSpan HardwareDecodeReprobeInterval = TimeSpan.FromSeconds(5);
     private const int PresentationDiagnosticsFrameInterval = 120;
     private const double DefaultPresentationLeadRefreshIntervals = 0.75;
     private const double MinimumPresentationLeadRefreshIntervals = 0.50;
@@ -190,6 +205,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         ResetPresentationTimingController();
         _isOpen = true;
         _isPlaying = false;
+        _currentVideoPath = path;
         _state.SetOpened(MediaContent.Video | (HasAudio ? MediaContent.Audio : 0), path, Duration);
         RaiseState(VideoEngineState.Ready);
         Opened?.Invoke(this, EventArgs.Empty);
@@ -741,14 +757,23 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     {
         // Retire the seek worker first (without holding the gate) so no seek can be in flight when
         // we dispose the decoder below. StopSeekWorker joins the worker; the gate then guarantees
-        // exclusivity for the teardown itself.
+        // exclusivity for the teardown itself. Cancel any in-flight device-lost recovery the same way
+        // (Stop only signals cancellation; so it cannot deadlock on the gate).
         StopSeekWorker();
+        _decoderRecoveryScheduler.Stop();
+        // Deterministic join before Dispose: the recovery worker may be in the middle of
+        // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
+        // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
+        _decoderRecoveryScheduler.StopAndWait();
+        _hardwareDecodeDisabledByDeviceLoss = false;
+        _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
 
         lock (_transportGate)
         {
             _generation++;
             _isPlaying = false;
             _isOpen = false;
+            _currentVideoPath = null;
             StopDecodeLoopAndWait();
             StopPresentationLoopAndWait();
             WaitForPresentationIdle();
@@ -779,6 +804,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         Close();
         _decodeScheduler.Dispose();
         _presentationScheduler.Dispose();
+        _decoderRecoveryScheduler.Dispose();
         _seekSignal.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -1090,7 +1116,201 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (_audioEngine is not null)
                 decoded |= _audioEngine.DecodeAndPushAudio();
 
+            if (!_hardwareDecodeDisabledByDeviceLoss)
+                CheckForHardwareDecodeDeviceLoss();
+
             _ = cancellationToken.WaitHandle.WaitOne(decoded ? 1 : 10);
+        }
+    }
+
+    /// <summary>
+    /// Confirms and triggers recovery when the hardware-decode D3D11 device appears to have been
+    /// lost. Runs on the decode thread; it only reads state and, at most, starts the dedicated
+    /// recovery worker — it never performs the teardown/rebuild itself.
+    /// </summary>
+    private void CheckForHardwareDecodeDeviceLoss()
+    {
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder is null || !decoder.IsHardwareDecodeRepeatedlyFailing)
+            return;
+
+        // Repeated hardware-decode failure is only a hint; confirm the device is actually gone via
+        // its device-removed reason before disrupting playback (avoids falling back on a bad stream).
+        if (!D3D11DeviceLostClassifier.IsDeviceLost(decoder.D3D11DevicePointer))
+            return;
+
+        TriggerDecoderDeviceLostRecovery();
+    }
+
+    private void TriggerDecoderDeviceLostRecovery()
+    {
+        // Debounce: only one recovery worker at a time. Multiple failing decode iterations (or a
+        // concurrent presentation-side device-lost) coalesce into a single recovery.
+        if (Interlocked.CompareExchange(ref _decoderRecoveryInProgress, 1, 0) != 0)
+            return;
+
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DecoderDeviceLostCategory, "Hardware video decode device lost; recovering via software fallback.");
+        _decoderRecoveryScheduler.Start(RunDecoderDeviceLostRecovery);
+    }
+
+    /// <summary>
+    /// Recovers hardware-decode device loss on a dedicated worker thread: first falls back to
+    /// software decode at the current position (keeping audio/CDG uninterrupted and, as a side
+    /// effect, stopping the emission of lost-device hardware frames so the presentation-side
+    /// recovery can settle), then periodically re-probes for hardware and restores it when the
+    /// device returns. Loading a new file restores hardware automatically via the normal open path.
+    /// </summary>
+    private void RunDecoderDeviceLostRecovery(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // _currentVideoPath is written under _transportGate; this read is intentionally
+            // unsynchronized because the string is immutable and SwapVideoDecoder re-validates
+            // _isOpen under the gate before using it. Worst case: a stale-non-null path that
+            // _isOpen then rejects.
+            var path = _currentVideoPath;
+            if (string.IsNullOrWhiteSpace(path) || !_isOpen)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DecoderDeviceLostRecoveryFailedCategory, "Cannot recover hardware-decode device loss: no reopenable source path.");
+                RaiseState(VideoEngineState.Error);
+                return;
+            }
+
+            if (!FallBackToSoftwareDecode(path, cancellationToken))
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DecoderDeviceLostRecoveryFailedCategory, $"Software video fallback failed after {DecoderRecoveryMaxAttempts} attempts following device loss.");
+                    RaiseState(VideoEngineState.Error);
+                }
+                return;
+            }
+
+            _hardwareDecodeDisabledByDeviceLoss = true;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DecoderDeviceLostCategory, "Video decode fell back to software after device loss; audio and CD+G overlay continue uninterrupted.");
+
+            ReprobeAndRestoreHardware(path, cancellationToken);
+        }
+        finally
+        {
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+        }
+    }
+
+    private bool FallBackToSoftwareDecode(string path, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= DecoderRecoveryMaxAttempts && !cancellationToken.IsCancellationRequested; attempt++)
+        {
+            if (attempt > 1)
+            {
+                TimeSpan delay = DecoderRecoveryBackoffDelays[Math.Min(attempt - 2, DecoderRecoveryBackoffDelays.Length - 1)];
+                if (cancellationToken.WaitHandle.WaitOne(delay))
+                    return false;
+            }
+
+            if (SwapVideoDecoder(VideoDecodingMethod.Software, path))
+                return true;
+
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, DecoderDeviceLostCategory, $"Software fallback attempt {attempt}/{DecoderRecoveryMaxAttempts} failed.");
+        }
+
+        return false;
+    }
+
+    private void ReprobeAndRestoreHardware(string path, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && _isOpen)
+        {
+            if (cancellationToken.WaitHandle.WaitOne(HardwareDecodeReprobeInterval))
+                return;
+
+            if (!HardwareDecodeDeviceAvailable(path))
+                continue;
+
+            if (SwapVideoDecoder(VideoDecodingMethod.Auto, path) && _videoDecoder?.IsHardwareAccelerated == true)
+            {
+                _hardwareDecodeDisabledByDeviceLoss = false;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DecoderDeviceLostCategory, "Hardware video decode restored after device recovery.");
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Non-disruptive probe: opens a throwaway decoder that requires hardware and reports whether the
+    /// hardware-decode D3D11 device could be created (i.e. the GPU is back). Does not touch the live
+    /// decoder or playback.
+    /// </summary>
+    private bool HardwareDecodeDeviceAvailable(string path)
+    {
+        try
+        {
+            using var probe = new VideoDecoder(VideoDecodingMethod.Hardware, enableHardwareFrameOutput: false, enableDiagnostics: false);
+            return probe.Open(path) && probe.HardwareAccelerationMethod != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Replaces the live decoder with a new one using <paramref name="method"/>, reopened at the
+    /// current transport position. Mirrors the seek stop-reposition-restart dance and is serialized
+    /// through <see cref="_transportGate"/>, so it cannot race a user seek/transport op. Audio is
+    /// deliberately left running — only the video decoder is swapped. Bumping the generation drops any
+    /// in-flight frames that referenced the old (lost) device.
+    /// </summary>
+    private bool SwapVideoDecoder(VideoDecodingMethod method, string path)
+    {
+        lock (_transportGate)
+        {
+            if (!_isOpen)
+                return false;
+
+            var wasPlaying = _isPlaying;
+            var position = GetCurrentTransportPosition();
+            _generation++;
+            StopDecodeLoopAndWait();
+            if (!_hostRenderEventDrivenPresentation)
+                StopPresentationLoopAndWait();
+            WaitForPresentationIdle();
+
+            lock (_decodeLock)
+            {
+                ReleaseCurrentFrame();
+                _videoDecoder?.Dispose();
+                _videoDecoder = new VideoDecoder(
+                    method,
+                    true,
+                    _configuration.EnableLogging,
+                    _configuration.EnablePerformanceLogging,
+                    _configuration.EnableVerboseLogging);
+
+                if (!_videoDecoder.Open(path))
+                {
+                    _videoDecoder.Dispose();
+                    _videoDecoder = null;
+                    return false;
+                }
+
+                Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
+                _clock.DurationSeconds = Duration;
+                _ = _videoDecoder.Seek(position, exact: false);
+                _presentationClock.Reset(position);
+                _ = DecodeUntilFrameAvailable();
+            }
+
+            _ = PresentFrameForCurrentPosition();
+
+            if (wasPlaying)
+            {
+                StartDecodeLoop();
+                if (!_hostRenderEventDrivenPresentation)
+                    StartPresentationLoop();
+            }
+
+            return true;
         }
     }
 

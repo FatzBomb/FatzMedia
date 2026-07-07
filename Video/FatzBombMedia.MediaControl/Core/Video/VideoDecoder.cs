@@ -66,6 +66,7 @@ internal sealed unsafe class VideoDecoder(
     private const int DecodeDiagnosticsFrameInterval = 120;
     private const int DecodeIssueLogLimit = 8;
     private const int AvErrorAgain = -11;
+    private const int HardwareDecodeLossFailureThreshold = 3;
     private int _decodeDiagnosticFrames;
     private double _decodeDiagnosticTransferMs;
     private double _decodeDiagnosticScaleMs;
@@ -75,6 +76,16 @@ internal sealed unsafe class VideoDecoder(
     private int _frameReceiveIssueLogs;
     private int _hardwareTransferIssueLogs;
     private bool _loggedHardwarePixelFormat;
+    private int _consecutiveHardwareDecodeFailures;
+
+    /// <summary>
+    /// True when hardware decoding is configured and the hardware path has failed to produce a
+    /// frame several times in a row with no successful frame in between — a strong hint that the
+    /// underlying hardware-decode D3D11 device may have been lost. The caller confirms via
+    /// <see cref="D3D11DevicePointer"/> and a device-removed-reason check before acting.
+    /// </summary>
+    public bool IsHardwareDecodeRepeatedlyFailing =>
+        HardwareAccelerationMethod != null && _consecutiveHardwareDecodeFailures >= HardwareDecodeLossFailureThreshold;
 
     public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, bool enableHardwareFrameOutput = true) =>
         new(configuration.VideoDecoding,
@@ -540,12 +551,13 @@ internal sealed unsafe class VideoDecoder(
                 continue;
             }
 
-            if (receiveResult != AvErrorAgain
-                && receiveResult != ffmpeg.AVERROR_EOF
-                && _enableVerboseLogging
-                && ShouldLogDecodeIssue(ref _frameReceiveIssueLogs))
+            if (receiveResult != AvErrorAgain && receiveResult != ffmpeg.AVERROR_EOF)
             {
-                Debug.WriteLine($"[VideoDecoder] avcodec_receive_frame failed: {FormatFFmpegError(receiveResult)} ({receiveResult})");
+                NoteHardwareDecodeFailure();
+                if (_enableVerboseLogging && ShouldLogDecodeIssue(ref _frameReceiveIssueLogs))
+                {
+                    Debug.WriteLine($"[VideoDecoder] avcodec_receive_frame failed: {FormatFFmpegError(receiveResult)} ({receiveResult})");
+                }
             }
 
             break;
@@ -554,8 +566,20 @@ internal sealed unsafe class VideoDecoder(
         return frameDecoded;
     }
 
+    private void NoteHardwareDecodeFailure()
+    {
+        if (HardwareAccelerationMethod != null && _consecutiveHardwareDecodeFailures < int.MaxValue)
+        {
+            _consecutiveHardwareDecodeFailures++;
+        }
+    }
+
     private void ProcessVideoFrameFromDecoder()
     {
+        // A frame was successfully received from the decoder — the hardware path is working, so
+        // clear the consecutive-failure gate used for device-lost detection.
+        _consecutiveHardwareDecodeFailures = 0;
+
         double rawPts = 0;
         var timebase = ffmpeg.av_q2d(_videoStream->time_base);
 
@@ -756,6 +780,7 @@ internal sealed unsafe class VideoDecoder(
         var transferResult = ffmpeg.av_hwframe_transfer_data(_softwareFrame, _videoFrame, 0);
         if (transferResult < 0)
         {
+            NoteHardwareDecodeFailure();
             if (_enableVerboseLogging && ShouldLogDecodeIssue(ref _hardwareTransferIssueLogs))
             {
                 Debug.WriteLine(
@@ -884,6 +909,7 @@ internal sealed unsafe class VideoDecoder(
         _frameReceiveIssueLogs = 0;
         _hardwareTransferIssueLogs = 0;
         _loggedHardwarePixelFormat = false;
+        _consecutiveHardwareDecodeFailures = 0;
     }
 
     private void CleanupCodecContext()
