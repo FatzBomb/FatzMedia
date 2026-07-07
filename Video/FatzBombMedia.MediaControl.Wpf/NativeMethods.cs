@@ -68,11 +68,18 @@ internal static partial class NativeMethods
     internal struct PAINTSTRUCT
     {
         public IntPtr Hdc;
-        [MarshalAs(UnmanagedType.Bool)] public bool Erase;
+        public int Erase;
         public RECT RcPaint;
-        [MarshalAs(UnmanagedType.Bool)] public bool Restore;
-        [MarshalAs(UnmanagedType.Bool)] public bool IncUpdate;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] RgbReserved;
+        public int Restore;
+        public int IncUpdate;
+        public RgbReservedBuffer RgbReserved;
+        public readonly bool ShouldErase => Erase != 0;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Size = 32)]
+    internal readonly struct RgbReservedBuffer
+    {
+        private readonly byte _element0;
     }
 
     internal const int GWL_EXSTYLE = -20;

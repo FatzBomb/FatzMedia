@@ -92,7 +92,7 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
 
         if (msg == WM_PAINT)
         {
-            if (NativeMethods.BeginPaint(hwnd, out NativeMethods.PAINTSTRUCT paint) != IntPtr.Zero)
+            var hdc = NativeMethods.BeginPaint(hwnd, out NativeMethods.PAINTSTRUCT paint);
             {
                 FillNativeBackground(hwnd, paint.Hdc);
                 _ = NativeMethods.EndPaint(hwnd, ref paint);
