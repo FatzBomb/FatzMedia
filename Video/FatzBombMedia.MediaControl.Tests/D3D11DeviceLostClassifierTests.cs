@@ -13,7 +13,9 @@ namespace FatzBombMedia.MediaControl.Tests;
 /// </summary>
 public class D3D11DeviceLostClassifierTests
 {
+#pragma warning disable xUnit1044 // Result is not serializable; Test Explorer row enumeration is cosmetic.
     public static TheoryData<Result, string> DeviceLostResults() =>
+#pragma warning restore xUnit1044
         new()
         {
             { DxgiResultCode.DeviceRemoved, "Device removed" },
