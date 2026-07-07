@@ -180,7 +180,7 @@ internal sealed class D3D11PresentationBackendSet(
         ID3D11PresentationBackend backend,
         int liveResizeFlag,
         bool syncImmediate,
-        Func<bool> isDisposed,
+        Func<bool> _,
         Action framePresented)
     {
         backend.Present(liveResizeFlag, syncImmediate);

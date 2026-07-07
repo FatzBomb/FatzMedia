@@ -17,11 +17,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
     private readonly Lock _sync = new();
+#pragma warning disable IDE0044 // Pointer fields used with fixed statement; cannot be readonly.
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
     private AVStream* _audioStream;
     private SwrContext* _resampler;
     private AVFrame* _frame;
+#pragma warning restore IDE0044
     private int _audioStreamIndex = -1;
     private byte* _audioBuffer;
     private int _audioBufferSize;
