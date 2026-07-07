@@ -6,6 +6,7 @@ using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D;
 using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Pipeline;
+using System.Buffers;
 using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Core.Graphics;
@@ -32,6 +33,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         TimeSpan.FromMilliseconds(500),
         TimeSpan.FromSeconds(1),
     ];
+
+    // Dedicated pool for per-present background pixel snapshots (007A.2). Sized to pool up to ~4K BGRA
+    // frames; ArrayPool<byte>.Shared caps pooled arrays at 1 MB and would allocate large video/background
+    // frames on every present. Buffers are rented under _lock during build and returned after the present
+    // completes in PresentSoftwareComposition.
+    private static readonly ArrayPool<byte> CompositionBackgroundPool =
+        ArrayPool<byte>.Create(maxArrayLength: 64 * 1024 * 1024, maxArraysPerBucket: 4);
 
     private readonly IMediaEngine _mediaEngine;
     private readonly MediaPlayerConfiguration _configuration;
@@ -530,7 +538,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         // A standalone image is Layer 0 (base) content, so it honors the same host-selected display
         // stretch mode as primary video instead of a fixed UniformFit.
         SetCompositionLayer0Frame(e, _primaryStretchMode);
-        _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core image frame"));
+        _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "core image frame");
     }
 
     private void OnCoreBackgroundFrameReady(object? sender, VideoFrameEventArgs e)
@@ -553,7 +561,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 return;
             }
 
-            _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "core background frame"));
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "core background frame");
             return;
         }
 
@@ -623,7 +631,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, _primaryStretchMode);
-            _ = PresentMediaComposition(BuildCompositionFrame(null, 0, retainedRefresh: false, "primary video frame"));
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "primary video frame");
             return;
         }
 
@@ -789,6 +797,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         string reason,
         bool deferIfCompositionBusy = false)
     {
+        MediaCompositionFrame frame;
+        byte[]? rentedBackground;
+        CompositionPresentResult buildResult;
+
         if (deferIfCompositionBusy)
         {
             if (!_lock.TryEnter())
@@ -796,27 +808,50 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
             try
             {
-                return RenderCurrentCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
+                buildResult = TryBuildCdgCompositionFrameNoLock(consumeDirtyRegions, retainedRefresh, reason, out frame, out rentedBackground);
             }
             finally
             {
                 _lock.Exit();
             }
         }
+        else
+        {
+            lock (_lock)
+                buildResult = TryBuildCdgCompositionFrameNoLock(consumeDirtyRegions, retainedRefresh, reason, out frame, out rentedBackground);
+        }
 
-        lock (_lock)
-            return RenderCurrentCdgFrameNoLock(consumeDirtyRegions, retainedRefresh, reason);
+        // The CDG snapshot and composition frame are built under _lock; the expensive GPU present runs
+        // outside it so transport-visible operations (pause/stop/seek/resize) are not stalled (007A.2).
+        return buildResult == CompositionPresentResult.Presented
+            ? PresentSoftwareComposition(frame, rentedBackground)
+            : buildResult;
     }
 
-    private CompositionPresentResult RenderCurrentCdgFrameNoLock(
+    // Builds the current CDG composition frame under _lock. A result of Presented means "successfully
+    // built and ready to present outside the lock"; Failed / Deferred short-circuit before any present.
+    private CompositionPresentResult TryBuildCdgCompositionFrameNoLock(
         bool consumeDirtyRegions,
         bool retainedRefresh,
-        string reason) =>
-            !TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null
-                ? CompositionPresentResult.Failed
-                : HasCompositionBackgroundNoLock() && !IsCdgSnapshotReadyForBackgroundPresentation(snapshot)
-                    ? CompositionPresentResult.Deferred
-                    : PresentMediaCompositionNoLock(BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason));
+        string reason,
+        out MediaCompositionFrame frame,
+        out byte[]? rentedBackground)
+    {
+        frame = default;
+        rentedBackground = null;
+
+        if (!TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null)
+            return CompositionPresentResult.Failed;
+
+        if (HasCompositionBackgroundNoLock() && !IsCdgSnapshotReadyForBackgroundPresentation(snapshot))
+            return CompositionPresentResult.Deferred;
+
+        if (!EnsureD3D11())
+            return CompositionPresentResult.Failed;
+
+        frame = BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason, out rentedBackground);
+        return CompositionPresentResult.Presented;
+    }
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
@@ -1014,22 +1049,58 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         return CompositionPresentResult.Presented;
     }
 
-    private MediaCompositionFrame BuildCompositionFrame(
-        CdgRenderSnapshot? cdgOverlay,
+    // Software / image / BGRA-video present path (007A.2): build the composition frame under _lock with
+    // an owned pixel snapshot, then present outside _lock so the transport-visible lock is not held
+    // across the vsync-bound GPU present. Hardware (D3D11 texture) paths deliberately stay under _lock
+    // and are handled separately (deferred to stage 007B).
+    private CompositionPresentResult BuildAndPresentSoftwareComposition(
         uint washArgb,
         bool retainedRefresh,
         string reason)
     {
+        MediaCompositionFrame frame;
+        byte[]? rentedBackground;
         lock (_lock)
-            return BuildCompositionFrameNoLock(cdgOverlay, washArgb, retainedRefresh, reason);
+        {
+            if (!EnsureD3D11())
+                return CompositionPresentResult.Failed;
+
+            frame = BuildCompositionFrameNoLock(null, washArgb, retainedRefresh, reason, out rentedBackground);
+        }
+
+        return PresentSoftwareComposition(frame, rentedBackground);
+    }
+
+    // Presents an already-built composition frame WITHOUT holding the coordinator's transport-visible
+    // _lock. The D3D11 device context stays serialized by NativeD3D11PresentationBridge's own lock. Any
+    // pooled background buffer captured for this frame is returned once the present completes.
+    private CompositionPresentResult PresentSoftwareComposition(MediaCompositionFrame frame, byte[]? rentedBackground)
+    {
+        try
+        {
+            if (!_presenter.PresentMediaCompositionVisible(frame))
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}");
+                return CompositionPresentResult.Failed;
+            }
+
+            return CompositionPresentResult.Presented;
+        }
+        finally
+        {
+            if (rentedBackground != null)
+                CompositionBackgroundPool.Return(rentedBackground);
+        }
     }
 
     private MediaCompositionFrame BuildCompositionFrameNoLock(
         CdgRenderSnapshot? cdgOverlay,
         uint washArgb,
         bool retainedRefresh,
-        string reason)
+        string reason,
+        out byte[]? rentedBackground)
     {
+        rentedBackground = null;
         ReadOnlyMemory<byte> backgroundBgra;
         int backgroundWidth;
         int backgroundHeight;
@@ -1056,11 +1127,32 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             && backgroundWidth > 0
             && backgroundHeight > 0;
 
+        // Take an owned snapshot of the background pixels so the frame can be presented after _lock is
+        // released without racing a concurrent SetCompositionLayer0Frame overwriting the master buffer
+        // (007A.2). The rented buffer is returned to the pool by PresentSoftwareComposition.
+        ReadOnlyMemory<byte> ownedBackgroundBgra = ReadOnlyMemory<byte>.Empty;
+        if (hasBackground)
+        {
+            var backgroundLength = backgroundBgra.Length;
+            rentedBackground = CompositionBackgroundPool.Rent(backgroundLength);
+            try
+            {
+                backgroundBgra.Span.CopyTo(rentedBackground);
+                ownedBackgroundBgra = new ReadOnlyMemory<byte>(rentedBackground, 0, backgroundLength);
+            }
+            catch
+            {
+                CompositionBackgroundPool.Return(rentedBackground);
+                rentedBackground = null;
+                throw;
+            }
+        }
+
         return new MediaCompositionFrame
         {
             ClearMode = MediaCompositionClearMode.Black,
             ClearArgb = 0xFF000000,
-            BackgroundBgra = hasBackground ? backgroundBgra : ReadOnlyMemory<byte>.Empty,
+            BackgroundBgra = hasBackground ? ownedBackgroundBgra : ReadOnlyMemory<byte>.Empty,
             BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
             BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,
             BackgroundStride = hasBackground ? backgroundStride : 0,
@@ -1092,16 +1184,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         lock (_lock)
         {
-            if (frame.PixelDataCanBeRetained)
-                _compositionBackgroundBgra = frame.PixelData[..required];
-            else
-            {
-                if (_compositionBackgroundCopyBuffer == null || _compositionBackgroundCopyBuffer.Length != required)
-                    _compositionBackgroundCopyBuffer = new byte[required];
+            // Always copy incoming pixels into the coordinator-owned master buffer. The master is only
+            // read/written under _lock; the per-present snapshot taken in BuildCompositionFrameNoLock is
+            // what safely crosses the lock boundary (007A.2). The former PixelDataCanBeRetained fast-path
+            // aliased the caller's frame buffer, whose lifetime cannot be guaranteed once _lock is
+            // released around the present.
+            if (_compositionBackgroundCopyBuffer == null || _compositionBackgroundCopyBuffer.Length != required)
+                _compositionBackgroundCopyBuffer = new byte[required];
 
-                frame.PixelData.Span[..required].CopyTo(_compositionBackgroundCopyBuffer);
-                _compositionBackgroundBgra = new ReadOnlyMemory<byte>(_compositionBackgroundCopyBuffer, 0, required);
-            }
+            frame.PixelData.Span[..required].CopyTo(_compositionBackgroundCopyBuffer);
+            _compositionBackgroundBgra = new ReadOnlyMemory<byte>(_compositionBackgroundCopyBuffer, 0, required);
 
             _compositionBackgroundWidth = frame.Width;
             _compositionBackgroundHeight = frame.Height;
