@@ -77,19 +77,19 @@ internal static partial class NativeMethods
     internal const int GWL_EXSTYLE = -20;
     internal const int WS_EX_TRANSPARENT = 0x00000020;
 
-    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static partial IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
 
-    [LibraryImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static partial int GetWindowLong32(IntPtr hWnd, int nIndex);
 
     internal static int GetWindowLong(IntPtr hWnd, int nIndex) =>
         IntPtr.Size == 8 ? (int)GetWindowLongPtr64(hWnd, nIndex).ToInt64() : GetWindowLong32(hWnd, nIndex);
 
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static partial IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
     private static partial int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 
     internal static int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong) => IntPtr.Size == 8
