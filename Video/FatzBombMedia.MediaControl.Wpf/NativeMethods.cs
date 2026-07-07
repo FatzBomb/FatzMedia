@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Wpf;
@@ -53,7 +54,7 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool DeleteObject(IntPtr hObject);
 
-// #pragma warning disable SYSLIB1054
+    // #pragma warning disable SYSLIB1054
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT lpPaint);
 
@@ -62,18 +63,26 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT lpPaint);
 
-// #pragma warning restore SYSLIB1054
+    // #pragma warning restore SYSLIB1054
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct PAINTSTRUCT
     {
         public IntPtr Hdc;
+
+        // Win32 BOOL is 4 bytes, not C# bool.
         public int Erase;
+
         public RECT RcPaint;
+
+        // Reserved fields, also Win32 BOOL-sized.
         public int Restore;
         public int IncUpdate;
+
+        // BYTE rgbReserved[32]
         public RgbReservedBuffer RgbReserved;
-        public readonly bool ShouldErase => Erase != 0;
+
+        public bool ShouldErase => Erase != 0;
     }
 
     [StructLayout(LayoutKind.Sequential, Size = 32)]
