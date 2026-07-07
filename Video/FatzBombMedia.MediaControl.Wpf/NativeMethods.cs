@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Wpf;
@@ -54,7 +53,6 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool DeleteObject(IntPtr hObject);
 
-    // #pragma warning disable SYSLIB1054
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT lpPaint);
 
@@ -62,8 +60,6 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT lpPaint);
-
-    // #pragma warning restore SYSLIB1054
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct PAINTSTRUCT
