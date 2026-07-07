@@ -1243,7 +1243,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     /// hardware-decode D3D11 device could be created (i.e. the GPU is back). Does not touch the live
     /// decoder or playback.
     /// </summary>
-    private bool HardwareDecodeDeviceAvailable(string path)
+    private static bool HardwareDecodeDeviceAvailable(string path)
     {
         try
         {
@@ -1587,7 +1587,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             : Duration;
     }
 
-    private double GetLoopOverflowPosition(double currentPosition, double loopBoundary)
+    private static double GetLoopOverflowPosition(double currentPosition, double loopBoundary)
     {
         if (!double.IsFinite(currentPosition) || !double.IsFinite(loopBoundary) || loopBoundary <= 0)
             return 0;
