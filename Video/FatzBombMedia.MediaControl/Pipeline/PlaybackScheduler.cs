@@ -1,6 +1,3 @@
-
-using System.Diagnostics;
-
 namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class PlaybackScheduler(string name) : IDisposable

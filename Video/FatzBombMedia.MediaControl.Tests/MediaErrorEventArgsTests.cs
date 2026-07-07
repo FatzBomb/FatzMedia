@@ -1,5 +1,3 @@
-using FatzBombMedia.MediaControl;
-
 namespace FatzBombMedia.MediaControl.Tests;
 
 public class MediaErrorEventArgsTests

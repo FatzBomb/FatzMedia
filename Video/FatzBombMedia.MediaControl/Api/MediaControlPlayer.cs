@@ -43,7 +43,7 @@ public class MediaControlPlayer : IMediaControlSession
         Controls.MediaStopped += OnControlsMediaStopped;
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
 
-        if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
+        if (_mediaEngine is IMediaErrorSource errorSource)
             errorSource.ErrorOccurred += OnEngineErrorOccurred;
 
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
@@ -243,7 +243,7 @@ public class MediaControlPlayer : IMediaControlSession
         _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
     }
 
-private void OnControlsMediaStarted(object? sender, EventArgs e)
+    private void OnControlsMediaStarted(object? sender, EventArgs e)
     {
         EventHandler? handler = MediaStarted;
         if (handler == null)
@@ -312,7 +312,7 @@ private void OnControlsMediaStarted(object? sender, EventArgs e)
             Controls.MediaStopped -= OnControlsMediaStopped;
             _presentationCoordinator.FramePresented -= OnPresentationFramePresented;
             DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
-            if (_mediaEngine is Core.Abstractions.IMediaErrorSource errorSource)
+            if (_mediaEngine is IMediaErrorSource errorSource)
                 errorSource.ErrorOccurred -= OnEngineErrorOccurred;
             Controls.Dispose();
             _presentationCoordinator.Dispose();

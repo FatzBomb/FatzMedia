@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Buffers;
-using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Core.Cdg;
 

@@ -17,8 +17,6 @@ internal static class DiagnosticRouter
     /// </summary>
     public static event Action<MediaDiagnosticInfo>? DiagnosticOccurred;
 
-    public static void Raise(MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null)
-    {
+    public static void Raise(MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null) =>
         DiagnosticOccurred?.Invoke(new MediaDiagnosticInfo(level, category, message, sourcePath, innerException));
-    }
 }

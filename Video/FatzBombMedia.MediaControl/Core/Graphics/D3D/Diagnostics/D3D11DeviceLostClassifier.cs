@@ -87,12 +87,12 @@ internal static class D3D11DeviceLostClassifier
         return $"{ClassificationName(result)}: {result}{reasonSuffix}";
     }
 
-    private static string ClassificationName(Result result)
-    {
-        if (result == ResultCode.DeviceRemoved) return "Device removed";
-        if (result == ResultCode.DeviceReset) return "Device reset";
-        if (result == ResultCode.DeviceHung) return "Device hung";
-        if (result == ResultCode.DriverInternalError) return "Driver internal error";
-        return "Device lost";
-    }
+    private static string ClassificationName(Result result) =>
+        result == ResultCode.DeviceRemoved
+            ? "Device removed"
+            : result == ResultCode.DeviceReset
+                ? "Device reset"
+                : result == ResultCode.DeviceHung
+                    ? "Device hung"
+                    : result == ResultCode.DriverInternalError ? "Driver internal error" : "Device lost";
 }

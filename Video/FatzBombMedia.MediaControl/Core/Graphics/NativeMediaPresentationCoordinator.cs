@@ -385,9 +385,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)
-        {
             _recoveryScheduler.Start(RunDeviceLostRecovery);
-        }
     }
 
     /// <summary>
@@ -402,9 +400,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         try
         {
             if (_disposed)
-            {
                 return;
-            }
 
             var wasRenderingActive = _isRenderingActive;
             StopRendering();
@@ -414,19 +410,15 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             {
                 if (attempt > 1)
                 {
-                    var delay = DeviceLostRecoveryBackoffDelays[Math.Min(attempt - 2, DeviceLostRecoveryBackoffDelays.Length - 1)];
+                    TimeSpan delay = DeviceLostRecoveryBackoffDelays[Math.Min(attempt - 2, DeviceLostRecoveryBackoffDelays.Length - 1)];
                     if (cancellationToken.WaitHandle.WaitOne(delay))
-                    {
                         break;
-                    }
                 }
 
                 lock (_lock)
                 {
                     if (_disposed)
-                    {
                         return;
-                    }
 
                     _presenter.CleanupResources();
                     recovered = EnsureD3D11();
@@ -445,19 +437,15 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             if (recovered)
             {
                 if (wasRenderingActive)
-                {
                     StartRendering();
-                }
 
                 PresentCurrentComposition("device-lost recovery completed");
             }
             else if (!cancellationToken.IsCancellationRequested)
-            {
                 DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Error,
                     DeviceLostRecoveryFailedDiagnosticCategory,
                     $"GPU device-lost recovery failed after {DeviceLostRecoveryMaxAttempts} attempts. Presentation will remain unavailable until the host reinitializes.");
-            }
         }
         finally
         {
@@ -482,9 +470,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         if (_mediaEngine.Video == null)
-        {
             return;
-        }
 
         _attachedVideo = _mediaEngine.Video;
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
@@ -508,9 +494,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         }
 
         if (_mediaEngine.Cdg == null)
-        {
             return;
-        }
 
         _attachedCdg = _mediaEngine.Cdg;
         _attachedCdg.FrameInvalidated += OnCdgFrameInvalidated;

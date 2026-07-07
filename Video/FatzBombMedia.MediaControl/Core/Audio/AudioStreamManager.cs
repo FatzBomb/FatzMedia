@@ -1,7 +1,6 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using ManagedBass;
 using ManagedBass.Fx;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using MBass = ManagedBass.Bass;
 

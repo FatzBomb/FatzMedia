@@ -5,9 +5,7 @@ namespace FatzBombMedia.MediaControl.Pipeline;
 internal sealed class MediaState
 {
     private readonly Lock _gate = new();
-    private MediaContent _content = MediaContent.None;
     private MediaPlayerState _playbackState = MediaPlayerState.Null;
-    private string? _sourcePath;
     private double _positionSeconds;
     private double _durationSeconds;
 
@@ -17,10 +15,12 @@ internal sealed class MediaState
         {
             lock (_gate)
             {
-                return _content;
+                return field;
             }
         }
-    }
+
+        private set;
+    } = MediaContent.None;
 
     public MediaPlayerState PlaybackState
     {
@@ -39,9 +39,11 @@ internal sealed class MediaState
         {
             lock (_gate)
             {
-                return _sourcePath;
+                return field;
             }
         }
+
+        private set;
     }
 
     public double PositionSeconds
@@ -72,8 +74,8 @@ internal sealed class MediaState
     {
         lock (_gate)
         {
-            _content = content;
-            _sourcePath = sourcePath;
+            Content = content;
+            SourcePath = sourcePath;
             _positionSeconds = 0;
             _durationSeconds = CleanSeconds(durationSeconds);
             _playbackState = MediaPlayerState.Stopped;
@@ -123,9 +125,9 @@ internal sealed class MediaState
     {
         lock (_gate)
         {
-            _content = MediaContent.None;
+            Content = MediaContent.None;
             _playbackState = MediaPlayerState.Null;
-            _sourcePath = null;
+            SourcePath = null;
             _positionSeconds = 0;
             _durationSeconds = 0;
         }

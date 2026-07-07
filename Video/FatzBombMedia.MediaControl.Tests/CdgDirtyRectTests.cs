@@ -7,7 +7,7 @@ public class CdgDirtyRectTests
     [Fact]
     public void Empty_IsEmptyWithZeroDimensions()
     {
-        var rect = CdgDirtyRect.Empty;
+        CdgDirtyRect rect = CdgDirtyRect.Empty;
 
         Assert.True(rect.IsEmpty);
         Assert.Equal(0, rect.Width);
@@ -17,7 +17,7 @@ public class CdgDirtyRectTests
     [Fact]
     public void FullFrame_CoversEntireCdgFrame()
     {
-        var rect = CdgDirtyRect.FullFrame;
+        CdgDirtyRect rect = CdgDirtyRect.FullFrame;
 
         Assert.False(rect.IsEmpty);
         Assert.Equal(0, rect.X);
@@ -31,7 +31,7 @@ public class CdgDirtyRectTests
     {
         var rect = new CdgDirtyRect(10, 20, 30, 40);
 
-        var clamped = rect.ClampToFrame();
+        CdgDirtyRect clamped = rect.ClampToFrame();
 
         Assert.Equal(rect, clamped);
     }
@@ -41,7 +41,7 @@ public class CdgDirtyRectTests
     {
         var rect = new CdgDirtyRect(-5, -10, CdgConstants.FrameWidth + 20, CdgConstants.FrameHeight + 30);
 
-        var clamped = rect.ClampToFrame();
+        CdgDirtyRect clamped = rect.ClampToFrame();
 
         Assert.Equal(0, clamped.X);
         Assert.Equal(0, clamped.Y);
@@ -57,7 +57,7 @@ public class CdgDirtyRectTests
             CdgConstants.FrameHeight + 10,
             5, 5);
 
-        var clamped = rect.ClampToFrame();
+        CdgDirtyRect clamped = rect.ClampToFrame();
 
         Assert.Equal(CdgDirtyRect.Empty, clamped);
         Assert.True(clamped.IsEmpty);
@@ -68,7 +68,7 @@ public class CdgDirtyRectTests
     {
         var rect = new CdgDirtyRect(CdgConstants.FrameWidth, 0, 10, 10);
 
-        var clamped = rect.ClampToFrame();
+        CdgDirtyRect clamped = rect.ClampToFrame();
 
         Assert.True(clamped.IsEmpty);
     }

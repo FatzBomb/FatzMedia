@@ -8,7 +8,7 @@ using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, Core.Abstractions.IMediaErrorSource
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaErrorSource
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
@@ -22,18 +22,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private volatile int _backgroundGeneration;
     private bool _disposed;
 
-    event Action<MediaErrorInfo>? Core.Abstractions.IMediaErrorSource.ErrorOccurred
+    event Action<MediaErrorInfo>? IMediaErrorSource.ErrorOccurred
     {
-        add => _errorOccurred += value;
-        remove => _errorOccurred -= value;
+        add => ErrorOccurred += value;
+        remove => ErrorOccurred -= value;
     }
 
-    private event Action<MediaErrorInfo>? _errorOccurred;
+    private event Action<MediaErrorInfo>? ErrorOccurred;
 
     private void RaiseError(MediaErrorCode code, string message, string? sourcePath = null, Exception? innerException = null)
     {
         Debug.WriteLine($"[PipelineMediaEngine] Error {code}: {message}");
-        _errorOccurred?.Invoke(new MediaErrorInfo(code, message, sourcePath, innerException));
+        ErrorOccurred?.Invoke(new MediaErrorInfo(code, message, sourcePath, innerException));
     }
 
     public PipelineMediaEngine(
@@ -133,7 +133,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         if (!opened)
         {
-            var code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
+            MediaErrorCode code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
                 ? MediaErrorCode.UnsupportedFormat
                 : MediaErrorCode.OpenFailed;
             RaiseError(code, $"Failed to open media: {Path.GetFileName(path)}", path);

@@ -11,7 +11,7 @@ public class MediaBackgroundResolverTests : IDisposable
     public MediaBackgroundResolverTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaTests_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_tempDir);
+        _ = Directory.CreateDirectory(_tempDir);
     }
 
     public void Dispose()
@@ -33,7 +33,7 @@ public class MediaBackgroundResolverTests : IDisposable
     [InlineData("   ")]
     public void Resolve_ReturnsNullForNullOrWhitespaceSourcePath(string? sourcePath)
     {
-        var result = MediaBackgroundResolver.Resolve(sourcePath!, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(sourcePath!, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -43,7 +43,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = Path.Combine(_tempDir, "missing.mp3");
 
-        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -53,7 +53,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = CreateFile("clip.mp4");
 
-        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Video);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Video);
 
         Assert.Null(result);
     }
@@ -63,7 +63,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = CreateFile("photo.png");
 
-        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Image);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.Image);
 
         Assert.Null(result);
     }
@@ -73,7 +73,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var path = CreateFile("song.mp3");
 
-        var result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
 
         Assert.Null(result);
     }
@@ -84,7 +84,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var audioPath = CreateFile("song.mp3");
         var sidecarPath = CreateFile("song.png");
 
-        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.NotNull(result);
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
@@ -97,7 +97,7 @@ public class MediaBackgroundResolverTests : IDisposable
         var cdgPath = CreateFile("track.cdg");
         var sidecarPath = CreateFile("track.jpg");
 
-        var result = MediaBackgroundResolver.Resolve(cdgPath, new FakeArchiveService(), MediaContent.Cdg);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(cdgPath, new FakeArchiveService(), MediaContent.Cdg);
 
         Assert.NotNull(result);
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
@@ -109,7 +109,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         var audioPath = CreateFile("lonely.mp3");
 
-        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -118,9 +118,9 @@ public class MediaBackgroundResolverTests : IDisposable
     public void Resolve_DoesNotMatchSidecarWithDifferentBaseName()
     {
         var audioPath = CreateFile("song.mp3");
-        CreateFile("other.png"); // different base name
+        _ = CreateFile("other.png"); // different base name
 
-        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.Null(result);
     }
@@ -129,14 +129,14 @@ public class MediaBackgroundResolverTests : IDisposable
     public void Resolve_MatchesSidecarCaseInsensitivelyByExtension()
     {
         var audioPath = CreateFile("song.mp3");
-        CreateFile("song.PNG"); // uppercase extension
+        _ = CreateFile("song.PNG"); // uppercase extension
 
-        var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.NotNull(result);
         // The resolver constructs the candidate path from FileTypes.Image extensions
         // (lowercase), but File.Exists matches case-insensitively on Windows.
-        Assert.True(File.Exists(result!.Path), $"Sidecar path should exist: {result.Path}");
+        Assert.True(File.Exists(result.Path), $"Sidecar path should exist: {result.Path}");
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
     }
 
@@ -148,7 +148,7 @@ public class MediaBackgroundResolverTests : IDisposable
 
         // Archive path is exercised; without archive entries it falls through to sidecar
         // lookup (which finds nothing here), so result is null. The test verifies no crash.
-        var result = MediaBackgroundResolver.Resolve(archivePath, archiveService, MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(archivePath, archiveService, MediaContent.Audio);
 
         Assert.Null(result);
         Assert.True(archiveService.OpenCalled);
@@ -162,12 +162,12 @@ public class MediaBackgroundResolverTests : IDisposable
 
         try
         {
-            FileTypes.Video.Add(".mp4");
+            _ = FileTypes.Video.Add(".mp4");
 
-            var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
             Assert.NotNull(result);
-            Assert.Equal(MediaBackgroundKind.Video, result!.Kind);
+            Assert.Equal(MediaBackgroundKind.Video, result.Kind);
             Assert.Equal(sidecarPath, result.Path);
         }
         finally
@@ -180,14 +180,14 @@ public class MediaBackgroundResolverTests : IDisposable
     public void Resolve_PrefersVideoOverImageSidecar()
     {
         var audioPath = CreateFile("song.mp3");
-        CreateFile("song.mp4");
-        CreateFile("song.png");
+        _ = CreateFile("song.mp4");
+        _ = CreateFile("song.png");
 
         try
         {
-            FileTypes.Video.Add(".mp4");
+            _ = FileTypes.Video.Add(".mp4");
 
-            var result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
+            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
             Assert.NotNull(result);
             // PreferredKindOrder() lists Video before Image, so the resolver checks
@@ -195,7 +195,7 @@ public class MediaBackgroundResolverTests : IDisposable
             // still adds both (it iterates all extensions for each kind before returning),
             // then SelectRandom picks one non-deterministically. Therefore we accept
             // either kind.
-            Assert.True(result!.Kind == MediaBackgroundKind.Video || result!.Kind == MediaBackgroundKind.Image,
+            Assert.True(result.Kind is MediaBackgroundKind.Video or MediaBackgroundKind.Image,
                 $"Expected Video or Image, got {result.Kind}");
         }
         finally

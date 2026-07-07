@@ -17,10 +17,8 @@ public class FileTypesTests
     [InlineData("archive.tbz2", true)]
     [InlineData("archive.txt", false)]
     [InlineData("noext", false)]
-    public void IsArchive_MatchesArchiveExtensions(string filename, bool expected)
-    {
+    public void IsArchive_MatchesArchiveExtensions(string filename, bool expected) =>
         Assert.Equal(expected, FileTypes.IsArchive(filename));
-    }
 
     [Theory]
     [InlineData("photo.png", true)]
@@ -33,20 +31,16 @@ public class FileTypesTests
     [InlineData("photo.tiff", true)]
     [InlineData("photo.webp", false)] // intentionally excluded per source comment
     [InlineData("photo.txt", false)]
-    public void IsImage_MatchesImageExtensions(string filename, bool expected)
-    {
+    public void IsImage_MatchesImageExtensions(string filename, bool expected) =>
         Assert.Equal(expected, FileTypes.IsImage(filename));
-    }
 
     [Theory]
     [InlineData("track.cdg", true)]
     [InlineData("track.CDG", true)]
     [InlineData("track.mp3", false)]
     [InlineData("noext", false)]
-    public void IsCdg_MatchesCdgExtension(string filename, bool expected)
-    {
+    public void IsCdg_MatchesCdgExtension(string filename, bool expected) =>
         Assert.Equal(expected, FileTypes.IsCdg(filename));
-    }
 
     [Fact]
     public void ArchiveSet_IsCaseInsensitive()
