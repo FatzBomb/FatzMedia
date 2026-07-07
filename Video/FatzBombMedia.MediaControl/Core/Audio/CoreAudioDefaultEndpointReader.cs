@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;
 
-internal static class CoreAudioDefaultEndpointReader
+internal static partial class CoreAudioDefaultEndpointReader
 {
     private static readonly Guid MMDeviceEnumeratorClassId = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
     private static readonly PropertyKey PkeyDeviceFriendlyName = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
@@ -84,10 +84,8 @@ internal static class CoreAudioDefaultEndpointReader
             _ = Marshal.ReleaseComObject(value);
     }
 
-#pragma warning disable SYSLIB1054 // DllImport → LibraryImport is non-trivial for COM interop; suppress on proven- working code.
-    [DllImport("Ole32.dll")]
-    private static extern int PropVariantClear(ref PropVariant pvar);
-#pragma warning restore SYSLIB1054
+    [LibraryImport("Ole32.dll")]
+    private static partial int PropVariantClear(ref PropVariant pvar);
 
     private enum EDataFlow
     {

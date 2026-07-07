@@ -105,9 +105,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public bool ApplyPendingResizeIfNeeded(D3D11DeviceResources deviceResources)
     {
         if (!IsActive || !HasPendingResize)
-        {
             return true;
-        }
 
         var width = Math.Max(1, _pendingWidth);
         var height = Math.Max(1, _pendingHeight);
@@ -190,9 +188,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
             }
             else
-            {
                 Debug.WriteLine($"[VorticeD3D11] DirectComposition {chainName} ResizeBuffers failed: {result}");
-            }
 
             return;
         }
@@ -224,6 +220,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         Result result = _target.OverlaySwapChain.Present(syncInterval, (int)PresentFlags.None);
         if (result.Failure)
         {
+
             if (D3D11DeviceLostClassifier.IsDeviceLost(result))
             {
                 // Latch owned by this instance: report once per loss episode so a failing
@@ -235,9 +232,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
             }
             else
-            {
                 Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
-            }
 
             return false;
         }

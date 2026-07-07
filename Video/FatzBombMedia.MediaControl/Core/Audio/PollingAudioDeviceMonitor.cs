@@ -26,8 +26,7 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 
     internal PollingAudioDeviceMonitor(TimeSpan pollInterval)
     {
-        if (pollInterval <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(pollInterval));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(pollInterval, TimeSpan.Zero);
         _pollInterval = pollInterval;
     }
 

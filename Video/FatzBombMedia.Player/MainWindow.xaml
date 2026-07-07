@@ -1,22 +1,23 @@
-<Window x:Class="FatzBombMedia.Player.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fbm="clr-namespace:FatzBombMedia.MediaControl.Wpf;assembly=FatzBombMedia.MediaControl.Wpf"
-        Title="FatzBomb Media Player"
-        Height="720"
-        Width="1120"
-        MinHeight="540"
-        MinWidth="900"
-        WindowStartupLocation="CenterScreen"
-        Background="#090B0E"
-        Foreground="#F2F5F8"
-        FontFamily="Segoe UI"
-        AllowDrop="True"
-        KeyDown="Window_KeyDown"
-        MouseMove="Window_MouseMove"
-        DragEnter="Window_DragEnter"
-        DragOver="Window_DragOver"
-        Drop="Window_Drop">
+<Window
+    x:Class="FatzBombMedia.Player.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:fbm="clr-namespace:FatzBombMedia.MediaControl.Wpf;assembly=FatzBombMedia.MediaControl.Wpf"
+    Title="FatzBomb Media Player"
+    Width="1120"
+    Height="720"
+    MinWidth="900"
+    MinHeight="540"
+    AllowDrop="True"
+    Background="#090B0E"
+    DragEnter="Window_DragEnter"
+    DragOver="Window_DragOver"
+    Drop="Window_Drop"
+    FontFamily="Segoe UI"
+    Foreground="#F2F5F8"
+    KeyDown="Window_KeyDown"
+    MouseMove="Window_MouseMove"
+    WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
         <SolidColorBrush x:Key="WindowBrush" Color="#090B0E" />
@@ -62,15 +63,17 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              RecognizesAccessKey="True" />
+                        <Border
+                            x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8"
+                            SnapsToDevicePixels="True">
+                            <ContentPresenter
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -91,7 +94,10 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
+        <Style
+            x:Key="PrimaryButtonStyle"
+            BasedOn="{StaticResource ChromeButtonStyle}"
+            TargetType="Button">
             <Setter Property="Width" Value="38" />
             <Setter Property="Background" Value="{StaticResource AccentBrush}" />
             <Setter Property="BorderBrush" Value="#7CCAFF" />
@@ -139,41 +145,47 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Double-click this viewport to enter/exit full screen. In full screen, BottomChrome becomes an auto-hide overlay. -->
-        <Border x:Name="MediaViewportBorder" Background="Blue"
-                Grid.Row="0"
-                Margin="12,12,12,8"
-                BorderBrush="#151C24"
-                BorderThickness="1"
-                CornerRadius="12"
-                Padding="8"
-                ClipToBounds="True"
-                MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
-            <fbm:MediaSurface x:Name="MediaSurface" Background="Transparent"
-                                      Player="{Binding Player}"
-                                      VideoDisplayMode="{Binding VideoDisplayMode}"
-                                      PresentationMode="{Binding PresentationMode}"
-                                      OverlayHitTestVisible="False"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch" />
+        <!--  Double-click this viewport to enter/exit full screen. In full screen, BottomChrome becomes an auto-hide overlay.  -->
+        <Border
+            x:Name="MediaViewportBorder"
+            Grid.Row="0"
+            Margin="12,12,12,8"
+            Padding="8"
+            Background="Blue"
+            BorderBrush="#151C24"
+            BorderThickness="1"
+            ClipToBounds="True"
+            CornerRadius="12"
+            MouseLeftButtonDown="MediaViewport_MouseLeftButtonDown">
+            <fbm:MediaSurface
+                x:Name="MediaSurface"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="Transparent"
+                OverlayHitTestVisible="False"
+                Player="{Binding Player}"
+                PresentationMode="{Binding PresentationMode}"
+                VideoDisplayMode="{Binding VideoDisplayMode}" />
         </Border>
 
-        <Grid x:Name="BottomChrome"
-              Grid.Row="1"
-              VerticalAlignment="Stretch"
-              Panel.ZIndex="10">
+        <Grid
+            x:Name="BottomChrome"
+            Grid.Row="1"
+            VerticalAlignment="Stretch"
+            Panel.ZIndex="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="22" />
             </Grid.RowDefinitions>
 
-            <!-- Compact bottom player controls. Open is intentionally beside transport controls. -->
-            <Border x:Name="PlayerControlsPanel"
-                    Grid.Row="0"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="#202A35"
-                    BorderThickness="0,1,0,1"
-                    Padding="10,7">
+            <!--  Compact bottom player controls. Open is intentionally beside transport controls.  -->
+            <Border
+                x:Name="PlayerControlsPanel"
+                Grid.Row="0"
+                Padding="10,7"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="#202A35"
+                BorderThickness="0,1,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="8" />
@@ -186,7 +198,10 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Column="1" Grid.Row="0" Margin="0,0,0,7">
+                    <Grid
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Margin="0,0,0,7">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="54" />
                             <ColumnDefinition Width="12" />
@@ -194,117 +209,153 @@
                             <ColumnDefinition Width="12" />
                             <ColumnDefinition Width="54" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding ElapsedText}"
-                                   Style="{StaticResource ValueTextStyle}"
-                                   HorizontalAlignment="Right"
-                                   FontSize="12" />
-                        <Grid x:Name="SeekBar"
-                              Grid.Column="2"
-                              Height="22"
-                              Background="Transparent"
-                              Cursor="Hand"
-                              IsEnabled="{Binding CanSeek}"
-                              Visibility="{Binding CanSeek, Converter={StaticResource BooleanToVisibilityConverter}}"
-                              MouseLeftButtonDown="SeekBar_MouseLeftButtonDown"
-                              MouseMove="SeekBar_MouseMove"
-                              MouseLeftButtonUp="SeekBar_MouseLeftButtonUp"
-                              LostMouseCapture="SeekBar_LostMouseCapture"
-                              SizeChanged="SeekBar_SizeChanged">
-                            <Border Height="6"
-                                    VerticalAlignment="Center"
-                                    Background="#26313D"
+                        <TextBlock
+                            Grid.Column="0"
+                            HorizontalAlignment="Right"
+                            FontSize="12"
+                            Style="{StaticResource ValueTextStyle}"
+                            Text="{Binding ElapsedText}" />
+                        <Grid
+                            x:Name="SeekBar"
+                            Grid.Column="2"
+                            Height="22"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            IsEnabled="{Binding CanSeek}"
+                            LostMouseCapture="SeekBar_LostMouseCapture"
+                            MouseLeftButtonDown="SeekBar_MouseLeftButtonDown"
+                            MouseLeftButtonUp="SeekBar_MouseLeftButtonUp"
+                            MouseMove="SeekBar_MouseMove"
+                            SizeChanged="SeekBar_SizeChanged"
+                            Visibility="{Binding CanSeek, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border
+                                Height="6"
+                                VerticalAlignment="Center"
+                                Background="#26313D"
+                                CornerRadius="3" />
+                            <Canvas
+                                x:Name="SeekCanvas"
+                                Height="22"
+                                VerticalAlignment="Center"
+                                ClipToBounds="True">
+                                <Border
+                                    x:Name="SeekProgress"
+                                    Canvas.Left="0"
+                                    Canvas.Top="8"
+                                    Width="0"
+                                    Height="6"
+                                    Background="{StaticResource AccentBrush}"
                                     CornerRadius="3" />
-                            <Canvas x:Name="SeekCanvas"
-                                    Height="22"
-                                    VerticalAlignment="Center"
-                                    ClipToBounds="True">
-                                <Border x:Name="SeekProgress"
-                                        Canvas.Left="0"
-                                        Canvas.Top="8"
-                                        Width="0"
-                                        Height="6"
-                                        Background="{StaticResource AccentBrush}"
-                                        CornerRadius="3" />
-                                <Ellipse x:Name="SeekThumb"
-                                         Width="14"
-                                         Height="14"
-                                         Canvas.Top="4"
-                                         Fill="#F4F7FA"
-                                         Stroke="{StaticResource AccentBrush}"
-                                         StrokeThickness="2" />
+                                <Ellipse
+                                    x:Name="SeekThumb"
+                                    Canvas.Top="4"
+                                    Width="14"
+                                    Height="14"
+                                    Fill="#F4F7FA"
+                                    Stroke="{StaticResource AccentBrush}"
+                                    StrokeThickness="2" />
                             </Canvas>
                         </Grid>
-                        <TextBlock Grid.Column="4"
-                                   Text="{Binding RemainingText}"
-                                   Style="{StaticResource ValueTextStyle}"
-                                   HorizontalAlignment="Left"
-                                   FontSize="12" />
+                        <TextBlock
+                            Grid.Column="4"
+                            HorizontalAlignment="Left"
+                            FontSize="12"
+                            Style="{StaticResource ValueTextStyle}"
+                            Text="{Binding RemainingText}" />
                     </Grid>
 
-                    <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,4">
-                        <Button Content="&#xE8E5;"
-                                ToolTip="Open media"
-                                Style="{StaticResource ChromeButtonStyle}"
-                                Click="OpenButton_Click"
-                                IsEnabled="{Binding CanOpen}" />
-                        <Button Content="&#xE768;"
-                                ToolTip="Play"
-                                Style="{StaticResource PrimaryButtonStyle}"
-                                Command="{Binding PlayCommand}"
-                                Margin="5,0,0,0" />
-                        <Button Content="&#xE769;"
-                                ToolTip="Pause"
-                                Style="{StaticResource ChromeButtonStyle}"
-                                Command="{Binding PauseCommand}"
-                                Margin="5,0,0,0" />
-                        <Button Content="&#xE71A;"
-                                ToolTip="Stop"
-                                Style="{StaticResource ChromeButtonStyle}"
-                                Command="{Binding StopCommand}"
-                                Margin="5,0,0,0" />
-                        <Button x:Name="ProjectorButton"
-                                Content="&#xE7F4;"
-                                ToolTip="Toggle secondary/projector output validation"
-                                Style="{StaticResource ChromeButtonStyle}"
-                                Click="ProjectorButton_Click"
-                                Margin="5,0,0,0" />
-                        <Button Content="&#xE740;"
-                                ToolTip="Toggle full screen (double-click video also works)"
-                                Style="{StaticResource ChromeButtonStyle}"
-                                Click="FullScreenButton_Click"
-                                Margin="5,0,0,0" />
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Margin="0,0,0,4"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
+                        <Button
+                            Click="OpenButton_Click"
+                            Content="&#xE8E5;"
+                            IsEnabled="{Binding CanOpen}"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            ToolTip="Open media" />
+                        <Button
+                            Margin="5,0,0,0"
+                            Command="{Binding PlayCommand}"
+                            Content="&#xE768;"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            ToolTip="Play" />
+                        <Button
+                            Margin="5,0,0,0"
+                            Command="{Binding PauseCommand}"
+                            Content="&#xE769;"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            ToolTip="Pause" />
+                        <Button
+                            Margin="5,0,0,0"
+                            Command="{Binding StopCommand}"
+                            Content="&#xE71A;"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            ToolTip="Stop" />
+                        <Button
+                            x:Name="ProjectorButton"
+                            Margin="5,0,0,0"
+                            Click="ProjectorButton_Click"
+                            Content="&#xE7F4;"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            ToolTip="Toggle secondary/projector output validation" />
+                        <Button
+                            Margin="5,0,0,0"
+                            Click="FullScreenButton_Click"
+                            Content="&#xE740;"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            ToolTip="Toggle full screen (double-click video also works)" />
                     </StackPanel>
 
-                    
-                    <Grid Grid.Column="1" Grid.Row="1" HorizontalAlignment="Right" MinWidth="160" MaxWidth="320">
+
+                    <Grid
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        MinWidth="160"
+                        MaxWidth="320"
+                        HorizontalAlignment="Right">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="7" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="42" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="🔊" Style="{StaticResource LabelTextStyle}" FontSize="18" FontWeight="Light"/>
-                        <Slider Grid.Column="2"
-                                Minimum="0"
-                                Maximum="1"
-                                Value="{Binding Volume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                TickFrequency="0.1" />
-                        <TextBlock Grid.Column="3"
-                                    Text="{Binding Volume, StringFormat={}{0:P0}}"
-                                    Style="{StaticResource ValueTextStyle}"
-                                    HorizontalAlignment="Right" />
+                        <TextBlock
+                            FontSize="18"
+                            FontWeight="Light"
+                            Style="{StaticResource LabelTextStyle}"
+                            Text="🔊" />
+                        <Slider
+                            Grid.Column="2"
+                            Maximum="1"
+                            Minimum="0"
+                            TickFrequency="0.1"
+                            Value="{Binding Volume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock
+                            Grid.Column="3"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource ValueTextStyle}"
+                            Text="{Binding Volume, StringFormat={}{0:P0}}" />
                     </Grid>
 
-                    <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal">
-                        <CheckBox Content="Auto Play"
-                                  IsChecked="{Binding AutoPlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <CheckBox Margin="8,0,0,0"
-                                  Content="Loop Playback"
-                                  IsChecked="{Binding LoopPlayback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Orientation="Horizontal">
+                        <CheckBox Content="Auto Play" IsChecked="{Binding AutoPlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox
+                            Margin="8,0,0,0"
+                            Content="Loop Playback"
+                            IsChecked="{Binding LoopPlayback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
 
-                <Grid Grid.Column="1" Grid.Row="2" HorizontalAlignment="Center">
+                    <Grid
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        HorizontalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="8" />
@@ -313,7 +364,11 @@
                             <ColumnDefinition Width="Auto" MinWidth="150" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Style="{StaticResource MiniPanelStyle}" MaxWidth="320" MinWidth="240">
+                        <Border
+                            Grid.Column="0"
+                            MinWidth="240"
+                            MaxWidth="320"
+                            Style="{StaticResource MiniPanelStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -321,21 +376,27 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="48" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="PITCH" Style="{StaticResource LabelTextStyle}" />
-                                <Slider Grid.Column="2"
-                                    Minimum="-12"
+                                <TextBlock Style="{StaticResource LabelTextStyle}" Text="PITCH" />
+                                <Slider
+                                    Grid.Column="2"
+                                    IsSnapToTickEnabled="True"
                                     Maximum="12"
-                                    Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Minimum="-12"
                                     TickFrequency="1"
-                                    IsSnapToTickEnabled="True" />
-                                <TextBlock Grid.Column="3"
-                                       Text="{Binding Pitch, StringFormat={}{0:+0;-0;0} st}"
-                                       Style="{StaticResource ValueTextStyle}"
-                                       HorizontalAlignment="Right" />
+                                    Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock
+                                    Grid.Column="3"
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource ValueTextStyle}"
+                                    Text="{Binding Pitch, StringFormat={}{0:+0;-0;0} st}" />
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="2" Style="{StaticResource MiniPanelStyle}" MaxWidth="320" MinWidth="240">
+                        <Border
+                            Grid.Column="2"
+                            MinWidth="240"
+                            MaxWidth="320"
+                            Style="{StaticResource MiniPanelStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -343,21 +404,26 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="42" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="TEMPO" Style="{StaticResource LabelTextStyle}" />
-                                <Slider Grid.Column="2"
-                                    Minimum="50"
+                                <TextBlock Style="{StaticResource LabelTextStyle}" Text="TEMPO" />
+                                <Slider
+                                    Grid.Column="2"
+                                    IsSnapToTickEnabled="True"
                                     Maximum="200"
-                                    Value="{Binding Tempo, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Minimum="50"
                                     TickFrequency="5"
-                                    IsSnapToTickEnabled="True" />
-                                <TextBlock Grid.Column="3"
-                                       Text="{Binding Tempo, StringFormat={}{0:0}%}"
-                                       Style="{StaticResource ValueTextStyle}"
-                                       HorizontalAlignment="Right" />
+                                    Value="{Binding Tempo, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock
+                                    Grid.Column="3"
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource ValueTextStyle}"
+                                    Text="{Binding Tempo, StringFormat={}{0:0}%}" />
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="4" Style="{StaticResource MiniPanelStyle}" MinWidth="390">
+                        <Border
+                            Grid.Column="4"
+                            MinWidth="390"
+                            Style="{StaticResource MiniPanelStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -370,60 +436,68 @@
                                     <ColumnDefinition Width="58" />
                                 </Grid.ColumnDefinitions>
 
-                                <CheckBox Grid.Column="0"
-                                      Content="Normalize"
-                                      IsChecked="{Binding Normalize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ComboBox Grid.Column="2"
-                                      MinWidth="92"
-                                      Foreground="Black"
-                                      ToolTip="Primary video display mode. Background videos behind overlays always use ZoomToFill."
-                                      ItemsSource="{Binding VideoDisplayModes}"
-                                      SelectedItem="{Binding VideoDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Column="4"
-                                           Text="Native Overlay"
-                                           ToolTip="The sample app always uses the native HWND + transparent overlay window path."
-                                           Style="{StaticResource LabelTextStyle}" />
-                                <TextBlock Grid.Column="6"
-                                       Text="BG"
-                                       Style="{StaticResource LabelTextStyle}"
-                                       Margin="0,0,6,0" />
-                                <Slider Grid.Column="7"
+                                <CheckBox
+                                    Grid.Column="0"
+                                    Content="Normalize"
+                                    IsChecked="{Binding Normalize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox
+                                    Grid.Column="2"
+                                    MinWidth="92"
+                                    Foreground="Black"
+                                    ItemsSource="{Binding VideoDisplayModes}"
+                                    SelectedItem="{Binding VideoDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="Primary video display mode. Background videos behind overlays always use ZoomToFill." />
+                                <TextBlock
+                                    Grid.Column="4"
+                                    Style="{StaticResource LabelTextStyle}"
+                                    Text="Native Overlay"
+                                    ToolTip="The sample app always uses the native HWND + transparent overlay window path." />
+                                <TextBlock
+                                    Grid.Column="6"
+                                    Margin="0,0,6,0"
+                                    Style="{StaticResource LabelTextStyle}"
+                                    Text="BG" />
+                                <Slider
+                                    Grid.Column="7"
                                     Width="58"
-                                    Minimum="0"
+                                    IsSnapToTickEnabled="True"
                                     Maximum="100"
-                                    Value="{Binding CdgBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Minimum="0"
                                     TickFrequency="10"
-                                    IsSnapToTickEnabled="True" />
+                                    Value="{Binding CdgBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                         </Border>
                     </Grid>
                 </Grid>
             </Border>
 
-            <!-- Thin bottom status strip. In full screen this rides with the auto-hide overlay. -->
-            <Border x:Name="StatusStrip"
-                    Grid.Row="1"
-                    Background="#0D1116"
-                    BorderBrush="#1B242E"
-                    BorderThickness="0,1,0,0"
-                    Padding="9,0">
+            <!--  Thin bottom status strip. In full screen this rides with the auto-hide overlay.  -->
+            <Border
+                x:Name="StatusStrip"
+                Grid.Row="1"
+                Padding="9,0"
+                Background="#0D1116"
+                BorderBrush="#1B242E"
+                BorderThickness="0,1,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="7" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Ellipse Width="6"
-                             Height="6"
-                             Fill="{StaticResource AccentBrush}"
-                             VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding StatusText}"
-                               ToolTip="{Binding StatusText}"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               FontSize="11"
-                               TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center" />
+                    <Ellipse
+                        Width="6"
+                        Height="6"
+                        VerticalAlignment="Center"
+                        Fill="{StaticResource AccentBrush}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="{StaticResource MutedTextBrush}"
+                        Text="{Binding StatusText}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTip="{Binding StatusText}" />
                 </Grid>
             </Border>
         </Grid>

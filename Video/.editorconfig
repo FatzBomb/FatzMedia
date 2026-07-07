@@ -9,6 +9,7 @@ trim_trailing_whitespace = true
 [*.cs]
 indent_style = space
 indent_size = 4
+dotnet_diagnostic.IDE0072.severity = none
 
 # ==========================================
 # 1. Global Analyzer Severity Configuration

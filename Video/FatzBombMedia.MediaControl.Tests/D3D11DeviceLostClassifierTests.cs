@@ -13,10 +13,7 @@ namespace FatzBombMedia.MediaControl.Tests;
 /// </summary>
 public class D3D11DeviceLostClassifierTests
 {
-#pragma warning disable xUnit1044 // Result is not serializable; Test Explorer row enumeration is cosmetic.
-    public static TheoryData<Result, string> DeviceLostResults() =>
-#pragma warning restore xUnit1044
-        new()
+    public static TheoryData<Result, string> DeviceLostResults() => new()
         {
             { DxgiResultCode.DeviceRemoved, "Device removed" },
             { DxgiResultCode.DeviceReset, "Device reset" },
@@ -25,7 +22,9 @@ public class D3D11DeviceLostClassifierTests
         };
 
     [Theory]
+#pragma warning disable xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     [MemberData(nameof(DeviceLostResults))]
+#pragma warning restore xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     public void IsDeviceLost_ReturnsTrue_ForDeviceLostResults(Result result, string expectedPrefix)
     {
         Assert.NotNull(expectedPrefix);
@@ -49,7 +48,9 @@ public class D3D11DeviceLostClassifierTests
     }
 
     [Theory]
+#pragma warning disable xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     [MemberData(nameof(DeviceLostResults))]
+#pragma warning restore xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     public void Describe_UsesClassifiedName_ForDeviceLostResults(Result result, string expectedPrefix)
     {
         var description = D3D11DeviceLostClassifier.Describe(result, swapChain: null);
