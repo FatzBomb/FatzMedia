@@ -2,10 +2,17 @@
 
 All runnable stage files live directly in `stages/`.
 
-- `006A_BACKLOG_AudioLatencyFeedback.md`
-- `006B_BACKLOG_AudioDeviceHotplug.md`
+## Active / Backlog
+
 - `007A_BACKLOG_PresentOutsideLocks.md`
 - `007B_BACKLOG_HardwareFrameReleaseSafety.md`
+
+## Completed
+
+- `006A_BACKLOG_AudioLatencyFeedback.md` — audio output latency feedback (2026-07-07)
+- `006B_BACKLOG_AudioDeviceHotplug.md` — hotplug monitoring + device selection + fallback (2026-07-07)
+
+## Future
 - `009A_FUTURE_BackgroundSidecarVideoFrameReuse.md`
 - `010A_FUTURE_SoftwareVideoUploadCopyPath.md`
 - `011A_FUTURE_SeamlessPrimaryVideoLooping.md`
