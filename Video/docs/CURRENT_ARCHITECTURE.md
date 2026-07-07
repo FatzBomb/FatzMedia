@@ -29,6 +29,15 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 5. Core builds the final composed frame from Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
 6. Core presents the composed frame to all active targets.
 
+## Device-Lost Recovery
+
+Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely inside Core; adapters are never involved.
+
+- `D3D11DeviceLostClassifier` classifies device-removed/reset conditions on both sides: HRESULT-based for the Core-owned presentation device, and an `IsDeviceLost(IntPtr)` overload for the FFmpeg-owned hardware-decode device (a raw native pointer, wrapped best-effort and never false-positive).
+- Two independent recovery orchestrators, matching the two independently owned devices: the presentation side in `NativeMediaPresentationCoordinator` (rebuilds device, swap chains, DirectComposition target, and secondary outputs), and the decode side in `VideoPipeline` (runtime software-decode fallback with background hardware re-probe/restore; audio and CDG keep running).
+- Diagnostic categories follow a fixed naming convention: `"D3D11.DeviceLost"` (presentation) and `"Decoder.DeviceLost"` (decode), raised at Error on loss and Info on successful recovery, with a `.RecoveryFailed` suffix for the terminal diagnostic after bounded retries are exhausted.
+- Both recovery paths reuse existing rebuild machinery (the proven surface-recreate and seek stop-reposition-restart sequences) — no new swap-chain, compositor, or renderer abstraction was introduced.
+
 ## WPF Adapter API
 
 `FatzBombMedia.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.

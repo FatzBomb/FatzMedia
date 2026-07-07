@@ -292,6 +292,7 @@ Test failures intentionally:
 9. Sidecar background unsupported or corrupted.
 10. Video decode failure.
 11. Device removed/reset scenario if reproducible.
+12. Hardware video decode device-loss scenario: trigger GPU device loss during hardware-decoded video playback and verify software fallback keeps audio/CDG uninterrupted, hardware auto-restores when the device returns, and 005B's presentation recovery doesn't re-adopt the dead device (no feedback loop).
 
 Expected:
 
