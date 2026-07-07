@@ -22,8 +22,10 @@ public sealed class CdgStateMachine
 
     public CdgStateMachine() => Reset();
 
+#pragma warning disable CA1822 // Public API instance properties; intentionally NOT static for callers.
     public int Width => CdgConstants.FrameWidth;
     public int Height => CdgConstants.FrameHeight;
+#pragma warning restore CA1822
     public long Revision
     {
         get

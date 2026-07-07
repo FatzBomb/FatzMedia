@@ -18,6 +18,7 @@ public class MediaBackgroundResolverTests : IDisposable
     {
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
+        GC.SuppressFinalize(this);
     }
 
     private string CreateFile(string name)

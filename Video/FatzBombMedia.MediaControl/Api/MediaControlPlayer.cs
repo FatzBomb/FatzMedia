@@ -470,6 +470,7 @@ public class MediaControlPlayer : IMediaControlSession
         {
             _controlOperations.Dispose();
             _disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }
