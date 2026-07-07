@@ -15,11 +15,12 @@ namespace FatzBombMedia.MediaControl;
 /// </summary>
 public class MediaControlPlayer : IMediaControlSession
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IMediaEngine _mediaEngine;
-    private readonly NativeMediaPresentationCoordinator _presentationCoordinator;
-    private readonly MediaControlOperationQueue _controlOperations;
+    private IServiceProvider _serviceProvider;
+    private IMediaEngine _mediaEngine;
+    private NativeMediaPresentationCoordinator _presentationCoordinator;
+    private MediaControlOperationQueue _controlOperations;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
+    private IAudioDeviceMonitor? _audioDeviceMonitor;
     private bool _disposed;
 
     public MediaControlPlayer(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
@@ -47,17 +48,31 @@ public class MediaControlPlayer : IMediaControlSession
             errorSource.ErrorOccurred += OnEngineErrorOccurred;
 
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
+
+        try
+        {
+            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            if (_audioDeviceMonitor != null)
+            {
+                _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
+                _audioDeviceMonitor.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start: {ex.Message}");
+        }
     }
 
-    public MediaControls Controls { get; }
+    public MediaControls Controls { get; private set; }
 
-    private MediaFile File { get; }
+    private MediaFile File { get; set; }
 
-    public MediaEffects Effects { get; }
+    public MediaEffects Effects { get; private set; }
 
-    public CdgVisuals CdgVisuals { get; }
+    public CdgVisuals CdgVisuals { get; private set; }
 
-    private readonly AcceptedMediaTypes _acceptedTypes;
+    private AcceptedMediaTypes _acceptedTypes;
 
     public string OpenFileDialogFilter => _acceptedTypes.OpenFileDialogFilter;
 
@@ -234,6 +249,8 @@ public class MediaControlPlayer : IMediaControlSession
 
     public event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
 
+    public event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         EventHandler? handler = MediaEnded;
@@ -283,6 +300,37 @@ public class MediaControlPlayer : IMediaControlSession
         _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
     }
 
+    private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
+        _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
+
+    private void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
+    {
+        if (_disposed)
+            return;
+
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            "AudioDeviceMonitor",
+            info.FailureMessage is { Length: > 0 }
+                ? info.FailureMessage
+                : $"Audio device change detected: kind={info.Kind}, name={info.DeviceName ?? "(unknown)"}; leaving playback under BASS/Windows control.",
+            innerException: null);
+
+        try
+        {
+            EventHandler<AudioDeviceChangedEventArgs>? handler = AudioDeviceChanged;
+            if (handler != null)
+            {
+                var args = new AudioDeviceChangedEventArgs(info);
+                handler.Invoke(this, args);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] AudioDeviceChanged dispatch failed: {ex.Message}");
+        }
+    }
+
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
@@ -296,6 +344,95 @@ public class MediaControlPlayer : IMediaControlSession
                 throw new DirectoryNotFoundException($"Native library path does not exist: {path}");
 
         return resolvedPaths;
+    }
+
+    public bool Reset(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
+    {
+        if (!_disposed)
+        {
+            // 1. Stop all playback and close media
+            try { File.Close(); } catch { }
+
+            // 2. Unsubscribe internal events
+            try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
+            try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
+            try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
+            try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+            try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+            try
+            {
+                if (_mediaEngine is IMediaErrorSource errorSource)
+                    errorSource.ErrorOccurred -= OnEngineErrorOccurred;
+            }
+            catch { }
+
+            // 3. Disconnect audio device monitor
+            if (_audioDeviceMonitor != null)
+            {
+                try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
+                try { _audioDeviceMonitor.Stop(); } catch { }
+                try { _audioDeviceMonitor.Dispose(); } catch { }
+                _audioDeviceMonitor = null;
+            }
+
+            // 4. Preserve presentation surfaces for reattachment
+            var surfaces = new Dictionary<string, MediaPresentationSurfaceDescriptor>(_presentationSurfaces, StringComparer.OrdinalIgnoreCase);
+            _presentationSurfaces.Clear();
+
+            // 5. Dispose old dependencies
+            try { Controls.Dispose(); } catch { }
+            try { _presentationCoordinator.Dispose(); } catch { }
+            try { _mediaEngine.Dispose(); } catch { }
+            try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+            try { _controlOperations.Dispose(); } catch { }
+
+            // 6. Reinitialize with new configuration
+            var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+            _serviceProvider = MediaPlayerServiceProvider.Create(configuration, resolvedNativeLibraryPaths);
+
+            _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
+            IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
+
+            _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
+            Effects = new MediaEffects(_mediaEngine);
+            CdgVisuals = new CdgVisuals(_mediaEngine);
+            _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, configuration);
+            Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
+            File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
+            _controlOperations = new MediaControlOperationQueue("MediaControl");
+
+            // 7. Re-subscribe internal events
+            Controls.MediaEnded += OnControlsMediaEnded;
+            Controls.MediaStarted += OnControlsMediaStarted;
+            Controls.MediaStopped += OnControlsMediaStopped;
+            _presentationCoordinator.FramePresented += OnPresentationFramePresented;
+            if (_mediaEngine is IMediaErrorSource reinitErrorSource)
+                reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
+            DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
+
+            // 8. Reattach preserved presentation surfaces
+            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
+                try { _ = AttachPresentationSurface(kvp.Value); } catch { }
+
+            // 9. Reconnect audio device monitor
+            try
+            {
+                _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+                if (_audioDeviceMonitor != null)
+                {
+                    _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
+                    _audioDeviceMonitor.Start();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
+            }
+
+            return true;
+        }
+
+        throw new ObjectDisposedException(nameof(MediaControlPlayer));
     }
 
     public void Dispose()
@@ -314,6 +451,12 @@ public class MediaControlPlayer : IMediaControlSession
             DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
             if (_mediaEngine is IMediaErrorSource errorSource)
                 errorSource.ErrorOccurred -= OnEngineErrorOccurred;
+            if (_audioDeviceMonitor != null)
+            {
+                _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged;
+                try { _audioDeviceMonitor.Stop(); } catch { }
+                try { _audioDeviceMonitor.Dispose(); } catch { }
+            }
             Controls.Dispose();
             _presentationCoordinator.Dispose();
             _mediaEngine.Dispose();

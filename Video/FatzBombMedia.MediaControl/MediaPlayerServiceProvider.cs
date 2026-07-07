@@ -49,15 +49,29 @@ public static class MediaPlayerServiceProvider
 
         _ = services.AddSingleton<IAudioEngine>(provider =>
         {
-            var audioEngine = new Core.Audio.AudioEngine();
+            var latencyProvider = new Core.Audio.BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
+            var audioEngine = new Core.Audio.AudioEngine(new Core.Audio.AudioNormalizer(), new Core.Audio.AudioStreamManager(), latencyProvider);
 
-            if (!audioEngine.Init(-1, 44100))
+            var requestedDevice = configuration.AudioOutputDeviceIndex;
+            var initialized = audioEngine.Init(requestedDevice, 44100);
+            if (!initialized
+                && requestedDevice != AudioOutputDeviceInfo.PrimaryDeviceIndex
+                && configuration.AudioOutputFallbackMode == AudioOutputFallbackMode.FallbackToPrimary)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", "Failed to initialize global BASS");
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    "Bootstrap",
+                    $"Audio output device {requestedDevice} could not be initialized ({ManagedBass.Bass.LastError}); falling back to Primary.");
+                initialized = audioEngine.Init(AudioOutputDeviceInfo.PrimaryDeviceIndex, 44100);
+            }
+
+            if (!initialized)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Failed to initialize BASS audio output device {requestedDevice}");
             }
             else
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "Global BASS initialized successfully");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Global BASS initialized successfully on device {audioEngine.BassDeviceIndex}");
             }
 
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
@@ -74,6 +88,8 @@ public static class MediaPlayerServiceProvider
             IArchiveService archiveService = provider.GetRequiredService<IArchiveService>();
             return new PipelineMediaEngine(audioEngine, cdgEngine, archiveService, configuration);
         });
+
+        _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new Core.Audio.PollingAudioDeviceMonitor());
     }
 
     private static bool LoadLibraries(IReadOnlyList<string> nativeLibraryPaths) =>

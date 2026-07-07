@@ -29,5 +29,11 @@ public enum MediaErrorCode
     DecodeFailed,
 
     /// <summary>An internal engine error occurred that is not covered by a more specific code.</summary>
-    InternalError
+    InternalError,
+
+    /// <summary>
+    /// The active audio output device was lost or the system default device changed. Playback may
+    /// be affected; the host should surface a user-visible diagnostic and decide how to recover.
+    /// </summary>
+    AudioDeviceLost,
 }

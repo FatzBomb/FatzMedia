@@ -17,7 +17,10 @@ internal sealed class PlaybackCoordinator : IDisposable
         _session = new MediaSession();
         var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
         var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
-        var video = new VideoPipeline(_session.Clock, _session.State, configuration);
+        var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
+            ? deviceProvider.BassDeviceIndex
+            : configuration.AudioOutputDeviceIndex;
+        var video = new VideoPipeline(_session.Clock, _session.State, configuration, bassDeviceIndex);
 
         audio.PlaybackEnded += OnPlaybackEnded;
         cdg.PlaybackEnded += OnPlaybackEnded;

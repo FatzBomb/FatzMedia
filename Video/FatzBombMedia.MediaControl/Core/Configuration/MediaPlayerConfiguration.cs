@@ -69,6 +69,23 @@ public enum NativeSwapChainPresentMode
 }
 
 /// <summary>
+/// Controls what happens when an explicitly selected audio output device cannot be initialized.
+/// Runtime device changes are diagnostic-only; this policy is applied at player creation/open time.
+/// </summary>
+public enum AudioOutputFallbackMode
+{
+    /// <summary>
+    /// Fall back to the system primary/default audio device when the requested explicit device is unavailable.
+    /// </summary>
+    FallbackToPrimary = 0,
+
+    /// <summary>
+    /// Do not route audio to a different output device when the requested explicit device is unavailable.
+    /// </summary>
+    NoFallback = 1,
+}
+
+/// <summary>
 /// Immutable configuration for a MediaPlayer instance.
 /// These settings are determined at creation time and cannot be changed during playback.
 /// This ensures consistent performance and avoids mid-stream resource switching.
@@ -120,6 +137,26 @@ public readonly record struct MediaPlayerConfiguration
     public NativeSwapChainPresentMode NativeSwapChainPresentMode { get; init; }
 
     /// <summary>
+    /// When true, the audio output latency provider augments a small BASS-reported latency value
+    /// with a conservative per-class offset for USB DACs and Bluetooth endpoints whose internal
+    /// buffering is not visible to BASS. Off by default because the heuristic is name-pattern based
+    /// and inherently best-effort.
+    /// </summary>
+    public bool EnableUsbBluetoothLatencyHeuristic { get; init; }
+
+    /// <summary>
+    /// BASS output device index to use when creating this player. Use -1 for Primary (system default),
+    /// which lets BASS follow Windows default-device changes. Explicit device indexes are creation-time
+    /// choices; changing devices at runtime should create a new player/control instance.
+    /// </summary>
+    public int AudioOutputDeviceIndex { get; init; }
+
+    /// <summary>
+    /// Determines whether an unavailable explicit audio device falls back to Primary during initialization.
+    /// </summary>
+    public AudioOutputFallbackMode AudioOutputFallbackMode { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding and rendering.
     /// </summary>
@@ -132,6 +169,9 @@ public readonly record struct MediaPlayerConfiguration
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
+        EnableUsbBluetoothLatencyHeuristic = false;
+        AudioOutputDeviceIndex = -1;
+        AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
     }
 
     /// <summary>
@@ -146,6 +186,9 @@ public readonly record struct MediaPlayerConfiguration
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
         NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
+        EnableUsbBluetoothLatencyHeuristic = false;
+        AudioOutputDeviceIndex = -1;
+        AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
     }
 
     /// <summary>

@@ -13,13 +13,14 @@ namespace FatzBombMedia.MediaControl.Tests;
 /// </summary>
 public class D3D11DeviceLostClassifierTests
 {
-    public static IEnumerable<object[]> DeviceLostResults()
-    {
-        yield return [DxgiResultCode.DeviceRemoved, "Device removed"];
-        yield return [DxgiResultCode.DeviceReset, "Device reset"];
-        yield return [DxgiResultCode.DeviceHung, "Device hung"];
-        yield return [DxgiResultCode.DriverInternalError, "Driver internal error"];
-    }
+    public static TheoryData<Result, string> DeviceLostResults() =>
+        new()
+        {
+            { DxgiResultCode.DeviceRemoved, "Device removed" },
+            { DxgiResultCode.DeviceReset, "Device reset" },
+            { DxgiResultCode.DeviceHung, "Device hung" },
+            { DxgiResultCode.DriverInternalError, "Driver internal error" }
+        };
 
     [Theory]
     [MemberData(nameof(DeviceLostResults))]

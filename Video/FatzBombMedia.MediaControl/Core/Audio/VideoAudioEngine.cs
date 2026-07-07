@@ -14,6 +14,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
 
+    private readonly IOutputLatencyProvider _outputLatencyProvider;
+    private readonly int _bassDeviceIndex;
     private readonly Lock _sync = new();
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
@@ -87,9 +89,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         {
             lock (_sync)
             {
-                var position = GetPositionCore();
-                PublishPositionSnapshot(position);
-                return position;
+                var rawPosition = GetPositionCore();
+                var corrected = ApplyOutputLatency(rawPosition);
+                PublishPositionSnapshot(corrected);
+                return corrected;
             }
         }
         set => Seek(value);
@@ -133,6 +136,37 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     }
 
     public bool Init(int device = -1, int sampleRate = 44100) => true;
+
+    public VideoAudioEngine() : this(new BassOutputLatencyProvider())
+    {
+    }
+
+    public VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider)
+        : this(outputLatencyProvider, AudioOutputDeviceInfo.PrimaryDeviceIndex)
+    {
+    }
+
+    internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
+    {
+        _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
+        _bassDeviceIndex = bassDeviceIndex;
+    }
+
+    private double ApplyOutputLatency(double rawPositionSeconds)
+    {
+        if (rawPositionSeconds <= 0 || !double.IsFinite(rawPositionSeconds))
+            return rawPositionSeconds;
+
+        // BASS reports latency for the current device, so position sampling selects this engine's device first.
+        _ = BassAudioOutputDevices.TrySetCurrentDevice(_bassDeviceIndex, "VideoAudioEngine", raiseDiagnostic: false);
+
+        var latency = _outputLatencyProvider.GetOutputLatencySeconds();
+        if (latency <= 0 || !double.IsFinite(latency))
+            return rawPositionSeconds;
+
+        var corrected = rawPositionSeconds - latency;
+        return corrected < 0 ? 0 : corrected;
+    }
 
     private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && PlayHandle != 0;
 
@@ -422,9 +456,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             SetState(AudioEngineState.Playing);
         }
 
-        PublishPositionSnapshot(target);
+        var correctedTarget = ApplyOutputLatency(target);
+        PublishPositionSnapshot(correctedTarget);
 
-        PositionChanged?.Invoke(this, target);
+        PositionChanged?.Invoke(this, correctedTarget);
         return true;
     }
 
@@ -651,6 +686,9 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private bool CreateBassStreams()
     {
+        if (!BassAudioOutputDevices.TrySetCurrentDevice(_bassDeviceIndex, "VideoAudioEngine"))
+            return false;
+
         BassFlags flags = BassFlags.Decode | BassFlags.Float;
         if (_channels == 1)
         {

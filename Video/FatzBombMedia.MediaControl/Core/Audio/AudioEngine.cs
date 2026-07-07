@@ -12,18 +12,20 @@ namespace FatzBombMedia.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
 {
     #region Private Fields
 
     // Composition: Delegate specialized responsibilities to focused components
     private readonly AudioNormalizer _normalizer;
     private readonly AudioStreamManager _streamManager;
+    private readonly IOutputLatencyProvider _outputLatencyProvider;
 
     // Adaptive sample rate management
     private bool _bassInitialized = false;
     private int _currentDeviceSampleRate = 44100; // Default fallback
-    private int _currentDevice = -1;
+    private int _requestedDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
+    private int _currentDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
     private CancellationTokenSource? _normalizationAnalysisCts;
     private int _normalizationAnalysisGeneration;
     private volatile bool _normalizationReady = true;
@@ -41,7 +43,7 @@ public sealed class AudioEngine : IAudioEngine
     /// <summary>
     /// Creates a new AudioEngine with default components.
     /// </summary>
-    public AudioEngine() : this(new AudioNormalizer(), new AudioStreamManager())
+    public AudioEngine() : this(new AudioNormalizer(), new AudioStreamManager(), new BassOutputLatencyProvider())
     {
     }
 
@@ -51,9 +53,21 @@ public sealed class AudioEngine : IAudioEngine
     /// <param name="normalizer">Custom normalizer implementation</param>
     /// <param name="streamManager">Custom stream manager implementation</param>
     internal AudioEngine(AudioNormalizer normalizer, AudioStreamManager streamManager)
+        : this(normalizer, streamManager, new BassOutputLatencyProvider())
+    {
+    }
+
+    /// <summary>
+    /// Creates a new AudioEngine with custom components and an output-latency provider.
+    /// </summary>
+    /// <param name="normalizer">Custom normalizer implementation</param>
+    /// <param name="streamManager">Custom stream manager implementation</param>
+    /// <param name="outputLatencyProvider">Provider for BASS-reported output latency</param>
+    internal AudioEngine(AudioNormalizer normalizer, AudioStreamManager streamManager, IOutputLatencyProvider outputLatencyProvider)
     {
         _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         _streamManager = streamManager ?? throw new ArgumentNullException(nameof(streamManager));
+        _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
         _playbackEndedSyncProcedure = OnPlaybackEndedSync;
 
         // Wire up normalizer events to forward to our event
@@ -62,6 +76,22 @@ public sealed class AudioEngine : IAudioEngine
             Debug.WriteLine($"[AudioEngine] Forwarding normalization gain change: {gain:F3}");
             NormalizationGainChanged?.Invoke(this, gain);
         };
+    }
+
+    private double ApplyOutputLatency(double rawPositionSeconds)
+    {
+        if (rawPositionSeconds <= 0 || !double.IsFinite(rawPositionSeconds))
+            return rawPositionSeconds;
+
+        // BASS reports latency for the current device, so position sampling selects this engine's device first.
+        _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine", raiseDiagnostic: false);
+
+        var latency = _outputLatencyProvider.GetOutputLatencySeconds();
+        if (latency <= 0 || !double.IsFinite(latency))
+            return rawPositionSeconds;
+
+        var corrected = rawPositionSeconds - latency;
+        return corrected < 0 ? 0 : corrected;
     }
 
     #endregion
@@ -117,15 +147,16 @@ public sealed class AudioEngine : IAudioEngine
 
     public double Position
     {
-        get => _streamManager.GetCurrentPosition();
+        get => ApplyOutputLatency(_streamManager.GetCurrentPosition());
         set
         {
             var old = _streamManager.GetCurrentPosition();
             _streamManager.SetCurrentPosition(value);
             var updated = _streamManager.GetCurrentPosition();
-            if (Math.Abs(updated - old) > 0.001)
+            var corrected = ApplyOutputLatency(updated);
+            if (Math.Abs(corrected - ApplyOutputLatency(old)) > 0.001)
             {
-                PositionChanged?.Invoke(this, updated);
+                PositionChanged?.Invoke(this, corrected);
             }
         }
     }
@@ -136,6 +167,8 @@ public sealed class AudioEngine : IAudioEngine
     /// <inheritdoc/>
     public double Duration => _streamManager.DurationSeconds;
 
+    public int BassDeviceIndex => _bassInitialized ? _currentDevice : _requestedDevice;
+
     #endregion
 
     #region Public Methods
@@ -143,34 +176,36 @@ public sealed class AudioEngine : IAudioEngine
     /// <inheritdoc/>
     public bool Init(int device = -1, int sampleRate = 44100)
     {
+        _requestedDevice = device;
+
         try
         {
             // Check if already initialized
             if (_bassInitialized)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", "BASS already initialized on this engine");
-                return true;
-            }
-
-            // Check if BASS is initialized globally by another engine
-            if (MBass.GetInfo(out BassInfo existingInfo) && existingInfo.SampleRate > 0)
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using existing global BASS instance: {existingInfo.SampleRate}Hz");
-                _bassInitialized = true;
-                _currentDevice = device;
-                _currentDeviceSampleRate = existingInfo.SampleRate;
-                return true;
+                var selected = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", selected
+                    ? $"BASS already initialized on this engine: device={_currentDevice}"
+                    : $"BASS already initialized but device {_currentDevice} could not be selected");
+                return selected;
             }
 
             // Initialize BASS for the first time
             var success = MBass.Init(device, sampleRate);
+            if (!success && MBass.LastError == Errors.Already)
+                success = device < 0 || BassAudioOutputDevices.TrySetCurrentDevice(device, "AudioEngine");
+
             if (success)
             {
                 _bassInitialized = true;
-                _currentDevice = device;
-                _currentDeviceSampleRate = sampleRate;
+                _currentDevice = BassAudioOutputDevices.ResolveInitializedDeviceIndex(device);
+                _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine");
+                _currentDeviceSampleRate = MBass.GetInfo(out BassInfo info) && info.SampleRate > 0
+                    ? info.SampleRate
+                    : sampleRate;
 
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Initialized BASS globally: device={device}, sampleRate={sampleRate} Hz");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Initialized BASS globally: requestedDevice={device}, activeDevice={_currentDevice}, sampleRate={_currentDeviceSampleRate} Hz");
+                EnsureDevNonStop();
             }
             else
             {
@@ -200,7 +235,7 @@ public sealed class AudioEngine : IAudioEngine
             {
                 // Use session-optimized rate based on first file
                 var sessionOptimalRate = GetSessionOptimalRate(filePath);
-                if (!Init(_currentDevice, sessionOptimalRate))
+                if (!Init(_requestedDevice, sessionOptimalRate))
                 {
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", "Failed to initialize BASS with session-optimal sample rate");
                     return false;
@@ -208,6 +243,9 @@ public sealed class AudioEngine : IAudioEngine
                 _bassInitialized = true;
                 _currentDeviceSampleRate = sessionOptimalRate;
             }
+
+            if (!BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine"))
+                return false;
 
             var success = _streamManager.OpenFromPath(filePath);
             if (success)
@@ -254,7 +292,7 @@ public sealed class AudioEngine : IAudioEngine
             // Auto-initialize BASS if not already done (use default for archive entries)
             if (!_bassInitialized)
             {
-                if (!Init(_currentDevice))
+                if (!Init(_requestedDevice))
                 {
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", "Failed to initialize BASS for archive entry");
                     return false;
@@ -262,6 +300,9 @@ public sealed class AudioEngine : IAudioEngine
                 _bassInitialized = true;
                 _currentDeviceSampleRate = 44100;
             }
+
+            if (!BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine"))
+                return false;
 
             var success = _streamManager.OpenFromArchive(archiveEntry);
             if (success)
@@ -637,6 +678,20 @@ public sealed class AudioEngine : IAudioEngine
         catch
         {
             return 44100; // Safe fallback
+        }
+    }
+
+    private static void EnsureDevNonStop()
+    {
+        try
+        {
+            var configured = MBass.Configure(ManagedBass.Configuration.DevNonStop, true);
+            if (!configured)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"BASS Configure(DevNonStop) failed: {MBass.LastError}");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"BASS Configure(DevNonStop) threw: {ex.Message}", innerException: ex);
         }
     }
 

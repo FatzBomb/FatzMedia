@@ -10,12 +10,14 @@ using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState state, MediaPlayerConfiguration configuration) : IVideoEngine
+internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex) : IVideoEngine
 {
     private readonly PlaybackClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly MediaPlayerConfiguration _configuration = configuration;
+    private readonly int _bassDeviceIndex = bassDeviceIndex;
     private readonly AudioPresentationClock _presentationClock = new();
+    private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
     private readonly PlaybackScheduler _decodeScheduler = new("VideoDecode");
     private readonly PlaybackScheduler _presentationScheduler = new("VideoPresentation");
@@ -190,7 +192,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return false;
         }
 
-        _audioEngine = new VideoAudioEngine();
+        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
         if (!_audioEngine.Open(path))
         {
             _audioEngine.Dispose();

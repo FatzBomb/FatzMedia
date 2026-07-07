@@ -1,4 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
+using FatzBombMedia.MediaControl.Core.Configuration;
 
 #pragma warning disable IDE0130
 namespace FatzBombMedia.MediaControl;
@@ -104,6 +105,17 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Closes the currently loaded media.</summary>
     void Close();
 
+    /// <summary>
+    /// Stops all running processes, disposes internal resources, then reinitializes the entire
+    /// engine with the supplied configuration and native-library paths. Existing presentation
+    /// surface registrations are preserved and reattached. No media is loaded after reset; the
+    /// caller is responsible for re-loading and resuming playback on the new device.
+    /// </summary>
+    /// <param name="configuration">New immutable configuration to apply (device, fallback mode, etc.).</param>
+    /// <param name="nativeLibraryPaths">Native-library search paths (BASS/FFmpeg).</param>
+    /// <returns>True if the engine was successfully reinitialized.</returns>
+    bool Reset(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths);
+
     /// <summary>Attaches or updates a framework-provided presentation surface.</summary>
     bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface);
 
@@ -146,4 +158,13 @@ public interface IMediaControlSession : IDisposable
     /// before touching view state.
     /// </summary>
     event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
+
+    /// <summary>
+    /// Raised when the active audio output device is lost, the system default device changes,
+    /// or the audio device state otherwise changes. Core does not change playback state from
+    /// this notification; BASS/Windows remain responsible for active stream migration. Hosts
+    /// should surface a user-visible diagnostic when needed. May fire from background threads;
+    /// hosts must marshal to the UI thread before touching view state.
+    /// </summary>
+    event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;
 }
