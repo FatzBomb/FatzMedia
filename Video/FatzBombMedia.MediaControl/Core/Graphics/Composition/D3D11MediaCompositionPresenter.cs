@@ -230,7 +230,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11VideoProcessorPresenter? videoProcessorPresenter,
         out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets)
     {
-        presentedTargets = Array.Empty<D3D11PresentationTargetSnapshot>();
+        presentedTargets = [];
         if (deviceResources.Device == null
             || deviceResources.Context == null
             || targets.Count == 0)

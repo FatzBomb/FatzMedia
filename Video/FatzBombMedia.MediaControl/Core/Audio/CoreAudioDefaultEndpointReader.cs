@@ -179,6 +179,6 @@ internal static class CoreAudioDefaultEndpointReader
         public IntPtr Pointer;
         public int Reserved4;
 
-        public VarEnum VarType => (VarEnum)VariantType;
+        public readonly VarEnum VarType => (VarEnum)VariantType;
     }
 }
