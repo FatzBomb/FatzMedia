@@ -354,17 +354,34 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         return initialized;
     }
 
+    // Hardware frame release safety (007B): the coordinator must share the decoder's D3D11 device AND
+    // immediate context so that decode, video-processor blit, and swap-chain Present all run on one
+    // sequential command stream. This is what prevents FFmpeg from recycling a hardware texture before
+    // the GPU blit has finished consuming it — the decoder cannot submit a new write to the texture
+    // until the blit completes, because both operations are on the same D3D11 immediate context.
+    //
+    // If a future change (e.g. 017A display-rate compositor using a deferred context or separate command
+    // queue) breaks this shared-context invariant, a D3D11 fence or deferred-release ring becomes
+    // mandatory here. The debug assertion below fires immediately if the invariant is violated.
     private bool EnsureD3D11ForHardwareFrame(VideoFrameEventArgs frame)
     {
         if (!frame.IsD3D11HardwareFrame)
             return false;
 
         if (_presenter.NativeDevicePointer == frame.D3D11DevicePointer)
+        {
+            Debug.Assert(_presenter.NativeDevicePointer == frame.D3D11DevicePointer,
+                "Hardware frame device must match the coordinator's D3D11 device to serialize decode + blit + present on one immediate context.");
             return true;
+        }
 
         var initialized = _presenter.InitializeFromNativeDevice(frame.D3D11DevicePointer, frame.D3D11DeviceContextPointer);
         if (initialized)
+        {
+            Debug.Assert(_presenter.NativeDevicePointer == frame.D3D11DevicePointer,
+                "InitializeFromNativeDevice must adopt the decoder's D3D11 device to preserve the shared-context hardware frame safety invariant.");
             RecreateAttachedSurfacesNoLock();
+        }
 
         return initialized;
     }

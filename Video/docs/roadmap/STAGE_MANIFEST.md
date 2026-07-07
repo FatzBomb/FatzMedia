@@ -4,10 +4,9 @@ All runnable stage files live directly in `stages/`.
 
 ## Active / Backlog
 
-- `007B_BACKLOG_HardwareFrameReleaseSafety.md`
-
 ## Completed
 
+- `007B_BACKLOG_HardwareFrameReleaseSafety.md` — hardware frame release safety (2026-07-07)
 - `007A_BACKLOG_PresentOutsideLocks.md` — present outside transport-visible locks (2026-07-07)
 - `006A_BACKLOG_AudioLatencyFeedback.md` — audio output latency feedback (2026-07-07)
 - `006B_BACKLOG_AudioDeviceHotplug.md` — hotplug monitoring + device selection + fallback (2026-07-07)

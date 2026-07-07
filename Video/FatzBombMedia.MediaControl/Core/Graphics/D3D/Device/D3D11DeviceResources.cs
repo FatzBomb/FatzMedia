@@ -78,6 +78,14 @@ internal sealed class D3D11DeviceResources : IDisposable
         }
     }
 
+    // Hardware frame release safety (007B): this method adopts the FFmpeg/D3D11 decoder's device AND
+    // immediate context (AddRef'd) so the coordinator's blit + Present run on the same sequential command
+    // stream as the decoder. This shared-context serialization is what prevents the decoder from
+    // recycling a hardware texture before the coordinator's GPU blit has finished consuming it.
+    //
+    // If a future change decouples the coordinator onto a separate device or deferred context, a
+    // D3D11 fence or deferred-release ring must be added — the shared-context safety invariant would
+    // no longer hold.
     public bool InitializeFromNativeDevice(IntPtr devicePointer, IntPtr deviceContextPointer, MediaPlayerConfiguration configuration)
     {
         if (devicePointer == IntPtr.Zero)
