@@ -4,8 +4,11 @@ All runnable stage files live directly in `stages/`.
 
 ## Active / Backlog
 
+- `012A_S2_BACKLOG_MediaDemuxerBehindVideoAudioEngine.md` — MediaDemuxer seam behind VideoAudioEngine (sub-stage of 012A; behavior-preserving)
+
 ## Completed
 
+- `012A_S1_BACKLOG_MediaDemuxerBehindVideoDecoder.md` — MediaDemuxer seam behind VideoDecoder (sub-stage of 012A; behavior-preserving) (2026-07-09)
 - `007B_BACKLOG_HardwareFrameReleaseSafety.md` — hardware frame release safety (2026-07-07)
 - `007A_BACKLOG_PresentOutsideLocks.md` — present outside transport-visible locks (2026-07-07)
 - `006A_BACKLOG_AudioLatencyFeedback.md` — audio output latency feedback (2026-07-07)

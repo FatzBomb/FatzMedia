@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
 
 namespace FatzBombMedia.MediaControl.Core.Video;
@@ -31,7 +32,7 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _enablePerformanceLogging = enablePerformanceLogging;
     private readonly bool _enableVerboseLogging = enableVerboseLogging;
     private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
-    private readonly AVFormatContext* _fmt;
+    private readonly MediaDemuxer _demuxer = new();
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
@@ -104,31 +105,23 @@ internal sealed unsafe class VideoDecoder(
     {
         Close();
 
-        fixed (AVFormatContext** pfmt = &_fmt)
-        {
-            if (ffmpeg.avformat_open_input(pfmt, path, null, null) < 0) return false;
-        }
-
-        if (ffmpeg.avformat_find_stream_info(_fmt, null) < 0)
-        {
-            Close();
+        if (!_demuxer.Open(path))
             return false;
-        }
 
-        _videoIndex = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, null, 0);
+        _videoIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
         if (_videoIndex < 0) { Close(); return false; }
 
-        _videoStream = _fmt->streams[_videoIndex];
+        _videoStream = _demuxer.GetStream(_videoIndex);
 
         // Discard non-video streams so av_read_frame only returns video packets. This
         // matters for background video looping: audio packets that outlive the video
         // stream cause a gap (no video output) before EOF triggers a restart, and
         // interleaved AVI audio chunks waste I/O on every decode pass. VideoAudioEngine
         // opens its own format context, so this does not affect main-pipeline audio.
-        for (uint i = 0; i < _fmt->nb_streams; i++)
+        for (uint i = 0; i < _demuxer.StreamCount; i++)
         {
             if ((int)i != _videoIndex)
-                _fmt->streams[i]->discard = AVDiscard.AVDISCARD_ALL;
+                _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
         }
 
         if (!InitializeVideoDecoder())
@@ -147,7 +140,8 @@ internal sealed unsafe class VideoDecoder(
         var videoStreamDuration = _videoStream->duration != ffmpeg.AV_NOPTS_VALUE
             ? _videoStream->duration * ffmpeg.av_q2d(_videoStream->time_base)
             : 0;
-        var formatDuration = _fmt->duration > 0 ? _fmt->duration / (double)ffmpeg.AV_TIME_BASE : 0;
+        var formatDurationTicks = _demuxer.FormatDurationTicks;
+        var formatDuration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
         DurationSeconds = videoStreamDuration > 0 ? videoStreamDuration : formatDuration;
 
         if (_enableDiagnostics) Debug.WriteLine($"[VideoDecoder] Opened: {Width}x{Height}, {FramesPerSecond:F2}fps, {CodecName}, duration={DurationSeconds:F3}s");
@@ -156,11 +150,11 @@ internal sealed unsafe class VideoDecoder(
 
     public bool DecodeNextFrame()
     {
-        if (_fmt == null || _packet == null) return false;
+        if (!_demuxer.IsOpen || _packet == null) return false;
         if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
 
-        var readResult = ffmpeg.av_read_frame(_fmt, _packet);
+        var readResult = _demuxer.ReadPacket(_packet);
         if (readResult < 0)
         {
             if (readResult == ffmpeg.AVERROR_EOF)
@@ -934,11 +928,7 @@ internal sealed unsafe class VideoDecoder(
                 ffmpeg.av_packet_free(pkt);
         }
 
-        if (_fmt != null)
-        {
-            fixed (AVFormatContext** fmt = &_fmt)
-                ffmpeg.avformat_close_input(fmt);
-        }
+        _demuxer.Close();
 
         ClearFrameQueue();
 
@@ -992,6 +982,7 @@ internal sealed unsafe class VideoDecoder(
     public void Dispose()
     {
         Close();
+        _demuxer.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -1033,13 +1024,13 @@ internal sealed unsafe class VideoDecoder(
 
     public bool Seek(double seconds, bool exact = true, bool preserveQueue = false)
     {
-        if (_fmt == null || _videoStream == null)
+        if (!_demuxer.IsOpen || _videoStream == null)
             return false;
 
         var target = Math.Max(0, seconds);
         var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
         var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
-        if (ffmpeg.av_seek_frame(_fmt, _videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+        if (_demuxer.Seek(_videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
             return false;
 
         Flush(clearQueue: !preserveQueue);

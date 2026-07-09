@@ -1,5 +1,6 @@
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
+using FatzBombMedia.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
@@ -17,8 +18,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
     private readonly Lock _sync = new();
+    private readonly MediaDemuxer _demuxer = new();
 #pragma warning disable IDE0044 // Pointer fields used with fixed statement; cannot be readonly.
-    private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
     private AVStream* _audioStream;
     private SwrContext* _resampler;
@@ -191,7 +192,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return corrected < 0 ? 0 : corrected;
     }
 
-    private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && PlayHandle != 0;
+    private bool IsOpenCore => _demuxer.IsOpen && _audioStreamIndex >= 0 && PlayHandle != 0;
 
     // The raw BASS channel position, never reset across a loop wrap (only Seek/Stop touch
     // _positionBaseSeconds or the channel's own position counter). This is the timeline that
@@ -254,26 +255,17 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
             CloseCore();
 
-            fixed (AVFormatContext** context = &_formatContext)
-            {
-                if (ffmpeg.avformat_open_input(context, filePath, null, null) < 0)
-                    return false;
-            }
-
-            if (ffmpeg.avformat_find_stream_info(_formatContext, null) < 0)
-            {
-                CloseCore();
+            if (!_demuxer.Open(filePath))
                 return false;
-            }
 
-            _audioStreamIndex = ffmpeg.av_find_best_stream(_formatContext, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, -1, null, 0);
+            _audioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
             if (_audioStreamIndex < 0)
             {
                 CloseCore();
                 return false;
             }
 
-            _audioStream = _formatContext->streams[_audioStreamIndex];
+            _audioStream = _demuxer.GetStream(_audioStreamIndex);
             _streamStartSeconds = GetStreamStartSeconds(_audioStream);
             if (!InitializeDecoder() || !CreateBassStreams())
             {
@@ -281,7 +273,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
                 return false;
             }
 
-            Duration = _formatContext->duration > 0 ? _formatContext->duration / (double)ffmpeg.AV_TIME_BASE : 0;
+            var formatDurationTicks = _demuxer.FormatDurationTicks;
+            Duration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
             State = AudioEngineState.Stopped;
             PublishPositionSnapshot(_positionBaseSeconds);
             Opened?.Invoke(this, EventArgs.Empty);
@@ -319,7 +312,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private bool DecodeAndPushAudioCore()
     {
-        if (!IsOpenCore || _formatContext == null)
+        if (!IsOpenCore || !_demuxer.IsOpen)
             return false;
 
         if (IsAudioBufferThrottledCore())
@@ -342,7 +335,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         try
         {
-            while (ffmpeg.av_read_frame(_formatContext, packet) >= 0)
+            while (_demuxer.ReadPacket(packet) >= 0)
             {
                 if (packet->stream_index == _audioStreamIndex)
                 {
@@ -566,13 +559,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             }
         }
 
-        if (_formatContext != null)
-        {
-            fixed (AVFormatContext** context = &_formatContext)
-            {
-                ffmpeg.avformat_close_input(context);
-            }
-        }
+        _demuxer.Close();
 
         _audioStream = null;
         _audioStreamIndex = -1;
@@ -639,6 +626,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public void Dispose()
     {
         Close();
+        _demuxer.Dispose();
         lock (_sync)
             _disposed = true;
         GC.SuppressFinalize(this);
@@ -825,11 +813,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private bool SeekDecoder(double seconds)
     {
-        if (_formatContext == null || _audioStream == null)
+        if (!_demuxer.IsOpen || _audioStream == null)
             return false;
 
         var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
-        if (ffmpeg.av_seek_frame(_formatContext, _audioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+        if (_demuxer.Seek(_audioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
             return false;
 
         if (_codecContext != null)
