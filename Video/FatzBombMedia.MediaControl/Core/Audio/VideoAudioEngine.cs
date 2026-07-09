@@ -49,6 +49,33 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private bool _audioPushThrottled;
     private bool _disposed;
 
+    // Gapless loop bookkeeping (see AudioLoopBoundaryTracker). _pendingLoopBoundaries and
+    // _completedLoopSeconds are only ever touched from within _sync (GetPositionCore and
+    // WrapDecoderForLoop are both always called under lock).
+    private readonly Queue<double> _pendingLoopBoundaries = new();
+    private double _completedLoopSeconds;
+
+    /// <summary>
+    /// When true, the decoder seeks back to 0 and keeps pushing into the same BASS channel
+    /// at end-of-stream instead of stopping - the channel never stops, so there is no audio
+    /// gap at the loop boundary. Set by the owning pipeline before/while playing looped media.
+    /// </summary>
+    public bool LoopPlayback { get; set; }
+
+    private int _completedLoopCount;
+
+    /// <summary>
+    /// Total number of loop wraps whose audio has finished playing this session. Written
+    /// under _sync on the decode thread (via GetPositionCore); read without a lock from the
+    /// owning pipeline's presentation thread, so both sides use Volatile to publish/observe
+    /// the value safely across threads.
+    /// </summary>
+    public int CompletedLoopCount
+    {
+        get => Volatile.Read(ref _completedLoopCount);
+        private set => Volatile.Write(ref _completedLoopCount, value);
+    }
+
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle { get; private set; }
     public bool Normalize
@@ -172,7 +199,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private bool IsOpenCore => _formatContext != null && _audioStreamIndex >= 0 && PlayHandle != 0;
 
-    private double GetPositionCore()
+    // The raw BASS channel position, never reset across a loop wrap (only Seek/Stop touch
+    // _positionBaseSeconds or the channel's own position counter). This is the timeline that
+    // loop boundaries are recorded against - see AudioLoopBoundaryTracker.
+    private double GetContinuousPositionCore()
     {
         if (PlayHandle == 0)
         {
@@ -182,6 +212,20 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         var bytes = Bass.ChannelGetPosition(PlayHandle);
         var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
         return _positionBaseSeconds + (double.IsFinite(seconds) ? Math.Max(0, seconds) : 0);
+    }
+
+    private double GetPositionCore()
+    {
+        var continuous = GetContinuousPositionCore();
+        AdvanceCompletedLoops(continuous);
+        return Math.Max(0, continuous - _completedLoopSeconds);
+    }
+
+    private void AdvanceCompletedLoops(double continuousPositionSeconds)
+    {
+        var crossed = AudioLoopBoundaryTracker.Advance(continuousPositionSeconds, _pendingLoopBoundaries, ref _completedLoopSeconds);
+        if (crossed > 0)
+            CompletedLoopCount += crossed;
     }
 
     private void PublishPositionSnapshot(double position)
@@ -302,6 +346,15 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         if (IsAudioBufferThrottledCore())
         {
+            // The push is throttled (2-4s of audio already buffered), but the position must
+            // still be sampled: GetPositionCore advances the gapless-loop bookkeeping
+            // (AdvanceCompletedLoops / CompletedLoopCount) as the played position crosses a
+            // recorded lap boundary. Near a loop wrap the buffer stays full for seconds at a
+            // time - skipping the sample here would delay CompletedLoopCount (and the video
+            // side's wrap commit) by up to the full buffer drain, leaving the video frozen
+            // on the old lap's tail while the audio is already playing the next lap, then
+            // forcing a visible fast-forward catch-up when the late commit finally lands.
+            PublishPositionSnapshot(GetPositionCore());
             return false;
         }
 
@@ -326,6 +379,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
                 ffmpeg.av_packet_unref(packet);
             }
 
+            // End of stream. Gapless loop: seek the FFmpeg decoder back to 0 and keep pushing
+            // PCM into the same BASS push stream instead of stopping it - the channel never
+            // stops, so there is no audio gap at the loop boundary. Mirrors
+            // BackgroundVideoLoop's decoder-only pre-seek pattern.
+            if (LoopPlayback && Duration > 0 && WrapDecoderForLoop())
+                return true;
+
             return false;
         }
         finally
@@ -333,6 +393,23 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             ffmpeg.av_packet_unref(packet);
             ffmpeg.av_packet_free(&packet);
         }
+    }
+
+    // Records the continuous-timeline mark at which this lap's pushed audio ends, then seeks
+    // the FFmpeg decoder back to 0. The BASS channel and its position counter are untouched,
+    // so playback continues without interruption; PushAudioFrame's existing monotonic guard
+    // (see below) keeps _lastPushedAudioEndSeconds increasing across the wrap automatically.
+    private bool WrapDecoderForLoop()
+    {
+        _pendingLoopBoundaries.Enqueue(_lastPushedAudioEndSeconds);
+
+        if (SeekDecoder(0))
+            return true;
+
+        // Wrap failed - undo the pending mark so AdvanceCompletedLoops never sees a
+        // boundary that will never actually be reached.
+        _ = _pendingLoopBoundaries.Count > 0 ? _pendingLoopBoundaries.Dequeue() : 0;
+        return false;
     }
 
     public bool Play()
@@ -562,6 +639,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         _pushedAudioFrameCount = 0;
         _lastPushedAudioEndSeconds = 0;
         _audioPushThrottled = false;
+        _pendingLoopBoundaries.Clear();
+        _completedLoopSeconds = 0;
+        CompletedLoopCount = 0;
+        LoopPlayback = false;
         Duration = 0;
         ClearPositionSnapshot();
         CleanupTempPath();
@@ -761,15 +842,23 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return false;
     }
 
+    // _lastPushedAudioEndSeconds is continuous (see PushAudioFrame's monotonic guard, which
+    // keeps it increasing across a loop wrap), so it must be compared against the continuous
+    // position, not the wrapped/reported one.
     private double GetBufferedAudioSecondsCore() =>
         _lastPushedAudioEndSeconds <= 0
             ? 0
-            : Math.Max(0, _lastPushedAudioEndSeconds - GetPositionCore());
+            : Math.Max(0, _lastPushedAudioEndSeconds - GetContinuousPositionCore());
 
     private void ResetAudioBufferTracking()
     {
         _lastPushedAudioEndSeconds = _positionBaseSeconds;
         _audioPushThrottled = false;
+
+        // A manual seek/stop breaks the natural continuous-playthrough assumption that
+        // pending loop boundaries were recorded against - discard them.
+        _pendingLoopBoundaries.Clear();
+        _completedLoopSeconds = 0;
     }
 
     private void PushAudioFrame()

@@ -29,6 +29,12 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private VideoAudioEngine? _audioEngine;
     private readonly Lock _presentationLock = new();
     private VideoFrameEventArgs? _loopStartFrameSnapshot;
+    private bool _loopPreSeekActive;
+    // Tracks the last VideoAudioEngine.CompletedLoopCount value the video side has caught up
+    // to. When the audio engine's count advances (it wraps its own decoder and never stops
+    // its BASS channel - see VideoAudioEngine.LoopPlayback), CommitAudioLoopWrap catches the
+    // video side up with no audio calls at all.
+    private int _lastObservedAudioLoopCount;
     private double? _overrideRefreshHz;
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
@@ -53,6 +59,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private const int MinBufferedVideoFrames = 4;
     private const long MaxBufferedVideoBytes = 96L * 1024 * 1024;
     private const int MaxVideoPacketsPerDecodePass = 3;
+    // A queued frame whose PTS is this far behind the presentation clock while a loop
+    // pre-seek is pending is a next-lap frame (PTS restarted near 0), not a late frame.
+    // Larger than any legitimate decode lateness, far smaller than a realistic loop length.
+    private const double LoopWrapFrameGuardSeconds = 1.0;
     private const string DecoderDeviceLostCategory = "Decoder.DeviceLost";
     private const string DecoderDeviceLostRecoveryFailedCategory = "Decoder.DeviceLost.RecoveryFailed";
     private const int DecoderRecoveryMaxAttempts = 3;
@@ -117,7 +127,16 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     public IAudioEngine? Audio => _audioEngine;
     public bool HasAudio => _audioEngine?.IsOpen == true;
-    public bool LoopPlayback { get; set; }
+    public bool LoopPlayback
+    {
+        get => field;
+        set
+        {
+            field = value;
+            if (_audioEngine != null)
+                _audioEngine.LoopPlayback = value;
+        }
+    }
     public bool IsOpen => _isOpen;
     public double Duration { get; private set; }
     public double FramesPerSecond => _videoDecoder?.FramesPerSecond ?? 0;
@@ -199,6 +218,12 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             _audioEngine = null;
             if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Opened video without audio stream; using playback clock.");
         }
+        else
+        {
+            _audioEngine.LoopPlayback = LoopPlayback;
+        }
+
+        _lastObservedAudioLoopCount = 0;
 
         Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
         _clock.Stop();
@@ -291,11 +316,22 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
     private double GetCurrentTransportPosition() => HasAudio ? _audioEngine!.Position : _clock.PositionSeconds;
 
+    // Reactive fallback restart: used when there was no proactive pre-seek (non-audio video,
+    // where TryPreSeekLoopStart never runs) or as a safety net if the decoder queue somehow
+    // drains before an audio-driven wrap is observed. For audio-backed video the normal path
+    // is CommitAudioLoopWrap, triggered from PresentationLoop when VideoAudioEngine reports a
+    // completed loop - this method seeks the decoder + audio + clock together and is
+    // therefore not gapless, but it only runs when the proactive path didn't apply.
     private bool TryRestartLoopPlayback(double currentPosition, string reason)
     {
         VideoDecoder? decoder = _videoDecoder;
         if (decoder == null || Duration <= 0)
             return false;
+
+        // This full restart supersedes any pending proactive pre-seek (it re-seeks the
+        // decoder itself); a stale flag would keep the wrap-guard armed through the next
+        // lap and stop TryPreSeekLoopStart from re-arming at the next EOF.
+        _loopPreSeekActive = false;
 
         var loopBoundary = GetLoopBoundarySeconds(decoder);
         var loopTarget = GetLoopOverflowPosition(currentPosition, loopBoundary);
@@ -366,6 +402,71 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         return true;
     }
 
+    // Gapless audio-backed loop wrap-commit. The audio engine already wrapped its own
+    // decoder and never stopped its BASS channel (VideoAudioEngine.LoopPlayback /
+    // CompletedLoopCount - the channel plays continuously across the boundary), so by the
+    // time this fires the audio is already playing the next lap without interruption. This
+    // just catches the video side up: flush any stale tail frames left in the queue by
+    // TryPreSeekLoopStart's proactive pre-seek, present the first position-0 frame, and
+    // re-anchor the presentation clock to the fresh (already-wrapped) audio position. There
+    // are no audio Seek/Play calls and no decoder seek here - both already happened
+    // (the decoder proactively in TryPreSeekLoopStart, the audio transparently inside
+    // VideoAudioEngine) - so this is effectively instantaneous.
+    private void CommitAudioLoopWrap(int newLoopCount)
+    {
+        _loopPreSeekActive = false;
+        _lastObservedAudioLoopCount = newLoopCount;
+
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder == null)
+            return;
+
+        VideoFrameData? wrapFrame;
+        lock (_decodeLock)
+        {
+            // Normal path: TryPreSeekLoopStart already repositioned the decoder and queued
+            // position-0 frames behind the tail. Fallback: if the pre-seek never ran or
+            // failed, the decoder is still at end-of-stream - seek it now so the video can
+            // follow the audio, which has already wrapped and is playing the next lap.
+            if (decoder.EndOfStream && !decoder.Seek(0, exact: false))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Decoder seek failed during audio loop wrap commit");
+
+            DropStaleLoopTailFrames(decoder, GetEndToleranceSeconds());
+
+            if (decoder.FrameCount == 0)
+                _ = DecodeUntilFrameAvailable();
+
+            wrapFrame = decoder.GetNextFrame();
+        }
+
+        if (wrapFrame != null)
+            PresentFrame(wrapFrame, forceReissue: true);
+
+        // The audio engine already wrapped its own position - read it fresh and re-anchor
+        // the clock directly. AudioPresentationClock.GetPosition's own monotonic guard only
+        // ever lets position move forward, so a plain GetPosition() call here would stay
+        // stuck at the pre-wrap value; Start/Reset bypass that guard explicitly.
+        var freshPosition = HasAudio ? _audioEngine!.Position : 0.0;
+        if (HasAudio)
+        {
+            if (_isPlaying)
+                _presentationClock.Start(freshPosition);
+            else
+                _presentationClock.Reset(freshPosition);
+        }
+
+        _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
+        _state.SetPosition(freshPosition);
+        PositionChanged?.Invoke(this, freshPosition);
+        if (wrapFrame == null)
+            _ = PresentFrameForCurrentPosition(forceReissue: true);
+
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine(
+                $"[VideoPipeline:AudioLoopWrap] Commit #{newLoopCount}; position={freshPosition:F3}s, " +
+                $"queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}, decodedFirst={wrapFrame != null}.");
+    }
+
     public bool Pause()
     {
         lock (_transportGate)
@@ -399,6 +500,10 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 return false;
 
             _isPlaying = false;
+            _loopPreSeekActive = false;
+            // Sync (not zero): the engine's CompletedLoopCount persists across Stop, so a
+            // mismatched baseline would fire a spurious wrap commit on the next Play tick.
+            _lastObservedAudioLoopCount = _audioEngine?.CompletedLoopCount ?? 0;
             StopDecodeLoopAndWait();
             StopPresentationLoopAndWait();
             WaitForPresentationIdle();
@@ -460,6 +565,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             SetActiveSeekTarget(target);
             try
             {
+                _loopPreSeekActive = false;
+                _lastObservedAudioLoopCount = _audioEngine?.CompletedLoopCount ?? 0;
                 var wasPlaying = _isPlaying;
                 if (!asPreview)
                     SetMinimumCommittedVideoPresentationTarget(target);
@@ -775,6 +882,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             _generation++;
             _isPlaying = false;
             _isOpen = false;
+            _loopPreSeekActive = false;
+            _lastObservedAudioLoopCount = 0;
             _currentVideoPath = null;
             StopDecodeLoopAndWait();
             StopPresentationLoopAndWait();
@@ -942,12 +1051,31 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 {
                     if (generation == _generation && _isPlaying)
                     {
+                        // Proactive pre-seek: when the decoder reaches EOF with tail frames
+                        // still queued, pre-seek to 0 so position-0 frames are ready before
+                        // the audio-driven wrap commits below (audio-backed video only).
+                        TryPreSeekLoopStart();
+
                         var currentPosition = PresentFrameForCurrentPosition();
-                        if (ShouldRestartLoopPlayback(currentPosition))
+
+                        // Gapless audio-backed loop: the audio engine wraps its own decoder
+                        // and never stops its BASS channel (VideoAudioEngine.LoopPlayback /
+                        // CompletedLoopCount). When it reports a new completed loop, catch the
+                        // video side up - no audio Seek/Play calls needed. Gated on
+                        // LoopPlayback (not _loopPreSeekActive) so a failed/missed video
+                        // pre-seek can't strand the video on the old lap while the audio
+                        // loops autonomously; CommitAudioLoopWrap handles that fallback.
+                        var completedAudioLoops = LoopPlayback && HasAudio ? _audioEngine!.CompletedLoopCount : -1;
+                        if (completedAudioLoops >= 0 && completedAudioLoops != _lastObservedAudioLoopCount)
+                        {
+                            CommitAudioLoopWrap(completedAudioLoops);
+                            restartedLoop = true;
+                        }
+                        else if (ShouldRestartLoopPlayback(currentPosition))
                         {
                             restartedLoop = TryRestartLoopPlayback(currentPosition, "presentation eof");
                         }
-                        else if (HasReachedPlaybackEnd(currentPosition))
+                        else if (!LoopPlayback && HasReachedPlaybackEnd(currentPosition))
                         {
                             CompletePlaybackAtEnd();
                         }
@@ -1388,11 +1516,18 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private double GetPresentationPosition()
     {
         VideoAudioEngine? audioEngine = _audioEngine;
-        return audioEngine is not null && audioEngine.TryGetPositionSnapshot(out var audioPosition)
-            ? _isPlaying
+        if (audioEngine is not null && audioEngine.TryGetPositionSnapshot(out var audioPosition))
+        {
+            // audioPosition already wraps naturally back into [0, Duration) across a loop
+            // boundary - VideoAudioEngine reports a continuous internal position minus
+            // completed-loop offsets (see AudioLoopBoundaryTracker), so no override is
+            // needed here for the loop case.
+            return _isPlaying
                 ? _presentationClock.GetPosition(audioPosition, Duration)
-                : audioPosition
-            : _clock.PositionSeconds;
+                : audioPosition;
+        }
+
+        return _clock.PositionSeconds;
     }
 
     private double GetDisplayAdjustedPresentationPosition(double clockPosition)
@@ -1562,12 +1697,77 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         var tolerance = GetEndToleranceSeconds();
         var loopBoundary = GetLoopBoundarySeconds(decoder);
+
         if (decoder.EndOfStream && decoder.FrameCount == 0 && currentPosition >= loopBoundary - tolerance)
             return true;
 
         // Metadata and EOF signaling can be imperfect. If playback has moved beyond the nominal
         // boundary with no queued frames, restart rather than freezing forever on the retained frame.
         return decoder.FrameCount == 0 && currentPosition >= loopBoundary + tolerance;
+    }
+
+    // Proactive video-decoder pre-seek for gapless audio-backed looping: pre-seek to 0 while
+    // tail frames are still queued and the audio engine is still playing out the current lap.
+    // The seek preserves the queue so tail frames (PTS near loop end) present first, then
+    // position-0 frames (decoded after the pre-seek) are ready behind them by the time
+    // CommitAudioLoopWrap fires (when VideoAudioEngine reports its own gapless wrap).
+    //
+    // Only for audio-backed video: the background video loop (no audio) already pre-seeks
+    // directly because it has no audio clock to desync. Non-audio main video uses the
+    // virtual clock and relies on the reactive TryRestartLoopPlayback fallback instead.
+    private void TryPreSeekLoopStart()
+    {
+        if (_loopPreSeekActive || !LoopPlayback || !_isPlaying || Duration <= 0 || !HasAudio)
+            return;
+
+        VideoDecoder? decoder = _videoDecoder;
+        if (decoder == null || !decoder.EndOfStream || decoder.FrameCount <= 0)
+            return;
+
+        lock (_decodeLock)
+        {
+            if (_loopPreSeekActive || !decoder.EndOfStream || decoder.FrameCount <= 0)
+                return;
+
+            if (!SeamlessLoopRestart.TryPreSeekToStart(decoder))
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Pre-seek to loop start failed");
+                return;
+            }
+
+            // Clear the committed presentation target so position-0 frames aren't dropped
+            // as "stale" by DropFramesBeforeCommittedVideoTarget.
+            lock (_seekPumpLock)
+                _minimumCommittedVideoPresentationSeconds = double.NaN;
+
+            SeamlessLoopRestart.TopUpDecode(
+                decoder,
+                SeamlessLoopRestart.DefaultTopUpBatchSize,
+                SeamlessLoopRestart.GetTopUpThreshold(GetTargetBufferedVideoFrames()));
+            _loopPreSeekActive = true;
+        }
+
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine($"[VideoPipeline:LoopPreSeek] Pre-seek to 0; queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}");
+    }
+
+    // Flush remaining tail frames (PTS > threshold) from the front of the
+    // queue so position-0 frames are reachable after the clock resets to 0.
+    private void DropStaleLoopTailFrames(VideoDecoder decoder, double threshold)
+    {
+        var dropped = 0;
+        while (decoder.PeekNextFrame() is { } nextFrame && nextFrame.PresentationTime > threshold)
+        {
+            VideoFrameData? stale = decoder.GetNextFrame();
+            if (stale == null)
+                break;
+
+            decoder.ReturnFrame(stale);
+            dropped++;
+        }
+
+        if (dropped > 0 && _configuration.EnableVerboseLogging)
+            Trace.WriteLine($"[VideoPipeline:LoopPhase2] Dropped {dropped} stale tail frame(s) above {threshold:F3}s");
     }
 
     private bool HasReachedPlaybackEnd(double currentPosition)
@@ -1858,6 +2058,20 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         while (decoder.PeekNextFrame() is { } nextFrame)
         {
             if (nextFrame.PresentationTime > maxPresentationTime)
+                break;
+
+            // Loop-wrap guard: while a pre-seeked loop restart is awaiting its audio-side
+            // commit, the queue holds next-lap frames (PTS near 0) while the clock is still
+            // near the end of the current lap. Those frames must be neither presented nor
+            // late-dropped - they are the warm queue CommitAudioLoopWrap depends on. The
+            // guard must fire whether the next-lap frame sits behind an already-selected
+            // tail frame or is already at the head of the queue (the tail's real last frame
+            // often lands before the audio boundary, exhausting the tail a few ticks early);
+            // without the head case, the selector eats the next lap's opening frames as
+            // "late", leaving the commit with nothing to present until the clock catches up
+            // to whatever survived - or, if everything is eaten, letting the reactive
+            // restart fire and destroy the gapless audio wrap.
+            if (_loopPreSeekActive && clockPosition - nextFrame.PresentationTime > LoopWrapFrameGuardSeconds)
                 break;
 
             if (frameToPresent != null

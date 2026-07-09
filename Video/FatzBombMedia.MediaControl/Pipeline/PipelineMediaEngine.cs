@@ -364,6 +364,23 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 }
             }
 
+            // Pre-restart buffering + top-up via the shared seamless-loop primitive (also used
+            // by the primary VideoPipeline). At EOF with tail frames still queued, seek the
+            // decoder back to 0 preserving the queue, then decode a few packets inline so
+            // position-0 frames are ready before the tail runs out. See SeamlessLoopRestart.
+            if (SeamlessLoopRestart.TryPreSeekToStart(decoder) && _configuration.EnableVerboseLogging)
+            {
+                var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                Trace.WriteLine(
+                    $"[BackgroundVideo] Pre-seek to start at {elapsedSec:F2}s, queued={decoder.FrameCount}, " +
+                    $"lastPts={lastPresentedPts:F3}s");
+            }
+
+            SeamlessLoopRestart.TopUpDecode(
+                decoder,
+                SeamlessLoopRestart.DefaultTopUpBatchSize,
+                SeamlessLoopRestart.GetTopUpThreshold(decoder.MaxFrames));
+
             iterationCount++;
             var interval = VideoPresentationTiming.GetBackgroundPresentationInterval(decoder.FramesPerSecond);
             nextTick += Math.Max(1L, (long)(interval * Stopwatch.Frequency));
@@ -391,18 +408,29 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
             if (!decoder.DecodeNextFrame())
             {
-                if (_configuration.EnableVerboseLogging)
+                // EndOfStream means the file is fully read (real EOF) — break so the caller
+                // can restart the loop. Without EndOfStream, the false just means a video
+                // packet was sent to the decoder but no frame was produced yet (normal for
+                // B-frame / packed-bitstream video where the decoder pipelines several packets
+                // before emitting output). Breaking here would cause a premature restart after
+                // only the first few frames — continue the loop instead.
+                if (decoder.EndOfStream)
                 {
-                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
-                    Trace.WriteLine(
-                        $"[BackgroundVideo] DecodeNextFrame returned false at iter={iterationCount}, elapsed={elapsedSec:F2}s, " +
-                        $"lastPts={lastPresentedPts:F3}s, attempts={attempts}, queueDepth={decoder.FrameCount}");
+                    if (_configuration.EnableVerboseLogging)
+                    {
+                        var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                        Trace.WriteLine(
+                            $"[BackgroundVideo] DecodeNextFrame returned false at iter={iterationCount}, elapsed={elapsedSec:F2}s, " +
+                            $"lastPts={lastPresentedPts:F3}s, attempts={attempts}, queueDepth={decoder.FrameCount}");
+                    }
+
+                    break;
                 }
-
-                break;
             }
-
-            attempts++;
+            else
+            {
+                attempts++;
+            }
         }
 
         VideoFrameData? finalFrame = decoder.GetNextFrame();
@@ -450,7 +478,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return null;
 
-        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput);
+        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput, scaleMaxFramesByResolution: true);
         if (decoder.Open(path))
             return decoder;
 
@@ -495,12 +523,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 return;
 
             var length = Math.Min(frame.Length, frame.Data.Length);
-            var copy = new byte[length];
-            Buffer.BlockCopy(frame.Data, 0, copy, 0, length);
+
+            // Pass the pool-rented buffer directly. The consumer (SetCompositionLayer0Frame)
+            // always copies pixels synchronously into its own master buffer before this call
+            // returns, so the pool buffer is safe to return in the finally block below.
+            // PixelDataCanBeRetained is false because the buffer is returned to the ArrayPool
+            // immediately after the event handlers return.
             BackgroundFrameReady?.Invoke(this, new VideoFrameEventArgs
             {
-                PixelData = copy,
-                PixelDataCanBeRetained = true,
+                PixelData = new ReadOnlyMemory<byte>(frame.Data, 0, length),
+                PixelDataCanBeRetained = false,
                 Width = frame.Width,
                 Height = frame.Height,
                 Stride = frame.Stride,

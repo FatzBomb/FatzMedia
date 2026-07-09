@@ -448,18 +448,12 @@
                                     SelectedItem="{Binding VideoDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                     ToolTip="Primary video display mode. Background videos behind overlays always use ZoomToFill." />
                                 <TextBlock
-                                    Grid.Column="4"
-                                    Style="{StaticResource LabelTextStyle}"
-                                    Text="Native Overlay"
-                                    ToolTip="The sample app always uses the native HWND + transparent overlay window path." />
-                                <TextBlock
                                     Grid.Column="6"
                                     Margin="0,0,6,0"
                                     Style="{StaticResource LabelTextStyle}"
                                     Text="BG" />
                                 <Slider
-                                    Grid.Column="7"
-                                    Width="58"
+                                    Grid.Column="7" Grid.ColumnSpan="2"
                                     IsSnapToTickEnabled="True"
                                     Maximum="100"
                                     Minimum="0"

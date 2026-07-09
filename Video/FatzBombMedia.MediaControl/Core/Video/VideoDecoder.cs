@@ -15,7 +15,8 @@ internal sealed unsafe class VideoDecoder(
     bool enableHardwareFrameOutput = true,
     bool enableDiagnostics = true,
     bool enablePerformanceLogging = false,
-    bool enableVerboseLogging = false) : IDisposable
+    bool enableVerboseLogging = false,
+    bool scaleMaxFramesByResolution = false) : IDisposable
 {
     private static readonly AVHWDeviceType[] DefaultPreferredHardwareDevices =
     [
@@ -29,6 +30,7 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _enableDiagnostics = enableDiagnostics;
     private readonly bool _enablePerformanceLogging = enablePerformanceLogging;
     private readonly bool _enableVerboseLogging = enableVerboseLogging;
+    private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
     private readonly AVFormatContext* _fmt;
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
@@ -59,10 +61,14 @@ internal sealed unsafe class VideoDecoder(
     public IntPtr D3D11DevicePointer { get; private set; }
     public IntPtr D3D11DeviceContextPointer { get; private set; }
     public bool EndOfStream { get; private set; }
+    public int MaxFrames => _maxFrames;
 
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
-    private const int MaxFrames = 24;
+    private const int MaxFramesCap = 24;
+    private const int MinFrames = 3;
+    private const long SoftwareFrameMemoryBudget = 128L * 1024 * 1024;
+    private int _maxFrames = MaxFramesCap;
     private const int DecodeDiagnosticsFrameInterval = 120;
     private const int DecodeIssueLogLimit = 8;
     private const int AvErrorAgain = -11;
@@ -87,12 +93,13 @@ internal sealed unsafe class VideoDecoder(
     public bool IsHardwareDecodeRepeatedlyFailing =>
         HardwareAccelerationMethod != null && _consecutiveHardwareDecodeFailures >= HardwareDecodeLossFailureThreshold;
 
-    public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, bool enableHardwareFrameOutput = true) =>
+    public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, bool enableHardwareFrameOutput = true, bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
             enableHardwareFrameOutput,
             configuration.EnableLogging,
             configuration.EnablePerformanceLogging,
-            configuration.EnableVerboseLogging);
+            configuration.EnableVerboseLogging,
+            scaleMaxFramesByResolution);
 
     public bool Open(string path)
     {
@@ -114,6 +121,17 @@ internal sealed unsafe class VideoDecoder(
 
         _videoStream = _fmt->streams[_videoIndex];
 
+        // Discard non-video streams so av_read_frame only returns video packets. This
+        // matters for background video looping: audio packets that outlive the video
+        // stream cause a gap (no video output) before EOF triggers a restart, and
+        // interleaved AVI audio chunks waste I/O on every decode pass. VideoAudioEngine
+        // opens its own format context, so this does not affect main-pipeline audio.
+        for (uint i = 0; i < _fmt->nb_streams; i++)
+        {
+            if ((int)i != _videoIndex)
+                _fmt->streams[i]->discard = AVDiscard.AVDISCARD_ALL;
+        }
+
         if (!InitializeVideoDecoder())
         {
             Close();
@@ -121,9 +139,19 @@ internal sealed unsafe class VideoDecoder(
         }
 
         _packet = ffmpeg.av_packet_alloc();
-        DurationSeconds = _fmt->duration > 0 ? _fmt->duration / (double)ffmpeg.AV_TIME_BASE : 0;
+        _maxFrames = ComputeMaxFrames();
 
-        if (_enableDiagnostics) Debug.WriteLine($"[VideoDecoder] Opened: {Width}x{Height}, {FramesPerSecond:F2}fps, {CodecName}");
+        // Prefer the video stream's own duration over the format-level duration. The
+        // format duration is the max across all streams (often audio for music videos),
+        // which can be longer than the video — causing a perceived gap at the loop
+        // boundary even though video frames have stopped.
+        var videoStreamDuration = _videoStream->duration != ffmpeg.AV_NOPTS_VALUE
+            ? _videoStream->duration * ffmpeg.av_q2d(_videoStream->time_base)
+            : 0;
+        var formatDuration = _fmt->duration > 0 ? _fmt->duration / (double)ffmpeg.AV_TIME_BASE : 0;
+        DurationSeconds = videoStreamDuration > 0 ? videoStreamDuration : formatDuration;
+
+        if (_enableDiagnostics) Debug.WriteLine($"[VideoDecoder] Opened: {Width}x{Height}, {FramesPerSecond:F2}fps, {CodecName}, duration={DurationSeconds:F3}s");
         return true;
     }
 
@@ -154,6 +182,29 @@ internal sealed unsafe class VideoDecoder(
 
         ffmpeg.av_packet_unref(_packet);
         return frameDecoded || !isVideoPacket;
+    }
+
+    /// <summary>
+    /// Computes the maximum number of frames to buffer based on frame size and decode path.
+    /// Only applied when <see cref="_scaleMaxFramesByResolution"/> is true (background video);
+    /// the main video pipeline uses the fixed cap because it has its own buffer target
+    /// (<c>MaxBufferedVideoFrames</c>) and byte limit (<c>MaxBufferedVideoBytes</c>) in
+    /// VideoPipeline, and needs the full queue depth for slow software decoders (e.g. AV1).
+    /// Hardware frames are cheap (cloned AVFrame referencing an existing D3D11 texture), so
+    /// the cap is used. Software frames are full BGRA buffers, so the count is scaled down
+    /// for larger resolutions to stay within a memory budget.
+    /// </summary>
+    private int ComputeMaxFrames()
+    {
+        if (!_scaleMaxFramesByResolution || IsHardwareAccelerated)
+            return MaxFramesCap;
+
+        var frameSizeBytes = (long)_videoLinesize * Height;
+        if (frameSizeBytes <= 0)
+            return MaxFramesCap;
+
+        var byBudget = (int)(SoftwareFrameMemoryBudget / frameSizeBytes);
+        return Math.Clamp(byBudget, MinFrames, MaxFramesCap);
     }
 
     public VideoFrameData? GetNextFrame() => _frameQueue.TryDequeue(out VideoFrameData? frame) ? frame : null;
@@ -835,7 +886,7 @@ internal sealed unsafe class VideoDecoder(
         }
 
         var processed = 0;
-        while (_frameQueue.Count < MaxFrames && processed < 10)
+        while (_frameQueue.Count < MaxFrames && processed < MaxFrames)
         {
             var receiveResult = ffmpeg.avcodec_receive_frame(_videoCodecCtx, _videoFrame);
             if (receiveResult != 0)
@@ -898,6 +949,7 @@ internal sealed unsafe class VideoDecoder(
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
         EndOfStream = false;
+        _maxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         D3D11DevicePointer = IntPtr.Zero;
@@ -944,14 +996,15 @@ internal sealed unsafe class VideoDecoder(
         GC.SuppressFinalize(this);
     }
 
-    public void Flush()
+    public void Flush(bool clearQueue = true)
     {
         if (_videoCodecCtx != null)
         {
             ffmpeg.avcodec_flush_buffers(_videoCodecCtx);
             if (_enableVerboseLogging) Debug.WriteLine("[VideoDecoder] Flushed codec buffers after seek");
         }
-        ClearFrameQueue();
+        if (clearQueue)
+            ClearFrameQueue();
         EndOfStream = false;
     }
 
@@ -979,7 +1032,7 @@ internal sealed unsafe class VideoDecoder(
         }
     }
 
-    public bool Seek(double seconds, bool exact = true)
+    public bool Seek(double seconds, bool exact = true, bool preserveQueue = false)
     {
         if (_fmt == null || _videoStream == null)
             return false;
@@ -990,7 +1043,7 @@ internal sealed unsafe class VideoDecoder(
         if (ffmpeg.av_seek_frame(_fmt, _videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
             return false;
 
-        Flush();
+        Flush(clearQueue: !preserveQueue);
         EndOfStream = false;
         _discardFramesBeforeSeconds = exact ? target : null;
         return true;
