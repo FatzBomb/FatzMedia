@@ -26,7 +26,7 @@ public class AudioLoopBoundaryTrackerTests
 
         Assert.Equal(0, crossed);
         Assert.Equal(0, offset);
-        Assert.Single(boundaries);
+        _ = Assert.Single(boundaries);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class AudioLoopBoundaryTrackerTests
 
         Assert.Equal(2, crossed);
         Assert.Equal(240.0, offset);
-        Assert.Single(boundaries); // 360.0 remains, not yet reached
+        _ = Assert.Single(boundaries); // 360.0 remains, not yet reached
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class AudioLoopBoundaryTrackerTests
         var crossed2 = AudioLoopBoundaryTracker.Advance(121.0, boundaries, ref offset);
         Assert.Equal(1, crossed2);
         Assert.Equal(120.0, offset);
-        Assert.Single(boundaries);
+        _ = Assert.Single(boundaries);
 
         var crossed3 = AudioLoopBoundaryTracker.Advance(241.0, boundaries, ref offset);
         Assert.Equal(1, crossed3);

@@ -61,14 +61,13 @@ internal sealed unsafe class VideoDecoder(
     public IntPtr D3D11DevicePointer { get; private set; }
     public IntPtr D3D11DeviceContextPointer { get; private set; }
     public bool EndOfStream { get; private set; }
-    public int MaxFrames => _maxFrames;
+    public int MaxFrames { get; private set; } = MaxFramesCap;
 
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
     private const int MaxFramesCap = 24;
     private const int MinFrames = 3;
     private const long SoftwareFrameMemoryBudget = 128L * 1024 * 1024;
-    private int _maxFrames = MaxFramesCap;
     private const int DecodeDiagnosticsFrameInterval = 120;
     private const int DecodeIssueLogLimit = 8;
     private const int AvErrorAgain = -11;
@@ -139,7 +138,7 @@ internal sealed unsafe class VideoDecoder(
         }
 
         _packet = ffmpeg.av_packet_alloc();
-        _maxFrames = ComputeMaxFrames();
+        MaxFrames = ComputeMaxFrames();
 
         // Prefer the video stream's own duration over the format-level duration. The
         // format duration is the max across all streams (often audio for music videos),
@@ -949,7 +948,7 @@ internal sealed unsafe class VideoDecoder(
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
         EndOfStream = false;
-        _maxFrames = MaxFramesCap;
+        MaxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         D3D11DevicePointer = IntPtr.Zero;

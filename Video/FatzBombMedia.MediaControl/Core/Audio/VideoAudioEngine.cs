@@ -62,8 +62,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     /// </summary>
     public bool LoopPlayback { get; set; }
 
-    private int _completedLoopCount;
-
     /// <summary>
     /// Total number of loop wraps whose audio has finished playing this session. Written
     /// under _sync on the decode thread (via GetPositionCore); read without a lock from the
@@ -72,8 +70,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     /// </summary>
     public int CompletedLoopCount
     {
-        get => Volatile.Read(ref _completedLoopCount);
-        private set => Volatile.Write(ref _completedLoopCount, value);
+        get => Volatile.Read(ref field);
+        private set => Volatile.Write(ref field, value);
     }
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
@@ -340,9 +338,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private bool DecodeAndPushAudioCore()
     {
         if (!IsOpenCore || _formatContext == null)
-        {
             return false;
-        }
 
         if (IsAudioBufferThrottledCore())
         {
@@ -360,9 +356,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         AVPacket* packet = ffmpeg.av_packet_alloc();
         if (packet == null)
-        {
             return false;
-        }
 
         try
         {
@@ -383,10 +377,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             // PCM into the same BASS push stream instead of stopping it - the channel never
             // stops, so there is no audio gap at the loop boundary. Mirrors
             // BackgroundVideoLoop's decoder-only pre-seek pattern.
-            if (LoopPlayback && Duration > 0 && WrapDecoderForLoop())
-                return true;
-
-            return false;
+            return LoopPlayback && Duration > 0 && WrapDecoderForLoop();
         }
         finally
         {

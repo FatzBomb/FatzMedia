@@ -129,12 +129,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     public bool HasAudio => _audioEngine?.IsOpen == true;
     public bool LoopPlayback
     {
-        get => field;
+        get;
         set
         {
             field = value;
-            if (_audioEngine != null)
-                _audioEngine.LoopPlayback = value;
+            _ = (_audioEngine?.LoopPlayback = value);
         }
     }
     public bool IsOpen => _isOpen;
