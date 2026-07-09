@@ -1,6 +1,6 @@
 <!-- Command-driven stage file. Use with AGENTS_WORKING_NOTES.md and this file only. -->
 
-Stage file status: BACKLOG (promoted sub-stage of 012A).
+Stage file status: DONE — implemented, automated gates pass, manual on-device smoke clean (2026-07-09). See docs/roadmap/updates/012A_S2/StageUpdate.md.
 
 # 012A.S2 — Route `VideoAudioEngine` through its own `MediaDemuxer`
 

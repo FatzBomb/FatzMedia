@@ -4,10 +4,13 @@ All runnable stage files live directly in `stages/`.
 
 ## Active / Backlog
 
-- `012A_S2_BACKLOG_MediaDemuxerBehindVideoAudioEngine.md` — MediaDemuxer seam behind VideoAudioEngine (sub-stage of 012A; behavior-preserving)
+## Reverted
+
+- `012A_S3_BACKLOG_SharedReadCursor.md` — shared read cursor (sub-stage of 012A); reverted, requires S4 unified seek first (2026-07-09)
 
 ## Completed
 
+- `012A_S2_BACKLOG_MediaDemuxerBehindVideoAudioEngine.md` — MediaDemuxer seam behind VideoAudioEngine (sub-stage of 012A; behavior-preserving) (2026-07-09)
 - `012A_S1_BACKLOG_MediaDemuxerBehindVideoDecoder.md` — MediaDemuxer seam behind VideoDecoder (sub-stage of 012A; behavior-preserving) (2026-07-09)
 - `007B_BACKLOG_HardwareFrameReleaseSafety.md` — hardware frame release safety (2026-07-07)
 - `007A_BACKLOG_PresentOutsideLocks.md` — present outside transport-visible locks (2026-07-07)
