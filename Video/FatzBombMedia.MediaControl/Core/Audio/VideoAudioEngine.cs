@@ -81,9 +81,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         get
         {
             lock (_sync)
-            {
                 return _normalize;
-            }
         }
         set
         {
@@ -104,9 +102,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         get
         {
             lock (_sync)
-            {
                 return IsOpenCore;
-            }
         }
     }
 
@@ -203,9 +199,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private double GetContinuousPositionCore()
     {
         if (PlayHandle == 0)
-        {
             return _positionBaseSeconds;
-        }
 
         var bytes = Bass.ChannelGetPosition(PlayHandle);
         var seconds = Bass.ChannelBytes2Seconds(PlayHandle, bytes);
@@ -256,18 +250,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         lock (_sync)
         {
             if (_disposed)
-            {
                 return false;
-            }
 
             CloseCore();
 
             fixed (AVFormatContext** context = &_formatContext)
             {
                 if (ffmpeg.avformat_open_input(context, filePath, null, null) < 0)
-                {
                     return false;
-                }
             }
 
             if (ffmpeg.avformat_find_stream_info(_formatContext, null) < 0)
@@ -313,16 +303,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         var tempPath = CreateTempMediaPath(data);
         var success = Open(tempPath);
         if (success)
-        {
             lock (_sync)
-            {
                 _tempPath = tempPath;
-            }
-        }
         else
-        {
             TryDeleteTempPath(tempPath);
-        }
 
         return success;
     }
@@ -330,9 +314,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool DecodeAndPushAudio()
     {
         lock (_sync)
-        {
             return DecodeAndPushAudioCore();
-        }
     }
 
     private bool DecodeAndPushAudioCore()
@@ -406,17 +388,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool Play()
     {
         lock (_sync)
-        {
             return PlayCore();
-        }
     }
 
     private bool PlayCore()
     {
         if (PlayHandle == 0)
-        {
             return false;
-        }
 
         var success = Bass.ChannelPlay(PlayHandle);
         if (success)
@@ -431,17 +409,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool Pause()
     {
         lock (_sync)
-        {
             return PauseCore();
-        }
     }
 
     private bool PauseCore()
     {
         if (PlayHandle == 0)
-        {
             return false;
-        }
 
         var success = Bass.ChannelPause(PlayHandle);
         if (success)
@@ -456,9 +430,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool Stop()
     {
         lock (_sync)
-        {
             return StopCore();
-        }
     }
 
     private bool StopCore()
@@ -471,9 +443,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
 
         if (_bassStream != 0)
-        {
             _ = Bass.ChannelSetPosition(_bassStream, 0);
-        }
 
         ResetAudioBufferTracking();
         _ = SeekDecoder(0);
@@ -488,17 +458,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public bool Seek(double seconds, bool resumePlayback)
     {
         lock (_sync)
-        {
             return SeekCore(seconds, resumePlayback);
-        }
     }
 
     private bool SeekCore(double seconds, bool resumePlayback)
     {
         if (!IsOpenCore)
-        {
             return false;
-        }
 
         var target = Duration > 0 ? Math.Clamp(seconds, 0, Duration) : Math.Max(0, seconds);
         var wasPlaying = State == AudioEngineState.Playing;
@@ -509,14 +475,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
 
         if (_bassStream != 0)
-        {
             _ = Bass.ChannelSetPosition(_bassStream, 0);
-        }
 
         if (!SeekDecoder(target))
-        {
             return false;
-        }
 
         _positionBaseSeconds = target;
         ResetAudioBufferTracking();
@@ -538,19 +500,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         lock (_sync)
         {
             if (!IsOpenCore || minimumFrames <= 0 || maxDecodeAttempts <= 0)
-            {
                 return false;
-            }
 
             var startingFrameCount = _pushedAudioFrameCount;
             var attempts = 0;
             while (_pushedAudioFrameCount - startingFrameCount < minimumFrames && attempts++ < maxDecodeAttempts)
-            {
                 if (!DecodeAndPushAudioCore())
-                {
                     break;
-                }
-            }
 
             return _pushedAudioFrameCount > startingFrameCount;
         }
@@ -559,17 +515,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public void Close()
     {
         lock (_sync)
-        {
             CloseCore();
-        }
     }
 
     private void CloseCore()
     {
         if (_disposed)
-        {
             return;
-        }
 
         if (PlayHandle != 0)
         {
@@ -688,9 +640,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     {
         Close();
         lock (_sync)
-        {
             _disposed = true;
-        }
         GC.SuppressFinalize(this);
     }
 
@@ -698,26 +648,18 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     {
         AVCodec* codec = ffmpeg.avcodec_find_decoder(_audioStream->codecpar->codec_id);
         if (codec == null)
-        {
             return false;
-        }
 
         _codecContext = ffmpeg.avcodec_alloc_context3(codec);
         if (_codecContext == null || ffmpeg.avcodec_parameters_to_context(_codecContext, _audioStream->codecpar) < 0)
-        {
             return false;
-        }
 
         if (ffmpeg.avcodec_open2(_codecContext, codec, null) < 0)
-        {
             return false;
-        }
 
         _frame = ffmpeg.av_frame_alloc();
         if (_frame == null)
-        {
             return false;
-        }
 
         _sampleRate = _codecContext->sample_rate;
         _sourceChannels = Math.Max(1, _codecContext->ch_layout.nb_channels);
@@ -725,33 +667,18 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         AVChannelLayout inputLayout = _codecContext->ch_layout;
         if (inputLayout.nb_channels <= 0 || ffmpeg.av_channel_layout_check(&inputLayout) == 0)
-        {
             ffmpeg.av_channel_layout_default(&inputLayout, _sourceChannels);
-        }
 
         var outputLayout = new AVChannelLayout();
         ffmpeg.av_channel_layout_default(&outputLayout, _channels);
 
         SwrContext* resampler = null;
-        if (ffmpeg.swr_alloc_set_opts2(
-            &resampler,
-            &outputLayout,
-            AVSampleFormat.AV_SAMPLE_FMT_FLT,
-            _sampleRate,
-            &inputLayout,
-            _codecContext->sample_fmt,
-            _sampleRate,
-            0,
-            null) < 0)
-        {
+        if (ffmpeg.swr_alloc_set_opts2(&resampler, &outputLayout, AVSampleFormat.AV_SAMPLE_FMT_FLT, _sampleRate, &inputLayout, _codecContext->sample_fmt, _sampleRate, 0, null) < 0)
             return false;
-        }
 
         _resampler = resampler;
         if (_resampler == null || ffmpeg.swr_init(_resampler) < 0)
-        {
             return false;
-        }
 
         _audioBufferSize = _sampleRate * _channels * sizeof(float);
         _audioBuffer = (byte*)ffmpeg.av_malloc((ulong)_audioBufferSize);
@@ -765,9 +692,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         BassFlags flags = BassFlags.Decode | BassFlags.Float;
         if (_channels == 1)
-        {
             flags |= BassFlags.Mono;
-        }
 
         _bassStream = Bass.CreateStream(_sampleRate, _channels, flags, StreamProcedureType.Push);
         if (_bassStream == 0)
@@ -793,9 +718,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     {
         var processed = false;
         if (ffmpeg.avcodec_send_packet(_codecContext, packet) < 0)
-        {
             return false;
-        }
 
         while (ffmpeg.avcodec_receive_frame(_codecContext, _frame) == 0)
         {
@@ -872,9 +795,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             _frame->nb_samples);
 
         if (samples <= 0)
-        {
             return;
-        }
 
         var byteCount = samples * _channels * sizeof(float);
         var data = ArrayPool<byte>.Shared.Rent(byteCount);
@@ -890,9 +811,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
                     var frameDuration = samples / (double)_sampleRate;
                     var frameEndPosition = framePosition + frameDuration;
                     if (!double.IsFinite(frameEndPosition) || frameEndPosition < _lastPushedAudioEndSeconds)
-                    {
                         frameEndPosition = _lastPushedAudioEndSeconds + frameDuration;
-                    }
 
                     _lastPushedAudioEndSeconds = frameEndPosition;
                 }
@@ -907,20 +826,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private bool SeekDecoder(double seconds)
     {
         if (_formatContext == null || _audioStream == null)
-        {
             return false;
-        }
 
         var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
         if (ffmpeg.av_seek_frame(_formatContext, _audioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
-        {
             return false;
-        }
 
         if (_codecContext != null)
-        {
             ffmpeg.avcodec_flush_buffers(_codecContext);
-        }
 
         _discardAudioBeforeSeconds = seconds;
         return true;
@@ -939,7 +852,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return timestamp == ffmpeg.AV_NOPTS_VALUE ? _positionBaseSeconds : Math.Max(0, (timestamp * timeBase) - _streamStartSeconds);
     }
 
-    private static double GetStreamStartSeconds(AVStream* stream) => stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
+    private static double GetStreamStartSeconds(AVStream* stream) =>
+        stream == null || stream->start_time == ffmpeg.AV_NOPTS_VALUE
             ? 0
             : Math.Max(0, stream->start_time * ffmpeg.av_q2d(stream->time_base));
 
@@ -973,9 +887,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private void CleanupTempPath()
     {
         if (string.IsNullOrWhiteSpace(_tempPath))
-        {
             return;
-        }
 
         try
         {
@@ -994,8 +906,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private static void TryDeleteTempPath(string path)
     {
         if (File.Exists(path))
-        {
             File.Delete(path);
-        }
     }
 }
