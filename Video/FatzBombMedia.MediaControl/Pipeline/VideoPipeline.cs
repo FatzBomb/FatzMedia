@@ -567,14 +567,15 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     /// transport operations by <see cref="_transportGate"/> so pipeline state is never mutated
     /// concurrently.
     /// </summary>
-    private void SeekCore(double seconds, bool asPreview)
+    private bool SeekCore(double seconds, bool asPreview, bool allowPreviewFallback = false)
     {
         lock (_transportGate)
         {
             if (!_isOpen)
-                return;
+                return false;
 
             var target = NormalizeSeekTarget(seconds);
+            var videoFramePresented = false;
             SetActiveSeekTarget(target);
             try
             {
@@ -612,19 +613,19 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 var videoSeekProcessingStopwatch = Stopwatch.StartNew();
                 lock (_decodeLock)
-                    _ = SeekVideoNearTarget(target, asPreview);
+                    videoFramePresented = SeekVideoNearTarget(target, asPreview, allowPreviewFallback);
 
                 videoSeekProcessingStopwatch.Stop();
                 RecordAdaptiveVideoSeekProcessingTime(videoSeekProcessingStopwatch.Elapsed);
 
                 if (HasSupersedingSeekRequest())
-                    return;
+                    return videoFramePresented;
 
                 _state.SetPosition(target);
                 PositionChanged?.Invoke(this, target);
 
                 if (asPreview)
-                    return;
+                    return videoFramePresented;
 
                 PreparePostSeekVideoRecovery(target);
 
@@ -650,6 +651,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             {
                 ClearActiveSeekTarget(target);
             }
+
+            return videoFramePresented;
         }
     }
 
@@ -725,14 +728,14 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                     continue;
                 }
 
-                // Process the active drag/click target as a preview first. Preview mode is allowed
-                // to present a nearby frame quickly, so scrubbing gives visible feedback even on
-                // long-GOP or software-decoded media. When the pump goes quiet, we settle the same
-                // latest target with Balanced mode so playback resumes from the requested timeline
-                // rather than from the nearby preview frame.
+                // A lone click keeps preview exact so the displayed frame is the playback start.
+                // Once a second changing target arrives, this is an active scrub: allow nearby
+                // preview frames for responsive feedback until the final settle seeks exactly.
+                var allowPreviewFallback = !double.IsNaN(lastPreviewTarget);
+                var previewFramePresented = false;
                 try
                 {
-                    SeekCore(normalizedTarget, asPreview: true);
+                    previewFramePresented = SeekCore(normalizedTarget, asPreview: true, allowPreviewFallback);
                 }
                 catch (Exception ex)
                 {
@@ -740,6 +743,12 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 }
 
                 lastPreviewTarget = normalizedTarget;
+                if (!previewFramePresented && !HasPendingSeekRequest())
+                {
+                    SettleSeekTarget(normalizedTarget);
+                    break;
+                }
+
                 WaitForSeekPumpInterval();
                 if (!HasPendingSeekRequest())
                 {
@@ -757,7 +766,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         try
         {
-            SeekCore(target, asPreview: false);
+            _ = SeekCore(target, asPreview: false);
         }
         catch (Exception ex)
         {
@@ -1857,42 +1866,39 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private bool SeekVideoNearTarget(double target, bool asPreview)
+    private bool SeekVideoNearTarget(double target, bool asPreview, bool allowPreviewFallback)
     {
         VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
             return false;
 
-        // Video is intentionally the flexible stream during SmartSeek. Audio/CDG/clock state is
-        // already moved to the requested target above; video output is allowed to remain frozen if
-        // getting a nearby frame would be expensive. Keeping _currentFrame alive here also keeps any
-        // hardware frame backing the last visible image alive until a replacement is accepted.
-        if (asPreview && IsTinyVideoSeek(target))
+        if (allowPreviewFallback && IsTinyVideoSeek(target))
             return true;
 
-        // Preview seeks may show a nearby keyframe quickly while the user is still dragging.
-        // Commit/final seeks must not resume video from the previous keyframe, though: that made
-        // playback continue seconds or even minutes away from the visual seek target on long-GOP
-        // media. Balanced therefore still uses decoder discard-to-target, but with bounded decode
-        // work so it is close-enough rather than frame-perfect.
-        var discardBeforeTarget = !asPreview;
-        if (!decoder.Seek(target, exact: discardBeforeTarget))
+        // A lone click uses the exact settle rule. Active scrubbing can show a
+        // nearby frame for feedback; the final settle seek always restores the
+        // exact post-target playback start.
+        var requireAtOrAfterTarget = !allowPreviewFallback;
+        if (!decoder.Seek(target, exact: requireAtOrAfterTarget))
             return false;
 
-        var allowSupersedingAbort = !asPreview;
+        var allowSupersedingAbort = !allowPreviewFallback;
         if (allowSupersedingAbort && HasSupersedingSeekRequest())
             return false;
 
-        var maxFrameDistance = GetSeekMaxFrameDistanceSeconds(asPreview);
-        var decodeBudgetMs = GetSeekDecodeBudgetMilliseconds(asPreview, decoder);
-        var maxDecodeAttempts = GetSeekDecodeMaxAttempts(asPreview, decoder);
+        var maxFrameDistance = allowPreviewFallback
+            ? PreviewMaxFrameDistanceSeconds
+            : SettleMaxFrameDistanceSeconds;
+        var useFastPreviewBudget = asPreview && allowPreviewFallback;
+        var decodeBudgetMs = GetSeekDecodeBudgetMilliseconds(useFastPreviewBudget, decoder);
+        var maxDecodeAttempts = GetSeekDecodeMaxAttempts(useFastPreviewBudget, decoder);
 
         DecodeForSeekTarget(
             target,
             maxFrameDistance,
             decodeBudgetMs,
             maxDecodeAttempts,
-            discardBeforeTarget,
+            requireAtOrAfterTarget,
             allowSupersedingAbort);
 
         if (allowSupersedingAbort && HasSupersedingSeekRequest())
@@ -1902,14 +1908,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             return TryPresentBestSeekFrame(
                 target,
                 maxFrameDistance,
-                discardBeforeTarget,
-                allowPreviewFallback: asPreview);
-    }
-
-    private bool IsTinyVideoSeek(double target)
-    {
-        VideoFrameData? currentFrame = _currentFrame;
-        return currentFrame != null && Math.Abs(currentFrame.PresentationTime - target) <= TinyVideoSeekThresholdSeconds;
+                requireAtOrAfterTarget,
+                allowPreviewFallback);
     }
 
     private void DecodeForSeekTarget(
@@ -1961,15 +1961,31 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         if (decoder == null)
             return false;
 
+        if (requireAtOrAfterTarget && !allowPreviewFallback)
+        {
+            // SeekCore stops both loops before this point. Exact seeking drops all
+            // pre-target frames, so the queue head is the visual playback start.
+            // Preserve its successors for the restarted presentation loop.
+            VideoFrameData? firstFrame = decoder.GetNextFrame();
+            if (firstFrame == null)
+                return false;
+
+            if (!IsSeekFrameAcceptable(firstFrame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
+            {
+                decoder.ReturnFrame(firstFrame);
+                return false;
+            }
+
+            PresentFrame(firstFrame);
+            return true;
+        }
+
         VideoFrameData? bestFrame = null;
-        VideoFrameData? fallbackPreviewFrame = null;
+        VideoFrameData? fallbackFrame = null;
         var bestDistance = double.MaxValue;
         var fallbackDistance = double.MaxValue;
-        var examinedFrames = 0;
-
         while (decoder.GetNextFrame() is { } frame)
         {
-            examinedFrames++;
             var distance = Math.Abs(frame.PresentationTime - target);
             if (distance <= bestDistance && IsSeekFrameAcceptable(frame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
             {
@@ -1981,47 +1997,39 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             }
             else if (allowPreviewFallback && distance < fallbackDistance)
             {
-                if (fallbackPreviewFrame != null)
-                    decoder.ReturnFrame(fallbackPreviewFrame);
+                if (fallbackFrame != null)
+                    decoder.ReturnFrame(fallbackFrame);
 
-                fallbackPreviewFrame = frame;
+                fallbackFrame = frame;
                 fallbackDistance = distance;
             }
             else
                 decoder.ReturnFrame(frame);
         }
 
-        if (bestFrame == null && allowPreviewFallback && fallbackPreviewFrame != null)
-        {
-            bestFrame = fallbackPreviewFrame;
-            bestDistance = fallbackDistance;
-            fallbackPreviewFrame = null;
-            if (_configuration.EnableVerboseLogging)
-            {
-                Debug.WriteLine(
-                    $"[VideoPipeline:SmartSeek] Preview fallback frame at {bestFrame.PresentationTime:F3}s " +
-                    $"for target {target:F3}s, distance={bestDistance:F3}s.");
-            }
-        }
-
-        if (fallbackPreviewFrame != null)
-            decoder.ReturnFrame(fallbackPreviewFrame);
-
+        var usedFallback = bestFrame == null && fallbackFrame != null;
+        bestFrame ??= fallbackFrame;
         if (bestFrame == null)
-        {
-            if (examinedFrames > 0)
-                if (_configuration.EnableVerboseLogging)
-                {
-                    Debug.WriteLine(
-                        $"[VideoPipeline:SmartSeek] No video frame close enough to {target:F3}s " +
-                        $"within {maxFrameDistance:F3}s; keeping previous visual frozen.");
-                }
-
             return false;
+
+        if (bestFrame != fallbackFrame && fallbackFrame != null)
+            decoder.ReturnFrame(fallbackFrame);
+
+        if (usedFallback && _configuration.EnableVerboseLogging)
+        {
+            Debug.WriteLine(
+                $"[VideoPipeline:SmartSeek] Preview fallback frame at {bestFrame.PresentationTime:F3}s " +
+                $"for target {target:F3}s.");
         }
 
         PresentFrame(bestFrame);
         return true;
+    }
+
+    private bool IsTinyVideoSeek(double target)
+    {
+        VideoFrameData? currentFrame = _currentFrame;
+        return currentFrame != null && Math.Abs(currentFrame.PresentationTime - target) <= TinyVideoSeekThresholdSeconds;
     }
 
     private static bool IsSeekFrameAcceptable(double frameTime, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
@@ -2035,11 +2043,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         return !requireAtOrAfterTarget || frameTime + 0.001 >= target;
     }
 
-    private static double GetSeekMaxFrameDistanceSeconds(bool asPreview) => asPreview
-        ? PreviewMaxFrameDistanceSeconds
-        : SettleMaxFrameDistanceSeconds;
-
-    private static int GetSeekDecodeBudgetMilliseconds(bool asPreview, VideoDecoder decoder) => asPreview
+    private static int GetSeekDecodeBudgetMilliseconds(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
         ? decoder.IsHardwareAccelerated
             ? HardwarePreviewDecodeBudgetMilliseconds
             : SoftwarePreviewDecodeBudgetMilliseconds
@@ -2047,7 +2051,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             ? HardwareSettleDecodeBudgetMilliseconds
             : SoftwareSettleDecodeBudgetMilliseconds;
 
-    private static int GetSeekDecodeMaxAttempts(bool asPreview, VideoDecoder decoder) => asPreview
+    private static int GetSeekDecodeMaxAttempts(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
         ? decoder.IsHardwareAccelerated
             ? HardwarePreviewDecodeMaxAttempts
             : SoftwarePreviewDecodeMaxAttempts

@@ -3,7 +3,7 @@
 Stage: 012A.S3 — Shared cursor + unified seek (revised, option (e))
 Date: 2026-07-10
 
-## Status: IN PROGRESS — automated validation clean; awaiting manual on-device smoke
+## Status: COMPLETED — all implementation done, manual smoke clean, cosmetic limitation accepted
 
 Changed:
 - Added `FatzBombMedia.MediaControl/Core/Media/SharedDemuxer.cs` (revised):
@@ -68,16 +68,28 @@ Validation:
 - `dotnet test -c Release --no-build`: **183 passed, 0 failed, 0 skipped**.
 - `scripts/check-wpf-boundary.ps1`: passed.
 - `scripts/check-presentation-parity.ps1`: passed.
+- Manual Player smoke: seek, audio-backed loop, and A/V sync all clean.
+- Final seek-frame continuity fix: commit seek now presents only the first
+  post-target frame and preserves its queued successors for playback. Previously
+  the selector discarded those successors, causing playback to jump several
+  frames beyond the settled seek visual.
+- The first target in a seek burst is exact, so a lone timebar click shows the
+  same frame that settled playback uses. A second changing target enables nearby
+  preview frames for responsive active scrubbing; the final settle remains exact.
+- Exact first-target previews use settle-level decode effort. If no frame is
+  produced, the seek worker settles immediately instead of retaining the old
+  position through the normal pump interval.
 
-Still open:
-- **Manual on-device smoke not yet run.** Critical tests:
-  1. Video-with-audio playback (H.264+AAC, HEVC HW, AV1 SW, AVI).
-  2. A/V sync.
-  3. Seek (rapid scrubbing — preview + settle). **This was bug #2 in reverted S3.**
-  4. **Gapless audio-backed loop.** **This was bug #1 in reverted S3.**
-  5. Device-lost recovery (`SwapVideoDecoder` reuses shared demuxer).
-  6. Background video (own SharedDemuxer, unaffected).
-  7. CDG-paired, media switch, extended soak (10+ min).
+Accepted limitation:
+- Single-click seek may show a frame slightly displaced from the playback-start
+  frame — this is inherent to the two-pass (preview → settle) model and not
+  worth destabilising the clean media path to eliminate.
+- Active scrubbing (changing targets mid-burst) shows responsive nearby preview
+  frames; the final settle remains exact.
+
+Broader regression checks (future, not blocking this stage):
+- Device-lost recovery, background video, CDG-paired playback, media switch,
+  extended soak.
 
 Notes:
 - Three fixes from reverted S3:

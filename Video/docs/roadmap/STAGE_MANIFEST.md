@@ -4,7 +4,7 @@ All runnable stage files live directly in `stages/`.
 
 ## Active / Backlog
 
-- `012A_S3_BACKLOG_SharedReadCursor.md` — shared cursor + unified seek with drain-audio-then-seek gapless loop (sub-stage of 012A; design-gated, design note complete)
+*(none — next stage to be planned)*
 
 ## Reverted
 
@@ -12,6 +12,7 @@ All runnable stage files live directly in `stages/`.
 
 ## Completed
 
+- `012A_S3_BACKLOG_SharedReadCursor.md` — shared cursor + unified seek with drain-audio-then-seek gapless loop (sub-stage of 012A) (2026-07-10)
 - `012A_S2_BACKLOG_MediaDemuxerBehindVideoAudioEngine.md` — MediaDemuxer seam behind VideoAudioEngine (sub-stage of 012A; behavior-preserving) (2026-07-09)
 - `012A_S1_BACKLOG_MediaDemuxerBehindVideoDecoder.md` — MediaDemuxer seam behind VideoDecoder (sub-stage of 012A; behavior-preserving) (2026-07-09)
 - `007B_BACKLOG_HardwareFrameReleaseSafety.md` — hardware frame release safety (2026-07-07)

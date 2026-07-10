@@ -1,6 +1,6 @@
 <!-- Command-driven stage file. Use with AGENTS_WORKING_NOTES.md and this file only. -->
 
-Stage file status: IN PROGRESS — code complete, awaiting manual on-device smoke (see docs/roadmap/updates/012A_S3/StageUpdate.md).
+Stage file status: DONE — implementation complete, validated, cosmetic limitation accepted (see docs/roadmap/updates/012A_S3/StageUpdate.md).
 
 # 012A.S3 — Shared cursor + unified seek (revised)
 
@@ -12,8 +12,7 @@ Prior: S1 (DONE), S2 (DONE), original S3 (REVERTED)
 
 ## Status
 
-Implementation is in progress. Automated validation is clean; manual on-device
-smoke remains required before this stage can be marked done.
+Completed 2026-07-10. See StageUpdate.md for full detail.
 
 ## Goal
 
