@@ -1,7 +1,5 @@
 # Stage Manifest
 
-Runable stage files live in this directory. Completed stages are archived in `completed/`.
-
 ## Active / Backlog
 
 *(none — next stage to be planned)*
@@ -10,9 +8,10 @@ Runable stage files live in this directory. Completed stages are archived in `co
 
 - original S3 shared cursor (2026-07-09) — reverted; superseded by revised S3 with drain-audio-then-seek
 
-## Completed (key milestones)
+## Completed
 
 - **012A.S3** — shared cursor + unified seek, drain-audio-then-seek gapless loop (2026-07-10)
+  - Design: `012A_S3_DESIGN_SharedCursorUnifiedSeek.md` | Notes: `updates/012A_S3/StageUpdate.md`
 - **012A.S2** — MediaDemuxer seam behind VideoAudioEngine (2026-07-09)
 - **012A.S1** — MediaDemuxer seam behind VideoDecoder (2026-07-09)
 - **007B** — hardware frame release safety (2026-07-07)
@@ -24,9 +23,7 @@ Runable stage files live in this directory. Completed stages are archived in `co
 - **005A** — device lost detection (2026-07-06)
 - **004B** — release diagnostics (2026-07-06)
 - **004A** — error surface (2026-07-06)
-- Earlier stages (001–003E, 008A, 009A) archived in `completed/`
-
-See `completed/` for full stage files and `updates/` for implementation notes.
+- 001–003E, 008A, 009A — git history only
 
 ## Future
 
