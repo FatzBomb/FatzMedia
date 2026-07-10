@@ -1,6 +1,6 @@
 # Stage Manifest
 
-All runnable stage files live directly in `stages/`.
+Runable stage files live in this directory. Completed stages are archived in `completed/`.
 
 ## Active / Backlog
 
@@ -8,23 +8,30 @@ All runnable stage files live directly in `stages/`.
 
 ## Reverted
 
-- `012A_S3_BACKLOG_SharedReadCursor.md` — shared read cursor (original attempt); reverted, superseded by revised S3 with option (e) (2026-07-09)
+- original S3 shared cursor (2026-07-09) — reverted; superseded by revised S3 with drain-audio-then-seek
 
-## Completed
+## Completed (key milestones)
 
-- `012A_S3_BACKLOG_SharedReadCursor.md` — shared cursor + unified seek with drain-audio-then-seek gapless loop (sub-stage of 012A) (2026-07-10)
-- `012A_S2_BACKLOG_MediaDemuxerBehindVideoAudioEngine.md` — MediaDemuxer seam behind VideoAudioEngine (sub-stage of 012A; behavior-preserving) (2026-07-09)
-- `012A_S1_BACKLOG_MediaDemuxerBehindVideoDecoder.md` — MediaDemuxer seam behind VideoDecoder (sub-stage of 012A; behavior-preserving) (2026-07-09)
-- `007B_BACKLOG_HardwareFrameReleaseSafety.md` — hardware frame release safety (2026-07-07)
-- `007A_BACKLOG_PresentOutsideLocks.md` — present outside transport-visible locks (2026-07-07)
-- `006A_BACKLOG_AudioLatencyFeedback.md` — audio output latency feedback (2026-07-07)
-- `006B_BACKLOG_AudioDeviceHotplug.md` — hotplug monitoring + device selection + fallback (2026-07-07)
+- **012A.S3** — shared cursor + unified seek, drain-audio-then-seek gapless loop (2026-07-10)
+- **012A.S2** — MediaDemuxer seam behind VideoAudioEngine (2026-07-09)
+- **012A.S1** — MediaDemuxer seam behind VideoDecoder (2026-07-09)
+- **007B** — hardware frame release safety (2026-07-07)
+- **007A** — present outside transport-visible locks (2026-07-07)
+- **006B** — audio device hotplug (2026-07-07)
+- **006A** — audio latency feedback (2026-07-07)
+- **005C** — decoder device lost recovery (2026-07-06)
+- **005B** — device lost recovery (2026-07-06)
+- **005A** — device lost detection (2026-07-06)
+- **004B** — release diagnostics (2026-07-06)
+- **004A** — error surface (2026-07-06)
+- Earlier stages (001–003E, 008A, 009A) archived in `completed/`
+
+See `completed/` for full stage files and `updates/` for implementation notes.
 
 ## Future
-- `009A_FUTURE_BackgroundSidecarVideoFrameReuse.md`
+
 - `010A_FUTURE_SoftwareVideoUploadCopyPath.md`
 - `011A_FUTURE_SeamlessPrimaryVideoLooping.md`
-- `012A_FUTURE_SharedDemuxerInputLayer.md`
 - `013A_FUTURE_GeneralSubtitleEngineBeyondCDG.md`
 - `014A_FUTURE_StreamingNetworkPlayback.md`
 - `015A_FUTURE_BroadVideoPipelineSplit.md`

@@ -5,11 +5,14 @@ Use this file plus the single stage file named in the command.
 Example intent:
 
 ```text
-implement-stage stages/004A_BACKLOG_ErrorSurface.md
-complete-stage stages/004A_BACKLOG_ErrorSurface.md
+implement-stage docs/roadmap/012A_S3_BACKLOG_SharedReadCursor.md
+complete-stage docs/roadmap/012A_S3_BACKLOG_SharedReadCursor.md
 ```
 
 The named stage file is the only active work item. Other stage files are not active unless explicitly named.
+- Stage files live in `docs/roadmap/` with `BACKLOG` or `FUTURE` prefix.
+- Completed stages are archived in `docs/roadmap/completed/`.
+- Implementation notes live in `docs/roadmap/updates/<stage>/`.
 
 ## Architecture Guardrail
 
