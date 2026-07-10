@@ -17,7 +17,8 @@ internal sealed unsafe class VideoDecoder(
     bool enableDiagnostics = true,
     bool enablePerformanceLogging = false,
     bool enableVerboseLogging = false,
-    bool scaleMaxFramesByResolution = false) : IDisposable
+    bool scaleMaxFramesByResolution = false,
+    SharedDemuxer? sharedDemuxer = null) : IDisposable
 {
     private static readonly AVHWDeviceType[] DefaultPreferredHardwareDevices =
     [
@@ -32,7 +33,8 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _enablePerformanceLogging = enablePerformanceLogging;
     private readonly bool _enableVerboseLogging = enableVerboseLogging;
     private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
-    private readonly MediaDemuxer _demuxer = new();
+    private readonly SharedDemuxer _demuxer = sharedDemuxer ?? new SharedDemuxer();
+    private readonly bool _ownsDemuxer = sharedDemuxer == null;
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
@@ -63,6 +65,7 @@ internal sealed unsafe class VideoDecoder(
     public IntPtr D3D11DeviceContextPointer { get; private set; }
     public bool EndOfStream { get; private set; }
     public int MaxFrames { get; private set; } = MaxFramesCap;
+    internal int VideoStreamIndex => _videoIndex;
 
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
@@ -101,27 +104,40 @@ internal sealed unsafe class VideoDecoder(
             configuration.EnableVerboseLogging,
             scaleMaxFramesByResolution);
 
+    public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, SharedDemuxer sharedDemuxer, bool enableHardwareFrameOutput = true, bool scaleMaxFramesByResolution = false) =>
+        new(configuration.VideoDecoding,
+            enableHardwareFrameOutput,
+            configuration.EnableLogging,
+            configuration.EnablePerformanceLogging,
+            configuration.EnableVerboseLogging,
+            scaleMaxFramesByResolution,
+            sharedDemuxer);
+
     public bool Open(string path)
     {
         Close();
 
-        if (!_demuxer.Open(path))
+        if (!_demuxer.IsOpen && !_demuxer.Open(path))
             return false;
 
         _videoIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
         if (_videoIndex < 0) { Close(); return false; }
 
+        _demuxer.RegisterVideoStream(_videoIndex);
+
         _videoStream = _demuxer.GetStream(_videoIndex);
 
-        // Discard non-video streams so av_read_frame only returns video packets. This
-        // matters for background video looping: audio packets that outlive the video
-        // stream cause a gap (no video output) before EOF triggers a restart, and
-        // interleaved AVI audio chunks waste I/O on every decode pass. VideoAudioEngine
-        // opens its own format context, so this does not affect main-pipeline audio.
-        for (uint i = 0; i < _demuxer.StreamCount; i++)
+        // Discard non-video streams so av_read_frame only returns video packets — but
+        // only when we own the demuxer (single-stream mode: background video, hardware
+        // probe). When sharing the demuxer (main video+audio path), non-video packets
+        // are dispatched to the audio consumer by SharedDemuxer, so we must NOT discard.
+        if (_ownsDemuxer)
         {
-            if ((int)i != _videoIndex)
-                _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
+            for (uint i = 0; i < _demuxer.StreamCount; i++)
+            {
+                if ((int)i != _videoIndex)
+                    _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
+            }
         }
 
         if (!InitializeVideoDecoder())
@@ -154,7 +170,7 @@ internal sealed unsafe class VideoDecoder(
         if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
 
-        var readResult = _demuxer.ReadPacket(_packet);
+        var readResult = _demuxer.ReadVideoPacket(_packet);
         if (readResult < 0)
         {
             if (readResult == ffmpeg.AVERROR_EOF)
@@ -928,7 +944,8 @@ internal sealed unsafe class VideoDecoder(
                 ffmpeg.av_packet_free(pkt);
         }
 
-        _demuxer.Close();
+        if (_ownsDemuxer)
+            _demuxer.Close();
 
         ClearFrameQueue();
 
@@ -982,8 +999,39 @@ internal sealed unsafe class VideoDecoder(
     public void Dispose()
     {
         Close();
-        _demuxer.Dispose();
+        if (_ownsDemuxer)
+            _demuxer.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Called after <see cref="SharedDemuxer.Seek"/> has already seeked the
+    /// container. Flushes codec buffers, clears <see cref="EndOfStream"/>, and
+    /// sets the discard window — but does NOT seek the container. Only used in
+    /// shared-demuxer mode; in standalone mode, <see cref="Seek"/> handles both.
+    /// </summary>
+    internal void OnContainerSeeked(double target, bool exact, bool preserveQueue = false)
+    {
+        Flush(clearQueue: !preserveQueue);
+        EndOfStream = false;
+        _discardFramesBeforeSeconds = exact ? target : null;
+    }
+
+    /// <summary>
+    /// Seeks the shared demuxer's container to <paramref name="target"/> using
+    /// the decoder's own <c>_streamStartSeconds</c> (first decoded frame PTS),
+    /// which may differ from <c>stream->start_time</c>. Flushes both packet
+    /// queues and clears both EOF flags. Called by
+    /// <c>VideoPipeline.SeekCore</c> BEFORE either engine sets up its state.
+    /// </summary>
+    internal bool SeekSharedDemuxer(double target)
+    {
+        if (!_demuxer.IsOpen || _videoStream == null)
+            return false;
+
+        var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
+        var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
+        return _demuxer.Seek(_videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) >= 0;
     }
 
     public void Flush(bool clearQueue = true)
@@ -1028,6 +1076,16 @@ internal sealed unsafe class VideoDecoder(
             return false;
 
         var target = Math.Max(0, seconds);
+
+        // The pipeline seeks a shared container once before either codec is
+        // reset. A second seek here would invalidate the audio consumer's
+        // coordinated packet queues.
+        if (!_ownsDemuxer)
+        {
+            OnContainerSeeked(target, exact, preserveQueue);
+            return true;
+        }
+
         var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
         var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
         if (_demuxer.Seek(_videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)

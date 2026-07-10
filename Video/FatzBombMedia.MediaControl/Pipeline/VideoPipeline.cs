@@ -3,6 +3,7 @@ using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Audio;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBombMedia.MediaControl.Core.Media;
 using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
 using System.Diagnostics;
@@ -27,6 +28,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private volatile bool _hardwareDecodeDisabledByDeviceLoss;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
+    private SharedDemuxer? _sharedDemuxer;
     private readonly Lock _presentationLock = new();
     private VideoFrameEventArgs? _loopStartFrameSnapshot;
     private bool _loopPreSeekActive;
@@ -88,6 +90,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
     private const int PostSeekEmptyQueueRecoveryMilliseconds = 900;
     private const int PostSeekWarmupDecodeBudgetMilliseconds = 260;
     private const int PostSeekWarmupRetryBudgetMilliseconds = 220;
+    private const int SharedDemuxerPostSeekPrerollBudgetMilliseconds = 2500;
     private const int PostSeekMinimumBufferedFrames = 3;
     private const int PostSeekAdaptiveSuppressionWindows = 2;
     private double _adaptiveVideoSeekProcessingMilliseconds;
@@ -203,14 +206,21 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         Close();
         _generation++;
         _loopStartFrameSnapshot = null;
-        _videoDecoder = VideoDecoder.FromConfiguration(_configuration);
+        _sharedDemuxer = new SharedDemuxer();
+        if (!_sharedDemuxer.Open(path))
+        {
+            Close();
+            return false;
+        }
+
+        _videoDecoder = VideoDecoder.FromConfiguration(_configuration, _sharedDemuxer);
         if (!_videoDecoder.Open(path))
         {
             Close();
             return false;
         }
 
-        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
+        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex, _sharedDemuxer);
         if (!_audioEngine.Open(path))
         {
             _audioEngine.Dispose();
@@ -353,7 +363,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
         {
             // Keep the retained current frame alive until a replacement is presented. Releasing it
             // before seek can blank hardware-backed presentation surfaces at loop boundaries.
-            if (!decoder.Seek(loopTarget, exact: false))
+            if (!decoder.SeekSharedDemuxer(loopTarget) || !decoder.Seek(loopTarget, exact: false))
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Decoder seek failed during loop restart");
                 return false;
@@ -427,7 +437,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             // position-0 frames behind the tail. Fallback: if the pre-seek never ran or
             // failed, the decoder is still at end-of-stream - seek it now so the video can
             // follow the audio, which has already wrapped and is playing the next lap.
-            if (decoder.EndOfStream && !decoder.Seek(0, exact: false))
+            if (decoder.EndOfStream && (!decoder.SeekSharedDemuxer(0) || !decoder.Seek(0, exact: false)))
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Decoder seek failed during audio loop wrap commit");
 
             DropStaleLoopTailFrames(decoder, GetEndToleranceSeconds());
@@ -512,7 +522,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             lock (_decodeLock)
             {
                 ReleaseCurrentFrame();
-                _ = (_videoDecoder?.Seek(0));
+                if (_videoDecoder is { } decoder)
+                {
+                    _ = decoder.SeekSharedDemuxer(0);
+                    _ = decoder.Seek(0);
+                }
                 _ = DecodeUntilFrameAvailable();
                 lock (_presentationLock)
                     _ = PresentFrameForCurrentPosition();
@@ -578,6 +592,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 StopPresentationLoopAndWait();
                 WaitForPresentationIdle();
 
+                // A shared format context has one cursor. Seek it once before
+                // either consumer flushes its codec or resets playback state.
+                if (_sharedDemuxer != null && _videoDecoder != null)
+                    _ = _videoDecoder.SeekSharedDemuxer(target);
+
                 if (HasAudio)
                 {
                     _ = _audioEngine!.Seek(target, resumePlayback: false);
@@ -611,7 +630,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 if (HasAudio && wasPlaying)
                 {
-                    _ = _audioEngine!.PrebufferAudio();
+                    _ = _audioEngine!.PrebufferAudio(maxDecodeAttempts: 4096);
                     if (!_audioEngine.Play())
                         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during post-seek resume");
                     _presentationClock.Start(_audioEngine.Position);
@@ -897,6 +916,9 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                 _videoDecoder?.Dispose();
                 _videoDecoder = null;
             }
+
+            _sharedDemuxer?.Dispose();
+            _sharedDemuxer = null;
 
             _clock.Stop();
             _presentationClock.Reset(0);
@@ -1414,7 +1436,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                     true,
                     _configuration.EnableLogging,
                     _configuration.EnablePerformanceLogging,
-                    _configuration.EnableVerboseLogging);
+                    _configuration.EnableVerboseLogging,
+                    sharedDemuxer: _sharedDemuxer);
 
                 if (!_videoDecoder.Open(path))
                 {
@@ -1425,6 +1448,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
                 Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
                 _clock.DurationSeconds = Duration;
+                _ = _videoDecoder.SeekSharedDemuxer(position);
                 _ = _videoDecoder.Seek(position, exact: false);
                 _presentationClock.Reset(position);
                 _ = DecodeUntilFrameAvailable();
@@ -1489,7 +1513,7 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}", sourcePath: path);
         _videoDecoder.Dispose();
-        _videoDecoder = new VideoDecoder(VideoDecodingMethod.Software, true, _configuration.EnableLogging, _configuration.EnablePerformanceLogging, _configuration.EnableVerboseLogging);
+        _videoDecoder = new VideoDecoder(VideoDecodingMethod.Software, true, _configuration.EnableLogging, _configuration.EnablePerformanceLogging, _configuration.EnableVerboseLogging, sharedDemuxer: _sharedDemuxer);
         if (!_videoDecoder.Open(path))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
@@ -1500,6 +1524,8 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
 
         Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
         _clock.DurationSeconds = Duration;
+        _ = _videoDecoder.SeekSharedDemuxer(0);
+        _ = _videoDecoder.Seek(0, exact: false);
         _presentationClock.Reset(HasAudio ? _audioEngine!.Position : _clock.PositionSeconds);
         return DecodeUntilFrameAvailable();
     }
@@ -1645,6 +1671,19 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
                     targetBufferedFrames,
                     PostSeekWarmupRetryBudgetMilliseconds);
             }
+
+            // A shared seek starts at the preceding video keyframe. Long-GOP
+            // software streams can need substantially more than the normal
+            // recovery budget to decode through that preroll before any frame
+            // reaches the requested timeline. Do that work before audio starts
+            // its presentation clock, rather than resuming with an empty queue.
+            if (!HasSupersedingSeekRequest() && _sharedDemuxer != null && decoder.FrameCount == 0)
+            {
+                decodedFrames += DecodePostSeekWarmupFrames(
+                    decoder,
+                    targetBufferedFrames,
+                    SharedDemuxerPostSeekPrerollBudgetMilliseconds);
+            }
         }
 
         if (_configuration.EnableLogging)
@@ -1728,11 +1767,11 @@ internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState stat
             if (_loopPreSeekActive || !decoder.EndOfStream || decoder.FrameCount <= 0)
                 return;
 
-            if (!SeamlessLoopRestart.TryPreSeekToStart(decoder))
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Pre-seek to loop start failed");
-                return;
-            }
+            // Shared-demuxer loop wrap: drain remaining audio packets into the audio
+            // queue, then seek the shared cursor to 0. This preserves gapless audio
+            // (near-EOF packets buffered) and gapless video (position-0 frames ready).
+            _sharedDemuxer?.PrepareLoopWrap();
+            decoder.OnContainerSeeked(0, exact: false, preserveQueue: true);
 
             // Clear the committed presentation target so position-0 frames aren't dropped
             // as "stale" by DropFramesBeforeCommittedVideoTarget.

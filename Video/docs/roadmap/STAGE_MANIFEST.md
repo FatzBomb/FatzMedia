@@ -4,9 +4,11 @@ All runnable stage files live directly in `stages/`.
 
 ## Active / Backlog
 
+- `012A_S3_BACKLOG_SharedReadCursor.md` — shared cursor + unified seek with drain-audio-then-seek gapless loop (sub-stage of 012A; design-gated, design note complete)
+
 ## Reverted
 
-- `012A_S3_BACKLOG_SharedReadCursor.md` — shared read cursor (sub-stage of 012A); reverted, requires S4 unified seek first (2026-07-09)
+- `012A_S3_BACKLOG_SharedReadCursor.md` — shared read cursor (original attempt); reverted, superseded by revised S3 with option (e) (2026-07-09)
 
 ## Completed
 

@@ -18,7 +18,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
     private readonly Lock _sync = new();
-    private readonly MediaDemuxer _demuxer = new();
+    private readonly SharedDemuxer _demuxer;
+    private readonly bool _ownsDemuxer;
 #pragma warning disable IDE0044 // Pointer fields used with fixed statement; cannot be readonly.
     private AVCodecContext* _codecContext;
     private AVStream* _audioStream;
@@ -161,6 +162,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     public bool Init(int device = -1, int sampleRate = 44100) => true;
 
+    internal int AudioStreamIndex => _audioStreamIndex;
+
     public VideoAudioEngine() : this(new BassOutputLatencyProvider())
     {
     }
@@ -171,9 +174,16 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     }
 
     internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
+        : this(outputLatencyProvider, bassDeviceIndex, null)
+    {
+    }
+
+    internal VideoAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex, SharedDemuxer? sharedDemuxer)
     {
         _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
         _bassDeviceIndex = bassDeviceIndex;
+        _demuxer = sharedDemuxer ?? new SharedDemuxer();
+        _ownsDemuxer = sharedDemuxer == null;
     }
 
     private double ApplyOutputLatency(double rawPositionSeconds)
@@ -255,7 +265,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
             CloseCore();
 
-            if (!_demuxer.Open(filePath))
+            if (!_demuxer.IsOpen && !_demuxer.Open(filePath))
                 return false;
 
             _audioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
@@ -264,6 +274,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
                 CloseCore();
                 return false;
             }
+
+            _demuxer.RegisterAudioStream(_audioStreamIndex);
 
             _audioStream = _demuxer.GetStream(_audioStreamIndex);
             _streamStartSeconds = GetStreamStartSeconds(_audioStream);
@@ -335,17 +347,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
         try
         {
-            while (_demuxer.ReadPacket(packet) >= 0)
+            if (_demuxer.ReadAudioPacket(packet) >= 0)
             {
-                if (packet->stream_index == _audioStreamIndex)
-                {
-                    var processed = ProcessAudioPacket(packet);
-                    if (processed)
-                        PublishPositionSnapshot(GetPositionCore());
-                    return processed;
-                }
-
-                ffmpeg.av_packet_unref(packet);
+                var processed = ProcessAudioPacket(packet);
+                if (processed)
+                    PublishPositionSnapshot(GetPositionCore());
+                return processed;
             }
 
             // End of stream. Gapless loop: seek the FFmpeg decoder back to 0 and keep pushing
@@ -559,7 +566,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             }
         }
 
-        _demuxer.Close();
+        if (_ownsDemuxer)
+            _demuxer.Close();
 
         _audioStream = null;
         _audioStreamIndex = -1;
@@ -626,7 +634,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     public void Dispose()
     {
         Close();
-        _demuxer.Dispose();
+        if (_ownsDemuxer)
+            _demuxer.Dispose();
         lock (_sync)
             _disposed = true;
         GC.SuppressFinalize(this);
@@ -815,6 +824,19 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     {
         if (!_demuxer.IsOpen || _audioStream == null)
             return false;
+
+        // In shared-demuxer mode, the container seek is coordinated by
+        // VideoPipeline via SharedDemuxer.Seek. Here we only flush + discard.
+        // WrapDecoderForLoop also calls SeekDecoder(0) — the cursor is already
+        // at 0 (from PrepareLoopWrap), so we just clear audio's EOF flag.
+        if (!_ownsDemuxer)
+        {
+            _demuxer.ClearAudioEof();
+            if (_codecContext != null)
+                ffmpeg.avcodec_flush_buffers(_codecContext);
+            _discardAudioBeforeSeconds = seconds;
+            return true;
+        }
 
         var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
         if (_demuxer.Seek(_audioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
