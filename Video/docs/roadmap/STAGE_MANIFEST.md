@@ -2,7 +2,7 @@
 
 ## Active / Backlog
 
-*(none — next stage to be planned)*
+- `013A_BACKLOG_GeneralSubtitleEngineBeyondCDG.md` — subtitle engine beyond CDG; gate cleared by 012A.S3 shared demuxer
 
 ## Reverted
 
@@ -29,7 +29,6 @@
 
 - `010A_FUTURE_SoftwareVideoUploadCopyPath.md`
 - `011A_FUTURE_SeamlessPrimaryVideoLooping.md`
-- `013A_FUTURE_GeneralSubtitleEngineBeyondCDG.md`
 - `014A_FUTURE_StreamingNetworkPlayback.md`
 - `015A_FUTURE_BroadVideoPipelineSplit.md`
 - `016A_FUTURE_ClockAudioEngineAbstractionSplit.md`
