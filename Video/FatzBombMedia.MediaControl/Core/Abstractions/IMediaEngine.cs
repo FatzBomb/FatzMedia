@@ -23,6 +23,9 @@ public interface IMediaEngine : IDisposable
     ISubtitleEngine? Subtitle { get; }
     IReadOnlyList<SubtitleTrack> SubtitleTracks { get; }
     string? SelectedSubtitleTrackId { get; }
+    double AudioVideoOffsetSeconds { get; }
+    double CdgOffsetSeconds { get; }
+    double SubtitleOffsetSeconds { get; }
     IAudioEngine Audio { get; } // Add audio engine access
     string? ImagePath { get; }
 
@@ -55,6 +58,13 @@ public interface IMediaEngine : IDisposable
     void Close();
     bool Seek(double seconds);
     bool SelectSubtitleTrack(string? trackId);
+    double SetAudioVideoOffset(double seconds);
+    double SetCdgOffset(double seconds);
+    double SetSubtitleOffset(double seconds);
+    double AdjustAudioVideoOffset(double seconds);
+    double AdjustCdgOffset(double seconds);
+    double AdjustSubtitleOffset(double seconds);
+    void ResetSyncOffsets();
     Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null);
 
 

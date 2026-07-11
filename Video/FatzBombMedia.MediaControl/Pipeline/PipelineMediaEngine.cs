@@ -59,6 +59,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     public ISubtitleEngine? Subtitle => _coordinator.Subtitle;
     public IReadOnlyList<SubtitleTrack> SubtitleTracks => _coordinator.SubtitleTracks;
     public string? SelectedSubtitleTrackId => _coordinator.SelectedSubtitleTrackId;
+    public double AudioVideoOffsetSeconds => _coordinator.AudioVideoOffsetSeconds;
+    public double CdgOffsetSeconds => _coordinator.CdgOffsetSeconds;
+    public double SubtitleOffsetSeconds => _coordinator.SubtitleOffsetSeconds;
     public IAudioEngine Audio => _coordinator.ActiveAudio;
     IClockSource IClockBackedMediaEngine.ClockSource => _coordinator.ClockSource;
 
@@ -250,6 +253,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ThrowIfDisposed();
         return _coordinator.SelectSubtitleTrack(trackId);
     }
+
+    public double SetAudioVideoOffset(double seconds) => _coordinator.SetAudioVideoOffset(seconds);
+    public double SetCdgOffset(double seconds) => _coordinator.SetCdgOffset(seconds);
+    public double SetSubtitleOffset(double seconds) => _coordinator.SetSubtitleOffset(seconds);
+    public double AdjustAudioVideoOffset(double seconds) => _coordinator.AdjustAudioVideoOffset(seconds);
+    public double AdjustCdgOffset(double seconds) => _coordinator.AdjustCdgOffset(seconds);
+    public double AdjustSubtitleOffset(double seconds) => _coordinator.AdjustSubtitleOffset(seconds);
+    public void ResetSyncOffsets() => _coordinator.ResetSyncOffsets();
 
     public Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null) => Task.FromResult(Seek(seconds));
 

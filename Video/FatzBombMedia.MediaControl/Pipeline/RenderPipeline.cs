@@ -44,7 +44,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
         // just because a video/background layer is active; the renderer decides how to
         // compose the current layers.
 
-        var currentPosition = CurrentPosition;
+        var currentPosition = Math.Max(0, CurrentPosition + _mediaEngine.CdgOffsetSeconds);
         if (!ShouldRenderCdg(currentPosition, force))
         {
             return;

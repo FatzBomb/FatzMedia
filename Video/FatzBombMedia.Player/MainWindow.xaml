@@ -105,6 +105,18 @@
             <Setter Property="FontSize" Value="14" />
         </Style>
 
+        <Style
+            x:Key="SyncButtonStyle"
+            BasedOn="{StaticResource ChromeButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
         <Style x:Key="MiniPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource PanelAltBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
@@ -192,10 +204,11 @@
                         <ColumnDefinition Width="*" MinWidth="150" />
                         <ColumnDefinition Width="8" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Grid
@@ -462,6 +475,30 @@
                             </Grid>
                         </Border>
                     </Grid>
+
+                    <Border
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        Margin="0,7,0,0"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MiniPanelStyle}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Margin="0,0,10,0" Style="{StaticResource LabelTextStyle}" Text="SYNC" />
+                            <TextBlock Margin="0,0,5,0" Style="{StaticResource LabelTextStyle}" Text="A/V" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="audio:-" Content="−" Style="{StaticResource SyncButtonStyle}" ToolTip="Delay video 100ms relative to audio" />
+                            <TextBlock Width="42" HorizontalAlignment="Center" Style="{StaticResource ValueTextStyle}" Text="{Binding AudioVideoSyncText}" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="audio:+" Content="+" Style="{StaticResource SyncButtonStyle}" ToolTip="Advance video 100ms relative to audio" />
+                            <TextBlock Margin="12,0,5,0" Style="{StaticResource LabelTextStyle}" Text="CDG" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="cdg:-" Content="−" Style="{StaticResource SyncButtonStyle}" ToolTip="Delay CDG 100ms" />
+                            <TextBlock Width="42" HorizontalAlignment="Center" Style="{StaticResource ValueTextStyle}" Text="{Binding CdgSyncText}" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="cdg:+" Content="+" Style="{StaticResource SyncButtonStyle}" ToolTip="Advance CDG 100ms" />
+                            <TextBlock Margin="12,0,5,0" Style="{StaticResource LabelTextStyle}" Text="SUB" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="subtitle:-" Content="−" Style="{StaticResource SyncButtonStyle}" ToolTip="Delay subtitles 100ms" />
+                            <TextBlock Width="42" HorizontalAlignment="Center" Style="{StaticResource ValueTextStyle}" Text="{Binding SubtitleSyncText}" />
+                            <Button Command="{Binding AdjustSyncCommand}" CommandParameter="subtitle:+" Content="+" Style="{StaticResource SyncButtonStyle}" ToolTip="Advance subtitles 100ms" />
+                            <Button Margin="12,0,0,0" Command="{Binding ResetSyncCommand}" Content="Reset" Style="{StaticResource SyncButtonStyle}" ToolTip="Reset per-item sync offsets" Width="48" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 

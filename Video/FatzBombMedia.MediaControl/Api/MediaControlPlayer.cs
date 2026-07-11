@@ -16,6 +16,7 @@ namespace FatzBombMedia.MediaControl;
 /// </summary>
 public class MediaControlPlayer : IMediaControlSession
 {
+    private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
     private NativeMediaPresentationCoordinator _presentationCoordinator;
@@ -121,6 +122,24 @@ public class MediaControlPlayer : IMediaControlSession
 
     public string? SelectedSubtitleTrackId => _mediaEngine.SelectedSubtitleTrackId;
 
+    public TimeSpan AudioSyncOffset
+    {
+        get => TimeSpan.FromSeconds(_mediaEngine.AudioVideoOffsetSeconds);
+        set => ApplySyncOffset(_mediaEngine.SetAudioVideoOffset(value.TotalSeconds));
+    }
+
+    public TimeSpan CdgSyncOffset
+    {
+        get => TimeSpan.FromSeconds(_mediaEngine.CdgOffsetSeconds);
+        set => ApplySyncOffset(_mediaEngine.SetCdgOffset(value.TotalSeconds));
+    }
+
+    public TimeSpan SubtitleSyncOffset
+    {
+        get => TimeSpan.FromSeconds(_mediaEngine.SubtitleOffsetSeconds);
+        set => ApplySyncOffset(_mediaEngine.SetSubtitleOffset(value.TotalSeconds));
+    }
+
     public IVideoEngine? Video => _mediaEngine.Video;
 
     public IAudioEngine Audio => _mediaEngine.Audio;
@@ -207,7 +226,25 @@ public class MediaControlPlayer : IMediaControlSession
         return selected;
     }
 
+    public TimeSpan AdjustAudioSyncOffset(int steps) => TimeSpan.FromSeconds(ApplySyncOffset(_mediaEngine.AdjustAudioVideoOffset(steps * SyncAdjustmentStep.TotalSeconds)));
+
+    public TimeSpan AdjustCdgSyncOffset(int steps) => TimeSpan.FromSeconds(ApplySyncOffset(_mediaEngine.AdjustCdgOffset(steps * SyncAdjustmentStep.TotalSeconds)));
+
+    public TimeSpan AdjustSubtitleSyncOffset(int steps) => TimeSpan.FromSeconds(ApplySyncOffset(_mediaEngine.AdjustSubtitleOffset(steps * SyncAdjustmentStep.TotalSeconds)));
+
+    public void ResetSyncOffsets()
+    {
+        _mediaEngine.ResetSyncOffsets();
+        _presentationCoordinator.RefreshCurrentPosition();
+    }
+
     public void Close() => File.Close();
+
+    private double ApplySyncOffset(double seconds)
+    {
+        _presentationCoordinator.RefreshCurrentPosition();
+        return seconds;
+    }
 
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
     {

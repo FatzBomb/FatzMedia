@@ -109,6 +109,8 @@ Logs:
 27. Sidecar SRT/ASS subtitles render on time through seek, pause/resume, and media switches.
 28. Embedded text subtitle tracks render on time; select another available track and disable subtitles.
 29. Subtitle font, size, outline, and shadow settings render correctly on software and hardware video paths.
+30. A/V, CDG, and subtitle sync controls adjust their own timeline by 100ms per step without interrupting playback.
+31. Sync Reset returns all three controls to zero; loading a new media item also resets them.
 
 ---
 

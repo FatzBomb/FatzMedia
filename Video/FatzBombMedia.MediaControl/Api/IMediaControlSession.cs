@@ -49,6 +49,15 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets the selected subtitle track ID, or <see langword="null"/> when subtitles are disabled.</summary>
     string? SelectedSubtitleTrackId { get; }
 
+    /// <summary>Gets or sets the video offset relative to the physical audio clock.</summary>
+    TimeSpan AudioSyncOffset { get; set; }
+
+    /// <summary>Gets or sets the CDG timeline offset relative to the playback clock.</summary>
+    TimeSpan CdgSyncOffset { get; set; }
+
+    /// <summary>Gets or sets the subtitle timeline offset relative to the playback clock.</summary>
+    TimeSpan SubtitleSyncOffset { get; set; }
+
     /// <summary>Gets or sets how primary video content maps into the presentation surface.</summary>
     VideoDisplayMode VideoDisplayMode { get; set; }
 
@@ -114,6 +123,18 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
+
+    /// <summary>Adjusts the audio/video offset by 100ms per step and returns the resulting offset.</summary>
+    TimeSpan AdjustAudioSyncOffset(int steps);
+
+    /// <summary>Adjusts the CDG offset by 100ms per step and returns the resulting offset.</summary>
+    TimeSpan AdjustCdgSyncOffset(int steps);
+
+    /// <summary>Adjusts the subtitle offset by 100ms per step and returns the resulting offset.</summary>
+    TimeSpan AdjustSubtitleSyncOffset(int steps);
+
+    /// <summary>Resets all per-item synchronization offsets to zero.</summary>
+    void ResetSyncOffsets();
 
     /// <summary>Closes the currently loaded media.</summary>
     void Close();

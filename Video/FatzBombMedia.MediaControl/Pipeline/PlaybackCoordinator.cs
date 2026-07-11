@@ -23,7 +23,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
             ? deviceProvider.BassDeviceIndex
             : configuration.AudioOutputDeviceIndex;
-        var video = new VideoPipeline(_session.Clock, _session.State, configuration, bassDeviceIndex);
+        var video = new VideoPipeline(_session.Clock, _session.State, configuration, bassDeviceIndex, _session.Sync);
 
         audio.PlaybackEnded += OnPlaybackEnded;
         cdg.PlaybackEnded += OnPlaybackEnded;
@@ -44,6 +44,9 @@ internal sealed class PlaybackCoordinator : IDisposable
     public ISubtitleEngine? Subtitle => _session.Subtitle?.IsOpen == true ? _session.Subtitle.Engine : null;
     public IReadOnlyList<SubtitleTrack> SubtitleTracks => _session.Subtitle?.Tracks ?? [];
     public string? SelectedSubtitleTrackId => _session.Subtitle?.SelectedTrackId;
+    public double AudioVideoOffsetSeconds => _session.Sync.AudioVideoOffsetSeconds;
+    public double CdgOffsetSeconds => _session.Sync.CdgOffsetSeconds;
+    public double SubtitleOffsetSeconds => _session.Sync.SubtitleOffsetSeconds;
     public IVideoEngine? Video => _session.Video?.IsOpen == true ? _session.Video : null;
 
     public bool LoopPlayback
@@ -213,6 +216,14 @@ internal sealed class PlaybackCoordinator : IDisposable
     }
 
     public bool SelectSubtitleTrack(string? trackId) => _session.Subtitle?.SelectTrack(trackId) == true;
+
+    public double SetAudioVideoOffset(double seconds) => _session.Sync.SetAudioVideoOffset(seconds);
+    public double SetCdgOffset(double seconds) => _session.Sync.SetCdgOffset(seconds);
+    public double SetSubtitleOffset(double seconds) => _session.Sync.SetSubtitleOffset(seconds);
+    public double AdjustAudioVideoOffset(double seconds) => _session.Sync.AdjustAudioVideoOffset(seconds);
+    public double AdjustCdgOffset(double seconds) => _session.Sync.AdjustCdgOffset(seconds);
+    public double AdjustSubtitleOffset(double seconds) => _session.Sync.AdjustSubtitleOffset(seconds);
+    public void ResetSyncOffsets() => _session.Sync.Reset();
 
     public void Close() => _session.Clear();
 

@@ -78,6 +78,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private string? _subtitleText;
     private long _subtitleRevision;
     private double _lastSubtitlePresentationSeconds = double.NaN;
+    private double _lastSubtitleOffsetSeconds = double.NaN;
 
     public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
     {
@@ -678,7 +679,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, _primaryStretchMode);
-            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "primary video frame", e.PtsSeconds);
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "primary video frame");
             return;
         }
 
@@ -687,7 +688,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         if (HasSubtitleContent)
         {
-            UpdateSubtitleOverlay(e.PtsSeconds);
+            UpdateSubtitleOverlay();
             if (HasCachedSubtitleOverlay())
             {
                 RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + subtitle");
@@ -1248,6 +1249,14 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             var subtitlePosition = presentationPositionSeconds is { } position && double.IsFinite(position) && position >= 0
                 ? position
                 : _mediaEngine.Position;
+            var subtitleOffset = _mediaEngine.SubtitleOffsetSeconds;
+            if (!double.IsFinite(_lastSubtitleOffsetSeconds) || Math.Abs(subtitleOffset - _lastSubtitleOffsetSeconds) > 0.0001)
+            {
+                _lastSubtitlePresentationSeconds = double.NaN;
+                _lastSubtitleOffsetSeconds = subtitleOffset;
+            }
+
+            subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
             if (double.IsFinite(_lastSubtitlePresentationSeconds) && subtitlePosition < _lastSubtitlePresentationSeconds)
                 subtitlePosition = _lastSubtitlePresentationSeconds;
             else

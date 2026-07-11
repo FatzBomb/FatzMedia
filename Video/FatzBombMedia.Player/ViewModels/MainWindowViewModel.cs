@@ -28,6 +28,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PlayCommand = new AsyncRelayCommand(PlayAsync, CanUsePlayer);
         PauseCommand = new AsyncRelayCommand(PauseAsync, CanUsePlayer);
         StopCommand = new AsyncRelayCommand(StopAsync, CanUsePlayer);
+        AdjustSyncCommand = new RelayCommand<string>(AdjustSync, _ => CanUseSync);
+        ResetSyncCommand = new RelayCommand(ResetSync, () => CanUseSync);
 
         _positionTimer = new DispatcherTimer
         {
@@ -71,6 +73,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public AsyncRelayCommand StopCommand { get; }
 
+    public RelayCommand<string> AdjustSyncCommand { get; }
+
+    public RelayCommand ResetSyncCommand { get; }
+
     public bool IsBusy
     {
         get;
@@ -84,6 +90,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool CanOpen => !IsBusy && Player is not null;
 
     public bool CanSeek => Player is not null && DurationSeconds > 0;
+
+    public bool CanUseSync => Player?.IsOpen == true;
+
+    [ObservableProperty]
+    public partial string AudioVideoSyncText { get; private set; } = "+0.0s";
+
+    [ObservableProperty]
+    public partial string CdgSyncText { get; private set; } = "+0.0s";
+
+    [ObservableProperty]
+    public partial string SubtitleSyncText { get; private set; } = "+0.0s";
 
     [ObservableProperty]
     public partial string StatusText { get; private set; } = "Native media engine is initializing.";
@@ -246,6 +263,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             FatzMediaPlayer? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             RefreshPlaybackPosition();
+            RefreshSyncOffsets();
             StatusText = loaded ? $"Loaded: {mediaPath}" : $"Could not load: {mediaPath}";
         }
         catch (Exception ex)
@@ -310,6 +328,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.LoopMedia = LoopPlayback;
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             Player = player;
+            RefreshSyncOffsets();
             player.MediaDiagnostic += OnPlayerDiagnostic;
             player.MediaError += OnPlayerError;
             StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
@@ -372,11 +391,60 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(CanOpen));
         OnPropertyChanged(nameof(CanSeek));
+        OnPropertyChanged(nameof(CanUseSync));
         LoadMediaCommand.NotifyCanExecuteChanged();
         PlayCommand.NotifyCanExecuteChanged();
         PauseCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
+        AdjustSyncCommand.NotifyCanExecuteChanged();
+        ResetSyncCommand.NotifyCanExecuteChanged();
     }
+
+    private void AdjustSync(string? command)
+    {
+        if (Player is not { } player || string.IsNullOrWhiteSpace(command))
+            return;
+
+        var offset = command switch
+        {
+            "audio:-" => player.AdjustAudioSyncOffset(-1),
+            "audio:+" => player.AdjustAudioSyncOffset(1),
+            "cdg:-" => player.AdjustCdgSyncOffset(-1),
+            "cdg:+" => player.AdjustCdgSyncOffset(1),
+            "subtitle:-" => player.AdjustSubtitleSyncOffset(-1),
+            "subtitle:+" => player.AdjustSubtitleSyncOffset(1),
+            _ => (TimeSpan?)null
+        };
+
+        if (offset is null)
+            return;
+
+        RefreshSyncOffsets();
+        StatusText = $"{GetSyncLabel(command)} sync {FormatSyncOffset(offset.Value)}";
+    }
+
+    private void ResetSync()
+    {
+        Player?.ResetSyncOffsets();
+        RefreshSyncOffsets();
+        StatusText = "Playback sync offsets reset.";
+    }
+
+    private void RefreshSyncOffsets()
+    {
+        AudioVideoSyncText = FormatSyncOffset(Player?.AudioSyncOffset ?? TimeSpan.Zero);
+        CdgSyncText = FormatSyncOffset(Player?.CdgSyncOffset ?? TimeSpan.Zero);
+        SubtitleSyncText = FormatSyncOffset(Player?.SubtitleSyncOffset ?? TimeSpan.Zero);
+        RefreshCommandStates();
+    }
+
+    private static string GetSyncLabel(string command) => command.StartsWith("audio", StringComparison.Ordinal)
+        ? "A/V"
+        : command.StartsWith("cdg", StringComparison.Ordinal)
+            ? "CDG"
+            : "Subtitle";
+
+    private static string FormatSyncOffset(TimeSpan offset) => $"{offset.TotalSeconds:+0.0;-0.0;0.0}s";
 
     private void PositionTimer_Tick(object? sender, EventArgs e)
     {

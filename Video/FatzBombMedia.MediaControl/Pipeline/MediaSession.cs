@@ -5,6 +5,7 @@ namespace FatzBombMedia.MediaControl.Pipeline;
 internal sealed class MediaSession : IDisposable
 {
     public MediaState State { get; }
+    public PlaybackSyncState Sync { get; } = new();
     public IClockSource Clock { get; } = new PlaybackClock();
     public ClockAudioEngine ClockAudio { get; }
     public AudioPipeline? Audio { get; private set; }
@@ -32,6 +33,7 @@ internal sealed class MediaSession : IDisposable
         Audio?.Close();
         Cdg?.Close();
         Subtitle?.Close();
+        Sync.Reset();
         Clock.Stop();
         State.Reset();
     }

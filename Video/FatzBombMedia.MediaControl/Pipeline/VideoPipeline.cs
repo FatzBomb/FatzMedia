@@ -11,12 +11,13 @@ using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed partial class VideoPipeline(IClockSource clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex) : IVideoEngine
+internal sealed partial class VideoPipeline(IClockSource clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex, PlaybackSyncState sync) : IVideoEngine
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly MediaPlayerConfiguration _configuration = configuration;
     private readonly int _bassDeviceIndex = bassDeviceIndex;
+    private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     private readonly AudioPresentationClock _presentationClock = new();
     private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
@@ -1155,7 +1156,7 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         if (nextFrame == null)
             return Math.Min(fallbackIntervalSeconds, 0.005);
 
-        var clockPosition = GetPresentationPosition();
+        var clockPosition = ApplyAudioVideoOffset(GetPresentationPosition());
         var selectionLeadSeconds = GetFrameSelectionLeadLimit(decoder.FramesPerSecond);
         var waitSeconds = nextFrame.PresentationTime - selectionLeadSeconds - clockPosition;
         return !double.IsFinite(waitSeconds)
@@ -1542,9 +1543,17 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
     private double PresentFrameForCurrentPosition(bool forceReissue = false)
     {
         var clockPosition = GetPresentationPosition();
-        var targetPosition = GetDisplayAdjustedPresentationPosition(clockPosition);
-        PresentFrameForPosition(targetPosition, clockPosition, forceReissue);
+        var targetPosition = ApplyAudioVideoOffset(GetDisplayAdjustedPresentationPosition(clockPosition));
+        PresentFrameForPosition(targetPosition, ApplyAudioVideoOffset(clockPosition), forceReissue);
         return clockPosition;
+    }
+
+    private double ApplyAudioVideoOffset(double position)
+    {
+        var corrected = position + _sync.AudioVideoOffsetSeconds;
+        return Duration > 0
+            ? Math.Clamp(corrected, 0, Duration)
+            : Math.Max(0, corrected);
     }
 
     private double GetPresentationPosition()
