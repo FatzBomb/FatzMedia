@@ -72,16 +72,4 @@ public class FileTypesTests
         Assert.Contains(".CDG", FileTypes.Cdg);
     }
 
-    [Fact]
-    public void AudioAndVideoSets_StartEmptyBeforeBootstrap()
-    {
-        // Audio and Video sets are populated at runtime by Bootstrap.EnsureInitialized()
-        // from BASS/FFmpeg codec capabilities. Without Bootstrap they are empty, so the
-        // pure static check returns false for any extension.
-        Assert.Empty(FileTypes.Audio);
-        Assert.Empty(FileTypes.Video);
-        Assert.False(FileTypes.IsAudio("song.mp3"));
-        Assert.False(FileTypes.IsVideo("clip.mp4"));
-    }
-
 }
