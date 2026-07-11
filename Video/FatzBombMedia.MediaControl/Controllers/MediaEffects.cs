@@ -14,13 +14,13 @@ public sealed class MediaEffects
 
     private bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
 
-    // Clock-backed media (video or CDG without a real audio stream) drives timing through the virtual
-    // PlaybackClock via ClockAudioEngine, which supports tempo. Volume/pitch/normalization remain
-    // real-audio only.
-    private bool HasClockBackedTempo => !HasAudio
-        && (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
+    private IClockSource? ClockSource => (_mediaEngine as IClockBackedMediaEngine)?.ClockSource;
 
-    private bool SupportsTempo => HasAudio || HasClockBackedTempo;
+    // Clock-backed media (video or CDG without a real audio stream) drives timing through the
+    // virtual clock directly. Volume, pitch, and normalization remain real-audio only.
+    private bool HasClockBackedTempo => !HasAudio
+        && ClockSource != null
+        && (_mediaEngine.Content.HasFlag(MediaContent.Video) || _mediaEngine.Content.HasFlag(MediaContent.Cdg));
 
     internal MediaEffects(IMediaEngine mediaEngine)
     {
@@ -40,6 +40,17 @@ public sealed class MediaEffects
 
     private void EnsureActiveAudioSubscription()
     {
+        if (!HasAudio)
+        {
+            _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
+            _subscribedAudioEngine = null;
+
+            if (HasClockBackedTempo)
+                ClockSource!.SetTempo(_tempo - 100);
+
+            return;
+        }
+
         IAudioEngine current = _mediaEngine.Audio ?? throw new InvalidOperationException("MediaEngine does not have an audio engine");
         if (ReferenceEquals(_subscribedAudioEngine, current)) return;
 
@@ -54,8 +65,7 @@ public sealed class MediaEffects
             _subscribedAudioEngine.SetPitch(Pitch);
         }
 
-        if (SupportsTempo)
-            _subscribedAudioEngine.SetTempo(_tempo - 100);
+        _subscribedAudioEngine.SetTempo(_tempo - 100);
     }
 
     internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
@@ -93,12 +103,16 @@ public sealed class MediaEffects
     /// </summary>
     public int Tempo
     {
-        get => SupportsTempo ? Audio.CurrentTempo + 100 : _tempo;
+        get => HasAudio
+            ? Audio.CurrentTempo + 100
+            : HasClockBackedTempo ? ClockSource!.TempoPercent + 100 : _tempo;
         set
         {
             _tempo = Math.Clamp(value, 5, 5000);
-            if (SupportsTempo)
+            if (HasAudio)
                 Audio.SetTempo(_tempo - 100);
+            else if (HasClockBackedTempo)
+                ClockSource!.SetTempo(_tempo - 100);
         }
     }
 

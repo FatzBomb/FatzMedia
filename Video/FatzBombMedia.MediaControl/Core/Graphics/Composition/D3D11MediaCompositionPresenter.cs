@@ -299,6 +299,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 return false;
             }
 
+            if (!EnsureCompositionSubtitleFrame(deviceResources, frame))
+            {
+                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: subtitle layer could not be prepared reason={frame.Reason}.");
+                return false;
+            }
+
             if (frame.HasShaderVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
             {
                 Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: shader pipeline is unavailable.");
@@ -498,6 +504,27 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         return (revisionMatches && overlayLayer.HasCdgResources && !overlayLayer.NeedsUpload) || overlayLayer.UploadCdgSnapshot(deviceResources.Device!, deviceResources.Context!, descriptor);
     }
 
+    private bool EnsureCompositionSubtitleFrame(D3D11DeviceResources deviceResources, MediaCompositionFrame frame)
+    {
+        if (!frame.HasSubtitleOverlay)
+            return true;
+
+        D3D11CompositionLayerState? subtitleLayer = _layerCache.TryGet(MediaCompositionLayerId.Subtitle);
+        MediaCompositionLayer? descriptor = frame.TryGetSubtitleLayer();
+        if (subtitleLayer == null || descriptor == null)
+            return false;
+
+        var revisionMatches = descriptor.Revision >= 0
+            && descriptor.Revision == subtitleLayer.UploadedRevision;
+        var dimensionsMatch = subtitleLayer.HasTexture
+            && subtitleLayer.TextureWidth == descriptor.Width
+            && subtitleLayer.TextureHeight == descriptor.Height
+            && subtitleLayer.TextureStride == descriptor.Stride;
+
+        return (revisionMatches && dimensionsMatch && !subtitleLayer.NeedsUpload)
+            || subtitleLayer.UploadBgraPixels(deviceResources.Device!, deviceResources.Context!, descriptor);
+    }
+
     private bool EnsureCdgOverlayLayer(D3D11DeviceResources deviceResources, CdgRenderSnapshot snapshot)
     {
         if (deviceResources.Device == null || deviceResources.Context == null)
@@ -585,6 +612,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         else
             _lastDrawnRevision = -1;
 
+        D3D11CompositionLayerState? subtitleLayer = _layerCache.TryGet(MediaCompositionLayerId.Subtitle);
+        if (frame.HasSubtitleOverlay)
+        {
+            if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer))
+                return false;
+        }
+
         context.PSSetShaderResource(0, null!);
         context.PSSetShaderResource(1, null!);
         context.PSSetSampler(0, null!);
@@ -660,6 +694,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
         if (frame.HasCdgOverlay && !frame.SuppressCdgOverlayDraw && frame.CdgOverlay is { } snapshot && _layerCache.TryGet(MediaCompositionLayerId.Overlay) is { } overlayLayer)
             overlayLayer.MarkRendered(snapshot.Revision);
+
+        if (frame.HasSubtitleOverlay && _layerCache.TryGet(MediaCompositionLayerId.Subtitle) is { } subtitleLayer)
+            subtitleLayer.MarkRendered(subtitleLayer.UploadedRevision);
     }
 
     private bool DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState backgroundLayer)
@@ -705,6 +742,20 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             context,
             overlayLayer.CdgIndexShaderResourceView,
             overlayLayer.CdgPaletteShaderResourceView);
+        return true;
+    }
+
+    private bool DrawSubtitleLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState subtitleLayer)
+    {
+        if (subtitleLayer.ShaderResourceView == null || _backgroundPixelShader == null || _premultipliedBlendState == null)
+            return false;
+
+        SetQuadConstants(context, new RectD(0, 0, outputWidth, outputHeight), outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
+        context.OMSetBlendState(_premultipliedBlendState);
+        context.PSSetShader(_backgroundPixelShader);
+        context.PSSetShaderResource(0, subtitleLayer.ShaderResourceView);
+        context.Draw(4, 0);
+        context.PSSetShaderResource(0, null!);
         return true;
     }
 

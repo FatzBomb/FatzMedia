@@ -1,5 +1,6 @@
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 
 #pragma warning disable IDE0130
 namespace FatzBombMedia.MediaControl;
@@ -38,6 +39,15 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Gets whether the loaded media has CDG content.</summary>
     bool HasCdg { get; }
+
+    /// <summary>Gets whether the loaded media has subtitle content.</summary>
+    bool HasSubtitle { get; }
+
+    /// <summary>Gets the available embedded and sidecar subtitle tracks for the current media.</summary>
+    IReadOnlyList<SubtitleTrack> SubtitleTracks { get; }
+
+    /// <summary>Gets the selected subtitle track ID, or <see langword="null"/> when subtitles are disabled.</summary>
+    string? SelectedSubtitleTrackId { get; }
 
     /// <summary>Gets or sets how primary video content maps into the presentation surface.</summary>
     VideoDisplayMode VideoDisplayMode { get; set; }
@@ -101,6 +111,9 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Seeks to a playback position in seconds.</summary>
     bool Seek(double seconds);
+
+    /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
+    bool SelectSubtitleTrack(string? trackId);
 
     /// <summary>Closes the currently loaded media.</summary>
     void Close();

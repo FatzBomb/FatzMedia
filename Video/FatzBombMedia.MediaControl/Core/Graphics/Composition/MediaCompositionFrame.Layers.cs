@@ -100,6 +100,24 @@ public readonly partial record struct MediaCompositionFrame
                 CdgSnapshot = overlay
             };
         }
+
+        if (HasSubtitleOverlay)
+        {
+            yield return new MediaCompositionLayer
+            {
+                Id = MediaCompositionLayerId.Subtitle,
+                Kind = MediaCompositionLayerKind.Overlay,
+                SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
+                Order = 3,
+                Revision = SubtitleRevision,
+                Width = SubtitleWidth,
+                Height = SubtitleHeight,
+                Stride = SubtitleStride,
+                StretchMode = MediaCompositionStretchMode.Fill,
+                Opacity = 1.0d,
+                BgraPixels = SubtitleBgra
+            };
+        }
     }
 
     private static long StableColorRevision(uint argb)
@@ -174,4 +192,22 @@ public readonly partial record struct MediaCompositionFrame
             }
             : null;
     }
+
+    internal MediaCompositionLayer? TryGetSubtitleLayer() =>
+        HasSubtitleOverlay
+            ? new MediaCompositionLayer
+            {
+                Id = MediaCompositionLayerId.Subtitle,
+                Kind = MediaCompositionLayerKind.Overlay,
+                SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
+                Order = 3,
+                Revision = SubtitleRevision,
+                Width = SubtitleWidth,
+                Height = SubtitleHeight,
+                Stride = SubtitleStride,
+                StretchMode = MediaCompositionStretchMode.Fill,
+                Opacity = 1.0d,
+                BgraPixels = SubtitleBgra
+            }
+            : null;
 }

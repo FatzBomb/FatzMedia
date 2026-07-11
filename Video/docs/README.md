@@ -9,13 +9,11 @@
 
 ```
 roadmap/
-  010A_FUTURE_*.md   ← planned future stages
-  ...
-  022A_FUTURE_*.md
-  STAGE_MANIFEST.md  ← stage index
-  012A_S3_DESIGN_*.md ← architectural reference for shared demuxer
-  updates/
-    012A_S3/StageUpdate.md ← implementation notes for most recent stage
+  active/                 ← current stage only
+  complete/               ← completed stage records
+  future/                 ← conditional work; not part of the active plan
+  STAGE_MANIFEST.md       ← stage index
+  updates/                ← implementation notes when retained
 ```
 
 ## Other docs

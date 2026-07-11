@@ -95,6 +95,14 @@ internal sealed class MediaState
         }
     }
 
+    public void AddContent(MediaContent content)
+    {
+        lock (_gate)
+        {
+            Content |= content;
+        }
+    }
+
     public void SetPosition(double positionSeconds)
     {
         lock (_gate)

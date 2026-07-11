@@ -5,13 +5,14 @@ Use this file plus the single stage file named in the command.
 Example intent:
 
 ```text
-implement-stage docs/roadmap/012A_S3_BACKLOG_SharedReadCursor.md
-complete-stage docs/roadmap/012A_S3_BACKLOG_SharedReadCursor.md
+implement-stage docs/roadmap/active/<stage-file>.md
+complete-stage docs/roadmap/active/<stage-file>.md
 ```
 
 The named stage file is the only active work item. Other stage files are not active unless explicitly named.
-- Stage files live in `docs/roadmap/` with `BACKLOG` or `FUTURE` prefix.
-- Completed stages are archived in `docs/roadmap/completed/`.
+- Active stages live in `docs/roadmap/active/` with the `ACTIVE` prefix.
+- Conditional future stages live in `docs/roadmap/future/` with the `FUTURE` prefix.
+- Completed stages are archived in `docs/roadmap/complete/`.
 - Implementation notes live in `docs/roadmap/updates/<stage>/`.
 
 ## Architecture Guardrail
@@ -27,7 +28,7 @@ Do not move media logic, renderer policy, layer roles, CDG handling, timing, or 
 - One focused change at a time.
 - Do not redo completed work unless the current task directly invalidates it.
 - Do not broaden scope unless the current code proves it is necessary.
-- Future stages are not active unless explicitly named/promoted.
+- Conditional future stages are not active unless their documented promotion gate is met.
 - If the stage is too large for one safe patch, complete a bounded part and write an update note.
 - Validate proportional to risk.
 

@@ -79,14 +79,16 @@ public static class MediaPlayerServiceProvider
         });
 
         _ = services.AddSingleton<ICdgEngine, Core.Cdg.CdgEngine>();
+        _ = services.AddSingleton<ISubtitleEngine, Core.Subtitle.SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
         {
             IAudioEngine audioEngine = provider.GetRequiredService<IAudioEngine>();
             ICdgEngine cdgEngine = provider.GetRequiredService<ICdgEngine>();
+            ISubtitleEngine subtitleEngine = provider.GetRequiredService<ISubtitleEngine>();
             IArchiveService archiveService = provider.GetRequiredService<IArchiveService>();
-            return new PipelineMediaEngine(audioEngine, cdgEngine, archiveService, configuration);
+            return new PipelineMediaEngine(audioEngine, cdgEngine, subtitleEngine, archiveService, configuration);
         });
 
         _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new Core.Audio.PollingAudioDeviceMonitor());

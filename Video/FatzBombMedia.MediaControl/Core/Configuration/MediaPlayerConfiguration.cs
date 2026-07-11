@@ -157,6 +157,12 @@ public readonly record struct MediaPlayerConfiguration
     public AudioOutputFallbackMode AudioOutputFallbackMode { get; init; }
 
     /// <summary>
+    /// Visual style used for Core-rendered text subtitles. This is fixed for the player instance;
+    /// create a new player to apply a different style.
+    /// </summary>
+    public SubtitleTextStyle SubtitleStyle { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding and rendering.
     /// </summary>
@@ -172,6 +178,7 @@ public readonly record struct MediaPlayerConfiguration
         EnableUsbBluetoothLatencyHeuristic = false;
         AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
+        SubtitleStyle = new SubtitleTextStyle();
     }
 
     /// <summary>
@@ -189,6 +196,7 @@ public readonly record struct MediaPlayerConfiguration
         EnableUsbBluetoothLatencyHeuristic = false;
         AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
+        SubtitleStyle = new SubtitleTextStyle();
     }
 
     /// <summary>

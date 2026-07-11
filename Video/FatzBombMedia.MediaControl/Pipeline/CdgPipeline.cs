@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, MediaState state)
+internal sealed class CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, MediaState state)
 {
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private CancellationTokenSource? _completionCts;
@@ -24,7 +24,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, PlaybackClock clock, Med
     private const int CdgSeekIntervalMilliseconds = 50;
     private const double CdgSeekTargetChangeThresholdSeconds = 0.025;
 
-    private PlaybackClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
+    private IClockSource Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
     public ICdgEngine Engine { get; } = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
     public bool IsOpen { get; private set; }
     public double DurationSeconds => Engine.TotalDurationSeconds;

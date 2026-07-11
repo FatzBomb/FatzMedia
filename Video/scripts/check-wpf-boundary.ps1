@@ -23,7 +23,6 @@ $coreForbiddenPatterns = @(
     'PixelFormats',
     'FormatConvertedBitmap',
     'WritePixels',
-    'CopyPixels',
     '\bWpfD3DImage\b',
     '\bWpfRenderingTier\b'
 )

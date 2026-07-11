@@ -1,4 +1,4 @@
-<!-- Command-driven stage file. Use with AGENTS_WORKING_NOTES.md and this file only. -->
+<!-- Conditional future stage. Promote only when its activation condition is met. -->
 
 Stage file status: FUTURE.
 
@@ -10,7 +10,7 @@ Future. Proposed order: 011A.
 
 ## Why This Exists
 
-Audio-backed looping is gapless (done in 012A.S3 via `TryPreSeekLoopStart` + `PrepareLoopWrap`). Video-only looping still uses the reactive `TryRestartLoopPlayback` fallback — a full decoder seek that may show a frame jump at the loop boundary. `TryPreSeekLoopStart` explicitly guards `!HasAudio` (VideoPipeline.cs:1767) and never runs for video-only media.
+Audio-backed looping is gapless via `TryPreSeekLoopStart` + `PrepareLoopWrap`. Video-only looping still uses the reactive `TryRestartLoopPlayback` fallback — a full decoder seek that may show a frame jump at the loop boundary. `TryPreSeekLoopStart` explicitly guards `!HasAudio` (VideoPipeline.cs:1767) and never runs for video-only media.
 
 ## Not Active Until
 
@@ -22,7 +22,7 @@ Adapt the proactive pre-seek pattern from audio-backed loops for video-only medi
 
 ## Must Not Break
 
-- Audio-backed gapless loop (012A.S3)
+- Audio-backed gapless loop
 - Normal video playback
 - Video-with-audio sync
 - Video without audio clock behavior

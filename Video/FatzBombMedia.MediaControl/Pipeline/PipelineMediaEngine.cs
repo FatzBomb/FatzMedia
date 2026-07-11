@@ -2,13 +2,14 @@ using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Files;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
 using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaErrorSource
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaErrorSource, IClockBackedMediaEngine
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
@@ -39,6 +40,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     public PipelineMediaEngine(
         IAudioEngine audioEngine,
         ICdgEngine cdgEngine,
+        ISubtitleEngine subtitleEngine,
         IArchiveService archiveService,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
@@ -47,13 +49,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _archiveService = archiveService ?? throw new ArgumentNullException(nameof(archiveService));
         _configuration = configuration;
         ArgumentNullException.ThrowIfNull(cdgEngine);
-        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, configuration, ownsAudioEngine);
+        ArgumentNullException.ThrowIfNull(subtitleEngine);
+        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, configuration, ownsAudioEngine);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
     }
 
     public IVideoEngine? Video => _coordinator.Video;
     public ICdgEngine? Cdg => _coordinator.Cdg;
+    public ISubtitleEngine? Subtitle => _coordinator.Subtitle;
+    public IReadOnlyList<SubtitleTrack> SubtitleTracks => _coordinator.SubtitleTracks;
+    public string? SelectedSubtitleTrackId => _coordinator.SelectedSubtitleTrackId;
     public IAudioEngine Audio => _coordinator.ActiveAudio;
+    IClockSource IClockBackedMediaEngine.ClockSource => _coordinator.ClockSource;
 
     public void SetDisplayRefreshRate(double? refreshHz) => _coordinator.SetDisplayRefreshRate(refreshHz);
     public string? ImagePath { get; private set; }
@@ -122,6 +129,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 _coordinator.OpenAudioCdg(fileTree.AudioEntry, fileTree.CdgEntry),
             FileType.CdgArchive when fileTree.CdgEntry != null =>
                 _coordinator.OpenStandaloneCdg(fileTree.CdgEntry),
+            FileType.VideoSubtitle when !string.IsNullOrWhiteSpace(fileTree.VideoPath) && !string.IsNullOrWhiteSpace(fileTree.SubtitlePath) =>
+                _coordinator.OpenVideo(fileTree.VideoPath, fileTree.SubtitlePath),
             FileType.Video when !string.IsNullOrWhiteSpace(fileTree.VideoPath) =>
                 _coordinator.OpenVideo(fileTree.VideoPath),
             FileType.VideoArchive when fileTree.VideoEntry != null =>
@@ -234,6 +243,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         return _coordinator.Seek(seconds);
+    }
+
+    public bool SelectSubtitleTrack(string? trackId)
+    {
+        ThrowIfDisposed();
+        return _coordinator.SelectSubtitleTrack(trackId);
     }
 
     public Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null) => Task.FromResult(Seek(seconds));

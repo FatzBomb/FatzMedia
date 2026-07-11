@@ -56,6 +56,8 @@ Recommended media set:
 - 29.97fps video
 - 60fps video, if available
 - Long-GOP video, if available
+- Video with SRT/ASS sidecar subtitles
+- MKV/MP4 with embedded text subtitles
 
 Run runtime validation in **Release x64** with native BASS and FFmpeg DLLs present.
 
@@ -104,6 +106,9 @@ Logs:
 24. Repeated media-type switches leave no stale layer artifacts.
 25. Stop clears or hides the native HWND correctly, with no stale frame/layer.
 26. Close/dispose while playing does not hang or throw unhandled exceptions.
+27. Sidecar SRT/ASS subtitles render on time through seek, pause/resume, and media switches.
+28. Embedded text subtitle tracks render on time; select another available track and disable subtitles.
+29. Subtitle font, size, outline, and shadow settings render correctly on software and hardware video paths.
 
 ---
 
@@ -313,6 +318,7 @@ Use after changes to:
 - `MediaState`
 - `PlaybackCoordinator`
 - `MediaSession`
+- `IClockSource`
 - `ClockAudioEngine`
 - `IAudioEngine`
 - pipeline start/stop/pause/seek behavior
@@ -354,7 +360,7 @@ dotnet-stack report --process-id <PID> > .\profiling\stacks-during-stall.txt
 
 ## 9. Audio / Clock Validation
 
-Use after changes to audio, virtual clock, standalone CDG, silent video, or `ClockAudioEngine`.
+Use after changes to audio, `IClockSource`, standalone CDG, silent video, or the `ClockAudioEngine` compatibility adapter.
 
 Test:
 

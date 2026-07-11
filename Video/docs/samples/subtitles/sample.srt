@@ -1,0 +1,12 @@
+1
+00:00:01,000 --> 00:00:04,000
+SRT subtitle sample
+
+2
+00:00:05,000 --> 00:00:08,000
+Second line
+with two rows
+
+3
+00:00:09,000 --> 00:00:12,000
+Seek and pause/resume sample

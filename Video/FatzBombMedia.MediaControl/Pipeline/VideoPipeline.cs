@@ -11,9 +11,9 @@ using System.Runtime.InteropServices;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed partial class VideoPipeline(PlaybackClock clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex) : IVideoEngine
+internal sealed partial class VideoPipeline(IClockSource clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex) : IVideoEngine
 {
-    private readonly PlaybackClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly MediaPlayerConfiguration _configuration = configuration;
     private readonly int _bassDeviceIndex = bassDeviceIndex;

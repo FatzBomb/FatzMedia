@@ -1,4 +1,5 @@
 using FatzBombMedia.MediaControl.Controllers;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 
 namespace FatzBombMedia.MediaControl.Core.Abstractions;
 
@@ -10,7 +11,8 @@ public enum MediaContent
     Video = 1 << 1,
     Cdg = 1 << 2,
     Image = 1 << 3,
-    Archive = 1 << 4
+    Archive = 1 << 4,
+    Subtitle = 1 << 5
 }
 
 public interface IMediaEngine : IDisposable
@@ -18,6 +20,9 @@ public interface IMediaEngine : IDisposable
     // Engine access
     IVideoEngine? Video { get; }
     ICdgEngine? Cdg { get; }
+    ISubtitleEngine? Subtitle { get; }
+    IReadOnlyList<SubtitleTrack> SubtitleTracks { get; }
+    string? SelectedSubtitleTrackId { get; }
     IAudioEngine Audio { get; } // Add audio engine access
     string? ImagePath { get; }
 
@@ -49,6 +54,7 @@ public interface IMediaEngine : IDisposable
     bool Stop();
     void Close();
     bool Seek(double seconds);
+    bool SelectSubtitleTrack(string? trackId);
     Task<bool> SeekAsync(double seconds, TimeSpan? timeout = null);
 
 

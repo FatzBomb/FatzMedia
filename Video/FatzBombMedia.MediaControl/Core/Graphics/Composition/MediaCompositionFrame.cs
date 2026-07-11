@@ -36,6 +36,11 @@ public readonly partial record struct MediaCompositionFrame
     public uint WashArgb { get; init; }
     public CdgRenderSnapshot? CdgOverlay { get; init; }
     public bool SuppressCdgOverlayDraw { get; init; }
+    public ReadOnlyMemory<byte> SubtitleBgra { get; init; }
+    public int SubtitleWidth { get; init; }
+    public int SubtitleHeight { get; init; }
+    public int SubtitleStride { get; init; }
+    public long SubtitleRevision { get; init; }
 
     public bool RetainedRefresh { get; init; }
     public string Reason { get; init; }
@@ -68,7 +73,12 @@ public readonly partial record struct MediaCompositionFrame
         }
     }
 
-    public bool HasShaderVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay;
+    public bool HasSubtitleOverlay => !SubtitleBgra.IsEmpty
+        && SubtitleWidth > 0
+        && SubtitleHeight > 0
+        && SubtitleStride >= SubtitleWidth * 4;
+
+    public bool HasShaderVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay || HasSubtitleOverlay;
 
     public MediaCompositionStretchMode EffectiveBackgroundStretchMode => BackgroundStretchMode switch
     {
@@ -98,6 +108,11 @@ public readonly partial record struct MediaCompositionFrame
             WashArgb = 0,
             CdgOverlay = null,
             SuppressCdgOverlayDraw = false,
+            SubtitleBgra = ReadOnlyMemory<byte>.Empty,
+            SubtitleWidth = 0,
+            SubtitleHeight = 0,
+            SubtitleStride = 0,
+            SubtitleRevision = -1,
             RetainedRefresh = false,
             Reason = reason
         };

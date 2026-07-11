@@ -11,6 +11,7 @@ public sealed class FileTree : IDisposable
     public string? AudioPath { get; internal set; }
     public string? CdgPath { get; internal set; }
     public string? VideoPath { get; internal set; }
+    public string? SubtitlePath { get; internal set; }
     public string? ImagePath { get; internal set; }
 
     // Archive context and first-matched entries
@@ -125,6 +126,20 @@ public static class FileTreeBuilder
         if (FileTypes.Video.Contains(ext))
         {
             tree.VideoPath = path;
+            if (searchCompanionFile)
+            {
+                foreach (var extension in FileTypes.Subtitle)
+                {
+                    var subtitlePath = Path.ChangeExtension(path, extension);
+                    if (File.Exists(subtitlePath))
+                    {
+                        tree.SubtitlePath = subtitlePath;
+                        tree.Type = FileType.VideoSubtitle;
+                        return tree;
+                    }
+                }
+            }
+
             tree.Type = FileType.Video;
             return tree;
         }

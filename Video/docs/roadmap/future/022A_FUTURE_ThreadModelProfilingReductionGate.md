@@ -1,4 +1,4 @@
-<!-- Command-driven stage file. Use with AGENTS_WORKING_NOTES.md and this file only. -->
+<!-- Conditional future stage. Promote only when its activation condition is met. -->
 
 Stage file status: FUTURE.
 

@@ -1,8 +1,8 @@
 # Stage Manifest
 
-## Active / Backlog
+## Active
 
-- `013A_BACKLOG_GeneralSubtitleEngineBeyondCDG.md` — subtitle engine beyond CDG; gate cleared by 012A.S3 shared demuxer
+- None.
 
 ## Reverted
 
@@ -10,10 +10,8 @@
 
 ## Completed
 
-- **012A.S3** — shared cursor + unified seek, drain-audio-then-seek gapless loop (2026-07-10)
-  - Design: `012A_S3_DESIGN_SharedCursorUnifiedSeek.md` | Notes: `updates/012A_S3/StageUpdate.md`
-- **012A.S2** — MediaDemuxer seam behind VideoAudioEngine (2026-07-09)
-- **012A.S1** — MediaDemuxer seam behind VideoDecoder (2026-07-09)
+- `complete/013A_COMPLETED_GeneralSubtitleEngineBeyondCDG.md` — Core-owned sidecar and embedded text subtitle engine with track selection and configurable text styling (2026-07-11)
+- `complete/016A_COMPLETED_ClockAudioEngineAbstractionSplit.md` — clock source abstraction split; no-audio timing and tempo no longer use the audio abstraction (2026-07-10)
 - **007B** — hardware frame release safety (2026-07-07)
 - **007A** — present outside transport-visible locks (2026-07-07)
 - **006B** — audio device hotplug (2026-07-07)
@@ -25,16 +23,15 @@
 - **004A** — error surface (2026-07-06)
 - 001–003E, 008A, 009A — git history only
 
-## Future
+## Conditional Future
 
-- `010A_FUTURE_SoftwareVideoUploadCopyPath.md`
-- `011A_FUTURE_SeamlessPrimaryVideoLooping.md`
-- `014A_FUTURE_StreamingNetworkPlayback.md`
-- `015A_FUTURE_BroadVideoPipelineSplit.md`
-- `016A_FUTURE_ClockAudioEngineAbstractionSplit.md`
-- `017A_FUTURE_DisplayRateCompositorRewrite.md`
-- `018A_FUTURE_CDGSnapshotOwnershipRedesignPooling.md`
-- `019A_FUTURE_VideoFrameEventArgsReuseApiRedesign.md`
-- `020A_FUTURE_FullAudioFilterFramework.md`
-- `021A_FUTURE_CrossPlatformRendererAbstraction.md`
-- `022A_FUTURE_ThreadModelProfilingReductionGate.md`
+- `future/010A_FUTURE_SoftwareVideoUploadCopyPath.md`
+- `future/011A_FUTURE_SeamlessPrimaryVideoLooping.md`
+- `future/014A_FUTURE_StreamingNetworkPlayback.md`
+- `future/015A_FUTURE_BroadVideoPipelineSplit.md`
+- `future/017A_FUTURE_DisplayRateCompositorRewrite.md`
+- `future/018A_FUTURE_CDGSnapshotOwnershipRedesignPooling.md`
+- `future/019A_FUTURE_VideoFrameEventArgsReuseApiRedesign.md`
+- `future/020A_FUTURE_FullAudioFilterFramework.md`
+- `future/021A_FUTURE_CrossPlatformRendererAbstraction.md`
+- `future/022A_FUTURE_ThreadModelProfilingReductionGate.md`

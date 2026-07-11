@@ -4,7 +4,9 @@ using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Cdg;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 using FatzBombMedia.MediaControl.Core.Threading;
+using FatzBombMedia.MediaControl.Core.Video;
 using FatzBombMedia.MediaControl.Pipeline;
 using System.Buffers;
 using System.Diagnostics;
@@ -45,11 +47,13 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private readonly MediaPlayerConfiguration _configuration;
     private readonly RenderPipeline _renderPipeline;
     private readonly NativeD3D11PresentationBridge _presenter;
+    private readonly SubtitleTextRenderer _subtitleTextRenderer;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _lock = new();
     private readonly Lock _cdgPresentationGate = new();
+    private readonly Lock _subtitleGate = new();
 
     private IVideoEngine? _attachedVideo;
     private ICdgEngine? _attachedCdg;
@@ -70,6 +74,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private bool _cdgPendingRetainedRefresh;
     private CdgRenderSnapshot? _lastCdgSnapshot;
     private string _cdgPendingReason = "cdg pending";
+    private ReadOnlyMemory<byte> _subtitleBgra = ReadOnlyMemory<byte>.Empty;
+    private string? _subtitleText;
+    private long _subtitleRevision;
+    private double _lastSubtitlePresentationSeconds = double.NaN;
 
     public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
     {
@@ -77,6 +85,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _configuration = configuration;
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _presenter = new NativeD3D11PresentationBridge(configuration);
+        _subtitleTextRenderer = new SubtitleTextRenderer(configuration.SubtitleStyle);
         _presenter.FramePresented += OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
@@ -486,6 +495,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             {
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
+                _attachedVideo.PositionChanged -= OnVideoPositionChanged;
+                _attachedVideo.StateChanged -= OnVideoStateChanged;
             }
             catch
             {
@@ -500,6 +511,25 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _attachedVideo = _mediaEngine.Video;
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
+        _attachedVideo.PositionChanged += OnVideoPositionChanged;
+        _attachedVideo.StateChanged += OnVideoStateChanged;
+    }
+
+    private void OnVideoPositionChanged(object? sender, double positionSeconds)
+    {
+        lock (_subtitleGate)
+            _lastSubtitlePresentationSeconds = double.IsFinite(positionSeconds) && positionSeconds >= 0
+                ? positionSeconds
+                : double.NaN;
+    }
+
+    private void OnVideoStateChanged(object? sender, VideoEngineState state)
+    {
+        if (state is not (VideoEngineState.Ready or VideoEngineState.Closed))
+            return;
+
+        lock (_subtitleGate)
+            _lastSubtitlePresentationSeconds = double.NaN;
     }
 
     private void AttachCdgIfAvailable()
@@ -648,12 +678,22 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (IsValidBgraFrame(e))
         {
             SetCompositionLayer0Frame(e, _primaryStretchMode);
-            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "primary video frame");
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "primary video frame", e.PtsSeconds);
             return;
         }
 
         if (!e.IsD3D11HardwareFrame)
             return;
+
+        if (HasSubtitleContent)
+        {
+            UpdateSubtitleOverlay(e.PtsSeconds);
+            if (HasCachedSubtitleOverlay())
+            {
+                RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + subtitle");
+                return;
+            }
+        }
 
         lock (_lock)
         {
@@ -814,6 +854,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         string reason,
         bool deferIfCompositionBusy = false)
     {
+        UpdateSubtitleOverlay();
         MediaCompositionFrame frame;
         byte[]? rentedBackground;
         CompositionPresentResult buildResult;
@@ -872,6 +913,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
+        UpdateSubtitleOverlay();
         CdgRenderSnapshot? snapshot = null;
         uint washArgb = 0;
         if (TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? cdgSnapshot) && cdgSnapshot != null)
@@ -912,6 +954,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 BackgroundRevision = backgroundRevision,
                 WashArgb = washArgb,
                 CdgOverlay = snapshot,
+                SubtitleBgra = GetCachedSubtitleOverlay(out var subtitleWidth, out var subtitleHeight, out var subtitleStride, out var subtitleRevision),
+                SubtitleWidth = subtitleWidth,
+                SubtitleHeight = subtitleHeight,
+                SubtitleStride = subtitleStride,
+                SubtitleRevision = subtitleRevision,
                 Reason = reason
             };
         }
@@ -1073,8 +1120,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private CompositionPresentResult BuildAndPresentSoftwareComposition(
         uint washArgb,
         bool retainedRefresh,
-        string reason)
+        string reason,
+        double? subtitlePositionSeconds = null)
     {
+        UpdateSubtitleOverlay(subtitlePositionSeconds);
         MediaCompositionFrame frame;
         byte[]? rentedBackground;
         lock (_lock)
@@ -1165,6 +1214,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             }
         }
 
+        var subtitleBgra = GetCachedSubtitleOverlay(out var subtitleWidth, out var subtitleHeight, out var subtitleStride, out var subtitleRevision);
+
         return new MediaCompositionFrame
         {
             ClearMode = MediaCompositionClearMode.Black,
@@ -1179,9 +1230,76 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             UseRetainedBackground = hasRetainedGpuBackground,
             WashArgb = washArgb,
             CdgOverlay = cdgOverlay,
+            SubtitleBgra = subtitleBgra,
+            SubtitleWidth = subtitleWidth,
+            SubtitleHeight = subtitleHeight,
+            SubtitleStride = subtitleStride,
+            SubtitleRevision = subtitleRevision,
             RetainedRefresh = retainedRefresh,
             Reason = reason
         };
+    }
+
+    // Direct2D/WIC work stays outside the coordinator lock so text changes cannot stall transport.
+    private void UpdateSubtitleOverlay(double? presentationPositionSeconds = null)
+    {
+        lock (_subtitleGate)
+        {
+            var subtitlePosition = presentationPositionSeconds is { } position && double.IsFinite(position) && position >= 0
+                ? position
+                : _mediaEngine.Position;
+            if (double.IsFinite(_lastSubtitlePresentationSeconds) && subtitlePosition < _lastSubtitlePresentationSeconds)
+                subtitlePosition = _lastSubtitlePresentationSeconds;
+            else
+                _lastSubtitlePresentationSeconds = subtitlePosition;
+
+            var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
+            var text = activeCues.Count == 0 ? null : string.Join("\n", activeCues.Select(static cue => cue.Text));
+            if (string.Equals(text, _subtitleText, StringComparison.Ordinal))
+                return;
+
+            _subtitleText = text;
+            _subtitleBgra = ReadOnlyMemory<byte>.Empty;
+            _subtitleRevision++;
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            try
+            {
+                _subtitleBgra = _subtitleTextRenderer.Render(text, 1920, 1080);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Text rasterization failed: {ex.Message}", innerException: ex);
+            }
+        }
+    }
+
+    private bool HasCachedSubtitleOverlay()
+    {
+        lock (_subtitleGate)
+            return !_subtitleBgra.IsEmpty;
+    }
+
+    private ReadOnlyMemory<byte> GetCachedSubtitleOverlay(out int width, out int height, out int stride, out long revision)
+    {
+        lock (_subtitleGate)
+        {
+            if (_subtitleBgra.IsEmpty)
+            {
+                width = 0;
+                height = 0;
+                stride = 0;
+                revision = -1;
+                return ReadOnlyMemory<byte>.Empty;
+            }
+
+            width = 1920;
+            height = 1080;
+            stride = width * 4;
+            revision = _subtitleRevision;
+            return _subtitleBgra;
+        }
     }
 
     private void SetCompositionLayer0Frame(VideoFrameEventArgs frame, MediaCompositionStretchMode stretchMode)
@@ -1301,6 +1419,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private bool HasCdgContent => _mediaEngine.Content.HasFlag(MediaContent.Cdg);
 
+    private bool HasSubtitleContent => _mediaEngine.Content.HasFlag(MediaContent.Subtitle);
+
     private bool ShouldPresentVisualLayers =>
         _isRenderingActive
         || _mediaEngine.State is MediaPlayerState.Playing or MediaPlayerState.Paused
@@ -1343,6 +1463,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _mediaEngine.BackgroundCleared -= OnCoreBackgroundCleared;
         _presenter.FramePresented -= OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
+        _subtitleTextRenderer.Dispose();
         _presenter.Dispose();
         _presentationScheduler.Dispose();
         _recoveryScheduler.Dispose();

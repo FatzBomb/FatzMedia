@@ -5,11 +5,11 @@ namespace FatzBombMedia.MediaControl.Core.Media;
 /// <summary>
 /// Owns a single FFmpeg <see cref="AVFormatContext"/> and exposes the container
 /// open / stream-discovery / packet-read / seek / close primitives. This is the
-/// input/demux seam introduced by stage 012A: it carries no decode, timing, or
+/// input/demux seam: it carries no decode, timing, or
 /// audio concerns — callers keep their own codec contexts, packets, and frames.
 /// </summary>
 /// <remarks>
-/// Behavior-preserving extraction only (012A.S1). Each primitive mirrors the
+/// Behavior-preserving extraction. Each primitive mirrors the
 /// exact FFmpeg call the caller used inline before, including result codes, so
 /// EOF / error handling at the call site is unchanged. A demuxer instance owns
 /// exactly one container and is single-threaded from the perspective of its

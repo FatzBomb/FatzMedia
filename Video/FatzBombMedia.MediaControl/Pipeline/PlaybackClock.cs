@@ -1,9 +1,10 @@
 
+using FatzBombMedia.MediaControl.Core.Abstractions;
 using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
-internal sealed class PlaybackClock
+internal sealed class PlaybackClock : IClockSource
 {
     private readonly Stopwatch _stopwatch = new();
     private double _basePositionSeconds;

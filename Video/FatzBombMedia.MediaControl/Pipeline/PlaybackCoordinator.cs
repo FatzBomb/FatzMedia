@@ -1,6 +1,7 @@
 
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 
 namespace FatzBombMedia.MediaControl.Pipeline;
 
@@ -11,12 +12,14 @@ internal sealed class PlaybackCoordinator : IDisposable
     public PlaybackCoordinator(
         IAudioEngine audioEngine,
         ICdgEngine cdgEngine,
+        ISubtitleEngine subtitleEngine,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
         _session = new MediaSession();
         var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
         var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
+        var subtitle = new SubtitlePipeline(subtitleEngine, _session.State);
         var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
             ? deviceProvider.BassDeviceIndex
             : configuration.AudioOutputDeviceIndex;
@@ -28,14 +31,19 @@ internal sealed class PlaybackCoordinator : IDisposable
 
         _session.AttachAudio(audio);
         _session.AttachCdg(cdg);
+        _session.AttachSubtitle(subtitle);
         _session.AttachVideo(video);
     }
 
     public MediaState State => _session.State;
+    public IClockSource ClockSource => _session.Clock;
     public event EventHandler? PlaybackEnded;
 
 
     public ICdgEngine? Cdg => _session.Cdg?.IsOpen == true ? _session.Cdg.Engine : null;
+    public ISubtitleEngine? Subtitle => _session.Subtitle?.IsOpen == true ? _session.Subtitle.Engine : null;
+    public IReadOnlyList<SubtitleTrack> SubtitleTracks => _session.Subtitle?.Tracks ?? [];
+    public string? SelectedSubtitleTrackId => _session.Subtitle?.SelectedTrackId;
     public IVideoEngine? Video => _session.Video?.IsOpen == true ? _session.Video : null;
 
     public bool LoopPlayback
@@ -123,7 +131,26 @@ internal sealed class PlaybackCoordinator : IDisposable
         return true;
     }
 
-    public bool OpenVideo(string videoPath) => _session.Video?.Open(videoPath) == true;
+    public bool OpenVideo(string videoPath)
+    {
+        _session.Subtitle?.Close();
+        if (_session.Video?.Open(videoPath) != true)
+            return false;
+
+        TryLoadEmbeddedSubtitles(videoPath);
+        return true;
+    }
+
+    public bool OpenVideo(string videoPath, string subtitlePath)
+    {
+        if (!OpenVideo(videoPath))
+            return false;
+
+        // Embedded subtitles take precedence; the sidecar remains selectable. A malformed or unreadable sidecar must not prevent
+        // the independently valid video from opening.
+        _ = _session.Subtitle?.Open(subtitlePath);
+        return true;
+    }
 
     public bool OpenVideo(IArchiveEntryInfo videoEntry) => _session.Video?.Open(videoEntry) == true;
 
@@ -185,6 +212,8 @@ internal sealed class PlaybackCoordinator : IDisposable
         return success;
     }
 
+    public bool SelectSubtitleTrack(string? trackId) => _session.Subtitle?.SelectTrack(trackId) == true;
+
     public void Close() => _session.Clear();
 
     public void Dispose()
@@ -197,4 +226,18 @@ internal sealed class PlaybackCoordinator : IDisposable
     }
 
     private void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+
+    private void TryLoadEmbeddedSubtitles(string videoPath)
+    {
+        try
+        {
+            var tracks = EmbeddedSubtitleDecoder.DecodeTracks(videoPath);
+            if (tracks.Count > 0)
+                _ = _session.Subtitle?.LoadEmbeddedTracks(tracks);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Failed to decode embedded subtitles: {ex.Message}", sourcePath: videoPath, innerException: ex);
+        }
+    }
 }

@@ -42,6 +42,15 @@ public class FileTypesTests
     public void IsCdg_MatchesCdgExtension(string filename, bool expected) =>
         Assert.Equal(expected, FileTypes.IsCdg(filename));
 
+    [Theory]
+    [InlineData("captions.srt", true)]
+    [InlineData("captions.SRT", true)]
+    [InlineData("captions.ass", true)]
+    [InlineData("captions.ssa", true)]
+    [InlineData("captions.txt", false)]
+    public void IsSubtitle_MatchesSrtExtension(string filename, bool expected) =>
+        Assert.Equal(expected, FileTypes.IsSubtitle(filename));
+
     [Fact]
     public void ArchiveSet_IsCaseInsensitive()
     {
@@ -74,4 +83,5 @@ public class FileTypesTests
         Assert.False(FileTypes.IsAudio("song.mp3"));
         Assert.False(FileTypes.IsVideo("clip.mp4"));
     }
+
 }

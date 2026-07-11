@@ -5,14 +5,14 @@ namespace FatzBombMedia.MediaControl.Core.Media;
 /// <summary>
 /// Wraps a <see cref="MediaDemuxer"/> with per-stream packet fan-out: a single
 /// <c>av_read_frame</c> cursor dispatches packets into independent per-stream
-/// queues, so two consumers (video, audio) can read from one container without
-/// each opening it separately.
+/// queues, so registered consumers can read from one container without each
+/// opening it separately.
 /// </summary>
 /// <remarks>
-/// Introduced by stage 012A.S3 (revised). Key fixes from the reverted attempt:
+/// Coordinates video, audio, and subtitle packet consumers with per-stream EOF tracking.
 /// <para>
-/// - <b>Single <see cref="Seek"/></b> that flushes both queues and clears both
-///   EOFs. No <c>SeekVideo</c>/<c>SeekAudio</c> split (the reverted S3's split
+/// - <b>Single <see cref="Seek"/></b> that flushes all registered queues and clears
+///   their EOF states. No <c>SeekVideo</c>/<c>SeekAudio</c> split (the reverted S3's split
 ///   caused the second seek to override the first).
 /// </para>
 /// <para>
@@ -40,10 +40,13 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     private readonly Lock _sync = new();
     private readonly Queue<IntPtr> _videoPackets = new();
     private readonly Queue<IntPtr> _audioPackets = new();
+    private readonly Queue<IntPtr> _subtitlePackets = new();
     private bool _videoEof;
     private bool _audioEof;
+    private bool _subtitleEof;
     private int _videoStreamIndex = -1;
     private int _audioStreamIndex = -1;
+    private int _subtitleStreamIndex = -1;
 
     public bool IsOpen => _demuxer.IsOpen;
     public uint StreamCount => _demuxer.StreamCount;
@@ -61,9 +64,11 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public void RegisterAudioStream(int index) => _audioStreamIndex = index;
 
+    public void RegisterSubtitleStream(int index) => _subtitleStreamIndex = index;
+
     /// <summary>
     /// Reads the next video packet into <paramref name="packet"/>. Non-video
-    /// packets are buffered for the audio consumer (if registered) or skipped.
+    /// packets are buffered for audio or subtitle consumers when registered.
     /// Returns 0 on success, <see cref="ffmpeg.AVERROR_EOF"/> at end of stream,
     /// or a negative error code. EOF is per-consumer: only <c>_videoEof</c> is
     /// set — audio's EOF is not affected.
@@ -107,6 +112,8 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
                     if (_audioStreamIndex >= 0 && temp->stream_index == _audioStreamIndex)
                         BufferPacket(_audioPackets, temp);
+                    else if (_subtitleStreamIndex >= 0 && temp->stream_index == _subtitleStreamIndex)
+                        BufferPacket(_subtitlePackets, temp);
                 }
             }
             finally
@@ -118,7 +125,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     /// <summary>
     /// Reads the next audio packet into <paramref name="packet"/>. Non-audio
-    /// packets are buffered for the video consumer (if registered) or skipped.
+    /// packets are buffered for video or subtitle consumers when registered.
     /// Returns 0 on success, <see cref="ffmpeg.AVERROR_EOF"/> at end of stream,
     /// or a negative error code. EOF is per-consumer: only <c>_audioEof</c> is
     /// set — video's EOF is not affected.
@@ -162,6 +169,8 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
                     if (_videoStreamIndex >= 0 && temp->stream_index == _videoStreamIndex)
                         BufferPacket(_videoPackets, temp);
+                    else if (_subtitleStreamIndex >= 0 && temp->stream_index == _subtitleStreamIndex)
+                        BufferPacket(_subtitlePackets, temp);
                 }
             }
             finally
@@ -172,8 +181,62 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     }
 
     /// <summary>
-    /// Coordinated seek: seeks the container once, flushes BOTH packet queues,
-    /// and clears BOTH EOF flags. Called by <c>VideoPipeline.SeekCore</c> for
+    /// Reads the next subtitle packet into <paramref name="packet"/>. Video and audio packets are
+    /// buffered for their registered consumers. EOF is tracked independently from video and audio.
+    /// </summary>
+    public int ReadSubtitlePacket(AVPacket* packet)
+    {
+        lock (_sync)
+        {
+            if (_subtitlePackets.Count > 0)
+            {
+                AVPacket* buffered = (AVPacket*)_subtitlePackets.Dequeue();
+                ffmpeg.av_packet_move_ref(packet, buffered);
+                ffmpeg.av_packet_free(&buffered);
+                return 0;
+            }
+
+            if (_subtitleEof)
+                return ffmpeg.AVERROR_EOF;
+
+            AVPacket* temp = ffmpeg.av_packet_alloc();
+            if (temp == null)
+                return -1;
+
+            try
+            {
+                while (true)
+                {
+                    int result = _demuxer.ReadPacket(temp);
+                    if (result < 0)
+                    {
+                        if (result == ffmpeg.AVERROR_EOF)
+                            _subtitleEof = true;
+                        return result;
+                    }
+
+                    if (temp->stream_index == _subtitleStreamIndex)
+                    {
+                        ffmpeg.av_packet_move_ref(packet, temp);
+                        return 0;
+                    }
+
+                    if (_videoStreamIndex >= 0 && temp->stream_index == _videoStreamIndex)
+                        BufferPacket(_videoPackets, temp);
+                    else if (_audioStreamIndex >= 0 && temp->stream_index == _audioStreamIndex)
+                        BufferPacket(_audioPackets, temp);
+                }
+            }
+            finally
+            {
+                ffmpeg.av_packet_free(&temp);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Coordinated seek: seeks the container once, flushes all registered packet queues,
+    /// and clears their EOF flags. Called by <c>VideoPipeline.SeekCore</c> for
     /// settle (commit) seeks — NOT by the engines directly.
     /// </summary>
     public int Seek(int streamIndex, long timestamp, int flags)
@@ -182,8 +245,10 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         {
             FlushQueue(_videoPackets);
             FlushQueue(_audioPackets);
+            FlushQueue(_subtitlePackets);
             _videoEof = false;
             _audioEof = false;
+            _subtitleEof = false;
             return _demuxer.Seek(streamIndex, timestamp, flags);
         }
     }
@@ -217,6 +282,8 @@ internal sealed unsafe class SharedDemuxer : IDisposable
                         BufferPacket(_audioPackets, temp);
                     else if (_videoStreamIndex >= 0 && temp->stream_index == _videoStreamIndex)
                         BufferPacket(_videoPackets, temp);
+                    else if (_subtitleStreamIndex >= 0 && temp->stream_index == _subtitleStreamIndex)
+                        BufferPacket(_subtitlePackets, temp);
                 }
             }
             finally
@@ -224,8 +291,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
                 ffmpeg.av_packet_free(&temp);
             }
 
-            // Both streams are now at EOF.
+            // The non-video streams are now at EOF.
             _audioEof = true;
+            _subtitleEof = true;
 
             // Seek phase: seek the cursor to 0 on the video stream.
             if (_videoStreamIndex >= 0)
@@ -252,6 +320,17 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Clears subtitle EOF after a loop wrap. The cursor is already at the start of the container.
+    /// </summary>
+    public void ClearSubtitleEof()
+    {
+        lock (_sync)
+        {
+            _subtitleEof = false;
+        }
+    }
+
     public void Close()
     {
         lock (_sync)
@@ -259,10 +338,13 @@ internal sealed unsafe class SharedDemuxer : IDisposable
             _demuxer.Close();
             FlushQueue(_videoPackets);
             FlushQueue(_audioPackets);
+            FlushQueue(_subtitlePackets);
             _videoEof = false;
             _audioEof = false;
+            _subtitleEof = false;
             _videoStreamIndex = -1;
             _audioStreamIndex = -1;
+            _subtitleStreamIndex = -1;
         }
     }
 

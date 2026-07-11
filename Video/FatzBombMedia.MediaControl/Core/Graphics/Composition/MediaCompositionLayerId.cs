@@ -8,5 +8,6 @@ public enum MediaCompositionLayerId
 {
     Background = 0,
     Wash = 1,
-    Overlay = 2
+    Overlay = 2,
+    Subtitle = 3
 }

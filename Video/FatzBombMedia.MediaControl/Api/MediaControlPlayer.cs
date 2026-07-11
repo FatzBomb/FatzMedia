@@ -2,6 +2,7 @@ using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
 using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Graphics;
+using FatzBombMedia.MediaControl.Core.Subtitle;
 using FatzBombMedia.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
@@ -114,11 +115,19 @@ public class MediaControlPlayer : IMediaControlSession
 
     public bool HasCdg => Content.HasFlag(MediaContent.Cdg);
 
+    public bool HasSubtitle => Content.HasFlag(MediaContent.Subtitle);
+
+    public IReadOnlyList<SubtitleTrack> SubtitleTracks => _mediaEngine.SubtitleTracks;
+
+    public string? SelectedSubtitleTrackId => _mediaEngine.SelectedSubtitleTrackId;
+
     public IVideoEngine? Video => _mediaEngine.Video;
 
     public IAudioEngine Audio => _mediaEngine.Audio;
 
     public ICdgEngine? Cdg => _mediaEngine.Cdg;
+
+    public ISubtitleEngine? Subtitle => _mediaEngine.Subtitle;
 
     public TimeSpan Position
     {
@@ -187,6 +196,15 @@ public class MediaControlPlayer : IMediaControlSession
             Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
             return false;
         }
+    }
+
+    public bool SelectSubtitleTrack(string? trackId)
+    {
+        var selected = _mediaEngine.SelectSubtitleTrack(trackId);
+        if (selected)
+            _presentationCoordinator.RefreshCurrentPosition();
+
+        return selected;
     }
 
     public void Close() => File.Close();
