@@ -6,6 +6,7 @@ using FatzBombMedia.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBombMedia.MediaControl.Core.Media;
 using FatzBombMedia.MediaControl.Core.Threading;
 using FatzBombMedia.MediaControl.Core.Video;
+using FFmpeg.AutoGen;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -1102,6 +1103,10 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
                             CommitAudioLoopWrap(completedAudioLoops);
                             restartedLoop = true;
                         }
+                        else if (!HasAudio && TryCommitVideoOnlyLoopWrap(currentPosition))
+                        {
+                            restartedLoop = true;
+                        }
                         else if (ShouldRestartLoopPlayback(currentPosition))
                         {
                             restartedLoop = TryRestartLoopPlayback(currentPosition, "presentation eof");
@@ -1158,6 +1163,13 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
 
         var clockPosition = ApplyAudioVideoOffset(GetPresentationPosition());
         var selectionLeadSeconds = GetFrameSelectionLeadLimit(decoder.FramesPerSecond);
+
+        // A video-only pre-seek leaves the previous lap's tail ahead of position-zero frames.
+        // Once the tail has presented, the next frame looks late against the still-unwrapped
+        // virtual clock; keep normal cadence until TryCommitVideoOnlyLoopWrap resets that clock.
+        if (_loopPreSeekActive && !HasAudio && nextFrame.PresentationTime < clockPosition - selectionLeadSeconds)
+            return fallbackIntervalSeconds;
+
         var waitSeconds = nextFrame.PresentationTime - selectionLeadSeconds - clockPosition;
         return !double.IsFinite(waitSeconds)
             ? fallbackIntervalSeconds
@@ -1762,18 +1774,12 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         return decoder.FrameCount == 0 && currentPosition >= loopBoundary + tolerance;
     }
 
-    // Proactive video-decoder pre-seek for gapless audio-backed looping: pre-seek to 0 while
-    // tail frames are still queued and the audio engine is still playing out the current lap.
-    // The seek preserves the queue so tail frames (PTS near loop end) present first, then
-    // position-0 frames (decoded after the pre-seek) are ready behind them by the time
-    // CommitAudioLoopWrap fires (when VideoAudioEngine reports its own gapless wrap).
-    //
-    // Only for audio-backed video: the background video loop (no audio) already pre-seeks
-    // directly because it has no audio clock to desync. Non-audio main video uses the
-    // virtual clock and relies on the reactive TryRestartLoopPlayback fallback instead.
+    // Proactively pre-seek the decoder while tail frames are still queued. The decoded tail stays
+    // visible while position-zero frames are refilled behind it, allowing either the audio wrap or
+    // the virtual video-only clock to commit the next lap without a full restart at EOF.
     private void TryPreSeekLoopStart()
     {
-        if (_loopPreSeekActive || !LoopPlayback || !_isPlaying || Duration <= 0 || !HasAudio)
+        if (_loopPreSeekActive || !LoopPlayback || !_isPlaying || Duration <= 0)
             return;
 
         VideoDecoder? decoder = _videoDecoder;
@@ -1785,10 +1791,17 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
             if (_loopPreSeekActive || !decoder.EndOfStream || decoder.FrameCount <= 0)
                 return;
 
-            // Shared-demuxer loop wrap: drain remaining audio packets into the audio
-            // queue, then seek the shared cursor to 0. This preserves gapless audio
-            // (near-EOF packets buffered) and gapless video (position-0 frames ready).
-            _sharedDemuxer?.PrepareLoopWrap();
+            if (HasAudio)
+            {
+                // Drain remaining audio packets into the queue, then seek the shared cursor to 0.
+                // This keeps BASS fed while position-zero video frames are prepared.
+                _sharedDemuxer?.PrepareLoopWrap();
+            }
+            else if (_sharedDemuxer?.Seek(decoder.VideoStreamIndex, 0, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+            {
+                return;
+            }
+
             decoder.OnContainerSeeked(0, exact: false, preserveQueue: true);
 
             // Clear the committed presentation target so position-0 frames aren't dropped
@@ -1804,7 +1817,45 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         }
 
         if (_configuration.EnableVerboseLogging)
-            Trace.WriteLine($"[VideoPipeline:LoopPreSeek] Pre-seek to 0; queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}");
+            Trace.WriteLine($"[VideoPipeline:LoopPreSeek] Pre-seek to 0; audio={HasAudio}, queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}");
+    }
+
+    private bool TryCommitVideoOnlyLoopWrap(double currentPosition)
+    {
+        if (!_loopPreSeekActive || HasAudio || !_isPlaying || _videoDecoder is not { } decoder)
+            return false;
+
+        var loopBoundary = GetLoopBoundarySeconds(decoder);
+        if (currentPosition < loopBoundary - GetEndToleranceSeconds())
+            return false;
+
+        var loopTarget = GetLoopOverflowPosition(currentPosition, loopBoundary);
+        VideoFrameData? wrapFrame;
+        lock (_decodeLock)
+        {
+            DropStaleLoopTailFrames(decoder, GetEndToleranceSeconds());
+            if (decoder.FrameCount == 0)
+                _ = DecodeUntilFrameAvailable();
+
+            wrapFrame = decoder.GetNextFrame();
+        }
+
+        if (wrapFrame != null)
+            PresentFrame(wrapFrame, forceReissue: true);
+
+        _loopPreSeekActive = false;
+        _clock.Start(loopTarget);
+        _state.SetPosition(loopTarget);
+        PositionChanged?.Invoke(this, loopTarget);
+        _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
+
+        if (wrapFrame == null)
+            _ = PresentFrameForCurrentPosition(forceReissue: true);
+
+        if (_configuration.EnableVerboseLogging)
+            Trace.WriteLine($"[VideoPipeline:VideoOnlyLoopWrap] Commit position={loopTarget:F3}s, queued={decoder.FrameCount}/{GetTargetBufferedVideoFrames()}, decodedFirst={wrapFrame != null}.");
+
+        return true;
     }
 
     // Flush remaining tail frames (PTS > threshold) from the front of the

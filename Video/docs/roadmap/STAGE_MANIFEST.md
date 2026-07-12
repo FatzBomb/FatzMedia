@@ -10,6 +10,7 @@
 
 ## Completed
 
+- `complete/011A_COMPLETED_SeamlessPrimaryVideoLooping.md` — video-only loop pre-seek and virtual-clock commit without a reactive decoder restart (2026-07-11)
 - `complete/013B_COMPLETED_PlaybackSyncControls.md` — per-item A/V, CDG, and subtitle synchronization controls with 100ms operator adjustments (2026-07-11)
 - `complete/013A_COMPLETED_GeneralSubtitleEngineBeyondCDG.md` — Core-owned sidecar and embedded text subtitle engine with track selection and configurable text styling (2026-07-11)
 - `complete/016A_COMPLETED_ClockAudioEngineAbstractionSplit.md` — clock source abstraction split; no-audio timing and tempo no longer use the audio abstraction (2026-07-10)
@@ -27,7 +28,6 @@
 ## Conditional Future
 
 - `future/010A_FUTURE_SoftwareVideoUploadCopyPath.md`
-- `future/011A_FUTURE_SeamlessPrimaryVideoLooping.md`
 - `future/014A_FUTURE_StreamingNetworkPlayback.md`
 - `future/015A_FUTURE_BroadVideoPipelineSplit.md`
 - `future/017A_FUTURE_DisplayRateCompositorRewrite.md`
