@@ -164,6 +164,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
     /// <inheritdoc/>
     public int PlayHandle => _streamManager.PlayHandle;
 
+    public int SourceHandle => _streamManager.DecodeHandle;
+
     /// <inheritdoc/>
     public double Duration => _streamManager.DurationSeconds;
 

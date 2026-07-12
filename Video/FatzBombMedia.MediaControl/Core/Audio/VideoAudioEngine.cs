@@ -78,6 +78,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle { get; private set; }
+    public int SourceHandle => _bassStream;
     public bool Normalize
     {
         get

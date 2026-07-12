@@ -47,6 +47,7 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 - DLS-to-SF2 conversion uses embedded Kermalis DLS2 and SoundFont2 libraries (MIT). The RIFF word-alignment bug in their `Chunk.cs` is fixed locally.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` routes tracker formats to `Bass.MusicLoad` instead of `Bass.CreateStream`.
+- MIDI karaoke lyrics (`.kar` files) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel and loaded into the existing subtitle rendering system. The presentation coordinator starts a render loop for audio-only playback when subtitles are present.
 
 ## Device-Lost Recovery
 

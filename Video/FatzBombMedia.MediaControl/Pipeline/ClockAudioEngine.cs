@@ -11,6 +11,7 @@ internal sealed class ClockAudioEngine(IClockSource clock) : IAudioEngine
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle => 0;
+    public int SourceHandle => 0;
     public bool Normalize { get; set; }
     public double NormalizationGain => 1.0;
     public bool IsNormalizationReady => true;

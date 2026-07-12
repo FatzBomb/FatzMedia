@@ -92,7 +92,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         set => Seek(value);
     }
 
-    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true;
+    public bool OpenAudio(string path) => _session.Audio?.Open(path) == true && TryLoadMidiLyrics(path);
 
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) => _session.Audio?.Open(archiveEntry) == true;
 
@@ -250,5 +250,31 @@ internal sealed class PlaybackCoordinator : IDisposable
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Failed to decode embedded subtitles: {ex.Message}", sourcePath: videoPath, innerException: ex);
         }
+    }
+
+    private bool TryLoadMidiLyrics(string audioPath)
+    {
+        if (!Core.Audio.MidiLyricExtractor.IsMidiFile(audioPath))
+            return true;
+
+        try
+        {
+            var sourceHandle = _session.Audio?.Engine.SourceHandle ?? 0;
+            var cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(sourceHandle);
+            if (cues is { Count: > 0 })
+            {
+                _ = _session.Subtitle?.LoadEmbeddedTracks(
+                [
+                    new EmbeddedSubtitleTrack(0, "MIDI Lyrics", cues),
+                ]);
+                _ = _session.Subtitle?.SelectTrack("embedded:0");
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MIDI", $"Failed to extract MIDI lyrics: {ex.Message}", sourcePath: audioPath, innerException: ex);
+        }
+
+        return true;
     }
 }

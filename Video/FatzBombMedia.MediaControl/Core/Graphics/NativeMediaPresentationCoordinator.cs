@@ -282,7 +282,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _isRenderingActive = true;
         _attachedVideo?.SetHostRenderEventDrivenPresentation(false);
 
-        if (_attachedCdg != null)
+        if (_attachedCdg != null || HasSubtitleContent)
             _presentationScheduler.Start(RenderLoop);
     }
 
@@ -328,8 +328,16 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         var nextTick = Stopwatch.GetTimestamp();
         while (!cancellationToken.IsCancellationRequested)
         {
-            _renderPipeline.RenderCdgAtCurrentPosition();
-            _ = PresentPendingCdgFrame(deferIfCompositionBusy: true);
+            if (_attachedCdg != null)
+            {
+                _renderPipeline.RenderCdgAtCurrentPosition();
+                _ = PresentPendingCdgFrame(deferIfCompositionBusy: true);
+            }
+            else if (HasSubtitleContent)
+            {
+                // Audio-only with subtitles (e.g. MIDI karaoke): refresh subtitle overlay and present.
+                _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "audio subtitle refresh");
+            }
 
             nextTick += CdgPresentationIntervalTicks;
             var delayTicks = nextTick - Stopwatch.GetTimestamp();

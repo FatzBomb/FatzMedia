@@ -18,6 +18,12 @@ public interface IAudioEngine : IDisposable
     int PlayHandle { get; }
 
     /// <summary>
+    /// Gets the raw decode/source handle (0 when closed). This is the unwrapped
+    /// BASS channel before tempo processing. Useful for MIDI marker extraction.
+    /// </summary>
+    int SourceHandle { get; }
+
+    /// <summary>
     /// Enables/disables normalization when applying volume.
     /// </summary>
     bool Normalize { get; set; }
