@@ -22,16 +22,14 @@ namespace FatzBombMedia.MediaControl.Core.Media;
 ///   premature audio EOF).
 /// </para>
 /// <para>
-/// - <b><see cref="PrepareLoopWrap"/></b>: drains remaining audio packets into
-///   the audio queue, then seeks to 0. Called by
-///   <c>VideoPipeline.TryPreSeekLoopStart</c> instead of <c>decoder.Seek(0)</c>.
-///   Preserves gapless video (position-0 frames ready immediately) AND gapless
-///   audio (near-EOF packets buffered in queue, BASS never stops).
+/// - <b><see cref="PrepareLoopWrap"/></b>: drains remaining registered-stream
+///   packets, then seeks to 0. Called by <c>VideoPipeline.TryPreSeekLoopStart</c>
+///   instead of <c>decoder.Seek(0)</c> so position-0 video frames are ready
+///   immediately. Main-pipeline audio now owns an independent demux cursor.
 /// </para>
 /// <para>
-/// - <b><see cref="ClearAudioEof"/></b>: clears audio EOF only (cursor already
-///   at 0 from <see cref="PrepareLoopWrap"/>). Called by
-///   <c>VideoAudioEngine.WrapDecoderForLoop</c>.
+/// - <b><see cref="ClearAudioEof"/></b>: retained for callers that explicitly
+///   register and share an audio stream; main-pipeline audio does not use it.
 /// </para>
 /// </remarks>
 internal sealed unsafe class SharedDemuxer : IDisposable

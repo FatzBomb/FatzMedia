@@ -222,7 +222,10 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
             return false;
         }
 
-        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex, _sharedDemuxer);
+        // Keep audio on its own FFmpeg cursor. Routing codec priming/preroll packets through the
+        // video cursor can offset startup until the first seek (reproduced with AV1 + E-AC-3).
+        // SeekCore still repositions both cursors to the same target.
+        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
         if (!_audioEngine.Open(path))
         {
             _audioEngine.Dispose();
@@ -595,8 +598,8 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
                 StopPresentationLoopAndWait();
                 WaitForPresentationIdle();
 
-                // A shared format context has one cursor. Seek it once before
-                // either consumer flushes its codec or resets playback state.
+                // Reposition the video cursor before flushing its decoder. Audio owns a separate
+                // cursor and is repositioned independently below.
                 if (_sharedDemuxer != null && _videoDecoder != null)
                     _ = _videoDecoder.SeekSharedDemuxer(target);
 
@@ -1164,10 +1167,10 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         var clockPosition = ApplyAudioVideoOffset(GetPresentationPosition());
         var selectionLeadSeconds = GetFrameSelectionLeadLimit(decoder.FramesPerSecond);
 
-        // A video-only pre-seek leaves the previous lap's tail ahead of position-zero frames.
+        // A loop pre-seek leaves the previous lap's tail ahead of position-zero frames.
         // Once the tail has presented, the next frame looks late against the still-unwrapped
-        // virtual clock; keep normal cadence until TryCommitVideoOnlyLoopWrap resets that clock.
-        if (_loopPreSeekActive && !HasAudio && nextFrame.PresentationTime < clockPosition - selectionLeadSeconds)
+        // clock; keep normal cadence until the audio or video-only wrap resets that clock.
+        if (_loopPreSeekActive && nextFrame.PresentationTime < clockPosition - selectionLeadSeconds)
             return fallbackIntervalSeconds;
 
         var waitSeconds = nextFrame.PresentationTime - selectionLeadSeconds - clockPosition;

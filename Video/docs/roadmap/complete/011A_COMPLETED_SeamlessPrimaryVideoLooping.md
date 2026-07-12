@@ -15,7 +15,8 @@ virtual playback clock reaches the loop boundary.
 2. The decoder preserves queued tail frames and refills position-zero frames behind them before the loop boundary.
 3. The virtual playback clock commits the prepared loop at the boundary without the reactive full decoder restart.
 4. Presentation keeps source cadence while position-zero frames await the virtual-clock wrap, preventing a busy spin.
-5. Audio-backed looping continues to use its existing `PrepareLoopWrap` path unchanged.
+5. Audio-backed looping keeps video proactive pre-seek while audio wraps its independent decoder without stopping the BASS channel.
+6. Follow-up compatibility fix (2026-07-12): restored an independent audio demux cursor after shared audio packet fan-out caused AV1 + E-AC-3 startup offset until first seek.
 
 ## Must Not Break
 
@@ -30,3 +31,5 @@ virtual playback clock reaches the loop boundary.
 - 208 tests pass.
 - WPF adapter boundary check passes.
 - Manual Player smoke with video-only 23.98fps media: pre-seek buffered 21 frames, wrap committed at `0.000s` with five frames queued, and no drops, late drops, or busy-spin ticks were observed.
+- Manual AV1 + E-AC-3 startup A/B isolated the offset to shared audio packet fan-out; independent audio starts synchronized.
+- Audio-backed 23.98fps loop committed at `0.014s`, continued playback, and retained bounded source cadence without busy-spin ticks.

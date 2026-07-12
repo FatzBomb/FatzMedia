@@ -825,10 +825,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (!_demuxer.IsOpen || _audioStream == null)
             return false;
 
-        // In shared-demuxer mode, the container seek is coordinated by
-        // VideoPipeline via SharedDemuxer.Seek. Here we only flush + discard.
-        // WrapDecoderForLoop also calls SeekDecoder(0) — the cursor is already
-        // at 0 (from PrepareLoopWrap), so we just clear audio's EOF flag.
+        // Shared-demuxer mode remains available for internal callers that coordinate the
+        // container seek externally. Main-pipeline audio owns its cursor and uses the seek below.
         if (!_ownsDemuxer)
         {
             _demuxer.ClearAudioEof();

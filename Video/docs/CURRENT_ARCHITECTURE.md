@@ -29,6 +29,13 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 5. Core builds the final composed frame from Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
 6. Core presents the composed frame to all active targets.
 
+## Video/Audio Demux Ownership
+
+- Main video decoding owns the Core-managed video demux cursor used for video seek, buffering, and proactive loop pre-seek.
+- `VideoAudioEngine` opens an independent FFmpeg cursor for the same source. This preserves codec priming/preroll semantics; routing initial audio packets through the video cursor caused a persistent startup offset with AV1 + E-AC-3 until the first seek.
+- Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
+- Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
+
 ## Device-Lost Recovery
 
 Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely inside Core; adapters are never involved.
