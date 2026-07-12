@@ -1,7 +1,9 @@
 using FatzBombMedia.MediaControl.Core.Files;
 using FFmpeg.AutoGen;
+using ManagedBass;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using MBass = ManagedBass.Bass;
 
 namespace FatzBombMedia.MediaControl;
 
@@ -13,7 +15,7 @@ internal static partial class Bootstrap
 
         (string dllFile, string[] extensions, bool isRequired)[] libraryFiles =
         [
-            ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav"], true),
+            ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav", ".mod", ".it", ".s3m", ".xm", ".mo3", ".mtm", ".umx"], true),
                 ("bass_fx.dll", [], true),
                 ("bass_aac.dll", [".aac", ".m4a", ".m4b"], false),
                 ("bass_ac3.dll", [".ac3"], false),
@@ -45,7 +47,11 @@ internal static partial class Bootstrap
             {
                 if (File.Exists(loadPath))
                 {
-                    if (LoadLibrary(loadPath) != IntPtr.Zero)
+                    var loaded = isRequired
+                        ? LoadLibrary(loadPath) != IntPtr.Zero
+                        : MBass.PluginLoad(loadPath) != 0;
+
+                    if (loaded)
                     {
                         FileTypes.Audio.UnionWith(extensions);
                         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"{dllFile} loaded from {loadPath}");

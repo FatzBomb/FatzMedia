@@ -10,6 +10,7 @@ dotnet restore FatzBombMedia.sln
 dotnet build FatzBombMedia.sln --no-restore
 
 # Native DLLs required (not in repo). Put x64 BASS + FFmpeg DLLs in FatzBombMedia.Player/native/
+# to run the Player. A bundled TimGM6mb.sf2 soundfont is in native/ for MIDI fallback.
 # to run the Player:
 dotnet run --project FatzBombMedia.Player
 

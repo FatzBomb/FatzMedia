@@ -72,6 +72,7 @@ public static class MediaPlayerServiceProvider
             else
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Global BASS initialized successfully on device {audioEngine.BassDeviceIndex}");
+                Core.Audio.BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
             }
 
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");

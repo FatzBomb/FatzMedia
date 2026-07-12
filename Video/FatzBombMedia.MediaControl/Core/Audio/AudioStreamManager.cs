@@ -72,9 +72,16 @@ internal sealed class AudioStreamManager : IDisposable
 
     #region Public Methods
 
+    private static readonly HashSet<string> TrackerExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".mod", ".it", ".s3m", ".xm", ".mo3", ".mtm", ".umx" };
+
+    private static bool IsTrackerFormat(string filePath) =>
+        TrackerExtensions.Contains(Path.GetExtension(filePath));
+
     /// <summary>
     /// Opens audio streams from a file path.
     /// Creates both decode and playback streams with tempo support.
+    /// Tracker formats (MOD, IT, S3M, XM, etc.) use BASS_MusicLoad instead of BASS_StreamCreateFile.
     /// </summary>
     /// <param name="filePath">Path to the audio file</param>
     /// <returns>True if streams were created successfully</returns>
@@ -86,9 +93,16 @@ internal sealed class AudioStreamManager : IDisposable
 
         try
         {
-            // Create both decode and source streams
-            DecodeHandle = MBass.CreateStream(filePath, Flags: DecodeFlags);
-            _sourceHandle = MBass.CreateStream(filePath, Flags: CreateStreamFlags);
+            if (IsTrackerFormat(filePath))
+            {
+                DecodeHandle = MBass.MusicLoad(filePath, 0, 0, DecodeFlags, 0);
+                _sourceHandle = MBass.MusicLoad(filePath, 0, 0, CreateStreamFlags, 0);
+            }
+            else
+            {
+                DecodeHandle = MBass.CreateStream(filePath, Flags: DecodeFlags);
+                _sourceHandle = MBass.CreateStream(filePath, Flags: CreateStreamFlags);
+            }
 
             if (!ValidateStreamHandles())
             {
@@ -122,16 +136,24 @@ internal sealed class AudioStreamManager : IDisposable
 
         try
         {
-            // Stream archive entry to memory with proper sizing
             var estimatedSize = (int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue);
             using var memoryStream = new MemoryStream(estimatedSize);
 
             archiveEntry.WriteTo(memoryStream);
             var audioData = memoryStream.ToArray();
 
-            // Create streams from memory buffer
-            DecodeHandle = MBass.CreateStream(audioData, 0, audioData.Length, DecodeFlags);
-            _sourceHandle = MBass.CreateStream(audioData, 0, audioData.Length, CreateStreamFlags);
+            var isTracker = IsTrackerFormat(archiveEntry.Key);
+
+            if (isTracker)
+            {
+                DecodeHandle = MBass.MusicLoad(audioData, 0, audioData.Length, DecodeFlags, 0);
+                _sourceHandle = MBass.MusicLoad(audioData, 0, audioData.Length, CreateStreamFlags, 0);
+            }
+            else
+            {
+                DecodeHandle = MBass.CreateStream(audioData, 0, audioData.Length, DecodeFlags);
+                _sourceHandle = MBass.CreateStream(audioData, 0, audioData.Length, CreateStreamFlags);
+            }
 
             if (!ValidateStreamHandles())
             {

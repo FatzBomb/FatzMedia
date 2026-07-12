@@ -163,6 +163,13 @@ public readonly record struct MediaPlayerConfiguration
     public SubtitleTextStyle SubtitleStyle { get; init; }
 
     /// <summary>
+    /// Path to a MIDI soundfont (.sf2 or .dls) to use for MIDI synthesis. When set, this path
+    /// is used regardless of any auto-detected system soundfont. When null/empty, the engine
+    /// auto-detects a suitable soundfont (e.g. Windows GS Wavetable gm.dls, or bundled fallback).
+    /// </summary>
+    public string? MidiSoundfontPath { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding and rendering.
     /// </summary>

@@ -36,6 +36,18 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 - Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
 - Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
 
+## MIDI Playback
+
+- BASS optional plugins (bassmidi, bassflac, bassopus, etc.) are loaded via `Bass.PluginLoad` so BASS recognizes their formats automatically.
+- `BassMidiSoundfontManager` resolves the default MIDI soundfont with this priority:
+  1. `MediaPlayerConfiguration.MidiSoundfontPath` (user-configured; always wins if set and exists)
+  2. Windows `gm.dls` (converted to SF2 via `DlsToSf2Converter`, cached in LocalAppData)
+  3. System `.sf2` files (sgm.sb, etc.)
+  4. Bundled `native/TimGM6mb.sf2` (5.7 MB compact GM soundfont; always present)
+- DLS-to-SF2 conversion uses embedded Kermalis DLS2 and SoundFont2 libraries (MIT). The RIFF word-alignment bug in their `Chunk.cs` is fixed locally.
+- MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
+- Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` routes tracker formats to `Bass.MusicLoad` instead of `Bass.CreateStream`.
+
 ## Device-Lost Recovery
 
 Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely inside Core; adapters are never involved.
