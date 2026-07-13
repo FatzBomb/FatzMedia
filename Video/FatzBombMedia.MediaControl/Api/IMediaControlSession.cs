@@ -49,6 +49,9 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets the selected subtitle track ID, or <see langword="null"/> when subtitles are disabled.</summary>
     string? SelectedSubtitleTrackId { get; }
 
+    /// <summary>Gets or sets whether embedded MIDI/KAR lyrics are displayed when available.</summary>
+    bool ShowMidiLyrics { get; set; }
+
     /// <summary>Gets or sets the video offset relative to the physical audio clock.</summary>
     TimeSpan AudioSyncOffset { get; set; }
 

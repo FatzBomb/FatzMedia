@@ -95,26 +95,33 @@ public static class FileTreeBuilder
             {
                 tree.AudioEntry = pairedAudio;
                 tree.CdgEntry = pairedCdg;
+                tree.VideoEntry = firstVideo;
+                tree.ImageEntry = firstImage;
                 tree.Type = FileType.AudioCdgArchive;
                 return tree;
             }
 
-            if (firstVideo != null)
-            {
-                tree.VideoEntry = firstVideo;
-                tree.Type = FileType.VideoArchive;
-                return tree;
-            }
             if (firstAudio != null)
             {
                 tree.AudioEntry = firstAudio;
+                tree.VideoEntry = firstVideo;
+                tree.ImageEntry = firstImage;
                 tree.Type = FileType.AudioArchive;
                 return tree;
             }
             if (firstCdg != null)
             {
                 tree.CdgEntry = firstCdg;
+                tree.VideoEntry = firstVideo;
+                tree.ImageEntry = firstImage;
                 tree.Type = FileType.CdgArchive;
+                return tree;
+            }
+            if (firstVideo != null)
+            {
+                tree.VideoEntry = firstVideo;
+                tree.ImageEntry = firstImage;
+                tree.Type = FileType.VideoArchive;
                 return tree;
             }
 

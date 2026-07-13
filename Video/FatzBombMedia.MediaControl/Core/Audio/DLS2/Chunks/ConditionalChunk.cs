@@ -1,8 +1,8 @@
-﻿namespace Kermalis.DLS2
-{
-	// ALL TODO:
+namespace Kermalis.DLS2;
 
-	/*public enum DLSConditional : ushort
+// ALL TODO:
+
+/*public enum DLSConditional : ushort
 	{
 		And = 1,
 		Or = 2,
@@ -33,4 +33,3 @@
 
 		}
 	}*/
-}

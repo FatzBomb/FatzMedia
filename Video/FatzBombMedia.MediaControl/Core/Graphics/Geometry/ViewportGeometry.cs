@@ -107,4 +107,27 @@ internal static class ViewportGeometry
         double viewportWidth,
         double viewportHeight)
         => DestinationRect(sourceWidth, sourceHeight, viewportWidth, viewportHeight, MediaCompositionStretchMode.UniformToFill);
+
+    public static RectD MapCanvasRegionToViewport(
+        RectD canvasRegion,
+        double canvasWidth,
+        double canvasHeight,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        var normalizedCanvasWidth = Math.Max(1, canvasWidth);
+        var normalizedCanvasHeight = Math.Max(1, canvasHeight);
+        var normalizedViewportWidth = Math.Max(1, viewportWidth);
+        var normalizedViewportHeight = Math.Max(1, viewportHeight);
+        var scale = Math.Min(
+            normalizedViewportWidth / normalizedCanvasWidth,
+            normalizedViewportHeight / normalizedCanvasHeight);
+        var canvasLeft = (normalizedViewportWidth - (normalizedCanvasWidth * scale)) / 2;
+        var canvasTop = (normalizedViewportHeight - (normalizedCanvasHeight * scale)) / 2;
+        return new RectD(
+            canvasLeft + (canvasRegion.Left * scale),
+            canvasTop + (canvasRegion.Top * scale),
+            Math.Max(1, canvasRegion.Width * scale),
+            Math.Max(1, canvasRegion.Height * scale));
+    }
 }

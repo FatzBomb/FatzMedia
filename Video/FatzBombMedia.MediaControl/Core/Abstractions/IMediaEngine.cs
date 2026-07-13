@@ -23,6 +23,7 @@ public interface IMediaEngine : IDisposable
     ISubtitleEngine? Subtitle { get; }
     IReadOnlyList<SubtitleTrack> SubtitleTracks { get; }
     string? SelectedSubtitleTrackId { get; }
+    bool ShowMidiLyrics { get; set; }
     double AudioVideoOffsetSeconds { get; }
     double CdgOffsetSeconds { get; }
     double SubtitleOffsetSeconds { get; }

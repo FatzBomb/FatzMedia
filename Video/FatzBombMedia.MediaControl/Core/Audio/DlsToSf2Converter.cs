@@ -1,6 +1,5 @@
 using Kermalis.DLS2;
 using Kermalis.SoundFont2;
-using System.Diagnostics;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;
 
@@ -69,7 +68,7 @@ internal static class DlsToSf2Converter
         sf2.InfoChunk.Engine = "Converted from DLS";
         sf2.InfoChunk.Bank = Path.GetFileNameWithoutExtension(sourcePath);
 
-        var wavePool = dls.WavePool;
+        ListChunk wavePool = dls.WavePool;
         var sampleIndexMap = new Dictionary<uint, uint>();
 
         for (uint i = 0; i < wavePool.Count; i++)
@@ -87,29 +86,29 @@ internal static class DlsToSf2Converter
             sampleIndexMap[i] = sampleIdx;
         }
 
-        var instrumentList = dls.InstrumentList;
-        for (int instIdx = 0; instIdx < instrumentList.Count; instIdx++)
+        ListChunk instrumentList = dls.InstrumentList;
+        for (var instIdx = 0; instIdx < instrumentList.Count; instIdx++)
         {
             if (instrumentList[instIdx] is not ListChunk instList || instList.Identifier != "ins ")
                 continue;
 
-            var header = FindChunk<InstrumentHeaderChunk>(instList);
+            InstrumentHeaderChunk? header = FindChunk<InstrumentHeaderChunk>(instList);
             if (header == null)
                 continue;
 
-            var locale = header.Locale;
+            MIDILocale locale = header.Locale;
             var bank = (ushort)(locale.IsDrum ? 128 : locale.CC0);
             var preset = locale.Instrument;
 
             var instName = $"Inst{instIdx}";
             var sf2InstIdx = sf2.AddInstrument(instName);
 
-            var regions = GetRegions(instList);
-            foreach (var region in regions)
+            List<ListChunk> regions = GetRegions(instList);
+            foreach (ListChunk region in regions)
             {
-                var rgnh = FindChunk<RegionHeaderChunk>(region);
-                var wlnk = FindChunk<WaveLinkChunk>(region);
-                var wsmp = FindChunk<WaveSampleChunk>(region);
+                RegionHeaderChunk? rgnh = FindChunk<RegionHeaderChunk>(region);
+                WaveLinkChunk? wlnk = FindChunk<WaveLinkChunk>(region);
+                WaveSampleChunk? wsmp = FindChunk<WaveSampleChunk>(region);
 
                 if (rgnh == null || wlnk == null)
                     continue;
@@ -180,9 +179,9 @@ internal static class DlsToSf2Converter
         loopStart = 0;
         loopLength = 0;
 
-        var fmt = FindChunk<FormatChunk>(waveList);
-        var data = FindChunk<DataChunk>(waveList);
-        var wsmp = FindChunk<WaveSampleChunk>(waveList);
+        FormatChunk? fmt = FindChunk<FormatChunk>(waveList);
+        DataChunk? data = FindChunk<DataChunk>(waveList);
+        WaveSampleChunk? wsmp = FindChunk<WaveSampleChunk>(waveList);
 
         if (fmt == null || data == null)
             return null;
@@ -216,11 +215,11 @@ internal static class DlsToSf2Converter
     private static List<ListChunk> GetRegions(ListChunk instrumentList)
     {
         var regions = new List<ListChunk>();
-        foreach (var child in instrumentList)
+        foreach (DLSChunk child in instrumentList)
         {
             if (child is ListChunk lc && lc.Identifier == "lrgn")
             {
-                foreach (var region in lc)
+                foreach (DLSChunk region in lc)
                 {
                     if (region is ListChunk rc && rc.Identifier == "rgn ")
                         regions.Add(rc);
@@ -232,7 +231,7 @@ internal static class DlsToSf2Converter
 
     private static T? FindChunk<T>(IReadOnlyList<DLSChunk> chunks) where T : DLSChunk
     {
-        foreach (var chunk in chunks)
+        foreach (DLSChunk chunk in chunks)
         {
             if (chunk is T typed)
                 return typed;

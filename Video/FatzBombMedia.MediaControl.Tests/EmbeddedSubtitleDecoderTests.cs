@@ -18,13 +18,13 @@ public class EmbeddedSubtitleDecoderTests
     [Fact]
     public void ResolveCueEnds_UsesNextCueWhenPacketDurationIsUnavailable()
     {
-        var cues = new[]
-        {
+        SubtitleCue[] cues =
+        [
             new SubtitleCue(2, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), "Second"),
             new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), "First")
-        };
+        ];
 
-        var resolved = EmbeddedSubtitleDecoder.ResolveCueEnds(cues);
+        IReadOnlyList<SubtitleCue> resolved = EmbeddedSubtitleDecoder.ResolveCueEnds(cues);
 
         Assert.Collection(
             resolved,

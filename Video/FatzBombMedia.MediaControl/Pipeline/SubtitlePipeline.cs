@@ -12,7 +12,6 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly Lock _gate = new();
     private readonly Dictionary<string, SubtitleSource> _sources = new(StringComparer.Ordinal);
-    private string? _selectedTrackId;
 
     public ISubtitleEngine Engine { get; } = engine ?? throw new ArgumentNullException(nameof(engine));
     public bool IsOpen => Engine.IsOpen;
@@ -21,7 +20,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         get
         {
             lock (_gate)
-                return _sources.Values.Select(static source => source.Track).ToArray();
+                return [.. _sources.Values.Select(static source => source.Track)];
         }
     }
 
@@ -30,8 +29,10 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         get
         {
             lock (_gate)
-                return _selectedTrackId;
+                return field;
         }
+
+        private set;
     }
 
     public bool Open(string filePath)
@@ -66,7 +67,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         }
     }
 
-    public bool LoadEmbeddedTracks(IReadOnlyList<EmbeddedSubtitleTrack> tracks)
+    public bool LoadEmbeddedTracks(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool selectFirstTrack = true)
     {
         try
         {
@@ -77,9 +78,9 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             bool shouldSelect;
             lock (_gate)
             {
-                shouldSelect = _sources.Count == 0;
+                shouldSelect = selectFirstTrack && _sources.Count == 0;
                 firstTrackId = null;
-                foreach (var track in tracks)
+                foreach (EmbeddedSubtitleTrack track in tracks)
                 {
                     var trackId = $"embedded:{track.StreamIndex}";
                     _sources[trackId] = new SubtitleSource(
@@ -115,7 +116,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         if (trackId == null)
         {
             lock (_gate)
-                _selectedTrackId = null;
+                SelectedTrackId = null;
             Engine.Close();
             return true;
         }
@@ -123,7 +124,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         SubtitleSource source;
         lock (_gate)
         {
-            if (!_sources.TryGetValue(trackId, out var found) || found is null)
+            if (!_sources.TryGetValue(trackId, out SubtitleSource? found) || found is null)
                 return false;
 
             source = found;
@@ -140,7 +141,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         }
 
         lock (_gate)
-            _selectedTrackId = trackId;
+            SelectedTrackId = trackId;
         return true;
     }
 
@@ -149,7 +150,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         lock (_gate)
         {
             _sources.Clear();
-            _selectedTrackId = null;
+            SelectedTrackId = null;
         }
 
         Engine.Close();

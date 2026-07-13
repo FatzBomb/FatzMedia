@@ -40,6 +40,10 @@ public readonly partial record struct MediaCompositionFrame
     public int SubtitleWidth { get; init; }
     public int SubtitleHeight { get; init; }
     public int SubtitleStride { get; init; }
+    public int SubtitleCanvasLeft { get; init; }
+    public int SubtitleCanvasTop { get; init; }
+    public int SubtitleCanvasWidth { get; init; }
+    public int SubtitleCanvasHeight { get; init; }
     public long SubtitleRevision { get; init; }
 
     public bool RetainedRefresh { get; init; }
@@ -112,6 +116,10 @@ public readonly partial record struct MediaCompositionFrame
             SubtitleWidth = 0,
             SubtitleHeight = 0,
             SubtitleStride = 0,
+            SubtitleCanvasLeft = 0,
+            SubtitleCanvasTop = 0,
+            SubtitleCanvasWidth = 0,
+            SubtitleCanvasHeight = 0,
             SubtitleRevision = -1,
             RetainedRefresh = false,
             Reason = reason

@@ -24,6 +24,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private const int CdgPacketsPerSector = 4;
     private const int CdgPresentationCadenceHz = CdgConstants.PacketsPerSecond / CdgPacketsPerSector;
+    private const int SubtitleCanvasWidth = 1920;
+    private const int SubtitleCanvasHeight = 1080;
     private static readonly long CdgPresentationIntervalTicks = Math.Max(1L, Stopwatch.Frequency / CdgPresentationCadenceHz);
 
     private const string DeviceLostDiagnosticCategory = "D3D11.DeviceLost";
@@ -48,6 +50,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private readonly RenderPipeline _renderPipeline;
     private readonly NativeD3D11PresentationBridge _presenter;
     private readonly SubtitleTextRenderer _subtitleTextRenderer;
+    private readonly TimeSpan _karaokeTransitionDuration;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
@@ -74,10 +77,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private bool _cdgPendingRetainedRefresh;
     private CdgRenderSnapshot? _lastCdgSnapshot;
     private string _cdgPendingReason = "cdg pending";
-    private ReadOnlyMemory<byte> _subtitleBgra = ReadOnlyMemory<byte>.Empty;
+    private SubtitleRenderResult? _subtitleOverlay;
     private string? _subtitleText;
+    private int _subtitleProgressRevision = int.MinValue;
     private long _subtitleRevision;
-    private double _lastSubtitlePresentationSeconds = double.NaN;
+    //private double _lastSubtitlePresentationSeconds = double.NaN;
     private double _lastSubtitleOffsetSeconds = double.NaN;
 
     public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
@@ -86,7 +90,8 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _configuration = configuration;
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _presenter = new NativeD3D11PresentationBridge(configuration);
-        _subtitleTextRenderer = new SubtitleTextRenderer(configuration.SubtitleStyle);
+        _subtitleTextRenderer = new SubtitleTextRenderer(configuration.SubtitleStyle, configuration.KaraokeStyle);
+        _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
         _presenter.FramePresented += OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
@@ -259,7 +264,10 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     {
         _renderPipeline.RenderCdgAtCurrentPosition(force: true);
         _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
-        PresentCurrentComposition("current position refreshed");
+        if (_attachedVideo == null && _attachedCdg == null && HasSubtitleContent)
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "current position refreshed");
+        else
+            PresentCurrentComposition("current position refreshed");
     }
 
     void IMediaRenderCoordinator.RunOnRenderThread(Action action)
@@ -282,7 +290,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _isRenderingActive = true;
         _attachedVideo?.SetHostRenderEventDrivenPresentation(false);
 
-        if (_attachedCdg != null || HasSubtitleContent)
+        if (_attachedCdg != null || (HasSubtitleContent && _attachedVideo == null))
             _presentationScheduler.Start(RenderLoop);
     }
 
@@ -333,10 +341,17 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 _renderPipeline.RenderCdgAtCurrentPosition();
                 _ = PresentPendingCdgFrame(deferIfCompositionBusy: true);
             }
-            else if (HasSubtitleContent)
+            else if (HasSubtitleContent && _attachedVideo == null)
             {
                 // Audio-only with subtitles (e.g. MIDI karaoke): refresh subtitle overlay and present.
-                _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "audio subtitle refresh");
+                if (UpdateSubtitleOverlay())
+                {
+                    _ = BuildAndPresentSoftwareComposition(
+                        0,
+                        retainedRefresh: false,
+                        "audio subtitle refresh",
+                        updateSubtitleOverlay: false);
+                }
             }
 
             nextTick += CdgPresentationIntervalTicks;
@@ -504,8 +519,6 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             {
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
-                _attachedVideo.PositionChanged -= OnVideoPositionChanged;
-                _attachedVideo.StateChanged -= OnVideoStateChanged;
             }
             catch
             {
@@ -520,26 +533,24 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _attachedVideo = _mediaEngine.Video;
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
-        _attachedVideo.PositionChanged += OnVideoPositionChanged;
-        _attachedVideo.StateChanged += OnVideoStateChanged;
     }
 
-    private void OnVideoPositionChanged(object? sender, double positionSeconds)
-    {
-        lock (_subtitleGate)
-            _lastSubtitlePresentationSeconds = double.IsFinite(positionSeconds) && positionSeconds >= 0
-                ? positionSeconds
-                : double.NaN;
-    }
+    //private void OnVideoPositionChanged(object? sender, double positionSeconds)
+    //{
+    //    lock (_subtitleGate)
+    //        _lastSubtitlePresentationSeconds = double.IsFinite(positionSeconds) && positionSeconds >= 0
+    //            ? positionSeconds
+    //            : double.NaN;
+    //}
 
-    private void OnVideoStateChanged(object? sender, VideoEngineState state)
-    {
-        if (state is not (VideoEngineState.Ready or VideoEngineState.Closed))
-            return;
+    //private void OnVideoStateChanged(object? sender, VideoEngineState state)
+    //{
+    //    if (state is not (VideoEngineState.Ready or VideoEngineState.Closed))
+    //        return;
 
-        lock (_subtitleGate)
-            _lastSubtitlePresentationSeconds = double.NaN;
-    }
+    //    lock (_subtitleGate)
+    //        _lastSubtitlePresentationSeconds = double.NaN;
+    //}
 
     private void AttachCdgIfAvailable()
     {
@@ -696,7 +707,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
         if (HasSubtitleContent)
         {
-            UpdateSubtitleOverlay();
+            _ = UpdateSubtitleOverlay();
             if (HasCachedSubtitleOverlay())
             {
                 RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + subtitle");
@@ -863,7 +874,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         string reason,
         bool deferIfCompositionBusy = false)
     {
-        UpdateSubtitleOverlay();
+        _ = UpdateSubtitleOverlay();
         MediaCompositionFrame frame;
         byte[]? rentedBackground;
         CompositionPresentResult buildResult;
@@ -922,7 +933,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
 
     private void RenderHardwareVideoCompositionFrame(VideoFrameEventArgs frame, bool forceZoomToFill, string reason)
     {
-        UpdateSubtitleOverlay();
+        _ = UpdateSubtitleOverlay();
         CdgRenderSnapshot? snapshot = null;
         uint washArgb = 0;
         if (TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? cdgSnapshot) && cdgSnapshot != null)
@@ -945,6 +956,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             _compositionBackgroundStretchMode = stretch;
             _compositionBackgroundIsRetainedGpu = true;
             var backgroundRevision = ++_compositionBackgroundRevision;
+            SubtitleRenderResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
             compositionFrame = new MediaCompositionFrame
             {
@@ -963,10 +975,14 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 BackgroundRevision = backgroundRevision,
                 WashArgb = washArgb,
                 CdgOverlay = snapshot,
-                SubtitleBgra = GetCachedSubtitleOverlay(out var subtitleWidth, out var subtitleHeight, out var subtitleStride, out var subtitleRevision),
-                SubtitleWidth = subtitleWidth,
-                SubtitleHeight = subtitleHeight,
-                SubtitleStride = subtitleStride,
+                SubtitleBgra = subtitleOverlay?.Pixels ?? ReadOnlyMemory<byte>.Empty,
+                SubtitleWidth = subtitleOverlay?.Width ?? 0,
+                SubtitleHeight = subtitleOverlay?.Height ?? 0,
+                SubtitleStride = subtitleOverlay?.Stride ?? 0,
+                SubtitleCanvasLeft = subtitleOverlay?.CanvasLeft ?? 0,
+                SubtitleCanvasTop = subtitleOverlay?.CanvasTop ?? 0,
+                SubtitleCanvasWidth = subtitleOverlay?.CanvasWidth ?? 0,
+                SubtitleCanvasHeight = subtitleOverlay?.CanvasHeight ?? 0,
                 SubtitleRevision = subtitleRevision,
                 Reason = reason
             };
@@ -1095,6 +1111,12 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             return;
         }
 
+        if (HasSubtitleContent)
+        {
+            _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: true, reason);
+            return;
+        }
+
         _ = PresentMediaComposition(MediaCompositionFrame.Empty(
             MediaCompositionClearMode.Transparent,
             0x00000000,
@@ -1130,9 +1152,11 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         uint washArgb,
         bool retainedRefresh,
         string reason,
-        double? subtitlePositionSeconds = null)
+        double? subtitlePositionSeconds = null,
+        bool updateSubtitleOverlay = true)
     {
-        UpdateSubtitleOverlay(subtitlePositionSeconds);
+        if (updateSubtitleOverlay)
+            _ = UpdateSubtitleOverlay(subtitlePositionSeconds);
         MediaCompositionFrame frame;
         byte[]? rentedBackground;
         lock (_lock)
@@ -1223,7 +1247,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             }
         }
 
-        var subtitleBgra = GetCachedSubtitleOverlay(out var subtitleWidth, out var subtitleHeight, out var subtitleStride, out var subtitleRevision);
+        SubtitleRenderResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
         return new MediaCompositionFrame
         {
@@ -1239,10 +1263,14 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             UseRetainedBackground = hasRetainedGpuBackground,
             WashArgb = washArgb,
             CdgOverlay = cdgOverlay,
-            SubtitleBgra = subtitleBgra,
-            SubtitleWidth = subtitleWidth,
-            SubtitleHeight = subtitleHeight,
-            SubtitleStride = subtitleStride,
+            SubtitleBgra = subtitleOverlay?.Pixels ?? ReadOnlyMemory<byte>.Empty,
+            SubtitleWidth = subtitleOverlay?.Width ?? 0,
+            SubtitleHeight = subtitleOverlay?.Height ?? 0,
+            SubtitleStride = subtitleOverlay?.Stride ?? 0,
+            SubtitleCanvasLeft = subtitleOverlay?.CanvasLeft ?? 0,
+            SubtitleCanvasTop = subtitleOverlay?.CanvasTop ?? 0,
+            SubtitleCanvasWidth = subtitleOverlay?.CanvasWidth ?? 0,
+            SubtitleCanvasHeight = subtitleOverlay?.CanvasHeight ?? 0,
             SubtitleRevision = subtitleRevision,
             RetainedRefresh = retainedRefresh,
             Reason = reason
@@ -1250,7 +1278,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     }
 
     // Direct2D/WIC work stays outside the coordinator lock so text changes cannot stall transport.
-    private void UpdateSubtitleOverlay(double? presentationPositionSeconds = null)
+    private bool UpdateSubtitleOverlay(double? presentationPositionSeconds = null)
     {
         lock (_subtitleGate)
         {
@@ -1259,63 +1287,59 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 : _mediaEngine.Position;
             var subtitleOffset = _mediaEngine.SubtitleOffsetSeconds;
             if (!double.IsFinite(_lastSubtitleOffsetSeconds) || Math.Abs(subtitleOffset - _lastSubtitleOffsetSeconds) > 0.0001)
-            {
-                _lastSubtitlePresentationSeconds = double.NaN;
                 _lastSubtitleOffsetSeconds = subtitleOffset;
-            }
 
             subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
-            if (double.IsFinite(_lastSubtitlePresentationSeconds) && subtitlePosition < _lastSubtitlePresentationSeconds)
-                subtitlePosition = _lastSubtitlePresentationSeconds;
-            else
-                _lastSubtitlePresentationSeconds = subtitlePosition;
 
-            var activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
+            IReadOnlyList<SubtitleCue> activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
             var text = activeCues.Count == 0 ? null : string.Join("\n", activeCues.Select(static cue => cue.Text));
-            if (string.Equals(text, _subtitleText, StringComparison.Ordinal))
-                return;
+            KaraokeCueTiming? karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
+            var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
+            var progressRevision = karaokeTiming?.GetProgressRevision(subtitleTime, _karaokeTransitionDuration) ?? int.MinValue;
+            if (string.Equals(text, _subtitleText, StringComparison.Ordinal)
+                && progressRevision == _subtitleProgressRevision)
+                return false;
 
             _subtitleText = text;
-            _subtitleBgra = ReadOnlyMemory<byte>.Empty;
+            _subtitleProgressRevision = progressRevision;
+            _subtitleOverlay = null;
             _subtitleRevision++;
             if (string.IsNullOrWhiteSpace(text))
-                return;
+                return true;
 
             try
             {
-                _subtitleBgra = _subtitleTextRenderer.Render(text, 1920, 1080);
+                _subtitleOverlay = karaokeTiming == null
+                    ? _subtitleTextRenderer.Render(text, SubtitleCanvasWidth, SubtitleCanvasHeight)
+                    : _subtitleTextRenderer.RenderKaraoke(karaokeTiming, subtitleTime, SubtitleCanvasWidth, SubtitleCanvasHeight);
             }
             catch (Exception ex)
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Text rasterization failed: {ex.Message}", innerException: ex);
             }
+
+            return true;
         }
     }
 
     private bool HasCachedSubtitleOverlay()
     {
         lock (_subtitleGate)
-            return !_subtitleBgra.IsEmpty;
+            return _subtitleOverlay is { Pixels.IsEmpty: false };
     }
 
-    private ReadOnlyMemory<byte> GetCachedSubtitleOverlay(out int width, out int height, out int stride, out long revision)
+    private SubtitleRenderResult? GetCachedSubtitleOverlay(out long revision)
     {
         lock (_subtitleGate)
         {
-            if (_subtitleBgra.IsEmpty)
+            if (_subtitleOverlay is not { Pixels.IsEmpty: false } overlay)
             {
-                width = 0;
-                height = 0;
-                stride = 0;
                 revision = -1;
-                return ReadOnlyMemory<byte>.Empty;
+                return null;
             }
 
-            width = 1920;
-            height = 1080;
-            stride = width * 4;
             revision = _subtitleRevision;
-            return _subtitleBgra;
+            return overlay;
         }
     }
 
@@ -1383,6 +1407,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         ClearPendingCdgPresentation();
         lock (_cdgPresentationGate)
             _lastCdgSnapshot = null;
+        InvalidateSubtitleOverlayCache();
 
         lock (_lock)
         {
@@ -1392,6 +1417,17 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 MediaCompositionClearMode.Transparent,
                 0x00000000,
                 reason));
+        }
+    }
+
+    private void InvalidateSubtitleOverlayCache()
+    {
+        lock (_subtitleGate)
+        {
+            _subtitleText = null;
+            _subtitleProgressRevision = int.MinValue;
+            _subtitleOverlay = null;
+            _lastSubtitleOffsetSeconds = double.NaN;
         }
     }
 

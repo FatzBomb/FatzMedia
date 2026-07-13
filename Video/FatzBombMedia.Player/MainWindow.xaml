@@ -363,6 +363,11 @@
                             Margin="8,0,0,0"
                             Content="Loop Playback"
                             IsChecked="{Binding LoopPlayback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox
+                            Margin="8,0,0,0"
+                            Content="MIDI Lyrics"
+                            IsChecked="{Binding ShowMidiLyrics, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            ToolTip="Show embedded lyrics from KAR, MID, and MIDI files" />
                     </StackPanel>
 
                     <Grid

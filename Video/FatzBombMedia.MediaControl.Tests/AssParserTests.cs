@@ -9,7 +9,7 @@ public class AssParserTests
     {
         const string ass = "[Events]\nDialogue: 0,0:00:01.25,0:00:03.50,Default,,0,0,0,,{\\an8}First\\NSecond\n";
 
-        var cue = Assert.Single(AssParser.Parse(ass));
+        SubtitleCue cue = Assert.Single(AssParser.Parse(ass));
 
         Assert.Equal(TimeSpan.FromMilliseconds(1250), cue.Start);
         Assert.Equal(TimeSpan.FromMilliseconds(3500), cue.End);
@@ -25,8 +25,5 @@ public class AssParserTests
     }
 
     [Fact]
-    public void NormalizeDialogueText_StripsEmbeddedAssFormatting()
-    {
-        Assert.Equal("First\nSecond", AssParser.NormalizeDialogueText("{\\an8}First\\NSecond"));
-    }
+    public void NormalizeDialogueText_StripsEmbeddedAssFormatting() => Assert.Equal("First\nSecond", AssParser.NormalizeDialogueText("{\\an8}First\\NSecond"));
 }

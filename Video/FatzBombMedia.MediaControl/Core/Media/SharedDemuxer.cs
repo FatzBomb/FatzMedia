@@ -77,7 +77,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         {
             if (_videoPackets.Count > 0)
             {
-                AVPacket* buffered = (AVPacket*)_videoPackets.Dequeue();
+                var buffered = (AVPacket*)_videoPackets.Dequeue();
                 ffmpeg.av_packet_move_ref(packet, buffered);
                 ffmpeg.av_packet_free(&buffered);
                 return 0;
@@ -94,7 +94,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
             {
                 while (true)
                 {
-                    int result = _demuxer.ReadPacket(temp);
+                    var result = _demuxer.ReadPacket(temp);
                     if (result < 0)
                     {
                         if (result == ffmpeg.AVERROR_EOF)
@@ -134,7 +134,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         {
             if (_audioPackets.Count > 0)
             {
-                AVPacket* buffered = (AVPacket*)_audioPackets.Dequeue();
+                var buffered = (AVPacket*)_audioPackets.Dequeue();
                 ffmpeg.av_packet_move_ref(packet, buffered);
                 ffmpeg.av_packet_free(&buffered);
                 return 0;
@@ -151,7 +151,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
             {
                 while (true)
                 {
-                    int result = _demuxer.ReadPacket(temp);
+                    var result = _demuxer.ReadPacket(temp);
                     if (result < 0)
                     {
                         if (result == ffmpeg.AVERROR_EOF)
@@ -188,7 +188,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         {
             if (_subtitlePackets.Count > 0)
             {
-                AVPacket* buffered = (AVPacket*)_subtitlePackets.Dequeue();
+                var buffered = (AVPacket*)_subtitlePackets.Dequeue();
                 ffmpeg.av_packet_move_ref(packet, buffered);
                 ffmpeg.av_packet_free(&buffered);
                 return 0;
@@ -205,7 +205,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
             {
                 while (true)
                 {
-                    int result = _demuxer.ReadPacket(temp);
+                    var result = _demuxer.ReadPacket(temp);
                     if (result < 0)
                     {
                         if (result == ffmpeg.AVERROR_EOF)
@@ -366,7 +366,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     {
         while (queue.Count > 0)
         {
-            AVPacket* pkt = (AVPacket*)queue.Dequeue();
+            var pkt = (AVPacket*)queue.Dequeue();
             ffmpeg.av_packet_free(&pkt);
         }
     }

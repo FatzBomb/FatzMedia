@@ -38,8 +38,6 @@ internal sealed unsafe class VideoDecoder(
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
-    private int _videoIndex = -1;
-
     private AVFrame* _videoFrame;
     private AVFrame* _softwareFrame;
     private AVPacket* _packet;
@@ -65,7 +63,7 @@ internal sealed unsafe class VideoDecoder(
     public IntPtr D3D11DeviceContextPointer { get; private set; }
     public bool EndOfStream { get; private set; }
     public int MaxFrames { get; private set; } = MaxFramesCap;
-    internal int VideoStreamIndex => _videoIndex;
+    internal int VideoStreamIndex { get; private set; } = -1;
 
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
@@ -120,12 +118,12 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen && !_demuxer.Open(path))
             return false;
 
-        _videoIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
-        if (_videoIndex < 0) { Close(); return false; }
+        VideoStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
+        if (VideoStreamIndex < 0) { Close(); return false; }
 
-        _demuxer.RegisterVideoStream(_videoIndex);
+        _demuxer.RegisterVideoStream(VideoStreamIndex);
 
-        _videoStream = _demuxer.GetStream(_videoIndex);
+        _videoStream = _demuxer.GetStream(VideoStreamIndex);
 
         // Discard non-video streams so av_read_frame only returns video packets — but
         // only when we own the demuxer (single-stream mode: background video, hardware
@@ -135,7 +133,7 @@ internal sealed unsafe class VideoDecoder(
         {
             for (uint i = 0; i < _demuxer.StreamCount; i++)
             {
-                if ((int)i != _videoIndex)
+                if ((int)i != VideoStreamIndex)
                     _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
             }
         }
@@ -182,7 +180,7 @@ internal sealed unsafe class VideoDecoder(
             return false; // Error
         }
 
-        var isVideoPacket = _packet->stream_index == _videoIndex;
+        var isVideoPacket = _packet->stream_index == VideoStreamIndex;
         var frameDecoded = false;
         if (isVideoPacket)
         {
@@ -950,7 +948,7 @@ internal sealed unsafe class VideoDecoder(
         ClearFrameQueue();
 
         _videoStream = null;
-        _videoIndex = -1;
+        VideoStreamIndex = -1;
         _streamStartSeconds = 0;
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
@@ -1031,7 +1029,7 @@ internal sealed unsafe class VideoDecoder(
 
         var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
         var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
-        return _demuxer.Seek(_videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) >= 0;
+        return _demuxer.Seek(VideoStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) >= 0;
     }
 
     public void Flush(bool clearQueue = true)
@@ -1088,7 +1086,7 @@ internal sealed unsafe class VideoDecoder(
 
         var streamStartSeconds = _streamStartInitialized ? _streamStartSeconds : GetStreamStartSeconds(_videoStream);
         var timestamp = (long)((target + streamStartSeconds) / ffmpeg.av_q2d(_videoStream->time_base));
-        if (_demuxer.Seek(_videoIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+        if (_demuxer.Seek(VideoStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
             return false;
 
         Flush(clearQueue: !preserveQueue);

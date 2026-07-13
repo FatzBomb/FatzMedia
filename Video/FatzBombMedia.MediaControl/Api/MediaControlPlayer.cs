@@ -122,6 +122,19 @@ public class MediaControlPlayer : IMediaControlSession
 
     public string? SelectedSubtitleTrackId => _mediaEngine.SelectedSubtitleTrackId;
 
+    public bool ShowMidiLyrics
+    {
+        get => _mediaEngine.ShowMidiLyrics;
+        set
+        {
+            if (_mediaEngine.ShowMidiLyrics == value)
+                return;
+
+            _mediaEngine.ShowMidiLyrics = value;
+            _presentationCoordinator.RefreshCurrentPosition();
+        }
+    }
+
     public TimeSpan AudioSyncOffset
     {
         get => TimeSpan.FromSeconds(_mediaEngine.AudioVideoOffsetSeconds);

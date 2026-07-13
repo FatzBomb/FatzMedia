@@ -28,7 +28,7 @@ internal static class SrtParser
 
             fallbackSequence = Math.Max(fallbackSequence + 1, sequence + 1);
 
-            if (!TryParseTiming(timingLine, out var start, out var end) || end <= start)
+            if (!TryParseTiming(timingLine, out TimeSpan start, out TimeSpan end) || end <= start)
             {
                 SkipCueBody(reader);
                 continue;
@@ -75,12 +75,7 @@ internal static class SrtParser
         start = default;
         end = default;
         var separator = line.IndexOf("-->", StringComparison.Ordinal);
-        if (separator < 0)
-        {
-            return false;
-        }
-
-        return TryParseTimestamp(line[..separator], out start)
+        return separator >= 0 && TryParseTimestamp(line[..separator], out start)
             && TryParseTimestamp(line[(separator + 3)..], out end);
     }
 

@@ -43,4 +43,18 @@ public class SubtitleEngineTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void GetActiveCues_BackwardPositionQueryReturnsEarlierCue()
+    {
+        using var engine = new SubtitleEngine();
+        engine.LoadCues(
+        [
+            new SubtitleCue(0, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), "Earlier"),
+            new SubtitleCue(1, TimeSpan.FromSeconds(50), TimeSpan.FromSeconds(60), "Later"),
+        ]);
+
+        Assert.Equal("Later", Assert.Single(engine.GetActiveCues(55)).Text);
+        Assert.Equal("Earlier", Assert.Single(engine.GetActiveCues(7)).Text);
+    }
 }

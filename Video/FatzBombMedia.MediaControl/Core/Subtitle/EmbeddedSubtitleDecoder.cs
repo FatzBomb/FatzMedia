@@ -18,7 +18,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         if (!demuxer.Open(path))
             return [];
 
-        var streams = FindTextSubtitleStreams(demuxer);
+        Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)> streams = FindTextSubtitleStreams(demuxer);
         if (streams.Count == 0)
             return [];
 
@@ -39,18 +39,17 @@ internal static unsafe class EmbeddedSubtitleDecoder
             var cuesByStream = streams.Keys.ToDictionary(static index => index, static _ => new List<SubtitleCue>());
             while (demuxer.ReadPacket(packet) >= 0)
             {
-                if (streams.TryGetValue(packet->stream_index, out var stream))
+                if (streams.TryGetValue(packet->stream_index, out (AVRational TimeBase, AVCodecID CodecId) stream))
                     TryAddCue(packet, stream.TimeBase, stream.CodecId, playbackStartSeconds, cuesByStream[packet->stream_index]);
 
                 ffmpeg.av_packet_unref(packet);
             }
 
-            return streams.Select(stream => new EmbeddedSubtitleTrack(
+            return [.. streams.Select(stream => new EmbeddedSubtitleTrack(
                     stream.Key,
                     GetCodecName(stream.Value.CodecId),
                     ResolveCueEnds(cuesByStream[stream.Key])))
-                .Where(static track => track.Cues.Count > 0)
-                .ToArray();
+                .Where(static track => track.Cues.Count > 0)];
         }
         finally
         {
@@ -63,7 +62,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         var streams = new Dictionary<int, (AVRational TimeBase, AVCodecID CodecId)>();
         for (uint index = 0; index < demuxer.StreamCount; index++)
         {
-            var stream = demuxer.GetStream((int)index);
+            AVStream* stream = demuxer.GetStream((int)index);
             if (stream != null
                 && stream->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_SUBTITLE
                 && IsSupportedTextCodec(stream->codecpar->codec_id))
@@ -89,9 +88,9 @@ internal static unsafe class EmbeddedSubtitleDecoder
     {
         // VideoPipeline uses VideoAudioEngine.Position when audio exists. VideoAudioEngine subtracts
         // its audio stream start time, so embedded cues must use that same origin to stay in sync.
-        foreach (var mediaType in new[] { AVMediaType.AVMEDIA_TYPE_AUDIO, AVMediaType.AVMEDIA_TYPE_VIDEO })
+        foreach (AVMediaType mediaType in new[] { AVMediaType.AVMEDIA_TYPE_AUDIO, AVMediaType.AVMEDIA_TYPE_VIDEO })
         {
-            var stream = demuxer.GetStream(demuxer.FindBestStream(mediaType));
+            AVStream* stream = demuxer.GetStream(demuxer.FindBestStream(mediaType));
             if (stream != null && stream->start_time != ffmpeg.AV_NOPTS_VALUE)
                 return stream->start_time * ffmpeg.av_q2d(stream->time_base);
         }
@@ -111,7 +110,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         var startSeconds = NormalizeTimestampSeconds(packet->pts, timeBase, playbackStartSeconds);
         var durationSeconds = packet->duration > 0 ? packet->duration * ffmpeg.av_q2d(timeBase) : 0;
         var start = TimeSpan.FromSeconds(Math.Max(0, startSeconds));
-        var end = durationSeconds > 0
+        TimeSpan end = durationSeconds > 0
             ? TimeSpan.FromSeconds(Math.Max(start.TotalSeconds + 0.1, start.TotalSeconds + durationSeconds))
             : start;
         cues.Add(new SubtitleCue(cues.Count + 1, start, end, text));
@@ -122,18 +121,16 @@ internal static unsafe class EmbeddedSubtitleDecoder
 
     internal static IReadOnlyList<SubtitleCue> ResolveCueEnds(IReadOnlyList<SubtitleCue> cues)
     {
-        var ordered = cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence).ToArray();
+        SubtitleCue[] ordered = [.. cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence)];
         var resolved = new SubtitleCue[ordered.Length];
         for (var index = 0; index < ordered.Length; index++)
         {
-            var cue = ordered[index];
-            var end = cue.End;
+            SubtitleCue cue = ordered[index];
+            TimeSpan end = cue.End;
             if (end <= cue.Start)
-            {
                 end = index + 1 < ordered.Length && ordered[index + 1].Start > cue.Start
                     ? ordered[index + 1].Start
                     : cue.Start + TimeSpan.FromSeconds(3);
-            }
 
             resolved[index] = cue with { Sequence = index + 1, End = end };
         }
@@ -149,10 +146,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
                 return string.Empty;
 
             var textLength = BinaryPrimitives.ReadUInt16BigEndian(payload);
-            if (textLength > payload.Length - 2)
-                return string.Empty;
-
-            return Encoding.UTF8.GetString(payload.Slice(2, textLength)).Trim();
+            return textLength > payload.Length - 2 ? string.Empty : Encoding.UTF8.GetString(payload.Slice(2, textLength)).Trim();
         }
 
         var text = Encoding.UTF8.GetString(payload).Trim('\0', '\r', '\n', ' ');

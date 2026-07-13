@@ -25,7 +25,7 @@ internal static class MediaBackgroundResolver
         {
             MediaBackgroundKind? kind = GetBackgroundKind(entry.Key);
             if (kind != null)
-                matches.Add(MediaBackgroundMatch.FromArchiveEntry(kind.Value, entry));
+                matches.Add(MediaBackgroundMatch.FromArchiveEntry(kind.Value, sourcePath, entry.Key));
         }
 
         CollectSidecarBackgrounds(sourcePath, matches);
@@ -87,14 +87,22 @@ internal static class MediaBackgroundResolver
 
     private static HashSet<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
-    private readonly record struct MediaBackgroundMatch(MediaBackgroundKind Kind, string? Path, IArchiveEntryInfo? Entry)
+    private readonly record struct MediaBackgroundMatch(
+        MediaBackgroundKind Kind,
+        string? Path,
+        string? ArchivePath,
+        string? ArchiveEntryKey)
     {
-        public static MediaBackgroundMatch FromPath(MediaBackgroundKind kind, string path) => new(kind, path, Entry: null);
+        public static MediaBackgroundMatch FromPath(MediaBackgroundKind kind, string path) =>
+            new(kind, path, ArchivePath: null, ArchiveEntryKey: null);
 
-        public static MediaBackgroundMatch FromArchiveEntry(MediaBackgroundKind kind, IArchiveEntryInfo entry) => new(kind, Path: null, entry);
+        public static MediaBackgroundMatch FromArchiveEntry(
+            MediaBackgroundKind kind,
+            string archivePath,
+            string entryKey) => new(kind, Path: null, archivePath, entryKey);
 
-        public MediaBackgroundCandidate ToCandidate() => Entry != null
-            ? MediaBackgroundCandidate.FromArchiveEntry(Kind, Entry)
+        public MediaBackgroundCandidate ToCandidate() => ArchivePath != null && ArchiveEntryKey != null
+            ? MediaBackgroundCandidate.FromArchiveEntryReference(Kind, ArchivePath, ArchiveEntryKey)
             : MediaBackgroundCandidate.FromPath(Kind, Path!);
     }
 }

@@ -7,7 +7,9 @@ namespace FatzBombMedia.MediaControl.Pipeline;
 
 internal sealed class PlaybackCoordinator : IDisposable
 {
+    private const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
     private readonly MediaSession _session;
+    private readonly TimeSpan _karaokeTransitionDuration;
 
     public PlaybackCoordinator(
         IAudioEngine audioEngine,
@@ -17,6 +19,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         bool ownsAudioEngine = false)
     {
         _session = new MediaSession();
+        _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
         var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
         var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
         var subtitle = new SubtitlePipeline(subtitleEngine, _session.State);
@@ -44,6 +47,25 @@ internal sealed class PlaybackCoordinator : IDisposable
     public ISubtitleEngine? Subtitle => _session.Subtitle?.IsOpen == true ? _session.Subtitle.Engine : null;
     public IReadOnlyList<SubtitleTrack> SubtitleTracks => _session.Subtitle?.Tracks ?? [];
     public string? SelectedSubtitleTrackId => _session.Subtitle?.SelectedTrackId;
+    public bool ShowMidiLyrics
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+
+            field = value;
+            SubtitleTrack? midiTrack = SubtitleTracks.FirstOrDefault(static track => track.DisplayName == MidiLyricsDisplayName);
+            if (midiTrack == null)
+                return;
+
+            if (value)
+                _ = _session.Subtitle?.SelectTrack(midiTrack.Id);
+            else if (SelectedSubtitleTrackId == midiTrack.Id)
+                _ = _session.Subtitle?.SelectTrack(null);
+        }
+    } = true;
     public double AudioVideoOffsetSeconds => _session.Sync.AudioVideoOffsetSeconds;
     public double CdgOffsetSeconds => _session.Sync.CdgOffsetSeconds;
     public double SubtitleOffsetSeconds => _session.Sync.SubtitleOffsetSeconds;
@@ -242,7 +264,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     {
         try
         {
-            var tracks = EmbeddedSubtitleDecoder.DecodeTracks(videoPath);
+            IReadOnlyList<EmbeddedSubtitleTrack> tracks = EmbeddedSubtitleDecoder.DecodeTracks(videoPath);
             if (tracks.Count > 0)
                 _ = _session.Subtitle?.LoadEmbeddedTracks(tracks);
         }
@@ -260,14 +282,14 @@ internal sealed class PlaybackCoordinator : IDisposable
         try
         {
             var sourceHandle = _session.Audio?.Engine.SourceHandle ?? 0;
-            var cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(sourceHandle);
+            IReadOnlyList<SubtitleCue>? cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(sourceHandle, _karaokeTransitionDuration);
             if (cues is { Count: > 0 })
             {
                 _ = _session.Subtitle?.LoadEmbeddedTracks(
                 [
                     new EmbeddedSubtitleTrack(0, "MIDI Lyrics", cues),
-                ]);
-                _ = _session.Subtitle?.SelectTrack("embedded:0");
+                ],
+                selectFirstTrack: ShowMidiLyrics);
             }
         }
         catch (Exception ex)

@@ -18,6 +18,10 @@ public sealed record MediaCompositionLayer
     public int Width { get; init; }
     public int Height { get; init; }
     public int Stride { get; init; }
+    public int CanvasLeft { get; init; }
+    public int CanvasTop { get; init; }
+    public int CanvasWidth { get; init; }
+    public int CanvasHeight { get; init; }
     public MediaCompositionStretchMode StretchMode { get; init; } = MediaCompositionStretchMode.UniformFit;
     public double Opacity { get; init; } = 1.0d;
     public uint ColorArgb { get; init; }

@@ -183,6 +183,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool ShowMidiLyrics
+    {
+        get;
+        set
+        {
+            if (!SetProperty(ref field, value)) return;
+            if (Player is { } player)
+                player.ShowMidiLyrics = field;
+        }
+    } = true;
+
     public VideoDisplayMode VideoDisplayMode
     {
         get;
@@ -286,13 +297,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _isSeekPreviewActive = false;
         SuppressPositionRefresh();
+        _ = Player?.Seek(SeekPositionSeconds);
     }
 
     public void CancelSeekPreview()
-    {
-        _isSeekPreviewActive = false;
-        SuppressPositionRefresh();
-    }
+        => EndSeekPreview();
 
     private async Task InitializePlayerAsync()
     {
@@ -309,7 +318,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             {
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
-                EnableVerboseLogging = true
+                EnableVerboseLogging = false
             };
 
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);
@@ -326,6 +335,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Effects.Tempo = Tempo;
             player.PlayOnLoad = AutoPlay;
             player.LoopMedia = LoopPlayback;
+            player.ShowMidiLyrics = ShowMidiLyrics;
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             Player = player;
             RefreshSyncOffsets();
@@ -405,7 +415,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (Player is not { } player || string.IsNullOrWhiteSpace(command))
             return;
 
-        var offset = command switch
+        TimeSpan? offset = command switch
         {
             "audio:-" => player.AdjustAudioSyncOffset(-1),
             "audio:+" => player.AdjustAudioSyncOffset(1),
@@ -413,7 +423,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             "cdg:+" => player.AdjustCdgSyncOffset(1),
             "subtitle:-" => player.AdjustSubtitleSyncOffset(-1),
             "subtitle:+" => player.AdjustSubtitleSyncOffset(1),
-            _ => (TimeSpan?)null
+            _ => null
         };
 
         if (offset is null)

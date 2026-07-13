@@ -20,16 +20,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
     private readonly Lock _sync = new();
     private readonly SharedDemuxer _demuxer;
     private readonly bool _ownsDemuxer;
-#pragma warning disable IDE0044 // Pointer fields used with fixed statement; cannot be readonly.
     private AVCodecContext* _codecContext;
     private AVStream* _audioStream;
     private SwrContext* _resampler;
     private AVFrame* _frame;
-#pragma warning restore IDE0044
-    private int _audioStreamIndex = -1;
     private byte* _audioBuffer;
     private int _audioBufferSize;
-    private int _bassStream;
     private int _sampleRate;
     private int _sourceChannels;
     private int _channels;
@@ -78,7 +74,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle { get; private set; }
-    public int SourceHandle => _bassStream;
+    public int SourceHandle { get; private set; }
     public bool Normalize
     {
         get
@@ -163,7 +159,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     public bool Init(int device = -1, int sampleRate = 44100) => true;
 
-    internal int AudioStreamIndex => _audioStreamIndex;
+    internal int AudioStreamIndex { get; private set; } = -1;
 
     public VideoAudioEngine() : this(new BassOutputLatencyProvider())
     {
@@ -203,7 +199,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         return corrected < 0 ? 0 : corrected;
     }
 
-    private bool IsOpenCore => _demuxer.IsOpen && _audioStreamIndex >= 0 && PlayHandle != 0;
+    private bool IsOpenCore => _demuxer.IsOpen && AudioStreamIndex >= 0 && PlayHandle != 0;
 
     // The raw BASS channel position, never reset across a loop wrap (only Seek/Stop touch
     // _positionBaseSeconds or the channel's own position counter). This is the timeline that
@@ -269,16 +265,16 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             if (!_demuxer.IsOpen && !_demuxer.Open(filePath))
                 return false;
 
-            _audioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
-            if (_audioStreamIndex < 0)
+            AudioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
+            if (AudioStreamIndex < 0)
             {
                 CloseCore();
                 return false;
             }
 
-            _demuxer.RegisterAudioStream(_audioStreamIndex);
+            _demuxer.RegisterAudioStream(AudioStreamIndex);
 
-            _audioStream = _demuxer.GetStream(_audioStreamIndex);
+            _audioStream = _demuxer.GetStream(AudioStreamIndex);
             _streamStartSeconds = GetStreamStartSeconds(_audioStream);
             if (!InitializeDecoder() || !CreateBassStreams())
             {
@@ -443,8 +439,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             _ = Bass.ChannelSetPosition(PlayHandle, 0);
         }
 
-        if (_bassStream != 0)
-            _ = Bass.ChannelSetPosition(_bassStream, 0);
+        if (SourceHandle != 0)
+            _ = Bass.ChannelSetPosition(SourceHandle, 0);
 
         ResetAudioBufferTracking();
         _ = SeekDecoder(0);
@@ -475,8 +471,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             _ = Bass.ChannelSetPosition(PlayHandle, 0);
         }
 
-        if (_bassStream != 0)
-            _ = Bass.ChannelSetPosition(_bassStream, 0);
+        if (SourceHandle != 0)
+            _ = Bass.ChannelSetPosition(SourceHandle, 0);
 
         if (!SeekDecoder(target))
             return false;
@@ -531,10 +527,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             PlayHandle = 0;
         }
 
-        if (_bassStream != 0)
+        if (SourceHandle != 0)
         {
-            _ = Bass.StreamFree(_bassStream);
-            _bassStream = 0;
+            _ = Bass.StreamFree(SourceHandle);
+            SourceHandle = 0;
         }
 
         if (_audioBuffer != null)
@@ -571,7 +567,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
             _demuxer.Close();
 
         _audioStream = null;
-        _audioStreamIndex = -1;
+        AudioStreamIndex = -1;
         _streamStartSeconds = 0;
         _discardAudioBeforeSeconds = null;
         _positionBaseSeconds = 0;
@@ -692,14 +688,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         if (_channels == 1)
             flags |= BassFlags.Mono;
 
-        _bassStream = Bass.CreateStream(_sampleRate, _channels, flags, StreamProcedureType.Push);
-        if (_bassStream == 0)
+        SourceHandle = Bass.CreateStream(_sampleRate, _channels, flags, StreamProcedureType.Push);
+        if (SourceHandle == 0)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create BASS push stream: {Bass.LastError}");
             return false;
         }
 
-        PlayHandle = BassFx.TempoCreate(_bassStream, BassFlags.Default);
+        PlayHandle = BassFx.TempoCreate(SourceHandle, BassFlags.Default);
         if (PlayHandle == 0)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create tempo stream: {Bass.LastError}");
@@ -800,7 +796,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         try
         {
             Marshal.Copy((IntPtr)output, data, 0, byteCount);
-            var written = Bass.StreamPutData(_bassStream, data, byteCount);
+            var written = Bass.StreamPutData(SourceHandle, data, byteCount);
             if (written > 0)
             {
                 _pushedAudioFrameCount++;
@@ -838,7 +834,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         }
 
         var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
-        if (_demuxer.Seek(_audioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+        if (_demuxer.Seek(AudioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
             return false;
 
         if (_codecContext != null)

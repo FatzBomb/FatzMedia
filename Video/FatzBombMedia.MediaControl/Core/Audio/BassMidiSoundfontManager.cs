@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using ManagedBass.Midi;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;
@@ -55,13 +54,7 @@ internal static class BassMidiSoundfontManager
     private static string? ResolveSoundfontFile(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        if (ext == ".sf2" || ext == ".sfz")
-            return path;
-
-        if (ext == ".dls")
-            return DlsToSf2Converter.Convert(path);
-
-        return path;
+        return ext is ".sf2" or ".sfz" ? path : ext == ".dls" ? DlsToSf2Converter.Convert(path) : path;
     }
 
     private static string? AutoDetectSoundfont()

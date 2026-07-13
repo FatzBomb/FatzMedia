@@ -26,24 +26,18 @@ public readonly record struct SubtitleTextStyle
         ShadowOffsetY = 2;
     }
 
-    internal SubtitleTextStyle Normalize()
-    {
-        if (string.IsNullOrWhiteSpace(FontFamily)
+    internal SubtitleTextStyle Normalize() => string.IsNullOrWhiteSpace(FontFamily)
             && FontSize <= 0
             && TextArgb == 0
             && OutlineArgb == 0
-            && ShadowArgb == 0)
-        {
-            return new SubtitleTextStyle();
-        }
-
-        return this with
-        {
-            FontFamily = string.IsNullOrWhiteSpace(FontFamily) ? "Segoe UI" : FontFamily,
-            FontSize = float.IsFinite(FontSize) ? Math.Clamp(FontSize, 6, 240) : 44,
-            OutlineWidth = float.IsFinite(OutlineWidth) ? Math.Clamp(OutlineWidth, 0, 32) : 0,
-            ShadowOffsetX = float.IsFinite(ShadowOffsetX) ? Math.Clamp(ShadowOffsetX, -128, 128) : 2,
-            ShadowOffsetY = float.IsFinite(ShadowOffsetY) ? Math.Clamp(ShadowOffsetY, -128, 128) : 2
-        };
-    }
+            && ShadowArgb == 0
+                ? new SubtitleTextStyle()
+                : (this with
+                {
+                    FontFamily = string.IsNullOrWhiteSpace(FontFamily) ? "Segoe UI" : FontFamily,
+                    FontSize = float.IsFinite(FontSize) ? Math.Clamp(FontSize, 6, 240) : 44,
+                    OutlineWidth = float.IsFinite(OutlineWidth) ? Math.Clamp(OutlineWidth, 0, 32) : 0,
+                    ShadowOffsetX = float.IsFinite(ShadowOffsetX) ? Math.Clamp(ShadowOffsetX, -128, 128) : 2,
+                    ShadowOffsetY = float.IsFinite(ShadowOffsetY) ? Math.Clamp(ShadowOffsetY, -128, 128) : 2
+                });
 }

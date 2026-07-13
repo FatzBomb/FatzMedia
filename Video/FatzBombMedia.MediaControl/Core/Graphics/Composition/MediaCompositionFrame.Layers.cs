@@ -113,7 +113,11 @@ public readonly partial record struct MediaCompositionFrame
                 Width = SubtitleWidth,
                 Height = SubtitleHeight,
                 Stride = SubtitleStride,
-                StretchMode = MediaCompositionStretchMode.Fill,
+                CanvasLeft = SubtitleCanvasLeft,
+                CanvasTop = SubtitleCanvasTop,
+                CanvasWidth = SubtitleCanvasWidth,
+                CanvasHeight = SubtitleCanvasHeight,
+                StretchMode = MediaCompositionStretchMode.UniformFit,
                 Opacity = 1.0d,
                 BgraPixels = SubtitleBgra
             };
@@ -205,7 +209,11 @@ public readonly partial record struct MediaCompositionFrame
                 Width = SubtitleWidth,
                 Height = SubtitleHeight,
                 Stride = SubtitleStride,
-                StretchMode = MediaCompositionStretchMode.Fill,
+                CanvasLeft = SubtitleCanvasLeft,
+                CanvasTop = SubtitleCanvasTop,
+                CanvasWidth = SubtitleCanvasWidth,
+                CanvasHeight = SubtitleCanvasHeight,
+                StretchMode = MediaCompositionStretchMode.UniformFit,
                 Opacity = 1.0d,
                 BgraPixels = SubtitleBgra
             }

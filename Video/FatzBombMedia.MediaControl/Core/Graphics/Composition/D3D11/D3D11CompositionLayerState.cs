@@ -362,6 +362,14 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             flags |= MediaCompositionLayerDirtyFlags.StretchChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
 
+        if (previous.CanvasLeft != current.CanvasLeft
+            || previous.CanvasTop != current.CanvasTop
+            || previous.CanvasWidth != current.CanvasWidth
+            || previous.CanvasHeight != current.CanvasHeight)
+        {
+            flags |= MediaCompositionLayerDirtyFlags.RenderRequired;
+        }
+
         if (!NearlyEquals(previous.FramesPerSecond, current.FramesPerSecond))
             flags |= MediaCompositionLayerDirtyFlags.FrameRateChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;

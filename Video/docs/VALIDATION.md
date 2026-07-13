@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-07-06
+Updated: 2026-07-13
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -52,6 +52,11 @@ Recommended media set:
 - Image-only file
 - Audio + CDG with sidecar image background
 - Audio + CDG with sidecar video background
+- KAR file with embedded karaoke lyrics
+- MID file with embedded karaoke lyrics (if available)
+- ZIP containing KAR + image background
+- ZIP containing audio + video background
+- Image file with explicit background path
 - 23.976 / 23.98fps video
 - 29.97fps video
 - 60fps video, if available
@@ -111,6 +116,13 @@ Logs:
 29. Subtitle font, size, outline, and shadow settings render correctly on software and hardware video paths.
 30. A/V, CDG, and subtitle sync controls adjust their own timeline by 100ms per step without interrupting playback.
 31. Sync Reset returns all three controls to zero; loading a new media item also resets them.
+32. KAR/MID karaoke lyrics display with syllable wipe highlighting, scrolling, and page transitions.
+33. MIDI Lyrics checkbox toggles karaoke display on/off without affecting ordinary subtitles.
+34. Backward seek on MIDI karaoke immediately updates lyrics, highlighting, and scroll position.
+35. Karaoke lyrics maintain 16:9 aspect ratio when window is resized to non-16:9 dimensions.
+36. Image file with explicit background path renders the background behind the image.
+37. ZIP archive with audio + video opens as audio main with video as background (not video main).
+38. ZIP archive with video only opens as video main.
 
 ---
 
@@ -143,6 +155,31 @@ lyrics jumping after seek
 background/wash not clearing
 secondary output mismatch
 ```
+
+---
+
+## 4a. MIDI/KAR Karaoke Validation
+
+Run with KAR files and MID files containing embedded lyrics.
+
+Expected:
+
+- Lyrics display in complete readable lines, not individual syllables.
+- Syllable wipe highlighting follows MIDI marker timing.
+- Up to five lines visible: two previous, active centered, two upcoming.
+- Non-active lines fade based on distance from active line.
+- Normal scroll completes 1.5s before next line's first wipe.
+- First page fade-in completes 3s before first wipe (or starts at zero with short lead-in).
+- Clear-screen/new-paragraph: outgoing page holds 2s, fades out; new page fades in 2s before first wipe.
+- Karaoke text uses independent font/color/outline/shadow from ordinary subtitles.
+- Karaoke lyrics maintain 16:9 aspect ratio in non-16:9 windows.
+- Backward seek immediately updates lyrics, highlighting, and scroll.
+- Forward seek updates to correct position.
+- Seek while paused updates lyrics on slider release.
+- MIDI Lyrics checkbox toggles display without affecting SRT/ASS subtitles.
+- No excessive composition logs or no-op presents during static lyrics.
+- Karaoke lyrics do not flash during window resize.
+- Karaoke lyrics do not freeze video playback when video subtitles are active.
 
 ---
 

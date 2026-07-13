@@ -47,7 +47,37 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 - DLS-to-SF2 conversion uses embedded Kermalis DLS2 and SoundFont2 libraries (MIT). The RIFF word-alignment bug in their `Chunk.cs` is fixed locally.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` routes tracker formats to `Bass.MusicLoad` instead of `Bass.CreateStream`.
-- MIDI karaoke lyrics (`.kar` files) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel and loaded into the existing subtitle rendering system. The presentation coordinator starts a render loop for audio-only playback when subtitles are present.
+
+## MIDI/KAR Karaoke Lyrics
+
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by `MidiLyricExtractor`.
+- Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
+- Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
+- Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
+- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession`, `MediaControlPlayer`, and the Player host UI.
+
+### Karaoke Text Style
+
+- `KaraokeTextStyle` (in `MediaPlayerConfiguration.KaraokeStyle`) provides independent font, color, outline, and shadow settings for karaoke lyrics, separate from `SubtitleTextStyle`.
+- Base (unsung) and wipe (sung) colors, outlines, widths, and shadows are independently configurable.
+- `LineTransitionMilliseconds` (default 450ms) controls scroll/fade animation duration. Set to 0 to disable animation.
+- `NextLineOpacity` (default 0.65) controls the opacity of upcoming lines.
+
+### Karaoke Scrolling Behavior
+
+- Up to five lines are displayed: two previous, active centered, two upcoming.
+- Non-active lines fade based on distance from the active line.
+- Normal line transitions complete 1.5 seconds before the next line's first wipe when sufficient time exists. If the gap is shorter, the transition starts immediately after the current line's final syllable and completes as early as possible.
+- The first page fade-in completes 3 seconds before the first lyric wipe when lead-in permits. With short lead-in, fading starts at playback time zero. If the first wipe is at time zero, lyrics appear immediately without fading.
+- Clear-screen/new-paragraph transitions: the outgoing page holds for 2 seconds after its last wipe, then fades out. The new page fades in and completes 2 seconds before its first wipe. When the available gap is under 4 seconds, timing is split to prioritize incoming-page visibility.
+- Syllable wipe highlighting uses absolute MIDI marker timestamps and does not begin until the actual marker time, even if the line has scrolled into position early.
+
+### Karaoke Rendering
+
+- Karaoke text is rasterized into a cropped bitmap covering only the visible text area, not a full 1920x1080 buffer. Crop position within the logical canvas travels as composition metadata.
+- The D3D11 compositor maps the cropped texture through `ViewportGeometry.MapCanvasRegionToViewport`, preserving 16:9 aspect ratio at any window size.
+- The subtitle presentation loop runs at 75 Hz for timing accuracy but only presents when subtitle text, wipe progress, scroll position, or fade state actually changes. No-op frames are skipped.
+- Backward seeks immediately recalculate active cue, syllable highlighting, scroll position, and page fade state.
 
 ## Device-Lost Recovery
 
@@ -84,7 +114,15 @@ Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely ins
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
 - Hosts call this instead of creating a new control instance when changing devices or fallback policy.
 
-## WPF Adapter API
+## Sidecar and Archive Background Policy
+
+- Automatic image/video sidecar backgrounds apply to all non-video, non-image playable mains: audio (MP3, FLAC, etc.), MIDI/KAR/MID, MOD/tracker, CDG, and audio+CDG pairs.
+- Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
+- Image main files never auto-detect sidecar backgrounds. An image background must be explicitly supplied through the load overload.
+- Video mains reject backgrounds entirely (both auto and explicit).
+- Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, any video or image entries become background candidates rather than taking the main role.
+- Supported archive combinations: MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, standalone CDG+image/video, video-only archives.
+- Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
 `FatzBombMedia.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.
 

@@ -1,8 +1,8 @@
-﻿namespace Kermalis.DLS2
-{
-	// TODO:
+namespace Kermalis.DLS2;
 
-	/*public sealed class VersionChunk : DLSChunk
+// TODO:
+
+/*public sealed class VersionChunk : DLSChunk
 	{
 
 
@@ -11,4 +11,3 @@
 
 		}
 	}*/
-}

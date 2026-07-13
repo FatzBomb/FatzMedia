@@ -11,13 +11,22 @@ public enum MediaBackgroundKind
 
 public sealed class MediaBackgroundCandidate
 {
-    private MediaBackgroundCandidate(MediaBackgroundKind kind, string displayName, string? path, byte[]? data, MediaInputSource? source = null)
+    private MediaBackgroundCandidate(
+        MediaBackgroundKind kind,
+        string displayName,
+        string? path,
+        byte[]? data,
+        MediaInputSource? source = null,
+        string? archivePath = null,
+        string? archiveEntryKey = null)
     {
         Kind = kind;
         DisplayName = displayName;
         Path = path;
         Data = data;
         Source = source;
+        ArchivePath = archivePath;
+        ArchiveEntryKey = archiveEntryKey;
     }
 
     public MediaBackgroundKind Kind { get; }
@@ -25,6 +34,8 @@ public sealed class MediaBackgroundCandidate
     public string? Path { get; }
     public byte[]? Data { get; }
     public MediaInputSource? Source { get; }
+    public string? ArchivePath { get; }
+    public string? ArchiveEntryKey { get; }
 
     public static MediaBackgroundCandidate FromPath(MediaBackgroundKind kind, string path) => new(kind, System.IO.Path.GetFileName(path), path, data: null, source: MediaInputSource.FromFile(path));
 
@@ -43,4 +54,15 @@ public sealed class MediaBackgroundCandidate
         entry.WriteTo(stream);
         return new MediaBackgroundCandidate(kind, entry.Key, path: null, stream.ToArray());
     }
+
+    public static MediaBackgroundCandidate FromArchiveEntryReference(
+        MediaBackgroundKind kind,
+        string archivePath,
+        string entryKey) => new(
+            kind,
+            entryKey,
+            path: null,
+            data: null,
+            archivePath: archivePath,
+            archiveEntryKey: entryKey);
 }

@@ -58,6 +58,10 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 | WPF UI control | `FatzBombMedia.MediaControl.Wpf.MediaSurface` (a `Grid` subclass with native HWND child) |
 | DI composition | `MediaPlayerServiceProvider.Create()` — singleton DI, no external overrides |
 | Pipeline orchestrator | `Pipeline.PlaybackCoordinator` (internal) — wires AudioPipeline + CdgPipeline + VideoPipeline |
+| MIDI lyric extraction | `Core.Audio.MidiLyricExtractor` (internal) — extracts and groups karaoke lyrics from BASS MIDI markers |
+| Karaoke rendering | `Core.Subtitle.SubtitleTextRenderer` (internal) — Direct2D/DWrite rasterization with wipe, scroll, and page-fade animation |
+| Karaoke style config | `Core.Configuration.KaraokeTextStyle` — independent font/color/outline/shadow for karaoke lyrics |
+| Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains |
 | Native lib loader | `Bootstrap.EnsureInitialized()` (internal) — load-once, synchronous, populates `FileTypes` |
 
 ## Code Navigation
@@ -90,19 +94,21 @@ HWND/interop hooks (e.g. `MediaSurface`). No business logic in code-behind or XA
 
 ## Testing
 
-No test project or CI exists yet. If you add tests, cover the **pure** logic only
-(file-type detection / `FileTypes`, parsing, sorting, state transitions in the
-pipeline) with xUnit and run `dotnet test`. Do not unit-test media / D3D11 /
-threading / native-DLL paths — verify those manually. Do not scaffold a test
-project unprompted; suggest it first.
+A test project exists at `FatzBombMedia.MediaControl.Tests` with xUnit. Run `dotnet test`.
+
+Cover **pure** logic only (file-type detection / `FileTypes`, parsing, sorting, state
+transitions in the pipeline, karaoke timing, viewport geometry, style normalization) with xUnit.
+Do not unit-test media / D3D11 / threading / native-DLL paths — verify those manually.
+
+Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must use the
+`[Collection("File type registry")]` attribute to prevent parallel test contamination.
 
 ## Verification
 
-No tests or CI exist. Only verification paths:
-
 1. `dotnet build` succeeds (no warnings in Release)
-2. Manual smoke test via Player (see `docs/VALIDATION.md` for 15-item checklist)
-3. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBombMedia.MediaControl.Core.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
+2. `dotnet test` passes (235+ tests covering pure logic)
+3. Manual smoke test via Player (see `docs/VALIDATION.md` for checklist)
+4. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBombMedia.MediaControl.Core.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
 
 ## Docs That Matter
 

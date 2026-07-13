@@ -750,7 +750,28 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         if (subtitleLayer.ShaderResourceView == null || _backgroundPixelShader == null || _premultipliedBlendState == null)
             return false;
 
-        SetQuadConstants(context, new RectD(0, 0, outputWidth, outputHeight), outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
+        MediaCompositionLayer? descriptor = subtitleLayer.Descriptor;
+        var hasCanvasPlacement = descriptor is
+        {
+            CanvasWidth: > 0,
+            CanvasHeight: > 0,
+            Width: > 0,
+            Height: > 0
+        };
+        RectD subtitleRect = hasCanvasPlacement
+            ? ViewportGeometry.MapCanvasRegionToViewport(
+                new RectD(descriptor!.CanvasLeft, descriptor.CanvasTop, descriptor.Width, descriptor.Height),
+                descriptor.CanvasWidth,
+                descriptor.CanvasHeight,
+                outputWidth,
+                outputHeight)
+            : ViewportGeometry.DestinationRect(
+                subtitleLayer.TextureWidth,
+                subtitleLayer.TextureHeight,
+                outputWidth,
+                outputHeight,
+                subtitleLayer.StretchMode);
+        SetQuadConstants(context, subtitleRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
         context.OMSetBlendState(_premultipliedBlendState);
         context.PSSetShader(_backgroundPixelShader);
         context.PSSetShaderResource(0, subtitleLayer.ShaderResourceView);

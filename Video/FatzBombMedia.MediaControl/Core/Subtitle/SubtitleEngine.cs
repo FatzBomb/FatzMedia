@@ -15,7 +15,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         var content = File.ReadAllText(filePath);
-        var cues = Path.GetExtension(filePath).ToLowerInvariant() switch
+        IReadOnlyList<SubtitleCue> cues = Path.GetExtension(filePath).ToLowerInvariant() switch
         {
             ".ass" or ".ssa" => AssParser.Parse(content),
             _ => SrtParser.Parse(content)
@@ -41,7 +41,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
                 return [];
 
             var position = TimeSpan.FromSeconds(positionSeconds);
-            return _cues.Where(cue => cue.Start <= position && position < cue.End).ToArray();
+            return [.. _cues.Where(cue => cue.Start <= position && position < cue.End)];
         }
     }
 
@@ -51,7 +51,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
 
         lock (_gate)
         {
-            _cues = cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence).ToArray();
+            _cues = [.. cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence)];
             IsOpen = _cues.Count > 0;
         }
 

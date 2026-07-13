@@ -59,6 +59,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     public ISubtitleEngine? Subtitle => _coordinator.Subtitle;
     public IReadOnlyList<SubtitleTrack> SubtitleTracks => _coordinator.SubtitleTracks;
     public string? SelectedSubtitleTrackId => _coordinator.SelectedSubtitleTrackId;
+    public bool ShowMidiLyrics
+    {
+        get => _coordinator.ShowMidiLyrics;
+        set => _coordinator.ShowMidiLyrics = value;
+    }
     public double AudioVideoOffsetSeconds => _coordinator.AudioVideoOffsetSeconds;
     public double CdgOffsetSeconds => _coordinator.CdgOffsetSeconds;
     public double SubtitleOffsetSeconds => _coordinator.SubtitleOffsetSeconds;
@@ -498,7 +503,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private VideoDecoder? OpenBackgroundDecoder(MediaBackgroundCandidate background, bool enableHardwareFrameOutput)
     {
         var path = background.Source?.FilePath ?? background.Path;
-        if (string.IsNullOrWhiteSpace(path) && background.Data is { Length: > 0 })
+        if (string.IsNullOrWhiteSpace(path)
+            && (background.Data is { Length: > 0 }
+                || (!string.IsNullOrWhiteSpace(background.ArchivePath)
+                    && !string.IsNullOrWhiteSpace(background.ArchiveEntryKey))))
             path = CreateTempBackgroundPath(background);
 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -512,16 +520,46 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return null;
     }
 
-    private string CreateTempBackgroundPath(MediaBackgroundCandidate background)
+    private string? CreateTempBackgroundPath(MediaBackgroundCandidate background)
     {
         var extension = Path.GetExtension(background.DisplayName);
         if (string.IsNullOrWhiteSpace(extension))
             extension = background.Kind == MediaBackgroundKind.Video ? ".mp4" : ".png";
 
         var path = Path.Combine(Path.GetTempPath(), $"fbm-bg-{Guid.NewGuid():N}{extension}");
-        File.WriteAllBytes(path, background.Data ?? []);
-        _backgroundVideoTempPath = path;
-        return path;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(background.ArchivePath)
+                && !string.IsNullOrWhiteSpace(background.ArchiveEntryKey))
+            {
+                using IArchiveHandle archive = _archiveService.Open(background.ArchivePath);
+                IArchiveEntryInfo? entry = archive.Entries.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Key, background.ArchiveEntryKey, StringComparison.Ordinal));
+                if (entry == null)
+                    return null;
+
+                using FileStream stream = File.Create(path);
+                entry.WriteTo(stream);
+            }
+            else
+            {
+                File.WriteAllBytes(path, background.Data ?? []);
+            }
+
+            _backgroundVideoTempPath = path;
+            return path;
+        }
+        catch (Exception ex)
+        {
+            TryDeleteTempPath(path);
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "Background",
+                $"Failed to extract archive background: {ex.Message}",
+                sourcePath: background.ArchivePath,
+                innerException: ex);
+            return null;
+        }
     }
 
     private void RaiseBackgroundFrame(VideoDecoder decoder, VideoFrameData frame, double framesPerSecond)

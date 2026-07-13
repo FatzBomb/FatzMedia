@@ -1,6 +1,5 @@
 using FatzBombMedia.MediaControl.Core.Files;
 using FFmpeg.AutoGen;
-using ManagedBass;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MBass = ManagedBass.Bass;

@@ -163,6 +163,11 @@ public readonly record struct MediaPlayerConfiguration
     public SubtitleTextStyle SubtitleStyle { get; init; }
 
     /// <summary>
+    /// Visual style used for MIDI/KAR lyrics, including the independent sung-text wipe colors.
+    /// </summary>
+    public KaraokeTextStyle KaraokeStyle { get; init; }
+
+    /// <summary>
     /// Path to a MIDI soundfont (.sf2 or .dls) to use for MIDI synthesis. When set, this path
     /// is used regardless of any auto-detected system soundfont. When null/empty, the engine
     /// auto-detects a suitable soundfont (e.g. Windows GS Wavetable gm.dls, or bundled fallback).
@@ -186,6 +191,7 @@ public readonly record struct MediaPlayerConfiguration
         AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
         SubtitleStyle = new SubtitleTextStyle();
+        KaraokeStyle = new KaraokeTextStyle();
     }
 
     /// <summary>
@@ -204,6 +210,7 @@ public readonly record struct MediaPlayerConfiguration
         AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
         SubtitleStyle = new SubtitleTextStyle();
+        KaraokeStyle = new KaraokeTextStyle();
     }
 
     /// <summary>

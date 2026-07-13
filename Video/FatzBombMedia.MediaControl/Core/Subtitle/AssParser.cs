@@ -24,8 +24,8 @@ internal static partial class AssParser
 
             var fields = line[DialoguePrefix.Length..].Split(',', 10, StringSplitOptions.None);
             if (fields.Length != 10
-                || !TryParseTimestamp(fields[1], out var start)
-                || !TryParseTimestamp(fields[2], out var end)
+                || !TryParseTimestamp(fields[1], out TimeSpan start)
+                || !TryParseTimestamp(fields[2], out TimeSpan end)
                 || end <= start)
             {
                 continue;
