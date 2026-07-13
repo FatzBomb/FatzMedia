@@ -44,7 +44,7 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
   2. Windows `gm.dls` (converted to SF2 via `DlsToSf2Converter`, cached in LocalAppData)
   3. System `.sf2` files (sgm.sb, etc.)
   4. Bundled `native/TimGM6mb.sf2` (5.7 MB compact GM soundfont; always present)
-- DLS-to-SF2 conversion uses embedded Kermalis DLS2 and SoundFont2 libraries (MIT). The RIFF word-alignment bug in their `Chunk.cs` is fixed locally.
+- DLS-to-SF2 conversion is handled by a self-contained `DlsToSf2Converter` that reads DLS RIFF chunks directly with `BinaryReader` and writes a minimal valid SF2 with `BinaryWriter`. No external DLS2/SF2 library or `EndianBinaryIO` dependency is required. The converted SF2 is cached in LocalAppData.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` routes tracker formats to `Bass.MusicLoad` instead of `Bass.CreateStream`.
 

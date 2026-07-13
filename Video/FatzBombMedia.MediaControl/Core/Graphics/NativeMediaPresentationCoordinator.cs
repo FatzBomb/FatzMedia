@@ -1,12 +1,11 @@
 using FatzBombMedia.MediaControl.Controllers;
 using FatzBombMedia.MediaControl.Core.Abstractions;
-using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Cdg;
+using FatzBombMedia.MediaControl.Core.Configuration;
 using FatzBombMedia.MediaControl.Core.Graphics.Composition;
 using FatzBombMedia.MediaControl.Core.Graphics.D3D;
 using FatzBombMedia.MediaControl.Core.Subtitle;
 using FatzBombMedia.MediaControl.Core.Threading;
-using FatzBombMedia.MediaControl.Core.Video;
 using FatzBombMedia.MediaControl.Pipeline;
 using System.Buffers;
 using System.Diagnostics;
@@ -81,7 +80,6 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private string? _subtitleText;
     private int _subtitleProgressRevision = int.MinValue;
     private long _subtitleRevision;
-    //private double _lastSubtitlePresentationSeconds = double.NaN;
     private double _lastSubtitleOffsetSeconds = double.NaN;
 
     public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
@@ -114,9 +112,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         set
         {
             if (field == value)
-            {
                 return;
-            }
 
             field = value;
             _primaryStretchMode = ToCompositionStretchMode(value);
@@ -128,29 +124,21 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
     {
         if (_disposed || surface is null || !surface.IsValid || surface.Kind != MediaPresentationSurfaceKind.NativeHwnd)
-        {
             return false;
-        }
 
         bool attached;
         lock (_lock)
         {
             if (!EnsureD3D11())
-            {
                 return false;
-            }
 
             attached = AttachSurfaceNoLock(surface);
             if (attached)
-            {
                 _surfaces[surface.Id] = surface;
-            }
         }
 
         if (attached)
-        {
             PresentCurrentComposition("presentation surface attached");
-        }
 
         return attached;
     }
@@ -158,23 +146,17 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId) || pixelWidth <= 0 || pixelHeight <= 0)
-        {
             return false;
-        }
 
         bool resized;
         bool presentAfterResize;
         lock (_lock)
         {
             if (!_surfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
-            {
                 return false;
-            }
 
             if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
-            {
                 return true;
-            }
 
             surface = surface.WithSize(pixelWidth, pixelHeight);
             _surfaces[surface.Id] = surface;
@@ -195,9 +177,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
                 presentAfterResize = ShouldPresentImmediatelyAfterPrimaryResize();
             }
             else if (!AttachSurfaceNoLock(surface))
-            {
                 return false;
-            }
             else
             {
                 resized = true;
@@ -438,9 +418,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         if (_disposed
             || info.Level != MediaDiagnosticLevel.Error
             || !string.Equals(info.Category, DeviceLostDiagnosticCategory, StringComparison.Ordinal))
-        {
             return;
-        }
 
         if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)
             _recoveryScheduler.Start(RunDeviceLostRecovery);
@@ -534,23 +512,6 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
     }
-
-    //private void OnVideoPositionChanged(object? sender, double positionSeconds)
-    //{
-    //    lock (_subtitleGate)
-    //        _lastSubtitlePresentationSeconds = double.IsFinite(positionSeconds) && positionSeconds >= 0
-    //            ? positionSeconds
-    //            : double.NaN;
-    //}
-
-    //private void OnVideoStateChanged(object? sender, VideoEngineState state)
-    //{
-    //    if (state is not (VideoEngineState.Ready or VideoEngineState.Closed))
-    //        return;
-
-    //    lock (_subtitleGate)
-    //        _lastSubtitlePresentationSeconds = double.NaN;
-    //}
 
     private void AttachCdgIfAvailable()
     {

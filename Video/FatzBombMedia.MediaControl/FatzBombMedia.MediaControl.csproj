@@ -39,7 +39,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="EndianBinaryIO" Version="2.1.1" />
 		<PackageReference Include="ManagedBass" Version="4.0.2" />
 		<PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
 		<PackageReference Include="ManagedBass.Midi" Version="4.0.2" />
