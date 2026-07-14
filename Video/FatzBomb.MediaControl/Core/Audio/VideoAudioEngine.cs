@@ -1,6 +1,5 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
-using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
@@ -10,7 +9,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace FatzBomb.MediaControl.Windows.Audio;
+namespace FatzBomb.MediaControl.Core.Audio;
 
 internal sealed unsafe class VideoAudioEngine : IAudioEngine
 {

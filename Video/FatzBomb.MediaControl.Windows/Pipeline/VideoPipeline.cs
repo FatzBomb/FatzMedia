@@ -8,7 +8,6 @@ using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
-using FatzBomb.MediaControl.Windows.Audio;
 using FatzBomb.MediaControl.Windows.Video;
 using FFmpeg.AutoGen;
 using System.Diagnostics;
