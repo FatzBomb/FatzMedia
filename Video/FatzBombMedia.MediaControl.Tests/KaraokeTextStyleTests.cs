@@ -10,14 +10,15 @@ public sealed class KaraokeTextStyleTests
         KaraokeTextStyle style = default(KaraokeTextStyle).Normalize();
 
         Assert.Equal("Segoe UI", style.FontFamily);
-        Assert.Equal(52, style.FontSize);
+        Assert.Equal(72, style.FontSize);
         Assert.Equal(0xFFFFFFFFu, style.TextArgb);
         Assert.Equal(0xFFFFFF00u, style.WipeTextArgb);
         Assert.Equal(0xE0000000u, style.OutlineArgb);
         Assert.Equal(0xE0000000u, style.WipeOutlineArgb);
         Assert.Equal(1.75f, style.OutlineWidth);
         Assert.Equal(1.75f, style.WipeOutlineWidth);
-        Assert.Equal(450, style.LineTransitionMilliseconds);
+        Assert.Equal(1000, style.LineTransitionMilliseconds);
+        Assert.Equal(600, style.WipeTransitionMilliseconds);
         Assert.Equal(0.65f, style.NextLineOpacity);
     }
 
@@ -35,6 +36,7 @@ public sealed class KaraokeTextStyleTests
             ShadowOffsetX = float.NaN,
             ShadowOffsetY = -999,
             LineTransitionMilliseconds = 5000,
+            WipeTransitionMilliseconds = 5000,
             NextLineOpacity = -1,
         }.Normalize();
 
@@ -44,7 +46,8 @@ public sealed class KaraokeTextStyleTests
         Assert.Equal(32, style.WipeOutlineWidth);
         Assert.Equal(2, style.ShadowOffsetX);
         Assert.Equal(-128, style.ShadowOffsetY);
-        Assert.Equal(2000, style.LineTransitionMilliseconds);
+        Assert.Equal(4000, style.LineTransitionMilliseconds);
+        Assert.Equal(2000, style.WipeTransitionMilliseconds);
         Assert.Equal(0, style.NextLineOpacity);
         Assert.Equal(0xFF101010u, style.TextArgb);
         Assert.Equal(0xFFFF00FFu, style.WipeTextArgb);

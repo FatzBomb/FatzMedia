@@ -288,7 +288,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             return RaiseBackgroundFrame(background.Source);
         }
 
-        using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: false);
+        using VideoDecoder? decoder = OpenBackgroundDecoder(background, enableHardwareFrameOutput: true);
         if (decoder == null)
             return false;
 

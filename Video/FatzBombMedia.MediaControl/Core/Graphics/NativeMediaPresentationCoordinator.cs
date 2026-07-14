@@ -49,7 +49,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
     private readonly RenderPipeline _renderPipeline;
     private readonly NativeD3D11PresentationBridge _presenter;
     private readonly SubtitleTextRenderer _subtitleTextRenderer;
-    private readonly TimeSpan _karaokeTransitionDuration;
+    private readonly TimeSpan _wipeTransitionDuration;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
@@ -89,7 +89,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _presenter = new NativeD3D11PresentationBridge(configuration);
         _subtitleTextRenderer = new SubtitleTextRenderer(configuration.SubtitleStyle, configuration.KaraokeStyle);
-        _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
+        _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _presenter.FramePresented += OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
@@ -1256,7 +1256,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinat
             var text = activeCues.Count == 0 ? null : string.Join("\n", activeCues.Select(static cue => cue.Text));
             KaraokeCueTiming? karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
             var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
-            var progressRevision = karaokeTiming?.GetProgressRevision(subtitleTime, _karaokeTransitionDuration) ?? int.MinValue;
+            var progressRevision = karaokeTiming?.GetProgressRevision(subtitleTime, _wipeTransitionDuration) ?? int.MinValue;
             if (string.Equals(text, _subtitleText, StringComparison.Ordinal)
                 && progressRevision == _subtitleProgressRevision)
                 return false;

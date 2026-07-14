@@ -351,7 +351,25 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
             AttachPlaybackEndSync();
         }
 
+        // Ensure the BASS device context is current before playing.
+        // After extended idle time (e.g. media ended, user away for hours),
+        // Windows may release the audio device, causing ChannelPlay to fail.
+        _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine", raiseDiagnostic: false);
+
         var result = MBass.ChannelPlay(playHandle);
+        if (!result && _bassInitialized)
+        {
+            // Device may have been lost during idle — attempt reinitialization
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine",
+                $"ChannelPlay failed ({MBass.LastError}), attempting device recovery...");
+            _bassInitialized = false;
+            if (Init(_requestedDevice, _currentDeviceSampleRate))
+            {
+                _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine");
+                result = MBass.ChannelPlay(playHandle);
+            }
+        }
+
         if (result)
         {
             State = AudioEngineState.Playing;

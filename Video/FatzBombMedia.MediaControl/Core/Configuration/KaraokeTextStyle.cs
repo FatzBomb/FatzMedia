@@ -19,12 +19,13 @@ public readonly record struct KaraokeTextStyle
     public float ShadowOffsetX { get; init; }
     public float ShadowOffsetY { get; init; }
     public float LineTransitionMilliseconds { get; init; }
+    public float WipeTransitionMilliseconds { get; init; }
     public float NextLineOpacity { get; init; }
 
     public KaraokeTextStyle()
     {
         FontFamily = "Segoe UI";
-        FontSize = 52;
+        FontSize = 72;
         TextArgb = 0xFFFFFFFF;
         WipeTextArgb = 0xFFFFFF00;
         OutlineArgb = 0xE0000000;
@@ -35,7 +36,8 @@ public readonly record struct KaraokeTextStyle
         WipeShadowArgb = 0xA0000000;
         ShadowOffsetX = 2;
         ShadowOffsetY = 2;
-        LineTransitionMilliseconds = 450;
+        LineTransitionMilliseconds = 1000;
+        WipeTransitionMilliseconds = 600;
         NextLineOpacity = 0.65f;
     }
 
@@ -52,14 +54,17 @@ public readonly record struct KaraokeTextStyle
                 : (this with
                 {
                     FontFamily = string.IsNullOrWhiteSpace(FontFamily) ? "Segoe UI" : FontFamily,
-                    FontSize = float.IsFinite(FontSize) ? Math.Clamp(FontSize, 6, 240) : 52,
+                    FontSize = float.IsFinite(FontSize) ? Math.Clamp(FontSize, 6, 240) : 72,
                     OutlineWidth = float.IsFinite(OutlineWidth) ? Math.Clamp(OutlineWidth, 0, 32) : 0,
                     WipeOutlineWidth = float.IsFinite(WipeOutlineWidth) ? Math.Clamp(WipeOutlineWidth, 0, 32) : 0,
                     ShadowOffsetX = float.IsFinite(ShadowOffsetX) ? Math.Clamp(ShadowOffsetX, -128, 128) : 2,
                     ShadowOffsetY = float.IsFinite(ShadowOffsetY) ? Math.Clamp(ShadowOffsetY, -128, 128) : 2,
                     LineTransitionMilliseconds = float.IsFinite(LineTransitionMilliseconds)
-                    ? Math.Clamp(LineTransitionMilliseconds, 0, 2000)
-                    : 450,
+                    ? Math.Clamp(LineTransitionMilliseconds, 0, 4000)
+                    : 1000,
+                    WipeTransitionMilliseconds = float.IsFinite(WipeTransitionMilliseconds)
+                    ? Math.Clamp(WipeTransitionMilliseconds, 0, 2000)
+                    : 600,
                     NextLineOpacity = float.IsFinite(NextLineOpacity) ? Math.Clamp(NextLineOpacity, 0, 1) : 0.65f
                 });
 }

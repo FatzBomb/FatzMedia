@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-07-13
+Updated: 2026-07-14
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -161,25 +161,33 @@ secondary output mismatch
 ## 4a. MIDI/KAR Karaoke Validation
 
 Run with KAR files and MID files containing embedded lyrics.
+Also test with sidecar image backgrounds and archive KAR+image pairs.
 
 Expected:
 
 - Lyrics display in complete readable lines, not individual syllables.
-- Syllable wipe highlighting follows MIDI marker timing.
+- Syllable wipe highlighting smooth-transitions per syllable; wipe follows MIDI marker timing shifted ~400ms earlier.
 - Up to five lines visible: two previous, active centered, two upcoming.
-- Non-active lines fade based on distance from active line.
-- Normal scroll completes 1.5s before next line's first wipe.
-- First page fade-in completes 3s before first wipe (or starts at zero with short lead-in).
-- Clear-screen/new-paragraph: outgoing page holds 2s, fades out; new page fades in 2s before first wipe.
-- Karaoke text uses independent font/color/outline/shadow from ordinary subtitles.
+- Non-active lines fade and scale based on distance from active line (active 1.0, adjacent 0.8, outer 0.6). True transparency over detailed backgrounds — non-active text retains color but exposes background through alpha.
+- Normal scroll always takes 1500ms. In fast songs with tight gaps the full scroll window centers over the gap, allowing overlap with outgoing highlighting and incoming presentation.
+- Scroll uses smooth position/opacity animation; no abrupt line jumps.
+- Page changes (clear-screen/new-paragraph): fade-out (cubic ease-in, up to 1s) and fade-in (cubic ease-in-out, up to 1s). Sequential when room allows; crossfade when gap is tight, including sub-second gaps. Incoming page may zoom from 1.5x to 1.0x.
+- First page fade-in completes before first lyric/countdown. Intro begins at 1s if lead-in permits.
+- Four countdown arrows appear above a line when gap >6s from previous. Red to green, one per second; final-second fade. Arrows are not lyric text.
+- Metadata intro/end cards: centered smoked-glass panel with title, artist, credits, year, length, key, tempo, timing, copyright. When first lyrics are before 8s, split top/bottom translucent bands are used instead.
+- Fallback metadata (filename+duration) renders centered card at intro only; no end card.
+- End card appears after lyrics fade, if embedded metadata exists and duration permits min 3s window.
+- Karaoke text uses independent font/color/outline/shadow from ordinary subtitles. Default font size 72.
 - Karaoke lyrics maintain 16:9 aspect ratio in non-16:9 windows.
-- Backward seek immediately updates lyrics, highlighting, and scroll.
+- Backward seek immediately updates lyrics, highlighting, wipe progress, scroll, page/scale state, metadata opacity, countdown, and end-lyric fade.
 - Forward seek updates to correct position.
 - Seek while paused updates lyrics on slider release.
 - MIDI Lyrics checkbox toggles display without affecting SRT/ASS subtitles.
+- Image sidecars display behind MIDI/KAR lyrics; archive KAR+image renders correctly.
 - No excessive composition logs or no-op presents during static lyrics.
 - Karaoke lyrics do not flash during window resize.
 - Karaoke lyrics do not freeze video playback when video subtitles are active.
+- AudioEngine reasserts/reinitializes BASS device if play fails after extended idle (no audio stall).
 
 ---
 

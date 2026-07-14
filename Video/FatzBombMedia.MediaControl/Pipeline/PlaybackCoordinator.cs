@@ -116,7 +116,8 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool OpenAudio(string path) => _session.Audio?.Open(path) == true && TryLoadMidiLyrics(path);
 
-    public bool OpenAudio(IArchiveEntryInfo archiveEntry) => _session.Audio?.Open(archiveEntry) == true;
+    public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
+        _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key);
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
@@ -282,7 +283,10 @@ internal sealed class PlaybackCoordinator : IDisposable
         try
         {
             var sourceHandle = _session.Audio?.Engine.SourceHandle ?? 0;
-            IReadOnlyList<SubtitleCue>? cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(sourceHandle, _karaokeTransitionDuration);
+            IReadOnlyList<SubtitleCue>? cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(
+                sourceHandle,
+                audioPath,
+                _karaokeTransitionDuration);
             if (cues is { Count: > 0 })
             {
                 _ = _session.Subtitle?.LoadEmbeddedTracks(
