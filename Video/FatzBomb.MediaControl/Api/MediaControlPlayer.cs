@@ -17,6 +17,7 @@ namespace FatzBomb.MediaControl;
 public class MediaControlPlayer : IMediaControlSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
+    private readonly IMediaControlPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
     private NativeMediaPresentationCoordinator _presentationCoordinator;
@@ -25,10 +26,14 @@ public class MediaControlPlayer : IMediaControlSession
     private IAudioDeviceMonitor? _audioDeviceMonitor;
     private bool _disposed;
 
-    public MediaControlPlayer(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
+    public MediaControlPlayer(
+        IMediaControlPlatformFactory platformFactory,
+        MediaPlayerConfiguration configuration,
+        IEnumerable<string> nativeLibraryPaths)
     {
+        _platformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-        _serviceProvider = MediaPlayerServiceProvider.Create(configuration, resolvedNativeLibraryPaths);
+        _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
         IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
@@ -456,7 +461,7 @@ public class MediaControlPlayer : IMediaControlSession
 
             // 6. Reinitialize with new configuration
             var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-            _serviceProvider = MediaPlayerServiceProvider.Create(configuration, resolvedNativeLibraryPaths);
+            _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
             _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
             IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();

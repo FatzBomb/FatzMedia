@@ -41,6 +41,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 
 - **Adapters own zero rendering** — `MediaSurface` and `SecondaryPresentationWindow` create HWND surfaces and pass `MediaPresentationSurfaceDescriptor` to Core. They must never reference pipelines, decoders, frame data, internal Cdg state, or D3D11 resources.
 - **`Player : MediaControlPlayer`** in WPF project inherits Core commands, properties, events automatically. WPF-specific additions are limited to `ImageSource`→`MediaInputSource` conversions.
+- **Platform composition is explicit** — `MediaControlPlayer` receives an `IMediaControlPlatformFactory`; OS packages own native-library loading and concrete media-engine registrations. The current Windows factory is temporary in Core and moves to `FatzBomb.MediaControl.Windows` during the platform split.
 - **`.ConfigureAwait(false)` required** in all async pipeline code. Host app marshals events to UI thread explicitly.
 - **Before editing the Wpf adapter**, confirm no new `using` pulls a Core renderer / pipeline / internal-Cdg / D3D11 namespace into the adapter — that boundary is the repo's most important invariant (see Verification).
 - **Large engine/pipeline files are expected here.** D3D11 composition, decoders, swap-chain/presentation, and Cdg code are legitimately large and cohesive — do **not** propose splitting them on line count alone (this exempts them from the global file-size trigger). Apply that trigger to *new* UI, view-model, service, and glue code, not to the existing low-level engine.

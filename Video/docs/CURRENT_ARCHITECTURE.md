@@ -12,6 +12,15 @@ Future adapters should be separate projects using the same package pattern:
 - `FatzBomb.MediaControl.Avalonia`
 - `FatzBomb.MediaControl.WinForms`
 
+## Platform Composition
+
+`MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which composes the
+native media-engine services for the current operating system. Core owns session
+lifecycle; an OS package owns native-library loading, decoder/renderer registrations,
+and the concrete factory. The current `WindowsMediaControlPlatformFactory` is a
+temporary Windows implementation in Core and will move to
+`FatzBomb.MediaControl.Windows` during the platform split.
+
 ## Ownership
 
 Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg, wash, retained layers, D3D11 composition, swap-chain creation, target registration, multi-target fan-out, and final presentation.
