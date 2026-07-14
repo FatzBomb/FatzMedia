@@ -7,10 +7,12 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
+using FatzBomb.MediaControl.Pipeline;
+using FatzBomb.MediaControl.Windows.Video;
 using FFmpeg.AutoGen;
 using System.Diagnostics;
 
-namespace FatzBomb.MediaControl.Pipeline;
+namespace FatzBomb.MediaControl.Windows.Pipeline;
 
 internal sealed partial class VideoPipeline(IClockSource clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex, PlaybackSyncState sync) : IVideoEngine
 {
@@ -955,7 +957,7 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         GC.SuppressFinalize(this);
     }
 
-    internal void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false)
+    public void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false)
     {
         if (!_isOpen || (!allowWhilePlaying && _isPlaying))
             return;

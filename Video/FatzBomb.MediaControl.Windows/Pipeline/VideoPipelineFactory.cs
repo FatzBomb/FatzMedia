@@ -1,11 +1,11 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Pipeline;
 
-namespace FatzBomb.MediaControl.Pipeline;
+namespace FatzBomb.MediaControl.Windows.Pipeline;
 
 /// <summary>
-/// Current Windows video implementation factory. It will move with
-/// <see cref="VideoPipeline"/> when the Windows engine project is split out.
+/// Windows video implementation factory.
 /// </summary>
 internal sealed class VideoPipelineFactory : IVideoEngineFactory
 {

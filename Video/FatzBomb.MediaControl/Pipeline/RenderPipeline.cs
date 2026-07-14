@@ -55,10 +55,8 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
 
     public void RenderVideoAtCurrentPosition(bool allowWhilePlaying = false, bool forceReissue = false)
     {
-        if (_video is VideoPipeline videoPipeline && _mediaEngine.Content.HasFlag(MediaContent.Video))
-        {
-            videoPipeline.RenderCurrentFrame(allowWhilePlaying, forceReissue);
-        }
+        if (_video != null && _mediaEngine.Content.HasFlag(MediaContent.Video))
+            _video.RenderCurrentFrame(allowWhilePlaying, forceReissue);
     }
 
     private bool ShouldRenderCdg(double currentPosition, bool force)

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Core.Video;
 
-namespace FatzBomb.MediaControl.Core.Video;
+namespace FatzBomb.MediaControl.Windows.Video;
 
 /// <summary>
 /// Reads the global Desktop Window Manager composition refresh interval.
@@ -10,8 +11,6 @@ namespace FatzBomb.MediaControl.Core.Video;
 /// </summary>
 internal static partial class DwmCompositionTiming
 {
-    private const double FallbackIntervalSeconds = 1.0 / 60.0;
-
     /// <summary>
     /// Returns DWM's global composition refresh interval, or the 60Hz fallback
     /// when DWM is unavailable or reports an implausible refresh rate.
@@ -26,28 +25,13 @@ internal static partial class DwmCompositionTiming
             };
 
             return DwmGetCompositionTimingInfo(IntPtr.Zero, ref timingInfo) == 0
-                ? GetRefreshIntervalSeconds(timingInfo.RefreshRate.Numerator, timingInfo.RefreshRate.Denominator)
-                : FallbackIntervalSeconds;
+                ? DisplayRefreshInterval.FromRefreshRate(timingInfo.RefreshRate.Numerator, timingInfo.RefreshRate.Denominator)
+                : DisplayRefreshInterval.FallbackSeconds;
         }
         catch
         {
-            return FallbackIntervalSeconds;
+            return DisplayRefreshInterval.FallbackSeconds;
         }
-    }
-
-    /// <summary>
-    /// Converts a DWM refresh-rate ratio to a usable interval, applying the same
-    /// 23-600Hz validity range used for virtual displays, RDP sessions, and drivers.
-    /// </summary>
-    internal static double GetRefreshIntervalSeconds(uint numerator, uint denominator)
-    {
-        if (numerator == 0 || denominator == 0)
-            return FallbackIntervalSeconds;
-
-        var refreshHz = (double)numerator / denominator;
-        return !double.IsFinite(refreshHz) || refreshHz < 23 || refreshHz > 600
-            ? FallbackIntervalSeconds
-            : 1.0 / refreshHz;
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Pipeline;
+using FatzBomb.MediaControl.Windows.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzBomb.MediaControl;
@@ -82,7 +83,7 @@ public static class MediaPlayerServiceProvider
         _ = services.AddSingleton<ICdgEngine, Core.Cdg.CdgEngine>();
         _ = services.AddSingleton<ISubtitleEngine, Core.Subtitle.SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
-        _ = services.AddSingleton<IVideoEngineFactory, VideoPipelineFactory>();
+        _ = services.AddSingleton<IVideoEngineFactory>(_ => new VideoPipelineFactory());
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
         {

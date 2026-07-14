@@ -99,6 +99,14 @@ public interface IVideoEngine : IDisposable
     /// </summary>
     void SetHostRenderEventDrivenPresentation(bool enabled);
 
+    /// <summary>
+    /// Reissues the current decoded frame for a newly attached or resized
+    /// presentation surface. Implementations may ignore the request when no frame
+    /// is available or while playback is active and <paramref name="allowWhilePlaying"/>
+    /// is <see langword="false"/>.
+    /// </summary>
+    void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false);
+
     event EventHandler<VideoFrameEventArgs>? FrameReady;
     event EventHandler<VideoEngineState>? StateChanged;
     event EventHandler? PlaybackEnded;
