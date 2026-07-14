@@ -1,5 +1,6 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
 using ManagedBass;
@@ -302,13 +303,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
 
     private bool OpenBytes(byte[] data)
     {
-        var tempPath = CreateTempMediaPath(data);
+        var tempPath = TempMediaFile.Create(data);
         var success = Open(tempPath);
         if (success)
             lock (_sync)
                 _tempPath = tempPath;
         else
-            TryDeleteTempPath(tempPath);
+            TempMediaFile.TryDelete(tempPath);
 
         return success;
     }
@@ -880,37 +881,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine
         StateChanged?.Invoke(this, state);
     }
 
-    private static string CreateTempMediaPath(byte[] data)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaControl");
-        _ = Directory.CreateDirectory(tempDir);
-        var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".media");
-        File.WriteAllBytes(tempPath, data);
-        return tempPath;
-    }
-
     private void CleanupTempPath()
     {
         if (string.IsNullOrWhiteSpace(_tempPath))
             return;
 
-        try
-        {
-            TryDeleteTempPath(_tempPath);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoAudioEngine", $"Failed to delete temp audio source: {ex.Message}", innerException: ex);
-        }
-        finally
-        {
-            _tempPath = null;
-        }
-    }
-
-    private static void TryDeleteTempPath(string path)
-    {
-        if (File.Exists(path))
-            File.Delete(path);
+        TempMediaFile.TryDelete(_tempPath);
+        _tempPath = null;
     }
 }

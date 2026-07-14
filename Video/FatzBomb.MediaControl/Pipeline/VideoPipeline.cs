@@ -2,6 +2,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
@@ -265,12 +266,12 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
 
     private bool OpenBytes(byte[] data)
     {
-        var tempPath = CreateTempMediaPath(data);
+        var tempPath = TempMediaFile.Create(data);
         var success = Open(tempPath);
         if (success)
             _tempPath = tempPath;
         else
-            TryDeleteTempPath(tempPath);
+            TempMediaFile.TryDelete(tempPath);
 
         return success;
     }
@@ -2480,32 +2481,7 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         if (string.IsNullOrWhiteSpace(_tempPath))
             return;
 
-        try
-        {
-            TryDeleteTempPath(_tempPath);
-        }
-        catch (Exception ex)
-        {
-            if (_configuration.EnableLogging) Debug.WriteLine($"[VideoPipeline] Failed to delete temp video file: {ex.Message}");
-        }
-        finally
-        {
-            _tempPath = null;
-        }
-    }
-
-    private static string CreateTempMediaPath(byte[] data)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), "FatzBombMediaControl");
-        _ = Directory.CreateDirectory(tempDir);
-        var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".media");
-        File.WriteAllBytes(tempPath, data);
-        return tempPath;
-    }
-
-    private static void TryDeleteTempPath(string path)
-    {
-        if (File.Exists(path))
-            File.Delete(path);
+        TempMediaFile.TryDelete(_tempPath);
+        _tempPath = null;
     }
 }

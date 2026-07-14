@@ -551,7 +551,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
         catch (Exception ex)
         {
-            TryDeleteTempPath(path);
+            TempMediaFile.TryDelete(path);
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,
                 "Background",
@@ -660,26 +660,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         if (!string.IsNullOrWhiteSpace(_backgroundVideoTempPath))
         {
-            TryDeleteTempPath(_backgroundVideoTempPath);
+            TempMediaFile.TryDelete(_backgroundVideoTempPath);
             _backgroundVideoTempPath = null;
         }
 
         Background = null;
         if (raiseEvent)
             BackgroundCleared?.Invoke(this, EventArgs.Empty);
-    }
-
-    private static void TryDeleteTempPath(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch
-        {
-            // Best effort cleanup for archive-backed temporary background media.
-        }
     }
 
     private void OnPlaybackEnded(object? sender, EventArgs e)
