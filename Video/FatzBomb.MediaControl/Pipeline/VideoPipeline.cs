@@ -9,7 +9,6 @@ using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
 using FFmpeg.AutoGen;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
@@ -1192,96 +1191,7 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
     private double GetDisplayRefreshIntervalSeconds() =>
         _overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0
             ? 1.0 / overrideHz
-            : GetDwmDisplayRefreshIntervalSeconds();
-
-    /// <summary>
-    /// Queries DWM's global composition refresh interval as a fallback when no explicit
-    /// per-monitor refresh rate has been supplied. Falls back to 60Hz if the query fails,
-    /// returns implausible values, or this is a multi-monitor setup where the global DWM
-    /// value may not match the monitor actually displaying this video.
-    /// </summary>
-    private static double GetDwmDisplayRefreshIntervalSeconds()
-    {
-        const double fallbackSeconds = 1.0 / 60.0;
-
-        try
-        {
-            var timingInfo = new DWM_TIMING_INFO
-            {
-                cbSize = (uint)Marshal.SizeOf<DWM_TIMING_INFO>()
-            };
-
-            if (DwmGetCompositionTimingInfo(IntPtr.Zero, ref timingInfo) != 0)
-                return fallbackSeconds;
-
-            if (timingInfo.rateRefresh.uiDenominator == 0 || timingInfo.rateRefresh.uiNumerator == 0)
-                return fallbackSeconds;
-
-            var refreshHz = (double)timingInfo.rateRefresh.uiNumerator / timingInfo.rateRefresh.uiDenominator;
-
-            // Guard against bogus values from virtual displays/RDP sessions or driver quirks.
-            return !double.IsFinite(refreshHz) || refreshHz < 23 || refreshHz > 600 ? fallbackSeconds : 1.0 / refreshHz;
-        }
-        catch
-        {
-            return fallbackSeconds;
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct UNSIGNED_RATIO
-    {
-        public uint uiNumerator;
-        public uint uiDenominator;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DWM_TIMING_INFO
-    {
-        public uint cbSize;
-        public UNSIGNED_RATIO rateRefresh;
-        public ulong qpcRefreshPeriod;
-        public UNSIGNED_RATIO rateCompose;
-        public ulong qpcVBlank;
-        public ulong cRefresh;
-        public uint cDXRefresh;
-        public ulong qpcCompose;
-        public ulong cFrame;
-        public uint cDXPresent;
-        public ulong cRefreshFrame;
-        public ulong cFrameSubmitted;
-        public uint cDXPresentSubmitted;
-        public ulong cFrameConfirmed;
-        public uint cDXPresentConfirmed;
-        public ulong cRefreshConfirmed;
-        public uint cDXRefreshConfirmed;
-        public ulong cFramesLate;
-        public uint cFramesOutstanding;
-        public ulong cFrameDisplayed;
-        public ulong qpcFrameDisplayed;
-        public ulong cRefreshFrameDisplayed;
-        public ulong cFrameComplete;
-        public ulong qpcFrameComplete;
-        public ulong cFramePending;
-        public ulong qpcFramePending;
-        public ulong cFramesDisplayed;
-        public ulong cFramesComplete;
-        public ulong cFramesPending;
-        public ulong cFramesAvailable;
-        public ulong cFramesDropped;
-        public ulong cFramesMissed;
-        public ulong cRefreshNextDisplayed;
-        public ulong cRefreshNextPresented;
-        public ulong cRefreshesDisplayed;
-        public ulong cRefreshesPresented;
-        public ulong cRefreshStarted;
-        public ulong cPixelsReceived;
-        public ulong cPixelsDrawn;
-        public ulong cBuffersEmpty;
-    }
-
-    [LibraryImport("dwmapi.dll")]
-    private static partial int DwmGetCompositionTimingInfo(IntPtr hwnd, ref DWM_TIMING_INFO pTimingInfo);
+            : DwmCompositionTiming.GetRefreshIntervalSeconds();
 
     private void DecodeLoop(int generation, CancellationToken cancellationToken)
     {
