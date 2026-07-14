@@ -126,7 +126,7 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
             currentDefaultEndpointName = endpointName;
         }
 
-        AudioDeviceChangeInfo? detected = DetectChange(
+        AudioDeviceChangeInfo? detected = AudioDeviceChangeDetector.Detect(
             _lastSampleRate, _lastDevice, _lastDeviceName,
             _lastDefaultEndpointId, _lastDefaultEndpointName,
             currentSampleRate, currentDevice, currentDeviceName,
@@ -142,78 +142,6 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
         _lastDefaultEndpointName = currentDefaultEndpointName;
         DeviceChanged?.Invoke(this, detected);
     }
-
-    internal static AudioDeviceChangeInfo? DetectChange(
-        long lastSampleRate,
-        int lastDevice,
-        string? lastDeviceName,
-        int currentSampleRate,
-        int currentDevice,
-        string? currentDeviceName) => DetectChange(
-            lastSampleRate, lastDevice, lastDeviceName,
-            lastDefaultEndpointId: null, lastDefaultEndpointName: null,
-            currentSampleRate, currentDevice, currentDeviceName,
-            currentDefaultEndpointId: null, currentDefaultEndpointName: null);
-
-    internal static AudioDeviceChangeInfo? DetectChange(
-        long lastSampleRate,
-        int lastDevice,
-        string? lastDeviceName,
-        string? lastDefaultEndpointId,
-        string? lastDefaultEndpointName,
-        int currentSampleRate,
-        int currentDevice,
-        string? currentDeviceName,
-        string? currentDefaultEndpointId,
-        string? currentDefaultEndpointName) =>
-            HasDefaultEndpointChanged(lastDefaultEndpointId, lastDefaultEndpointName, currentDefaultEndpointId, currentDefaultEndpointName)
-                ? new AudioDeviceChangeInfo(
-                    AudioDeviceChangeKind.DefaultDeviceChanged,
-                    DeviceId: currentDefaultEndpointId,
-                    DeviceName: currentDefaultEndpointName ?? currentDeviceName,
-                    FailureMessage: $"Windows default audio output changed from {lastDefaultEndpointName ?? lastDeviceName ?? "(unknown)"} to {currentDefaultEndpointName ?? currentDeviceName ?? "(unknown)"}; leaving playback under BASS/Windows control.",
-                    HResult: 0)
-                : currentDevice != lastDevice
-                    ? new AudioDeviceChangeInfo(
-                        AudioDeviceChangeKind.DefaultDeviceChanged,
-                        DeviceId: null,
-                        DeviceName: currentDeviceName,
-                        FailureMessage: null,
-                        HResult: 0)
-                    : lastSampleRate > 0 && currentSampleRate == 0
-                        ? new AudioDeviceChangeInfo(
-                            AudioDeviceChangeKind.DeviceRemoved,
-                            DeviceId: null,
-                            DeviceName: lastDeviceName,
-                            FailureMessage: "BASS reported a zero sample rate; the current output device is no longer available.",
-                            HResult: 0)
-                        : lastSampleRate == 0 && currentSampleRate > 0
-                            ? new AudioDeviceChangeInfo(
-                                AudioDeviceChangeKind.DeviceAdded,
-                                DeviceId: null,
-                                DeviceName: currentDeviceName,
-                                FailureMessage: null,
-                                HResult: 0)
-                            : lastSampleRate > 0 && currentSampleRate > 0 && currentSampleRate != lastSampleRate
-                                ? new AudioDeviceChangeInfo(
-                                    AudioDeviceChangeKind.DeviceStateChanged,
-                                    DeviceId: null,
-                                    DeviceName: currentDeviceName,
-                                    FailureMessage: $"BASS sample rate changed from {lastSampleRate} Hz to {currentSampleRate} Hz.",
-                                    HResult: 0)
-                                : !string.Equals(lastDeviceName, currentDeviceName, StringComparison.Ordinal)
-                                    ? new AudioDeviceChangeInfo(
-                                        AudioDeviceChangeKind.DefaultDeviceChanged,
-                                        DeviceId: null,
-                                        DeviceName: currentDeviceName,
-                                        FailureMessage: null,
-                                        HResult: 0)
-                                    : null;
-
-    internal static bool HasDefaultEndpointChanged(string? lastEndpointId, string? lastEndpointName, string? currentEndpointId, string? currentEndpointName) =>
-        !string.IsNullOrWhiteSpace(lastEndpointId) && !string.IsNullOrWhiteSpace(currentEndpointId)
-            ? !string.Equals(lastEndpointId, currentEndpointId, StringComparison.OrdinalIgnoreCase)
-            : !string.IsNullOrWhiteSpace(lastEndpointName) && !string.IsNullOrWhiteSpace(currentEndpointName) && !string.Equals(lastEndpointName, currentEndpointName, StringComparison.Ordinal);
 
     private void PollLoop()
     {
