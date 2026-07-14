@@ -26,6 +26,12 @@ public sealed class VideoFrameEventArgs : EventArgs
 public interface IVideoEngine : IDisposable
 {
     bool Open(string path);
+
+    /// <summary>
+    /// Opens a video source from an archive entry.
+    /// </summary>
+    bool Open(IArchiveEntryInfo archiveEntry);
+
     void Close();
     bool Play();
     bool Pause();
@@ -35,6 +41,21 @@ public interface IVideoEngine : IDisposable
     double Position { get; set; }
     bool IsOpen { get; }
     double FramesPerSecond { get; }
+
+    /// <summary>
+    /// Gets the audio engine decoded from the current video source, if it has one.
+    /// </summary>
+    IAudioEngine? Audio { get; }
+
+    /// <summary>
+    /// Gets whether the current video source exposes an audio stream.
+    /// </summary>
+    bool HasAudio { get; }
+
+    /// <summary>
+    /// Gets or sets whether playback restarts seamlessly at the end of the source.
+    /// </summary>
+    bool LoopPlayback { get; set; }
 
     /// <summary>
     /// Gets the video width in pixels.
@@ -80,6 +101,7 @@ public interface IVideoEngine : IDisposable
 
     event EventHandler<VideoFrameEventArgs>? FrameReady;
     event EventHandler<VideoEngineState>? StateChanged;
+    event EventHandler? PlaybackEnded;
     event EventHandler? Opened;
     event EventHandler? Closed;
     event EventHandler<double>? PositionChanged;

@@ -11,7 +11,7 @@ internal sealed class MediaSession : IDisposable
     public AudioPipeline? Audio { get; private set; }
     public CdgPipeline? Cdg { get; private set; }
     public SubtitlePipeline? Subtitle { get; private set; }
-    public VideoPipeline? Video { get; private set; }
+    public IVideoEngine? Video { get; private set; }
 
     public MediaSession()
     {
@@ -25,7 +25,7 @@ internal sealed class MediaSession : IDisposable
 
     public void AttachSubtitle(SubtitlePipeline subtitle) => Subtitle = subtitle ?? throw new ArgumentNullException(nameof(subtitle));
 
-    public void AttachVideo(VideoPipeline video) => Video = video ?? throw new ArgumentNullException(nameof(video));
+    public void AttachVideo(IVideoEngine video) => Video = video ?? throw new ArgumentNullException(nameof(video));
 
     public void Clear()
     {

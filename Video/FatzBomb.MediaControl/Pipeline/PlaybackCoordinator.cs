@@ -15,18 +15,17 @@ internal sealed class PlaybackCoordinator : IDisposable
         IAudioEngine audioEngine,
         ICdgEngine cdgEngine,
         ISubtitleEngine subtitleEngine,
+        IVideoEngineFactory videoEngineFactory,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
+        ArgumentNullException.ThrowIfNull(videoEngineFactory);
         _session = new MediaSession();
         _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
         var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
         var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
         var subtitle = new SubtitlePipeline(subtitleEngine, _session.State);
-        var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
-            ? deviceProvider.BassDeviceIndex
-            : configuration.AudioOutputDeviceIndex;
-        var video = new VideoPipeline(_session.Clock, _session.State, configuration, bassDeviceIndex, _session.Sync);
+        var video = videoEngineFactory.Create(_session.Clock, _session.State, audioEngine, configuration, _session.Sync);
 
         audio.PlaybackEnded += OnPlaybackEnded;
         cdg.PlaybackEnded += OnPlaybackEnded;
