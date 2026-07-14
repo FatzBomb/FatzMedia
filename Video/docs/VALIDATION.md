@@ -13,9 +13,9 @@ Use the **Routine Validation** sections after normal code changes. Use the **Ext
 Run from the repository root.
 
 ```powershell
-dotnet restore FatzBombMedia.sln
-dotnet build FatzBombMedia.sln --no-restore
-dotnet build -c Release FatzBombMedia.sln --no-restore
+dotnet restore FatzBomb.MediaControl.sln
+dotnet build FatzBomb.MediaControl.sln --no-restore
+dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
 .\scripts\check-wpf-boundary.ps1
 .\scripts\check-presentation-parity.ps1
 ```

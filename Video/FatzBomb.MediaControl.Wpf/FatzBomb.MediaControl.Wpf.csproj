@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FatzBomb.MediaControl.Wpf</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Wpf</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+  </ItemGroup>
+
+</Project>

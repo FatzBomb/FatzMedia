@@ -1,0 +1,174 @@
+using System.Diagnostics;
+using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using Vortice.DirectComposition;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
+using SharpGen.Runtime;
+
+namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
+
+/// <summary>
+/// Owns DirectComposition visual-tree state for the optional native layered
+/// presentation backend.  This keeps composition visuals/transforms separate
+/// from the main D3D11 renderer coordinator.
+/// </summary>
+internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration configuration) : IDisposable
+{
+    private IDCompositionDevice? _compositionDevice;
+    private IDCompositionTarget? _compositionTarget;
+    private IDCompositionVisual? _rootVisual;
+    private IDCompositionVisual? _baseVisual;
+    private IDCompositionVisual? _overlayVisual;
+    private int _outputWidth;
+    private int _outputHeight;
+    private bool _deviceLostReported;
+
+    public IDXGISwapChain1? OverlaySwapChain { get; private set; }
+    public ID3D11Texture2D? OverlayTexture { get; private set; }
+    public bool IsActive => _compositionDevice != null && OverlaySwapChain != null;
+
+    public bool Create(
+        IDXGIDevice dxgiDevice,
+        IntPtr hwnd,
+        IDXGISwapChain baseSwapChain,
+        IDXGISwapChain1 overlaySwapChain,
+        int contentWidth,
+        int contentHeight)
+    {
+        Dispose();
+
+        try
+        {
+            // Take ownership immediately so any failure path can cleanly release it.
+            OverlaySwapChain = overlaySwapChain;
+            _compositionDevice = DComp.DCompositionCreateDevice<IDCompositionDevice>(dxgiDevice);
+            _ = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
+            _rootVisual = _compositionDevice.CreateVisual();
+            _baseVisual = _compositionDevice.CreateVisual();
+            _overlayVisual = _compositionDevice.CreateVisual();
+
+            _ = _baseVisual.SetContent(baseSwapChain);
+            _ = _overlayVisual.SetContent(overlaySwapChain);
+            _ = _rootVisual.AddVisual(_baseVisual, false, null);
+            _ = _rootVisual.AddVisual(_overlayVisual, true, _baseVisual);
+            _ = _compositionTarget.SetRoot(_rootVisual);
+
+            OverlayTexture = overlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
+            _outputWidth = Math.Max(1, contentWidth);
+            _outputHeight = Math.Max(1, contentHeight);
+            ApplyTransforms(contentWidth, contentHeight);
+            CommitCore("Create");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"DirectComposition target creation failed: {ex.Message}", innerException: ex);
+            Dispose();
+            return false;
+        }
+    }
+
+    public void SetContentSize(int contentWidth, int contentHeight)
+    {
+        if (!IsActive || _compositionDevice == null || contentWidth <= 0 || contentHeight <= 0)
+        {
+            return;
+        }
+
+        _outputWidth = Math.Max(1, contentWidth);
+        _outputHeight = Math.Max(1, contentHeight);
+        ApplyTransforms(contentWidth, contentHeight);
+        CommitCore("SetContentSize");
+    }
+
+    public void ReleaseOverlayBackBuffer()
+    {
+        OverlayTexture?.Dispose();
+        OverlayTexture = null;
+    }
+
+    public void ReacquireOverlayBackBuffer()
+    {
+        if (OverlaySwapChain == null)
+        {
+            return;
+        }
+
+        ReleaseOverlayBackBuffer();
+        OverlayTexture = OverlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
+    }
+
+    public void Commit() => CommitCore("Commit");
+
+    private void CommitCore(string caller)
+    {
+        if (_compositionDevice == null)
+        {
+            return;
+        }
+
+        Result result = _compositionDevice.Commit();
+        if (result.Failure)
+        {
+            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            {
+                // Latch owned by this instance: report once per loss episode so repeated
+                // Commit calls (every frame, via the per-frame Commit path) do not spam.
+                if (!_deviceLostReported)
+                {
+                    _deviceLostReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {caller} Commit detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
+                }
+            }
+            else if (configuration.EnableLogging)
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition {caller} Commit failed: {result}");
+            }
+
+            return;
+        }
+
+        _deviceLostReported = false;
+    }
+
+    private void ApplyTransforms(int contentWidth, int contentHeight)
+    {
+        if (!IsActive || _rootVisual == null || contentWidth <= 0 || contentHeight <= 0)
+        {
+            return;
+        }
+
+        var outputWidth = _outputWidth > 0 ? _outputWidth : contentWidth;
+        var outputHeight = _outputHeight > 0 ? _outputHeight : contentHeight;
+        var scaleX = (float)outputWidth / contentWidth;
+        var scaleY = (float)outputHeight / contentHeight;
+        var matrix = System.Numerics.Matrix3x2.CreateScale(scaleX, scaleY);
+        Result result = _rootVisual.SetTransform(matrix);
+        if (result.Failure && configuration.EnableLogging)
+        {
+            Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");
+        }
+    }
+
+    public void Dispose()
+    {
+        OverlayTexture?.Dispose();
+        OverlayTexture = null;
+        OverlaySwapChain?.Dispose();
+        OverlaySwapChain = null;
+        _overlayVisual?.Dispose();
+        _overlayVisual = null;
+        _baseVisual?.Dispose();
+        _baseVisual = null;
+        _rootVisual?.Dispose();
+        _rootVisual = null;
+        _compositionTarget?.Dispose();
+        _compositionTarget = null;
+        _compositionDevice?.Dispose();
+        _compositionDevice = null;
+        _outputWidth = 0;
+        _outputHeight = 0;
+        _deviceLostReported = false;
+    }
+}

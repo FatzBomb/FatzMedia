@@ -2,15 +2,15 @@
 
 ## Projects
 
-- `FatzBombMedia.MediaControl`: UI-agnostic Core media-control engine.
-- `FatzBombMedia.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop.
-- `FatzBombMedia.Player`: WPF validation host.
+- `FatzBomb.MediaControl`: UI-agnostic Core media-control engine.
+- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop.
+- `FatzBomb.MediaControl.Player`: WPF validation host.
 
 Future adapters should be separate projects using the same package pattern:
 
-- `FatzBombMedia.MediaControl.WinUI`
-- `FatzBombMedia.MediaControl.Avalonia`
-- `FatzBombMedia.MediaControl.WinForms`
+- `FatzBomb.MediaControl.WinUI`
+- `FatzBomb.MediaControl.Avalonia`
+- `FatzBomb.MediaControl.WinForms`
 
 ## Ownership
 
@@ -152,7 +152,7 @@ Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely ins
 - Supported archive combinations: MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, standalone CDG+image/video, video-only archives.
 - Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
-`FatzBombMedia.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.
+`FatzBomb.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 

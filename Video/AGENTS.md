@@ -6,32 +6,35 @@ facts win where they conflict with global preferences.*
 ## Build & Run
 
 ```powershell
-dotnet restore FatzBombMedia.sln
-dotnet build FatzBombMedia.sln --no-restore
+dotnet restore FatzBomb.MediaControl.sln
+dotnet build FatzBomb.MediaControl.sln --no-restore
 
-# Native DLLs required (not in repo). Put x64 BASS + FFmpeg DLLs in FatzBombMedia.Player/native/
+# Native DLLs required (not in repo). Put x64 BASS + FFmpeg DLLs in FatzBomb.MediaControl.Player/native/
 # to run the Player. A bundled TimGM6mb.sf2 soundfont is in native/ for MIDI fallback.
 # to run the Player:
-dotnet run --project FatzBombMedia.Player
+dotnet run --project FatzBomb.MediaControl.Player
 
 # Release mode treats warnings as errors
-dotnet build -c Release FatzBombMedia.sln --no-restore
+dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
 ```
+
+Shared build settings (LangVersion, Nullable, PlatformTarget, versioning, Release
+warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 
 ## Project Structure
 
 | Project | Role | Key constraint |
 |---------|------|---------------|
-| `FatzBombMedia.MediaControl` (Core) | UI-agnostic engine — audio/video/Cdg, D3D11 composition, swap chains, final presentation | No WPF references. No `System.Windows.*`, `ImageSource`, `Dispatcher`, etc. |
-| `FatzBombMedia.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | Must NOT reference Core renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
-| `FatzBombMedia.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
+| `FatzBomb.MediaControl` (Core) | UI-agnostic engine — audio/video/Cdg, D3D11 composition, swap chains, final presentation | No WPF references. No `System.Windows.*`, `ImageSource`, `Dispatcher`, etc. |
+| `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | Must NOT reference Core renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
+| `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
 ## LangVersion & Runtime Features
 
 - **C# 14** (`LangVersion 14.0`) — `field` keyword in auto-property accessors, primary constructors on non-record types, collection expressions all valid
 - **`System.Threading.Lock`** (not `Monitor`) — used throughout pipeline for synchronization. This is the new explicit `Lock` type from .NET 9+, not the legacy `lock(obj)` pattern.
 - **x64-only** — `PlatformTarget=x64` on all projects. Do not change.
-- **AssemblyName ≠ ProjectName** — Core assembly is `FatzBombMedia.MediaControl`, but NuGet package ID is `FatzBombMedia.MediaControl.Core`
+- **Consistent identity** — Core PackageId == AssemblyName == RootNamespace == `FatzBomb.MediaControl` (the bare product name; the old `.Core` package suffix was dropped). Namespace root across the solution is `FatzBomb.MediaControl` (host is `FatzBomb.MediaControl.Player`).
 - **Packable** — Core project generates a NuGet package on build (`GeneratePackageOnBuild=true`)
 
 ## Architecture Rules
@@ -54,8 +57,8 @@ dotnet build -c Release FatzBombMedia.sln --no-restore
 
 | Concern | Location |
 |---------|----------|
-| Public API surface | `FatzBombMedia.MediaControl.Wpf.Player` (extends `MediaControlPlayer : IMediaControlSession`) |
-| WPF UI control | `FatzBombMedia.MediaControl.Wpf.MediaSurface` (a `Grid` subclass with native HWND child) |
+| Public API surface | `FatzBomb.MediaControl.Wpf.Player` (extends `MediaControlPlayer : IMediaControlSession`) |
+| WPF UI control | `FatzBomb.MediaControl.Wpf.MediaSurface` (a `Grid` subclass with native HWND child) |
 | DI composition | `MediaPlayerServiceProvider.Create()` — singleton DI, no external overrides |
 | Pipeline orchestrator | `Pipeline.PlaybackCoordinator` (internal) — wires AudioPipeline + CdgPipeline + VideoPipeline |
 | MIDI lyric extraction | `Core.Audio.MidiLyricExtractor` (internal) — extracts and groups karaoke lyrics from BASS MIDI markers |
@@ -73,7 +76,7 @@ graph answers well.
 
 ## WPF / XAML / MVVM style (Player host)
 
-Applies to `FatzBombMedia.Player` (and any WPF UI). **Core stays UI-agnostic — none
+Applies to `FatzBomb.MediaControl.Player` (and any WPF UI). **Core stays UI-agnostic — none
 of this applies there.**
 
 Use MVVM via CommunityToolkit.Mvvm:
@@ -94,7 +97,7 @@ HWND/interop hooks (e.g. `MediaSurface`). No business logic in code-behind or XA
 
 ## Testing
 
-A test project exists at `FatzBombMedia.MediaControl.Tests` with xUnit. Run `dotnet test`.
+A test project exists at `FatzBomb.MediaControl.Tests` with xUnit. Run `dotnet test`.
 
 Cover **pure** logic only (file-type detection / `FileTypes`, parsing, sorting, state
 transitions in the pipeline, karaoke timing, viewport geometry, style normalization) with xUnit.
@@ -108,7 +111,7 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 1. `dotnet build` succeeds (no warnings in Release)
 2. `dotnet test` passes (235+ tests covering pure logic)
 3. Manual smoke test via Player (see `docs/VALIDATION.md` for checklist)
-4. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBombMedia.MediaControl.Core.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
+4. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBomb.MediaControl.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
 
 ## Docs That Matter
 
