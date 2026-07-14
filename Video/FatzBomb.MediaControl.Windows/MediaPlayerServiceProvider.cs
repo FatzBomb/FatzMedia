@@ -98,7 +98,7 @@ public static class MediaPlayerServiceProvider
             return new PipelineMediaEngine(audioEngine, cdgEngine, subtitleEngine, archiveService, videoEngineFactory, midiLyricProvider, configuration);
         });
 
-        _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new Core.Audio.PollingAudioDeviceMonitor());
+        _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
     }
 
     private static bool LoadLibraries(IReadOnlyList<string> nativeLibraryPaths) =>

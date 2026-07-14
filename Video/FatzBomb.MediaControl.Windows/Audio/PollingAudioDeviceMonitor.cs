@@ -1,9 +1,10 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 using ManagedBass;
 using System.Diagnostics;
 using MBass = ManagedBass.Bass;
 
-namespace FatzBomb.MediaControl.Core.Audio;
+namespace FatzBomb.MediaControl.Windows.Audio;
 
 internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 {

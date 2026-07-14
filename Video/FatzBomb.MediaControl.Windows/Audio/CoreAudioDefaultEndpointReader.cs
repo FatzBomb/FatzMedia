@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace FatzBomb.MediaControl.Core.Audio;
+namespace FatzBomb.MediaControl.Windows.Audio;
 
 internal static partial class CoreAudioDefaultEndpointReader
 {
