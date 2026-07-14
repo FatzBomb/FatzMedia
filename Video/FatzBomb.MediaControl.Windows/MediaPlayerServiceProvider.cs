@@ -6,8 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FatzBomb.MediaControl;
 
 /// <summary>
-/// Service provider for MediaPlayer dependency injection.
-/// Creates optimized service configurations based on MediaPlayerConfiguration.
+/// Windows service provider for media-player dependency injection.
+/// Creates Windows-native media-engine services based on MediaPlayerConfiguration.
 /// </summary>
 public static class MediaPlayerServiceProvider
 {

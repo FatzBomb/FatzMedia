@@ -1,15 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$coreProject = Join-Path $root 'FatzBombMedia.MediaControl'
-$wpfProject = Join-Path $root 'FatzBombMedia.MediaControl.Wpf'
+$coreProject = Join-Path $root 'FatzBomb.MediaControl'
+$wpfProject = Join-Path $root 'FatzBomb.MediaControl.Wpf'
 
 if (-not (Test-Path $coreProject)) {
-    throw 'WPF boundary check failed: FatzBombMedia.MediaControl project folder was not found.'
+    throw 'WPF boundary check failed: FatzBomb.MediaControl project folder was not found.'
 }
 
 if (-not (Test-Path $wpfProject)) {
-    throw 'WPF boundary check failed: FatzBombMedia.MediaControl.Wpf project folder was not found.'
+    throw 'WPF boundary check failed: FatzBomb.MediaControl.Wpf project folder was not found.'
 }
 
 $coreForbiddenPatterns = @(
@@ -41,7 +41,7 @@ $adapterForbiddenPatterns = @(
     '\bBackgroundFrameReady\b',
     '\bImageFrameReady\b',
     '\bBackgroundCleared\b',
-    'FatzBombMedia\.MediaControl\.Core\.Cdg',
+    'FatzBomb\.MediaControl\.Core\.Cdg',
     '\bCdgEngine\b',
     '\bCdgStateMachine\b',
     '\bCdgRenderSnapshot\b',
@@ -91,13 +91,13 @@ function Find-Violations {
 $coreViolations = @(Find-Violations -Path $coreProject -Patterns $coreForbiddenPatterns)
 if ($coreViolations.Count -gt 0) {
     $coreViolations | Format-Table -AutoSize
-    throw 'WPF boundary check failed: WPF-specific bitmap/UI types were found in FatzBombMedia.MediaControl.'
+    throw 'WPF boundary check failed: WPF-specific bitmap/UI types were found in FatzBomb.MediaControl.'
 }
 
 $adapterViolations = @(Find-Violations -Path $wpfProject -Patterns $adapterForbiddenPatterns)
 if ($adapterViolations.Count -gt 0) {
     $adapterViolations | Format-Table -AutoSize
-    throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzBombMedia.MediaControl.Wpf.'
+    throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzBomb.MediaControl.Wpf.'
 }
 
 Write-Host 'WPF boundary check passed: Core has no WPF UI/bitmap types, and WPF adapter has no renderer/pipeline/internal CDG/D3D11 references.'

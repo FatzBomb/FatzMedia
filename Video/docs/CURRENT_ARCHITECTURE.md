@@ -3,7 +3,8 @@
 ## Projects
 
 - `FatzBomb.MediaControl`: UI-agnostic Core media-control engine.
-- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop.
+- `FatzBomb.MediaControl.Windows`: Windows platform composition and native media-engine registrations.
+- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; selects the Windows platform factory.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
 Future adapters should be separate projects using the same package pattern:
@@ -17,9 +18,9 @@ Future adapters should be separate projects using the same package pattern:
 `MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which composes the
 native media-engine services for the current operating system. Core owns session
 lifecycle; an OS package owns native-library loading, decoder/renderer registrations,
-and the concrete factory. The current `WindowsMediaControlPlatformFactory` is a
-temporary Windows implementation in Core and will move to
-`FatzBomb.MediaControl.Windows` during the platform split.
+and the concrete factory. `WindowsMediaControlPlatformFactory` now lives in
+`FatzBomb.MediaControl.Windows`. That project accesses Core internals temporarily
+while the remaining Windows implementation files migrate there in stages.
 
 ## Ownership
 

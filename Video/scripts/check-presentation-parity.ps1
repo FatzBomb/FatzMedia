@@ -34,15 +34,15 @@ function Assert-Match {
     }
 }
 
-$mediaSurface = Read-Text 'FatzBombMedia.MediaControl.Wpf/MediaSurface.cs'
-$secondaryWindow = Read-Text 'FatzBombMedia.MediaControl.Wpf/SecondaryPresentationWindow.cs'
-$sessionContract = Read-Text 'FatzBombMedia.MediaControl/Api/IMediaControlSession.cs'
-$coordinator = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/NativeMediaPresentationCoordinator.cs'
-$backendSet = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
-$surfaceController = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
-$presentationServices = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
-$compositionPresenter = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
-$targetRegistry = Read-Text 'FatzBombMedia.MediaControl/Core/Graphics/Composition/D3D11/D3D11CompositionTargetRegistry.cs'
+$mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
+$secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
+$sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
+$coordinator = Read-Text 'FatzBomb.MediaControl/Core/Graphics/NativeMediaPresentationCoordinator.cs'
+$backendSet = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
+$surfaceController = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
+$presentationServices = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
+$compositionPresenter = Read-Text 'FatzBomb.MediaControl/Core/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
+$targetRegistry = Read-Text 'FatzBomb.MediaControl/Core/Graphics/Composition/D3D11/D3D11CompositionTargetRegistry.cs'
 
 Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IMediaControlSession must expose neutral presentation-surface attach.'
 Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IMediaControlSession must expose neutral presentation-surface resize.'
