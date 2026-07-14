@@ -12,6 +12,11 @@ namespace FatzBomb.MediaControl;
 public interface IMediaControlPlatformFactory
 {
     /// <summary>
+    /// Gets the most recent native-library initialization result for this platform.
+    /// </summary>
+    string LastNativeLoadMessage { get; }
+
+    /// <summary>
     /// Creates a service provider containing the platform implementation of the
     /// media engine and its supporting services for one player session.
     /// </summary>

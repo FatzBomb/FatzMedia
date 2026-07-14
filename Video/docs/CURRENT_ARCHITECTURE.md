@@ -141,7 +141,7 @@ Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely ins
 
 ## Audio Output Device Selection (Stage 006C)
 
-- `AudioOutputDeviceInfo` (public record) and `AudioOutputDevices.Enumerate(...)` enumerate BASS output devices through MediaControl.
+- `AudioOutputDeviceInfo` is a Core public record; `AudioOutputDevices.Enumerate(...)` lives in the Windows package and enumerates BASS output devices through Windows composition.
 - `MediaPlayerConfiguration.AudioOutputDeviceIndex`: BASS device index, `-1` = Primary (system default). Creation-time choice; runtime device changes require a new player or `Reset`.
 - `MediaPlayerConfiguration.AudioOutputFallbackMode`: `FallbackToPrimary` (default) or `NoFallback`.
 - If an explicit device is unavailable at init and fallback is enabled, the engine retries on Primary.

@@ -346,9 +346,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             StartupError = ex;
-            StatusText = string.IsNullOrWhiteSpace(MediaControlPlayer.LastNativeLoadMessage)
-                ? $"Native DLLs unavailable: {ex.Message}"
-                : $"Native DLLs unavailable: {MediaControlPlayer.LastNativeLoadMessage}";
+            StatusText = $"Native DLLs unavailable: {ex.Message}";
         }
         finally
         {

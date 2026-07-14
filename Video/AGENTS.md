@@ -67,7 +67,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | Karaoke rendering | `Core.Subtitle.SubtitleTextRenderer` (internal) — Direct2D/DWrite rasterization with wipe, scroll, and page-fade animation |
 | Karaoke style config | `Core.Configuration.KaraokeTextStyle` — independent font/color/outline/shadow for karaoke lyrics |
 | Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains |
-| Native lib loader | `Bootstrap.EnsureInitialized()` (internal) — load-once, synchronous, populates `FileTypes` |
+| Native lib loader | `FatzBomb.MediaControl.Windows.Bootstrap.EnsureInitialized()` (internal) — load-once, synchronous, populates `FileTypes` |
 
 ## Code Navigation
 

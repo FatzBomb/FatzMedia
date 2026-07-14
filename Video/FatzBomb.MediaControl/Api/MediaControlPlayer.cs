@@ -83,7 +83,7 @@ public class MediaControlPlayer : IMediaControlSession
 
     public string OpenFileDialogFilter => _acceptedTypes.OpenFileDialogFilter;
 
-    public static string LastNativeLoadMessage => Bootstrap.Message;
+    public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
 
     public bool PlayOnLoad
     {

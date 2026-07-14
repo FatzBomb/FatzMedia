@@ -9,6 +9,9 @@ namespace FatzBomb.MediaControl;
 public sealed class WindowsMediaControlPlatformFactory : IMediaControlPlatformFactory
 {
     /// <inheritdoc />
+    public string LastNativeLoadMessage => Bootstrap.Message;
+
+    /// <inheritdoc />
     public IServiceProvider CreateServiceProvider(
         MediaPlayerConfiguration configuration,
         IReadOnlyList<string> nativeLibraryPaths) =>
