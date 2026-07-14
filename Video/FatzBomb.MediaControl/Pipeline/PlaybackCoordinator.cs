@@ -10,16 +10,19 @@ internal sealed class PlaybackCoordinator : IDisposable
     private const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
     private readonly MediaSession _session;
     private readonly TimeSpan _karaokeTransitionDuration;
+    private readonly IMidiLyricProvider _midiLyricProvider;
 
     public PlaybackCoordinator(
         IAudioEngine audioEngine,
         ICdgEngine cdgEngine,
         ISubtitleEngine subtitleEngine,
         IVideoEngineFactory videoEngineFactory,
+        IMidiLyricProvider midiLyricProvider,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
         ArgumentNullException.ThrowIfNull(videoEngineFactory);
+        _midiLyricProvider = midiLyricProvider ?? throw new ArgumentNullException(nameof(midiLyricProvider));
         _session = new MediaSession();
         _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
         var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
@@ -276,13 +279,13 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     private bool TryLoadMidiLyrics(string audioPath)
     {
-        if (!Core.Audio.MidiLyricExtractor.IsMidiFile(audioPath))
+        if (!_midiLyricProvider.IsMidiFile(audioPath))
             return true;
 
         try
         {
             var sourceHandle = _session.Audio?.Engine.SourceHandle ?? 0;
-            IReadOnlyList<SubtitleCue>? cues = Core.Audio.MidiLyricExtractor.ExtractLyrics(
+            IReadOnlyList<SubtitleCue>? cues = _midiLyricProvider.ExtractLyrics(
                 sourceHandle,
                 audioPath,
                 _karaokeTransitionDuration);

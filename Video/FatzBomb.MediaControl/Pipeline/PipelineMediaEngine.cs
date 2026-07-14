@@ -43,6 +43,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ISubtitleEngine subtitleEngine,
         IArchiveService archiveService,
         IVideoEngineFactory videoEngineFactory,
+        IMidiLyricProvider midiLyricProvider,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
@@ -51,7 +52,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _configuration = configuration;
         ArgumentNullException.ThrowIfNull(cdgEngine);
         ArgumentNullException.ThrowIfNull(subtitleEngine);
-        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, configuration, ownsAudioEngine);
+        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
     }
 
