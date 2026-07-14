@@ -406,7 +406,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             OpacityBrush = null,
             LayerOptions = LayerOptions.None,
         };
-        target.PushLayer(layerParameters, null!);
+        target.PushLayer(layerParameters, null);
         try
         {
             using (ID2D1SolidColorBrush textBrush = target.CreateSolidColorBrush(ToColor(baseStyle.TextArgb)))
@@ -554,16 +554,16 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             : _writeFactory.CreateTextLayout(metadata.Artist, artistFormat, textWidth, canvasHeight * 0.1f);
         artistLayout.TextAlignment = TextAlignment.Center;
 
-        string infoText = BuildMetadataDetails(metadata, isEndCard);
+        var infoText = BuildMetadataDetails(metadata, isEndCard);
         using IDWriteTextLayout infoLayout = _writeFactory.CreateTextLayout(infoText, infoFormat, textWidth, canvasHeight * 0.24f);
         infoLayout.TextAlignment = TextAlignment.Center;
         using IDWriteTextLayout copyrightLayout = _writeFactory.CreateTextLayout(metadata.Copyright, copyrightFormat, textWidth, canvasHeight * 0.08f);
         copyrightLayout.TextAlignment = TextAlignment.Center;
 
-        var titleMetrics = titleLayout.Metrics;
-        var artistMetrics = artistLayout.Metrics;
-        var infoMetrics = infoLayout.Metrics;
-        var copyrightMetrics = copyrightLayout.Metrics;
+        TextMetrics titleMetrics = titleLayout.Metrics;
+        TextMetrics artistMetrics = artistLayout.Metrics;
+        TextMetrics infoMetrics = infoLayout.Metrics;
+        TextMetrics copyrightMetrics = copyrightLayout.Metrics;
 
         var gap = _karaokeStyle.FontSize * 0.13f;
         var sectionGap = _karaokeStyle.FontSize * 0.2f;
@@ -632,7 +632,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var textWidth = canvasWidth * 0.88f;
         using IDWriteTextLayout titleLayout = _writeFactory.CreateTextLayout(metadata.Title, titleFormat, textWidth, topHeight * 0.55f);
         titleLayout.TextAlignment = TextAlignment.Center;
-        string secondary = string.Join("  \u2022  ", new[] { metadata.Artist, metadata.Year }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        var secondary = string.Join("  \u2022  ", new[] { metadata.Artist, metadata.Year }.Where(static value => !string.IsNullOrWhiteSpace(value)));
         using IDWriteTextLayout secondaryLayout = _writeFactory.CreateTextLayout(secondary, secondaryFormat, textWidth, topHeight * 0.32f);
         secondaryLayout.TextAlignment = TextAlignment.Center;
         using IDWriteTextLayout bottomLayout = _writeFactory.CreateTextLayout(BuildBandDetails(metadata), detailFormat, textWidth, bottomHeight * 0.82f);
@@ -642,7 +642,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         using ID2D1SolidColorBrush titleBrush = target.CreateSolidColorBrush(ToColor(0xFFFFF4DC, opacity));
         using ID2D1SolidColorBrush accentBrush = target.CreateSolidColorBrush(ToColor(0xFF78DCE8, opacity));
         using ID2D1SolidColorBrush detailBrush = target.CreateSolidColorBrush(ToColor(0xFFD5DCE6, opacity));
-        var x = (canvasWidth - textWidth) / 2f - bounds.Left;
+        var x = ((canvasWidth - textWidth) / 2f) - bounds.Left;
         var titleY = (topHeight * 0.12f) - bounds.Top;
         DrawMetadataText(target, titleLayout, new Vector2(x, titleY), titleBrush, shadowBrush, 1.8f);
         if (secondary.Length > 0)
@@ -655,7 +655,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var lines = new List<string>();
         if (!isEndCard && !metadata.IsFallback)
         {
-            string credits = BuildWriterCredits(metadata);
+            var credits = BuildWriterCredits(metadata);
             if (credits.Length > 0)
                 lines.Add(credits);
         }
@@ -664,7 +664,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         if (!isEndCard)
         {
             lines.Add($"Length  {FormatDuration(metadata.Duration)}");
-            string music = BuildMusicDetails(metadata);
+            var music = BuildMusicDetails(metadata);
             if (music.Length > 0)
                 lines.Add(music);
             if (!metadata.IsFallback && metadata.AdditionalInfo.Count > 0)
@@ -676,7 +676,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     private static string BuildBandDetails(KaraokeMetadata metadata)
     {
         var lines = new List<string> { $"Length  {FormatDuration(metadata.Duration)}" };
-        string music = BuildMusicDetails(metadata);
+        var music = BuildMusicDetails(metadata);
         if (music.Length > 0)
             lines.Add(music);
         if (!string.IsNullOrWhiteSpace(metadata.Copyright))
@@ -684,16 +684,14 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return string.Join('\n', lines);
     }
 
-    private static string BuildWriterCredits(KaraokeMetadata metadata)
-    {
-        if (!string.IsNullOrWhiteSpace(metadata.Writer) && !string.IsNullOrWhiteSpace(metadata.Lyricist))
-            return string.Equals(metadata.Writer, metadata.Lyricist, StringComparison.OrdinalIgnoreCase)
+    private static string BuildWriterCredits(KaraokeMetadata metadata) =>
+        !string.IsNullOrWhiteSpace(metadata.Writer) && !string.IsNullOrWhiteSpace(metadata.Lyricist)
+            ? string.Equals(metadata.Writer, metadata.Lyricist, StringComparison.OrdinalIgnoreCase)
                 ? $"Written By / Lyricist:  {metadata.Writer}"
-                : $"Written By:  {metadata.Writer}  \u2022  Lyricist:  {metadata.Lyricist}";
-        if (!string.IsNullOrWhiteSpace(metadata.Writer))
-            return $"Written By:  {metadata.Writer}";
-        return string.IsNullOrWhiteSpace(metadata.Lyricist) ? string.Empty : $"Lyricist:  {metadata.Lyricist}";
-    }
+                : $"Written By:  {metadata.Writer}  \u2022  Lyricist:  {metadata.Lyricist}"
+            : !string.IsNullOrWhiteSpace(metadata.Writer)
+                ? $"Written By:  {metadata.Writer}"
+                : string.IsNullOrWhiteSpace(metadata.Lyricist) ? string.Empty : $"Lyricist:  {metadata.Lyricist}";
 
     private static string BuildMusicDetails(KaraokeMetadata metadata)
     {
@@ -717,10 +715,10 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         using ID2D1SolidColorBrush glassBrush = target.CreateSolidColorBrush(new Color4(0.055f, 0.075f, 0.11f, 0.88f * opacity));
         using ID2D1SolidColorBrush sheenBrush = target.CreateSolidColorBrush(new Color4(0.2f, 0.34f, 0.44f, 0.12f * opacity));
         using ID2D1SolidColorBrush borderBrush = target.CreateSolidColorBrush(ToColor(accentArgb, 0.5f * opacity));
-        target.FillRoundedRectangle(new Vortice.Direct2D1.RoundedRectangle(new System.Drawing.RectangleF(rect.X + 8, rect.Y + 10, rect.Width, rect.Height), radius, radius), shadowBrush);
-        var rounded = new Vortice.Direct2D1.RoundedRectangle(rect, radius, radius);
+        target.FillRoundedRectangle(new RoundedRectangle(new System.Drawing.RectangleF(rect.X + 8, rect.Y + 10, rect.Width, rect.Height), radius, radius), shadowBrush);
+        var rounded = new RoundedRectangle(rect, radius, radius);
         target.FillRoundedRectangle(rounded, glassBrush);
-        target.FillRoundedRectangle(new Vortice.Direct2D1.RoundedRectangle(new System.Drawing.RectangleF(rect.X + 3, rect.Y + 3, rect.Width - 6, rect.Height * 0.42f), Math.Max(1, radius - 3), Math.Max(1, radius - 3)), sheenBrush);
+        target.FillRoundedRectangle(new RoundedRectangle(new System.Drawing.RectangleF(rect.X + 3, rect.Y + 3, rect.Width - 6, rect.Height * 0.42f), Math.Max(1, radius - 3), Math.Max(1, radius - 3)), sheenBrush);
         target.DrawRoundedRectangle(rounded, borderBrush, 1.5f);
     }
 
@@ -760,7 +758,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var countdownOpacity = opacity * state.Opacity;
         const uint redArgb = 0xFFFF0000;
         const uint greenArgb = 0xFF00C000;
-        uint activeArgb = LerpColor(redArgb, greenArgb, state.ActiveArrowProgress);
+        var activeArgb = LerpColor(redArgb, greenArgb, state.ActiveArrowProgress);
         using ID2D1SolidColorBrush redBrush = target.CreateSolidColorBrush(ToColor(redArgb, countdownOpacity));
         using ID2D1SolidColorBrush greenBrush = target.CreateSolidColorBrush(ToColor(greenArgb, countdownOpacity));
         using ID2D1SolidColorBrush activeBrush = target.CreateSolidColorBrush(ToColor(activeArgb, countdownOpacity));
@@ -862,7 +860,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     private static float EaseInOutQuint(float t) =>
         t < 0.5f
             ? 16 * t * t * t * t * t
-            : 1 - MathF.Pow(-2 * t + 2, 5) / 2;
+            : 1 - (MathF.Pow((-2 * t) + 2, 5) / 2);
 
     private static float SmoothStep(float t) => t * t * (3 - (2 * t));
 
@@ -910,10 +908,10 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var tr = (byte)((to >> 16) & 0xFF);
         var tg = (byte)((to >> 8) & 0xFF);
         var tb = (byte)(to & 0xFF);
-        var a = (byte)(fa + (ta - fa) * amount);
-        var r = (byte)(fr + (tr - fr) * amount);
-        var g = (byte)(fg + (tg - fg) * amount);
-        var b = (byte)(fb + (tb - fb) * amount);
+        var a = (byte)(fa + ((ta - fa) * amount));
+        var r = (byte)(fr + ((tr - fr) * amount));
+        var g = (byte)(fg + ((tg - fg) * amount));
+        var b = (byte)(fb + ((tb - fb) * amount));
         return (uint)((a << 24) | (r << 16) | (g << 8) | b);
     }
 

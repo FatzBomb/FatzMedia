@@ -98,7 +98,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         return 0;
     }
 
-    private static void TryAddCue(AVPacket* packet, AVRational timeBase, AVCodecID codecId, double playbackStartSeconds, ICollection<SubtitleCue> cues)
+    private static void TryAddCue(AVPacket* packet, AVRational timeBase, AVCodecID codecId, double playbackStartSeconds, List<SubtitleCue> cues)
     {
         if (packet->data == null || packet->size <= 0 || packet->pts == ffmpeg.AV_NOPTS_VALUE)
             return;

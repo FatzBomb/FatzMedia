@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text;
 
 namespace FatzBombMedia.MediaControl.Core.Audio;
@@ -25,10 +24,10 @@ internal static class DlsToSf2Converter
         string? tempCopy = null;
         try
         {
-            string readPath = dlsPath;
+            var readPath = dlsPath;
             try
             {
-                using var testStream = File.OpenRead(dlsPath);
+                using FileStream testStream = File.OpenRead(dlsPath);
             }
             catch (UnauthorizedAccessException)
             {
@@ -93,7 +92,7 @@ internal static class DlsToSf2Converter
             foreach (var b in bytes)
             {
                 if (b == 0) break;
-                sb.Append((char)b);
+                _ = sb.Append((char)b);
             }
             return sb.ToString();
         }
@@ -113,7 +112,7 @@ internal static class DlsToSf2Converter
 
     private static string? ConvertAndSave(string dlsPath, string cachePath)
     {
-        using var stream = File.OpenRead(dlsPath);
+        using FileStream stream = File.OpenRead(dlsPath);
         var reader = new BinaryReader(stream, Encoding.ASCII);
         var dls = new DlsReader(reader);
 
@@ -138,9 +137,9 @@ internal static class DlsToSf2Converter
             {
                 var listType = dls.ReadFourCC();
                 if (listType == "lins")
-                    instrumentListInfo = ((long Offset, uint Size))(chunkStart, chunkSize);
+                    instrumentListInfo = (chunkStart, chunkSize);
                 else if (listType == "wvpl")
-                    wavePoolInfo = ((long Offset, uint Size))(chunkStart, chunkSize);
+                    wavePoolInfo = (chunkStart, chunkSize);
             }
 
             // Skip to end of chunk (with padding)
@@ -172,7 +171,7 @@ internal static class DlsToSf2Converter
                 var listType = dls.ReadFourCC();
                 if (listType == "wave")
                 {
-                    var sample = ParseWaveChunk(dls, chunkStart + chunkSize);
+                    DlsSample? sample = ParseWaveChunk(dls, chunkStart + chunkSize);
                     if (sample != null)
                     {
                         sampleIndexMap[waveIndex] = samples.Count;
@@ -208,7 +207,7 @@ internal static class DlsToSf2Converter
                 var listType = dls.ReadFourCC();
                 if (listType == "ins ")
                 {
-                    var inst = ParseInstrumentChunk(dls, chunkStart + chunkSize, sampleIndexMap);
+                    DlsInstrument? inst = ParseInstrumentChunk(dls, chunkStart + chunkSize, sampleIndexMap);
                     if (inst != null)
                         instruments.Add(inst);
                 }
@@ -249,7 +248,7 @@ internal static class DlsToSf2Converter
 
             if (chunkName == "fmt ")
             {
-                var formatTag = dls.ReadUInt16();
+                _ = dls.ReadUInt16();
                 var channels = dls.ReadUInt16();
                 sampleRate = dls.ReadUInt32();
                 _ = dls.ReadUInt32(); // avg bytes/sec
@@ -289,10 +288,7 @@ internal static class DlsToSf2Converter
             dls.SkipPadding(chunkSize);
         }
 
-        if (pcm16 == null || pcm16.Length == 0)
-            return null;
-
-        return new DlsSample(pcm16, sampleRate, unityNote, fineTune, loopStart, loopLength);
+        return pcm16 == null || pcm16.Length == 0 ? null : new DlsSample(pcm16, sampleRate, unityNote, fineTune, loopStart, loopLength);
     }
 
     private static DlsInstrument? ParseInstrumentChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
@@ -332,7 +328,7 @@ internal static class DlsToSf2Converter
                             var rgnType = dls.ReadFourCC();
                             if (rgnType == "rgn ")
                             {
-                                var region = ParseRegionChunk(dls, rgnStart + rgnSize, sampleIndexMap);
+                                DlsRegion? region = ParseRegionChunk(dls, rgnStart + rgnSize, sampleIndexMap);
                                 if (region != null)
                                     regions.Add(region);
                             }
@@ -354,10 +350,7 @@ internal static class DlsToSf2Converter
             dls.SkipPadding(chunkSize);
         }
 
-        if (regions.Count == 0)
-            return null;
-
-        return new DlsInstrument(bank, preset, regions);
+        return regions.Count == 0 ? null : new DlsInstrument(bank, preset, regions);
     }
 
     private static DlsRegion? ParseRegionChunk(DlsReader dls, long endOffset, Dictionary<uint, int> sampleIndexMap)
@@ -416,10 +409,9 @@ internal static class DlsToSf2Converter
             dls.SkipPadding(chunkSize);
         }
 
-        if (!sampleIndexMap.ContainsKey(tableIndex))
-            return null;
-
-        return new DlsRegion(keyLow, keyHigh, velLow, velHigh, tableIndex, unityNote, fineTune, loopStart, loopLength);
+        return !sampleIndexMap.ContainsKey(tableIndex)
+            ? null
+            : new DlsRegion(keyLow, keyHigh, velLow, velHigh, tableIndex, unityNote, fineTune, loopStart, loopLength);
     }
 
     // ─── SF2 writing ─────────────────────────────────────────────
@@ -473,12 +465,12 @@ internal static class DlsToSf2Converter
 
         // Add instruments and presets
         ushort instIdx = 0;
-        foreach (var inst in instruments)
+        foreach (DlsInstrument inst in instruments)
         {
             var instName = $"Inst{instIdx}";
             var instBagIndex = (ushort)ibagEntries.Count;
 
-            foreach (var region in inst.Regions)
+            foreach (DlsRegion region in inst.Regions)
             {
                 if (samples[(int)region.TableIndex] is not DlsSample sample)
                     continue;
@@ -486,12 +478,12 @@ internal static class DlsToSf2Converter
                 var genIndex = (ushort)igenEntries.Count;
                 var modIndex = (ushort)imodEntries.Count;
 
-                igenEntries.Add(((ushort)43, (short)((region.KeyHigh << 8) | region.KeyLow))); // KeyRange
-                igenEntries.Add(((ushort)44, (short)((region.VelHigh << 8) | region.VelLow))); // VelRange
-                igenEntries.Add(((ushort)58, (short)region.UnityNote)); // OverridingRootKey
+                igenEntries.Add((43, (short)((region.KeyHigh << 8) | region.KeyLow))); // KeyRange
+                igenEntries.Add((44, (short)((region.VelHigh << 8) | region.VelLow))); // VelRange
+                igenEntries.Add((58, (short)region.UnityNote)); // OverridingRootKey
                 if (region.FineTune != 0)
-                    igenEntries.Add(((ushort)52, region.FineTune)); // FineTune
-                igenEntries.Add(((ushort)53, (short)samples.IndexOf(sample))); // SampleID
+                    igenEntries.Add((52, region.FineTune)); // FineTune
+                igenEntries.Add((53, (short)samples.IndexOf(sample))); // SampleID
                 imodEntries.Add((0, 0, 0, 0, 0)); // terminal modulator
 
                 ibagEntries.Add((genIndex, modIndex));
@@ -507,7 +499,7 @@ internal static class DlsToSf2Converter
             // Preset
             var presetBagIndex = (ushort)pbagEntries.Count;
             pbagEntries.Add(((ushort)pgenEntries.Count, (ushort)pmodEntries.Count));
-            pgenEntries.Add(((ushort)41, (short)instIdx)); // Instrument
+            pgenEntries.Add((41, (short)instIdx)); // Instrument
             pmodEntries.Add((0, 0, 0, 0, 0));
             phdrEntries.Add((instName, inst.Preset, inst.Bank, presetBagIndex));
 
@@ -527,7 +519,7 @@ internal static class DlsToSf2Converter
         pmodEntries.Add((0, 0, 0, 0, 0));
 
         // Serialize to file
-        using var outStream = File.Create(path);
+        using FileStream outStream = File.Create(path);
         using var writer = new BinaryWriter(outStream, Encoding.ASCII);
 
         // Build INFO LIST
@@ -609,15 +601,15 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var Name, var Preset, var Bank, var BagIndex) in entries)
         {
             var nameBytes = new byte[20];
-            var src = Encoding.ASCII.GetBytes(e.Name);
+            var src = Encoding.ASCII.GetBytes(Name);
             Array.Copy(src, nameBytes, Math.Min(src.Length, 20));
             bw.Write(nameBytes);
-            bw.Write(e.Preset);
-            bw.Write(e.Bank);
-            bw.Write(e.BagIndex);
+            bw.Write(Preset);
+            bw.Write(Bank);
+            bw.Write(BagIndex);
             bw.Write(0u); // library
             bw.Write(0u); // genre
             bw.Write(0u); // morphology
@@ -629,10 +621,10 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var GenIndex, var ModIndex) in entries)
         {
-            bw.Write(e.GenIndex);
-            bw.Write(e.ModIndex);
+            bw.Write(GenIndex);
+            bw.Write(ModIndex);
         }
         WriteChunk(ms, name, chunkMs.ToArray());
     }
@@ -641,13 +633,13 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var Src, var Dest, var Amount, var SrcAmt, var Transform) in entries)
         {
-            bw.Write(e.Src);
-            bw.Write(e.Dest);
-            bw.Write(e.Amount);
-            bw.Write(e.SrcAmt);
-            bw.Write(e.Transform);
+            bw.Write(Src);
+            bw.Write(Dest);
+            bw.Write(Amount);
+            bw.Write(SrcAmt);
+            bw.Write(Transform);
         }
         WriteChunk(ms, name, chunkMs.ToArray());
     }
@@ -656,10 +648,10 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var Gen, var Amount) in entries)
         {
-            bw.Write(e.Gen);
-            bw.Write(e.Amount);
+            bw.Write(Gen);
+            bw.Write(Amount);
         }
         WriteChunk(ms, name, chunkMs.ToArray());
     }
@@ -668,13 +660,13 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var Name, var BagIndex) in entries)
         {
             var nameBytes = new byte[20];
-            var src = Encoding.ASCII.GetBytes(e.Name);
+            var src = Encoding.ASCII.GetBytes(Name);
             Array.Copy(src, nameBytes, Math.Min(src.Length, 20));
             bw.Write(nameBytes);
-            bw.Write(e.BagIndex);
+            bw.Write(BagIndex);
         }
         WriteChunk(ms, "inst", chunkMs.ToArray());
     }
@@ -683,19 +675,19 @@ internal static class DlsToSf2Converter
     {
         using var chunkMs = new MemoryStream();
         using var bw = new BinaryWriter(chunkMs, Encoding.ASCII);
-        foreach (var e in entries)
+        foreach ((var Name, var Start, var End, var LoopStart, var LoopEnd, var SampleRate, var OriginalKey, var PitchCorrection) in entries)
         {
             var nameBytes = new byte[20];
-            var src = Encoding.ASCII.GetBytes(e.Name);
+            var src = Encoding.ASCII.GetBytes(Name);
             Array.Copy(src, nameBytes, Math.Min(src.Length, 20));
             bw.Write(nameBytes);
-            bw.Write(e.Start);
-            bw.Write(e.End);
-            bw.Write(e.LoopStart);
-            bw.Write(e.LoopEnd);
-            bw.Write(e.SampleRate);
-            bw.Write(e.OriginalKey);
-            bw.Write(e.PitchCorrection);
+            bw.Write(Start);
+            bw.Write(End);
+            bw.Write(LoopStart);
+            bw.Write(LoopEnd);
+            bw.Write(SampleRate);
+            bw.Write(OriginalKey);
+            bw.Write(PitchCorrection);
             bw.Write((ushort)0); // sample link
             bw.Write((ushort)1); // mono sample
         }

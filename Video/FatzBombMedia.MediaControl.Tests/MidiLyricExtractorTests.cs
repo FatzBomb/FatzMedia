@@ -90,9 +90,9 @@ public sealed class MidiLyricExtractorTests
         Assert.Equal(TimeSpan.FromSeconds(3.1), pageTiming.PageFadeOutEnd);
         Assert.Equal(pageTiming.PageFadeOutEnd, pageTiming.PageFadeInStart);
         Assert.Equal(1, pageTiming.GetPageFadeOutProgress(TimeSpan.FromSeconds(3.1)));
-        var fadeInStart = pageTiming.PageFadeInStart;
-        var fadeInEnd = pageTiming.PageFadeInEnd;
-        var fadeInMid = fadeInStart + TimeSpan.FromTicks((fadeInEnd - fadeInStart).Ticks / 2);
+        TimeSpan fadeInStart = pageTiming.PageFadeInStart;
+        TimeSpan fadeInEnd = pageTiming.PageFadeInEnd;
+        TimeSpan fadeInMid = fadeInStart + TimeSpan.FromTicks((fadeInEnd - fadeInStart).Ticks / 2);
         Assert.Equal(0.5f, pageTiming.GetPageFadeInProgress(
             fadeInMid,
             TimeSpan.FromMilliseconds(450)), 2);
@@ -133,9 +133,8 @@ public sealed class MidiLyricExtractorTests
         List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(3));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
-        TimeSpan midpoint = timing.TransitionStart
-            + TimeSpan.FromTicks((timing.TransitionComplete - timing.TransitionStart).Ticks / 2);
-        Assert.True(((timing.TransitionComplete - timing.TransitionStart) - TimeSpan.FromSeconds(1.5)).Duration() < TimeSpan.FromMilliseconds(1));
+        TimeSpan midpoint = timing.TransitionStart + TimeSpan.FromTicks((timing.TransitionComplete - timing.TransitionStart).Ticks / 2);
+        Assert.True((timing.TransitionComplete - timing.TransitionStart - TimeSpan.FromSeconds(1.5)).Duration() < TimeSpan.FromMilliseconds(1));
         Assert.Equal(0.5f, timing.GetTransitionProgress(midpoint), 3);
     }
 
@@ -309,8 +308,8 @@ public sealed class MidiLyricExtractorTests
             TimeSpan.FromSeconds(nextLyricSeconds + 2));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
-        Assert.True(((timing.TransitionComplete - timing.TransitionStart) - TimeSpan.FromSeconds(expectedScrollSeconds)).Duration() < TimeSpan.FromMilliseconds(1));
-        Assert.True(((TimeSpan.FromSeconds(nextLyricSeconds) - timing.TransitionComplete) - TimeSpan.FromSeconds(expectedCompletionLeadSeconds)).Duration() < TimeSpan.FromMilliseconds(1));
+        Assert.True((timing.TransitionComplete - timing.TransitionStart - TimeSpan.FromSeconds(expectedScrollSeconds)).Duration() < TimeSpan.FromMilliseconds(1));
+        Assert.True((TimeSpan.FromSeconds(nextLyricSeconds) - timing.TransitionComplete - TimeSpan.FromSeconds(expectedCompletionLeadSeconds)).Duration() < TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
@@ -403,10 +402,10 @@ public sealed class MidiLyricExtractorTests
             EndLyricFadeEnd = TimeSpan.FromSeconds(1),
         };
 
-        int almostComplete = timing.GetProgressRevision(
+        var almostComplete = timing.GetProgressRevision(
             TimeSpan.FromMilliseconds(999),
             TimeSpan.FromMilliseconds(600));
-        int complete = timing.GetProgressRevision(
+        var complete = timing.GetProgressRevision(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromMilliseconds(600));
 

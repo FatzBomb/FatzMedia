@@ -50,7 +50,7 @@ internal static class MidiLyricExtractor
         IReadOnlyList<MidiMarker> metadataMarkers =
             [.. lyrics.Concat(textEvents).OrderBy(static marker => marker.Position)];
         KaraokeMetadata metadata = MidiMetadataExtractor.Extract(channelHandle, sourcePath, duration, metadataMarkers);
-        var cues = BuildCuesFromMarkers(
+        List<SubtitleCue> cues = BuildCuesFromMarkers(
             channelHandle,
             lyrics,
             textEvents,
@@ -104,7 +104,7 @@ internal static class MidiLyricExtractor
 
             // Shift lyric markers 400ms earlier so the wipe highlights ahead of the note,
             // giving the singer preparation time like CDG files typically do.
-            var adjustedStart = TimeSpan.FromSeconds(startSeconds) - LyricLeadOffset;
+            TimeSpan adjustedStart = TimeSpan.FromSeconds(startSeconds) - LyricLeadOffset;
             if (adjustedStart < TimeSpan.Zero)
                 adjustedStart = TimeSpan.Zero;
 
@@ -565,13 +565,13 @@ internal static class MidiLyricExtractor
     {
         for (var i = 0; i < lines.Count; i++)
         {
-            var line = lines[i];
+            KaraokeLine line = lines[i];
             if (line.Segments.Count == 0)
                 continue;
 
-            var firstLyric = line.Segments[0].Start;
-            var prevEnd = i > 0 ? GetLastSyllableStart(lines[i - 1]) : TimeSpan.Zero;
-            var gap = firstLyric - prevEnd;
+            TimeSpan firstLyric = line.Segments[0].Start;
+            TimeSpan prevEnd = i > 0 ? GetLastSyllableStart(lines[i - 1]) : TimeSpan.Zero;
+            TimeSpan gap = firstLyric - prevEnd;
 
             if (gap <= CountdownGap)
                 continue;

@@ -25,11 +25,9 @@ internal static class MidiMetadataExtractor
 
         foreach (MidiMarker marker in lyricOrTextMarkers)
         {
-            string text = marker.Text?.Trim() ?? string.Empty;
+            var text = marker.Text?.Trim() ?? string.Empty;
             if (text.StartsWith("@T", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
-            {
                 AddDistinct(titles, text[2..].Trim());
-            }
             else if (text.StartsWith("@I", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
             {
                 ParseInformation(
@@ -51,7 +49,7 @@ internal static class MidiMetadataExtractor
         artist ??= titles.ElementAtOrDefault(1);
         if (titles.Count > 2)
         {
-            string thirdTitle = titles[2];
+            var thirdTitle = titles[2];
             if (LooksLikeCopyright(thirdTitle) && string.IsNullOrWhiteSpace(copyright))
                 copyright = thirdTitle;
             else
@@ -64,15 +62,15 @@ internal static class MidiMetadataExtractor
             .Select(static marker => marker.Text?.Trim())
             .FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text));
 
-        string standardCopyright = JoinMarkerText(GetMarksSafe(stream, MidiMarkerType.Copyright));
+        var standardCopyright = JoinMarkerText(GetMarksSafe(stream, MidiMarkerType.Copyright));
         if (!string.IsNullOrWhiteSpace(standardCopyright))
             copyright = standardCopyright;
 
-        string rawKey = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.KeySignature));
+        var rawKey = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.KeySignature));
         if (!string.IsNullOrWhiteSpace(rawKey))
             keySignature = FormatKeySignature(rawKey);
 
-        string rawTiming = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.TimeSignature));
+        var rawTiming = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.TimeSignature));
         if (!string.IsNullOrWhiteSpace(rawTiming))
             timeSignature = rawTiming.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 
@@ -121,7 +119,7 @@ internal static class MidiMetadataExtractor
 
     internal static string FormatKeySignature(string value)
     {
-        string[] parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2
             || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var accidentals)
             || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var mode)
@@ -148,23 +146,23 @@ internal static class MidiMetadataExtractor
         ref string? timeSignature,
         List<string> additionalInfo)
     {
-        if (TryReadLabel(value, ["title", "song"], out string labeledTitle))
+        if (TryReadLabel(value, ["title", "song"], out var labeledTitle))
             title ??= labeledTitle;
-        else if (TryReadLabel(value, ["artist", "performer", "performed by"], out string labeledArtist))
+        else if (TryReadLabel(value, ["artist", "performer", "performed by"], out var labeledArtist))
             artist ??= labeledArtist;
-        else if (TryReadLabel(value, ["written by", "writer", "composer", "music by"], out string labeledWriter))
+        else if (TryReadLabel(value, ["written by", "writer", "composer", "music by"], out var labeledWriter))
             writer ??= labeledWriter;
-        else if (TryReadLabel(value, ["lyricist", "lyrics by", "lyrics"], out string labeledLyricist))
+        else if (TryReadLabel(value, ["lyricist", "lyrics by", "lyrics"], out var labeledLyricist))
             lyricist ??= labeledLyricist;
-        else if (TryReadLabel(value, ["year", "date"], out string labeledYear))
+        else if (TryReadLabel(value, ["year", "date"], out var labeledYear))
             year ??= labeledYear;
-        else if (TryReadLabel(value, ["copyright", "copyright information"], out string labeledCopyright))
+        else if (TryReadLabel(value, ["copyright", "copyright information"], out var labeledCopyright))
             copyright ??= labeledCopyright;
-        else if (TryReadLabel(value, ["key"], out string labeledKey))
+        else if (TryReadLabel(value, ["key"], out var labeledKey))
             keySignature ??= labeledKey;
-        else if (TryReadLabel(value, ["tempo", "bpm"], out string labeledTempo))
+        else if (TryReadLabel(value, ["tempo", "bpm"], out var labeledTempo))
             tempo ??= labeledTempo.EndsWith("BPM", StringComparison.OrdinalIgnoreCase) ? labeledTempo : $"{labeledTempo} BPM";
-        else if (TryReadLabel(value, ["timing", "time signature", "meter"], out string labeledTiming))
+        else if (TryReadLabel(value, ["timing", "time signature", "meter"], out var labeledTiming))
             timeSignature ??= labeledTiming;
         else if (LooksLikeCopyright(value))
             copyright ??= value;
@@ -176,12 +174,12 @@ internal static class MidiMetadataExtractor
 
     private static bool TryReadLabel(string value, IReadOnlyList<string> labels, out string result)
     {
-        foreach (string label in labels)
+        foreach (var label in labels)
         {
             if (!value.StartsWith(label, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            string remainder = value[label.Length..].TrimStart(' ', ':', '-', '=');
+            var remainder = value[label.Length..].TrimStart(' ', ':', '-', '=');
             if (remainder.Length > 0)
             {
                 result = remainder;

@@ -235,7 +235,7 @@ internal sealed record KaraokeLineTiming(
         if (!HasCountdown || Segments.Count == 0)
             return KaraokeCountdownState.None;
 
-        var timeRemaining = FirstLyricStart - position;
+        TimeSpan timeRemaining = FirstLyricStart - position;
         if (timeRemaining > CountdownDuration || timeRemaining <= TimeSpan.Zero)
             return KaraokeCountdownState.None;
 
@@ -300,8 +300,8 @@ internal sealed record KaraokeLineTiming(
             return Math.Min(length, Text.Length);
 
         // If the last segment is still within its wipe window, exclude it
-        var effectiveWipe = GetSegmentWipeDuration(lastSegment.Value, wipeDuration);
-        var elapsed = position - lastSegment.Value.Start;
+        TimeSpan effectiveWipe = GetSegmentWipeDuration(lastSegment.Value, wipeDuration);
+        TimeSpan elapsed = position - lastSegment.Value.Start;
         if (elapsed >= TimeSpan.Zero && elapsed < effectiveWipe)
         {
             length -= lastSegment.Value.TextLength;
@@ -318,7 +318,7 @@ internal sealed record KaraokeLineTiming(
     public float GetSyllableWipeFraction(TimeSpan position, TimeSpan wipeDuration)
     {
         KaraokeTextSegment? currentSegment = null;
-        foreach (var segment in Segments)
+        foreach (KaraokeTextSegment segment in Segments)
         {
             if (segment.Start > position)
                 break;
@@ -328,11 +328,11 @@ internal sealed record KaraokeLineTiming(
         if (currentSegment == null)
             return 0;
 
-        var elapsed = position - currentSegment.Value.Start;
+        TimeSpan elapsed = position - currentSegment.Value.Start;
         if (elapsed < TimeSpan.Zero)
             return 0;
 
-        var effectiveDuration = GetSegmentWipeDuration(currentSegment.Value, wipeDuration);
+        TimeSpan effectiveDuration = GetSegmentWipeDuration(currentSegment.Value, wipeDuration);
 
         if (effectiveDuration <= TimeSpan.Zero)
             return 1;
@@ -354,7 +354,7 @@ internal sealed record KaraokeLineTiming(
         // Find next segment start
         TimeSpan nextStart = TimeSpan.MaxValue;
         var found = false;
-        foreach (var s in Segments)
+        foreach (KaraokeTextSegment s in Segments)
         {
             if (found)
             {
@@ -368,17 +368,14 @@ internal sealed record KaraokeLineTiming(
         if (nextStart == TimeSpan.MaxValue)
             return wipeDuration;
 
-        var timeToNext = nextStart - segment.Start;
+        TimeSpan timeToNext = nextStart - segment.Start;
         if (timeToNext <= TimeSpan.Zero)
             return TimeSpan.Zero;
 
         var calculated = TimeSpan.FromTicks((long)(timeToNext.Ticks * 0.8));
-        var clamped = calculated <= wipeDuration ? calculated : wipeDuration;
+        TimeSpan clamped = calculated <= wipeDuration ? calculated : wipeDuration;
 
-        if (clamped < InstantCutThreshold)
-            return TimeSpan.Zero;
-
-        return clamped;
+        return clamped < InstantCutThreshold ? TimeSpan.Zero : clamped;
     }
 }
 
