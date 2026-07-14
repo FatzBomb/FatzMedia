@@ -20,7 +20,7 @@ public class MediaControlPlayer : IMediaControlSession
     private readonly IMediaControlPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
-    private NativeMediaPresentationCoordinator _presentationCoordinator;
+    private IMediaPresentationCoordinator _presentationCoordinator;
     private MediaControlOperationQueue _controlOperations;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
     private IAudioDeviceMonitor? _audioDeviceMonitor;
@@ -41,7 +41,7 @@ public class MediaControlPlayer : IMediaControlSession
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
-        _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, configuration);
+        _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
         File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
         _controlOperations = new MediaControlOperationQueue("MediaControl");
@@ -469,7 +469,7 @@ public class MediaControlPlayer : IMediaControlSession
             _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
             Effects = new MediaEffects(_mediaEngine);
             CdgVisuals = new CdgVisuals(_mediaEngine);
-            _presentationCoordinator = new NativeMediaPresentationCoordinator(_mediaEngine, configuration);
+            _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
             Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
             File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
             _controlOperations = new MediaControlOperationQueue("MediaControl");

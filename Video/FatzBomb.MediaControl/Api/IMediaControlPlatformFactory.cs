@@ -1,4 +1,6 @@
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Controllers;
 
 #pragma warning disable IDE0130
 namespace FatzBomb.MediaControl;
@@ -15,6 +17,13 @@ public interface IMediaControlPlatformFactory
     /// Gets the most recent native-library initialization result for this platform.
     /// </summary>
     string LastNativeLoadMessage { get; }
+
+    /// <summary>
+    /// Creates the platform presentation owner for a media session.
+    /// </summary>
+    IMediaPresentationCoordinator CreatePresentationCoordinator(
+        IMediaEngine mediaEngine,
+        MediaPlayerConfiguration configuration);
 
     /// <summary>
     /// Creates a service provider containing the platform implementation of the

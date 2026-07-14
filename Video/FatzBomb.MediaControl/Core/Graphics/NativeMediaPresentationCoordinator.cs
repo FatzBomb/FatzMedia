@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Core.Graphics;
 
-internal sealed class NativeMediaPresentationCoordinator : IMediaRenderCoordinator, IDisposable
+internal sealed class NativeMediaPresentationCoordinator : IMediaPresentationCoordinator
 {
     private enum CompositionPresentResult
     {

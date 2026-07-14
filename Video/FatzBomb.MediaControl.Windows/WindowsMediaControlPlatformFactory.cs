@@ -1,4 +1,7 @@
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Graphics;
+using FatzBomb.MediaControl.Controllers;
 
 namespace FatzBomb.MediaControl;
 
@@ -10,6 +13,12 @@ public sealed class WindowsMediaControlPlatformFactory : IMediaControlPlatformFa
 {
     /// <inheritdoc />
     public string LastNativeLoadMessage => Bootstrap.Message;
+
+    /// <inheritdoc />
+    public IMediaPresentationCoordinator CreatePresentationCoordinator(
+        IMediaEngine mediaEngine,
+        MediaPlayerConfiguration configuration) =>
+        new NativeMediaPresentationCoordinator(mediaEngine, configuration);
 
     /// <inheritdoc />
     public IServiceProvider CreateServiceProvider(
