@@ -1,6 +1,6 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Abstractions;
-using FatzBomb.MediaControl.Core.Graphics;
+using FatzBomb.MediaControl.Windows.Graphics;
 using FatzBomb.MediaControl.Controllers;
 
 namespace FatzBomb.MediaControl;
