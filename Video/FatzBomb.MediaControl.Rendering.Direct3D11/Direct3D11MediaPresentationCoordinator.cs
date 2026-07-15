@@ -4,16 +4,15 @@ using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
-using FatzBomb.MediaControl.Core.Graphics.D3D;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
 using System.Buffers;
 using System.Diagnostics;
 
-namespace FatzBomb.MediaControl.Windows.Graphics;
+namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
-internal sealed class NativeMediaPresentationCoordinator : IMediaPresentationCoordinator
+internal sealed class Direct3D11MediaPresentationCoordinator : IMediaPresentationCoordinator
 {
     private enum CompositionPresentResult
     {
@@ -80,7 +79,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaPresentationCoo
     private long _subtitleRevision;
     private double _lastSubtitleOffsetSeconds = double.NaN;
 
-    public NativeMediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
+    public Direct3D11MediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
     {
         _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
         _configuration = configuration;
@@ -288,7 +287,7 @@ internal sealed class NativeMediaPresentationCoordinator : IMediaPresentationCoo
     internal void RefreshAttachments()
     {
         if (_configuration.EnableLogging)
-            Debug.WriteLine("[NativeMediaPresentationCoordinator] Refreshing Core presentation attachments");
+            Debug.WriteLine("[Direct3D11MediaPresentationCoordinator] Refreshing Core presentation attachments");
 
         var wasRenderingActive = _isRenderingActive;
         StopRendering();

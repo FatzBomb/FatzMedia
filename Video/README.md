@@ -7,7 +7,8 @@ FatzBomb.MediaControl is a media-control solution with a UI-agnostic Core engine
 | Project | Purpose |
 |---|---|
 | `FatzBomb.MediaControl` | Core playback, commands, media state, sidecar detection, Cdg, retained layers, D3D11 composition, swap chains, presentation targets, and final rendering. |
-| `FatzBomb.MediaControl.Windows` | Windows platform composition, native-library loading, and concrete media-engine registrations. |
+| `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer, composition, swap-chain, and presentation implementation. |
+| `FatzBomb.MediaControl.Windows` | Windows platform composition, native-library loading, endpoint integration, and renderer selection. |
 | `FatzBomb.MediaControl.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It selects Windows composition but must not own renderer, pipeline, layer, timing, or final presentation logic. |
 | `FatzBomb.MediaControl.Player` | WPF validation host used to exercise the Core engine through the WPF adapter. |
 

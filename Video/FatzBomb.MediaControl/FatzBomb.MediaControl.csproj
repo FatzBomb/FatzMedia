@@ -44,6 +44,7 @@
 	<ItemGroup>
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Windows" />
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Rendering.Direct3D11" />
 	</ItemGroup>
 
 </Project>

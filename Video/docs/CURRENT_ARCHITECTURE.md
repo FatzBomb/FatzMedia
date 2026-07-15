@@ -3,7 +3,8 @@
 ## Projects
 
 - `FatzBomb.MediaControl`: UI-agnostic Core media-control engine.
-- `FatzBomb.MediaControl.Windows`: Windows platform composition and native media-engine registrations.
+- `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer and presentation implementation.
+- `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and renderer selection.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; selects the Windows platform factory.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
@@ -22,9 +23,15 @@ and the concrete factory. `WindowsMediaControlPlatformFactory` now lives in
 `FatzBomb.MediaControl.Windows`. That project accesses Core internals temporarily
 while the remaining Windows implementation files migrate there in stages.
 
+Renderer selection is independent of operating-system selection. Windows currently
+defaults to `Direct3D11PresentationCoordinatorFactory` from
+`FatzBomb.MediaControl.Rendering.Direct3D11`, but can receive any
+`IMediaPresentationCoordinatorFactory`. This allows future Vulkan/OpenGL renderers
+on Windows without changing WPF, Core playback, or the Windows native-service layer.
+
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg, wash, retained layers, D3D11 composition, swap-chain creation, target registration, multi-target fan-out, and final presentation.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg, wash, retained composition models, and platform/renderer contracts. The Direct3D11 renderer owns the presentation coordinator and bridge; remaining D3D11 device, composition, swap-chain, target fan-out, and final-presentation implementation files are migrating from Core into that renderer in stages.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 

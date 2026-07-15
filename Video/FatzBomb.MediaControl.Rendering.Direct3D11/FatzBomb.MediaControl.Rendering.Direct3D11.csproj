@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- NuGet metadata. Pack explicitly at release time (dotnet pack -c Release). -->
+    <IsPackable>true</IsPackable>
+    <PackageId>FatzBomb.MediaControl.Rendering.Direct3D11</PackageId>
+    <AssemblyName>FatzBomb.MediaControl.Rendering.Direct3D11</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Rendering.Direct3D11</RootNamespace>
+    <Description>Direct3D 11 renderer and presentation backend for FatzBomb.MediaControl.</Description>
+    <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
+  </ItemGroup>
+
+</Project>

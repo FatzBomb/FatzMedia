@@ -37,7 +37,7 @@ function Assert-Match {
 $mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
 $secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
 $sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
-$coordinator = Read-Text 'FatzBomb.MediaControl/Core/Graphics/NativeMediaPresentationCoordinator.cs'
+$coordinator = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Direct3D11MediaPresentationCoordinator.cs'
 $backendSet = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
 $surfaceController = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
 $presentationServices = Read-Text 'FatzBomb.MediaControl/Core/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'

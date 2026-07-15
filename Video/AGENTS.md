@@ -26,7 +26,8 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | Project | Role | Key constraint |
 |---------|------|---------------|
 | `FatzBomb.MediaControl` (Core) | UI-agnostic engine — audio/video/Cdg, D3D11 composition, swap chains, final presentation | No WPF references. No `System.Windows.*`, `ImageSource`, `Dispatcher`, etc. |
-| `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading and concrete media-engine registrations | References Core; accesses Core internals temporarily while Windows implementation files migrate here |
+| `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer — coordinator, device, composition, swap chains, final presentation | Renderer-specific; references Core contracts/models only after migration completes |
+| `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, renderer selection | References Core and the default Direct3D11 renderer; accesses Core internals temporarily while Windows implementation files migrate |
 | `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | References Windows composition but must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
@@ -43,6 +44,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 - **Adapters own zero rendering** — `MediaSurface` and `SecondaryPresentationWindow` create HWND surfaces and pass `MediaPresentationSurfaceDescriptor` to Core. They must never reference pipelines, decoders, frame data, internal Cdg state, or D3D11 resources.
 - **`Player : MediaControlPlayer`** in WPF project inherits Core commands, properties, events automatically. WPF-specific additions are limited to `ImageSource`→`MediaInputSource` conversions.
 - **Platform composition is explicit** — `MediaControlPlayer` receives an `IMediaControlPlatformFactory`; OS packages own native-library loading and concrete media-engine registrations. `WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`; remaining Windows implementation files migrate there in stages.
+- **Renderer choice is separate from OS choice** — platform packages select an `IMediaPresentationCoordinatorFactory`. Direct3D11 is the current Windows default through `FatzBomb.MediaControl.Rendering.Direct3D11`; future Vulkan/OpenGL/Metal renderers should implement the same factory without changing Core playback or UI adapters.
 - **`.ConfigureAwait(false)` required** in all async pipeline code. Host app marshals events to UI thread explicitly.
 - **Before editing the Wpf adapter**, confirm no new `using` pulls a Core renderer / pipeline / internal-Cdg / D3D11 namespace into the adapter — that boundary is the repo's most important invariant (see Verification).
 - **Large engine/pipeline files are expected here.** D3D11 composition, decoders, swap-chain/presentation, and Cdg code are legitimately large and cohesive — do **not** propose splitting them on line count alone (this exempts them from the global file-size trigger). Apply that trigger to *new* UI, view-model, service, and glue code, not to the existing low-level engine.

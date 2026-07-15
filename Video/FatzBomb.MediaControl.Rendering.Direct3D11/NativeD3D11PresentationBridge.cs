@@ -5,7 +5,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using System.Diagnostics;
 
-namespace FatzBomb.MediaControl.Core.Graphics.D3D;
+namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
 internal sealed class NativeD3D11PresentationBridge : IDisposable
 {
