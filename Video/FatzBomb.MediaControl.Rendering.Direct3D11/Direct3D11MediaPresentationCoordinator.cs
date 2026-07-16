@@ -7,6 +7,7 @@ using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
+using FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
 using System.Buffers;
 using System.Diagnostics;
 

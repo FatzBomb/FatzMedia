@@ -1,13 +1,14 @@
 using System.Numerics;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Subtitle;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using Vortice.WIC;
 
-namespace FatzBomb.MediaControl.Core.Subtitle;
+namespace FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
 
 internal readonly record struct SubtitleRenderResult(
     ReadOnlyMemory<byte> Pixels,
