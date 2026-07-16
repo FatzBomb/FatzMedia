@@ -20,6 +20,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj" />
 	</ItemGroup>
 
 </Project>
