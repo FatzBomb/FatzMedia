@@ -19,6 +19,12 @@ public interface IMediaControlPlatformFactory
     string LastNativeLoadMessage { get; }
 
     /// <summary>
+    /// Gets codec/container decode capabilities for the current platform and
+    /// available hardware backends.
+    /// </summary>
+    VideoDecodeCapabilities GetVideoDecodeCapabilities();
+
+    /// <summary>
     /// Creates the platform presentation owner for a media session.
     /// </summary>
     IMediaPresentationCoordinator CreatePresentationCoordinator(

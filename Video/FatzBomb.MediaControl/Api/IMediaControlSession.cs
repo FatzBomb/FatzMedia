@@ -16,6 +16,9 @@ namespace FatzBomb.MediaControl;
 /// </remarks>
 public interface IMediaControlSession : IDisposable
 {
+    /// <summary>Gets codec, container, and hardware-decode capabilities for the active platform.</summary>
+    VideoDecodeCapabilities VideoDecodeCapabilities { get; }
+
     /// <summary>Gets or sets whether loading media should automatically begin playback.</summary>
     bool PlayOnLoad { get; set; }
 

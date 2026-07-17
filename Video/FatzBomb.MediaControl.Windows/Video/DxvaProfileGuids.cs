@@ -1,6 +1,6 @@
 using FFmpeg.AutoGen;
 
-namespace FatzBomb.MediaControl.Core.Video;
+namespace FatzBomb.MediaControl.Windows.Video;
 
 internal static class DxvaProfileGuids
 {

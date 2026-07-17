@@ -3,7 +3,7 @@ using System.Diagnostics;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 
-namespace FatzBomb.MediaControl.Core.Video;
+namespace FatzBomb.MediaControl.Windows.Video;
 
 internal static class D3D11ProfileEnumerator
 {

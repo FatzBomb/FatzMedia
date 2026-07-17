@@ -85,6 +85,8 @@ public class MediaControlPlayer : IMediaControlSession
 
     public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
 
+    public VideoDecodeCapabilities VideoDecodeCapabilities => _platformFactory.GetVideoDecodeCapabilities();
+
     public bool PlayOnLoad
     {
         get => File.PlayOnLoad;

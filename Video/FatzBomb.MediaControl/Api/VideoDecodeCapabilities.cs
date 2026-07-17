@@ -1,5 +1,3 @@
-using FatzBomb.MediaControl.Core.Video;
-
 #pragma warning disable IDE0130
 namespace FatzBomb.MediaControl;
 
@@ -24,9 +22,6 @@ public sealed class VideoDecodeCapabilities
 {
     private readonly Dictionary<string, CodecCapability> _codecs;
     private readonly Dictionary<string, ContainerCapability> _containers;
-
-    private static VideoDecodeCapabilities? _cached;
-    private static readonly Lock _cacheLock = new();
 
     internal VideoDecodeCapabilities(
         Dictionary<string, CodecCapability> codecs,
@@ -58,27 +53,6 @@ public sealed class VideoDecodeCapabilities
     {
         var normalized = NormalizeExtension(extension);
         return _containers.TryGetValue(normalized, out ContainerCapability? capability) ? capability : null;
-    }
-
-    internal static VideoDecodeCapabilities GetOrScan()
-    {
-        if (_cached != null)
-            return _cached;
-
-        lock (_cacheLock)
-        {
-            if (_cached != null)
-                return _cached;
-
-            _cached = HardwareDecoderScanner.Scan();
-            return _cached;
-        }
-    }
-
-    internal static void InvalidateCache()
-    {
-        lock (_cacheLock)
-            _cached = null;
     }
 
     private static string NormalizeExtension(string extension)

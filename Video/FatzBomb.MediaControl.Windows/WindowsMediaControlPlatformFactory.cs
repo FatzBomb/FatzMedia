@@ -2,6 +2,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
+using FatzBomb.MediaControl.Windows.Video;
 
 namespace FatzBomb.MediaControl;
 
@@ -25,6 +26,10 @@ public sealed class WindowsMediaControlPlatformFactory : IMediaControlPlatformFa
 
     /// <inheritdoc />
     public string LastNativeLoadMessage => Bootstrap.Message;
+
+    /// <inheritdoc />
+    public VideoDecodeCapabilities GetVideoDecodeCapabilities() =>
+        WindowsVideoDecodeCapabilities.GetOrScan();
 
     /// <inheritdoc />
     public IMediaPresentationCoordinator CreatePresentationCoordinator(

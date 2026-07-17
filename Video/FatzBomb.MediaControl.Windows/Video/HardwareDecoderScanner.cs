@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 
-namespace FatzBomb.MediaControl.Core.Video;
+namespace FatzBomb.MediaControl.Windows.Video;
 
 internal static unsafe class HardwareDecoderScanner
 {
@@ -23,7 +23,7 @@ internal static unsafe class HardwareDecoderScanner
         foreach (CodecCapability? c in swCodecs.Where(c => c.HardwareMethod != null))
             Debug.WriteLine($"[HardwareDecoderScanner]   SW(HW-candidate): {c.CodecName} ({c.FriendlyName}) via {c.HardwareMethod}");
 
-        Dictionary<string, ContainerCapability> containerCapabilities = ScanDemuxers(capabilities, codecIds);
+        Dictionary<string, ContainerCapability> containerCapabilities = ScanDemuxers(codecIds);
 
         return new VideoDecodeCapabilities(
             capabilities.ToDictionary(c => c.CodecName.ToLowerInvariant()),
@@ -177,7 +177,6 @@ internal static unsafe class HardwareDecoderScanner
     }
 
     private static Dictionary<string, ContainerCapability> ScanDemuxers(
-        List<CodecCapability> allCapabilities,
         List<(AVCodecID codecId, CodecCapability capability)> codecIds)
     {
         var containers = new Dictionary<string, ContainerCapability>(StringComparer.OrdinalIgnoreCase);
