@@ -15,6 +15,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private readonly IArchiveService _archiveService;
     private readonly PlaybackCoordinator _coordinator;
     private readonly MediaPlayerConfiguration _configuration;
+    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
     private readonly Lock _backgroundGate = new();
     private VideoDecoder? _backgroundVideoDecoder;
@@ -44,12 +45,14 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         IArchiveService archiveService,
         IVideoEngineFactory videoEngineFactory,
         IMidiLyricProvider midiLyricProvider,
+        IPrecisionWaiterFactory precisionWaiterFactory,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
         _audioEngine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
         _archiveService = archiveService ?? throw new ArgumentNullException(nameof(archiveService));
         _configuration = configuration;
+        _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         ArgumentNullException.ThrowIfNull(cdgEngine);
         ArgumentNullException.ThrowIfNull(subtitleEngine);
         _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine);
@@ -349,7 +352,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
     private void BackgroundVideoLoop(int generation, CancellationToken cancellationToken)
     {
-        using var waiter = new PrecisionWaiter();
+        using IPrecisionWaiter waiter = _precisionWaiterFactory.Create();
         var nextTick = Stopwatch.GetTimestamp();
         var startTimestamp = nextTick;
         var lastPresentedPts = double.NaN;

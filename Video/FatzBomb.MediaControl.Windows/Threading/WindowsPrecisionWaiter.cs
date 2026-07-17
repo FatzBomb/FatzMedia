@@ -1,7 +1,9 @@
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
-namespace FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Threading;
+
+namespace FatzBomb.MediaControl.Windows.Threading;
 
 /// <summary>
 /// Provides a high-resolution, cancellable wait for fixed-cadence presentation/render loops.
@@ -20,7 +22,7 @@ namespace FatzBomb.MediaControl.Core.Threading;
 ///
 /// A single instance is owned by one loop thread and is not safe for concurrent callers.
 /// </remarks>
-internal sealed partial class PrecisionWaiter : IDisposable
+internal sealed partial class WindowsPrecisionWaiter : IPrecisionWaiter
 {
     // CreateWaitableTimerExW flag requesting a high-resolution timer (Windows 10 1803+).
     private const uint CreateWaitableTimerHighResolution = 0x00000002;
@@ -33,7 +35,7 @@ internal sealed partial class PrecisionWaiter : IDisposable
     private readonly WaitHandle[] _waitHandles = new WaitHandle[2];
     private bool _disposed;
 
-    public PrecisionWaiter()
+    public WindowsPrecisionWaiter()
     {
         SafeWaitHandle handle = CreateWaitableTimerExW(
             IntPtr.Zero,

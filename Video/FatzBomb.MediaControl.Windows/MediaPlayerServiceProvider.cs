@@ -1,8 +1,10 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
 using FatzBomb.MediaControl.Windows.Pipeline;
 using FatzBomb.MediaControl.Windows.Audio;
+using FatzBomb.MediaControl.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzBomb.MediaControl;
@@ -84,8 +86,10 @@ public static class MediaPlayerServiceProvider
         _ = services.AddSingleton<ICdgEngine, Core.Cdg.CdgEngine>();
         _ = services.AddSingleton<ISubtitleEngine, Core.Subtitle.SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
-        _ = services.AddSingleton<IVideoEngineFactory>(_ => new VideoPipelineFactory());
         _ = services.AddSingleton<IMidiLyricProvider>(_ => new BassMidiLyricProvider());
+        _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new WindowsPrecisionWaiterFactory());
+        _ = services.AddSingleton<IVideoEngineFactory>(provider =>
+            new VideoPipelineFactory(provider.GetRequiredService<IPrecisionWaiterFactory>()));
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
         {
@@ -95,7 +99,8 @@ public static class MediaPlayerServiceProvider
             IArchiveService archiveService = provider.GetRequiredService<IArchiveService>();
             IVideoEngineFactory videoEngineFactory = provider.GetRequiredService<IVideoEngineFactory>();
             IMidiLyricProvider midiLyricProvider = provider.GetRequiredService<IMidiLyricProvider>();
-            return new PipelineMediaEngine(audioEngine, cdgEngine, subtitleEngine, archiveService, videoEngineFactory, midiLyricProvider, configuration);
+            IPrecisionWaiterFactory precisionWaiterFactory = provider.GetRequiredService<IPrecisionWaiterFactory>();
+            return new PipelineMediaEngine(audioEngine, cdgEngine, subtitleEngine, archiveService, videoEngineFactory, midiLyricProvider, precisionWaiterFactory, configuration);
         });
 
         _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());

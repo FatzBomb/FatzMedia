@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Windows.Pipeline;
@@ -9,6 +10,13 @@ namespace FatzBomb.MediaControl.Windows.Pipeline;
 /// </summary>
 internal sealed class VideoPipelineFactory : IVideoEngineFactory
 {
+    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+
+    public VideoPipelineFactory(IPrecisionWaiterFactory precisionWaiterFactory)
+    {
+        _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
+    }
+
     public IVideoEngine Create(
         IClockSource clock,
         MediaState state,
@@ -20,6 +28,6 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
             ? deviceProvider.BassDeviceIndex
             : configuration.AudioOutputDeviceIndex;
 
-        return new VideoPipeline(clock, state, configuration, bassDeviceIndex, sync);
+        return new VideoPipeline(clock, state, configuration, bassDeviceIndex, sync, _precisionWaiterFactory);
     }
 }

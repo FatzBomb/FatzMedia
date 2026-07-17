@@ -53,6 +53,7 @@ internal sealed class Direct3D11MediaPresentationCoordinator : IMediaPresentatio
     private readonly TimeSpan _wipeTransitionDuration;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
+    private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _lock = new();
     private readonly Lock _cdgSnapshotGate = new();
@@ -80,9 +81,13 @@ internal sealed class Direct3D11MediaPresentationCoordinator : IMediaPresentatio
     private long _subtitleRevision;
     private double _lastSubtitleOffsetSeconds = double.NaN;
 
-    public Direct3D11MediaPresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration)
+    public Direct3D11MediaPresentationCoordinator(
+        IMediaEngine mediaEngine,
+        MediaPlayerConfiguration configuration,
+        IPrecisionWaiterFactory precisionWaiterFactory)
     {
         _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
+        _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         _configuration = configuration;
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _presenter = new NativeD3D11PresentationBridge(configuration);
@@ -310,7 +315,7 @@ internal sealed class Direct3D11MediaPresentationCoordinator : IMediaPresentatio
 
     private void RenderLoop(CancellationToken cancellationToken)
     {
-        using var waiter = new PrecisionWaiter();
+        using IPrecisionWaiter waiter = _precisionWaiterFactory.Create();
         var nextTick = Stopwatch.GetTimestamp();
         while (!cancellationToken.IsCancellationRequested)
         {

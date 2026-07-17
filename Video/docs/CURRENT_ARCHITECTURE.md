@@ -2,7 +2,7 @@
 
 ## Projects
 
-- `FatzBomb.MediaControl`: UI-agnostic Core media-control engine.
+- `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
 - `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer and presentation implementation.
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and renderer selection.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; selects the Windows platform factory.
@@ -31,7 +31,7 @@ on Windows without changing WPF, Core playback, or the Windows native-service la
 
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg, wash, retained composition models, and platform/renderer contracts. The Direct3D11 renderer owns the presentation coordinator and bridge; remaining D3D11 device, composition, swap-chain, target fan-out, and final-presentation implementation files are migrating from Core into that renderer in stages.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, retained composition models, and platform/renderer contracts. The Direct3D11 renderer owns the presentation coordinator, device, composition, swap-chain, target fan-out, GPU Cdg rasterization, and final presentation.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 
@@ -42,9 +42,9 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 1. Host places a framework control, such as WPF `MediaSurface`.
 2. Adapter creates or discovers a framework/native presentation surface.
 3. Adapter passes a neutral `MediaPresentationSurfaceDescriptor` to Core.
-4. Core attaches/resizes/detaches that surface.
-5. Core builds the final composed frame from Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
-6. Core presents the composed frame to all active targets.
+4. Core forwards the surface lifecycle request to the platform-selected presentation coordinator.
+5. The renderer composes Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay into the final frame.
+6. The renderer presents that frame to all active targets.
 
 ## Video/Audio Demux Ownership
 

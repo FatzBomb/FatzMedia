@@ -1,12 +1,12 @@
 # FatzBomb.MediaControl
 
-Host-agnostic media engine core for FatzBomb.
+OS- and UI-agnostic media engine core for FatzBomb (`net10.0`).
 
-This project intentionally contains no WPF types and does not set `UseWPF`. It owns shared media-engine state, audio/video/CD+G input handling, DirectX Cdg rendering, FFmpeg/BASS integration, Direct3D composition primitives, neutral configuration types, retained layer state, target planning, and final presentation.
+This project intentionally contains no Win32, Vortice, WPF, or renderer implementation types. It owns shared media-engine state, portable audio/video/CD+G input handling, FFmpeg/BASS integration, neutral configuration and composition models, retained layer state, and platform/renderer contracts. Final GPU composition and native presentation belong to renderer packages selected by platform composition.
 
 ## Boundary rule
 
-Core must not reference framework-specific UI/bitmap types such as `System.Windows`, `ImageSource`, `BitmapSource`, `WriteableBitmap`, `D3DImage`, `Dispatcher`, or WPF pixel formats.
+Core must not reference Win32/PInvoke, Vortice, framework-specific UI/bitmap types, renderer projects, or platform projects.
 
 UI frameworks should integrate through adapter projects, for example:
 
@@ -34,7 +34,7 @@ The current presentation architecture includes:
 - real multi-target compositor fan-out
 - host-usable secondary native HWND swap-chain activation through the strict WPF adapter
 
-The Core project provides the media-control implementation and presentation ownership. Public WPF-facing helpers live in the strict WPF adapter and should not require Core internals.
+Core provides the media-control session and neutral contracts. Platform packages select renderer-owned presentation; public WPF-facing helpers remain in the strict WPF adapter and should not require Core internals.
 
 Current architecture and validation docs:
 

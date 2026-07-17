@@ -14,13 +14,20 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Windows.Pipeline;
 
-internal sealed partial class VideoPipeline(IClockSource clock, MediaState state, MediaPlayerConfiguration configuration, int bassDeviceIndex, PlaybackSyncState sync) : IVideoEngine
+internal sealed partial class VideoPipeline(
+    IClockSource clock,
+    MediaState state,
+    MediaPlayerConfiguration configuration,
+    int bassDeviceIndex,
+    PlaybackSyncState sync,
+    IPrecisionWaiterFactory precisionWaiterFactory) : IVideoEngine
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly MediaPlayerConfiguration _configuration = configuration;
     private readonly int _bassDeviceIndex = bassDeviceIndex;
     private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
+    private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     private readonly AudioPresentationClock _presentationClock = new();
     private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
@@ -1031,7 +1038,7 @@ internal sealed partial class VideoPipeline(IClockSource clock, MediaState state
         // on the next tick. Stage 11 paces primary video at source cadence when FPS is known
         // instead of polling at display refresh for 24/30fps content.
         const int diagnosticInterval = 120;
-        using var waiter = new PrecisionWaiter();
+        using IPrecisionWaiter waiter = _precisionWaiterFactory.Create();
         var stopwatch = Stopwatch.StartNew();
         var nextTick = stopwatch.Elapsed.TotalSeconds;
         var lastTickSeconds = nextTick;

@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using FatzBomb.MediaControl.Windows.Video;
+using FatzBomb.MediaControl.Windows.Threading;
 
 namespace FatzBomb.MediaControl;
 
@@ -15,7 +16,7 @@ public sealed class WindowsMediaControlPlatformFactory : IMediaControlPlatformFa
     private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
 
     public WindowsMediaControlPlatformFactory()
-        : this(new Direct3D11PresentationCoordinatorFactory())
+        : this(new Direct3D11PresentationCoordinatorFactory(new WindowsPrecisionWaiterFactory()))
     {
     }
 
