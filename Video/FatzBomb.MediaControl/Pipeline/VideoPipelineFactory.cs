@@ -1,20 +1,23 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Threading;
-using FatzBomb.MediaControl.Pipeline;
 
-namespace FatzBomb.MediaControl.Windows.Pipeline;
+namespace FatzBomb.MediaControl.Pipeline;
 
 /// <summary>
-/// Windows video implementation factory.
+/// Portable video implementation factory supplied with platform timing and device services.
 /// </summary>
 internal sealed class VideoPipelineFactory : IVideoEngineFactory
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    private readonly IVideoPipelinePlatformServices _platformServices;
 
-    public VideoPipelineFactory(IPrecisionWaiterFactory precisionWaiterFactory)
+    public VideoPipelineFactory(
+        IPrecisionWaiterFactory precisionWaiterFactory,
+        IVideoPipelinePlatformServices platformServices)
     {
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
+        _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
     }
 
     public IVideoEngine Create(
@@ -28,6 +31,6 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
             ? deviceProvider.BassDeviceIndex
             : configuration.AudioOutputDeviceIndex;
 
-        return new VideoPipeline(clock, state, configuration, bassDeviceIndex, sync, _precisionWaiterFactory);
+        return new VideoPipeline(clock, state, configuration, bassDeviceIndex, sync, _precisionWaiterFactory, _platformServices);
     }
 }

@@ -3,9 +3,9 @@ using MBass = ManagedBass.Bass;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal static class BassAudioOutputDevices
+public static class BassAudioOutputDevices
 {
-    internal static IReadOnlyList<AudioOutputDeviceInfo> Enumerate()
+    public static IReadOnlyList<AudioOutputDeviceInfo> Enumerate()
     {
         List<AudioOutputDeviceInfo> devices = [AudioOutputDeviceInfo.Primary];
 

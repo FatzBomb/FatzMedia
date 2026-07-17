@@ -22,8 +22,7 @@ lifecycle and Core-service composition through `MediaControlServiceProvider`; an
 package owns native-library loading, platform-specific registrations through
 `IMediaControlPlatformServices`, and the concrete factory.
 `WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`.
-That project accesses Core internals temporarily while the remaining Windows video
-implementation files migrate there in stages.
+Windows accesses Core only through public platform contracts.
 
 Renderer selection is independent of operating-system selection. Windows currently
 defaults to `Direct3D11PresentationCoordinatorFactory` from

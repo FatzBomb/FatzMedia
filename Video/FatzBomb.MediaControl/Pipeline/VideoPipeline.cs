@@ -3,16 +3,13 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
-using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
-using FatzBomb.MediaControl.Pipeline;
-using FatzBomb.MediaControl.Windows.Video;
 using FFmpeg.AutoGen;
 using System.Diagnostics;
 
-namespace FatzBomb.MediaControl.Windows.Pipeline;
+namespace FatzBomb.MediaControl.Pipeline;
 
 internal sealed partial class VideoPipeline(
     IClockSource clock,
@@ -20,7 +17,8 @@ internal sealed partial class VideoPipeline(
     MediaPlayerConfiguration configuration,
     int bassDeviceIndex,
     PlaybackSyncState sync,
-    IPrecisionWaiterFactory precisionWaiterFactory) : IVideoEngine
+    IPrecisionWaiterFactory precisionWaiterFactory,
+    IVideoPipelinePlatformServices platformServices) : IVideoEngine
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -28,6 +26,7 @@ internal sealed partial class VideoPipeline(
     private readonly int _bassDeviceIndex = bassDeviceIndex;
     private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
+    private readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
     private readonly AudioPresentationClock _presentationClock = new();
     private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
@@ -1200,7 +1199,7 @@ internal sealed partial class VideoPipeline(
     private double GetDisplayRefreshIntervalSeconds() =>
         _overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0
             ? 1.0 / overrideHz
-            : DwmCompositionTiming.GetRefreshIntervalSeconds();
+            : _platformServices.GetPresentationRefreshIntervalSeconds();
 
     private void DecodeLoop(int generation, CancellationToken cancellationToken)
     {
@@ -1232,7 +1231,7 @@ internal sealed partial class VideoPipeline(
 
         // Repeated hardware-decode failure is only a hint; confirm the device is actually gone via
         // its device-removed reason before disrupting playback (avoids falling back on a bad stream).
-        if (!D3D11DeviceLostClassifier.IsDeviceLost(decoder.D3D11DevicePointer))
+        if (!_platformServices.IsHardwareDecoderDeviceLost(decoder.D3D11DevicePointer))
             return;
 
         TriggerDecoderDeviceLostRecovery();

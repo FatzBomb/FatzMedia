@@ -1,9 +1,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Threading;
-using FatzBomb.MediaControl.Pipeline;
 using FatzBomb.MediaControl.Windows.Audio;
-using FatzBomb.MediaControl.Windows.Pipeline;
 using FatzBomb.MediaControl.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,8 +24,7 @@ internal sealed class WindowsMediaControlPlatformServices : IMediaControlPlatfor
     {
         _ = services.AddSingleton<IMidiLyricProvider>(_ => new BassMidiLyricProvider());
         _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new WindowsPrecisionWaiterFactory());
-        _ = services.AddSingleton<IVideoEngineFactory>(provider =>
-            new VideoPipelineFactory(provider.GetRequiredService<IPrecisionWaiterFactory>()));
+        _ = services.AddSingleton<IVideoPipelinePlatformServices>(_ => new WindowsVideoPipelinePlatformServices());
         _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
     }
 }

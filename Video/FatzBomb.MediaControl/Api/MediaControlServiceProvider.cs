@@ -44,6 +44,11 @@ public static class MediaControlServiceProvider
 
     private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration)
     {
+        _ = services.AddSingleton<IVideoEngineFactory>(provider =>
+            new VideoPipelineFactory(
+                provider.GetRequiredService<IPrecisionWaiterFactory>(),
+                provider.GetRequiredService<IVideoPipelinePlatformServices>()));
+
         _ = services.AddSingleton<IMediaEngine>(provider =>
             new PipelineMediaEngine(
                 provider.GetRequiredService<IAudioEngine>(),

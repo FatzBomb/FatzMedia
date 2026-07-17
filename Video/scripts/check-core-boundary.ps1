@@ -63,6 +63,11 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
     throw 'Core boundary check failed: Core must not reference Vortice packages.'
 }
 
+$coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
+if ($coreFriendAssemblies -contains 'FatzBomb.MediaControl.Windows') {
+    throw 'Core boundary check failed: Core must not expose internals to the Windows platform project.'
+}
+
 $forbiddenPatterns = @(
     '\[LibraryImport',
     '\[DllImport',

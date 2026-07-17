@@ -5,7 +5,7 @@ namespace FatzBomb.MediaControl.Core.Video;
 /// interval. This is platform-neutral so non-Windows display implementations can
 /// apply the same safety bounds.
 /// </summary>
-internal static class DisplayRefreshInterval
+public static class DisplayRefreshInterval
 {
     public const double FallbackSeconds = 1.0 / 60.0;
 

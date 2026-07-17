@@ -10,7 +10,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Lyric markers (MIDI meta event 5) and text markers (MIDI meta event 1) are converted
 /// to <see cref="SubtitleCue"/> objects with timing derived from the BASS channel position.
 /// </summary>
-internal static class MidiLyricExtractor
+public static class MidiLyricExtractor
 {
     private const int PreferredLineLength = 42;
 

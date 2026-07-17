@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Classifies audio-device state transitions from backend snapshots. Platform
 /// monitors supply the snapshots; this comparison logic is platform-neutral.
 /// </summary>
-internal static class AudioDeviceChangeDetector
+public static class AudioDeviceChangeDetector
 {
     public static AudioDeviceChangeInfo? Detect(
         long lastSampleRate,

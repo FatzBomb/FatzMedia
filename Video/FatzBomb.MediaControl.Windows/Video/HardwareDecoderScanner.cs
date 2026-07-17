@@ -25,10 +25,7 @@ internal static unsafe class HardwareDecoderScanner
 
         Dictionary<string, ContainerCapability> containerCapabilities = ScanDemuxers(codecIds);
 
-        return new VideoDecodeCapabilities(
-            capabilities.ToDictionary(c => c.CodecName.ToLowerInvariant()),
-            containerCapabilities
-        );
+        return VideoDecodeCapabilities.Create(capabilities, containerCapabilities.Values);
     }
 
     private static (List<CodecCapability> capabilities, List<(AVCodecID codecId, CodecCapability capability)> codecIds)

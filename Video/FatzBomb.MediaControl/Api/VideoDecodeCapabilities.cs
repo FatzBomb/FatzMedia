@@ -31,6 +31,21 @@ public sealed class VideoDecodeCapabilities
         _containers = containers;
     }
 
+    /// <summary>
+    /// Creates an immutable codec/container capability snapshot supplied by a platform scanner.
+    /// </summary>
+    public static VideoDecodeCapabilities Create(
+        IEnumerable<CodecCapability> codecs,
+        IEnumerable<ContainerCapability> containers)
+    {
+        ArgumentNullException.ThrowIfNull(codecs);
+        ArgumentNullException.ThrowIfNull(containers);
+
+        return new VideoDecodeCapabilities(
+            codecs.ToDictionary(capability => capability.CodecName, StringComparer.OrdinalIgnoreCase),
+            containers.ToDictionary(capability => capability.Extension, StringComparer.OrdinalIgnoreCase));
+    }
+
     public IReadOnlyDictionary<string, CodecCapability> Codecs => _codecs;
     public IReadOnlyDictionary<string, ContainerCapability> Containers => _containers;
 
