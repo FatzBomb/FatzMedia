@@ -1,0 +1,94 @@
+$ErrorActionPreference = 'Stop'
+
+$root = Split-Path -Parent $PSScriptRoot
+$coreProject = Join-Path $root 'FatzBomb.MediaControl'
+# Keep the approved reference DAG explicit so intentional project-reference changes require review here.
+$projectReferences = @{
+    'FatzBomb.MediaControl\FatzBomb.MediaControl.csproj' = @()
+    'FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj'
+    )
+    'FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj' = @(
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
+    )
+    'FatzBomb.MediaControl.Player\FatzBomb.MediaControl.Player.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj'
+    )
+    'FatzBomb.MediaControl.Tests\FatzBomb.MediaControl.Tests.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
+    )
+}
+
+if (-not (Test-Path $coreProject)) {
+    throw 'Core boundary check failed: FatzBomb.MediaControl project folder was not found.'
+}
+
+function Get-ProjectIncludes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ProjectPath
+    )
+
+    [xml] $project = Get-Content -Raw -Path $ProjectPath
+    return @($project.Project.ItemGroup.ProjectReference | ForEach-Object Include | Sort-Object)
+}
+
+foreach ($relativeProjectPath in $projectReferences.Keys) {
+    $projectPath = Join-Path $root $relativeProjectPath
+    if (-not (Test-Path $projectPath)) {
+        throw "Core boundary check failed: $relativeProjectPath was not found."
+    }
+
+    $expected = @($projectReferences[$relativeProjectPath] | Sort-Object)
+    $actual = @(Get-ProjectIncludes -ProjectPath $projectPath)
+    if (Compare-Object -ReferenceObject $expected -DifferenceObject $actual) {
+        throw "Core boundary check failed: $relativeProjectPath has an unexpected project-reference direction."
+    }
+}
+
+[xml] $coreProjectFile = Get-Content -Raw -Path (Join-Path $coreProject 'FatzBomb.MediaControl.csproj')
+if ($coreProjectFile.Project.PropertyGroup.TargetFramework -ne 'net10.0') {
+    throw 'Core boundary check failed: Core must target net10.0.'
+}
+
+$corePackageReferences = @($coreProjectFile.Project.ItemGroup.PackageReference | ForEach-Object Include)
+if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
+    throw 'Core boundary check failed: Core must not reference Vortice packages.'
+}
+
+$forbiddenPatterns = @(
+    '\[LibraryImport',
+    '\[DllImport',
+    '\bVortice\b',
+    'using System\.Windows',
+    'FatzBomb\.MediaControl\.(Windows|Rendering)'
+)
+
+$violations = @()
+$files = Get-ChildItem -Path $coreProject -Recurse -Filter '*.cs' |
+    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
+
+foreach ($file in $files) {
+    $lines = Get-Content -Path $file.FullName
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        foreach ($pattern in $forbiddenPatterns) {
+            if ($lines[$i] -match $pattern) {
+                $violations += "$(Resolve-Path -Relative $file.FullName):$($i + 1): $($lines[$i].Trim())"
+            }
+        }
+    }
+}
+
+if ($violations.Count -gt 0) {
+    $violations | ForEach-Object { Write-Host $_ }
+    throw 'Core boundary check failed: Core contains platform, renderer, UI, or P/Invoke references.'
+}
+
+Write-Host 'Core boundary check passed: project references are directed, and Core has no platform, renderer, UI, P/Invoke, or Vortice dependencies.'
