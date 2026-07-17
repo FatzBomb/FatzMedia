@@ -16,12 +16,14 @@ Future adapters should be separate projects using the same package pattern:
 
 ## Platform Composition
 
-`MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which composes the
+`MediaControlPlayer` receives an `IMediaControlPlatformFactory`, which selects the
 native media-engine services for the current operating system. Core owns session
-lifecycle; an OS package owns native-library loading, decoder/renderer registrations,
-and the concrete factory. `WindowsMediaControlPlatformFactory` now lives in
-`FatzBomb.MediaControl.Windows`. That project accesses Core internals temporarily
-while the remaining Windows implementation files migrate there in stages.
+lifecycle and Core-service composition through `MediaControlServiceProvider`; an OS
+package owns native-library loading, platform-specific registrations through
+`IMediaControlPlatformServices`, and the concrete factory.
+`WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`.
+That project accesses Core internals temporarily while the remaining Windows video
+implementation files migrate there in stages.
 
 Renderer selection is independent of operating-system selection. Windows currently
 defaults to `Direct3D11PresentationCoordinatorFactory` from

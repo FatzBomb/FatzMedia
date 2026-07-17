@@ -16,7 +16,10 @@ public static class DLLPath
     /// </summary>
     public static string? FFmpeg { get; set; } = string.Empty;
 
-    internal static IReadOnlyList<string> GetConfiguredNativeLibraryPaths() => [.. new[] { Bass, FFmpeg }
+    /// <summary>
+    /// Gets the distinct configured native-library folders, excluding empty values.
+    /// </summary>
+    public static IReadOnlyList<string> GetConfiguredNativeLibraryPaths() => [.. new[] { Bass, FFmpeg }
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)];

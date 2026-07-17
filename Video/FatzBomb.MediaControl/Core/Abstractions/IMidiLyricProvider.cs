@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Core.Abstractions;
 /// Supplies karaoke lyric cues embedded in a MIDI source. Platform implementations
 /// own any native marker/metadata APIs; Core orchestration consumes only cues.
 /// </summary>
-internal interface IMidiLyricProvider
+public interface IMidiLyricProvider
 {
     bool IsMidiFile(string path);
 

@@ -1,11 +1,4 @@
-using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Core.Threading;
-using FatzBomb.MediaControl.Pipeline;
-using FatzBomb.MediaControl.Windows.Pipeline;
-using FatzBomb.MediaControl.Windows.Audio;
-using FatzBomb.MediaControl.Windows.Threading;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzBomb.MediaControl;
 
@@ -35,81 +28,7 @@ public static class MediaPlayerServiceProvider
     /// Creates a service provider with specified configuration and host-provided native library paths.
     /// </summary>
     public static IServiceProvider Create(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths)
-    {
-        var services = new ServiceCollection();
-
-        RegisterServices(services, configuration, nativeLibraryPaths);
-        return services.BuildServiceProvider();
-    }
-
-    /// <summary>
-    /// Registers all required services for MediaPlayer functionality.
-    /// </summary>
-    private static void RegisterServices(IServiceCollection services, MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths)
-    {
-
-        // Load native libraries only once globally - pass custom path if provided
-        _ = LoadLibraries(nativeLibraryPaths);
-
-        _ = services.AddSingleton<IAudioEngine>(provider =>
-        {
-            var latencyProvider = new Core.Audio.BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
-            var audioEngine = new Core.Audio.AudioEngine(new Core.Audio.AudioNormalizer(), new Core.Audio.AudioStreamManager(), latencyProvider);
-
-            var requestedDevice = configuration.AudioOutputDeviceIndex;
-            var initialized = audioEngine.Init(requestedDevice, 44100);
-            if (!initialized
-                && requestedDevice != AudioOutputDeviceInfo.PrimaryDeviceIndex
-                && configuration.AudioOutputFallbackMode == AudioOutputFallbackMode.FallbackToPrimary)
-            {
-                DiagnosticRouter.Raise(
-                    MediaDiagnosticLevel.Warning,
-                    "Bootstrap",
-                    $"Audio output device {requestedDevice} could not be initialized ({ManagedBass.Bass.LastError}); falling back to Primary.");
-                initialized = audioEngine.Init(AudioOutputDeviceInfo.PrimaryDeviceIndex, 44100);
-            }
-
-            if (!initialized)
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Failed to initialize BASS audio output device {requestedDevice}");
-            }
-            else
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Global BASS initialized successfully on device {audioEngine.BassDeviceIndex}");
-                Core.Audio.BassMidiSoundfontManager.Initialize(configuration.MidiSoundfontPath);
-            }
-
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", "AudioEngine created for pipeline audio slice");
-            return audioEngine;
-        });
-
-        _ = services.AddSingleton<ICdgEngine, Core.Cdg.CdgEngine>();
-        _ = services.AddSingleton<ISubtitleEngine, Core.Subtitle.SubtitleEngine>();
-        _ = services.AddSingleton<IArchiveService, Adapters.Archives.SharpArchiveAdapter>();
-        _ = services.AddSingleton<IMidiLyricProvider>(_ => new BassMidiLyricProvider());
-        _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new WindowsPrecisionWaiterFactory());
-        _ = services.AddSingleton<IVideoEngineFactory>(provider =>
-            new VideoPipelineFactory(provider.GetRequiredService<IPrecisionWaiterFactory>()));
-
-        _ = services.AddSingleton<IMediaEngine>(provider =>
-        {
-            IAudioEngine audioEngine = provider.GetRequiredService<IAudioEngine>();
-            ICdgEngine cdgEngine = provider.GetRequiredService<ICdgEngine>();
-            ISubtitleEngine subtitleEngine = provider.GetRequiredService<ISubtitleEngine>();
-            IArchiveService archiveService = provider.GetRequiredService<IArchiveService>();
-            IVideoEngineFactory videoEngineFactory = provider.GetRequiredService<IVideoEngineFactory>();
-            IMidiLyricProvider midiLyricProvider = provider.GetRequiredService<IMidiLyricProvider>();
-            IPrecisionWaiterFactory precisionWaiterFactory = provider.GetRequiredService<IPrecisionWaiterFactory>();
-            return new PipelineMediaEngine(audioEngine, cdgEngine, subtitleEngine, archiveService, videoEngineFactory, midiLyricProvider, precisionWaiterFactory, configuration);
-        });
-
-        _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
-    }
-
-    private static bool LoadLibraries(IReadOnlyList<string> nativeLibraryPaths) =>
-        !Bootstrap.EnsureInitialized(nativeLibraryPaths)
-            ? throw new InvalidOperationException(Bootstrap.Message)
-            : true;
+        => MediaControlServiceProvider.Create(configuration, nativeLibraryPaths, new WindowsMediaControlPlatformServices());
 
     private static IReadOnlyList<string> ToNativeLibraryPathArrayOrDefault(string? nativeLibraryPath) =>
         string.IsNullOrWhiteSpace(nativeLibraryPath)
