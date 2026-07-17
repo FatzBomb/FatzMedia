@@ -36,7 +36,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 - **C# 14** (`LangVersion 14.0`) — `field` keyword in auto-property accessors, primary constructors on non-record types, collection expressions all valid
 - **Portable Core TFM** — `FatzBomb.MediaControl` targets `net10.0`; Windows, Direct3D11, WPF, Player, and tests target `net10.0-windows7.0`.
 - **`System.Threading.Lock`** (not `Monitor`) — used throughout pipeline for synchronization. This is the new explicit `Lock` type from .NET 9+, not the legacy `lock(obj)` pattern.
-- **x64-only** — `PlatformTarget=x64` on all projects. Do not change.
+- **Current Windows deployment** — Direct3D11, Windows, WPF, Player, and tests explicitly target x64 for the current native-media distribution. Core is architecture-neutral; future platform packages must select their own supported runtime architectures.
 - **Consistent identity** — Core PackageId == AssemblyName == RootNamespace == `FatzBomb.MediaControl` (the bare product name; the old `.Core` package suffix was dropped). Namespace root across the solution is `FatzBomb.MediaControl` (host is `FatzBomb.MediaControl.Player`).
 - **Packable** — Core and Windows packages are created explicitly with `dotnet pack -c Release`; normal builds do not pack.
 
