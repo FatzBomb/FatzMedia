@@ -10,17 +10,7 @@ using Vortice.WIC;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
 
-internal readonly record struct SubtitleRenderResult(
-    ReadOnlyMemory<byte> Pixels,
-    int Width,
-    int Height,
-    int Stride,
-    int CanvasLeft,
-    int CanvasTop,
-    int CanvasWidth,
-    int CanvasHeight);
-
-internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null) : IDisposable
+internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null) : ISubtitleRasterizer
 {
     // Presentation may request a fresh cue from multiple scheduler paths; the coordinator serializes
     // calls, and the factory is multi-threaded to keep that usage valid if a future preview path is added.
@@ -30,7 +20,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     private readonly SubtitleTextStyle _style = (style ?? new SubtitleTextStyle()).Normalize();
     private readonly KaraokeTextStyle _karaokeStyle = (karaokeStyle ?? new KaraokeTextStyle()).Normalize();
 
-    public SubtitleRenderResult Render(string text, int width, int height)
+    public SubtitleRasterResult Render(string text, int width, int height)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -87,7 +77,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         var stride = bounds.Width * 4;
         var pixels = new byte[checked(stride * bounds.Height)];
         bitmap.CopyPixels((uint)stride, pixels);
-        return new SubtitleRenderResult(
+        return new SubtitleRasterResult(
             pixels,
             bounds.Width,
             bounds.Height,
@@ -98,7 +88,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             height);
     }
 
-    public SubtitleRenderResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height)
+    public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(timing);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -118,7 +108,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         return RenderKaraokeFrame(timing, position, baseStyle, wipeStyle, width, height);
     }
 
-    private SubtitleRenderResult RenderKaraokeFrame(
+    private SubtitleRasterResult RenderKaraokeFrame(
         KaraokeCueTiming timing,
         TimeSpan position,
         KaraokeLayerStyle baseStyle,
@@ -324,7 +314,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             var stride = bounds.Width * 4;
             var pixels = new byte[checked(stride * bounds.Height)];
             bitmap.CopyPixels((uint)stride, pixels);
-            return new SubtitleRenderResult(
+            return new SubtitleRasterResult(
                 pixels,
                 bounds.Width,
                 bounds.Height,

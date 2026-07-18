@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
@@ -361,7 +362,7 @@ internal sealed class D3D11RendererPresentationServices
 
     private static bool IsDirectCompositionOverlaySplitCandidate(MediaCompositionFrame frame) =>
         frame.HasCdgOverlay
-        && (frame.HasBackground || frame.HasD3D11Background || frame.HasRetainedBackground);
+        && (frame.HasBackground || frame.HasNativeBackground || frame.HasRetainedBackground);
 
     private bool CanUseDirectCompositionOverlaySplit(MediaCompositionFrame frame) =>
         Backends.DirectComposition.IsActive
@@ -450,17 +451,16 @@ internal sealed class D3D11RendererPresentationServices
         frame.ClearArgb,
         frame.WashArgb,
         frame.HasBackground,
-        frame.HasD3D11Background,
+        frame.HasNativeBackground,
         frame.HasRetainedBackground,
         frame.BackgroundRevision,
         frame.BackgroundWidth,
         frame.BackgroundHeight,
         frame.BackgroundStride,
         frame.EffectiveBackgroundStretchMode,
-        frame.BackgroundD3D11TexturePointer,
-        frame.BackgroundD3D11ArraySlice,
-        frame.BackgroundD3D11Width,
-        frame.BackgroundD3D11Height);
+        frame.BackgroundNativeResource,
+        frame.BackgroundNativeWidth,
+        frame.BackgroundNativeHeight);
 
     private static DirectCompositionOverlaySplitOverlayState CreateDirectCompositionOverlaySplitOverlayState(
         CdgRenderSnapshot snapshot,
@@ -512,17 +512,16 @@ internal sealed class D3D11RendererPresentationServices
         uint ClearArgb,
         uint WashArgb,
         bool HasBackground,
-        bool HasD3D11Background,
+        bool HasNativeBackground,
         bool HasRetainedBackground,
         long BackgroundRevision,
         int BackgroundWidth,
         int BackgroundHeight,
         int BackgroundStride,
         MediaCompositionStretchMode BackgroundStretchMode,
-        IntPtr BackgroundD3D11TexturePointer,
-        int BackgroundD3D11ArraySlice,
-        int BackgroundD3D11Width,
-        int BackgroundD3D11Height);
+        NativeVideoFrameResource? BackgroundNativeResource,
+        int BackgroundNativeWidth,
+        int BackgroundNativeHeight);
 
     private readonly record struct DirectCompositionOverlaySplitOverlayState(
         long TargetRevision,

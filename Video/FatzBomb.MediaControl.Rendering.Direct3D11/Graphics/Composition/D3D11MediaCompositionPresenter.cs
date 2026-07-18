@@ -1,5 +1,7 @@
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
+using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
@@ -24,7 +26,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private const int CompositionDiagnosticInterval = 120;
 
     private readonly D3D11CompositionLayerCache _layerCache = new();
-    private readonly D3D11CompositionTargetRegistry _targetRegistry = new();
+    private readonly CompositionTargetRegistry _targetRegistry = new();
     private readonly List<D3D11PresentationTargetSnapshot> _scratchValidTargets = [];
     private readonly List<D3D11PresentationTargetSnapshot> _scratchPresentationTargets = [];
 
@@ -196,7 +198,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         if (deviceResources.Device == null
             || deviceResources.Context == null
             || !target.IsValid
-            || target.CompositionTargetKind != D3D11CompositionTargetKind.DirectCompositionOverlay
+            || target.CompositionTargetKind != CompositionTargetKind.DirectCompositionOverlay
             || snapshot.ColorIndices.Length < CdgConstants.TotalPixels
             || snapshot.PaletteArgb.Length < CdgConstants.ColorCount)
         {
@@ -255,7 +257,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             }
 
             _targetRegistry.Capture(validTargets.Select(static target => target.ToCompositionTargetDescriptor()));
-            D3D11CompositionTargetPlan targetPlan = _targetRegistry.CreatePlan();
+            CompositionTargetPlan targetPlan = _targetRegistry.CreatePlan();
             _scratchPresentationTargets.Clear();
             foreach (D3D11PresentationTargetSnapshot target in validTargets)
                 if (targetPlan.ShouldPresentTarget(target.TargetId))
@@ -269,7 +271,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             }
 
             _layerCache.Capture(frame);
-            D3D11CompositionLayerUpdatePlan updatePlan = _layerCache.CreateUpdatePlan();
+            CompositionLayerUpdatePlan updatePlan = _layerCache.CreateUpdatePlan();
             LogClearOnlyResourceGuardrailIfNeeded(updatePlan);
             LogLayerLifecycleIfNeeded(frame, updatePlan, targetPlan);
 
@@ -362,16 +364,17 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11CompositionLayerState? backgroundLayer = _layerCache.TryGet(MediaCompositionLayerId.Background);
         MediaCompositionLayer? descriptor = frame.TryGetBackgroundLayer();
 
-        if (frame.HasD3D11Background)
+        if (frame.HasNativeBackground)
         {
+            NativeVideoFrameResource? resource = frame.BackgroundNativeResource;
             return videoProcessorPresenter != null && SetHardwareBackgroundFrame(
                 deviceResources,
                 videoProcessorPresenter,
-                frame.BackgroundD3D11TexturePointer,
-                frame.BackgroundD3D11ArraySlice,
-                frame.BackgroundD3D11Width,
-                frame.BackgroundD3D11Height,
-                frame.BackgroundD3D11FramesPerSecond,
+                resource!.ResourceHandle,
+                resource.SubresourceIndex,
+                frame.BackgroundNativeWidth,
+                frame.BackgroundNativeHeight,
+                frame.BackgroundNativeFramesPerSecond,
                 frame.EffectiveBackgroundStretchMode,
                 frame.BackgroundRevision);
         }
@@ -408,20 +411,20 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
     private static bool CanSkipRetainedRefresh(
         MediaCompositionFrame frame,
-        D3D11CompositionLayerUpdatePlan updatePlan,
-        D3D11CompositionTargetPlan targetPlan) =>
+        CompositionLayerUpdatePlan updatePlan,
+        CompositionTargetPlan targetPlan) =>
         frame.RetainedRefresh
         && !updatePlan.HasWork
         && !targetPlan.HasMetadataWork;
 
     private static bool IsCdgOverlayOnlyCompositionCandidate(
         MediaCompositionFrame frame,
-        D3D11CompositionLayerUpdatePlan updatePlan,
-        D3D11CompositionTargetPlan targetPlan) =>
+        CompositionLayerUpdatePlan updatePlan,
+        CompositionTargetPlan targetPlan) =>
         frame.HasCdgOverlay
         && frame.HasRetainedBackground
         && !frame.HasBackground
-        && !frame.HasD3D11Background
+        && !frame.HasNativeBackground
         && !updatePlan.IsClearOnly
         && !updatePlan.DeactivatedLayers
         && !targetPlan.HasMetadataWork
@@ -430,8 +433,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
     private void RecordCompositionDiagnostics(
         MediaCompositionFrame frame,
-        D3D11CompositionLayerUpdatePlan updatePlan,
-        D3D11CompositionTargetPlan targetPlan,
+        CompositionLayerUpdatePlan updatePlan,
+        CompositionTargetPlan targetPlan,
         int drawnTargets,
         bool skippedRetainedNoOp,
         double elapsedMs)
@@ -441,8 +444,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
         _compositionPasses++;
         _compositionDrawnTargets += drawnTargets;
-        _compositionLayerUploads += updatePlan.Updates.Count(static update => update.Action.HasFlag(D3D11CompositionLayerUpdateAction.Upload));
-        _compositionLayerRenders += updatePlan.Updates.Count(static update => update.Action.HasFlag(D3D11CompositionLayerUpdateAction.Render));
+        _compositionLayerUploads += updatePlan.Updates.Count(static update => update.Action.HasFlag(CompositionLayerUpdateAction.Upload));
+        _compositionLayerRenders += updatePlan.Updates.Count(static update => update.Action.HasFlag(CompositionLayerUpdateAction.Render));
         _compositionRetainedReuses += updatePlan.ReusableLayerCount;
         _compositionTargetResizes += targetPlan.ResizeTargetCount;
         if (skippedRetainedNoOp)
@@ -1001,7 +1004,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
 
 
-    private void LogClearOnlyResourceGuardrailIfNeeded(D3D11CompositionLayerUpdatePlan updatePlan)
+    private void LogClearOnlyResourceGuardrailIfNeeded(CompositionLayerUpdatePlan updatePlan)
     {
         if (!updatePlan.IsClearOnly || !_layerCache.HasRetainedResources)
             return;
@@ -1012,8 +1015,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
     private void LogLayerLifecycleIfNeeded(
         MediaCompositionFrame frame,
-        D3D11CompositionLayerUpdatePlan updatePlan,
-        D3D11CompositionTargetPlan targetPlan)
+        CompositionLayerUpdatePlan updatePlan,
+        CompositionTargetPlan targetPlan)
     {
         if (!enableLayerDiagnostics || frame.RetainedRefresh)
             return;

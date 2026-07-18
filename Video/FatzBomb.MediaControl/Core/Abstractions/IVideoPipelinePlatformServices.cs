@@ -10,8 +10,4 @@ public interface IVideoPipelinePlatformServices
     /// </summary>
     double GetPresentationRefreshIntervalSeconds();
 
-    /// <summary>
-    /// Determines whether a hardware decoder's native device has been lost.
-    /// </summary>
-    bool IsHardwareDecoderDeviceLost(IntPtr devicePointer);
 }

@@ -18,7 +18,8 @@ internal sealed partial class VideoPipeline(
     int bassDeviceIndex,
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
-    IVideoPipelinePlatformServices platformServices) : IVideoEngine
+    IVideoPipelinePlatformServices platformServices,
+    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -27,6 +28,7 @@ internal sealed partial class VideoPipeline(
     private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     private readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
+    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
     private readonly AudioPresentationClock _presentationClock = new();
     private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
@@ -223,7 +225,7 @@ internal sealed partial class VideoPipeline(
             return false;
         }
 
-        _videoDecoder = VideoDecoder.FromConfiguration(_configuration, _sharedDemuxer);
+        _videoDecoder = VideoDecoder.FromConfiguration(_configuration, _sharedDemuxer, _hardwareAccelerationServices);
         if (!_videoDecoder.Open(path))
         {
             Close();
@@ -1037,16 +1039,15 @@ internal sealed partial class VideoPipeline(
         // on the next tick. Stage 11 paces primary video at source cadence when FPS is known
         // instead of polling at display refresh for 24/30fps content.
         const int diagnosticInterval = 120;
-        using IPrecisionWaiter waiter = _precisionWaiterFactory.Create();
+        using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
         var stopwatch = Stopwatch.StartNew();
-        var nextTick = stopwatch.Elapsed.TotalSeconds;
-        var lastTickSeconds = nextTick;
+        var lastTickSeconds = stopwatch.Elapsed.TotalSeconds;
         var diagnosticTicks = 0;
         var diagnosticMaxGapMs = 0.0;
         var diagnosticSumGapMs = 0.0;
         var lastTargetIntervalSeconds = GetPrimaryPresentationIntervalSeconds();
 
-        if (_configuration.EnableLogging && !waiter.IsHighResolution)
+        if (_configuration.EnableLogging && !pacer.IsHighResolution)
             Trace.WriteLine("[VideoPipeline] High-resolution presentation timer unavailable; using coarse wait fallback.");
 
         while (!cancellationToken.IsCancellationRequested && generation == _generation)
@@ -1130,35 +1131,23 @@ internal sealed partial class VideoPipeline(
                 }
 
                 if (restartedLoop)
-                    nextTick = stopwatch.Elapsed.TotalSeconds;
+                    pacer.Reset();
             }
 
             if (IsSourceCadencePlayback(FramesPerSecond))
             {
-                var waitCpuStart = stopwatch.Elapsed.TotalSeconds;
                 var waitSeconds = GetClockLockedPresentationWaitSeconds(targetIntervalSeconds);
-                waitSeconds -= stopwatch.Elapsed.TotalSeconds - waitCpuStart;
 
                 if (waitSeconds <= 0)
                     continue;
 
-                waiter.Wait(TimeSpan.FromSeconds(waitSeconds), cancellationToken.WaitHandle);
-                nextTick = stopwatch.Elapsed.TotalSeconds;
+                pacer.WaitFor(TimeSpan.FromSeconds(waitSeconds), cancellationToken.WaitHandle);
                 continue;
             }
 
-            nextTick += targetIntervalSeconds;
-            var now = stopwatch.Elapsed.TotalSeconds;
-            var accumulatorWaitSeconds = nextTick - now;
-
-            if (accumulatorWaitSeconds <= 0)
-            {
-                // Fell behind (e.g. a slow frame); resync instead of free-running catch-up ticks.
-                nextTick = now;
-                continue;
-            }
-
-            waiter.Wait(TimeSpan.FromSeconds(accumulatorWaitSeconds), cancellationToken.WaitHandle);
+            pacer.WaitNext(
+                TimeSpan.FromSeconds(targetIntervalSeconds),
+                cancellationToken.WaitHandle);
         }
     }
 
@@ -1231,7 +1220,8 @@ internal sealed partial class VideoPipeline(
 
         // Repeated hardware-decode failure is only a hint; confirm the device is actually gone via
         // its device-removed reason before disrupting playback (avoids falling back on a bad stream).
-        if (!_platformServices.IsHardwareDecoderDeviceLost(decoder.D3D11DevicePointer))
+        if (decoder.HardwareDevice is not { } hardwareDevice
+            || !_hardwareAccelerationServices.IsDeviceLost(hardwareDevice))
             return;
 
         TriggerDecoderDeviceLostRecovery();
@@ -1336,11 +1326,15 @@ internal sealed partial class VideoPipeline(
     /// hardware-decode D3D11 device could be created (i.e. the GPU is back). Does not touch the live
     /// decoder or playback.
     /// </summary>
-    private static bool HardwareDecodeDeviceAvailable(string path)
+    private bool HardwareDecodeDeviceAvailable(string path)
     {
         try
         {
-            using var probe = new VideoDecoder(VideoDecodingMethod.Hardware, enableHardwareFrameOutput: false, enableDiagnostics: false);
+            using var probe = new VideoDecoder(
+                VideoDecodingMethod.Hardware,
+                enableHardwareFrameOutput: false,
+                enableDiagnostics: false,
+                hardwareAccelerationServices: _hardwareAccelerationServices);
             return probe.Open(path) && probe.HardwareAccelerationMethod != null;
         }
         catch
@@ -1381,7 +1375,8 @@ internal sealed partial class VideoPipeline(
                     _configuration.EnableLogging,
                     _configuration.EnablePerformanceLogging,
                     _configuration.EnableVerboseLogging,
-                    sharedDemuxer: _sharedDemuxer);
+                    sharedDemuxer: _sharedDemuxer,
+                    hardwareAccelerationServices: _hardwareAccelerationServices);
 
                 if (!_videoDecoder.Open(path))
                 {
@@ -1457,7 +1452,14 @@ internal sealed partial class VideoPipeline(
 
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}", sourcePath: path);
         _videoDecoder.Dispose();
-        _videoDecoder = new VideoDecoder(VideoDecodingMethod.Software, true, _configuration.EnableLogging, _configuration.EnablePerformanceLogging, _configuration.EnableVerboseLogging, sharedDemuxer: _sharedDemuxer);
+        _videoDecoder = new VideoDecoder(
+            VideoDecodingMethod.Software,
+            true,
+            _configuration.EnableLogging,
+            _configuration.EnablePerformanceLogging,
+            _configuration.EnableVerboseLogging,
+            sharedDemuxer: _sharedDemuxer,
+            hardwareAccelerationServices: _hardwareAccelerationServices);
         if (!_videoDecoder.Open(path))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
@@ -2372,10 +2374,7 @@ internal sealed partial class VideoPipeline(
         Stride = frame.Stride,
         PtsSeconds = frame.PresentationTime,
         FramesPerSecond = FramesPerSecond,
-        D3D11DevicePointer = frame.D3D11DevicePointer,
-        D3D11DeviceContextPointer = frame.D3D11DeviceContextPointer,
-        D3D11TexturePointer = frame.D3D11TexturePointer,
-        D3D11ArraySlice = frame.D3D11ArraySlice
+        NativeResource = frame.NativeResource
     };
 
     private void ReleaseCurrentFrame()

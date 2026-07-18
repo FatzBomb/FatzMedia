@@ -4,12 +4,13 @@ namespace FatzBomb.MediaControl.Player.Configuration;
 
 public static class PlayerNativeLibraries
 {
-    private static readonly string[] NativeFolders =
-    [
-        "native"
-    ];
-
-    public static IReadOnlyList<string> ResolveSearchPaths() => [.. NativeFolders.Select(ResolveFromAppBase)];
+    public static IReadOnlyList<string> ResolveSearchPaths()
+    {
+        IReadOnlyList<string> defaultPaths = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
+        return defaultPaths.Count > 0
+            ? defaultPaths
+            : [ResolveFromAppBase(WindowsNativeLibraryPaths.AppNativeRelativePath)];
+    }
 
     private static string ResolveFromAppBase(string path)
     {
@@ -18,6 +19,7 @@ public static class PlayerNativeLibraries
             : Path.Combine(AppContext.BaseDirectory, path);
 
         var fullPath = Path.GetFullPath(resolvedPath);
+        // The validation host keeps a stable drop folder even before local native assets are supplied.
         _ = Directory.CreateDirectory(fullPath);
         return fullPath;
     }

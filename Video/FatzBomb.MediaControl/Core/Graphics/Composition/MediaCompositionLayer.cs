@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics;
 
 namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 
@@ -34,11 +35,9 @@ public sealed record MediaCompositionLayer
     public ReadOnlyMemory<byte> BgraPixels { get; init; }
 
     /// <summary>
-    /// Optional hardware texture pointer for transient D3D11 video Layer 0 input.
-    /// Stage 10B/10G can replace this with an explicit layer-surface abstraction.
+    /// Optional producer-owned native video resource for transient hardware Layer 0 input.
     /// </summary>
-    public IntPtr D3D11TexturePointer { get; init; }
-    public int D3D11ArraySlice { get; init; }
+    public NativeVideoFrameResource? NativeResource { get; init; }
     public double FramesPerSecond { get; init; }
 
     /// <summary>

@@ -41,7 +41,7 @@ public readonly record struct KaraokeTextStyle
         NextLineOpacity = 0.65f;
     }
 
-    internal KaraokeTextStyle Normalize() =>
+    public KaraokeTextStyle Normalize() =>
         string.IsNullOrWhiteSpace(FontFamily)
             && FontSize <= 0
             && TextArgb == 0

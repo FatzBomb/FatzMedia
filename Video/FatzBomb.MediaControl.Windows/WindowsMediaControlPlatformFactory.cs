@@ -1,9 +1,7 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Controllers;
-using FatzBomb.MediaControl.Rendering.Direct3D11;
 using FatzBomb.MediaControl.Windows.Video;
-using FatzBomb.MediaControl.Windows.Threading;
 
 namespace FatzBomb.MediaControl;
 
@@ -11,14 +9,9 @@ namespace FatzBomb.MediaControl;
 /// Windows platform composition selected explicitly by Windows adapters and hosts
 /// through the <see cref="IMediaControlPlatformFactory"/> seam.
 /// </summary>
-public sealed class WindowsMediaControlPlatformFactory : IMediaControlPlatformFactory
+public class WindowsMediaControlPlatformFactory : IMediaControlPlatformFactory
 {
     private readonly IMediaPresentationCoordinatorFactory _presentationFactory;
-
-    public WindowsMediaControlPlatformFactory()
-        : this(new Direct3D11PresentationCoordinatorFactory(new WindowsPrecisionWaiterFactory()))
-    {
-    }
 
     public WindowsMediaControlPlatformFactory(IMediaPresentationCoordinatorFactory presentationFactory)
     {

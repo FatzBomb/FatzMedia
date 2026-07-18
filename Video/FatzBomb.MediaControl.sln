@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzBomb.MediaControl.Windo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzBomb.MediaControl.Rendering.Direct3D11", "FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj", "{EED965C8-D12E-4230-8804-4B4B979BC751}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FatzBomb.MediaControl.Windows.Direct3D11", "FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj", "{83E026EC-13A9-48A3-B247-C7893BD55A54}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -104,6 +106,18 @@ Global
 		{EED965C8-D12E-4230-8804-4B4B979BC751}.Release|x64.Build.0 = Release|Any CPU
 		{EED965C8-D12E-4230-8804-4B4B979BC751}.Release|x86.ActiveCfg = Release|Any CPU
 		{EED965C8-D12E-4230-8804-4B4B979BC751}.Release|x86.Build.0 = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|x64.Build.0 = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Debug|x86.Build.0 = Debug|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|Any CPU.Build.0 = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|x64.ActiveCfg = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|x64.Build.0 = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|x86.ActiveCfg = Release|Any CPU
+		{83E026EC-13A9-48A3-B247-C7893BD55A54}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -20,3 +20,4 @@ roadmap/
 
 - `CURRENT_ARCHITECTURE.md` — ownership boundaries and runtime flow
 - `VALIDATION.md` — manual smoke test checklist
+- `NATIVE_DEPENDENCIES.md` — host-supplied BASS/FFmpeg distribution and update policy

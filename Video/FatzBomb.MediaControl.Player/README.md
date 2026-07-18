@@ -78,7 +78,8 @@ Playback UI binds to view-model commands and properties:
 
 ## Native setup
 
-The host player owns native DLL deployment. The built-in host resolver uses this design-time folder:
+The host player owns native DLL deployment. The built-in host resolver uses this
+design-time folder:
 
 ```text
 FatzBomb.MediaControl.Player/native/
@@ -90,15 +91,17 @@ The player project copies them at build/publish time to:
 FatzBomb.MediaControl.Player/bin/x64/Debug/net10.0-windows7.0/native/
 ```
 
-The host app sets the resolved folder before it creates the player:
+The host passes the resolved directory list when it creates the player:
 
 ```csharp
-DLLPath.Bass = nativePath;
-DLLPath.FFmpeg = nativePath;
-var player = new Player();
+var platform = new WindowsDirect3D11MediaControlPlatformFactory();
+var player = await Player.CreateAsync(configuration, [nativePath], platform);
 ```
 
-If the real host app wants separate BASS and FFmpeg folders, resolve each folder in the host app and set `DLLPath.Bass` and `DLLPath.FFmpeg` separately. The MediaControl project does not copy or package native DLLs.
+The loader also recognizes `runtimes/win-x64/native` beneath the application base.
+A real host may pass separate BASS and FFmpeg directories in search-priority order.
+The MediaControl packages do not copy or redistribute native DLLs. See
+`docs/NATIVE_DEPENDENCIES.md` for the complete host distribution policy.
 
 ## Smoke Test Checklist
 

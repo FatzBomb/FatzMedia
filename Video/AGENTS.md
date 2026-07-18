@@ -26,8 +26,9 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | Project | Role | Key constraint |
 |---------|------|---------------|
 | `FatzBomb.MediaControl` (Core) | OS/UI-agnostic engine — playback, media state, audio/video/Cdg, composition models, platform/renderer contracts | Targets `net10.0`; no Win32, Vortice, WPF, renderer, or platform project references |
-| `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer — coordinator, device, composition, swap chains, final presentation | Renderer-specific; references Core contracts/models only after migration completes |
-| `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, renderer selection | References Core and the default Direct3D11 renderer; accesses Core internals temporarily while Windows implementation files migrate |
+| `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer backend — device, GPU composition, swap chains, subtitle rasterization, final presentation | References only public Core renderer contracts/models; no friend access |
+| `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, hardware-decode policy | References Core only; renderer selection belongs to the host composition root |
+| `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle | References Windows + Direct3D11 and exposes the current default platform factory |
 | `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | References Windows composition but must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
@@ -45,7 +46,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 - **Adapters own zero rendering** — `MediaSurface` and `SecondaryPresentationWindow` create HWND surfaces and pass `MediaPresentationSurfaceDescriptor` to Core. They must never reference pipelines, decoders, frame data, internal Cdg state, or D3D11 resources.
 - **`Player : MediaControlPlayer`** in WPF project inherits Core commands, properties, events automatically. WPF-specific additions are limited to `ImageSource`→`MediaInputSource` conversions.
 - **Platform composition is explicit** — `MediaControlPlayer` receives an `IMediaControlPlatformFactory`; Core composes its own services through `MediaControlServiceProvider`, while OS packages own native-library loading and `IMediaControlPlatformServices` registrations. `WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows` and accesses Core only through public platform contracts.
-- **Renderer choice is separate from OS choice** — platform packages select an `IMediaPresentationCoordinatorFactory`. Direct3D11 is the current Windows default through `FatzBomb.MediaControl.Rendering.Direct3D11`; future Vulkan/OpenGL/Metal renderers should implement the same factory without changing Core playback or UI adapters.
+- **Renderer choice is separate from OS choice** — hosts inject an `IMediaPresentationCoordinatorFactory` into the Windows/WPF composition chain. The Player host uses the `FatzBomb.MediaControl.Windows.Direct3D11` convenience bundle; future Vulkan/OpenGL/Metal renderers implement the same public Core contracts without changing Core playback, Windows services, or UI adapters.
 - **`.ConfigureAwait(false)` required** in all async pipeline code. Host app marshals events to UI thread explicitly.
 - **Before editing the Wpf adapter**, confirm no new `using` pulls a Core renderer / pipeline / internal-Cdg / D3D11 namespace into the adapter — that boundary is the repo's most important invariant (see Verification).
 - **Large engine/pipeline files are expected here.** D3D11 composition, decoders, swap-chain/presentation, and Cdg code are legitimately large and cohesive — do **not** propose splitting them on line count alone (this exempts them from the global file-size trigger). Apply that trigger to *new* UI, view-model, service, and glue code, not to the existing low-level engine.
@@ -122,4 +123,5 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 
 - `docs/CURRENT_ARCHITECTURE.md` — ownership boundaries and runtime flow
 - `docs/VALIDATION.md` — smoke test checklist
+- `docs/NATIVE_DEPENDENCIES.md` — host-owned BASS/FFmpeg versions, paths, licensing, and publish-smoke policy
 - `docs/ProjectAnalysisRoadmap [2026-06-30].md` — active staged roadmap and validation criteria

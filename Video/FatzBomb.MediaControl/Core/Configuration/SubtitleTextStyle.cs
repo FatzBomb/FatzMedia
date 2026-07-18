@@ -26,7 +26,7 @@ public readonly record struct SubtitleTextStyle
         ShadowOffsetY = 2;
     }
 
-    internal SubtitleTextStyle Normalize() => string.IsNullOrWhiteSpace(FontFamily)
+    public SubtitleTextStyle Normalize() => string.IsNullOrWhiteSpace(FontFamily)
             && FontSize <= 0
             && TextArgb == 0
             && OutlineArgb == 0

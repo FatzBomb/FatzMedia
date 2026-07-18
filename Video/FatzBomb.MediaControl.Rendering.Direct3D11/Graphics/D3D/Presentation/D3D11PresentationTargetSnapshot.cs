@@ -1,4 +1,4 @@
-using FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
+using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
@@ -18,7 +18,7 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     D3D11PresentationBackendKind backendKind,
     string backendName,
     long revision,
-    D3D11CompositionTargetKind compositionTargetKind)
+    CompositionTargetKind compositionTargetKind)
 {
     public string TargetId { get; } = targetId;
 
@@ -36,16 +36,16 @@ internal readonly struct D3D11PresentationTargetSnapshot(
 
     public long Revision { get; } = revision;
 
-    public D3D11CompositionTargetKind CompositionTargetKind { get; } = compositionTargetKind;
+    public CompositionTargetKind CompositionTargetKind { get; } = compositionTargetKind;
 
     public bool IsValid => !string.IsNullOrWhiteSpace(TargetId)
         && Texture != null
         && Width > 0
         && Height > 0
         && BackendKind != D3D11PresentationBackendKind.None
-        && CompositionTargetKind != D3D11CompositionTargetKind.None;
+        && CompositionTargetKind != CompositionTargetKind.None;
 
-    public D3D11CompositionTargetDescriptor ToCompositionTargetDescriptor() => new(
+    public CompositionTargetDescriptor ToCompositionTargetDescriptor() => new(
         TargetId,
         CompositionTargetKind,
         Width,

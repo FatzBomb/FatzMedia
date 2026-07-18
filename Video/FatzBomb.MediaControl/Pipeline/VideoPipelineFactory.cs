@@ -11,13 +11,16 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly IVideoPipelinePlatformServices _platformServices;
+    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
 
     public VideoPipelineFactory(
         IPrecisionWaiterFactory precisionWaiterFactory,
-        IVideoPipelinePlatformServices platformServices)
+        IVideoPipelinePlatformServices platformServices,
+        IVideoHardwareAccelerationServices hardwareAccelerationServices)
     {
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
+        _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
     }
 
     public IVideoEngine Create(
@@ -31,6 +34,14 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
             ? deviceProvider.BassDeviceIndex
             : configuration.AudioOutputDeviceIndex;
 
-        return new VideoPipeline(clock, state, configuration, bassDeviceIndex, sync, _precisionWaiterFactory, _platformServices);
+        return new VideoPipeline(
+            clock,
+            state,
+            configuration,
+            bassDeviceIndex,
+            sync,
+            _precisionWaiterFactory,
+            _platformServices,
+            _hardwareAccelerationServices);
     }
 }

@@ -40,15 +40,13 @@ internal static partial class Bootstrap
                         candidatePaths.Add(resolvedPath);
                 }
 
-                RootPath = candidatePaths.FirstOrDefault();
-
-                if (candidatePaths.Count == 0)
+                foreach (var defaultPath in WindowsNativeLibraryPaths.GetDefaultSearchPaths())
                 {
-                    var appNativePath = GetUserPath("native");
-                    if (appNativePath != null)
-                        candidatePaths.Add(appNativePath);
+                    if (!candidatePaths.Contains(defaultPath, StringComparer.OrdinalIgnoreCase))
+                        candidatePaths.Add(defaultPath);
                 }
 
+                RootPath = candidatePaths.FirstOrDefault();
                 searchPaths = candidatePaths;
 
 

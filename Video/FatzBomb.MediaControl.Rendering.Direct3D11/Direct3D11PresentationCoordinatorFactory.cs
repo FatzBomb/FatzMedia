@@ -2,12 +2,11 @@ using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
+using NativeD3D11PresentationBridge = FatzBomb.MediaControl.Rendering.Direct3D11.NativeD3D11PresentationBridge;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
-/// <summary>
-/// Creates the Direct3D 11 presentation coordinator.
-/// </summary>
 public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
@@ -21,6 +20,15 @@ public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentatio
 
     public IMediaPresentationCoordinator Create(
         IMediaEngine mediaEngine,
-        MediaPlayerConfiguration configuration) =>
-        new Direct3D11MediaPresentationCoordinator(mediaEngine, configuration, _precisionWaiterFactory);
+        MediaPlayerConfiguration configuration)
+    {
+        var backend = new NativeD3D11PresentationBridge(configuration);
+        var rasterizer = new SubtitleTextRenderer(configuration.SubtitleStyle, configuration.KaraokeStyle);
+        return new MediaPresentationCoordinator(
+            backend,
+            rasterizer,
+            mediaEngine,
+            configuration,
+            _precisionWaiterFactory);
+    }
 }

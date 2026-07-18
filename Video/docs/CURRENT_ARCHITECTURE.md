@@ -3,9 +3,10 @@
 ## Projects
 
 - `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
-- `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer and presentation implementation.
-- `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and renderer selection.
-- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; selects the Windows platform factory.
+- `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
+- `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
+- `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
+- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; receives a renderer factory from its host.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
 Future adapters should be separate projects using the same package pattern:
@@ -24,15 +25,16 @@ package owns native-library loading, platform-specific registrations through
 `WindowsMediaControlPlatformFactory` now lives in `FatzBomb.MediaControl.Windows`.
 Windows accesses Core only through public platform contracts.
 
-Renderer selection is independent of operating-system selection. Windows currently
-defaults to `Direct3D11PresentationCoordinatorFactory` from
-`FatzBomb.MediaControl.Rendering.Direct3D11`, but can receive any
-`IMediaPresentationCoordinatorFactory`. This allows future Vulkan/OpenGL renderers
-on Windows without changing WPF, Core playback, or the Windows native-service layer.
+Renderer selection is independent of operating-system selection. The Player host
+currently injects `WindowsDirect3D11MediaControlPlatformFactory` from the thin
+Windows+Direct3D11 integration bundle. `FatzBomb.MediaControl.Windows` references
+Core only, and the WPF adapter contains no renderer types. Future hosts can inject another
+`IMediaPresentationCoordinatorFactory` without changing WPF, Core playback, or the
+Windows native-service layer.
 
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, retained composition models, and platform/renderer contracts. The Direct3D11 renderer owns the presentation coordinator, device, composition, swap-chain, target fan-out, GPU Cdg rasterization, and final presentation.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 
@@ -43,8 +45,8 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 1. Host places a framework control, such as WPF `MediaSurface`.
 2. Adapter creates or discovers a framework/native presentation surface.
 3. Adapter passes a neutral `MediaPresentationSurfaceDescriptor` to Core.
-4. Core forwards the surface lifecycle request to the platform-selected presentation coordinator.
-5. The renderer composes Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay into the final frame.
+4. Core's `MediaPresentationCoordinator` owns surface lifecycle, frame routing, pacing, retained-layer intent, and recovery policy.
+5. The selected renderer backend executes Core's composition plan for Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
 6. The renderer presents that frame to all active targets.
 
 ## Video/Audio Demux Ownership
@@ -53,6 +55,13 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 - `VideoAudioEngine` opens an independent FFmpeg cursor for the same source. This preserves codec priming/preroll semantics; routing initial audio packets through the video cursor caused a persistent startup offset with AV1 + E-AC-3 until the first seek.
 - Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
 - Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
+
+## Native Video Frames And Hardware Decode
+
+- Core exposes producer-owned `NativeVideoDeviceResource` and `NativeVideoFrameResource` descriptors. Renderers may use the handles while Core retains the cloned FFmpeg frame, but never release or retain them independently.
+- `IVideoHardwareAccelerationServices` supplies platform FFmpeg device preference, pixel-format preference, native device/frame extraction, and device-health checks.
+- Core `VideoDecoder` owns codec selection, decode queues, cloned-frame lifetime, software transfer fallback, seeking, and recovery policy. It contains no D3D11/DXVA device constants or D3D11 FFmpeg-structure parsing.
+- Windows currently supplies D3D11VA, D3D12VA, and DXVA2 preference; only D3D11 frames are exported for zero-copy presentation, while other hardware outputs transfer through Core's software frame path.
 
 ## MIDI Playback
 
@@ -121,12 +130,33 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 
 ## Device-Lost Recovery
 
-Core detects and recovers D3D11 device loss (Stages 005A/005B/005C) entirely inside Core; adapters are never involved.
+The Direct3D11 renderer and Core video pipeline detect and recover their independently owned D3D11 devices (Stages 005A/005B/005C); adapters are never involved.
 
-- `D3D11DeviceLostClassifier` classifies device-removed/reset conditions on both sides: HRESULT-based for the Core-owned presentation device, and an `IsDeviceLost(IntPtr)` overload for the FFmpeg-owned hardware-decode device (a raw native pointer, wrapped best-effort and never false-positive).
-- Two independent recovery orchestrators, matching the two independently owned devices: the presentation side in `NativeMediaPresentationCoordinator` (rebuilds device, swap chains, DirectComposition target, and secondary outputs), and the decode side in `VideoPipeline` (runtime software-decode fallback with background hardware re-probe/restore; audio and CDG keep running).
+- The Direct3D11 backend classifies presentation-device removal/reset conditions. Windows hardware-decode services independently query the FFmpeg-owned D3D11 device.
+- Two independent recovery orchestrators match the two independently owned devices: Core `MediaPresentationCoordinator` drives backend teardown/rebuild through `IMediaRendererBackend`; Core `VideoPipeline` performs runtime software-decode fallback with background hardware re-probe/restore while audio and CDG keep running.
 - Diagnostic categories follow a fixed naming convention: `"D3D11.DeviceLost"` (presentation) and `"Decoder.DeviceLost"` (decode), raised at Error on loss and Info on successful recovery, with a `.RecoveryFailed` suffix for the terminal diagnostic after bounded retries are exhausted.
 - Both recovery paths reuse existing rebuild machinery (the proven surface-recreate and seek stop-reposition-restart sequences) — no new swap-chain, compositor, or renderer abstraction was introduced.
+
+## Media-Loop Pacing (Stage 016B)
+
+Core owns all media-loop deadline management through `MediaLoopPacer` in `Core.Threading`:
+
+- **Fixed-cadence pacing** (`WaitNext`) — accumulates a fixed interval after each prior deadline; the remaining wait shrinks by the actual work time spent, so a loop that finishes early waits longer and vice versa.
+- **Media-clock-derived pacing** (`WaitFor`) — waits a relative duration and resets the fixed-cadence accumulator afterward, for intervals that change every iteration (e.g. source-frame video cadence).
+- **Lateness resynchronization** — when work has already passed the deadline, the cadence resets to `now` instead of issuing catch-up ticks that would cascade into unnecessary frame drops.
+- **Optional late yield** — a short `lateYield` parameter prevents a persistently late loop from spinning; the platform waiter still respects cancellation.
+
+Platform packages supply only the cancellable native wait primitive through `IPrecisionWaiter` / `IPrecisionWaiterFactory`:
+
+- `WindowsPrecisionWaiter` — Windows high-resolution waitable timer (`CREATE_WAITABLE_TIMER_HIGH_RESOLUTION`, Windows 10 1803+), transparent fallback to `WaitHandle.WaitOne`.
+- `SystemPrecisionWaiter` — portable fallback using `WaitHandle.WaitOne`.
+
+All three presentation/render loops use `MediaLoopPacer`:
+- Primary video presentation loop (`VideoPipeline`)
+- Background video presentation loop (`PipelineMediaEngine`)
+- Core CDG/subtitle presentation loop (`MediaPresentationCoordinator`)
+
+Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider` that advances on each wait.
 
 ## Audio Device Idle Recovery
 

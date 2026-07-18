@@ -100,4 +100,10 @@ if ($adapterViolations.Count -gt 0) {
     throw 'WPF boundary check failed: renderer/pipeline/internal CDG/D3D11 terms were found in FatzBomb.MediaControl.Wpf.'
 }
 
+[xml] $wpfProjectFile = Get-Content -Raw -Path (Join-Path $wpfProject 'FatzBomb.MediaControl.Wpf.csproj')
+$wpfProjectReferences = @($wpfProjectFile.Project.ItemGroup.ProjectReference | ForEach-Object Include)
+if ($wpfProjectReferences | Where-Object { $_ -match 'Rendering\.Direct3D11' }) {
+    throw 'WPF boundary check failed: WPF adapter must not reference the Direct3D11 renderer project.'
+}
+
 Write-Host 'WPF boundary check passed: Core has no WPF UI/bitmap types, and WPF adapter has no renderer/pipeline/internal CDG/D3D11 references.'

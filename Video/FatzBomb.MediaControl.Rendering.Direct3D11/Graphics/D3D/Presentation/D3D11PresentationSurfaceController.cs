@@ -74,7 +74,7 @@ internal sealed class D3D11PresentationSurfaceController(
 
             var isPrimary = ReferenceEquals(backend, primary);
             var targetId = isPrimary
-                ? Composition.D3D11.D3D11CompositionTargetDescriptor.PrimaryFinalTargetId
+                ? Composition.Planning.CompositionTargetDescriptor.PrimaryFinalTargetId
                 : candidate.TargetId;
 
             if (isPrimary && (!ReferenceEquals(texture, TargetTexture)
@@ -95,7 +95,7 @@ internal sealed class D3D11PresentationSurfaceController(
                 backend.Kind,
                 candidate.BackendName,
                 isPrimary ? TargetRevision : backend.GetHashCode(),
-                Composition.D3D11.D3D11CompositionTargetKind.FinalPresentation));
+                Composition.Planning.CompositionTargetKind.FinalPresentation));
         }
 
         if (snapshots.Count == 0)
@@ -126,7 +126,7 @@ internal sealed class D3D11PresentationSurfaceController(
             backends.DirectComposition.Kind,
             "DirectCompositionOverlay",
             TargetRevision,
-            Composition.D3D11.D3D11CompositionTargetKind.DirectCompositionOverlay);
+            Composition.Planning.CompositionTargetKind.DirectCompositionOverlay);
 
         return snapshot.IsValid;
     }

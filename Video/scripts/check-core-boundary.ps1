@@ -9,15 +9,19 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
     'FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj'
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj' = @(
+        '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
     )
     'FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj' = @(
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
     )
     'FatzBomb.MediaControl.Player\FatzBomb.MediaControl.Player.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
-        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj'
+        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
+        '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
     )
     'FatzBomb.MediaControl.Tests\FatzBomb.MediaControl.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
@@ -64,8 +68,8 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
 }
 
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
-if ($coreFriendAssemblies -contains 'FatzBomb.MediaControl.Windows') {
-    throw 'Core boundary check failed: Core must not expose internals to the Windows platform project.'
+if ($coreFriendAssemblies | Where-Object { $_ -and $_ -ne 'FatzBomb.MediaControl.Tests' }) {
+    throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects.'
 }
 
 $forbiddenPatterns = @(

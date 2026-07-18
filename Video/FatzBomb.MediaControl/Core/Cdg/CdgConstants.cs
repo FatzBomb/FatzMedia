@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Core.Cdg;
 /// CDG specification constants and default values.
 /// Based on the CD+G specification for karaoke graphics.
 /// </summary>
-internal static class CdgConstants
+public static class CdgConstants
 {
     #region Frame Geometry
 

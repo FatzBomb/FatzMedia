@@ -237,7 +237,7 @@ internal static class MidiMetadataExtractor
     }
 }
 
-internal sealed record KaraokeMetadata(
+public sealed record KaraokeMetadata(
     string Title,
     string Artist,
     string Writer,

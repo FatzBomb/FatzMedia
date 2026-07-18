@@ -1,10 +1,18 @@
 # Validation Checklist
 
-Updated: 2026-07-14
+Updated: 2026-07-18
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
 Use the **Routine Validation** sections after normal code changes. Use the **Extended Validation** sections after renderer/presentation/timing/threading/state changes or before merging a major roadmap stage.
+
+## Latest Validated Baseline
+
+On 2026-07-18, the host developer completed the Player visual smoke checklist after
+the Core presentation/renderer boundary migration and reported no visible regressions.
+The package-installed native smoke also passed for caller-supplied paths and the
+predefined `runtimes/win-x64/native` layout. Forced GPU device-loss recovery was not
+part of this visual sign-off and remains an extended diagnostic scenario.
 
 ---
 
@@ -28,6 +36,29 @@ Expected:
 - Presentation parity check passes.
 - No WPF adapter references to renderer/pipeline/internal CDG/D3D11 presentation code.
 - Core does not reference WPF UI/bitmap types.
+
+For native distribution changes, run the package-install/publish smoke test on
+Windows x64 with a host-owned native directory:
+
+```powershell
+.\scripts\test-windows-native-publish.ps1 `
+  -NativeLibraryPath ".\FatzBomb.MediaControl.Player\native"
+```
+
+The default is a self-contained `win-x64` publish. The script packs the four managed
+packages into an isolated local feed, installs the integration package into a generated
+host, verifies managed assembly resolution, first starts with the caller-supplied
+directory, then stages the supplied DLLs under `runtimes/win-x64/native` and starts
+again without explicit paths. Use
+`-FrameworkDependent` only when intentionally testing a machine with the .NET 10
+Windows Desktop runtime installed. Artifacts are written beneath `artifacts/native-smoke/`.
+
+The private-runner CI entry point is `.github/workflows/windows-native-smoke.yml`.
+It is intentionally `workflow_dispatch`/`workflow_call` only and requires a private
+self-hosted runner labelled `self-hosted`, `Windows`, `X64`, and `fatzbomb-native`.
+Configure `FATZBOMB_MEDIA_NATIVE_PATH` as a repository variable or as an environment
+variable visible to the runner service account. The workflow never uploads smoke
+artifacts because they contain host-licensed native DLLs.
 
 After Cdg naming work, also run the stale legacy Cdg-name guard from the active roadmap.
 
@@ -64,7 +95,9 @@ Recommended media set:
 - Video with SRT/ASS sidecar subtitles
 - MKV/MP4 with embedded text subtitles
 
-Run runtime validation in **Release x64** with native BASS and FFmpeg DLLs present.
+Run runtime validation in **Release x64** with host-supplied BASS and FFmpeg DLLs
+present. See `docs/NATIVE_DEPENDENCIES.md` for supported versions, approved sources,
+licensing cautions, and search paths.
 
 Record:
 

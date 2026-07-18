@@ -25,6 +25,7 @@ internal sealed class WindowsMediaControlPlatformServices : IMediaControlPlatfor
         _ = services.AddSingleton<IMidiLyricProvider>(_ => new BassMidiLyricProvider());
         _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new WindowsPrecisionWaiterFactory());
         _ = services.AddSingleton<IVideoPipelinePlatformServices>(_ => new WindowsVideoPipelinePlatformServices());
+        _ = services.AddSingleton<IVideoHardwareAccelerationServices>(_ => new WindowsVideoHardwareAccelerationServices());
         _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
     }
 }

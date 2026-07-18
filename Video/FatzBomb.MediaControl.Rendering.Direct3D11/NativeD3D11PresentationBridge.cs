@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
@@ -7,7 +8,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
-internal sealed class NativeD3D11PresentationBridge : IDisposable
+internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 {
     private readonly D3D11DeviceResources _deviceResources = new();
     private readonly D3D11RendererPresentationServices _presentation;
@@ -25,11 +26,15 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
 
     public event EventHandler? FramePresented;
 
-    public IntPtr NativeDevicePointer => _deviceResources.NativeDevicePointer;
+    public nint NativeDeviceHandle => _deviceResources.NativeDevicePointer;
 
-    public string PresentationBackend => _presentation.PresentationBackend;
+    public string BackendName => _presentation.PresentationBackend;
 
-    public bool IsDirectCompositionActive => _presentation.IsDirectCompositionActive;
+    public string DeviceLostDiagnosticCategory => "D3D11.DeviceLost";
+
+    public string DeviceLostRecoveryFailedDiagnosticCategory => "D3D11.DeviceLost.RecoveryFailed";
+
+    public bool IsInitialized => NativeDeviceHandle != 0;
 
     public bool Initialize()
     {
@@ -44,7 +49,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool InitializeFromNativeDevice(IntPtr devicePointer, IntPtr deviceContextPointer)
+    private bool InitializeFromNativeDevice(nint devicePointer, nint deviceContextPointer)
     {
         if (_disposed || devicePointer == IntPtr.Zero)
         {
@@ -57,7 +62,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool CreateNativeHwndSurface(IntPtr hwnd, int width, int height)
+    private bool CreateNativeHwndSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -70,7 +75,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool CreateDirectCompositionSurface(IntPtr hwnd, int width, int height)
+    private bool CreateDirectCompositionSurface(nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -83,7 +88,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool CreateSecondaryNativeHwndSurface(string targetId, IntPtr hwnd, int width, int height)
+    private bool CreateSecondaryNativeHwndSurface(string targetId, nint hwnd, int width, int height)
     {
         if (_disposed)
         {
@@ -96,7 +101,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool RemoveSecondaryPresentationTarget(string targetId)
+    private bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
         {
@@ -104,7 +109,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public void SetNativeLiveResizeInProgress(bool isResizing)
+    private void SetNativeLiveResizeInProgress(bool isResizing)
     {
         lock (_lock)
         {
@@ -112,7 +117,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public void SetNativePresentationStretch(MediaCompositionStretchMode stretchMode)
+    public void SetPresentationStretch(MediaCompositionStretchMode stretchMode)
     {
         lock (_lock)
         {
@@ -120,7 +125,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public void QueueNativeHwndPresentationResize(int width, int height)
+    private void QueueNativeHwndPresentationResize(int width, int height)
     {
         lock (_lock)
         {
@@ -128,7 +133,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public void QueueDirectCompositionPresentationResize(int width, int height)
+    private void QueueDirectCompositionPresentationResize(int width, int height)
     {
         lock (_lock)
         {
@@ -136,9 +141,82 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool PresentHardwareFrame(VideoFrameEventArgs frame)
+    public bool AttachSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (frame == null || !frame.IsD3D11HardwareFrame)
+        if (_disposed || surface is not { IsValid: true, Kind: MediaPresentationSurfaceKind.NativeHwnd })
+        {
+            return false;
+        }
+
+        return surface.Role == MediaPresentationSurfaceRole.Primary
+            ? CreateDirectCompositionSurface(surface.NativeHandle, surface.PixelWidth, surface.PixelHeight)
+                || CreateNativeHwndSurface(surface.NativeHandle, surface.PixelWidth, surface.PixelHeight)
+            : CreateSecondaryNativeHwndSurface(surface.Id, surface.NativeHandle, surface.PixelWidth, surface.PixelHeight);
+    }
+
+    public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (_disposed || surface is not { IsValid: true, Kind: MediaPresentationSurfaceKind.NativeHwnd })
+        {
+            return false;
+        }
+
+        if (surface.Role != MediaPresentationSurfaceRole.Primary)
+        {
+            return CreateSecondaryNativeHwndSurface(
+                surface.Id,
+                surface.NativeHandle,
+                surface.PixelWidth,
+                surface.PixelHeight);
+        }
+
+        if (_presentation.IsDirectCompositionActive)
+        {
+            QueueDirectCompositionPresentationResize(surface.PixelWidth, surface.PixelHeight);
+        }
+        else
+        {
+            QueueNativeHwndPresentationResize(surface.PixelWidth, surface.PixelHeight);
+        }
+
+        return true;
+    }
+
+    public bool SetSurfaceLiveResize(MediaPresentationSurfaceDescriptor surface, bool isResizing)
+    {
+        if (_disposed || surface is not { IsValid: true })
+        {
+            return false;
+        }
+
+        if (surface.Role == MediaPresentationSurfaceRole.Primary)
+        {
+            SetNativeLiveResizeInProgress(isResizing);
+        }
+
+        return true;
+    }
+
+    public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (_disposed || surface is null)
+        {
+            return false;
+        }
+
+        if (surface.Role != MediaPresentationSurfaceRole.Primary)
+        {
+            return RemoveSecondaryPresentationTarget(surface.Id);
+        }
+
+        CleanupResources();
+        return true;
+    }
+
+    public bool PresentNativeFrame(VideoFrameEventArgs frame)
+    {
+        if (frame?.NativeResource is not { IsValid: true } resource
+            || resource.BackendId != MediaGraphicsBackendId.Direct3D11)
         {
             return false;
         }
@@ -147,13 +225,33 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         {
             return _presentation.PresentHardwareFrame(
                 _disposed,
-                frame.D3D11TexturePointer,
-                frame.D3D11ArraySlice,
+                resource.ResourceHandle,
+                resource.SubresourceIndex,
                 frame.Width,
                 frame.Height,
                 frame.FramesPerSecond,
                 NotifyPresented);
         }
+    }
+
+    public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
+    {
+        deviceAdopted = false;
+
+        if (frame?.NativeResource is not { IsValid: true } resource
+            || resource.BackendId != MediaGraphicsBackendId.Direct3D11)
+        {
+            return false;
+        }
+
+        if (NativeDeviceHandle == resource.Device.DeviceHandle)
+            return true;
+
+        if (!InitializeFromNativeDevice(resource.Device.DeviceHandle, resource.Device.DeviceContextHandle))
+            return false;
+
+        deviceAdopted = true;
+        return true;
     }
 
     public void ClearCompositionBackgroundFrame()
@@ -164,7 +262,7 @@ internal sealed class NativeD3D11PresentationBridge : IDisposable
         }
     }
 
-    public bool PresentMediaCompositionVisible(MediaCompositionFrame frame)
+    public bool PresentComposition(MediaCompositionFrame frame)
     {
         lock (_lock)
         {

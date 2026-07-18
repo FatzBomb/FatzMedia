@@ -37,12 +37,12 @@ function Assert-Match {
 $mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
 $secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
 $sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
-$coordinator = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Direct3D11MediaPresentationCoordinator.cs'
+$coordinator = Read-Text 'FatzBomb.MediaControl/Controllers/MediaPresentationCoordinator.cs'
 $backendSet = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
 $surfaceController = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationSurfaceController.cs'
 $presentationServices = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11RendererPresentationServices.cs'
 $compositionPresenter = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/Composition/D3D11MediaCompositionPresenter.cs'
-$targetRegistry = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/Composition/D3D11/D3D11CompositionTargetRegistry.cs'
+$targetRegistry = Read-Text 'FatzBomb.MediaControl/Core/Graphics/Composition/Planning/CompositionTargetRegistry.cs'
 
 Assert-Match $sessionContract 'bool\s+AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s*\)' 'IMediaControlSession must expose neutral presentation-surface attach.'
 Assert-Match $sessionContract 'bool\s+ResizePresentationSurface\s*\(\s*string\s+surfaceId,\s*int\s+pixelWidth,\s*int\s+pixelHeight\s*\)' 'IMediaControlSession must expose neutral presentation-surface resize.'
@@ -63,7 +63,7 @@ Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescript
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
 Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+MediaPresentationSurfaceDescriptor\?\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
 Assert-Match $coordinator 'foreach\s*\(\s*MediaPresentationSurfaceDescriptor\s+surface\s+in\s+_surfaces\.Values\s*\)' 'Core coordinator must recreate all registered surfaces from the shared registry.'
-Assert-Match $coordinator 'surface\.Role\s*==\s*MediaPresentationSurfaceRole\.Primary\s*\?\s*AttachPrimarySurfaceNoLock\s*\(\s*surface\s*\)\s*:\s*_presenter\.CreateSecondaryNativeHwndSurface' 'Core coordinator must route primary specially and secondary/projector surfaces through Core secondary target creation.'
+Assert-Match $coordinator '_rendererBackend\.AttachSurface\s*\(\s*surface\s*\)' 'Core coordinator must route all neutral surface descriptors through the selected renderer backend.'
 
 Assert-Match $backendSet '_secondaryNativeHwndTargets' 'D3D11 backend set must own secondary native HWND targets.'
 Assert-Match $backendSet 'CreateSecondaryNativeHwndTarget' 'D3D11 backend set must create secondary native HWND targets.'
@@ -82,6 +82,6 @@ Assert-Match $presentationServices 'Surfaces\.NotifyTargetsPresented' 'Visible c
 
 Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets\.Select' 'D3D11 composition presenter must capture all valid presentation targets.'
 Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
-Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<D3D11CompositionTargetDescriptor>\s+targets\s*\)' 'Target registry must support multi-target capture.'
+Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
 Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'

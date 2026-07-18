@@ -47,7 +47,8 @@ public static class MediaControlServiceProvider
         _ = services.AddSingleton<IVideoEngineFactory>(provider =>
             new VideoPipelineFactory(
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
-                provider.GetRequiredService<IVideoPipelinePlatformServices>()));
+                provider.GetRequiredService<IVideoPipelinePlatformServices>(),
+                provider.GetRequiredService<IVideoHardwareAccelerationServices>()));
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
             new PipelineMediaEngine(
@@ -58,6 +59,7 @@ public static class MediaControlServiceProvider
                 provider.GetRequiredService<IVideoEngineFactory>(),
                 provider.GetRequiredService<IMidiLyricProvider>(),
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
+                provider.GetRequiredService<IVideoHardwareAccelerationServices>(),
                 configuration));
     }
 

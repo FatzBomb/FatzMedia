@@ -5,4 +5,4 @@ namespace FatzBomb.MediaControl.Core.Graphics.Geometry;
 /// Destination is always clipped to the viewport, and Source is cropped to match.
 /// This keeps D3D video-processor rectangles valid for modes such as Original and ZoomToFill.
 /// </summary>
-internal readonly record struct ViewportMapping(RectD Source, RectD Destination);
+public readonly record struct ViewportMapping(RectD Source, RectD Destination);

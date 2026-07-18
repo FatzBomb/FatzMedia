@@ -4,10 +4,10 @@ namespace FatzBomb.MediaControl.Core.Subtitle;
 
 public sealed record SubtitleCue(int Sequence, TimeSpan Start, TimeSpan End, string Text)
 {
-    internal KaraokeCueTiming? KaraokeTiming { get; init; }
+    public KaraokeCueTiming? KaraokeTiming { get; init; }
 }
 
-internal sealed record KaraokeCueTiming(
+public sealed record KaraokeCueTiming(
     IReadOnlyList<KaraokeLineTiming> Lines,
     int ActiveLineIndex,
     TimeSpan TransitionStart,
@@ -220,7 +220,7 @@ internal sealed record KaraokeCueTiming(
     private static TimeSpan Max(TimeSpan left, TimeSpan right) => left >= right ? left : right;
 }
 
-internal sealed record KaraokeLineTiming(
+public sealed record KaraokeLineTiming(
     string Text,
     IReadOnlyList<KaraokeTextSegment> Segments,
     bool HasCountdown = false)
@@ -379,9 +379,9 @@ internal sealed record KaraokeLineTiming(
     }
 }
 
-internal readonly record struct KaraokeTextSegment(int TextStart, int TextLength, TimeSpan Start);
+public readonly record struct KaraokeTextSegment(int TextStart, int TextLength, TimeSpan Start);
 
-internal readonly record struct KaraokeCountdownState(
+public readonly record struct KaraokeCountdownState(
     bool IsVisible,
     int CompletedArrowCount,
     float ActiveArrowProgress,

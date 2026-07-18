@@ -310,10 +310,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            var nativeLibraryPath = NativeLibraryPaths.Count > 0 ? NativeLibraryPaths[0] : string.Empty;
-            DLLPath.Bass = nativeLibraryPath;
-            DLLPath.FFmpeg = nativeLibraryPath;
-
             var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware, RenderingMethod.DirectX11)
             {
                 EnableLogging = true,
@@ -321,7 +317,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 EnableVerboseLogging = false
             };
 
-            FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(diagnosticsConfig, NativeLibraryPaths);
+            var platformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
+            FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
+                diagnosticsConfig,
+                NativeLibraryPaths,
+                platformFactory);
             if (_disposed)
             {
                 player.Dispose();

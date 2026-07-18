@@ -2,7 +2,7 @@
 
 ## Active
 
-- None.
+- `active/025A_PREPARED_PresentationSurfaceContractNeutrality.md` — replace the closed HWND/raw-pointer surface API with an extensible borrowed native-surface payload while preserving WPF/Direct3D11 behavior
 
 ## Reverted
 
@@ -10,6 +10,9 @@
 
 ## Completed
 
+- `complete/023A_COMPLETED_HostNativeDistributionPolicy.md` — host-owned BASS/FFmpeg source, licence, version, RID, package-layout, update, and clean-machine publish-smoke policy (2026-07-17)
+- `complete/021A_COMPLETED_CrossPlatformRendererAbstraction.md` — Core owns native-frame contracts, hardware-decode policy seams, presentation coordination, composition planning, and public renderer contracts; Windows and Direct3D11 are independently selectable packages with no production friend access (2026-07-17)
+- `complete/016B_COMPLETED_MediaLoopPacerDeadlineManagement.md` — Core owns media-loop deadline accumulation, work-time compensation, lateness resynchronization, and optional late yield through MediaLoopPacer; platform packages only supply IPrecisionWaiter native wait primitives (2026-07-17)
 - `complete/012_COMPLETED_CoreWindowsPlatformBoundary.md` — Core owns DI composition; Windows supplies platform services through explicit contracts; VideoPipeline moved into Core; InternalsVisibleTo for Windows removed; core boundary script enforces this (2026-07-17)
 - `complete/011A_COMPLETED_SeamlessPrimaryVideoLooping.md` — video-only loop pre-seek and virtual-clock commit without a reactive decoder restart (2026-07-11)
 - `complete/013B_COMPLETED_PlaybackSyncControls.md` — per-item A/V, CDG, and subtitle synchronization controls with 100ms operator adjustments (2026-07-11)
@@ -28,6 +31,7 @@
 
 ## Conditional Future
 
+- `future/024A_FUTURE_SoftwareRendererSpike.md`
 - `future/010A_FUTURE_SoftwareVideoUploadCopyPath.md`
 - `future/014A_FUTURE_StreamingNetworkPlayback.md`
 - `future/015A_FUTURE_BroadVideoPipelineSplit.md`
@@ -35,5 +39,4 @@
 - `future/018A_FUTURE_CDGSnapshotOwnershipRedesignPooling.md`
 - `future/019A_FUTURE_VideoFrameEventArgsReuseApiRedesign.md`
 - `future/020A_FUTURE_FullAudioFilterFramework.md`
-- `future/021A_FUTURE_CrossPlatformRendererAbstraction.md`
 - `future/022A_FUTURE_ThreadModelProfilingReductionGate.md`

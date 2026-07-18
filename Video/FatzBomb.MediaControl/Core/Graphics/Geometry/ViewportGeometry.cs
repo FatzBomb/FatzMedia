@@ -8,7 +8,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.Geometry;
 /// This is intentionally pure math. It should not know about CDG packets,
 /// video decode, DirectComposition, swap chains, or presentation timing.
 /// </summary>
-internal static class ViewportGeometry
+public static class ViewportGeometry
 {
     public static RectD FullViewport(double viewportWidth, double viewportHeight)
         => new(0, 0, Math.Max(1, viewportWidth), Math.Max(1, viewportHeight));

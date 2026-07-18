@@ -1,3 +1,5 @@
+using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
+
 namespace FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
 
 /// <summary>
@@ -13,7 +15,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     private readonly Dictionary<MediaCompositionLayerId, D3D11CompositionLayerState> _layers = [];
     private readonly List<MediaCompositionLayerId> _scratchActiveIds = [];
     private readonly List<MediaCompositionLayerId> _scratchDeactivatedIds = [];
-    private readonly List<D3D11CompositionLayerUpdate> _scratchUpdates = [];
+    private readonly List<CompositionLayerUpdate> _scratchUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool LastCaptureHadVisibleLayers { get; private set; }
@@ -57,7 +59,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
     public D3D11CompositionLayerState? TryGet(MediaCompositionLayerId id)
         => _layers.TryGetValue(id, out D3D11CompositionLayerState? state) && state.IsActive ? state : null;
 
-    public D3D11CompositionLayerUpdatePlan CreateUpdatePlan()
+    public CompositionLayerUpdatePlan CreateUpdatePlan()
     {
         _scratchUpdates.Clear();
         foreach (D3D11CompositionLayerState layer in _layers.Values)
@@ -72,7 +74,7 @@ internal sealed class D3D11CompositionLayerCache : IDisposable
             return c != 0 ? c : a.Id.CompareTo(b.Id);
         });
 
-        return new D3D11CompositionLayerUpdatePlan(
+        return new CompositionLayerUpdatePlan(
             CaptureSequence,
             LastCaptureIsClearOnly,
             LastCaptureDeactivatedLayers,

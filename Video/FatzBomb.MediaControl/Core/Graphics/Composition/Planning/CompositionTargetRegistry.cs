@@ -1,15 +1,10 @@
-namespace FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
+namespace FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 
-/// <summary>
-/// Retained registry of compositor output targets. Stage 10N consumes the registry
-/// plan so primary and secondary swap-chain targets are driven by the same unified
-/// compositor pass.
-/// </summary>
-internal sealed class D3D11CompositionTargetRegistry
+public sealed class CompositionTargetRegistry
 {
-    private readonly Dictionary<string, D3D11CompositionTargetState> _targets = [];
+    private readonly Dictionary<string, CompositionTargetState> _targets = [];
     private readonly List<string> _scratchActiveIds = [];
-    private readonly List<D3D11CompositionTargetUpdate> _scratchTargetUpdates = [];
+    private readonly List<CompositionTargetUpdate> _scratchTargetUpdates = [];
 
     public long CaptureSequence { get; private set; }
     public bool HasMultipleActiveTargets => _targets.Values.Count(static target => target.IsActive) > 1;
@@ -24,12 +19,12 @@ internal sealed class D3D11CompositionTargetRegistry
                 .ThenBy(static target => target.Id, StringComparer.Ordinal)
                 .Select(static target => target.LifecycleSummary));
 
-    public void Capture(IEnumerable<D3D11CompositionTargetDescriptor> targets)
+    public void Capture(IEnumerable<CompositionTargetDescriptor> targets)
     {
         _scratchActiveIds.Clear();
         CaptureSequence++;
 
-        foreach (D3D11CompositionTargetDescriptor target in targets)
+        foreach (CompositionTargetDescriptor target in targets)
         {
             if (!target.IsValid)
                 continue;
@@ -43,10 +38,10 @@ internal sealed class D3D11CompositionTargetRegistry
                 _targets[existingId].Deactivate(CaptureSequence);
     }
 
-    public D3D11CompositionTargetPlan CreatePlan()
+    public CompositionTargetPlan CreatePlan()
     {
         _scratchTargetUpdates.Clear();
-        foreach (D3D11CompositionTargetState target in _targets.Values)
+        foreach (CompositionTargetState target in _targets.Values)
         {
             if (target.IsActive || target.WasDeactivated)
                 _scratchTargetUpdates.Add(target.CreateUpdatePlanEntry());
@@ -58,13 +53,13 @@ internal sealed class D3D11CompositionTargetRegistry
             return c != 0 ? c : string.Compare(a.Id, b.Id, StringComparison.Ordinal);
         });
 
-        return new D3D11CompositionTargetPlan(CaptureSequence, _scratchTargetUpdates);
+        return new CompositionTargetPlan(CaptureSequence, _scratchTargetUpdates);
     }
 
 
     public void MarkPlanConsumed()
     {
-        foreach (D3D11CompositionTargetState target in _targets.Values)
+        foreach (CompositionTargetState target in _targets.Values)
             target.MarkPlanConsumed();
 
         foreach (var inactiveId in _targets
@@ -82,12 +77,12 @@ internal sealed class D3D11CompositionTargetRegistry
         CaptureSequence = 0;
     }
 
-    private D3D11CompositionTargetState GetOrCreate(string id)
+    private CompositionTargetState GetOrCreate(string id)
     {
-        if (_targets.TryGetValue(id, out D3D11CompositionTargetState? state))
+        if (_targets.TryGetValue(id, out CompositionTargetState? state))
             return state;
 
-        state = new D3D11CompositionTargetState(id);
+        state = new CompositionTargetState(id);
         _targets.Add(id, state);
         return state;
     }

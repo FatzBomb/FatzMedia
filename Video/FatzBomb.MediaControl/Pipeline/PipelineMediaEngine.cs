@@ -16,6 +16,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private readonly PlaybackCoordinator _coordinator;
     private readonly MediaPlayerConfiguration _configuration;
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
+    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
     private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
     private readonly Lock _backgroundGate = new();
     private VideoDecoder? _backgroundVideoDecoder;
@@ -46,6 +47,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         IVideoEngineFactory videoEngineFactory,
         IMidiLyricProvider midiLyricProvider,
         IPrecisionWaiterFactory precisionWaiterFactory,
+        IVideoHardwareAccelerationServices hardwareAccelerationServices,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false)
     {
@@ -53,6 +55,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _archiveService = archiveService ?? throw new ArgumentNullException(nameof(archiveService));
         _configuration = configuration;
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
+        _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
         ArgumentNullException.ThrowIfNull(cdgEngine);
         ArgumentNullException.ThrowIfNull(subtitleEngine);
         _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine);
@@ -331,7 +334,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         if (_configuration.EnableVerboseLogging)
         {
             Trace.WriteLine(
-                $"[BackgroundVideo] First frame: pts={firstFrame.PresentationTime:F3}s, hw={firstFrame.IsD3D11HardwareFrame}, " +
+                $"[BackgroundVideo] First frame: pts={firstFrame.PresentationTime:F3}s, hw={firstFrame.IsNativeHardwareFrame}, " +
                 $"width={firstFrame.Width}, height={firstFrame.Height}");
         }
 
@@ -352,9 +355,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
     private void BackgroundVideoLoop(int generation, CancellationToken cancellationToken)
     {
-        using IPrecisionWaiter waiter = _precisionWaiterFactory.Create();
-        var nextTick = Stopwatch.GetTimestamp();
-        var startTimestamp = nextTick;
+        using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
+        var startTimestamp = Stopwatch.GetTimestamp();
         var lastPresentedPts = double.NaN;
         var maxPresentedPts = double.NaN;
         var iterationCount = 0;
@@ -380,7 +382,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 }
 
                 frame = RestartBackgroundVideo(decoder);
-                nextTick = Stopwatch.GetTimestamp();
+                pacer.Reset();
             }
 
             if (frame != null)
@@ -396,7 +398,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                     var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
                     Trace.WriteLine(
                         $"[BackgroundVideo] iter={iterationCount}, elapsed={elapsedSec:F2}s, pts={frame.PresentationTime:F3}s, " +
-                        $"hw={frame.IsD3D11HardwareFrame}, queueDepth={decoder.FrameCount}");
+                        $"hw={frame.IsNativeHardwareFrame}, queueDepth={decoder.FrameCount}");
                 }
             }
 
@@ -419,17 +421,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
             iterationCount++;
             var interval = VideoPresentationTiming.GetBackgroundPresentationInterval(decoder.FramesPerSecond);
-            nextTick += Math.Max(1L, (long)(interval * Stopwatch.Frequency));
-            var delayTicks = nextTick - Stopwatch.GetTimestamp();
-            if (delayTicks > 0)
-            {
-                waiter.Wait(TimeSpan.FromSeconds(delayTicks / (double)Stopwatch.Frequency), cancellationToken.WaitHandle);
-            }
-            else
-            {
-                nextTick = Stopwatch.GetTimestamp();
-                waiter.Wait(TimeSpan.FromMilliseconds(1), cancellationToken.WaitHandle);
-            }
+            pacer.WaitNext(
+                TimeSpan.FromSeconds(interval),
+                cancellationToken.WaitHandle,
+                lateYield: TimeSpan.FromMilliseconds(1));
         }
     }
 
@@ -517,7 +512,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return null;
 
-        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput, scaleMaxFramesByResolution: true);
+        var decoder = VideoDecoder.FromConfiguration(
+            _configuration,
+            _hardwareAccelerationServices,
+            enableHardwareFrameOutput,
+            scaleMaxFramesByResolution: true);
         if (decoder.Open(path))
             return decoder;
 
@@ -571,7 +570,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         try
         {
-            if (frame.IsD3D11HardwareFrame)
+            if (frame.IsNativeHardwareFrame)
             {
                 BackgroundFrameReady?.Invoke(this, new VideoFrameEventArgs
                 {
@@ -580,10 +579,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                     Stride = frame.Stride,
                     PtsSeconds = frame.PresentationTime,
                     FramesPerSecond = framesPerSecond,
-                    D3D11DevicePointer = frame.D3D11DevicePointer,
-                    D3D11DeviceContextPointer = frame.D3D11DeviceContextPointer,
-                    D3D11TexturePointer = frame.D3D11TexturePointer,
-                    D3D11ArraySlice = frame.D3D11ArraySlice
+                    NativeResource = frame.NativeResource
                 });
                 return;
             }
@@ -746,7 +742,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
     private VideoDecoder? OpenImageDecoder(string imagePath)
     {
-        var decoder = VideoDecoder.FromConfiguration(_configuration, enableHardwareFrameOutput: false);
+        var decoder = VideoDecoder.FromConfiguration(
+            _configuration,
+            _hardwareAccelerationServices,
+            enableHardwareFrameOutput: false);
         if (decoder.Open(imagePath))
             return decoder;
 

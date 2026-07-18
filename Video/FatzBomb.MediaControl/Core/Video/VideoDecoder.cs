@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
 
@@ -18,15 +20,9 @@ internal sealed unsafe class VideoDecoder(
     bool enablePerformanceLogging = false,
     bool enableVerboseLogging = false,
     bool scaleMaxFramesByResolution = false,
-    SharedDemuxer? sharedDemuxer = null) : IDisposable
+    SharedDemuxer? sharedDemuxer = null,
+    IVideoHardwareAccelerationServices? hardwareAccelerationServices = null) : IDisposable
 {
-    private static readonly AVHWDeviceType[] DefaultPreferredHardwareDevices =
-    [
-        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA,
-        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D12VA,
-        AVHWDeviceType.AV_HWDEVICE_TYPE_DXVA2
-    ];
-
     private readonly VideoDecodingMethod _decodingMethod = decodingMethod;
     private readonly bool _enableHardwareFrameOutput = enableHardwareFrameOutput;
     private readonly bool _enableDiagnostics = enableDiagnostics;
@@ -35,6 +31,8 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
     private readonly SharedDemuxer _demuxer = sharedDemuxer ?? new SharedDemuxer();
     private readonly bool _ownsDemuxer = sharedDemuxer == null;
+    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices =
+        hardwareAccelerationServices ?? SoftwareOnlyVideoHardwareAccelerationServices.Instance;
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
@@ -43,6 +41,7 @@ internal sealed unsafe class VideoDecoder(
     private AVPacket* _packet;
     private AVBufferRef* _hardwareDeviceContext;
     private AVPixelFormat _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    private string? _hardwareDeviceTypeName;
     private AVPixelFormat _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private AVCodecContext_get_format? _getFormatCallback;
 
@@ -59,8 +58,7 @@ internal sealed unsafe class VideoDecoder(
     public double DurationSeconds { get; private set; }
     public bool IsHardwareAccelerated { get; private set; }
     public string? HardwareAccelerationMethod { get; private set; }
-    public IntPtr D3D11DevicePointer { get; private set; }
-    public IntPtr D3D11DeviceContextPointer { get; private set; }
+    public NativeVideoDeviceResource? HardwareDevice { get; private set; }
     public bool EndOfStream { get; private set; }
     public int MaxFrames { get; private set; } = MaxFramesCap;
     internal int VideoStreamIndex { get; private set; } = -1;
@@ -88,28 +86,39 @@ internal sealed unsafe class VideoDecoder(
     /// <summary>
     /// True when hardware decoding is configured and the hardware path has failed to produce a
     /// frame several times in a row with no successful frame in between — a strong hint that the
-    /// underlying hardware-decode D3D11 device may have been lost. The caller confirms via
-    /// <see cref="D3D11DevicePointer"/> and a device-removed-reason check before acting.
+    /// underlying hardware-decode device may have been lost. The platform confirms the
+    /// native device state before recovery begins.
     /// </summary>
     public bool IsHardwareDecodeRepeatedlyFailing =>
         HardwareAccelerationMethod != null && _consecutiveHardwareDecodeFailures >= HardwareDecodeLossFailureThreshold;
 
-    public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, bool enableHardwareFrameOutput = true, bool scaleMaxFramesByResolution = false) =>
-        new(configuration.VideoDecoding,
-            enableHardwareFrameOutput,
-            configuration.EnableLogging,
-            configuration.EnablePerformanceLogging,
-            configuration.EnableVerboseLogging,
-            scaleMaxFramesByResolution);
-
-    public static VideoDecoder FromConfiguration(MediaPlayerConfiguration configuration, SharedDemuxer sharedDemuxer, bool enableHardwareFrameOutput = true, bool scaleMaxFramesByResolution = false) =>
+    public static VideoDecoder FromConfiguration(
+        MediaPlayerConfiguration configuration,
+        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        bool enableHardwareFrameOutput = true,
+        bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
             enableHardwareFrameOutput,
             configuration.EnableLogging,
             configuration.EnablePerformanceLogging,
             configuration.EnableVerboseLogging,
             scaleMaxFramesByResolution,
-            sharedDemuxer);
+            hardwareAccelerationServices: hardwareAccelerationServices);
+
+    public static VideoDecoder FromConfiguration(
+        MediaPlayerConfiguration configuration,
+        SharedDemuxer sharedDemuxer,
+        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        bool enableHardwareFrameOutput = true,
+        bool scaleMaxFramesByResolution = false) =>
+        new(configuration.VideoDecoding,
+            enableHardwareFrameOutput,
+            configuration.EnableLogging,
+            configuration.EnablePerformanceLogging,
+            configuration.EnableVerboseLogging,
+            scaleMaxFramesByResolution,
+            sharedDemuxer,
+            hardwareAccelerationServices);
 
     public bool Open(string path)
     {
@@ -351,7 +360,7 @@ internal sealed unsafe class VideoDecoder(
             : $"[VideoDecoder] Decoder candidate {codecName}: hw=none");
     }
 
-    private static bool HasPreferredHardwareConfig(AVCodec* codec)
+    private bool HasPreferredHardwareConfig(AVCodec* codec)
     {
         for (var index = 0; ; index++)
         {
@@ -368,8 +377,9 @@ internal sealed unsafe class VideoDecoder(
                 continue;
             }
 
-            foreach (AVHWDeviceType deviceType in DefaultPreferredHardwareDevices)
+            foreach (var deviceTypeName in _hardwareAccelerationServices.PreferredDeviceTypeNames)
             {
+                var deviceType = ffmpeg.av_hwdevice_find_type_by_name(deviceTypeName);
                 if (config->device_type == deviceType)
                 {
                     return true;
@@ -378,11 +388,12 @@ internal sealed unsafe class VideoDecoder(
         }
     }
 
-    private static bool IsPreferredHardwareDecoderName(string codecName) => codecName.Contains("d3d11", StringComparison.OrdinalIgnoreCase)
-            || codecName.Contains("dxva", StringComparison.OrdinalIgnoreCase)
-            || codecName.Equals("av1", StringComparison.OrdinalIgnoreCase)
-            || codecName.Equals("hevc", StringComparison.OrdinalIgnoreCase)
-            || codecName.Equals("h264", StringComparison.OrdinalIgnoreCase);
+    private bool IsPreferredHardwareDecoderName(string codecName) =>
+        _hardwareAccelerationServices.PreferredDeviceTypeNames.Any(
+            deviceType => codecName.Contains(deviceType, StringComparison.OrdinalIgnoreCase))
+        || codecName.Equals("av1", StringComparison.OrdinalIgnoreCase)
+        || codecName.Equals("hevc", StringComparison.OrdinalIgnoreCase)
+        || codecName.Equals("h264", StringComparison.OrdinalIgnoreCase);
 
     private static string GetCodecName(AVCodec* codec) => codec != null && codec->name != null
             ? Marshal.PtrToStringAnsi((IntPtr)codec->name) ?? "unknown"
@@ -433,8 +444,14 @@ internal sealed unsafe class VideoDecoder(
     {
         var codecName = GetCodecName(codec);
         var sawPreferredDevice = false;
-        foreach (AVHWDeviceType deviceType in DefaultPreferredHardwareDevices)
+        foreach (var deviceTypeName in _hardwareAccelerationServices.PreferredDeviceTypeNames)
         {
+            var deviceType = ffmpeg.av_hwdevice_find_type_by_name(deviceTypeName);
+            if (deviceType == AVHWDeviceType.AV_HWDEVICE_TYPE_NONE)
+            {
+                continue;
+            }
+
             for (var preferencePass = 0; preferencePass < 2; preferencePass++)
             {
                 for (var index = 0; ; index++)
@@ -453,13 +470,15 @@ internal sealed unsafe class VideoDecoder(
                     }
 
                     sawPreferredDevice = true;
-                    var isBestPixelFormat = IsPreferredHardwarePixelFormat(config->device_type, config->pix_fmt);
+                    var isBestPixelFormat = _hardwareAccelerationServices.IsPreferredPixelFormat(
+                        deviceTypeName,
+                        (int)config->pix_fmt);
                     if ((preferencePass == 0 && !isBestPixelFormat) || (preferencePass == 1 && isBestPixelFormat))
                     {
                         continue;
                     }
 
-                    if (TryCreateHardwareDevice(config->device_type, config->pix_fmt))
+                    if (TryCreateHardwareDevice(deviceTypeName, config->device_type, config->pix_fmt))
                     {
                         return true;
                     }
@@ -479,15 +498,10 @@ internal sealed unsafe class VideoDecoder(
         return false;
     }
 
-    private static bool IsPreferredHardwarePixelFormat(AVHWDeviceType deviceType, AVPixelFormat pixelFormat) => deviceType switch
-    {
-        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA => pixelFormat == AVPixelFormat.AV_PIX_FMT_D3D11,
-        AVHWDeviceType.AV_HWDEVICE_TYPE_D3D12VA => true,
-        AVHWDeviceType.AV_HWDEVICE_TYPE_DXVA2 => true,
-        _ => false
-    };
-
-    private bool TryCreateHardwareDevice(AVHWDeviceType deviceType, AVPixelFormat pixelFormat)
+    private bool TryCreateHardwareDevice(
+        string deviceTypeName,
+        AVHWDeviceType deviceType,
+        AVPixelFormat pixelFormat)
     {
         AVBufferRef* deviceContext = null;
         var result = ffmpeg.av_hwdevice_ctx_create(&deviceContext, deviceType, null, null, 0);
@@ -499,8 +513,11 @@ internal sealed unsafe class VideoDecoder(
 
         _hardwareDeviceContext = deviceContext;
         _hardwarePixelFormat = pixelFormat;
-        HardwareAccelerationMethod = ffmpeg.av_hwdevice_get_type_name(deviceType);
-        UpdateD3D11HardwarePointers(deviceType);
+        _hardwareDeviceTypeName = deviceTypeName;
+        HardwareAccelerationMethod = deviceTypeName;
+        HardwareDevice = _hardwareAccelerationServices.CreateDeviceResource(
+            deviceTypeName,
+            (nint)_hardwareDeviceContext);
 
         _videoCodecCtx->hw_device_ctx = ffmpeg.av_buffer_ref(_hardwareDeviceContext);
         if (_videoCodecCtx->hw_device_ctx == null)
@@ -516,23 +533,6 @@ internal sealed unsafe class VideoDecoder(
         };
 
         return true;
-    }
-
-    private void UpdateD3D11HardwarePointers(AVHWDeviceType deviceType)
-    {
-        D3D11DevicePointer = IntPtr.Zero;
-        D3D11DeviceContextPointer = IntPtr.Zero;
-
-        if (deviceType != AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA || _hardwareDeviceContext == null)
-            return;
-
-        var deviceContext = (AVHWDeviceContext*)_hardwareDeviceContext->data;
-        if (deviceContext == null || deviceContext->hwctx == null)
-            return;
-
-        var d3d11Context = (AVD3D11VADeviceContext*)deviceContext->hwctx;
-        D3D11DevicePointer = (IntPtr)d3d11Context->device;
-        D3D11DeviceContextPointer = (IntPtr)d3d11Context->device_context;
     }
 
     private AVPixelFormat SelectHardwarePixelFormat(AVCodecContext* context, AVPixelFormat* formats)
@@ -667,7 +667,7 @@ internal sealed unsafe class VideoDecoder(
         }
 
         var totalStart = Stopwatch.GetTimestamp();
-        if (TryQueueD3D11HardwareFrame(pts, totalStart))
+        if (TryQueueNativeHardwareFrame(pts, totalStart))
         {
             return;
         }
@@ -741,13 +741,12 @@ internal sealed unsafe class VideoDecoder(
         }
     }
 
-    private bool TryQueueD3D11HardwareFrame(double pts, long totalStart)
+    private bool TryQueueNativeHardwareFrame(double pts, long totalStart)
     {
         if (!_enableHardwareFrameOutput
             || _hardwareDeviceContext == null
-            || D3D11DevicePointer == IntPtr.Zero
-            || (AVPixelFormat)_videoFrame->format != AVPixelFormat.AV_PIX_FMT_D3D11
-            || _videoFrame->data[0] == null)
+            || _hardwareDeviceTypeName == null
+            || HardwareDevice == null)
         {
             return false;
         }
@@ -758,14 +757,21 @@ internal sealed unsafe class VideoDecoder(
             return false;
         }
 
+        NativeVideoFrameResource? nativeResource = _hardwareAccelerationServices.CreateFrameResource(
+            _hardwareDeviceTypeName,
+            HardwareDevice,
+            (nint)clonedFrame);
+        if (nativeResource is not { IsValid: true })
+        {
+            ffmpeg.av_frame_free(&clonedFrame);
+            return false;
+        }
+
         _frameQueue.Enqueue(new VideoFrameData
         {
-            Kind = VideoFrameKind.D3D11Hardware,
+            Kind = VideoFrameKind.NativeHardware,
             HardwareFrame = clonedFrame,
-            D3D11DevicePointer = D3D11DevicePointer,
-            D3D11DeviceContextPointer = D3D11DeviceContextPointer,
-            D3D11TexturePointer = (IntPtr)clonedFrame->data[0],
-            D3D11ArraySlice = (int)(nint)clonedFrame->data[1],
+            NativeResource = nativeResource,
             Length = 0,
             Width = Width,
             Height = Height,
@@ -956,8 +962,8 @@ internal sealed unsafe class VideoDecoder(
         MaxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
-        D3D11DevicePointer = IntPtr.Zero;
-        D3D11DeviceContextPointer = IntPtr.Zero;
+        HardwareDevice = null;
+        _hardwareDeviceTypeName = null;
         _getFormatCallback = null;
         IsHardwareAccelerated = false;
         HardwareAccelerationMethod = null;
@@ -989,8 +995,8 @@ internal sealed unsafe class VideoDecoder(
         AVBufferRef* deviceContext = _hardwareDeviceContext;
         ffmpeg.av_buffer_unref(&deviceContext);
         _hardwareDeviceContext = null;
-        D3D11DevicePointer = IntPtr.Zero;
-        D3D11DeviceContextPointer = IntPtr.Zero;
+        HardwareDevice = null;
+        _hardwareDeviceTypeName = null;
         _getFormatCallback = null;
     }
 
@@ -1105,7 +1111,7 @@ internal sealed unsafe class VideoDecoder(
 internal enum VideoFrameKind
 {
     CpuBgra,
-    D3D11Hardware
+    NativeHardware
 }
 
 internal sealed unsafe class VideoFrameData
@@ -1113,17 +1119,14 @@ internal sealed unsafe class VideoFrameData
     public VideoFrameKind Kind { get; init; } = VideoFrameKind.CpuBgra;
     public byte[]? Data { get; init; }
     public AVFrame* HardwareFrame { get; set; }
-    public IntPtr D3D11DevicePointer { get; init; }
-    public IntPtr D3D11DeviceContextPointer { get; init; }
-    public IntPtr D3D11TexturePointer { get; init; }
-    public int D3D11ArraySlice { get; init; }
+    public NativeVideoFrameResource? NativeResource { get; init; }
     public required int Length { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required int Stride { get; init; }
     public required double PresentationTime { get; init; }
 
-    public bool IsD3D11HardwareFrame => Kind == VideoFrameKind.D3D11Hardware && D3D11TexturePointer != IntPtr.Zero;
+    public bool IsNativeHardwareFrame => Kind == VideoFrameKind.NativeHardware && NativeResource is { IsValid: true };
 
     public void ReleaseHardwareFrame()
     {

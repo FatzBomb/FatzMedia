@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
@@ -38,36 +39,36 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         && (DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.RenderRequired)
             || (Descriptor.Revision >= 0 && Descriptor.Revision != RenderedRevision));
 
-    public D3D11CompositionLayerSchedule Schedule { get; private set; } = D3D11CompositionLayerSchedule.None;
+    public CompositionLayerSchedule Schedule { get; private set; } = CompositionLayerSchedule.None;
 
-    public D3D11CompositionLayerUpdate CreateUpdatePlanEntry()
+    public CompositionLayerUpdate CreateUpdatePlanEntry()
     {
         MediaCompositionLayer? descriptor = Descriptor;
-        D3D11CompositionLayerUpdateAction action = D3D11CompositionLayerUpdateAction.None;
+        CompositionLayerUpdateAction action = CompositionLayerUpdateAction.None;
 
         if (WasDeactivated)
         {
-            action |= D3D11CompositionLayerUpdateAction.ReleaseResources;
+            action |= CompositionLayerUpdateAction.ReleaseResources;
         }
         else if (descriptor != null)
         {
             if (RequiresResourceAllocation)
             {
-                action |= D3D11CompositionLayerUpdateAction.AllocateResources;
+                action |= CompositionLayerUpdateAction.AllocateResources;
             }
 
             if (NeedsUpload)
             {
-                action |= D3D11CompositionLayerUpdateAction.Upload;
+                action |= CompositionLayerUpdateAction.Upload;
             }
 
             if (NeedsRender)
             {
-                action |= D3D11CompositionLayerUpdateAction.Render;
+                action |= CompositionLayerUpdateAction.Render;
             }
         }
 
-        return new D3D11CompositionLayerUpdate(
+        return new CompositionLayerUpdate(
             Id,
             descriptor?.SourceKind ?? MediaCompositionLayerSourceKind.None,
             descriptor?.Order ?? int.MaxValue,
@@ -118,7 +119,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             LastCapturedSequence = captureSequence;
         }
 
-        Schedule = D3D11CompositionLayerSchedule.From(descriptor);
+        Schedule = CompositionLayerSchedule.From(descriptor);
 
         // Keep the retained descriptor metadata, but do not retain transient frame payloads.
         Descriptor = descriptor.WithoutTransientPayload();
@@ -310,7 +311,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         CdgPaletteUploadedRevision = -1;
         SolidColorArgb = 0;
         SolidColorOpacity = 0d;
-        Schedule = D3D11CompositionLayerSchedule.None;
+        Schedule = CompositionLayerSchedule.None;
         ReleaseResources();
         ReleaseCdgResources();
     }
@@ -342,7 +343,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
 
-        if (previous.Revision != current.Revision || previous.D3D11TexturePointer != current.D3D11TexturePointer || previous.D3D11ArraySlice != current.D3D11ArraySlice)
+        if (previous.Revision != current.Revision || previous.NativeResource != current.NativeResource)
             flags |= MediaCompositionLayerDirtyFlags.ContentChanged
                 | MediaCompositionLayerDirtyFlags.UploadRequired
                 | MediaCompositionLayerDirtyFlags.RenderRequired;

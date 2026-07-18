@@ -28,23 +28,22 @@ public readonly partial record struct MediaCompositionFrame
                 BgraPixels = BackgroundBgra
             };
         }
-        else if (HasD3D11Background)
+        else if (HasNativeBackground)
         {
             yield return new MediaCompositionLayer
             {
                 Id = MediaCompositionLayerId.Background,
                 Kind = MediaCompositionLayerKind.Background,
-                SourceKind = MediaCompositionLayerSourceKind.D3D11Texture,
+                SourceKind = MediaCompositionLayerSourceKind.NativeTexture,
                 Order = 0,
                 Revision = BackgroundRevision,
-                Width = BackgroundD3D11Width,
-                Height = BackgroundD3D11Height,
-                Stride = BackgroundD3D11Width > 0 ? BackgroundD3D11Width * 4 : 0,
+                Width = BackgroundNativeWidth,
+                Height = BackgroundNativeHeight,
+                Stride = BackgroundNativeWidth > 0 ? BackgroundNativeWidth * 4 : 0,
                 StretchMode = EffectiveBackgroundStretchMode,
                 Opacity = 1.0d,
-                D3D11TexturePointer = BackgroundD3D11TexturePointer,
-                D3D11ArraySlice = BackgroundD3D11ArraySlice,
-                FramesPerSecond = BackgroundD3D11FramesPerSecond
+                NativeResource = BackgroundNativeResource,
+                FramesPerSecond = BackgroundNativeFramesPerSecond
             };
         }
         else if (HasRetainedBackground)
@@ -53,7 +52,7 @@ public readonly partial record struct MediaCompositionFrame
             {
                 Id = MediaCompositionLayerId.Background,
                 Kind = MediaCompositionLayerKind.Background,
-                SourceKind = MediaCompositionLayerSourceKind.RetainedD3D11Texture,
+                SourceKind = MediaCompositionLayerSourceKind.RetainedNativeTexture,
                 Order = 0,
                 Revision = BackgroundRevision,
                 Width = BackgroundWidth,
@@ -127,7 +126,7 @@ public readonly partial record struct MediaCompositionFrame
     private static long StableColorRevision(uint argb)
         => unchecked((long)(ulong)argb);
 
-    internal MediaCompositionLayer? TryGetBackgroundLayer() =>
+    public MediaCompositionLayer? TryGetBackgroundLayer() =>
         HasBackground
             ? new MediaCompositionLayer
             {
@@ -143,29 +142,28 @@ public readonly partial record struct MediaCompositionFrame
                 Opacity = 1.0d,
                 BgraPixels = BackgroundBgra
             }
-            : HasD3D11Background
+            : HasNativeBackground
                 ? new MediaCompositionLayer
                 {
                     Id = MediaCompositionLayerId.Background,
                     Kind = MediaCompositionLayerKind.Background,
-                    SourceKind = MediaCompositionLayerSourceKind.D3D11Texture,
+                    SourceKind = MediaCompositionLayerSourceKind.NativeTexture,
                     Order = 0,
                     Revision = BackgroundRevision,
-                    Width = BackgroundD3D11Width,
-                    Height = BackgroundD3D11Height,
-                    Stride = BackgroundD3D11Width > 0 ? BackgroundD3D11Width * 4 : 0,
+                    Width = BackgroundNativeWidth,
+                    Height = BackgroundNativeHeight,
+                    Stride = BackgroundNativeWidth > 0 ? BackgroundNativeWidth * 4 : 0,
                     StretchMode = EffectiveBackgroundStretchMode,
                     Opacity = 1.0d,
-                    D3D11TexturePointer = BackgroundD3D11TexturePointer,
-                    D3D11ArraySlice = BackgroundD3D11ArraySlice,
-                    FramesPerSecond = BackgroundD3D11FramesPerSecond
+                    NativeResource = BackgroundNativeResource,
+                    FramesPerSecond = BackgroundNativeFramesPerSecond
                 }
                 : HasRetainedBackground
                     ? new MediaCompositionLayer
                     {
                         Id = MediaCompositionLayerId.Background,
                         Kind = MediaCompositionLayerKind.Background,
-                        SourceKind = MediaCompositionLayerSourceKind.RetainedD3D11Texture,
+                        SourceKind = MediaCompositionLayerSourceKind.RetainedNativeTexture,
                         Order = 0,
                         Revision = BackgroundRevision,
                         Width = BackgroundWidth,
@@ -176,7 +174,7 @@ public readonly partial record struct MediaCompositionFrame
                     }
                     : null;
 
-    internal MediaCompositionLayer? TryGetOverlayLayer()
+    public MediaCompositionLayer? TryGetOverlayLayer()
     {
         CdgRenderSnapshot? overlay = CdgOverlay;
         return HasCdgOverlay && overlay != null
@@ -197,7 +195,7 @@ public readonly partial record struct MediaCompositionFrame
             : null;
     }
 
-    internal MediaCompositionLayer? TryGetSubtitleLayer() =>
+    public MediaCompositionLayer? TryGetSubtitleLayer() =>
         HasSubtitleOverlay
             ? new MediaCompositionLayer
             {

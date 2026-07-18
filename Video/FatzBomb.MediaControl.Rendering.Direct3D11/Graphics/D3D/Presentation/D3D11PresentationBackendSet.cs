@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
+using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
@@ -161,7 +161,7 @@ internal sealed class D3D11PresentationBackendSet(
     private bool TryGetBackend(string targetId, D3D11PresentationBackendKind kind, out ID3D11PresentationBackend? backend)
     {
         backend = null;
-        if (targetId == D3D11CompositionTargetDescriptor.PrimaryFinalTargetId)
+        if (targetId == CompositionTargetDescriptor.PrimaryFinalTargetId)
             backend = Active;
         else if (kind == D3D11PresentationBackendKind.DirectCompositionSingleTarget && targetId == DirectCompositionTargetId)
             backend = DirectComposition;

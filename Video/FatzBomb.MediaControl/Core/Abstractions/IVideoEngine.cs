@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Video;
+using FatzBomb.MediaControl.Core.Graphics;
 
 namespace FatzBomb.MediaControl.Core.Abstractions;
 
@@ -16,11 +17,13 @@ public sealed class VideoFrameEventArgs : EventArgs
     public required int Stride { get; init; }
     public required double PtsSeconds { get; init; }
     public double FramesPerSecond { get; init; }
-    public IntPtr D3D11DevicePointer { get; init; }
-    public IntPtr D3D11DeviceContextPointer { get; init; }
-    public IntPtr D3D11TexturePointer { get; init; }
-    public int D3D11ArraySlice { get; init; }
-    public bool IsD3D11HardwareFrame => D3D11TexturePointer != IntPtr.Zero && D3D11DevicePointer != IntPtr.Zero;
+    /// <summary>
+    /// Optional producer-owned native resource. Consumers must not release or retain its handles
+    /// after Core replaces the current decoded frame.
+    /// </summary>
+    public NativeVideoFrameResource? NativeResource { get; init; }
+
+    public bool IsNativeHardwareFrame => NativeResource is { IsValid: true };
 }
 
 public interface IVideoEngine : IDisposable

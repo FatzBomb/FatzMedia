@@ -26,3 +26,8 @@ native/
 ```
 
 `PlayerNativeLibraries` resolves that runtime folder and passes it into the WPF `Player`, which inherits the Core `MediaControlPlayer`.
+
+The packages do not supply these binaries. Obtain and license them according to
+`docs/NATIVE_DEPENDENCIES.md`. The repository's current Gyan full FFmpeg fixture is
+GPL-enabled and is for validation only unless the distributing host accepts and
+complies with those terms.
