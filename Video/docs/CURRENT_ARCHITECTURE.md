@@ -49,6 +49,21 @@ Adapters must not own renderer selection, layer roles, frame processing, Cdg inv
 5. The selected renderer backend executes Core's composition plan for Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
 6. The renderer presents that frame to all active targets.
 
+## Native Presentation Surfaces
+
+`MediaPresentationSurfaceDescriptor` carries an immutable
+`MediaNativeSurfaceDescriptor` rather than a closed platform enum or one raw pointer.
+The native payload uses stable extensible surface/handle IDs and supports multiple
+named handles for contracts such as Win32 HWND, X11 display/window, Wayland
+display/surface, AppKit view, and Android native window.
+
+Native handles are borrowed. The adapter/platform owns their lifetime; Core and the
+renderer must not close, release, retain, or destroy them. They remain valid from a
+successful attach until detach or replacement for the same surface ID. Core validates
+neutral descriptor invariants, while the selected renderer validates the concrete
+surface type it supports. Direct3D11 currently accepts `win32-hwnd` and consumes the
+named `window` handle.
+
 ## Video/Audio Demux Ownership
 
 - Main video decoding owns the Core-managed video demux cursor used for video seek, buffering, and proactive loop pre-seek.

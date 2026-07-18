@@ -120,7 +120,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_disposed || surface is null || !surface.IsValid || surface.Kind != MediaPresentationSurfaceKind.NativeHwnd)
+        if (_disposed || surface is null || !surface.IsValid)
             return false;
 
         bool attached;
@@ -255,6 +255,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         if (_attachedCdg != null || (HasSubtitleContent && _attachedVideo == null))
             _presentationScheduler.Start(RenderLoop);
+
+        PresentCurrentComposition("presentation started");
     }
 
     public void StopRendering()

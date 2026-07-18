@@ -241,10 +241,10 @@ public sealed class MediaSurface : Grid
         }
 
         DetachPrimarySurface(_attachedPrimarySession);
-        _primaryAttached = session.AttachPresentationSurface(MediaPresentationSurfaceDescriptor.NativeHwnd(
+        _primaryAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
             MediaPresentationSurfaceRole.Primary,
-            _surfaceHost.WindowHandle,
+            MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost.WindowHandle),
             pixelWidth,
             pixelHeight,
             dpi.DpiScaleX,

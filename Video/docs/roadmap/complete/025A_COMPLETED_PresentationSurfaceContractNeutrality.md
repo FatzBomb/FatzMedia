@@ -1,7 +1,18 @@
-# Prepared Stage 025A - Presentation Surface Contract Neutrality
+# Completed Stage 025A - Presentation Surface Contract Neutrality
 
 Prepared: 2026-07-18
-Status: Ready for implementation
+Completed: 2026-07-18
+Status: Complete
+
+## Implementation Status
+
+- Added extensible native surface type and handle IDs plus immutable borrowed handle payloads.
+- Removed `MediaPresentationSurfaceKind` and the descriptor's top-level `NativeHandle`.
+- Core validates only neutral descriptor invariants.
+- Direct3D11 validates `win32-hwnd` and extracts the named `window` handle.
+- WPF primary and secondary surfaces create neutral Win32 payloads.
+- Focused tests and presentation/boundary gates pass.
+- Primary/secondary attach, resize, fullscreen, close, reopen, and stop-to-play visual smoke passed.
 
 ## Objective
 

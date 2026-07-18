@@ -55,10 +55,10 @@ public sealed class SecondaryPresentationWindow : Window
             return;
         }
 
-        _surfaceAttached = _session.AttachPresentationSurface(MediaPresentationSurfaceDescriptor.NativeHwnd(
+        _surfaceAttached = _session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             SurfaceId,
             _role,
-            _surfaceHost.WindowHandle,
+            MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost.WindowHandle),
             pixelWidth,
             pixelHeight,
             dpi.DpiScaleX,

@@ -50,12 +50,12 @@ Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+
 
 Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaSurface must keep a stable default secondary surface id.'
 Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*Player,\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
-Assert-Match $mediaSurface 'AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.NativeHwnd\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId\s*,\s*MediaPresentationSurfaceRole\.Primary' 'Primary WPF surface must attach via neutral NativeHwnd descriptor with Primary role.'
+Assert-Match $mediaSurface 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId\s*,\s*MediaPresentationSurfaceRole\.Primary\s*,\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Primary WPF surface must attach via a neutral Win32 native-surface payload with Primary role.'
 Assert-Match $mediaSurface 'ResizePresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must resize through the session surface API.'
 Assert-Match $mediaSurface 'DetachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must detach through the session surface API.'
 
 Assert-Match $secondaryWindow 'MediaPresentationSurfaceRole\s+role\s*=\s*MediaPresentationSurfaceRole\.Projector' 'Secondary window must default to the Projector role.'
-Assert-Match $secondaryWindow 'AttachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.NativeHwnd\s*\(\s*SurfaceId\s*,\s*_role' 'Secondary window must attach via neutral NativeHwnd descriptor and role.'
+Assert-Match $secondaryWindow 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*SurfaceId\s*,\s*_role\s*,\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Secondary window must attach via a neutral Win32 native-surface payload and role.'
 Assert-Match $secondaryWindow 'ResizePresentationSurface\s*\(\s*SurfaceId' 'Secondary window must resize through the session surface API.'
 Assert-Match $secondaryWindow 'DetachPresentationSurface\s*\(\s*SurfaceId' 'Secondary window must detach through the session surface API.'
 

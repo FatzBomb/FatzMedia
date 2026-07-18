@@ -512,7 +512,8 @@ Expected:
 
 `check-presentation-parity.ps1` verifies:
 
-- WPF primary and secondary surfaces both attach through neutral `MediaPresentationSurfaceDescriptor.NativeHwnd`.
+- WPF primary and secondary surfaces both attach through neutral
+  `MediaNativeSurfaceDescriptor.Win32Hwnd` payloads.
 - Core retains attached surfaces in one registry.
 - D3D11 compositor captures/draws/presents all active final targets through one target plan.
 

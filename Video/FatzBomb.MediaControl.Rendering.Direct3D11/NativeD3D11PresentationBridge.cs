@@ -143,20 +143,20 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public bool AttachSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_disposed || surface is not { IsValid: true, Kind: MediaPresentationSurfaceKind.NativeHwnd })
+        if (_disposed || !TryGetWin32Hwnd(surface, out nint hwnd))
         {
             return false;
         }
 
         return surface.Role == MediaPresentationSurfaceRole.Primary
-            ? CreateDirectCompositionSurface(surface.NativeHandle, surface.PixelWidth, surface.PixelHeight)
-                || CreateNativeHwndSurface(surface.NativeHandle, surface.PixelWidth, surface.PixelHeight)
-            : CreateSecondaryNativeHwndSurface(surface.Id, surface.NativeHandle, surface.PixelWidth, surface.PixelHeight);
+            ? CreateDirectCompositionSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
+                || CreateNativeHwndSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
+            : CreateSecondaryNativeHwndSurface(surface.Id, hwnd, surface.PixelWidth, surface.PixelHeight);
     }
 
     public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_disposed || surface is not { IsValid: true, Kind: MediaPresentationSurfaceKind.NativeHwnd })
+        if (_disposed || !TryGetWin32Hwnd(surface, out nint hwnd))
         {
             return false;
         }
@@ -165,7 +165,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         {
             return CreateSecondaryNativeHwndSurface(
                 surface.Id,
-                surface.NativeHandle,
+                hwnd,
                 surface.PixelWidth,
                 surface.PixelHeight);
         }
@@ -184,7 +184,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public bool SetSurfaceLiveResize(MediaPresentationSurfaceDescriptor surface, bool isResizing)
     {
-        if (_disposed || surface is not { IsValid: true })
+        if (_disposed || !TryGetWin32Hwnd(surface, out _))
         {
             return false;
         }
@@ -195,6 +195,16 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
 
         return true;
+    }
+
+    private static bool TryGetWin32Hwnd(
+        MediaPresentationSurfaceDescriptor? surface,
+        out nint hwnd)
+    {
+        hwnd = 0;
+        return surface is { IsValid: true }
+            && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.Win32Hwnd
+            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.Window, out hwnd);
     }
 
     public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)
