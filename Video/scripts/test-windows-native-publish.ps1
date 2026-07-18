@@ -3,6 +3,7 @@ param(
     [string] $NativeLibraryPath = $env:FATZBOMB_MEDIA_NATIVE_PATH,
     [string] $Configuration = 'Release',
     [string] $PackageVersion = '0.1.0-alpha',
+    [string] $ArtifactsDirectory,
     [switch] $FrameworkDependent
 )
 
@@ -28,7 +29,13 @@ foreach ($requiredFile in $requiredFiles) {
 }
 
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$artifactRoot = Join-Path $root "artifacts\native-smoke\$runId"
+$artifactBase = if ([string]::IsNullOrWhiteSpace($ArtifactsDirectory)) {
+    Join-Path $root 'artifacts\native-smoke'
+}
+else {
+    [System.IO.Path]::GetFullPath($ArtifactsDirectory)
+}
+$artifactRoot = Join-Path $artifactBase $runId
 $feedPath = Join-Path $artifactRoot 'feed'
 $hostPath = Join-Path $artifactRoot 'host'
 $publishPath = Join-Path $artifactRoot 'publish'

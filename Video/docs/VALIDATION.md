@@ -54,11 +54,12 @@ again without explicit paths. Use
 Windows Desktop runtime installed. Artifacts are written beneath `artifacts/native-smoke/`.
 
 The private-runner CI entry point is `.github/workflows/windows-native-smoke.yml`.
-It is intentionally `workflow_dispatch`/`workflow_call` only and requires a private
+It is intentionally manual `workflow_dispatch` only and requires a private
 self-hosted runner labelled `self-hosted`, `Windows`, `X64`, and `fatzbomb-native`.
 Configure `FATZBOMB_MEDIA_NATIVE_PATH` as a repository variable or as an environment
 variable visible to the runner service account. The workflow never uploads smoke
-artifacts because they contain host-licensed native DLLs.
+artifacts because they contain host-licensed native DLLs. Provisioning steps are in
+`docs/PRIVATE_NATIVE_RUNNER.md`.
 
 After Cdg naming work, also run the stale legacy Cdg-name guard from the active roadmap.
 

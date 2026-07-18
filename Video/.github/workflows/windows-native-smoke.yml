@@ -2,7 +2,6 @@ name: Windows Native Package Smoke
 
 on:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
@@ -15,6 +14,7 @@ jobs:
   native-package-smoke:
     name: Package install and native load
     runs-on: [self-hosted, Windows, X64, fatzbomb-native]
+    environment: native-media-smoke
     timeout-minutes: 30
 
     steps:
@@ -46,6 +46,7 @@ jobs:
         shell: pwsh
         run: |
           .\scripts\test-windows-native-publish.ps1 `
-            -NativeLibraryPath '${{ steps.native-path.outputs.path }}'
+            -NativeLibraryPath '${{ steps.native-path.outputs.path }}' `
+            -ArtifactsDirectory $env:RUNNER_TEMP
 
       # Do not upload artifacts: the smoke output contains host-licensed native DLLs.

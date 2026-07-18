@@ -140,7 +140,7 @@ This policy is engineering guidance, not legal advice.
 ## Private CI Gate
 
 `.github/workflows/windows-native-smoke.yml` runs only on a private self-hosted
-Windows x64 runner and can be invoked manually or by another trusted workflow. The
+Windows x64 runner and is invoked manually. The
 runner must expose a host-owned native directory through repository variable or
 runner-service environment variable `FATZBOMB_MEDIA_NATIVE_PATH`.
 
@@ -152,6 +152,6 @@ self-hosted, Windows, X64, fatzbomb-native
 
 The workflow checks out only managed source, packs the package graph, installs it into
 an isolated generated host, and executes both native-path modes. It does not download,
-cache, or upload BASS/FFmpeg binaries. Smoke artifacts remain local to the private
-runner under `artifacts/native-smoke/` and should be purged according to that runner's
-retention policy.
+cache, or upload BASS/FFmpeg binaries. Generated package/publish output is directed to
+the runner's temporary directory rather than the checkout. See
+`docs/PRIVATE_NATIVE_RUNNER.md` for secure provisioning and environment configuration.

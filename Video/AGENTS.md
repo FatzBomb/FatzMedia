@@ -124,4 +124,5 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 - `docs/CURRENT_ARCHITECTURE.md` — ownership boundaries and runtime flow
 - `docs/VALIDATION.md` — smoke test checklist
 - `docs/NATIVE_DEPENDENCIES.md` — host-owned BASS/FFmpeg versions, paths, licensing, and publish-smoke policy
+- `docs/PRIVATE_NATIVE_RUNNER.md` — dedicated self-hosted native smoke runner setup
 - `docs/ProjectAnalysisRoadmap [2026-06-30].md` — active staged roadmap and validation criteria
