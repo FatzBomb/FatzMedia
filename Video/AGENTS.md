@@ -70,7 +70,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | MIDI lyric extraction | `Core.Audio.MidiLyricExtractor` (internal) — extracts and groups karaoke lyrics from BASS MIDI markers |
 | Karaoke rendering | `Core.Subtitle.SubtitleTextRenderer` (internal) — Direct2D/DWrite rasterization with wipe, scroll, and page-fade animation |
 | Karaoke style config | `Core.Configuration.KaraokeTextStyle` — independent font/color/outline/shadow for karaoke lyrics |
-| Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains |
+| Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains; image mains require explicit backgrounds |
 | Native lib loader | `FatzBomb.MediaControl.Windows.Bootstrap.EnsureInitialized()` (internal) — load-once, synchronous, populates `FileTypes` |
 
 ## Code Navigation

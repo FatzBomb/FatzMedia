@@ -32,9 +32,18 @@ Core only, and the WPF adapter contains no renderer types. Future hosts can inje
 `IMediaPresentationCoordinatorFactory` without changing WPF, Core playback, or the
 Windows native-service layer.
 
+### Renderer Configuration
+
+`MediaPlayerConfiguration` contains renderer-neutral session policy. It does not select
+a concrete rendering backend and contains no DXGI swap-chain mode. The host selects a
+renderer by injecting its factory. Direct3D11-specific creation policy lives in
+`Direct3D11PresentationOptions`, supplied to `Direct3D11PresentationCoordinatorFactory`
+or the `WindowsDirect3D11MediaControlPlatformFactory` convenience bundle. Its native
+swap-chain present mode defaults to VSync; Immediate remains an explicit diagnostic mode.
+
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 
@@ -88,7 +97,7 @@ named `window` handle.
   4. Bundled `native/TimGM6mb.sf2` (5.7 MB compact GM soundfont; always present)
 - DLS-to-SF2 conversion is handled by a self-contained `DlsToSf2Converter` that reads DLS RIFF chunks directly with `BinaryReader` and writes a minimal valid SF2 with `BinaryWriter`. No external DLS2/SF2 library or `EndianBinaryIO` dependency is required. The converted SF2 is cached in LocalAppData.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
-- Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` routes tracker formats to `Bass.MusicLoad` instead of `Bass.CreateStream`.
+- Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
 
 ## MIDI/KAR Karaoke Lyrics
 
@@ -99,7 +108,7 @@ named `window` handle.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
 - `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession`, `MediaControlPlayer`, and the Player host UI.
-- MIDI/KAR image sidecar rendering is supported, including archive KAR+image combinations.
+- MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style
 
@@ -207,12 +216,13 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 
 ## Sidecar and Archive Background Policy
 
-- Automatic image/video sidecar backgrounds apply to all non-video, non-image playable mains: audio (MP3, FLAC, etc.), MIDI/KAR/MID, MOD/tracker, CDG, and audio+CDG pairs.
+- Automatic image/video sidecar backgrounds apply to every non-video, non-image playable main: audio (MP3, FLAC, etc.), MIDI/KAR/MID with or without lyrics, MOD/tracker, CDG, audio+CDG pairs, and future non-visual content.
 - Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
-- Image main files never auto-detect sidecar backgrounds. An image background must be explicitly supplied through the load overload.
+- `ignoreSidecar: true` or `MediaFile.BackgroundAutoDetect = false` disables automatic discovery without disabling an explicitly supplied image/video background.
+- Image main files never auto-detect a background. Their background must be explicitly supplied through a load overload.
 - Video mains reject backgrounds entirely (both auto and explicit).
-- Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, any video or image entries become background candidates rather than taking the main role.
-- Supported archive combinations: MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, standalone CDG+image/video, video-only archives.
+- Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, image/video entries become automatic background candidates rather than taking the main role.
+- Supported automatic archive backgrounds include MP3+CDG+image/video, KAR+image/video, audio+image/video, MOD+video, and standalone CDG+image/video.
 - Archive-backed backgrounds are stored as archive-path/entry-key references and streamed to a temporary decoder file on demand, avoiding full materialization of large archived videos into managed memory.
 
 `FatzBomb.MediaControl.Wpf.Player` derives from Core `MediaControlPlayer`.

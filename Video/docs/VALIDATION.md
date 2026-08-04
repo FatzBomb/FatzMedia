@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-07-18
+Updated: 2026-08-03
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -10,9 +10,15 @@ Use the **Routine Validation** sections after normal code changes. Use the **Ext
 
 On 2026-07-18, the host developer completed the Player visual smoke checklist after
 the Core presentation/renderer boundary migration and reported no visible regressions.
+The retained-frame refresh after Stop was also verified: subsequent Play restores video
+immediately without requiring a seek.
 The package-installed native smoke also passed for caller-supplied paths and the
 predefined `runtimes/win-x64/native` layout. Forced GPU device-loss recovery was not
 part of this visual sign-off and remains an extended diagnostic scenario.
+
+On 2026-08-03, Stage 025B validation passed with 328 automated tests and successful
+manual smoke coverage for stop-to-play restoration, image/video sidecar policy, and
+tracker-format seeking and looping across the affected playback states.
 
 ---
 
@@ -36,6 +42,7 @@ Expected:
 - Presentation parity check passes.
 - No WPF adapter references to renderer/pipeline/internal CDG/D3D11 presentation code.
 - Core does not reference WPF UI/bitmap types.
+- Core configuration contains no concrete renderer selection or DXGI present-mode types.
 
 For native distribution changes, run the package-install/publish smoke test on
 Windows x64 with a host-owned native directory:
@@ -82,10 +89,11 @@ Recommended media set:
 - Video with audio
 - Video without audio or muted/silent video
 - Image-only file
-- Audio + CDG with sidecar image background
+- Audio + CDG with auto-detected image background
 - Audio + CDG with sidecar video background
 - KAR file with embedded karaoke lyrics
 - MID file with embedded karaoke lyrics (if available)
+- MOD, S3M, XM, and IT tracker files
 - ZIP containing KAR + image background
 - ZIP containing audio + video background
 - Image file with explicit background path
@@ -131,7 +139,7 @@ Logs:
 10. Video tempo keeps audio/video sync.
 11. Video without audio uses clock-backed timing correctly.
 12. Image-only renders as a still visual.
-13. Audio + CDG sidecar image background appears behind lyrics.
+13. Audio + CDG auto-detected image background appears behind lyrics.
 14. Audio + CDG sidecar video background appears behind lyrics.
 15. Seek works for audio.
 16. Seek works for CDG.
@@ -144,19 +152,26 @@ Logs:
 23. Re-opening secondary output while playing resumes presentation correctly.
 24. Repeated media-type switches leave no stale layer artifacts.
 25. Stop clears or hides the native HWND correctly, with no stale frame/layer.
-26. Close/dispose while playing does not hang or throw unhandled exceptions.
-27. Sidecar SRT/ASS subtitles render on time through seek, pause/resume, and media switches.
-28. Embedded text subtitle tracks render on time; select another available track and disable subtitles.
-29. Subtitle font, size, outline, and shadow settings render correctly on software and hardware video paths.
-30. A/V, CDG, and subtitle sync controls adjust their own timeline by 100ms per step without interrupting playback.
-31. Sync Reset returns all three controls to zero; loading a new media item also resets them.
-32. KAR/MID karaoke lyrics display with syllable wipe highlighting, scrolling, and page transitions.
-33. MIDI Lyrics checkbox toggles karaoke display on/off without affecting ordinary subtitles.
-34. Backward seek on MIDI karaoke immediately updates lyrics, highlighting, and scroll position.
-35. Karaoke lyrics maintain 16:9 aspect ratio when window is resized to non-16:9 dimensions.
-36. Image file with explicit background path renders the background behind the image.
-37. ZIP archive with audio + video opens as audio main with video as background (not video main).
-38. ZIP archive with video only opens as video main.
+26. Playing after Stop immediately restores video presentation without requiring a seek.
+27. Close/dispose while playing does not hang or throw unhandled exceptions.
+28. Sidecar SRT/ASS subtitles render on time through seek, pause/resume, and media switches.
+29. Embedded text subtitle tracks render on time; select another available track and disable subtitles.
+30. Subtitle font, size, outline, and shadow settings render correctly on software and hardware video paths.
+31. A/V, CDG, and subtitle sync controls adjust their own timeline by 100ms per step without interrupting playback.
+32. Sync Reset returns all three controls to zero; loading a new media item also resets them.
+33. KAR/MID karaoke lyrics display with syllable wipe highlighting, scrolling, and page transitions.
+34. MIDI Lyrics checkbox toggles karaoke display on/off without affecting ordinary subtitles.
+35. Backward seek on MIDI karaoke immediately updates lyrics, highlighting, and scroll position.
+36. Karaoke lyrics maintain 16:9 aspect ratio when window is resized to non-16:9 dimensions.
+37. Image file with explicit background path renders the background behind the image.
+38. ZIP archive with audio + video opens as audio main with video as background (not video main).
+39. ZIP archive with video only opens as video main.
+40. Audio-only media auto-detects matching image and video sidecars.
+41. MIDI with no karaoke lyrics auto-detects matching image and video sidecars.
+42. `ignoreSidecar: true` and `MediaFile.BackgroundAutoDetect = false` each disable automatic sidecar loading.
+43. An image main ignores matching sidecars but accepts an explicitly supplied background.
+44. A video main does not load a matching video sidecar or explicit background.
+45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.
 
 ---
 
@@ -195,7 +210,7 @@ secondary output mismatch
 ## 4a. MIDI/KAR Karaoke Validation
 
 Run with KAR files and MID files containing embedded lyrics.
-Also test with sidecar image backgrounds and archive KAR+image pairs.
+Also test automatic image/video sidecars for MIDI/KAR files with and without lyrics, plus an image main whose background is supplied explicitly.
 
 Expected:
 
