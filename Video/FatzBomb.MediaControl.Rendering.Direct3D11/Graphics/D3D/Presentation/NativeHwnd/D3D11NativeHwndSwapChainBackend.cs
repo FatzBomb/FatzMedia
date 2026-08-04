@@ -5,6 +5,7 @@ using Vortice.DXGI;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
+using FatzBomb.MediaControl.Rendering.Direct3D11;
 using SharpGen.Runtime;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
@@ -16,6 +17,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 /// </summary>
 internal sealed class D3D11NativeHwndSwapChainBackend(
     MediaPlayerConfiguration configuration,
+    NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState,
     Action resetOverlayTransientFailure) : ID3D11PresentationBackend
@@ -107,7 +109,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
     public void Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
             _swapChain,
-            configuration,
+            presentMode,
             liveResizeFlag,
             syncImmediate,
             diagnostics,

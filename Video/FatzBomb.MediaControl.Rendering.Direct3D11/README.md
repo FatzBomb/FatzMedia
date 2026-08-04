@@ -6,3 +6,7 @@ The host composition root selects this renderer explicitly. Core owns presentati
 policy through `MediaPresentationCoordinator`; this package executes native-frame,
 composition, swap-chain, DirectComposition, and final-present operations through
 `IMediaRendererBackend`.
+
+Renderer-specific creation settings live in this package rather than Core. Supply
+`Direct3D11PresentationOptions` to `Direct3D11PresentationCoordinatorFactory` when
+the host needs a non-default DXGI swap-chain present mode. VSync remains the default.

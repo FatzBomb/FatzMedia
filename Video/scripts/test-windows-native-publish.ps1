@@ -37,6 +37,7 @@ else {
 }
 $artifactRoot = Join-Path $artifactBase $runId
 $feedPath = Join-Path $artifactRoot 'feed'
+$packagesPath = Join-Path $artifactRoot 'packages'
 $hostPath = Join-Path $artifactRoot 'host'
 $publishPath = Join-Path $artifactRoot 'publish'
 $runtimeNativePath = Join-Path $publishPath 'runtimes\win-x64\native'
@@ -90,9 +91,13 @@ Set-Content -LiteralPath $smokeProjectPath -Value $projectText -Encoding utf8
 Copy-Item -LiteralPath $programTemplatePath -Destination $smokeProgramPath
 
 $feedUri = [System.Security.SecurityElement]::Escape($feedPath)
+$packagesUri = [System.Security.SecurityElement]::Escape($packagesPath)
 $nugetConfig = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
+  <config>
+    <add key="globalPackagesFolder" value="$packagesUri" />
+  </config>
   <packageSources>
     <clear />
     <add key="native-smoke-feed" value="$feedUri" />

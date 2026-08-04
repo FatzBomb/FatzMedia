@@ -1,10 +1,12 @@
 using FatzBomb.MediaControl;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Rendering.Direct3D11;
 
 try
 {
     IReadOnlyList<string> nativeLibraryPaths = args.Length == 0 ? [] : args;
-    var factory = new WindowsDirect3D11MediaControlPlatformFactory();
+    var factory = new WindowsDirect3D11MediaControlPlatformFactory(
+        new Direct3D11PresentationOptions());
     IServiceProvider serviceProvider = factory.CreateServiceProvider(
         MediaPlayerConfiguration.Auto,
         nativeLibraryPaths);

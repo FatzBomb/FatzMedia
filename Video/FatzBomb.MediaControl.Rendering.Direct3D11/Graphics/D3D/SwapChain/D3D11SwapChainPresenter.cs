@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using FatzBomb.MediaControl.Core.Configuration;
-using Vortice.DXGI;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Rendering.Direct3D11;
 using SharpGen.Runtime;
+using Vortice.DXGI;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
 
@@ -15,7 +15,7 @@ internal static class D3D11SwapChainPresenter
 {
     public static void Present(
         IDXGISwapChain? swapChain,
-        MediaPlayerConfiguration configuration,
+        NativeSwapChainPresentMode presentMode,
         int liveResizeFlag,
         bool syncImmediate,
         D3D11PresentationDiagnostics diagnostics,
@@ -31,12 +31,7 @@ internal static class D3D11SwapChainPresenter
             // During WPF live resize, a vsync-blocking Present(1) can make the top-level
             // resize loop feel like it is dragging through mud.  Keep video frames live,
             // but present them in immediate mode while the user is actively resizing.
-            var liveResize = Volatile.Read(ref liveResizeFlag) != 0;
-            var syncInterval = syncImmediate
-                || liveResize
-                || configuration.NativeSwapChainPresentMode == NativeSwapChainPresentMode.Immediate
-                    ? 0u
-                    : 1u;
+            var syncInterval = GetSyncInterval(presentMode, liveResizeFlag, syncImmediate);
 
             var presentStart = Stopwatch.GetTimestamp();
             Result result = swapChain.Present(syncInterval, (int)PresentFlags.None);
@@ -68,4 +63,14 @@ internal static class D3D11SwapChainPresenter
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {ex.Message}", innerException: ex);
         }
     }
+
+    internal static uint GetSyncInterval(
+        NativeSwapChainPresentMode presentMode,
+        int liveResizeFlag,
+        bool syncImmediate) =>
+        syncImmediate
+        || Volatile.Read(ref liveResizeFlag) != 0
+        || presentMode == NativeSwapChainPresentMode.Immediate
+            ? 0u
+            : 1u;
 }

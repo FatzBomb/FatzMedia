@@ -77,7 +77,9 @@ $forbiddenPatterns = @(
     '\[DllImport',
     '\bVortice\b',
     'using System\.Windows',
-    'FatzBomb\.MediaControl\.(Windows|Rendering)'
+    'FatzBomb\.MediaControl\.(Windows|Rendering)',
+    '\bRenderingMethod\b',
+    '\bNativeSwapChainPresentMode\b'
 )
 
 $violations = @()
@@ -97,7 +99,7 @@ foreach ($file in $files) {
 
 if ($violations.Count -gt 0) {
     $violations | ForEach-Object { Write-Host $_ }
-    throw 'Core boundary check failed: Core contains platform, renderer, UI, or P/Invoke references.'
+    throw 'Core boundary check failed: Core contains platform, renderer, renderer-configuration, UI, or P/Invoke references.'
 }
 
-Write-Host 'Core boundary check passed: project references are directed, and Core has no platform, renderer, UI, P/Invoke, or Vortice dependencies.'
+Write-Host 'Core boundary check passed: project references are directed, and Core has no platform, renderer, renderer-configuration, UI, P/Invoke, or Vortice dependencies.'

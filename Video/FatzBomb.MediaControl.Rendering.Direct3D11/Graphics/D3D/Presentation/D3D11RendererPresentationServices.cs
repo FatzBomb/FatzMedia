@@ -9,6 +9,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
+using FatzBomb.MediaControl.Rendering.Direct3D11;
 using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
@@ -39,6 +40,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11RendererPresentationServices(
         MediaPlayerConfiguration configuration,
+        Direct3D11PresentationOptions options,
         D3D11DeviceResources deviceResources)
     {
         _configuration = configuration;
@@ -53,6 +55,7 @@ internal sealed class D3D11RendererPresentationServices
 
         D3D11NativeHwndSwapChainBackend CreateNativeHwndBackend() => new(
             configuration,
+            options.NativeSwapChainPresentMode,
             Diagnostics,
             () => VideoProcessorPresenter.Reset(),
             static () => { });
@@ -60,6 +63,7 @@ internal sealed class D3D11RendererPresentationServices
         D3D11NativeHwndSwapChainBackend nativeHwndBackend = CreateNativeHwndBackend();
         var directCompositionBackend = new D3D11DirectCompositionSingleTargetBackend(
             configuration,
+            options.NativeSwapChainPresentMode,
             Diagnostics,
             () => VideoProcessorPresenter.Reset());
 

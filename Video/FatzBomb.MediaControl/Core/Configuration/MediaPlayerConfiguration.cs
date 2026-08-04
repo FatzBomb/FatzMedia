@@ -27,48 +27,6 @@ public enum VideoDecodingMethod
 }
 
 /// <summary>
-/// Rendering methods available for MediaPlayer instances.
-/// Auto is recommended - it automatically selects the best available method.
-/// </summary>
-public enum RenderingMethod
-{
-    /// <summary>
-    /// Automatically detect and use the best available method (D3D11 > host CPU fallback).
-    /// This is the recommended setting for best quality and performance.
-    /// </summary>
-    Auto,
-
-    /// <summary>
-    /// Force DirectX 11 hardware-accelerated rendering.
-    /// Falls back to software if D3D11 is not available.
-    /// </summary>
-    DirectX11,
-
-    /// <summary>
-    /// Force host-specific CPU fallback rendering.
-    /// Always available when the active UI adapter provides a fallback surface.
-    /// </summary>
-    Software
-}
-
-/// <summary>
-/// Native HWND swap-chain present behavior. VSync is the normal smooth-video mode; Immediate is
-/// useful as a diagnostic when testing whether DXGI blocking is fighting the player scheduler.
-/// </summary>
-public enum NativeSwapChainPresentMode
-{
-    /// <summary>
-    /// Present with sync interval 1. This lets DXGI/DWM pace frames to the monitor refresh.
-    /// </summary>
-    VSync,
-
-    /// <summary>
-    /// Present with sync interval 0. This avoids blocking on vblank and is mainly diagnostic.
-    /// </summary>
-    Immediate
-}
-
-/// <summary>
 /// Controls what happens when an explicitly selected audio output device cannot be initialized.
 /// Runtime device changes are diagnostic-only; this policy is applied at player creation/open time.
 /// </summary>
@@ -98,11 +56,6 @@ public readonly record struct MediaPlayerConfiguration
     public VideoDecodingMethod VideoDecoding { get; init; }
 
     /// <summary>
-    /// Rendering method for this MediaPlayer instance.
-    /// </summary>
-    public RenderingMethod Rendering { get; init; }
-
-    /// <summary>
     /// Whether useful state-change and warning logging is enabled for this instance.
     /// This is intended to show backend changes, decode fallbacks, surface creation, seek recovery,
     /// and other information that helps diagnose playback without flooding the debug output.
@@ -129,12 +82,6 @@ public readonly record struct MediaPlayerConfiguration
     /// consistently early. Use 0.75 as the normal default for 23.976/24fps material on 60Hz displays.
     /// </summary>
     public double PresentationLeadRefreshIntervals { get; init; }
-
-    /// <summary>
-    /// Native HWND swap-chain Present mode. Keep VSync for normal playback; Immediate is useful for
-    /// isolating whether DXGI vblank blocking is contributing to stutter.
-    /// </summary>
-    public NativeSwapChainPresentMode NativeSwapChainPresentMode { get; init; }
 
     /// <summary>
     /// When true, the audio output latency provider augments a small BASS-reported latency value
@@ -176,17 +123,15 @@ public readonly record struct MediaPlayerConfiguration
 
     /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
-    /// Uses automatic detection for video decoding and rendering.
+    /// Uses automatic detection for video decoding.
     /// </summary>
     public MediaPlayerConfiguration()
     {
         VideoDecoding = VideoDecodingMethod.Auto;
-        Rendering = RenderingMethod.Auto;
         EnableLogging = false;
         EnablePerformanceLogging = false;
         EnableVerboseLogging = false;
         PresentationLeadRefreshIntervals = 0.75;
-        NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
         EnableUsbBluetoothLatencyHeuristic = false;
         AudioOutputDeviceIndex = -1;
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
@@ -195,22 +140,12 @@ public readonly record struct MediaPlayerConfiguration
     }
 
     /// <summary>
-    /// Creates a configuration with specific video decoding and rendering methods.
+    /// Creates a configuration with a specific video decoding method.
     /// </summary>
-    public MediaPlayerConfiguration(VideoDecodingMethod videoDecoding, RenderingMethod rendering)
+    public MediaPlayerConfiguration(VideoDecodingMethod videoDecoding)
+        : this()
     {
         VideoDecoding = videoDecoding;
-        Rendering = rendering;
-        EnableLogging = false;
-        EnablePerformanceLogging = false;
-        EnableVerboseLogging = false;
-        PresentationLeadRefreshIntervals = 0.75;
-        NativeSwapChainPresentMode = NativeSwapChainPresentMode.VSync;
-        EnableUsbBluetoothLatencyHeuristic = false;
-        AudioOutputDeviceIndex = -1;
-        AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
-        SubtitleStyle = new SubtitleTextStyle();
-        KaraokeStyle = new KaraokeTextStyle();
     }
 
     /// <summary>

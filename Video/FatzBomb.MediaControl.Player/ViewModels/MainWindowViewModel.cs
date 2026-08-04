@@ -310,7 +310,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware, RenderingMethod.DirectX11)
+            var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware)
             {
                 EnableLogging = true,
                 EnablePerformanceLogging = true,

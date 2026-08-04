@@ -16,11 +16,14 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private readonly MediaPlayerConfiguration _configuration;
     private bool _disposed;
 
-    public NativeD3D11PresentationBridge(MediaPlayerConfiguration configuration)
+    public NativeD3D11PresentationBridge(
+        MediaPlayerConfiguration configuration,
+        Direct3D11PresentationOptions options)
     {
         _configuration = configuration;
         _presentation = new D3D11RendererPresentationServices(
             configuration,
+            options,
             _deviceResources);
     }
 

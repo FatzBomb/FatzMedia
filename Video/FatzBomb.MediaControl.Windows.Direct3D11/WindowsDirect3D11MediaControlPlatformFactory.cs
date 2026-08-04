@@ -10,7 +10,12 @@ namespace FatzBomb.MediaControl;
 public sealed class WindowsDirect3D11MediaControlPlatformFactory : WindowsMediaControlPlatformFactory
 {
     public WindowsDirect3D11MediaControlPlatformFactory()
-        : base(new Direct3D11PresentationCoordinatorFactory(new WindowsPrecisionWaiterFactory()))
+        : this(new Direct3D11PresentationOptions())
+    {
+    }
+
+    public WindowsDirect3D11MediaControlPlatformFactory(Direct3D11PresentationOptions options)
+        : base(new Direct3D11PresentationCoordinatorFactory(new WindowsPrecisionWaiterFactory(), options))
     {
     }
 }

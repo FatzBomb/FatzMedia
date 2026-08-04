@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
+using FatzBomb.MediaControl.Rendering.Direct3D11;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
@@ -19,6 +20,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition
 /// </summary>
 internal sealed class D3D11DirectCompositionSingleTargetBackend(
     MediaPlayerConfiguration configuration,
+    NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState) : ID3D11PresentationBackend
 {
@@ -200,7 +202,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     {
         D3D11SwapChainPresenter.Present(
             _baseSwapChain,
-            configuration,
+            presentMode,
             liveResizeFlag,
             syncImmediate,
             diagnostics,
