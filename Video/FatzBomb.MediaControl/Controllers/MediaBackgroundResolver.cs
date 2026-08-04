@@ -9,11 +9,9 @@ internal static class MediaBackgroundResolver
             ? null
             : content.HasFlag(MediaContent.Video) || content.HasFlag(MediaContent.Image)
                 ? null
-                : !content.HasFlag(MediaContent.Audio) && !content.HasFlag(MediaContent.Cdg)
-                    ? null
-                    : FileTypes.IsArchive(sourcePath)
-                        ? ResolveArchiveBackground(sourcePath, archiveService)
-                        : ResolveSidecarBackground(sourcePath);
+                : FileTypes.IsArchive(sourcePath)
+                    ? ResolveArchiveBackground(sourcePath, archiveService)
+                    : ResolveSidecarBackground(sourcePath);
 
     private static MediaBackgroundCandidate? ResolveArchiveBackground(string sourcePath, IArchiveService archiveService)
     {
@@ -85,7 +83,8 @@ internal static class MediaBackgroundResolver
         yield return MediaBackgroundKind.Image;
     }
 
-    private static HashSet<string> GetExtensions(MediaBackgroundKind kind) => kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
+    private static HashSet<string> GetExtensions(MediaBackgroundKind kind) =>
+        kind == MediaBackgroundKind.Video ? FileTypes.Video : FileTypes.Image;
 
     private readonly record struct MediaBackgroundMatch(
         MediaBackgroundKind Kind,

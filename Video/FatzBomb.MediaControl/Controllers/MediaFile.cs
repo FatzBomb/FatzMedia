@@ -278,8 +278,16 @@ public sealed class MediaFile
             return ResolveExplicitBackground(backgroundSource);
 
         MediaBackgroundCandidate? sidecar = null;
-        if (!ignoreSidecar && source.IsFile && _mediaEngine.BackgroundAutoDetect && _archiveService != null)
-            sidecar = MediaBackgroundResolver.Resolve(source.FilePath!, _archiveService, content);
+        IArchiveService? archiveService = _archiveService;
+        if (archiveService != null && ShouldResolveAutomaticBackground(
+            content,
+            ignoreSidecar,
+            _mediaEngine.BackgroundAutoDetect,
+            source.IsFile,
+            resolverAvailable: true))
+        {
+            sidecar = MediaBackgroundResolver.Resolve(source.FilePath!, archiveService, content);
+        }
 
         return sidecar ?? ResolveExplicitBackground(backgroundSource);
     }
@@ -289,6 +297,18 @@ public sealed class MediaFile
 
     internal static bool CanUseExplicitBackground(MediaContent content) =>
         !content.HasFlag(MediaContent.Video);
+
+    internal static bool ShouldResolveAutomaticBackground(
+        MediaContent content,
+        bool ignoreSidecar,
+        bool backgroundAutoDetect,
+        bool sourceIsFile,
+        bool resolverAvailable) =>
+        ShouldAutoDetectBackground(content)
+        && !ignoreSidecar
+        && backgroundAutoDetect
+        && sourceIsFile
+        && resolverAvailable;
 
     private static MediaBackgroundCandidate? ResolveExplicitBackground(MediaInputSource? backgroundSource)
     {

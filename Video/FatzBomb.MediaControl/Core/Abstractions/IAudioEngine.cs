@@ -155,3 +155,8 @@ public enum AudioEngineState
     Stopped,
     Stalled
 }
+
+internal interface IAudioLoopControl
+{
+    bool LoopPlayback { get; set; }
+}

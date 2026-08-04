@@ -84,13 +84,25 @@ public class MediaBackgroundResolverTests : IDisposable
     }
 
     [Fact]
-    public void Resolve_ReturnsNullForContentWithNeitherAudioNorCdg()
+    public void Resolve_ReturnsVideoSidecarForFutureNonVisualContent()
     {
         var path = CreateFile("song.mp3");
+        var sidecarPath = CreateFile("song.testvideo");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
+        try
+        {
+            _ = FileTypes.Video.Add(".testvideo");
 
-        Assert.Null(result);
+            MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(path, new FakeArchiveService(), MediaContent.None);
+
+            Assert.NotNull(result);
+            Assert.Equal(MediaBackgroundKind.Video, result.Kind);
+            Assert.Equal(sidecarPath, result.Path);
+        }
+        finally
+        {
+            _ = FileTypes.Video.Remove(".testvideo");
+        }
     }
 
     [Fact]
@@ -161,18 +173,17 @@ public class MediaBackgroundResolverTests : IDisposable
     }
 
     [Fact]
-    public void Resolve_MatchesSidecarCaseInsensitivelyByExtension()
+    public void Resolve_MatchesImageSidecarCaseInsensitivelyByExtension()
     {
         var audioPath = CreateFile("song.mp3");
-        _ = CreateFile("song.PNG"); // uppercase extension
+        var sidecarPath = CreateFile("song.PNG");
 
         MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
         Assert.NotNull(result);
-        // The resolver constructs the candidate path from FileTypes.Image extensions
-        // (lowercase), but File.Exists matches case-insensitively on Windows.
-        Assert.True(File.Exists(result.Path), $"Sidecar path should exist: {result.Path}");
         Assert.Equal(MediaBackgroundKind.Image, result.Kind);
+        Assert.True(File.Exists(result.Path), $"Sidecar path should exist: {result.Path}");
+        Assert.Equal(sidecarPath, result.Path, ignoreCase: true);
     }
 
     [Fact]
@@ -296,11 +307,11 @@ public class MediaBackgroundResolverTests : IDisposable
     public void Resolve_ReturnsVideoSidecarWhenVideoExtensionAvailable()
     {
         var audioPath = CreateFile("song.mp3");
-        var sidecarPath = CreateFile("song.mp4");
+        var sidecarPath = CreateFile("song.testvideo");
 
         try
         {
-            _ = FileTypes.Video.Add(".mp4");
+            _ = FileTypes.Video.Add(".testvideo");
 
             MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
@@ -310,36 +321,67 @@ public class MediaBackgroundResolverTests : IDisposable
         }
         finally
         {
-            FileTypes.Video.Clear();
+            _ = FileTypes.Video.Remove(".testvideo");
         }
     }
 
     [Fact]
-    public void Resolve_PrefersVideoOverImageSidecar()
+    public void Resolve_SelectsVideoOrImageSidecar()
     {
         var audioPath = CreateFile("song.mp3");
-        _ = CreateFile("song.mp4");
-        _ = CreateFile("song.png");
+        var videoPath = CreateFile("song.testvideo");
+        var imagePath = CreateFile("song.png");
 
         try
         {
-            _ = FileTypes.Video.Add(".mp4");
+            _ = FileTypes.Video.Add(".testvideo");
 
             MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audioPath, new FakeArchiveService(), MediaContent.Audio);
 
             Assert.NotNull(result);
-            // PreferredKindOrder() lists Video before Image, so the resolver checks
-            // video extensions first. On the first file-found hit, CollectSidecarBackgrounds
-            // still adds both (it iterates all extensions for each kind before returning),
-            // then SelectRandom picks one non-deterministically. Therefore we accept
-            // either kind.
-            Assert.True(result.Kind is MediaBackgroundKind.Video or MediaBackgroundKind.Image,
-                $"Expected Video or Image, got {result.Kind}");
+            Assert.True(result.Kind is MediaBackgroundKind.Video or MediaBackgroundKind.Image);
+            Assert.True(result.Path == videoPath || result.Path == imagePath);
         }
         finally
         {
-            FileTypes.Video.Clear();
+            _ = FileTypes.Video.Remove(".testvideo");
         }
+    }
+
+    [Theory]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, false)]
+    public void AutomaticBackgroundPolicy_RequiresEveryDiscoveryGate(
+        bool ignoreSidecar,
+        bool backgroundAutoDetect,
+        bool sourceIsFile,
+        bool resolverAvailable)
+    {
+        Assert.Equal(
+            !ignoreSidecar && backgroundAutoDetect && sourceIsFile && resolverAvailable,
+            MediaFile.ShouldResolveAutomaticBackground(
+                MediaContent.Audio,
+                ignoreSidecar,
+                backgroundAutoDetect,
+                sourceIsFile,
+                resolverAvailable));
+    }
+
+    [Theory]
+    [InlineData(MediaContent.Video)]
+    [InlineData(MediaContent.Image)]
+    [InlineData(MediaContent.Audio | MediaContent.Video)]
+    public void AutomaticBackgroundPolicy_RejectsVisualMainContent(MediaContent content)
+    {
+        Assert.False(MediaFile.ShouldResolveAutomaticBackground(
+            content,
+            ignoreSidecar: false,
+            backgroundAutoDetect: true,
+            sourceIsFile: true,
+            resolverAvailable: true));
     }
 
     private sealed class FakeArchiveService(params IArchiveEntryInfo[] entries) : IArchiveService

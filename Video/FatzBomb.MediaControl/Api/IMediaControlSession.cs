@@ -171,7 +171,7 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Raised when media reaches the end.</summary>
     event EventHandler? MediaEnded;
 
-    /// <summary>Raised when media playback starts or resumes.</summary>
+    /// <summary>Raised after transport starts or resumes and before the first coordinated playback presentation.</summary>
     event EventHandler? MediaStarted;
 
     /// <summary>Raised after Core presents a frame to an attached presentation surface.</summary>

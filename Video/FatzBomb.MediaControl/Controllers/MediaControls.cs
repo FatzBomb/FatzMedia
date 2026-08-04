@@ -64,10 +64,11 @@ public sealed class MediaControls
         {
             _handlingMediaEnd = false;
 
-            // Start rendering for video/CDG sync
-            StartRendering();
-
             MediaStarted?.Invoke(this, EventArgs.Empty);
+
+            // Notify adapters before the first playback presentation so they can reveal
+            // retained one-shot visuals such as explicitly supplied image backgrounds.
+            StartRendering();
             System.Diagnostics.Debug.WriteLine("[MediaControls] Playback started");
         }
         return success;
@@ -161,6 +162,12 @@ public sealed class MediaControls
             {
                 System.Diagnostics.Debug.WriteLine("[MediaControls] Looping media");
 
+                if (_mediaEngine is ILoopPlaybackControl { HandlesLoopInternally: true })
+                {
+                    _handlingMediaEnd = false;
+                    return;
+                }
+
                 // Video owns an atomic loop restart in VideoPipeline.Play(). Queueing the generic
                 // async seek first lets the seek pump race the restart and can blank the native video
                 // surface. Non-video pipelines still need the existing seek-before-play behavior.
@@ -169,8 +176,8 @@ public sealed class MediaControls
 
                 if (_mediaEngine.Play())
                 {
-                    StartRendering();
                     MediaStarted?.Invoke(this, EventArgs.Empty);
+                    StartRendering();
                 }
             }
             else

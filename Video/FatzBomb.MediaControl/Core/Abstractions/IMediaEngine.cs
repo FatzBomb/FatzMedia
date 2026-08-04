@@ -97,4 +97,5 @@ public interface IMediaEngine : IDisposable
 internal interface ILoopPlaybackControl
 {
     bool LoopPlayback { get; set; }
+    bool HandlesLoopInternally { get; }
 }

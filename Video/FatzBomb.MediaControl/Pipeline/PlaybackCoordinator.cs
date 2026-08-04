@@ -75,9 +75,21 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool LoopPlayback
     {
-        get => _session.Video?.LoopPlayback == true;
-        set => _session.Video?.LoopPlayback = value;
+        get => field;
+        set
+        {
+            field = value;
+            if (_session.Audio?.Engine is IAudioLoopControl audioLoopControl)
+                audioLoopControl.LoopPlayback = value;
+            if (_session.Video != null)
+                _session.Video.LoopPlayback = value;
+        }
     }
+
+    public bool HandlesLoopInternally =>
+        _session.Video?.IsOpen == true
+        || (_session.Audio?.IsOpen == true
+            && _session.Audio.Engine is IAudioLoopControl { LoopPlayback: true });
 
     /// <summary>
     /// Supplies the actual monitor refresh rate to the underlying video pipeline regardless of

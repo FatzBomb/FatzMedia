@@ -341,7 +341,14 @@ public class MediaControlPlayer : IMediaControlSession
         if (handler == null)
             return;
 
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+        try
+        {
+            handler.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlPlayer", $"MediaStarted handler failed: {ex.Message}", innerException: ex);
+        }
     }
 
     private void OnControlsMediaStopped(object? sender, EventArgs e)

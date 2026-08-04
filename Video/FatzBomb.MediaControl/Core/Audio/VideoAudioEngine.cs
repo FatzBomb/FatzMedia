@@ -11,7 +11,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine
+internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;

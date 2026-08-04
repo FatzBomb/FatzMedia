@@ -5,8 +5,9 @@ namespace FatzBomb.MediaControl.Pipeline;
 
 // Compatibility adapter for the existing non-null Audio API. Internal timing and tempo paths
 // use IClockSource directly rather than treating a virtual clock as an audio engine.
-internal sealed class ClockAudioEngine(IClockSource clock) : IAudioEngine
+internal sealed class ClockAudioEngine(IClockSource clock) : IAudioEngine, IAudioLoopControl
 {
+    public bool LoopPlayback { get; set; }
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;

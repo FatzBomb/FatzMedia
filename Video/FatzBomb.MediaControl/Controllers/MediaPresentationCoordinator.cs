@@ -256,7 +256,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         if (_attachedCdg != null || (HasSubtitleContent && _attachedVideo == null))
             _presentationScheduler.Start(RenderLoop);
 
-        PresentCurrentComposition("presentation started");
+        if (HasCurrentVisualContent())
+            PresentCurrentComposition("presentation started");
     }
 
     public void StopRendering()
@@ -265,7 +266,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _presentationScheduler.Stop();
         if (_mediaEngine.State is MediaPlayerState.Stopped or MediaPlayerState.Null)
         {
-            ClearVisibleComposition("presentation stopped");
+            ClearVisibleComposition("presentation stopped", preserveBackground: true);
             return;
         }
 
@@ -882,6 +883,19 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         return hasBgra || hasRetainedGpu;
     }
 
+    private bool HasCompositionBackground()
+    {
+        lock (_lock)
+            return HasCompositionBackgroundNoLock();
+    }
+
+    private bool HasCurrentVisualContent() =>
+        _mediaEngine.Content.HasFlag(MediaContent.Image)
+        || _mediaEngine.Content.HasFlag(MediaContent.Video)
+        || HasCdgContent
+        || HasSubtitleContent
+        || HasCompositionBackground();
+
     private static bool IsCdgSnapshotReadyForBackgroundPresentation(CdgRenderSnapshot snapshot) =>
         snapshot.BackgroundColorIndex >= 0
         || ((snapshot.BackgroundWashArgb >> 24) & 0xFF) != 0;
@@ -929,7 +943,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             return;
         }
 
-        if (HasSubtitleContent)
+        if (HasSubtitleContent || HasCompositionBackground())
         {
             _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: true, reason);
             return;
@@ -1206,7 +1220,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     private void ClearAllContent() => ClearVisibleComposition("all content cleared");
 
-    private void ClearVisibleComposition(string reason)
+    private void ClearVisibleComposition(string reason, bool preserveBackground = false)
     {
         _cdgPresentationQueue.Clear();
         lock (_cdgSnapshotGate)
@@ -1215,8 +1229,12 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         lock (_lock)
         {
-            ClearCompositionLayer0FrameNoLock();
-            _rendererBackend.ClearCompositionBackgroundFrame();
+            if (!preserveBackground)
+            {
+                ClearCompositionLayer0FrameNoLock();
+                _rendererBackend.ClearCompositionBackgroundFrame();
+            }
+
             _ = PresentMediaCompositionNoLock(MediaCompositionFrame.Empty(
                 MediaCompositionClearMode.Transparent,
                 0x00000000,

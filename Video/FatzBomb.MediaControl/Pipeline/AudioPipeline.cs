@@ -220,8 +220,17 @@ internal sealed class AudioPipeline : IDisposable
         if (!IsOpen)
             return;
 
-        State.SetPosition(DurationSeconds);
-        State.SetPlaybackState(MediaPlayerState.Stopped);
+        if (Engine is IAudioLoopControl { LoopPlayback: true })
+        {
+            State.SetPosition(Engine.Position);
+            State.SetPlaybackState(MediaPlayerState.Playing);
+        }
+        else
+        {
+            State.SetPosition(DurationSeconds);
+            State.SetPlaybackState(MediaPlayerState.Stopped);
+        }
+
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 

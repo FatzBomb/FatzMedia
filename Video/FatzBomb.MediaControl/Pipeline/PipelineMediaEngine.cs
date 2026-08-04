@@ -94,6 +94,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         set => _coordinator.LoopPlayback = value;
     }
 
+    public bool HandlesLoopInternally => _coordinator.HandlesLoopInternally;
+
 
     public event EventHandler? MediaEnded;
     public event EventHandler<VideoFrameEventArgs>? ImageFrameReady;
@@ -674,6 +676,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         StopBackgroundVideoPlayback(wait: true);
         ResetBackgroundVideoToStart();
+        if (LoopPlayback && HandlesLoopInternally)
+            StartBackgroundVideoPlayback();
+
         MediaEnded?.Invoke(this, EventArgs.Empty);
     }
 

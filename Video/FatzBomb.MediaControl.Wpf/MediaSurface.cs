@@ -310,7 +310,7 @@ public sealed class MediaSurface : Grid
 
     private void OnSessionMediaEnded(object? sender, EventArgs e)
     {
-        if (IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession))
+        if (IsLoopingPlayback(sender as IMediaControlSession ?? _eventSession))
             return;
 
         _showPrimarySurfaceAfterPresentation = false;
@@ -368,6 +368,9 @@ public sealed class MediaSurface : Grid
         && (session.Content.HasFlag(MediaContent.Video)
             || session.Content.HasFlag(MediaContent.Cdg)
             || session.Content.HasFlag(MediaContent.Image));
+
+    private static bool IsLoopingPlayback(IMediaControlSession? session) =>
+        session is { IsOpen: true, LoopMedia: true };
 
     private void AttachOwnerWindowHook()
     {

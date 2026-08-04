@@ -12,7 +12,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl
 {
     #region Private Fields
 
@@ -124,6 +124,16 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
 
     /// <inheritdoc/>
     public int CurrentTempo { get; private set; } = 0;
+
+    bool IAudioLoopControl.LoopPlayback
+    {
+        get;
+        set
+        {
+            field = value;
+            _streamManager.SetLoopPlayback(value);
+        }
+    }
 
     // Event declarations for state and lifecycle
     public event EventHandler<AudioEngineState>? StateChanged;
@@ -542,8 +552,17 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider
 
         _playbackEndSyncHandle = 0;
         _playbackEndSyncChannel = 0;
-        State = AudioEngineState.Stopped;
-        PositionChanged?.Invoke(this, Duration);
+        if (((IAudioLoopControl)this).LoopPlayback)
+        {
+            State = AudioEngineState.Playing;
+            PositionChanged?.Invoke(this, Position);
+        }
+        else
+        {
+            State = AudioEngineState.Stopped;
+            PositionChanged?.Invoke(this, Duration);
+        }
+
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
     }
 

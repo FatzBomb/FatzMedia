@@ -523,8 +523,16 @@ internal sealed partial class VideoPipeline(
             if (!_isOpen)
                 return false;
 
+            _generation++;
             _isPlaying = false;
             _loopPreSeekActive = false;
+            lock (_seekPumpLock)
+            {
+                _pendingSeekSeconds = null;
+                _activeSeekTargetSeconds = double.NaN;
+                _minimumCommittedVideoPresentationSeconds = double.NaN;
+            }
+
             // Sync (not zero): the engine's CompletedLoopCount persists across Stop, so a
             // mismatched baseline would fire a spurious wrap commit on the next Play tick.
             _lastObservedAudioLoopCount = _audioEngine?.CompletedLoopCount ?? 0;
