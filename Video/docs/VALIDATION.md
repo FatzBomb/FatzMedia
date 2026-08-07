@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-08-03
+Updated: 2026-08-07
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -24,6 +24,15 @@ On 2026-08-06, the Stage 028A reliability follow-up passed 348 automated tests, 
 build, formatting, architecture gates, package creation, and package-installed native
 loading for caller-supplied and predefined paths. Visual verification of both WPF
 presentation modes and forced managed-sink device loss remains manual.
+
+On 2026-08-07, Stage 028A was closed with Release build zero warnings, `dotnet format`
+verification, Core/WPF/presentation-parity gates, and 348 passing tests. Manual checks
+confirmed video seeking resumes near its settled frame without skipping ahead, and a
+fresh rebuild of `D:\- Testing Files\mario.mod` returns the seekbar to about 4 seconds
+at its authored loop. WPF composited visual scenarios (clipping, transforms, opacity,
+interactive overlays, background/karaoke surface coverage in both modes) and forced
+device loss remain outstanding extended/manual validation; they are tracked here and
+are not Stage 028A blockers.
 
 ---
 

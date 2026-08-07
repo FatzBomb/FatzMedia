@@ -28,7 +28,7 @@ Planned non-Windows platform services remain separate from renderers and UI adap
 - `FatzBomb.MediaControl.MacOS`
 
 These are roadmap directions, not implemented projects. See
-`roadmap/future/024A_IDEA_SoftwareRenderer.md`,
+`roadmap/active/024A_ACTIVE_SoftwareRenderer.md`,
 `roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
 `roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
 `roadmap/future/027A_IDEA_UiAdapterImplementations.md`.

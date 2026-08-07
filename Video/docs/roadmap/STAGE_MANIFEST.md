@@ -2,7 +2,7 @@
 
 ## Active
 
-- `active/028A_ACTIVE_LightweightWpfSurfaces.md` - self-contained background/karaoke surfaces and selectable native-HWND or WPF-composited presentation
+- `active/024A_ACTIVE_SoftwareRenderer.md` - portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage
 
 ## Reverted
 
@@ -10,6 +10,7 @@
 
 ## Completed
 
+- `complete/028A_COMPLETED_LightweightWpfSurfaces.md` — self-contained background/karaoke surfaces with selectable native-HWND or WPF-composited presentation (2026-08-07)
 - `complete/025B_COMPLETED_RendererConfigurationOwnership.md` — Direct3D11 owns renderer-specific presentation options and DXGI present policy; portable Core contains no concrete renderer selection (2026-08-03)
 - `complete/025A_COMPLETED_PresentationSurfaceContractNeutrality.md` — extensible borrowed native-surface payloads replace the closed HWND enum/handle contract; Core is surface-platform-neutral and Direct3D11 owns Win32 HWND extraction (2026-07-18)
 - `complete/023A_COMPLETED_HostNativeDistributionPolicy.md` — host-owned BASS/FFmpeg source, licence, version, RID, package-layout, update, and clean-machine publish-smoke policy (2026-07-17)
@@ -36,13 +37,12 @@
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Recommended next: `future/024A_IDEA_SoftwareRenderer.md` - deterministic composition
-output and automated visual-regression coverage.
+Recommended next: `future/026A_IDEA_CrossPlatformRendererBackends.md` - additional
+hardware renderer backends that reuse the deterministic software renderer's conformance suite.
 
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/024A_IDEA_SoftwareRenderer.md` - portable deterministic in-memory composition.
 - `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
 - `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
 - `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.

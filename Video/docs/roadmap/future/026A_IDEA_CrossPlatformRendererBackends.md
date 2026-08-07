@@ -18,7 +18,7 @@ renderer boundary, and let hosts select a backend without changing playback or U
 ## Recommended Implementation Order
 
 1. Complete the deterministic software renderer in
-   `024A_IDEA_SoftwareRenderer.md` as the composition reference.
+   `../active/024A_ACTIVE_SoftwareRenderer.md` as the composition reference.
 2. Build a renderer capability and native-surface compatibility matrix.
 3. Start one Vulkan vertical slice: initialize, attach one surface, clear, and present software BGRA.
 4. Add composition layers, resize, multi-target fan-out, pacing, and device-loss behavior incrementally.

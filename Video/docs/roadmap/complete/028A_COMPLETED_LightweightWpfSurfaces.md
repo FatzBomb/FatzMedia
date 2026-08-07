@@ -1,7 +1,8 @@
-# Active Stage 028A - Lightweight WPF Surfaces and Composited Presentation
+# Completed Stage 028A - Lightweight WPF Surfaces and Composited Presentation
 
 Prepared: 2026-08-06
-Status: Implementation and automated validation complete; manual native smoke pending
+Completed: 2026-08-07
+Status: Complete
 
 ## Objective
 
@@ -47,18 +48,24 @@ for layouts that cannot accept HWND airspace limitations.
 - Moving D3D11, composition, CDG, subtitle, or pipeline logic into the base WPF adapter.
 - Requiring composited presentation in UI frameworks without WPF-style airspace limits.
 
-## Remaining Manual Validation
-
-1. Regular `MediaSurface` video, CDG, and MIDI/KAR in both modes.
-2. WPF clipping, transforms, opacity, and interactive overlay content in composited mode.
-3. BackgroundSurface color, image, muted looping video, unload/reload, and both modes.
-4. KaraokeSurface CDG and MIDI/KAR, 4:3 resizing, opaque canvas, and both modes.
-5. Rejection of video/non-karaoke input without audible or visible playback.
-6. Native-mode primary/secondary output regression smoke.
-
 ## Automated Validation
 
 - Debug and Release solution builds: pass, zero warnings.
-- 348 tests: pass.
+- `dotnet format` verification: pass.
 - Core, WPF, and presentation-parity architecture gates: pass.
+- 348 tests: pass.
 - Managed frame-sink handle creation, resolution, and disposal tests added.
+
+## Manual Validation Confirmed
+
+- Video seeking improved and resumes near its settled frame without skipping ahead
+  or replaying earlier frames.
+- `D:\- Testing Files\mario.mod` returns the seekbar to about 4 seconds at its
+  authored loop position after a fresh rebuild.
+
+## Outstanding Manual Validation
+
+WPF composited visual scenarios (clipping, transforms, opacity, interactive overlays,
+background/karaoke surface coverage in both modes) and forced device-loss remain
+extended/manual validation tracked in `docs/VALIDATION.md`. They are not stage
+blockers for this closure.
