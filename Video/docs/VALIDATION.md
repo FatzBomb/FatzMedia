@@ -34,6 +34,13 @@ interactive overlays, background/karaoke surface coverage in both modes) and for
 device loss remain outstanding extended/manual validation; they are tracked here and
 are not Stage 028A blockers.
 
+On 2026-08-07, Stage 024A automated validation passed: Debug and Release builds with
+zero warnings, 370 automated tests (including the new software-renderer exact-pixel and
+backend suites), `dotnet format` verification, Core/WPF/presentation-parity gates, and
+`FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack. The final manual
+Direct3D11 Player regression smoke for the software renderer stage remains pending;
+Stage 024A is not archived until that smoke passes.
+
 ---
 
 ## 1. Build And Boundary
@@ -82,8 +89,9 @@ again without explicit paths. Use
 `-FrameworkDependent` only when intentionally testing a machine with the .NET 10
 Windows Desktop runtime installed. Artifacts are written beneath `artifacts/native-smoke/`.
 
-`FatzBomb.MediaControl.Wpf` is also packable (five packable packages in total) but is
-not part of the native smoke pack set. The leaf x64 packages
+`FatzBomb.MediaControl.Wpf` is also packable (six packable packages in total — Core,
+Windows, Rendering.Direct3D11, Rendering.Software, the Windows.Direct3D11 bundle, and
+Wpf) but is not part of the native smoke pack set. The leaf x64 packages
 `FatzBomb.MediaControl.Windows` and `FatzBomb.MediaControl.Rendering.Direct3D11` ship
 `buildTransitive` guards in their nupkgs, so a consumer that explicitly targets a
 non-x64 `RuntimeIdentifier` fails the build with an MSBuild error.

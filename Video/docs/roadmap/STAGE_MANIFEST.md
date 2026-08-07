@@ -2,7 +2,7 @@
 
 ## Active
 
-- `active/024A_ACTIVE_SoftwareRenderer.md` - portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage
+- `active/024A_ACTIVE_SoftwareRenderer.md` - portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage (implemented 2026-08-07; automated validation passed; final manual Direct3D11 regression smoke pending before completion)
 
 ## Reverted
 
@@ -37,16 +37,28 @@
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Recommended next: `future/026A_IDEA_CrossPlatformRendererBackends.md` - additional
-hardware renderer backends that reuse the deterministic software renderer's conformance suite.
+Recommended next: `future/029A_IDEA_SessionEventsFoundation.md` - meaningful host-facing
+session events that later stages (load reset, auto-hide, prepared-next, crossfade,
+streaming) build on.
+
+Stages 029A-031B plus the revised 014A are the agreed feature sequence after Stage 024A:
+events foundation, load-reset/auto-hide polish, visual transforms, analysis and
+trimming, prepared-next and audio crossfade, then streaming.
 
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
+- `future/029A_IDEA_SessionEventsFoundation.md` - meaningful host-facing session events (lifecycle, state, throttled position, seek, parameter changes, prepared-next/transition, buffering/metadata).
+- `future/029B_IDEA_LoadResetPitchTempoOptions.md` - independent opt-in pitch/tempo reset on media load.
+- `future/029C_IDEA_EventDrivenWpfAutoHide.md` - event-driven AutoHide for the WPF surfaces.
+- `future/030A_IDEA_VisualTransforms.md` - Core-owned base-visual tint/hue/brightness/contrast/saturation/lightness transforms.
+- `future/030B_IDEA_SilenceTrimmingAnalysisCache.md` - audio silence trimming with a versioned media-analysis cache.
+- `future/031A_IDEA_PreparedNextPlaylistSlot.md` - host-owned playlist with a Core depth-one prepared-next slot.
+- `future/031B_IDEA_AudioFadeCrossfadeModel.md` - audio fade/crossfade envelope model for ordinary local audio.
+- `future/014A_IDEA_StreamingNetworkPlayback.md` - direct HTTP/HTTPS audio/video with a source capability matrix.
 - `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
 - `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
 - `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
-- `future/014A_IDEA_StreamingNetworkPlayback.md` - capability-based local and network inputs.
 - `future/020A_IDEA_AudioFilterFramework.md` - ordered, bypassable audio processing.
 - `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.
 - `future/015A_IDEA_BroadVideoPipelineSplit.md` - incremental responsibility extraction.

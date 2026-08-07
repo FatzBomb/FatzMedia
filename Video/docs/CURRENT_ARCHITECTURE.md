@@ -4,6 +4,7 @@
 
 - `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
 - `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
+- `FatzBomb.MediaControl.Rendering.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core only).
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
@@ -17,7 +18,6 @@ Planned UI adapters remain separate projects using the same package pattern:
 
 Planned renderer backends are independently selectable packages:
 
-- `FatzBomb.MediaControl.Rendering.Software`
 - `FatzBomb.MediaControl.Rendering.Vulkan`
 - `FatzBomb.MediaControl.Rendering.OpenGL`
 - `FatzBomb.MediaControl.Rendering.Metal`
@@ -27,7 +27,8 @@ Planned non-Windows platform services remain separate from renderers and UI adap
 - `FatzBomb.MediaControl.Linux`
 - `FatzBomb.MediaControl.MacOS`
 
-These are roadmap directions, not implemented projects. See
+The Software renderer is implemented; the backends above and non-Windows platform
+services are roadmap directions, not implemented projects. See
 `roadmap/active/024A_ACTIVE_SoftwareRenderer.md`,
 `roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
 `roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
@@ -46,8 +47,9 @@ Windows accesses Core only through public platform contracts.
 Renderer selection is independent of operating-system selection. The Player host
 currently injects `WindowsDirect3D11MediaControlPlatformFactory` from the thin
 Windows+Direct3D11 integration bundle. `FatzBomb.MediaControl.Windows` references
-Core only, and the WPF adapter contains no renderer types. Future hosts can inject another
-`IMediaPresentationCoordinatorFactory` without changing WPF, Core playback, or the
+Core only, and the WPF adapter contains no renderer types. Hosts can inject another
+`IMediaPresentationCoordinatorFactory` — including the portable software renderer's
+`SoftwarePresentationCoordinatorFactory` — without changing WPF, Core playback, or the
 Windows native-service layer.
 
 ### Renderer Configuration
@@ -59,9 +61,49 @@ renderer by injecting its factory. Direct3D11-specific creation policy lives in
 or the `WindowsDirect3D11MediaControlPlatformFactory` convenience bundle. Its native
 swap-chain present mode defaults to VSync; Immediate remains an explicit diagnostic mode.
 
+### Software Renderer (Stage 024A)
+
+`FatzBomb.MediaControl.Rendering.Software` is a portable, deterministic renderer
+package (`net10.0`) that references Core only and implements the same public
+`IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
+Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
+Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
+no-op `ISubtitleRasterizer` (`NoOpSubtitleRasterizer`), and
+`SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
+
+**Output contract** — `SoftwareCompositionRenderer.Render(MediaCompositionFrame, width,
+height)` returns an immutable `SoftwareRenderOutput` with a typed
+`SoftwareRenderStatus` (`Rendered`, `UnsupportedFrame`, `InvalidFrame`). Successful
+output is premultiplied BGRA8 with tightly packed rows (`stride = width * 4`); the same
+frame and size always produce byte-identical pixels. Deterministic rules:
+
+- **Clear modes** — `Black`, `Transparent`, and `ConfiguredColor` from `ClearMode` /
+  `ClearArgb`; `PreservePrevious` clears to transparent because rendering is stateless.
+- **Software BGRA background** — `BackgroundBgra` / `BackgroundWidth` /
+  `BackgroundHeight` / `BackgroundStride` stretched by `EffectiveBackgroundStretchMode`
+  (`Original`, `UniformFit`, `Fill`, `UniformToFill`; `Auto` resolves through the
+  effective-mode property). Scaling uses nearest-neighbor sampling at destination pixel
+  centers, and destination edges round half-away-from-zero (`SoftwareStretch`).
+- **Wash** — `WashArgb` straight-alpha blended over the background.
+- **CDG overlay** — index-based transparency: `CdgRenderSnapshot.BackgroundColorIndex`
+  is skipped and every other palette entry is forced opaque, matching the Direct3D11
+  shader. The snapshot is composited with `UniformFit`.
+- **Pre-rasterized subtitles** — `SubtitleBgra` placed via `SubtitleCanvas*` (canvas
+  mapping through `ViewportGeometry.MapCanvasRegionToViewport`) or `UniformFit` when no
+  canvas is set; premultiplied blend.
+- **Layer order** — clear, background, wash, CDG, subtitles.
+- **Unsupported inputs** — frames requesting native or retained backgrounds
+  (`BackgroundNativeResource`, `UseRetainedBackground`) return `UnsupportedFrame`;
+  invalid frames (non-positive output size, bad background/subtitle buffers or stride,
+  malformed CDG snapshot, oversized buffer) return `InvalidFrame`; neither throws.
+- **Backend** — the internal `SoftwareRendererBackend` accepts exactly one primary
+  `ManagedBgraFrameSink` presentation surface, uses the surface's pixel size, and
+  publishes the rendered frame through `IMediaPresentationFrameSink`. Native-frame and
+  device methods report unsupported without throwing.
+
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its single managed frame-sink target.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 

@@ -8,6 +8,7 @@ FatzBomb.MediaControl is a media-control solution with a UI-agnostic Core engine
 |---|---|
 | `FatzBomb.MediaControl` | Portable Core playback, commands, media state, sidecar detection, audio/video/Cdg, retained composition models, and platform/renderer contracts. |
 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer backend, GPU composition, swap-chain, and presentation implementation. |
+| `FatzBomb.MediaControl.Rendering.Software` | Portable deterministic software renderer — in-memory premultiplied BGRA8 composition with no GPU or window. |
 | `FatzBomb.MediaControl.Windows` | Windows native-library loading, endpoint integration, timing, and hardware-decode policy. |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle pairing Windows services with the current renderer. |
 | `FatzBomb.MediaControl.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It receives platform composition from the host and owns no renderer, pipeline, layer, timing, or final presentation logic. |

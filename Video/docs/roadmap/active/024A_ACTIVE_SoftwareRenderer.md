@@ -1,7 +1,8 @@
 # Active Stage 024A - Deterministic Software Renderer
 
 Prepared: 2026-08-07
-Status: Active
+Status: Implemented — automated validation passed 2026-08-07; final manual Direct3D11
+Player regression smoke pending. Not yet complete; do not archive.
 
 ## Objective
 
@@ -62,31 +63,65 @@ Produce one complete in-memory BGRA frame from a software-only
   behavior matching the Direct3D11 overlay passes.
 - Color space: sRGB; no color-management transforms in this stage.
 - Dimensions: caller-fixed output size; scaling rules for background and subtitle
-  placement are defined exactly (rounding rule documented, e.g. half-away-from-zero
-  or floor, and applied consistently).
+  placement are defined exactly — nearest-neighbor sampling at destination pixel
+  centers and destination edges rounded half-away-from-zero (`Math.Round(...,
+  MidpointRounding.AwayFromZero)`) — and applied consistently.
 - Alpha behavior: explicit blend equations for wash and CDG/subtitle overlays,
   including transparent-color handling, defined in the contract and covered by tests.
+  CDG transparency is index-based: the background index is skipped and every other
+  palette entry is forced opaque, matching the Direct3D11 shader.
 - Determinism: same input frame + same size always produces byte-identical output;
-  no threading, wall-clock, or hash-order dependence.
+  no threading, wall-clock, or hash-order dependence. Output rows are tightly packed
+  (`stride = width * 4`) and pixels are premultiplied BGRA8.
 
-## Proposed Files / Projects
+## Delivered Files / Projects
 
-- `FatzBomb.MediaControl.Rendering.Software/` — new project, references Core only.
+- `FatzBomb.MediaControl.Rendering.Software/` — new project (`net10.0`, references Core
+  only; `InternalsVisibleTo` Tests; packable with nupkg + snupkg).
   - `SoftwareCompositionRenderer.cs` — deterministic frame-to-buffer API taking a
     `MediaCompositionFrame` and fixed output dimensions.
-  - `SoftwareRendererBackend.cs` — `IMediaRendererBackend` adapter. Surface methods
-    resolve one `ManagedBgraFrameSink`, capture its dimensions, and publish the
-    rendered frame; native-frame/device methods report unsupported without throwing.
-  - `SoftwareCompositionBuffer.cs` — fixed-size BGRA8 target and blend operations.
-  - `SoftwareStretch.cs` — exact background stretch/scaling math (pure functions).
-  - `SoftwarePresentationCoordinatorFactory.cs` —
-    `IMediaPresentationCoordinatorFactory` implementation for host selection. It
-    supplies Core's coordinator with the software backend, a slice-one no-op
-    `ISubtitleRasterizer`, and `SystemPrecisionWaiterFactory`.
-  - `SoftwareRenderOutput.cs` — deterministic in-memory frame result payload.
+  - `SoftwareRendererBackend.cs` — internal `IMediaRendererBackend` adapter. Surface
+    methods resolve one primary `ManagedBgraFrameSink`, capture its dimensions, and
+    publish the rendered frame; native-frame/device methods report unsupported without
+    throwing.
+  - `SoftwareCompositionBuffer.cs` — fixed-size premultiplied BGRA8 target and
+    straight/premultiplied blend operations.
+  - `SoftwareStretch.cs` — exact background/subtitle stretch math (pure functions):
+    nearest-neighbor sampling at destination pixel centers, destination edges rounded
+    half-away-from-zero.
+  - `SoftwarePresentationCoordinatorFactory.cs` — `IMediaPresentationCoordinatorFactory`
+    implementation for host selection. It supplies Core's coordinator with the software
+    backend, the no-op `ISubtitleRasterizer` (`NoOpSubtitleRasterizer`), and
+    `SystemPrecisionWaiterFactory`.
+  - `SoftwareRenderOutput.cs` — immutable in-memory frame result payload.
+  - `SoftwareRenderStatus.cs` — typed result status (`Rendered`, `UnsupportedFrame`,
+    `InvalidFrame`).
+  - `NoOpSubtitleRasterizer.cs` — contract-required no-op rasterizer; returns empty
+    results and performs no text layout.
 - `FatzBomb.MediaControl.Tests/`
-  - `SoftwareRendererExactPixelTests.cs` — clear, stretch, wash alpha, layer order,
-    CDG palette, subtitle placement, determinism.
+  - `SoftwareCompositionRendererTests.cs` — clear modes, stretch modes, wash alpha,
+    layer order, CDG palette/transparency, subtitle placement, determinism,
+    unsupported/invalid frames.
+  - `SoftwareRendererBackendTests.cs` — managed frame-sink attach/present/detach and
+    invalid-surface behavior.
+
+## Validation Status (2026-08-07)
+
+Automated validation passed:
+
+- Debug and Release builds — zero warnings.
+- 370 automated tests (`dotnet test`) — up from 348; the 22 new tests cover the
+  software renderer's exact-pixel output contract and backend surface behavior.
+- `dotnet format --verify-no-changes --no-restore`.
+- Core boundary, WPF boundary, and presentation-parity gates
+  (`scripts/check-core-boundary.ps1` updated to allow Software -> Core and Tests ->
+  Software).
+- `FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack.
+
+Remaining manual validation:
+
+- Final Direct3D11 Player regression smoke (per `docs/VALIDATION.md` and step 7 of the
+  implementation order below). Stage 024A stays active until it passes.
 
 ## Acceptance Criteria
 
@@ -176,4 +211,5 @@ scripts require no new dependency allowance.
    factory wiring for host opt-in. Supply the no-op `ISubtitleRasterizer` and
    `SystemPrecisionWaiterFactory` without changing Core selection policy.
 7. Run the validation commands, update architecture/validation docs, and record
-   manual confirmation of Direct3D11 regression-free behavior.
+   manual confirmation of Direct3D11 regression-free behavior (pending as of
+   2026-08-07; the automated portion has passed).
