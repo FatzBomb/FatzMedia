@@ -7,8 +7,8 @@ Status: Good idea. Recommended after Stage 031B.
 Network input expands the engine beyond local files to internet radio, remote media,
 live feeds, and host-supplied streams. It also gives the input and demux boundaries a
 clear capability model for seekable, finite, slow, and reconnectable sources. The
-session-events foundation (Stage 029A) provides the buffering and metadata event
-surface this stage activates.
+session-events foundation (Stage 029A) defines the event conventions this stage
+activates for buffering and metadata.
 
 ## Recommended Direction
 
@@ -19,8 +19,9 @@ surface this stage activates.
   cancellation semantics, with each capability reported per source.
 - URI-based source type: hosts pass a URI and Core queries its capabilities; no
   string-prefix sniffing to infer behavior.
-- Buffering and metadata events publish through the Stage 029A session-event surface
-  and are reserved by that stage until streaming arrives.
+- Buffering and metadata events publish through the Stage 029A session-event surface;
+  Stage 029A defines the conventions and this stage activates them when streaming
+  arrives.
 - Separate buffering, retry, cancellation, and progress policy from local-file logic.
 - Report connection, timeout, decode, and reconnect failures through existing
   diagnostics.

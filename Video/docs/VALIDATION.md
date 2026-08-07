@@ -34,12 +34,13 @@ interactive overlays, background/karaoke surface coverage in both modes) and for
 device loss remain outstanding extended/manual validation; they are tracked here and
 are not Stage 028A blockers.
 
-On 2026-08-07, Stage 024A automated validation passed: Debug and Release builds with
-zero warnings, 370 automated tests (including the new software-renderer exact-pixel and
-backend suites), `dotnet format` verification, Core/WPF/presentation-parity gates, and
-`FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack. The final manual
-Direct3D11 Player regression smoke for the software renderer stage remains pending;
-Stage 024A is not archived until that smoke passes.
+On 2026-08-07, Stage 024A was completed. Automated validation passed: Debug and Release
+builds with zero warnings, 370 automated tests (including the new software-renderer
+exact-pixel and backend suites), `dotnet format` verification, Core/WPF/presentation-parity
+gates, and `FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack. The final
+manual Direct3D11 Player regression smoke passed on 2026-08-07: the Release
+`NativeHwndOverlay` Player was verified for normal video/CDG play, seek, stop, and replay
+with no observed regressions, closing the stage.
 
 ---
 

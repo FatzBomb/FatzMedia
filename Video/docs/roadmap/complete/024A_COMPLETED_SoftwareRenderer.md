@@ -1,8 +1,8 @@
-# Active Stage 024A - Deterministic Software Renderer
+# Completed Stage 024A - Deterministic Software Renderer
 
 Prepared: 2026-08-07
-Status: Implemented — automated validation passed 2026-08-07; final manual Direct3D11
-Player regression smoke pending. Not yet complete; do not archive.
+Completed: 2026-08-07
+Status: Complete
 
 ## Objective
 
@@ -10,7 +10,7 @@ Add a portable, deterministic software renderer that turns Core composition plan
 (`MediaCompositionFrame`) into in-memory BGRA pixels without a GPU or live window.
 This unlocks automated visual-regression tests, thumbnails, offline frame export, and
 headless composition, and gives future hardware backends a reference implementation
-for exact composition behavior. Stage 024A delivers the first bounded vertical slice:
+for exact composition behavior. Stage 024A delivered the first bounded vertical slice:
 one fixed-size in-memory frame, software-backed composition inputs only, and
 deterministic BGRA output verified by exact-pixel tests.
 
@@ -118,10 +118,9 @@ Automated validation passed:
   Software).
 - `FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack.
 
-Remaining manual validation:
-
-- Final Direct3D11 Player regression smoke (per `docs/VALIDATION.md` and step 7 of the
-  implementation order below). Stage 024A stays active until it passes.
+Manual validation confirmed 2026-08-07 (user-confirmed): the Release Direct3D11
+`NativeHwndOverlay` Player regression smoke passed for normal video/CDG play, seek,
+stop, and replay. No regressions observed; Stage 024A is complete.
 
 ## Acceptance Criteria
 
@@ -156,22 +155,6 @@ Remaining manual validation:
 - Managed frame-sink attach, resize, present, detach, and invalid-surface behavior.
 - No-op subtitle-rasterizer factory wiring without text-layout dependencies.
 
-## Validation Commands
-
-```powershell
-dotnet build FatzBomb.MediaControl.sln --no-restore
-dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
-dotnet test FatzBomb.MediaControl.sln --no-restore
-dotnet format --verify-no-changes --no-restore
-.\scripts\check-core-boundary.ps1
-.\scripts\check-wpf-boundary.ps1
-.\scripts\check-presentation-parity.ps1
-```
-
-The stage updates `scripts/check-core-boundary.ps1` so the allowed project graph
-includes Software -> Core and Tests -> Software. The WPF and presentation-parity
-scripts require no new dependency allowance.
-
 ## Risks
 
 - Stretch/rounding divergence from Direct3D11 output is possible; the software
@@ -181,7 +164,7 @@ scripts require no new dependency allowance.
   existing CDG pipeline; use `CdgRenderSnapshot.BackgroundColorIndex` and existing
   CDG tests as the semantic reference.
 - `PreservePrevious` is stateful by definition while the first slice is stateless;
-  its deterministic fallback must be documented rather than inferred.
+  its deterministic fallback is documented rather than inferred.
 - The renderer must not become a hidden playback fallback (see Non-Goals); host
   opt-in only.
 
@@ -198,18 +181,7 @@ scripts require no new dependency allowance.
 - Retained-layer scheduling, multi-target fan-out, or dirty-region diffing.
 - Color management or non-BGRA output formats in this stage.
 
-## Recommended Implementation Order
+## Follow-Up
 
-1. Add the `FatzBomb.MediaControl.Rendering.Software` project and its Core-only
-   project reference; update the solution and boundary-script project map; define
-   the output contract and result payload.
-2. Implement clear + software BGRA background with exact stretch math and tests.
-3. Add wash alpha blending and tests.
-4. Add CDG overlay compositing with transparent-color handling and tests.
-5. Add pre-rasterized subtitle placement and layer-order/determinism tests.
-6. Implement the managed-frame-sink `IMediaRendererBackend` adapter and coordinator
-   factory wiring for host opt-in. Supply the no-op `ISubtitleRasterizer` and
-   `SystemPrecisionWaiterFactory` without changing Core selection policy.
-7. Run the validation commands, update architecture/validation docs, and record
-   manual confirmation of Direct3D11 regression-free behavior (pending as of
-   2026-08-07; the automated portion has passed).
+No blocking follow-ups. Future renderer work (Stage 026A) and visual transforms
+(Stage 030A) build on this stage's exact-pixel conformance contract.

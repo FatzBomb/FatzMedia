@@ -2,7 +2,7 @@
 
 ## Active
 
-- `active/024A_ACTIVE_SoftwareRenderer.md` - portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage (implemented 2026-08-07; automated validation passed; final manual Direct3D11 regression smoke pending before completion)
+- `active/029A_ACTIVE_SessionEventsFoundation.md` - additive public session/controller events (lifecycle, state, throttled position, seek, parameter changes) with documented ordering, throttling, and handler-exception isolation (2026-08-07)
 
 ## Reverted
 
@@ -10,6 +10,7 @@
 
 ## Completed
 
+- `complete/024A_COMPLETED_SoftwareRenderer.md` — portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage; Release Direct3D11 NativeHwndOverlay smoke confirmed for video/CDG play, seek, stop, and replay (2026-08-07)
 - `complete/028A_COMPLETED_LightweightWpfSurfaces.md` — self-contained background/karaoke surfaces with selectable native-HWND or WPF-composited presentation (2026-08-07)
 - `complete/025B_COMPLETED_RendererConfigurationOwnership.md` — Direct3D11 owns renderer-specific presentation options and DXGI present policy; portable Core contains no concrete renderer selection (2026-08-03)
 - `complete/025A_COMPLETED_PresentationSurfaceContractNeutrality.md` — extensible borrowed native-surface payloads replace the closed HWND enum/handle contract; Core is surface-platform-neutral and Direct3D11 owns Win32 HWND extraction (2026-07-18)
@@ -37,18 +38,16 @@
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Recommended next: `future/029A_IDEA_SessionEventsFoundation.md` - meaningful host-facing
-session events that later stages (load reset, auto-hide, prepared-next, crossfade,
-streaming) build on.
+Recommended next: `future/029B_IDEA_LoadResetPitchTempoOptions.md` - independent opt-in
+pitch/tempo reset on media load.
 
-Stages 029A-031B plus the revised 014A are the agreed feature sequence after Stage 024A:
-events foundation, load-reset/auto-hide polish, visual transforms, analysis and
-trimming, prepared-next and audio crossfade, then streaming.
+Stages 029B-031B plus the revised 014A are the agreed feature sequence after Stage 029A:
+load-reset/auto-hide polish, visual transforms, analysis and trimming, prepared-next
+and audio crossfade, then streaming.
 
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/029A_IDEA_SessionEventsFoundation.md` - meaningful host-facing session events (lifecycle, state, throttled position, seek, parameter changes, prepared-next/transition, buffering/metadata).
 - `future/029B_IDEA_LoadResetPitchTempoOptions.md` - independent opt-in pitch/tempo reset on media load.
 - `future/029C_IDEA_EventDrivenWpfAutoHide.md` - event-driven AutoHide for the WPF surfaces.
 - `future/030A_IDEA_VisualTransforms.md` - Core-owned base-visual tint/hue/brightness/contrast/saturation/lightness transforms.

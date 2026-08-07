@@ -29,7 +29,7 @@ Planned non-Windows platform services remain separate from renderers and UI adap
 
 The Software renderer is implemented; the backends above and non-Windows platform
 services are roadmap directions, not implemented projects. See
-`roadmap/active/024A_ACTIVE_SoftwareRenderer.md`,
+`roadmap/complete/024A_COMPLETED_SoftwareRenderer.md`,
 `roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
 `roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
 `roadmap/future/027A_IDEA_UiAdapterImplementations.md`.
