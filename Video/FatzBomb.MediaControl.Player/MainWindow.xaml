@@ -465,6 +465,14 @@
                                     ItemsSource="{Binding VideoDisplayModes}"
                                     SelectedItem="{Binding VideoDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                     ToolTip="Primary video display mode. Background videos behind overlays always use ZoomToFill." />
+                                <ComboBox
+                                    Grid.Column="4"
+                                    MinWidth="138"
+                                    Foreground="Black"
+                                    IsEnabled="{Binding CanChangePresentationMode}"
+                                    ItemsSource="{Binding PresentationModes}"
+                                    SelectedItem="{Binding PresentationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="Native HWND is fastest. WPF composited avoids HWND airspace limitations at a readback cost." />
                                 <TextBlock
                                     Grid.Column="6"
                                     Margin="0,0,6,0"

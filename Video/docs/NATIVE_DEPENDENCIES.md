@@ -2,6 +2,18 @@
 
 Updated: 2026-07-17
 
+> **WARNING — GPL-ENABLED TRACKED FFMPEG EXECUTABLES**
+>
+> `FatzBomb.MediaControl.Player/native/ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are
+> **tracked in this repository** as a Gyan full-shared FFmpeg fixture built with
+> `--enable-gpl --enable-version3`. They exist **only** for local Player validation and
+> must **not** be redistributed with any package, host, or published artifact unless the
+> distributing host deliberately accepts and complies with the GPL terms. Deleting or
+> replacing them is a licensing-policy decision that requires owner action; this warning
+> exists because they currently remain tracked. Any host shipping these binaries must
+> review FFmpeg's compliance checklist (<https://ffmpeg.org/legal.html>) and obtain
+> appropriate legal review.
+
 ## Responsibility
 
 `FatzBomb.MediaControl` packages do not contain BASS or FFmpeg native binaries.
@@ -137,7 +149,13 @@ date, and approver for every deployed binary set.
 
 This policy is engineering guidance, not legal advice.
 
-## Private CI Gate
+## CI Gates
+
+The normal Windows CI gate `.github/workflows/ci.yml` runs on `push` and `pull_request`
+and covers restore, Release build, tests, the architecture boundary scripts, and a
+`dotnet format --verify-no-changes` check. It never stages or loads native binaries.
+
+### Private CI Gate
 
 `.github/workflows/windows-native-smoke.yml` runs only on a private self-hosted
 Windows x64 runner and is invoked manually. The

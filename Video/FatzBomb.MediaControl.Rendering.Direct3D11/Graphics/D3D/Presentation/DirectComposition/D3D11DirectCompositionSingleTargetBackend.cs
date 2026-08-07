@@ -198,21 +198,36 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         alreadyReported = false;
     }
 
-    public void Present(int liveResizeFlag, bool syncImmediate)
+    public bool Present(int liveResizeFlag, bool syncImmediate)
     {
-        D3D11SwapChainPresenter.Present(
-            _baseSwapChain,
-            presentMode,
-            liveResizeFlag,
-            syncImmediate,
-            diagnostics,
-            ref _baseDeviceLostReported);
+        if (!D3D11SwapChainPresenter.Present(
+                _baseSwapChain,
+                presentMode,
+                liveResizeFlag,
+                syncImmediate,
+                diagnostics,
+                ref _baseDeviceLostReported))
+        {
+            // A failed base present means the composed frame did not reach the target; skip the
+            // DirectComposition commit so the failing present loop does not double-report.
+            return false;
+        }
 
-        Commit();
-        ReacquireBaseBackBuffer();
+        if (!_target.Commit())
+            return false;
+
+        try
+        {
+            ReacquireBaseBackBuffer();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            return ReportBackBufferFailure(ex, _baseSwapChain, ref _baseDeviceLostReported, "base");
+        }
     }
 
-    public void Commit() => _target.Commit();
+    public bool Commit() => _target.Commit();
 
     public bool PresentOverlayAndCommit(uint syncInterval = 1)
     {
@@ -240,9 +255,18 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
 
         _overlayDeviceLostReported = false;
-        Commit();
-        ReacquireOverlayBackBuffer();
-        return true;
+        if (!_target.Commit())
+            return false;
+
+        try
+        {
+            ReacquireOverlayBackBuffer();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            return ReportBackBufferFailure(ex, _target.OverlaySwapChain, ref _overlayDeviceLostReported, "overlay");
+        }
     }
 
     public void ReacquireOverlayBackBuffer() => _target.ReacquireOverlayBackBuffer();
@@ -254,6 +278,38 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
         TargetTexture?.Dispose();
         TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+    }
+
+    private static bool ReportBackBufferFailure(
+        Exception exception,
+        IDXGISwapChain? swapChain,
+        ref bool deviceLostReported,
+        string chainName)
+    {
+        Result removedReason = default;
+        try
+        {
+            using ID3D11Device? device = swapChain?.GetDevice<ID3D11Device>();
+            removedReason = device?.DeviceRemovedReason ?? default;
+        }
+        catch
+        {
+        }
+
+        if (D3D11DeviceLostClassifier.IsDeviceLost(removedReason))
+        {
+            if (!deviceLostReported)
+            {
+                deviceLostReported = true;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {chainName} back-buffer reacquire detected GPU device lost: {D3D11DeviceLostClassifier.Describe(removedReason, swapChain)}", innerException: exception);
+            }
+        }
+        else
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition {chainName} back-buffer reacquire failed: {exception.Message}", innerException: exception);
+        }
+
+        return false;
     }
 
     public void ClearOverlayToTransparent(D3D11DeviceResources deviceResources)
@@ -275,7 +331,26 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(_target.OverlayTexture);
                 deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));
                 deviceResources.Context.Flush();
-                _ = _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
+                Result result = _target.OverlaySwapChain.Present(0, (int)PresentFlags.None);
+                if (result.Failure)
+                {
+                    if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+                    {
+                        if (!_overlayDeviceLostReported)
+                        {
+                            _overlayDeviceLostReported = true;
+                            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition overlay clear detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, _target.OverlaySwapChain)}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay clear Present failed: {result}");
+                    }
+
+                    return;
+                }
+
+                _overlayDeviceLostReported = false;
             }
 
             ReacquireOverlayBackBuffer();

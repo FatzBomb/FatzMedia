@@ -307,9 +307,10 @@ internal sealed partial class VideoPipeline(
 
             if (HasAudio)
             {
+                var presentationStartPosition = _audioEngine!.Position;
                 if (!_audioEngine!.Play() && _configuration.EnableLogging)
                     Debug.WriteLine("[VideoPipeline] audio Play() returned false during transport start");
-                _presentationClock.Start(_audioEngine.Position);
+                _presentationClock.Start(presentationStartPosition);
                 if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Playback started using BASS video-audio clock.");
             }
             else
@@ -542,17 +543,21 @@ internal sealed partial class VideoPipeline(
             _ = (_audioEngine?.Stop());
             _clock.Stop();
             _presentationClock.Reset(0);
-            lock (_decodeLock)
+            // Acquire presentationLock before decodeLock to keep the pipeline-wide ordering
+            // (presentationLoop -> decodeLoop) consistent for stop-time frame presentation.
+            lock (_presentationLock)
             {
-                ReleaseCurrentFrame();
-                if (_videoDecoder is { } decoder)
+                lock (_decodeLock)
                 {
-                    _ = decoder.SeekSharedDemuxer(0);
-                    _ = decoder.Seek(0);
-                }
-                _ = DecodeUntilFrameAvailable();
-                lock (_presentationLock)
+                    ReleaseCurrentFrame();
+                    if (_videoDecoder is { } decoder)
+                    {
+                        _ = decoder.SeekSharedDemuxer(0);
+                        _ = decoder.Seek(0);
+                    }
+                    _ = DecodeUntilFrameAvailable();
                     _ = PresentFrameForCurrentPosition();
+                }
             }
 
             _state.SetPosition(0);
@@ -605,6 +610,7 @@ internal sealed partial class VideoPipeline(
                 _loopPreSeekActive = false;
                 _lastObservedAudioLoopCount = _audioEngine?.CompletedLoopCount ?? 0;
                 var wasPlaying = _isPlaying;
+                var resumeAudioPosition = target;
                 if (!asPreview)
                     SetMinimumCommittedVideoPresentationTarget(target);
 
@@ -623,8 +629,10 @@ internal sealed partial class VideoPipeline(
 
                 if (HasAudio)
                 {
-                    _ = _audioEngine!.Seek(target, resumePlayback: false);
-                    _presentationClock.Reset(target);
+                    if (_audioEngine!.Seek(target, resumePlayback: false))
+                        resumeAudioPosition = _audioEngine.Position;
+
+                    _presentationClock.Reset(resumeAudioPosition);
                 }
                 else
                 {
@@ -635,8 +643,15 @@ internal sealed partial class VideoPipeline(
                 }
 
                 var videoSeekProcessingStopwatch = Stopwatch.StartNew();
-                lock (_decodeLock)
-                    videoFramePresented = SeekVideoNearTarget(target, asPreview, allowPreviewFallback);
+                // Enforce the pipeline-wide presentationLock -> decodeLock ordering. The presentation
+                // loop holds _presentationLock while driving TryPreSeekLoopStart /
+                // TryCommitVideoOnlyLoopWrap (which take _decodeLock), so seeking must acquire
+                // _presentationLock first to avoid the ABBA deadlock with a concurrent loop wrap.
+                lock (_presentationLock)
+                {
+                    lock (_decodeLock)
+                        videoFramePresented = SeekVideoNearTarget(target, asPreview, allowPreviewFallback);
+                }
 
                 videoSeekProcessingStopwatch.Stop();
                 RecordAdaptiveVideoSeekProcessingTime(videoSeekProcessingStopwatch.Elapsed);
@@ -657,7 +672,7 @@ internal sealed partial class VideoPipeline(
                     _ = _audioEngine!.PrebufferAudio(maxDecodeAttempts: 4096);
                     if (!_audioEngine.Play())
                         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "Audio Play() returned false during post-seek resume");
-                    _presentationClock.Start(_audioEngine.Position);
+                    _presentationClock.Start(resumeAudioPosition);
                 }
                 else if (!HasAudio && wasPlaying)
                     _clock.Start(target);
@@ -1896,12 +1911,11 @@ internal sealed partial class VideoPipeline(
         if (allowSupersedingAbort && HasSupersedingSeekRequest())
             return false;
 
-        lock (_presentationLock)
-            return TryPresentBestSeekFrame(
-                target,
-                maxFrameDistance,
-                requireAtOrAfterTarget,
-                allowPreviewFallback);
+        return TryPresentBestSeekFrame(
+            target,
+            maxFrameDistance,
+            requireAtOrAfterTarget,
+            allowPreviewFallback);
     }
 
     private void DecodeForSeekTarget(

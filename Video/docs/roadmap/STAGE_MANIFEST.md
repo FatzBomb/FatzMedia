@@ -2,7 +2,7 @@
 
 ## Active
 
-- (none)
+- `active/028A_ACTIVE_LightweightWpfSurfaces.md` - self-contained background/karaoke surfaces and selectable native-HWND or WPF-composited presentation
 
 ## Reverted
 
@@ -31,14 +31,26 @@
 - **004A** — error surface (2026-07-06)
 - 001–003E, 008A, 009A — git history only
 
-## Conditional Future
+## Future Ideas
 
-- `future/024A_FUTURE_SoftwareRendererSpike.md`
-- `future/010A_FUTURE_SoftwareVideoUploadCopyPath.md`
-- `future/014A_FUTURE_StreamingNetworkPlayback.md`
-- `future/015A_FUTURE_BroadVideoPipelineSplit.md`
-- `future/017A_FUTURE_DisplayRateCompositorRewrite.md`
-- `future/018A_FUTURE_CDGSnapshotOwnershipRedesignPooling.md`
-- `future/019A_FUTURE_VideoFrameEventArgsReuseApiRedesign.md`
-- `future/020A_FUTURE_FullAudioFilterFramework.md`
-- `future/022A_FUTURE_ThreadModelProfilingReductionGate.md`
+These are worthwhile directions, not problem-gated work. An idea becomes active when it
+is explicitly selected and moved into `active/` with bounded acceptance criteria.
+
+Recommended next: `future/024A_IDEA_SoftwareRenderer.md` - deterministic composition
+output and automated visual-regression coverage.
+
+The list is ordered by recommended next work, cross-platform enablement, product
+features, then internal engine improvements.
+
+- `future/024A_IDEA_SoftwareRenderer.md` - portable deterministic in-memory composition.
+- `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
+- `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
+- `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
+- `future/014A_IDEA_StreamingNetworkPlayback.md` - capability-based local and network inputs.
+- `future/020A_IDEA_AudioFilterFramework.md` - ordered, bypassable audio processing.
+- `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.
+- `future/015A_IDEA_BroadVideoPipelineSplit.md` - incremental responsibility extraction.
+- `future/010A_IDEA_SoftwareVideoUploadCopyPath.md` - reduce software-frame copy and upload cost.
+- `future/018A_IDEA_CDGSnapshotOwnershipRedesignPooling.md` - explicit snapshot ownership and reuse.
+- `future/019A_IDEA_VideoFrameEventArgsReuseApiRedesign.md` - explicit event payload lifetimes.
+- `future/022A_IDEA_ThreadModelProfilingAndSimplification.md` - measured thread ownership cleanup.

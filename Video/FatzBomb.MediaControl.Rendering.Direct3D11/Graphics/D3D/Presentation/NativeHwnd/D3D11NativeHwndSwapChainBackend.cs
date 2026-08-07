@@ -107,7 +107,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         return ResizeCore(width, height);
     }
 
-    public void Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
+    public bool Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
             _swapChain,
             presentMode,
             liveResizeFlag,

@@ -39,5 +39,5 @@ Core provides the media-control session and neutral contracts. Platform packages
 Current architecture and validation docs:
 
 - `docs/CURRENT_ARCHITECTURE.md`
-- `docs/ProjectAnalysisRoadmap [2026-06-30].md`
+- `docs/roadmap/STAGE_MANIFEST.md`
 - `docs/VALIDATION.md`

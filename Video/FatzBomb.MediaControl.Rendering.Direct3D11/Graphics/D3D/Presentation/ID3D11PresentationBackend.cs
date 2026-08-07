@@ -15,6 +15,11 @@ internal interface ID3D11PresentationBackend : IDisposable
     int Height { get; }
     ID3D11Texture2D? TargetTexture { get; }
 
-    void Present(int liveResizeFlag, bool syncImmediate);
+    /// <summary>
+    /// Presents the current frame to this backend's target. Returns true when the frame was
+    /// successfully presented; false when presentation failed (including GPU device loss) so
+    /// callers do not raise frame-presented notifications for frames that never reached the target.
+    /// </summary>
+    bool Present(int liveResizeFlag, bool syncImmediate);
     void Cleanup();
 }

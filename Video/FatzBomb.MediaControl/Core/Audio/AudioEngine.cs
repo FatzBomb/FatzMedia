@@ -27,6 +27,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private int _requestedDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
     private int _currentDevice = AudioOutputDeviceInfo.PrimaryDeviceIndex;
     private CancellationTokenSource? _normalizationAnalysisCts;
+    private Task? _normalizationAnalysisTask;
+    private readonly Lock _normalizationAnalysisLock = new();
     private int _normalizationAnalysisGeneration;
     private volatile bool _normalizationReady = true;
     private readonly SyncProcedure _playbackEndedSyncProcedure;
@@ -622,11 +624,16 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _normalizationReady = false;
         var generation = Interlocked.Increment(ref _normalizationAnalysisGeneration);
         var cts = new CancellationTokenSource();
-        CancellationTokenSource? previous = Interlocked.Exchange(ref _normalizationAnalysisCts, cts);
-        previous?.Cancel();
-        previous?.Dispose();
-
-        _ = RunNormalizationAnalysisAsync(analysisHandle, cacheKey, sourceLabel, generation, cts.Token);
+        lock (_normalizationAnalysisLock)
+        {
+            _normalizationAnalysisCts = cts;
+            _normalizationAnalysisTask = RunNormalizationAnalysisAsync(
+                analysisHandle,
+                cacheKey,
+                sourceLabel,
+                generation,
+                cts.Token);
+        }
     }
 
     private async Task RunNormalizationAnalysisAsync(int analysisHandle, string cacheKey, string sourceLabel, int generation, CancellationToken cancellationToken)
@@ -673,8 +680,36 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private void CancelNormalizationAnalysis()
     {
         _ = Interlocked.Increment(ref _normalizationAnalysisGeneration);
-        CancellationTokenSource? previous = Interlocked.Exchange(ref _normalizationAnalysisCts, null);
+        CancellationTokenSource? previous;
+        Task? analysisTask;
+        lock (_normalizationAnalysisLock)
+        {
+            previous = _normalizationAnalysisCts;
+            analysisTask = _normalizationAnalysisTask;
+            _normalizationAnalysisCts = null;
+            _normalizationAnalysisTask = null;
+        }
+
         previous?.Cancel();
+
+        // Synchronously join the previous analysis before the caller frees the decode handle it
+        // reads from (Open reuses the handle slot, Close/Dispose free it). Cancellation is
+        // cooperative - ChannelGetLevel blocks per analysis window - so joining here guarantees the
+        // handle is never touched after the stream is closed. GetAwaiter().GetResult() unwraps the
+        // AggregateException while preserving the original exception for cancellation/fault handling.
+        try
+        {
+            analysisTask?.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during re-open or teardown.
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Normalization analysis did not stop cleanly: {ex.Message}", innerException: ex);
+        }
+
         previous?.Dispose();
         _normalizationReady = true;
     }

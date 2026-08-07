@@ -11,10 +11,14 @@
 roadmap/
   active/                 ← current stage only
   complete/               ← completed stage records
-  future/                 ← conditional work; not part of the active plan
+  future/                 ← good ideas with direction, immediate action, and non-goals
   STAGE_MANIFEST.md       ← stage index
   updates/                ← implementation notes when retained
 ```
+
+Future idea files use the `IDEA` name. They are not problem-gated, but they remain
+separate from active work until one is explicitly selected and given bounded acceptance
+criteria in `roadmap/active/`.
 
 ## Other docs
 

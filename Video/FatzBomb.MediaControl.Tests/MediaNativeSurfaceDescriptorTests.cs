@@ -94,4 +94,92 @@ public sealed class MediaNativeSurfaceDescriptorTests
         Assert.Throws<ArgumentException>(() => new MediaNativeSurfaceTypeId(" "));
         Assert.Throws<ArgumentException>(() => new MediaNativeHandleId(" "));
     }
+
+    [Fact]
+    public void ManagedFrameSinkHandle_CreatesResolvableBorrowedSurface()
+    {
+        var sink = new TestFrameSink();
+        using var handle = new MediaPresentationFrameSinkHandle(sink);
+
+        MediaNativeSurfaceDescriptor surface = handle.CreateSurfaceDescriptor();
+
+        Assert.True(surface.IsValid);
+        Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, surface.SurfaceTypeId);
+        Assert.True(surface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint value));
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(value, out IMediaPresentationFrameSink? resolved));
+        Assert.Same(sink, resolved);
+    }
+
+    [Fact]
+    public void ManagedFrameSinkHandle_AfterDispose_CannotCreateSurface()
+    {
+        var handle = new MediaPresentationFrameSinkHandle(new TestFrameSink());
+        handle.Dispose();
+
+        Assert.False(handle.IsAllocated);
+        Assert.Equal(0, handle.Value);
+        Assert.Throws<ObjectDisposedException>(handle.CreateSurfaceDescriptor);
+    }
+
+    [Fact]
+    public void ManagedFrameSinkHandle_StaleToken_DoesNotResolveAfterDispose()
+    {
+        var sink = new TestFrameSink();
+        var handle = new MediaPresentationFrameSinkHandle(sink);
+        nint token = handle.Value;
+        Assert.NotEqual(0, token);
+
+        handle.Dispose();
+
+        // After dispose, the stale token must not resolve.
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve(token, out var resolved));
+        Assert.Null(resolved);
+    }
+
+    [Fact]
+    public void ManagedFrameSinkHandle_RepeatedDispose_IsSafe()
+    {
+        var handle = new MediaPresentationFrameSinkHandle(new TestFrameSink());
+        handle.Dispose();
+
+        // Second dispose must not throw and must leave the handle idempotently disposed.
+        var ex = Record.Exception(handle.Dispose);
+        Assert.Null(ex);
+
+        Assert.False(handle.IsAllocated);
+        Assert.Equal(0, handle.Value);
+    }
+
+    [Fact]
+    public void ManagedFrameSinkHandle_LaterHandle_DoesNotMakeOldTokenResolve()
+    {
+        var sinkA = new TestFrameSink();
+        var handleA = new MediaPresentationFrameSinkHandle(sinkA);
+        nint tokenA = handleA.Value;
+        Assert.NotEqual(0, tokenA);
+
+        handleA.Dispose();
+
+        // Create a second handle for a different sink.
+        var sinkB = new TestFrameSink();
+        using var handleB = new MediaPresentationFrameSinkHandle(sinkB);
+        nint tokenB = handleB.Value;
+        Assert.NotEqual(0, tokenB);
+        Assert.NotEqual(tokenA, tokenB);
+
+        // The old token must not resolve — and must not resolve to sinkB.
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve(tokenA, out var resolvedA));
+        Assert.Null(resolvedA);
+
+        // The new token must resolve to sinkB, not sinkA.
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(tokenB, out var resolvedB));
+        Assert.Same(sinkB, resolvedB);
+    }
+
+    private sealed class TestFrameSink : IMediaPresentationFrameSink
+    {
+        public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
+        {
+        }
+    }
 }

@@ -1,0 +1,19 @@
+<Project>
+
+  <!--
+    x64 compatibility guard for the FatzBomb.MediaControl.Rendering.Direct3D11 package.
+
+    Imported transitively (buildTransitive), so any consumer that explicitly
+    targets a non-x64 RuntimeIdentifier fails the build with a clear MSBuild
+    error instead of producing an unsupported output. An unset or empty
+    RuntimeIdentifier (portable/framework-dependent build) is allowed.
+  -->
+  <Target Name="_FatzBombMediaControlRenderingDirect3D11X64RidGuard"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(RuntimeIdentifier)' != ''">
+    <Error
+      Condition="!$(RuntimeIdentifier.EndsWith('x64'))"
+      Text="FatzBomb.MediaControl.Rendering.Direct3D11 supports x64 only. The current RuntimeIdentifier '$(RuntimeIdentifier)' targets a non-x64 architecture; retarget with 'win-x64' or a '-x64' platform RID." />
+  </Target>
+
+</Project>

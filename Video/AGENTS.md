@@ -29,7 +29,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Direct3D 11 renderer backend — device, GPU composition, swap chains, subtitle rasterization, final presentation | References only public Core renderer contracts/models; no friend access |
 | `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, hardware-decode policy | References Core only; renderer selection belongs to the host composition root |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle | References Windows + Direct3D11 and exposes the current default platform factory |
-| `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop only — HWND lifecycle, `MediaSurface` control, `Player : MediaControlPlayer` | References Windows composition but must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
+| `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop — `MediaSurface`, `BackgroundSurface`, `KaraokeSurface`, and `Player : MediaControlPlayer` | Controls accept an `IMediaControlPlatformFactory`; project must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
 ## LangVersion & Runtime Features
@@ -115,7 +115,7 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 ## Verification
 
 1. `dotnet build` succeeds (no warnings in Release)
-2. `dotnet test` passes (235+ tests covering pure logic)
+2. `dotnet test` passes (348+ tests covering pure logic)
 3. Manual smoke test via Player (see `docs/VALIDATION.md` for checklist)
 4. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBomb.MediaControl.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
 
@@ -125,4 +125,4 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 - `docs/VALIDATION.md` — smoke test checklist
 - `docs/NATIVE_DEPENDENCIES.md` — host-owned BASS/FFmpeg versions, paths, licensing, and publish-smoke policy
 - `docs/PRIVATE_NATIVE_RUNNER.md` — dedicated self-hosted native smoke runner setup
-- `docs/ProjectAnalysisRoadmap [2026-06-30].md` — active staged roadmap and validation criteria
+- `docs/roadmap/STAGE_MANIFEST.md` — active staged roadmap and validation criteria

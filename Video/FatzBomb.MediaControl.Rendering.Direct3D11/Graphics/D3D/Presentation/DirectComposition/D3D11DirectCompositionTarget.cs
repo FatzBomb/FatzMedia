@@ -43,31 +43,62 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
             // Take ownership immediately so any failure path can cleanly release it.
             OverlaySwapChain = overlaySwapChain;
             _compositionDevice = DComp.DCompositionCreateDevice<IDCompositionDevice>(dxgiDevice);
-            _ = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
+
+            Result createTargetResult = _compositionDevice.CreateTargetForHwnd(hwnd, true, out _compositionTarget);
+            ThrowIfCompositionCallFailed(createTargetResult, "CreateTargetForHwnd");
+
             _rootVisual = _compositionDevice.CreateVisual();
             _baseVisual = _compositionDevice.CreateVisual();
             _overlayVisual = _compositionDevice.CreateVisual();
 
-            _ = _baseVisual.SetContent(baseSwapChain);
-            _ = _overlayVisual.SetContent(overlaySwapChain);
-            _ = _rootVisual.AddVisual(_baseVisual, false, null);
-            _ = _rootVisual.AddVisual(_overlayVisual, true, _baseVisual);
-            _ = _compositionTarget.SetRoot(_rootVisual);
+            ThrowIfCompositionCallFailed(_baseVisual.SetContent(baseSwapChain), "SetContent (base)");
+            ThrowIfCompositionCallFailed(_overlayVisual.SetContent(overlaySwapChain), "SetContent (overlay)");
+            ThrowIfCompositionCallFailed(_rootVisual.AddVisual(_baseVisual, false, null), "AddVisual (base)");
+            ThrowIfCompositionCallFailed(_rootVisual.AddVisual(_overlayVisual, true, _baseVisual), "AddVisual (overlay)");
+            ThrowIfCompositionCallFailed(_compositionTarget.SetRoot(_rootVisual), "SetRoot");
 
             OverlayTexture = overlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
             _outputWidth = Math.Max(1, contentWidth);
             _outputHeight = Math.Max(1, contentHeight);
-            ApplyTransforms(contentWidth, contentHeight);
-            CommitCore("Create");
+            if (!ApplyTransforms(contentWidth, contentHeight) || !CommitCore("Create"))
+            {
+                Dispose();
+                return false;
+            }
+
             return true;
+        }
+        catch (DirectCompositionDeviceLostException ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", ex.Message, innerException: ex);
+            Dispose();
+            return false;
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11", $"DirectComposition target creation failed: {ex.Message}", innerException: ex);
+            Result removedReason = GetDeviceRemovedReason(baseSwapChain);
+            string category = D3D11DeviceLostClassifier.IsDeviceLost(removedReason)
+                ? "D3D11.DeviceLost"
+                : "D3D11";
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, category, $"DirectComposition target creation failed: {ex.Message}", innerException: ex);
             Dispose();
             return false;
         }
     }
+
+    private static void ThrowIfCompositionCallFailed(Result result, string operation)
+    {
+        if (result.Success)
+            return;
+
+        string message = $"DirectComposition {operation} failed with {result}";
+        if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            throw new DirectCompositionDeviceLostException(message);
+
+        throw new InvalidOperationException(message);
+    }
+
+    private sealed class DirectCompositionDeviceLostException(string message) : Exception(message);
 
     public void SetContentSize(int contentWidth, int contentHeight)
     {
@@ -78,8 +109,8 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
 
         _outputWidth = Math.Max(1, contentWidth);
         _outputHeight = Math.Max(1, contentHeight);
-        ApplyTransforms(contentWidth, contentHeight);
-        CommitCore("SetContentSize");
+        if (ApplyTransforms(contentWidth, contentHeight))
+            _ = CommitCore("SetContentSize");
     }
 
     public void ReleaseOverlayBackBuffer()
@@ -99,13 +130,13 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         OverlayTexture = OverlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
-    public void Commit() => CommitCore("Commit");
+    public bool Commit() => CommitCore("Commit");
 
-    private void CommitCore(string caller)
+    private bool CommitCore(string caller)
     {
         if (_compositionDevice == null)
         {
-            return;
+            return false;
         }
 
         Result result = _compositionDevice.Commit();
@@ -126,17 +157,18 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
                 Debug.WriteLine($"[VorticeD3D11] DirectComposition {caller} Commit failed: {result}");
             }
 
-            return;
+            return false;
         }
 
         _deviceLostReported = false;
+        return true;
     }
 
-    private void ApplyTransforms(int contentWidth, int contentHeight)
+    private bool ApplyTransforms(int contentWidth, int contentHeight)
     {
         if (!IsActive || _rootVisual == null || contentWidth <= 0 || contentHeight <= 0)
         {
-            return;
+            return false;
         }
 
         var outputWidth = _outputWidth > 0 ? _outputWidth : contentWidth;
@@ -145,9 +177,37 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
         var scaleY = (float)outputHeight / contentHeight;
         var matrix = System.Numerics.Matrix3x2.CreateScale(scaleX, scaleY);
         Result result = _rootVisual.SetTransform(matrix);
-        if (result.Failure && configuration.EnableLogging)
+        if (result.Failure)
         {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");
+            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            {
+                if (!_deviceLostReported)
+                {
+                    _deviceLostReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition root transform update detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
+                }
+            }
+            else if (configuration.EnableLogging)
+            {
+                Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static Result GetDeviceRemovedReason(IDXGISwapChain swapChain)
+    {
+        try
+        {
+            using ID3D11Device? device = swapChain.GetDevice<ID3D11Device>();
+            return device?.DeviceRemovedReason ?? default;
+        }
+        catch
+        {
+            return default;
         }
     }
 

@@ -34,7 +34,7 @@ sources, licensing cautions, package layout, and the update process.
 
 ## Active Docs
 
-- `docs/ProjectAnalysisRoadmap [2026-06-30].md`
+- `docs/roadmap/STAGE_MANIFEST.md`
 - `docs/CURRENT_ARCHITECTURE.md`
 - `docs/VALIDATION.md`
 - `docs/NATIVE_DEPENDENCIES.md`

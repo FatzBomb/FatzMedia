@@ -34,7 +34,7 @@ internal sealed class D3D11FramePresenter(
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode presentationStretch,
-        Action<int, int> notifyPresented)
+        Func<int, int, bool> notifyPresented)
     {
         if (deviceResources.Context == null
             || !deviceResources.HasVideoProcessorSupport
@@ -70,8 +70,10 @@ internal sealed class D3D11FramePresenter(
                 return false;
             }
 
+            if (!notifyPresented(width, height))
+                return false;
+
             RecordUpload(presentStart, width, height, presentationWidth, presentationHeight);
-            notifyPresented(width, height);
             return true;
         }
         catch (Exception ex)

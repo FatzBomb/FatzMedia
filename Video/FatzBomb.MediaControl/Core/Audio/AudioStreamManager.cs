@@ -227,6 +227,7 @@ internal sealed class AudioStreamManager : IDisposable
     /// </summary>
     public void ResetPosition()
     {
+        _trackerPositionTimeline.Reset();
         ResetPosition(PlayHandle);
         if (DecodeHandle != 0 && DecodeHandle != PlayHandle)
         {
@@ -249,7 +250,7 @@ internal sealed class AudioStreamManager : IDisposable
 
         if (_sourceHandleIsMusic && TryGetTrackerOrderRow(out int order, out int row))
         {
-            seconds = _trackerPositionTimeline.Resolve(order, row, seconds, _loopPlayback);
+            seconds = _trackerPositionTimeline.Resolve(order, row, seconds);
         }
 
         return double.IsFinite(seconds) ? Math.Max(0.0, seconds) : 0.0;

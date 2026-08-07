@@ -6,14 +6,32 @@
 - `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
-- `FatzBomb.MediaControl.Wpf`: strict WPF adapter for control/HWND lifecycle interop; receives a renderer factory from its host.
+- `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
-Future adapters should be separate projects using the same package pattern:
+Planned UI adapters remain separate projects using the same package pattern:
 
 - `FatzBomb.MediaControl.WinUI`
 - `FatzBomb.MediaControl.Avalonia`
 - `FatzBomb.MediaControl.WinForms`
+
+Planned renderer backends are independently selectable packages:
+
+- `FatzBomb.MediaControl.Rendering.Software`
+- `FatzBomb.MediaControl.Rendering.Vulkan`
+- `FatzBomb.MediaControl.Rendering.OpenGL`
+- `FatzBomb.MediaControl.Rendering.Metal`
+
+Planned non-Windows platform services remain separate from renderers and UI adapters:
+
+- `FatzBomb.MediaControl.Linux`
+- `FatzBomb.MediaControl.MacOS`
+
+These are roadmap directions, not implemented projects. See
+`roadmap/future/024A_IDEA_SoftwareRenderer.md`,
+`roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
+`roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
+`roadmap/future/027A_IDEA_UiAdapterImplementations.md`.
 
 ## Platform Composition
 
@@ -49,13 +67,40 @@ Adapters own only framework interop: control lifecycle, native surface creation,
 
 Adapters must not own renderer selection, layer roles, frame processing, Cdg invalidation, background/video presentation, compositor timing, swap-chain policy, or final present logic.
 
+### WPF Presentation Modes
+
+`WpfPresentationMode.NativeHwndOverlay` remains the default and fastest path. It uses the
+existing child HWND plus transparent overlay-window strategy. `WpfComposited` is an
+explicit WPF-only alternative: Direct3D11 renders the same final Core composition into
+an offscreen target, reads BGRA pixels back through `IMediaPresentationFrameSink`, and
+the WPF adapter copies the completed frame into a `WriteableBitmap`. This avoids HWND
+airspace limitations but introduces synchronous GPU-readback cost.
+
+The mode is selected before media is loaded and applies to the whole player session.
+Other UI adapters should use their best framework-native presentation path and only add
+an equivalent choice when their framework has a comparable limitation.
+
+`BackgroundSurface` and `KaraokeSurface` live in the renderer-neutral WPF project and own
+their sessions after the host supplies an `IMediaControlPlatformFactory`, matching the
+existing WPF `Player` construction contract. The former is restricted to
+color/image/silent looping video backgrounds; the latter is restricted to CDG and
+MIDI/KAR on an opaque 4:3 canvas.
+
+Managed frame sinks are registered through opaque, non-reused tokens rather than raw
+managed object handles. A token remains resolvable until its owner detaches the surface
+and disposes the token handle. Managed readback failures participate in the same
+`D3D11.DeviceLost` recovery path as swap-chain failures. Primary backend recreation keeps
+secondary HWND resources alive; they are suspended while the no-mixed-target managed
+mode is active and resume when a native primary returns.
+
 ## Runtime Flow
 
 1. Host places a framework control, such as WPF `MediaSurface`.
 2. Adapter creates or discovers a framework/native presentation surface.
 3. Adapter passes a neutral `MediaPresentationSurfaceDescriptor` to Core.
 4. Core's `MediaPresentationCoordinator` owns surface lifecycle, frame routing, pacing, retained-layer intent, and recovery policy.
-5. The selected renderer backend executes Core's composition plan for Layer 0 background/base, Layer 1 wash, and Layer 2 Cdg overlay.
+5. The selected renderer backend executes Core's composition plan in background/base,
+   wash, CDG, and subtitle draw order.
 6. The renderer presents that frame to all active targets.
 
 ## Native Presentation Surfaces

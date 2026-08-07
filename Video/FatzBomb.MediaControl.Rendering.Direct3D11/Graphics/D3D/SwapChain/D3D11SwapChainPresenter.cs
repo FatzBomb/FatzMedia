@@ -13,7 +13,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
 /// </summary>
 internal static class D3D11SwapChainPresenter
 {
-    public static void Present(
+    public static bool Present(
         IDXGISwapChain? swapChain,
         NativeSwapChainPresentMode presentMode,
         int liveResizeFlag,
@@ -23,7 +23,7 @@ internal static class D3D11SwapChainPresenter
     {
         if (swapChain == null)
         {
-            return;
+            return false;
         }
 
         try
@@ -52,15 +52,17 @@ internal static class D3D11SwapChainPresenter
                 {
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {result}");
                 }
+
+                return false;
             }
-            else if (deviceLostReported)
-            {
-                deviceLostReported = false;
-            }
+
+            deviceLostReported = false;
+            return true;
         }
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {ex.Message}", innerException: ex);
+            return false;
         }
     }
 

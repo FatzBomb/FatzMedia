@@ -21,7 +21,7 @@
     <Company>FatzBomb Entertainment</Company>
     <Copyright>Copyright (c) FatzBomb Entertainment. All rights reserved.</Copyright>
     <RepositoryUrl>https://github.com/FatzBomb75/FatzBombMedia</RepositoryUrl>
-    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
   <!-- Release builds must be warning-clean; warnings fail the build. -->

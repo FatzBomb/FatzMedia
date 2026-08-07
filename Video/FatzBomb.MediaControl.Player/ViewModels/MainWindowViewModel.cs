@@ -49,6 +49,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (!SetProperty(ref field, value)) return;
             RefreshCommandStates();
+            OnPropertyChanged(nameof(CanChangePresentationMode));
         }
     }
 
@@ -63,6 +64,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         VideoDisplayMode.Zoom,
         VideoDisplayMode.Stretch,
         VideoDisplayMode.ZoomToFill
+    ];
+
+    public IReadOnlyList<WpfPresentationMode> PresentationModes { get; } =
+    [
+        WpfPresentationMode.NativeHwndOverlay,
+        WpfPresentationMode.WpfComposited
     ];
 
     public AsyncRelayCommand<string?> LoadMediaCommand { get; }
@@ -84,6 +91,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (!SetProperty(ref field, value)) return;
             RefreshCommandStates();
+            OnPropertyChanged(nameof(CanChangePresentationMode));
         }
     }
 
@@ -92,6 +100,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool CanSeek => Player is not null && DurationSeconds > 0;
 
     public bool CanUseSync => Player?.IsOpen == true;
+
+    public bool CanChangePresentationMode => !IsBusy && Player?.IsOpen != true;
 
     [ObservableProperty]
     public partial string AudioVideoSyncText { get; private set; } = "+0.0s";
@@ -217,7 +227,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     } = 100;
 
-    public static MediaPresentationMode PresentationMode => MediaPresentationMode.NativeHwndOverlay;
+    public WpfPresentationMode PresentationMode
+    {
+        get;
+        set
+        {
+            if (Player?.IsOpen == true)
+                throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
+
+            _ = SetProperty(ref field, value);
+        }
+    } = WpfPresentationMode.NativeHwndOverlay;
 
     public double PositionSeconds
     {

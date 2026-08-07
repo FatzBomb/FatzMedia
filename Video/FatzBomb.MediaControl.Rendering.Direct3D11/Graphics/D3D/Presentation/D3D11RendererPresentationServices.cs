@@ -6,6 +6,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Managed;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
@@ -66,8 +67,13 @@ internal sealed class D3D11RendererPresentationServices
             options.NativeSwapChainPresentMode,
             Diagnostics,
             () => VideoProcessorPresenter.Reset());
+        var managedFrameSinkBackend = new D3D11ManagedFrameSinkBackend();
 
-        Backends = new D3D11PresentationBackendSet(nativeHwndBackend, directCompositionBackend, CreateNativeHwndBackend);
+        Backends = new D3D11PresentationBackendSet(
+            nativeHwndBackend,
+            directCompositionBackend,
+            managedFrameSinkBackend,
+            CreateNativeHwndBackend);
         Surfaces = new D3D11PresentationSurfaceController(Backends, deviceResources);
         UploadResources = new D3D11FrameUploadResources(Diagnostics);
         ResourceCleaner = new D3D11PresentationResourceCleaner(
@@ -90,6 +96,8 @@ internal sealed class D3D11RendererPresentationServices
     public bool IsNativeHwndActive => Surfaces.IsNativeHwndActive;
 
     public bool IsDirectCompositionActive => Surfaces.IsDirectCompositionActive;
+
+    public bool IsManagedFrameSinkActive => Surfaces.IsManagedFrameSinkActive;
 
     public string PresentationBackend => Surfaces.PresentationBackend;
 
@@ -134,7 +142,7 @@ internal sealed class D3D11RendererPresentationServices
             hwnd,
             width,
             height,
-            ResourceCleaner.CleanupSurfaces,
+            ResourceCleaner.CleanupPrimarySurfaces,
             _configuration.EnableLogging,
             notifyPresented);
 
@@ -149,13 +157,34 @@ internal sealed class D3D11RendererPresentationServices
 
     public bool RemoveSecondaryPresentationTarget(string targetId) => Surfaces.RemoveSecondaryPresentationTarget(targetId);
 
+    public bool CreateManagedFrameSinkSurface(
+        bool isDisposed,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height,
+        Action<int, int, bool> notifyPresented) => Surfaces.CreateManagedFrameSinkSurface(
+            isDisposed,
+            _deviceResources,
+            sink,
+            width,
+            height,
+            ResourceCleaner.CleanupPrimarySurfaces,
+            _configuration.EnableLogging,
+            notifyPresented);
+
+    /// <summary>
+    /// Disposes only the primary presentation surface/backends, retaining secondary native HWND
+    /// targets so they survive a primary detach and resume when a native primary returns.
+    /// </summary>
+    public void CleanupPrimarySurfaces() => ResourceCleaner.CleanupPrimarySurfaces();
+
     public bool CreateDirectCompositionSurface(bool isDisposed, IntPtr hwnd, int width, int height, Action<int, int, bool> notifyPresented) => Surfaces.CreateDirectCompositionSurface(
             isDisposed,
             _deviceResources,
             hwnd,
             width,
             height,
-            ResourceCleaner.CleanupSurfaces,
+            ResourceCleaner.CleanupPrimarySurfaces,
             _configuration.EnableLogging,
             notifyPresented);
 
@@ -176,7 +205,7 @@ internal sealed class D3D11RendererPresentationServices
         int width,
         int height,
         double framesPerSecond,
-        Action<int, int> notifyPresented) => FramePresenter.PresentHardwareFrame(
+        Func<int, int, bool> notifyPresented) => FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
             sourceTexturePointer,
@@ -186,7 +215,7 @@ internal sealed class D3D11RendererPresentationServices
             framesPerSecond,
             notifyPresented);
 
-    public void NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
+    public bool NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
             IsNativeLiveResizeInProgress,
             syncImmediate,
             () => isDisposed,
@@ -288,14 +317,12 @@ internal sealed class D3D11RendererPresentationServices
             return false;
         }
 
-        Surfaces.NotifyTargetsPresented(
+        return Surfaces.NotifyTargetsPresented(
             presentedTargets,
             State.IsNativeLiveResizeInProgress,
             syncImmediate: true,
             () => isDisposed,
             target => framePresented(target.Width, target.Height));
-
-        return true;
     }
 
     private bool PresentMediaCompositionWithDirectCompositionOverlaySplit(

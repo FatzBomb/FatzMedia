@@ -176,18 +176,18 @@ public class MediaControlPlayer : IMediaControlSession
 
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    public bool Load(string path) => File.Load(path);
+    public bool Load(string path) => _controlOperations.Execute(() => File.Load(path));
 
-    public bool Load(string path, bool ignoreSidecar = false) => File.Load(path, ignoreSidecar);
+    public bool Load(string path, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, ignoreSidecar));
 
-    public bool Load(MediaInputSource source, bool ignoreSidecar = false) => File.Load(source, ignoreSidecar);
+    public bool Load(MediaInputSource source, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(source, ignoreSidecar));
 
-    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => File.Load(path, backgroundPath, ignoreSidecar);
+    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, backgroundPath, ignoreSidecar));
 
-    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => File.Load(path, backgroundPaths, ignoreSidecar);
+    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, backgroundPaths, ignoreSidecar));
 
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        File.Load(source, backgroundSource, ignoreSidecar);
+        _controlOperations.Execute(() => File.Load(source, backgroundSource, ignoreSidecar));
 
     public Task<bool> LoadAsync(string path) => _controlOperations.Enqueue(() => File.LoadAsync(path));
 
@@ -206,15 +206,15 @@ public class MediaControlPlayer : IMediaControlSession
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
         _controlOperations.Enqueue(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));
 
-    public bool Play() => Controls.Play();
+    public bool Play() => _controlOperations.Execute(Controls.Play);
 
     public Task<bool> PlayAsync() => _controlOperations.Enqueue(Controls.Play);
 
-    public bool Pause() => Controls.Pause();
+    public bool Pause() => _controlOperations.Execute(Controls.Pause);
 
     public Task<bool> PauseAsync() => _controlOperations.Enqueue(Controls.Pause);
 
-    public bool Stop() => Controls.Stop();
+    public bool Stop() => _controlOperations.Execute(Controls.Stop);
 
     public Task<bool> StopAsync() => _controlOperations.Enqueue(Controls.Stop);
 
@@ -224,11 +224,14 @@ public class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            var success = Controls.Seek(seconds);
-            if (success)
-                _presentationCoordinator.RefreshCurrentPosition();
+            return _controlOperations.Execute(() =>
+            {
+                var success = Controls.Seek(seconds);
+                if (success)
+                    _presentationCoordinator.RefreshCurrentPosition();
 
-            return success;
+                return success;
+            });
         }
         catch (Exception ex)
         {

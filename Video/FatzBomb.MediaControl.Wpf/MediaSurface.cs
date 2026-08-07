@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -13,6 +14,9 @@ public sealed class MediaSurface : Grid
     private const int WM_EXITSIZEMOVE = 0x0232;
 
     private readonly NativeHwndSurfaceHost _surfaceHost;
+    private readonly ContentPresenter _overlayPresenter;
+    private readonly bool _isDesignMode;
+    private WpfCompositedSurfaceHost? _compositedHost;
     private IMediaControlSession? _attachedPrimarySession;
     private IMediaControlSession? _eventSession;
     private Window? _ownerWindow;
@@ -22,14 +26,38 @@ public sealed class MediaSurface : Grid
     private bool _primarySurfaceLiveResize;
     private volatile bool _showPrimarySurfaceAfterPresentation;
     private SecondaryPresentationWindow? _secondaryWindow;
-    private OverlayWindow? _overlayWindow;
+    private MediaOverlayWindow? _overlayWindow;
+    private bool _restoringPresentationMode;
 
     public MediaSurface()
     {
         Background = Brushes.Black;
         ClipToBounds = true;
+        _isDesignMode = DesignerProperties.GetIsInDesignMode(this);
         _surfaceHost = new NativeHwndSurfaceHost();
+        _overlayPresenter = new ContentPresenter
+        {
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false
+        };
+        if (_isDesignMode)
+        {
+            _ = Children.Add(new Border
+            {
+                Background = Brushes.Black,
+                Child = new TextBlock
+                {
+                    Text = nameof(MediaSurface),
+                    Foreground = Brushes.Gray,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            });
+            return;
+        }
+
         _ = Children.Add(_surfaceHost);
+        _ = Children.Add(_overlayPresenter);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -64,13 +92,13 @@ public sealed class MediaSurface : Grid
 
     public static readonly DependencyProperty PresentationModeProperty = DependencyProperty.Register(
         nameof(PresentationMode),
-        typeof(MediaPresentationMode),
+        typeof(WpfPresentationMode),
         typeof(MediaSurface),
-        new PropertyMetadata(MediaPresentationMode.NativeHwndOverlay, OnPresentationModeChanged));
+        new PropertyMetadata(WpfPresentationMode.NativeHwndOverlay, OnPresentationModeChanged));
 
-    public MediaPresentationMode PresentationMode
+    public WpfPresentationMode PresentationMode
     {
-        get => (MediaPresentationMode)GetValue(PresentationModeProperty);
+        get => (WpfPresentationMode)GetValue(PresentationModeProperty);
         set => SetValue(PresentationModeProperty, value);
     }
 
@@ -154,6 +182,9 @@ public sealed class MediaSurface : Grid
     private static void OnPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
+        if (surface._isDesignMode)
+            return;
+
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
         if (e.NewValue is IMediaControlSession session)
@@ -176,6 +207,29 @@ public sealed class MediaSurface : Grid
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
+        if (surface._isDesignMode)
+            return;
+
+        if (surface._restoringPresentationMode)
+            return;
+
+        if (surface.Player is { IsOpen: true })
+        {
+            surface._restoringPresentationMode = true;
+            try
+            {
+                surface.SetCurrentValue(PresentationModeProperty, e.OldValue);
+            }
+            finally
+            {
+                surface._restoringPresentationMode = false;
+            }
+
+            throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
+        }
+
+        surface.DetachPrimarySurface(surface._attachedPrimarySession);
+        surface.ConfigurePresentationHost();
         surface.UpdateOverlayWindow();
         surface.AttachOrResizePrimarySurface();
     }
@@ -183,18 +237,21 @@ public sealed class MediaSurface : Grid
     private static void OnOverlayContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
+        surface._overlayPresenter.Content = e.NewValue;
         surface.UpdateOverlayWindow();
     }
 
     private static void OnOverlayHitTestVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
+        surface._overlayPresenter.IsHitTestVisible = e.NewValue is true;
         surface.UpdateOverlayWindow();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         AttachOwnerWindowHook();
+        ConfigurePresentationHost();
         AttachSessionEvents(Player);
         AttachOrResizePrimarySurface();
         UpdateNativeSurfaceVisibility();
@@ -207,6 +264,7 @@ public sealed class MediaSurface : Grid
         DetachSessionEvents(Player);
         DetachPrimarySurface(_attachedPrimarySession);
         CloseOverlayWindow();
+        DisposeCompositedHost();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
@@ -226,11 +284,29 @@ public sealed class MediaSurface : Grid
     private void AttachOrResizePrimarySurface()
     {
         IMediaControlSession? session = Player;
-        if (!IsLoaded || session == null || _surfaceHost.WindowHandle == IntPtr.Zero)
+        if (!IsLoaded || session == null)
             return;
 
-        var pixelWidth = Math.Max(1, _surfaceHost.NativeClientWidth);
-        var pixelHeight = Math.Max(1, _surfaceHost.NativeClientHeight);
+        MediaNativeSurfaceDescriptor nativeSurface;
+        int pixelWidth;
+        int pixelHeight;
+        if (PresentationMode == WpfPresentationMode.WpfComposited)
+        {
+            WpfCompositedSurfaceHost host = EnsureCompositedHost();
+            pixelWidth = Math.Max(1, (int)Math.Round(ActualWidth * VisualTreeHelper.GetDpi(this).DpiScaleX));
+            pixelHeight = Math.Max(1, (int)Math.Round(ActualHeight * VisualTreeHelper.GetDpi(this).DpiScaleY));
+            nativeSurface = host.CreateSurfaceDescriptor();
+        }
+        else
+        {
+            if (_surfaceHost.WindowHandle == IntPtr.Zero)
+                return;
+
+            pixelWidth = Math.Max(1, _surfaceHost.NativeClientWidth);
+            pixelHeight = Math.Max(1, _surfaceHost.NativeClientHeight);
+            nativeSurface = MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost.WindowHandle);
+        }
+
         DpiScale dpi = VisualTreeHelper.GetDpi(this);
 
         if (_primaryAttached && ReferenceEquals(session, _attachedPrimarySession))
@@ -244,7 +320,7 @@ public sealed class MediaSurface : Grid
         _primaryAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
             MediaPresentationSurfaceRole.Primary,
-            MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost.WindowHandle),
+            nativeSurface,
             pixelWidth,
             pixelHeight,
             dpi.DpiScaleX,
@@ -338,16 +414,30 @@ public sealed class MediaSurface : Grid
 
         if (shouldShow)
         {
-            if (_surfaceHost.Visibility != Visibility.Visible)
-                _surfaceHost.Visibility = Visibility.Visible;
+            if (PresentationMode == WpfPresentationMode.WpfComposited)
+            {
+                if (_compositedHost != null)
+                    _compositedHost.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                if (_surfaceHost.Visibility != Visibility.Visible)
+                    _surfaceHost.Visibility = Visibility.Visible;
 
-            _surfaceHost.SetNativeVisible(true);
+                _surfaceHost.SetNativeVisible(true);
+            }
             return;
         }
 
-        _surfaceHost.SetNativeVisible(false);
-        if (_surfaceHost.Visibility != Visibility.Hidden)
-            _surfaceHost.Visibility = Visibility.Hidden;
+        if (PresentationMode == WpfPresentationMode.NativeHwndOverlay)
+        {
+            _surfaceHost.SetNativeVisible(false);
+            if (_surfaceHost.Visibility != Visibility.Hidden)
+                _surfaceHost.Visibility = Visibility.Hidden;
+        }
+
+        if (_compositedHost != null)
+            _compositedHost.Visibility = Visibility.Hidden;
     }
 
     // A standalone visual without an audio stream (image, or video/CDG with no audio) is presented to
@@ -467,7 +557,7 @@ public sealed class MediaSurface : Grid
 
     private void UpdateOverlayWindow()
     {
-        if (!IsLoaded || OverlayContent == null || PresentationMode != MediaPresentationMode.NativeHwndOverlay)
+        if (!IsLoaded || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
         {
             CloseOverlayWindow();
             return;
@@ -482,9 +572,50 @@ public sealed class MediaSurface : Grid
             _overlayWindow.Show();
     }
 
-    private OverlayWindow CreateOverlayWindow()
+    private void ConfigurePresentationHost()
     {
-        var window = new OverlayWindow
+        if (PresentationMode == WpfPresentationMode.WpfComposited)
+        {
+            _surfaceHost.SetNativeVisible(false);
+            Children.Remove(_surfaceHost);
+            WpfCompositedSurfaceHost host = EnsureCompositedHost();
+            if (!Children.Contains(host))
+                Children.Insert(0, host);
+
+            _overlayPresenter.Content = OverlayContent;
+            _overlayPresenter.IsHitTestVisible = OverlayHitTestVisible;
+            _overlayPresenter.Visibility = OverlayContent == null ? Visibility.Collapsed : Visibility.Visible;
+            CloseOverlayWindow();
+            return;
+        }
+
+        DisposeCompositedHost();
+        if (!Children.Contains(_surfaceHost))
+            Children.Insert(0, _surfaceHost);
+
+        _overlayPresenter.Visibility = Visibility.Collapsed;
+        _overlayPresenter.Content = null;
+    }
+
+    private WpfCompositedSurfaceHost EnsureCompositedHost()
+    {
+        _compositedHost ??= new WpfCompositedSurfaceHost();
+        return _compositedHost;
+    }
+
+    private void DisposeCompositedHost()
+    {
+        if (_compositedHost == null)
+            return;
+
+        Children.Remove(_compositedHost);
+        _compositedHost.Dispose();
+        _compositedHost = null;
+    }
+
+    private MediaOverlayWindow CreateOverlayWindow()
+    {
+        var window = new MediaOverlayWindow
         {
             Owner = Window.GetWindow(this)
         };
@@ -498,75 +629,8 @@ public sealed class MediaSurface : Grid
             return;
 
         _overlayWindow.SetContent(null);
-        OverlayWindow window = _overlayWindow;
+        MediaOverlayWindow window = _overlayWindow;
         _overlayWindow = null;
         window.Close();
     }
-
-    private sealed class OverlayWindow : Window
-    {
-        private readonly ContentPresenter _contentPresenter = new();
-        private bool _hitTestVisible;
-
-        public OverlayWindow()
-        {
-            WindowStyle = WindowStyle.None;
-            ResizeMode = ResizeMode.NoResize;
-            ShowInTaskbar = false;
-            AllowsTransparency = true;
-            Background = Brushes.Transparent;
-            Content = _contentPresenter;
-            IsHitTestVisible = false;
-            Focusable = false;
-        }
-
-        public void SetContent(object? content) => _contentPresenter.Content = content;
-
-        public void SetHitTestVisible(bool value)
-        {
-            _hitTestVisible = value;
-            IsHitTestVisible = value;
-            Focusable = value;
-            ApplyHitTestStyle();
-        }
-
-        public void UpdateBounds(FrameworkElement owner)
-        {
-            if (!owner.IsLoaded || owner.ActualWidth <= 0 || owner.ActualHeight <= 0)
-                return;
-
-            Point topLeft = owner.PointToScreen(new Point(0, 0));
-            var source = PresentationSource.FromVisual(owner);
-            if (source?.CompositionTarget != null)
-                topLeft = source.CompositionTarget.TransformFromDevice.Transform(topLeft);
-
-            Left = topLeft.X;
-            Top = topLeft.Y;
-            Width = owner.ActualWidth;
-            Height = owner.ActualHeight;
-            ApplyHitTestStyle();
-        }
-
-        protected override void OnSourceInitialized(EventArgs e)
-        {
-            base.OnSourceInitialized(e);
-            ApplyHitTestStyle();
-        }
-
-        private void ApplyHitTestStyle()
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero)
-                return;
-
-            var exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            var updated = _hitTestVisible
-                ? exStyle & ~NativeMethods.WS_EX_TRANSPARENT
-                : exStyle | NativeMethods.WS_EX_TRANSPARENT;
-
-            if (updated != exStyle)
-                _ = NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, updated);
-        }
-    }
-
 }

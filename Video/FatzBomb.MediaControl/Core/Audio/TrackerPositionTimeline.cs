@@ -13,21 +13,12 @@ internal sealed class TrackerPositionTimeline
     private int _lastRow = -1;
     private bool _loopDetected;
 
-    public double Resolve(int order, int row, double bytePositionSeconds, bool looping)
+    public double Resolve(int order, int row, double bytePositionSeconds)
     {
         lock (_sync)
         {
             if (_lastOrder >= 0 && IsBefore(order, row, _lastOrder, _lastRow))
-            {
-                if (looping)
-                {
-                    _loopDetected = true;
-                }
-                else
-                {
-                    ResetCore();
-                }
-            }
+                _loopDetected = true;
 
             _lastOrder = order;
             _lastRow = row;

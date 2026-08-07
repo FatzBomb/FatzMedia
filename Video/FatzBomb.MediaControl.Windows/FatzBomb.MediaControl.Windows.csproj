@@ -35,6 +35,7 @@
     <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
     <None Include="runtimes\win-x64\native\README.md" Pack="true" PackagePath="runtimes/win-x64/native/" />
     <None Include="runtimes\win-x64\native\native-assets.manifest.json" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="buildTransitive\FatzBomb.MediaControl.Windows.targets" Pack="true" PackagePath="buildTransitive" />
   </ItemGroup>
 
 </Project>

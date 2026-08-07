@@ -26,7 +26,7 @@ internal sealed class D3D11PresentationFramePresenter(
         int width,
         int height,
         double framesPerSecond,
-        Action<int, int> notifyPresented) =>
+        Func<int, int, bool> notifyPresented) =>
         !isDisposed
             && deviceResources.Context != null
             && deviceResources.HasVideoProcessorSupport

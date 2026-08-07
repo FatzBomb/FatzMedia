@@ -20,6 +20,11 @@ On 2026-08-03, Stage 025B validation passed with 328 automated tests and success
 manual smoke coverage for stop-to-play restoration, image/video sidecar policy, and
 tracker-format seeking and looping across the affected playback states.
 
+On 2026-08-06, the Stage 028A reliability follow-up passed 348 automated tests, Release
+build, formatting, architecture gates, package creation, and package-installed native
+loading for caller-supplied and predefined paths. Visual verification of both WPF
+presentation modes and forced managed-sink device loss remains manual.
+
 ---
 
 ## 1. Build And Boundary
@@ -30,6 +35,7 @@ Run from the repository root.
 dotnet restore FatzBomb.MediaControl.sln
 dotnet build FatzBomb.MediaControl.sln --no-restore
 dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
+.\scripts\check-core-boundary.ps1
 .\scripts\check-wpf-boundary.ps1
 .\scripts\check-presentation-parity.ps1
 ```
@@ -38,11 +44,17 @@ Expected:
 
 - Debug build passes.
 - Release build passes.
+- Core boundary check passes.
 - WPF boundary check passes.
 - Presentation parity check passes.
 - No WPF adapter references to renderer/pipeline/internal CDG/D3D11 presentation code.
 - Core does not reference WPF UI/bitmap types.
 - Core configuration contains no concrete renderer selection or DXGI present-mode types.
+
+The normal Windows CI gate `.github/workflows/ci.yml` runs on `push` and `pull_request`.
+It installs the .NET 10 SDK, restores, Release-builds, runs tests, runs all three
+boundary scripts, and runs `dotnet format --verify-no-changes --no-restore`. The native
+smoke workflow stays private and manual; see the note below.
 
 For native distribution changes, run the package-install/publish smoke test on
 Windows x64 with a host-owned native directory:
@@ -53,12 +65,19 @@ Windows x64 with a host-owned native directory:
 ```
 
 The default is a self-contained `win-x64` publish. The script packs the four managed
-packages into an isolated local feed, installs the integration package into a generated
+packages (Core, Windows, Rendering.Direct3D11, and the Windows.Direct3D11 bundle) into
+an isolated local feed, installs the integration package into a generated
 host, verifies managed assembly resolution, first starts with the caller-supplied
 directory, then stages the supplied DLLs under `runtimes/win-x64/native` and starts
 again without explicit paths. Use
 `-FrameworkDependent` only when intentionally testing a machine with the .NET 10
 Windows Desktop runtime installed. Artifacts are written beneath `artifacts/native-smoke/`.
+
+`FatzBomb.MediaControl.Wpf` is also packable (five packable packages in total) but is
+not part of the native smoke pack set. The leaf x64 packages
+`FatzBomb.MediaControl.Windows` and `FatzBomb.MediaControl.Rendering.Direct3D11` ship
+`buildTransitive` guards in their nupkgs, so a consumer that explicitly targets a
+non-x64 `RuntimeIdentifier` fails the build with an MSBuild error.
 
 The private-runner CI entry point is `.github/workflows/windows-native-smoke.yml`.
 It is intentionally manual `workflow_dispatch` only and requires a private
@@ -172,6 +191,15 @@ Logs:
 43. An image main ignores matching sidecars but accepts an explicitly supplied background.
 44. A video main does not load a matching video sidecar or explicit background.
 45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.
+46. Regular `MediaSurface` renders video, CDG, and MIDI/KAR in `NativeHwndOverlay` and `WpfComposited` modes.
+47. `WpfComposited` obeys normal WPF clipping, transforms, opacity, z-order, and interactive overlay input.
+48. `BackgroundSurface` renders color, image, and muted looping video backgrounds in both modes.
+49. `BackgroundSurface` overlay content remains above the background in both modes.
+50. `KaraokeSurface` renders CDG and MIDI/KAR on an opaque 4:3 canvas in both modes.
+51. `KaraokeSurface` rejects video and non-karaoke audio without starting playback.
+52. Changing WPF presentation mode before load succeeds; changing it while media is open is rejected.
+53. Video playback resumes from the settled seek visual without skipping ahead or replaying earlier frames.
+54. An authored MOD/S3M/XM/IT pattern loopback moves the seekbar back to its first-pass loop position even when whole-file looping is disabled.
 
 ---
 

@@ -35,6 +35,7 @@ function Assert-Match {
 }
 
 $mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
+$compositedSurface = Read-Text 'FatzBomb.MediaControl.Wpf/WpfCompositedSurfaceHost.cs'
 $secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
 $sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
 $coordinator = Read-Text 'FatzBomb.MediaControl/Controllers/MediaPresentationCoordinator.cs'
@@ -50,9 +51,12 @@ Assert-Match $sessionContract 'bool\s+DetachPresentationSurface\s*\(\s*string\s+
 
 Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaSurface must keep a stable default secondary surface id.'
 Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*Player,\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
-Assert-Match $mediaSurface 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId\s*,\s*MediaPresentationSurfaceRole\.Primary\s*,\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Primary WPF surface must attach via a neutral Win32 native-surface payload with Primary role.'
+Assert-Match $mediaSurface 'nativeSurface\s*=\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Native-HWND WPF mode must create a neutral Win32 surface payload.'
+Assert-Match $mediaSurface 'nativeSurface\s*=\s*host\.CreateSurfaceDescriptor\s*\(\s*\)' 'WPF-composited mode must create a neutral managed frame-sink payload.'
+Assert-Match $mediaSurface 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId\s*,\s*MediaPresentationSurfaceRole\.Primary\s*,\s*nativeSurface' 'Primary WPF modes must attach their neutral payload with the Primary role.'
 Assert-Match $mediaSurface 'ResizePresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must resize through the session surface API.'
 Assert-Match $mediaSurface 'DetachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must detach through the session surface API.'
+Assert-Match $compositedSurface 'WpfCompositedSurfaceHost\s*:\s*Grid,\s*IMediaPresentationFrameSink' 'WPF-composited output must consume final renderer frames through the neutral frame-sink contract.'
 
 Assert-Match $secondaryWindow 'MediaPresentationSurfaceRole\s+role\s*=\s*MediaPresentationSurfaceRole\.Projector' 'Secondary window must default to the Projector role.'
 Assert-Match $secondaryWindow 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*SurfaceId\s*,\s*_role\s*,\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Secondary window must attach via a neutral Win32 native-surface payload and role.'

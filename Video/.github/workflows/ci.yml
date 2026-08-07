@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-validate:
+    name: Build, test, and validate boundaries
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore FatzBomb.MediaControl.sln
+
+      - name: Build (Release)
+        run: dotnet build FatzBomb.MediaControl.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test FatzBomb.MediaControl.sln -c Release --no-build --no-restore
+
+      - name: Core boundary check
+        shell: pwsh
+        run: ./scripts/check-core-boundary.ps1
+
+      - name: WPF boundary check
+        shell: pwsh
+        run: ./scripts/check-wpf-boundary.ps1
+
+      - name: Presentation parity check
+        shell: pwsh
+        run: ./scripts/check-presentation-parity.ps1
+
+      - name: Format check
+        run: dotnet format FatzBomb.MediaControl.sln --verify-no-changes --no-restore

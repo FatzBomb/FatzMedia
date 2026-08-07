@@ -2,6 +2,7 @@ using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Managed;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using Vortice.Direct3D11;
 using Vortice.Mathematics;
@@ -17,6 +18,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 internal sealed class D3D11PresentationBackendSet(
     D3D11NativeHwndSwapChainBackend nativeHwnd,
     D3D11DirectCompositionSingleTargetBackend directComposition,
+    D3D11ManagedFrameSinkBackend managedFrameSink,
     Func<D3D11NativeHwndSwapChainBackend>? createSecondaryNativeHwndBackend = null) : IDisposable
 {
     private readonly Dictionary<string, D3D11NativeHwndSwapChainBackend> _secondaryNativeHwndTargets = [];
@@ -25,10 +27,12 @@ internal sealed class D3D11PresentationBackendSet(
     public const string DirectCompositionTargetId = "directcomposition-final";
     public const string DirectCompositionOverlayTargetId = "directcomposition-overlay";
     public const string NativeHwndTargetId = "native-hwnd-final";
+    public const string ManagedFrameSinkTargetId = "managed-frame-sink-final";
     public const string SecondaryNativeHwndTargetPrefix = "native-hwnd-secondary:";
 
     public D3D11NativeHwndSwapChainBackend NativeHwnd { get; } = nativeHwnd;
     public D3D11DirectCompositionSingleTargetBackend DirectComposition { get; } = directComposition;
+    public D3D11ManagedFrameSinkBackend ManagedFrameSink { get; } = managedFrameSink;
 
     /// <summary>
     /// Primary backend priority is intentional. DirectComposition is the most specific native
@@ -36,7 +40,9 @@ internal sealed class D3D11PresentationBackendSet(
     /// they are fan-out outputs for the same composed frame.
     /// </summary>
     public ID3D11PresentationBackend? Active =>
-        DirectComposition.IsActive ? DirectComposition : NativeHwnd.IsActive ? NativeHwnd : null;
+        ManagedFrameSink.IsActive
+            ? ManagedFrameSink
+            : DirectComposition.IsActive ? DirectComposition : NativeHwnd.IsActive ? NativeHwnd : null;
 
     public D3D11PresentationBackendKind ActiveKind => Active?.Kind ?? D3D11PresentationBackendKind.None;
 
@@ -47,11 +53,21 @@ internal sealed class D3D11PresentationBackendSet(
     public bool OwnsTexture(ID3D11Texture2D? texture) => texture != null
             && ((NativeHwnd.IsActive && ReferenceEquals(texture, NativeHwnd.TargetTexture))
                 || (DirectComposition.IsActive && ReferenceEquals(texture, DirectComposition.TargetTexture))
+                || (ManagedFrameSink.IsActive && ReferenceEquals(texture, ManagedFrameSink.TargetTexture))
                 || _secondaryNativeHwndTargets.Values.Any(target => target.IsActive && ReferenceEquals(texture, target.TargetTexture)));
+
+    public bool CreateManagedFrameSinkTarget(
+        D3D11DeviceResources deviceResources,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height) =>
+        ManagedFrameSink.Matches(sink, width, height)
+        || ManagedFrameSink.Create(deviceResources, sink, width, height);
 
     public bool CreateSecondaryNativeHwndTarget(D3D11DeviceResources deviceResources, string targetId, IntPtr hwnd, int width, int height)
     {
-        if (_createSecondaryNativeHwndBackend == null
+        if (ManagedFrameSink.IsActive
+            || _createSecondaryNativeHwndBackend == null
             || string.IsNullOrWhiteSpace(targetId)
             || hwnd == IntPtr.Zero
             || width <= 0
@@ -80,6 +96,16 @@ internal sealed class D3D11PresentationBackendSet(
 
     public IEnumerable<D3D11PresentationBackendTarget> EnumerateActiveTargetBackends()
     {
+        // Explicit no-mixed-target policy: while the managed frame sink owns presentation it is
+        // the sole active target. Secondary native targets are retained so they resume when a
+        // native primary returns, but they are neither enumerated nor presented while the
+        // managed sink is active.
+        if (ManagedFrameSink.IsActive)
+        {
+            yield return new D3D11PresentationBackendTarget(ManagedFrameSinkTargetId, ManagedFrameSink, IntPtr.Zero, "WpfCompositedD3D11");
+            yield break;
+        }
+
         if (DirectComposition.IsActive)
             yield return new D3D11PresentationBackendTarget(DirectCompositionTargetId, DirectComposition, DirectComposition.Hwnd, "DirectCompositionNativeLayers");
 
@@ -93,9 +119,11 @@ internal sealed class D3D11PresentationBackendSet(
 
     /// <summary>
     /// Presents or invalidates the active backend after a complete frame has been rendered.
-    /// Native backends are DXGI-presented immediately.
+    /// Native backends are DXGI-presented immediately. Returns true only when the frame was
+    /// actually presented; <paramref name="framePresented"/> is only raised on success so a
+    /// failed presentation does not surface as a presented frame.
     /// </summary>
-    public void NotifyFramePresented(
+    public bool NotifyFramePresented(
         int liveResizeFlag,
         bool syncImmediate,
         Func<bool> isDisposed,
@@ -103,32 +131,50 @@ internal sealed class D3D11PresentationBackendSet(
     {
         ID3D11PresentationBackend? active = Active;
         if (active == null)
-            return;
+            return false;
 
-        NotifyBackendPresented(active, liveResizeFlag, syncImmediate, isDisposed, framePresented);
+        return NotifyBackendPresented(active, liveResizeFlag, syncImmediate, isDisposed, framePresented);
     }
 
-    public void NotifyTargetsPresented(
+    /// <summary>
+    /// Presents every valid target and reports success when the primary target presented. If no
+    /// primary is attached, any successfully presented secondary keeps the presentation active.
+    /// Individual secondary failures do not turn a successful primary present into a failed frame.
+    /// </summary>
+    public bool NotifyTargetsPresented(
         IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
         int liveResizeFlag,
         bool syncImmediate,
         Func<bool> isDisposed,
         Action<D3D11PresentationTargetSnapshot> framePresented)
     {
+        var primaryExpected = targets.Any(static target =>
+            target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId);
+        var primaryPresented = false;
+        var anyPresented = false;
         foreach (D3D11PresentationTargetSnapshot target in targets)
         {
             if (!target.IsValid
                 || !TryGetBackend(target.TargetId, target.BackendKind, out ID3D11PresentationBackend? backend)
                 || backend is null)
+            {
                 continue;
+            }
 
-            NotifyBackendPresented(
+            if (NotifyBackendPresented(
                 backend,
                 liveResizeFlag,
                 syncImmediate,
                 isDisposed,
-                () => framePresented(target));
+                () => framePresented(target)))
+            {
+                anyPresented = true;
+                if (target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId)
+                    primaryPresented = true;
+            }
         }
+
+        return primaryExpected ? primaryPresented : anyPresented;
     }
 
     /// <summary>
@@ -141,19 +187,6 @@ internal sealed class D3D11PresentationBackendSet(
     {
         ID3D11Texture2D? target = ActiveTargetTexture;
         return deviceResources.Device != null && deviceResources.Context != null && target != null && ClearTargetToBlack(deviceResources, target, flush);
-    }
-
-    public void Cleanup()
-    {
-        DirectComposition.Dispose();
-        NativeHwnd.Dispose();
-
-        foreach (D3D11NativeHwndSwapChainBackend target in _secondaryNativeHwndTargets.Values)
-        {
-            target.Dispose();
-        }
-
-        _secondaryNativeHwndTargets.Clear();
     }
 
     public void Dispose() => Cleanup();
@@ -172,19 +205,54 @@ internal sealed class D3D11PresentationBackendSet(
             _ = _secondaryNativeHwndTargets.TryGetValue(NormalizeSecondaryNativeHwndTargetId(targetId), out D3D11NativeHwndSwapChainBackend? secondary);
             backend = secondary;
         }
+        else if (kind == D3D11PresentationBackendKind.ManagedFrameSink && targetId == ManagedFrameSinkTargetId)
+            backend = ManagedFrameSink;
 
         return backend?.IsActive == true;
     }
 
-    private static void NotifyBackendPresented(
+    private static bool NotifyBackendPresented(
         ID3D11PresentationBackend backend,
         int liveResizeFlag,
         bool syncImmediate,
-        Func<bool> _,
+        Func<bool> isDisposed,
         Action framePresented)
     {
-        backend.Present(liveResizeFlag, syncImmediate);
+        if (isDisposed())
+            return false;
+
+        if (!backend.Present(liveResizeFlag, syncImmediate))
+            return false;
+
+        if (isDisposed())
+            return false;
+
         framePresented();
+        return true;
+    }
+
+    /// <summary>
+    /// Disposes the primary backends (DirectComposition, native HWND, managed frame sink) while
+    /// retaining secondary native HWND targets. Used when a primary surface is recreated, resized
+    /// via surface recreation, or detached so secondary displays survive the primary transition.
+    /// </summary>
+    public void CleanupPrimary()
+    {
+        DirectComposition.Dispose();
+        NativeHwnd.Dispose();
+        ManagedFrameSink.Dispose();
+    }
+
+    public void Cleanup()
+    {
+        CleanupPrimary();
+
+        foreach (D3D11NativeHwndSwapChainBackend target in _secondaryNativeHwndTargets.Values)
+        {
+            target.Dispose();
+        }
+
+        _secondaryNativeHwndTargets.Clear();
     }
 
     private static bool ClearTargetToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D? target, bool flush) =>

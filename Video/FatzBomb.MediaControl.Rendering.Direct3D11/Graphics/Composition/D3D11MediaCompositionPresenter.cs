@@ -332,9 +332,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 drawnTargets.Add(target);
             }
 
-            D3D11PresentationTargetSnapshot primaryTarget = presentationTargets[0];
-            var primaryDrew = drawnTargets.Count > 0 && drawnTargets[0].TargetId == primaryTarget.TargetId;
-            if (primaryDrew)
+            D3D11PresentationTargetSnapshot primaryTarget = presentationTargets.FirstOrDefault(
+                static target => target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId);
+            var requiredTargetDrew = primaryTarget.IsValid
+                ? drawnTargets.Any(target => target.TargetId == primaryTarget.TargetId)
+                : drawnTargets.Count > 0;
+            if (requiredTargetDrew)
             {
                 MarkRenderedLayers(frame);
                 presentedTargets = drawnTargets;
@@ -349,7 +352,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 _targetRegistry.MarkPlanConsumed();
             }
 
-            return primaryDrew;
+            return requiredTargetDrew;
         }
         catch (Exception ex)
         {

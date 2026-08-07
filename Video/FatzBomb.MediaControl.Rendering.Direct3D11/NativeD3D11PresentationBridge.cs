@@ -104,6 +104,25 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
+    private bool CreateManagedFrameSinkSurface(
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height)
+    {
+        if (_disposed)
+            return false;
+
+        lock (_lock)
+        {
+            return _presentation.CreateManagedFrameSinkSurface(
+                _disposed,
+                sink,
+                width,
+                height,
+                NotifyPresentedWithSync);
+        }
+    }
+
     private bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
@@ -146,10 +165,17 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public bool AttachSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_disposed || !TryGetWin32Hwnd(surface, out nint hwnd))
-        {
+        if (_disposed)
             return false;
+
+        if (surface.Role == MediaPresentationSurfaceRole.Primary
+            && TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
+        {
+            return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
         }
+
+        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+            return false;
 
         return surface.Role == MediaPresentationSurfaceRole.Primary
             ? CreateDirectCompositionSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
@@ -159,10 +185,17 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)
     {
-        if (_disposed || !TryGetWin32Hwnd(surface, out nint hwnd))
-        {
+        if (_disposed)
             return false;
+
+        if (surface.Role == MediaPresentationSurfaceRole.Primary
+            && TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
+        {
+            return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
         }
+
+        if (!TryGetWin32Hwnd(surface, out nint hwnd))
+            return false;
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
         {
@@ -187,10 +220,14 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public bool SetSurfaceLiveResize(MediaPresentationSurfaceDescriptor surface, bool isResizing)
     {
-        if (_disposed || !TryGetWin32Hwnd(surface, out _))
-        {
+        if (_disposed)
             return false;
-        }
+
+        if (TryGetManagedFrameSink(surface, out _))
+            return surface.Role == MediaPresentationSurfaceRole.Primary;
+
+        if (!TryGetWin32Hwnd(surface, out _))
+            return false;
 
         if (surface.Role == MediaPresentationSurfaceRole.Primary)
         {
@@ -210,6 +247,24 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.Window, out hwnd);
     }
 
+    private static bool TryGetManagedFrameSink(
+        MediaPresentationSurfaceDescriptor? surface,
+        out IMediaPresentationFrameSink sink)
+    {
+        sink = null!;
+        if (surface is not { IsValid: true }
+            || surface.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
+            || !surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
+            || !MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? resolved)
+            || resolved == null)
+        {
+            return false;
+        }
+
+        sink = resolved;
+        return true;
+    }
+
     public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)
     {
         if (_disposed || surface is null)
@@ -222,8 +277,16 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return RemoveSecondaryPresentationTarget(surface.Id);
         }
 
-        CleanupResources();
+        DetachPrimarySurface();
         return true;
+    }
+
+    private void DetachPrimarySurface()
+    {
+        lock (_lock)
+        {
+            _presentation.CleanupPrimarySurfaces();
+        }
     }
 
     public bool PresentNativeFrame(VideoFrameEventArgs frame)
@@ -243,7 +306,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
                 frame.Width,
                 frame.Height,
                 frame.FramesPerSecond,
-                NotifyPresented);
+                NotifyPresentedResult);
         }
     }
 
@@ -293,11 +356,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     private void RaisePresentedEvent(int _width, int _height) => RaiseFramePresented();
 
-    private void NotifyPresented(int _width, int _height) => NotifyPresented();
+    private bool NotifyPresentedResult(int _width, int _height) => NotifyPresentedCore();
 
-    private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => NotifyPresented(syncImmediate);
+    private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
 
-    private void NotifyPresented(bool syncImmediate = false) => _presentation.NotifyFramePresented(_disposed, syncImmediate, RaiseFramePresented);
+    private bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(_disposed, syncImmediate, RaiseFramePresented);
 
     private void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 

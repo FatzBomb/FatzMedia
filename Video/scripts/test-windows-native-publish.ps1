@@ -2,13 +2,24 @@
 param(
     [string] $NativeLibraryPath = $env:FATZBOMB_MEDIA_NATIVE_PATH,
     [string] $Configuration = 'Release',
-    [string] $PackageVersion = '0.1.0-alpha',
+    [string] $PackageVersion,
     [string] $ArtifactsDirectory,
     [switch] $FrameworkDependent
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+
+if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
+    [xml] $buildProps = Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props') -Raw
+    $PackageVersion = @($buildProps.Project.PropertyGroup) |
+        ForEach-Object { $_.Version } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
+        throw 'PackageVersion was not supplied and could not be derived from Directory.Build.props <Version>.'
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($NativeLibraryPath)) {
     throw 'Supply -NativeLibraryPath or set FATZBOMB_MEDIA_NATIVE_PATH to one host-owned directory containing the Windows x64 BASS and FFmpeg DLL set.'

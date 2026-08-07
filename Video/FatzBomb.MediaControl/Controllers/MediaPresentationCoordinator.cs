@@ -1327,17 +1327,31 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         if (_disposed)
             return;
 
-        StopRendering();
-        DetachAllEngines();
+        _disposed = true;
+
+        _isRenderingActive = false;
+        _presentationScheduler.StopAndWait();
+
+        _rendererBackend.FramePresented -= OnFramePresented;
         _mediaEngine.ImageFrameReady -= OnCoreImageFrameReady;
         _mediaEngine.BackgroundFrameReady -= OnCoreBackgroundFrameReady;
         _mediaEngine.BackgroundCleared -= OnCoreBackgroundCleared;
-        _rendererBackend.FramePresented -= OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
+
+        // Drain device-lost recovery before tearing down renderer resources so no recovery worker
+        // is mid-backend-call while the backend is disposed. RunDeviceLostRecovery checks _disposed
+        // at each _lock acquisition, so a still-running worker bails on the next gate.
+        _recoveryScheduler.StopAndWait();
+        _ = Interlocked.Exchange(ref _recoveryInProgress, 0);
+
+        DetachAllEngines();
+        lock (_lock)
+        {
+            _rendererBackend.CleanupResources();
+            _rendererBackend.Dispose();
+        }
         _subtitleRasterizer.Dispose();
-        _rendererBackend.Dispose();
         _presentationScheduler.Dispose();
         _recoveryScheduler.Dispose();
-        _disposed = true;
     }
 }

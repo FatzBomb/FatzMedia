@@ -18,14 +18,14 @@ public sealed class BassOutputLatencyProvider(bool enableHeuristic) : IOutputLat
             return 0;
 
         var reportedSeconds = info.Latency / 1000.0;
-            return !double.IsFinite(reportedSeconds) || reportedSeconds < 0
-                ? 0
-                : !enableHeuristic
+        return !double.IsFinite(reportedSeconds) || reportedSeconds < 0
+            ? 0
+            : !enableHeuristic
+                ? reportedSeconds
+                : !OutputLatencyHeuristic.RequiresDeviceName(reportedSeconds, enabled: true)
                     ? reportedSeconds
-                    : !OutputLatencyHeuristic.RequiresDeviceName(reportedSeconds, enabled: true)
+                    : !MBass.GetDeviceInfo(MBass.CurrentDevice, out DeviceInfo deviceInfo)
                         ? reportedSeconds
-                        : !MBass.GetDeviceInfo(MBass.CurrentDevice, out DeviceInfo deviceInfo)
-                            ? reportedSeconds
-                            : OutputLatencyHeuristic.Apply(reportedSeconds, deviceInfo.Name, enabled: true);
+                        : OutputLatencyHeuristic.Apply(reportedSeconds, deviceInfo.Name, enabled: true);
     }
 }

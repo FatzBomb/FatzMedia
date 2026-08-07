@@ -26,6 +26,7 @@ internal sealed class D3D11PresentationSurfaceController(
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsNativeHwndActive => backends.NativeHwnd.IsActive;
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
+    public bool IsManagedFrameSinkActive => backends.ManagedFrameSink.IsActive;
     public bool ShouldSuppressDirectCompositionOverlaySplit =>
         backends.DirectComposition.IsActive
         && (backends.DirectComposition.HasPendingResize
@@ -34,6 +35,7 @@ internal sealed class D3D11PresentationSurfaceController(
     {
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
         D3D11PresentationBackendKind.NativeHwndSwapChain => "NativeHwndSwapChain",
+        D3D11PresentationBackendKind.ManagedFrameSink => "WpfCompositedD3D11",
         _ => "None"
     };
 
@@ -162,6 +164,12 @@ internal sealed class D3D11PresentationSurfaceController(
 
     public void CleanupBackends() => backends.Cleanup();
 
+    /// <summary>
+    /// Disposes only the primary backends, retaining secondary native HWND targets so they
+    /// survive a primary surface recreate/resize/detach and resume when a native primary returns.
+    /// </summary>
+    public void CleanupPrimaryBackends() => backends.CleanupPrimary();
+
     public void Reset()
     {
         TargetTexture = null;
@@ -246,6 +254,66 @@ internal sealed class D3D11PresentationSurfaceController(
     }
 
     public bool RemoveSecondaryPresentationTarget(string targetId) => backends.RemoveSecondaryTarget(targetId);
+
+    public bool CreateManagedFrameSinkSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height,
+        Action cleanupBeforeCreate,
+        bool enableLogging,
+        Action<int, int, bool> notifyPresented) => ActivatePresentationSurface(
+            isDisposed,
+            true,
+            deviceResources,
+            width,
+            height,
+            onCreated => ActivateManagedFrameSinkSurface(
+                deviceResources,
+                sink,
+                width,
+                height,
+                cleanupBeforeCreate,
+                onCreated),
+            "managed BGRA frame-sink presentation surface",
+            "WpfCompositedD3D11",
+            enableLogging,
+            notifyPresented);
+
+    private bool ActivateManagedFrameSinkSurface(
+        D3D11DeviceResources deviceResources,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height,
+        Action cleanupBeforeCreate,
+        Action onCreated)
+    {
+        if (!backends.ManagedFrameSink.Matches(sink, width, height))
+        {
+            cleanupBeforeCreate();
+            LastActivationCreated = backends.CreateManagedFrameSinkTarget(
+                deviceResources,
+                sink,
+                width,
+                height);
+        }
+        else
+        {
+            LastActivationCreated = false;
+        }
+
+        if (!backends.ManagedFrameSink.IsActive)
+            return false;
+
+        if (LastActivationCreated)
+        {
+            _ = backends.ClearActiveTargetToBlack(deviceResources);
+            onCreated();
+        }
+
+        return true;
+    }
 
     public bool CreateDirectCompositionSurface(
         bool isDisposed,
@@ -394,7 +462,7 @@ internal sealed class D3D11PresentationSurfaceController(
         backends.DirectComposition.QueueResize(requestedWidth, requestedHeight);
     }
 
-    public void NotifyFramePresented(
+    public bool NotifyFramePresented(
         bool liveResize,
         bool syncImmediate,
         Func<bool> isDisposed,
@@ -404,7 +472,7 @@ internal sealed class D3D11PresentationSurfaceController(
             isDisposed,
             raiseFramePresented);
 
-    public void NotifyTargetsPresented(
+    public bool NotifyTargetsPresented(
         IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
         bool liveResize,
         bool syncImmediate,

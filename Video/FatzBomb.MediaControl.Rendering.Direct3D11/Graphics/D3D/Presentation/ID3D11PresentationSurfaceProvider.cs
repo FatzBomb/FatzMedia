@@ -21,5 +21,10 @@ internal interface ID3D11PresentationSurfaceProvider
 
     void CleanupBackends();
 
+    /// <summary>
+    /// Disposes only the primary presentation backends, retaining secondary native HWND targets.
+    /// </summary>
+    void CleanupPrimaryBackends();
+
     void Reset();
 }

@@ -88,6 +88,46 @@ internal sealed class MediaControlOperationQueue : IDisposable
         });
     }
 
+    /// <summary>
+    /// Runs <paramref name="operation"/> synchronously, serialized with every other queued
+    /// operation so synchronous and asynchronous callers cannot interleave. When already executing
+    /// on the worker thread the operation runs directly (no re-queueing, so re-entrant calls from
+    /// within a queued operation cannot deadlock). Otherwise an exclusive turn is queued, then the
+    /// operation runs on the calling thread while the worker waits. This preserves caller-thread
+    /// event behavior without allowing later operations to interleave.
+    /// </summary>
+    public T Execute<T>(Func<T> operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(MediaControlOperationQueue));
+
+        if (_isWorkerContext.Value)
+            return operation();
+
+        var turnGranted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var turnCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_queue.Writer.TryWrite(async () =>
+        {
+            _ = turnGranted.TrySetResult();
+            await turnCompleted.Task.ConfigureAwait(false);
+        }))
+        {
+            throw new ObjectDisposedException(nameof(MediaControlOperationQueue));
+        }
+
+        turnGranted.Task.GetAwaiter().GetResult();
+        try
+        {
+            return operation();
+        }
+        finally
+        {
+            _ = turnCompleted.TrySetResult();
+        }
+    }
+
     private async Task RunAsync()
     {
         _isWorkerContext.Value = true;

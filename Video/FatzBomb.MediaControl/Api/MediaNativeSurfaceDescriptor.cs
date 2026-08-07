@@ -37,6 +37,7 @@ public readonly record struct MediaNativeHandleId
 public static class MediaNativeSurfaceTypeIds
 {
     public static MediaNativeSurfaceTypeId Win32Hwnd { get; } = new("win32-hwnd");
+    public static MediaNativeSurfaceTypeId ManagedBgraFrameSink { get; } = new("managed-bgra-frame-sink");
     public static MediaNativeSurfaceTypeId X11Window { get; } = new("x11-window");
     public static MediaNativeSurfaceTypeId WaylandSurface { get; } = new("wayland-surface");
     public static MediaNativeSurfaceTypeId AppKitView { get; } = new("appkit-view");
@@ -47,6 +48,7 @@ public static class MediaNativeSurfaceTypeIds
 public static class MediaNativeHandleIds
 {
     public static MediaNativeHandleId Window { get; } = new("window");
+    public static MediaNativeHandleId FrameSink { get; } = new("frame-sink");
     public static MediaNativeHandleId Display { get; } = new("display");
     public static MediaNativeHandleId Surface { get; } = new("surface");
     public static MediaNativeHandleId View { get; } = new("view");
