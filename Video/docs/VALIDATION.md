@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-08-17
+Updated: 2026-08-18
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -172,6 +172,38 @@ contract, and replaced exception-throwing WPF `PresentationMode` callbacks with
 deferred coercion. An STA WPF regression test confirms the applied mode remains stable
 through in-place replacement and the latest deferred mode applies after explicit close.
 Release validation passed with 0 warnings/errors and 464 tests.
+
+On 2026-08-18, the first slice of Stage 030B (silence trimming and media analysis
+cache) was implemented and validated while the stage remains active. The slice adds
+the public `SilenceTrimOptions` / `SilenceRegion` / `MediaAnalysisResult` records,
+internal pure edge-trim calculation and result validation, a versioned local-file
+cache key plus a single-version bounded (256-entry) LRU `MediaAnalysisCache`, and
+`MediaPlayerConfiguration.SilenceTrim` (disabled by default), covered by 17 focused
+`SilenceTrimAnalysisTests` cases. No analyzer scan or transport/load/seek/end
+behavior is wired yet, so no runtime manual smoke applies to this slice. Release
+validation passed: build with 0 warnings/errors, 481 tests, `dotnet format`
+verification, Core/WPF/presentation-parity gates, and git diff check all green.
+
+On 2026-08-18, the second slice of Stage 030B was implemented and validated while the
+stage remains active. Enabled local plain non-tracker audio now runs a cancellable
+sequential 0.1-second silence scan inside the existing background
+normalization-analysis task (samples taken at actual BASS decode byte positions;
+decode cursor captured and restored in `finally`; `CancelNormalizationAnalysis`
+joined before handle reuse/free; partial/faulted/stale scans not cached). The
+existing normalization cache/math is preserved — a normalization-cache hit skips
+peak rescans but still performs a missing silence scan. Validated results use
+`SilenceTrimCalculator` and the process-lifetime shared bounded 256-entry
+`MediaAnalysisCache` registered into each DI container, surviving player `Reset`;
+a cache hit applies the stored gain and skips rescanning. CDG-paired opens disable
+silence analysis; video, archives, tracker/MOD, and live/stream remain excluded;
+transport/duration/seek/loop/end trimming is still not implemented, so playback
+behavior is unchanged. Added `SilenceRegionDetector` tests and `AudioPipeline`
+analysis gating tests — 30 focused 030B cases total (17 existing + 11 detector + 2
+gating). Release validation passed: build with 0 warnings/errors, 494 tests,
+`dotnet format` verification, Core/WPF/presentation-parity gates, and git diff check
+all green. The real native-file analyzer smoke (scan completion, cursor restore,
+reopen cache hit, gain unchanged) was not run and remains pending; fully silent
+media can produce zero playable duration, which the transport slice must handle.
 
 ---
 

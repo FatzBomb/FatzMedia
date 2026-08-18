@@ -132,6 +132,12 @@ public readonly record struct MediaPlayerConfiguration
     public bool ResetTempoOnMediaLoad { get; init; }
 
     /// <summary>
+    /// Configures optional leading and trailing silence trimming for analyzed plain audio.
+    /// Trimming is disabled by default and is not applied to synchronized media.
+    /// </summary>
+    public SilenceTrimOptions SilenceTrim { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding.
     /// </summary>
@@ -149,6 +155,7 @@ public readonly record struct MediaPlayerConfiguration
         KaraokeStyle = new KaraokeTextStyle();
         ResetPitchOnMediaLoad = false;
         ResetTempoOnMediaLoad = false;
+        SilenceTrim = default;
     }
 
     /// <summary>

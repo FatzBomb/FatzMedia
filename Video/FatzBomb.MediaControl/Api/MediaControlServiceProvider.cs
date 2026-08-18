@@ -36,7 +36,9 @@ public static class MediaControlServiceProvider
 
     private static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration)
     {
-        _ = services.AddSingleton<IAudioEngine>(_ => CreateAudioEngine(configuration));
+        _ = services.AddSingleton(MediaAnalysisCache.Shared);
+        _ = services.AddSingleton<IAudioEngine>(provider =>
+            CreateAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>()));
         _ = services.AddSingleton<ICdgEngine, CdgEngine>();
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();
@@ -63,10 +65,17 @@ public static class MediaControlServiceProvider
                 configuration));
     }
 
-    private static IAudioEngine CreateAudioEngine(MediaPlayerConfiguration configuration)
+    private static IAudioEngine CreateAudioEngine(
+        MediaPlayerConfiguration configuration,
+        MediaAnalysisCache analysisCache)
     {
         var latencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
-        var audioEngine = new AudioEngine(new AudioNormalizer(), new AudioStreamManager(), latencyProvider);
+        var audioEngine = new AudioEngine(
+            new AudioNormalizer(),
+            new AudioStreamManager(),
+            latencyProvider,
+            configuration.SilenceTrim,
+            analysisCache);
         var requestedDevice = configuration.AudioOutputDeviceIndex;
         var initialized = audioEngine.Init(requestedDevice, 44100);
 

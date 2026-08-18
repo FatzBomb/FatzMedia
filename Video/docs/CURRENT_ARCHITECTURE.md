@@ -583,6 +583,50 @@ line reports `Visual transform=IDENTITY|ACTIVE`, `AutoHide=`, and
 `Load resets: Pitch=…, Tempo=…` alongside renderer/presentation. Validation
 tooling only, not production UI.
 
+## Silence Trimming Analysis Cache (Stage 030B, active — contract, cache, and analyzer slices)
+
+Stage 030B is active (2026-08-18); the contract/cache-foundation and analyzer-scan
+slices are implemented and validated, while plain-audio transport application and the
+native-file analyzer smoke remain pending. The public API adds immutable
+`SilenceTrimOptions`
+(disabled by default: `Enabled = false`; pinned defaults threshold `-50 dBFS`,
+minimum qualifying edge silence `0.5 s`, retained edge padding `0.1 s`, independent
+`TrimLeading` / `TrimTrailing`), `SilenceRegion` (source-time start/end seconds),
+and `MediaAnalysisResult` (source duration, playable start/end with computed
+playable duration, effective duration, detected silence regions, normalization
+gain). `MediaPlayerConfiguration.SilenceTrim` defaults to the disabled record
+value, so current duration, seek, loop, normalization, startup, and end behavior
+are unchanged.
+
+Internal `Core/Audio` members implement the pure edge-trim math
+(`SilenceTrimCalculator`), result validation (`MediaAnalysisResultValidator`), a
+versioned local-file cache key (`MediaAnalysisCacheKey` — normalized full path,
+file length, UTC last-write ticks, and normalized trim options; creation fails
+closed on missing file or invalid input), and a process-local, thread-safe,
+single-analyzer-version, 256-entry bounded LRU `MediaAnalysisCache`
+(`System.Threading.Lock`, usage-ordered eviction) that treats version mismatches
+and invalid records as misses. The shared process-lifetime instance
+(`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
+container (`MediaControlServiceProvider`) and therefore survives player `Reset`.
+The pinned contract lives at
+`roadmap/active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md`.
+
+**Analyzer slice (2026-08-18)** — for enabled plain local non-tracker audio, a
+cancellable sequential 0.1-second silence scan (`AudioSilenceAnalyzer`) runs inside
+the existing background normalization-analysis task, sampling levels at actual BASS
+decode byte positions. The task captures the decode cursor up front and restores it
+in a `finally`; the existing `CancelNormalizationAnalysis` synchronously joins the
+previous task before any handle reuse or free, and partial/faulted/stale scans are
+never cached. The existing normalization scan, gain math, and gain cache are
+preserved: a normalization-gain cache hit skips peak rescans but still performs a
+missing silence scan. Results are validated through `SilenceTrimCalculator`
+(including normalization gain) and stored in the shared `MediaAnalysisCache`; a
+cache hit applies the stored gain and skips rescanning entirely. CDG-paired opens
+explicitly disable silence analysis (`OpenAudioCdg` passes `analyzeSilence: false`),
+and video, archives, tracker/MOD formats, and live/stream inputs remain excluded.
+Transport/duration/seek/loop/end trimming is still NOT implemented, so playback
+behavior is unchanged when the scan is enabled.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.

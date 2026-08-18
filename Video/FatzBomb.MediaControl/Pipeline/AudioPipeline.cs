@@ -43,9 +43,9 @@ internal sealed class AudioPipeline : IDisposable
         }
     }
 
-    public bool Open(string path) => Open(path, ownState: true);
+    public bool Open(string path) => Open(path, ownState: true, analyzeSilence: true);
 
-    internal bool Open(string path, bool ownState)
+    internal bool Open(string path, bool ownState, bool analyzeSilence = true)
     {
         ThrowIfDisposed();
 
@@ -58,7 +58,10 @@ internal sealed class AudioPipeline : IDisposable
 
         _pendingOpenPath = path;
         _ownStateForCurrentOpen = ownState;
-        if (!Engine.Open(path))
+        var opened = Engine is IAudioAnalysisOpenControl analysisControl
+            ? analysisControl.Open(path, analyzeSilence)
+            : Engine.Open(path);
+        if (!opened)
         {
             _pendingOpenPath = null;
             State.Reset();

@@ -259,7 +259,7 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl
 {
     public AudioEngineState State { get; private set; }
     public int PlayHandle => 0;
@@ -272,6 +272,7 @@ internal sealed class TestAudioEngine : IAudioEngine
     public int CurrentTempo { get; private set; }
     public double Volume { get; private set; } = 1;
     public int Pitch { get; private set; }
+    public bool? LastAnalyzeSilence { get; private set; }
 
     public event EventHandler<double>? NormalizationGainChanged { add { } remove { } }
     public event EventHandler<AudioEngineState>? StateChanged { add { } remove { } }
@@ -284,6 +285,11 @@ internal sealed class TestAudioEngine : IAudioEngine
     public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) => Task.FromResult(1d);
     public bool Init(int device = -1, int sampleRate = 44100) => true;
     public bool Open(string filePath) => true;
+    bool IAudioAnalysisOpenControl.Open(string filePath, bool analyzeSilence)
+    {
+        LastAnalyzeSilence = analyzeSilence;
+        return Open(filePath);
+    }
     public bool Open(IArchiveEntryInfo archiveEntry) => true;
     public bool Play() { State = AudioEngineState.Playing; return true; }
     public bool Pause() { State = AudioEngineState.Paused; return true; }

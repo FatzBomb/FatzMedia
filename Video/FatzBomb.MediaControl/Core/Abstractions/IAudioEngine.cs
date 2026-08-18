@@ -160,3 +160,8 @@ internal interface IAudioLoopControl
 {
     bool LoopPlayback { get; set; }
 }
+
+internal interface IAudioAnalysisOpenControl
+{
+    bool Open(string filePath, bool analyzeSilence);
+}

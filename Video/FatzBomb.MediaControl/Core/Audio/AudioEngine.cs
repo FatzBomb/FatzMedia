@@ -12,14 +12,17 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl
 {
     #region Private Fields
 
     // Composition: Delegate specialized responsibilities to focused components
     private readonly AudioNormalizer _normalizer;
+    private readonly AudioSilenceAnalyzer _silenceAnalyzer;
+    private readonly MediaAnalysisCache _analysisCache;
     private readonly AudioStreamManager _streamManager;
     private readonly IOutputLatencyProvider _outputLatencyProvider;
+    private readonly SilenceTrimOptions _silenceTrim;
 
     // Adaptive sample rate management
     private bool _bassInitialized = false;
@@ -65,11 +68,19 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     /// <param name="normalizer">Custom normalizer implementation</param>
     /// <param name="streamManager">Custom stream manager implementation</param>
     /// <param name="outputLatencyProvider">Provider for BASS-reported output latency</param>
-    internal AudioEngine(AudioNormalizer normalizer, AudioStreamManager streamManager, IOutputLatencyProvider outputLatencyProvider)
+    internal AudioEngine(
+        AudioNormalizer normalizer,
+        AudioStreamManager streamManager,
+        IOutputLatencyProvider outputLatencyProvider,
+        SilenceTrimOptions silenceTrim = default,
+        MediaAnalysisCache? analysisCache = null)
     {
         _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
+        _silenceAnalyzer = new AudioSilenceAnalyzer();
+        _analysisCache = analysisCache ?? MediaAnalysisCache.Shared;
         _streamManager = streamManager ?? throw new ArgumentNullException(nameof(streamManager));
         _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
+        _silenceTrim = silenceTrim;
         _playbackEndedSyncProcedure = OnPlaybackEndedSync;
 
         // Wire up normalizer events to forward to our event
@@ -235,7 +246,12 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     }
 
     /// <inheritdoc/>
-    public bool Open(string filePath)
+    public bool Open(string filePath) => Open(filePath, analyzeSilence: true);
+
+    bool IAudioAnalysisOpenControl.Open(string filePath, bool analyzeSilence) =>
+        Open(filePath, analyzeSilence);
+
+    private bool Open(string filePath, bool analyzeSilence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
@@ -276,7 +292,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
                 LogAudioInfo(filePath);
 
-                StartNormalizationAnalysis(CreatePathNormalizationCacheKey(filePath), "file");
+                StartNormalizationAnalysis(
+                    CreatePathNormalizationCacheKey(filePath),
+                    "file",
+                    CreateMediaAnalysisCacheKey(filePath, analyzeSilence));
             }
             if (success)
             {
@@ -598,20 +617,34 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void StartNormalizationAnalysis(string cacheKey, string sourceLabel)
+    private void StartNormalizationAnalysis(
+        string cacheKey,
+        string sourceLabel,
+        MediaAnalysisCacheKey? analysisCacheKey = null)
     {
         CancelNormalizationAnalysis();
 
-        if (NormalizationGainCache.TryGetValue(cacheKey, out var cachedGain))
+        if (analysisCacheKey is { } mediaKey
+            && _analysisCache.TryGet(mediaKey, out var cachedAnalysis)
+            && cachedAnalysis is not null)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using cached normalization gain {cachedGain:F3} ({sourceLabel})");
-            _normalizationReady = true;
-            _normalizer.SetNormalizationGain(cachedGain, forceNotify: true);
-            if (Normalize)
-            {
-                _normalizer.SetNormalizeEnabled(true);
-            }
+            ApplyCachedNormalizationGain(cacheKey, cachedAnalysis.NormalizationGain, sourceLabel);
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "AudioEngine",
+                $"Using cached media analysis with {cachedAnalysis.SilenceRegions.Count} silence region(s) ({sourceLabel})");
             return;
+        }
+
+        double? cachedGain = null;
+        if (NormalizationGainCache.TryGetValue(cacheKey, out var normalizationGain))
+        {
+            cachedGain = normalizationGain;
+            ApplyCachedNormalizationGain(cacheKey, normalizationGain, sourceLabel);
+            if (analysisCacheKey is null)
+            {
+                return;
+            }
         }
 
         var analysisHandle = _streamManager.GetAnalysisHandle();
@@ -621,7 +654,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             return;
         }
 
-        _normalizationReady = false;
+        _normalizationReady = cachedGain.HasValue;
+        var sourceDuration = _streamManager.DurationSeconds;
         var generation = Interlocked.Increment(ref _normalizationAnalysisGeneration);
         var cts = new CancellationTokenSource();
         lock (_normalizationAnalysisLock)
@@ -631,22 +665,71 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 analysisHandle,
                 cacheKey,
                 sourceLabel,
+                cachedGain,
+                analysisCacheKey,
+                sourceDuration,
                 generation,
                 cts.Token);
         }
     }
 
-    private async Task RunNormalizationAnalysisAsync(int analysisHandle, string cacheKey, string sourceLabel, int generation, CancellationToken cancellationToken)
+    private async Task RunNormalizationAnalysisAsync(
+        int analysisHandle,
+        string cacheKey,
+        string sourceLabel,
+        double? cachedGain,
+        MediaAnalysisCacheKey? analysisCacheKey,
+        double sourceDuration,
+        int generation,
+        CancellationToken cancellationToken)
     {
+        var originalPosition = analysisCacheKey is not null
+            ? MBass.ChannelGetPosition(analysisHandle)
+            : -1;
+
         try
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Quick normalization analysis starting ({sourceLabel})");
-            var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-            ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, isFinal: false, cancellationToken: cancellationToken);
+            var normalizationGain = cachedGain;
+            if (normalizationGain is null)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Quick normalization analysis starting ({sourceLabel})");
+                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, isFinal: false, cancellationToken: cancellationToken);
 
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Deep normalization analysis starting ({sourceLabel})");
-            var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-            ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, isFinal: true, cancellationToken: cancellationToken);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Deep normalization analysis starting ({sourceLabel})");
+                var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, isFinal: true, cancellationToken: cancellationToken);
+                normalizationGain = _normalizer.NormalizationGain;
+            }
+
+            if (analysisCacheKey is { } mediaKey)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Silence analysis starting ({sourceLabel})");
+                var scan = await _silenceAnalyzer.ScanAsync(
+                    analysisHandle,
+                    sourceDuration,
+                    _silenceTrim.ThresholdDecibels,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (!IsCurrentNormalizationAnalysis(generation, cancellationToken))
+                {
+                    return;
+                }
+
+                var result = SilenceTrimCalculator.Calculate(
+                    scan.SourceDuration,
+                    scan.SilenceRegions,
+                    normalizationGain.Value,
+                    _silenceTrim);
+                if (_analysisCache.TryStore(mediaKey, result))
+                {
+                    DiagnosticRouter.Raise(
+                        MediaDiagnosticLevel.Info,
+                        "AudioEngine",
+                        $"Silence analysis complete: {result.SilenceRegions.Count} region(s), playable={result.PlayableDuration:F3}s ({sourceLabel})");
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -655,6 +738,28 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Normalization analysis failed ({sourceLabel}): {ex.Message}", innerException: ex);
+        }
+        finally
+        {
+            if (originalPosition >= 0 && !MBass.ChannelSetPosition(analysisHandle, originalPosition))
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    "AudioEngine",
+                    $"Unable to restore analysis stream position ({sourceLabel}): {MBass.LastError}");
+            }
+        }
+    }
+
+    private void ApplyCachedNormalizationGain(string cacheKey, double gain, string sourceLabel)
+    {
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using cached normalization gain {gain:F3} ({sourceLabel})");
+        NormalizationGainCache[cacheKey] = gain;
+        _normalizationReady = true;
+        _normalizer.SetNormalizationGain(gain, forceNotify: true);
+        if (Normalize)
+        {
+            _normalizer.SetNormalizeEnabled(true);
         }
     }
 
@@ -728,6 +833,18 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     }
 
     private static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
+
+    private MediaAnalysisCacheKey? CreateMediaAnalysisCacheKey(string filePath, bool analyzeSilence) =>
+        analyzeSilence
+        && _silenceTrim.Enabled
+        && !AudioStreamManager.IsTrackerFormat(filePath)
+        && MediaAnalysisCacheKey.TryCreateForFile(
+            filePath,
+            MediaAnalysisVersions.Current,
+            _silenceTrim,
+            out var key)
+            ? key
+            : null;
 
     /// <summary>
     /// Gets the session-optimal sample rate based on a file's properties.

@@ -2,7 +2,10 @@
 
 ## Active
 
-- None. Select and bound the next stage before implementation begins.
+- `active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md` - contract/cache foundation
+  (481 tests) and analyzer-scan (494 tests) slices implemented and validated
+  2026-08-18; plain-audio transport application and the native-file analyzer smoke
+  remain pending.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -44,7 +47,8 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Recommended next: `future/030B_IDEA_SilenceTrimmingAnalysisCache.md` - audio silence trimming with a versioned media-analysis cache.
+Current work: `active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md`. After 030B is
+completed, the recommended next stage is `future/031A_IDEA_PreparedNextPlaylistSlot.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -53,7 +57,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/030B_IDEA_SilenceTrimmingAnalysisCache.md` - audio silence trimming with a versioned media-analysis cache.
 - `future/031A_IDEA_PreparedNextPlaylistSlot.md` - host-owned playlist with a Core depth-one prepared-next slot.
 - `future/031B_IDEA_AudioFadeCrossfadeModel.md` - audio fade/crossfade envelope model for ordinary local audio.
 - `future/014A_IDEA_StreamingNetworkPlayback.md` - direct HTTP/HTTPS audio/video with a source capability matrix.

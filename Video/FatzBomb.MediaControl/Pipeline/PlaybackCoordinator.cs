@@ -138,7 +138,7 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
-        if (_session.Audio?.Open(audioPath, ownState: false) != true || _session.Cdg == null)
+        if (_session.Audio?.Open(audioPath, ownState: false, analyzeSilence: false) != true || _session.Cdg == null)
             return false;
 
         _session.Cdg.OpenPaired(cdgPath, _session.Audio.PlayHandle);
