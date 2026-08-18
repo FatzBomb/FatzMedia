@@ -14,6 +14,10 @@ internal sealed class MediaControlOperationQueue : IDisposable
     private readonly Task _workerTask;
     private readonly string _name;
     private int _disposed;
+    private int _exclusiveTurnThreadId;
+
+    internal bool IsExecutingOperation =>
+        _isWorkerContext.Value || Volatile.Read(ref _exclusiveTurnThreadId) == Environment.CurrentManagedThreadId;
 
     public MediaControlOperationQueue(string name)
     {
@@ -103,7 +107,7 @@ internal sealed class MediaControlOperationQueue : IDisposable
         if (Volatile.Read(ref _disposed) != 0)
             throw new ObjectDisposedException(nameof(MediaControlOperationQueue));
 
-        if (_isWorkerContext.Value)
+        if (IsExecutingOperation)
             return operation();
 
         var turnGranted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -118,12 +122,14 @@ internal sealed class MediaControlOperationQueue : IDisposable
         }
 
         turnGranted.Task.GetAwaiter().GetResult();
+        Volatile.Write(ref _exclusiveTurnThreadId, Environment.CurrentManagedThreadId);
         try
         {
             return operation();
         }
         finally
         {
+            Volatile.Write(ref _exclusiveTurnThreadId, 0);
             _ = turnCompleted.TrySetResult();
         }
     }

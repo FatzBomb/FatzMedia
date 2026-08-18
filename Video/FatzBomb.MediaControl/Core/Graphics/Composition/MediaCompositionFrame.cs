@@ -32,6 +32,7 @@ public readonly partial record struct MediaCompositionFrame
     public int BackgroundNativeHeight { get; init; }
     public double BackgroundNativeFramesPerSecond { get; init; }
     public bool UseRetainedBackground { get; init; }
+    public BaseVisualTransform BaseVisualTransform { get; init; }
 
     public uint WashArgb { get; init; }
     public CdgRenderSnapshot? CdgOverlay { get; init; }
@@ -108,6 +109,7 @@ public readonly partial record struct MediaCompositionFrame
             BackgroundNativeHeight = 0,
             BackgroundNativeFramesPerSecond = 0,
             UseRetainedBackground = false,
+            BaseVisualTransform = BaseVisualTransform.Identity,
             WashArgb = 0,
             CdgOverlay = null,
             SuppressCdgOverlayDraw = false,

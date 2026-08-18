@@ -26,6 +26,7 @@ public sealed record MediaCompositionLayer
     public MediaCompositionStretchMode StretchMode { get; init; } = MediaCompositionStretchMode.UniformFit;
     public double Opacity { get; init; } = 1.0d;
     public uint ColorArgb { get; init; }
+    public BaseVisualTransform BaseVisualTransform { get; init; }
 
     /// <summary>
     /// Optional BGRA source payload for the transitional software/background path.

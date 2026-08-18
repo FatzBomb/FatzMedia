@@ -17,14 +17,16 @@ public sealed class BackgroundSurface : Grid, IDisposable
     private bool _showingSolidColor = true;
     private int _sourceReloadQueued;
     private bool _restoringPlatformFactory;
-    private bool _restoringPresentationMode;
+    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
 
     public BackgroundSurface()
     {
         ClipToBounds = true;
         _surface = new MediaSurface();
+        _surface.ContentVisibilityChanged += OnInnerContentVisibilityChanged;
         _playerController = new LightweightPlayerController(this, _surface, ConfigurePlayer);
+        _playerController.MediaClosed += OnPlayerMediaClosed;
         _colorLayer = new Border { Background = new SolidColorBrush(BackgroundColor) };
         _ = Children.Add(_colorLayer);
         _ = Children.Add(_surface);
@@ -45,6 +47,32 @@ public sealed class BackgroundSurface : Grid, IDisposable
     }
 
     public IMediaControlSession? Session => _playerController.Session;
+
+    public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
+        nameof(AutoHide),
+        typeof(bool),
+        typeof(BackgroundSurface),
+        new PropertyMetadata(true, OnAutoHideChanged));
+
+    private static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
+        DependencyProperty.RegisterReadOnly(
+            nameof(IsContentVisible),
+            typeof(bool),
+            typeof(BackgroundSurface),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty IsContentVisibleProperty =
+        IsContentVisiblePropertyKey.DependencyProperty;
+
+    public bool AutoHide
+    {
+        get => (bool)GetValue(AutoHideProperty);
+        set => SetValue(AutoHideProperty, value);
+    }
+
+    public bool IsContentVisible => (bool)GetValue(IsContentVisibleProperty);
+
+    public event EventHandler? ContentVisibilityChanged;
 
     public static readonly DependencyProperty PlatformFactoryProperty = DependencyProperty.Register(
         nameof(PlatformFactory),
@@ -74,7 +102,10 @@ public sealed class BackgroundSurface : Grid, IDisposable
         nameof(PresentationMode),
         typeof(WpfPresentationMode),
         typeof(BackgroundSurface),
-        new PropertyMetadata(WpfPresentationMode.NativeHwndOverlay, OnPresentationModeChanged));
+        new PropertyMetadata(
+            WpfPresentationMode.NativeHwndOverlay,
+            OnPresentationModeChanged,
+            CoercePresentationMode));
 
     public WpfPresentationMode PresentationMode
     {
@@ -147,6 +178,14 @@ public sealed class BackgroundSurface : Grid, IDisposable
     private static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((BackgroundSurface)d)._playerController.SetAutoPlay(e.NewValue is true);
 
+    private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var surface = (BackgroundSurface)d;
+        surface._surface.AutoHide = e.NewValue is true;
+        if (surface._showingSolidColor)
+            surface._surface.Visibility = Visibility.Collapsed;
+    }
+
     private static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
@@ -170,28 +209,24 @@ public sealed class BackgroundSurface : Grid, IDisposable
         throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
     }
 
+    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    {
+        var surface = (BackgroundSurface)d;
+        if (surface._playerController.IsMediaOpen)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[{nameof(BackgroundSurface)}] PresentationMode change deferred until media is closed.");
+            return surface._appliedPresentationMode;
+        }
+
+        return baseValue;
+    }
+
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
-        if (surface._restoringPresentationMode)
-            return;
-
-        if (surface._playerController.IsMediaOpen)
-        {
-            surface._restoringPresentationMode = true;
-            try
-            {
-                surface.SetCurrentValue(PresentationModeProperty, e.OldValue);
-            }
-            finally
-            {
-                surface._restoringPresentationMode = false;
-            }
-
-            throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
-        }
-
-        surface._playerController.SetPresentationMode((WpfPresentationMode)e.NewValue);
+        surface._appliedPresentationMode = (WpfPresentationMode)e.NewValue;
+        surface._playerController.SetPresentationMode(surface._appliedPresentationMode);
         surface.UpdateOverlayRoute();
     }
 
@@ -273,6 +308,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         if (player == null)
             return false;
 
+        PrepareMediaLayerForLoad();
         player.PlayOnLoad = false;
         var loaded = await player.LoadAsync(path, ignoreSidecar: true);
         var valid = FinalizeMediaLoad(player, loaded);
@@ -289,6 +325,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         if (player == null)
             return false;
 
+        PrepareMediaLayerForLoad();
         player.PlayOnLoad = false;
         var loaded = await player.LoadAsync(image, ignoreSidecar: true);
         var valid = FinalizeMediaLoad(player, loaded);
@@ -311,10 +348,26 @@ public sealed class BackgroundSurface : Grid, IDisposable
 
         _showingSolidColor = false;
         _colorLayer.Visibility = Visibility.Visible;
-        _surface.Visibility = Visibility.Visible;
+        if (!AutoHide)
+            _surface.Visibility = Visibility.Visible;
         UpdateOverlayRoute();
         return true;
     }
+
+    private void PrepareMediaLayerForLoad() => _surface.Visibility = Visibility.Visible;
+
+    private void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
+    {
+        var isVisible = _surface.IsContentVisible;
+        if (IsContentVisible == isVisible)
+            return;
+
+        SetValue(IsContentVisiblePropertyKey, isVisible);
+        ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPlayerMediaClosed(object? sender, EventArgs e) =>
+        CoerceValue(PresentationModeProperty);
 
     private void UpdateOverlayRoute()
     {
@@ -350,6 +403,8 @@ public sealed class BackgroundSurface : Grid, IDisposable
         _sourceReloadQueued = 0;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
+        _surface.ContentVisibilityChanged -= OnInnerContentVisibilityChanged;
+        _playerController.MediaClosed -= OnPlayerMediaClosed;
         _playerController.Dispose();
     }
 }

@@ -7,7 +7,7 @@ using System.Windows.Media;
 
 namespace FatzBomb.MediaControl.Wpf;
 
-public sealed class MediaSurface : Grid
+public sealed partial class MediaSurface : Grid
 {
     public const string DefaultSecondarySurfaceId = "secondary";
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -27,7 +27,7 @@ public sealed class MediaSurface : Grid
     private volatile bool _showPrimarySurfaceAfterPresentation;
     private SecondaryPresentationWindow? _secondaryWindow;
     private MediaOverlayWindow? _overlayWindow;
-    private bool _restoringPresentationMode;
+    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
 
     public MediaSurface()
     {
@@ -58,6 +58,7 @@ public sealed class MediaSurface : Grid
 
         _ = Children.Add(_surfaceHost);
         _ = Children.Add(_overlayPresenter);
+        InitializeAutoHide();
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -94,7 +95,10 @@ public sealed class MediaSurface : Grid
         nameof(PresentationMode),
         typeof(WpfPresentationMode),
         typeof(MediaSurface),
-        new PropertyMetadata(WpfPresentationMode.NativeHwndOverlay, OnPresentationModeChanged));
+        new PropertyMetadata(
+            WpfPresentationMode.NativeHwndOverlay,
+            OnPresentationModeChanged,
+            CoercePresentationMode));
 
     public WpfPresentationMode PresentationMode
     {
@@ -187,6 +191,7 @@ public sealed class MediaSurface : Grid
 
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
+        surface.OnAutoHideSessionChanged(e.NewValue as IMediaControlSession);
         if (e.NewValue is IMediaControlSession session)
         {
             surface.AttachSessionEvents(session);
@@ -204,30 +209,29 @@ public sealed class MediaSurface : Grid
             session.VideoDisplayMode = mode;
     }
 
+    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    {
+        var surface = (MediaSurface)d;
+        if (surface._isDesignMode)
+            return baseValue;
+
+        if (surface.Player is { IsOpen: true })
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[{nameof(MediaSurface)}] PresentationMode change deferred until media is closed.");
+            return surface._appliedPresentationMode;
+        }
+
+        return baseValue;
+    }
+
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
         if (surface._isDesignMode)
             return;
 
-        if (surface._restoringPresentationMode)
-            return;
-
-        if (surface.Player is { IsOpen: true })
-        {
-            surface._restoringPresentationMode = true;
-            try
-            {
-                surface.SetCurrentValue(PresentationModeProperty, e.OldValue);
-            }
-            finally
-            {
-                surface._restoringPresentationMode = false;
-            }
-
-            throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
-        }
-
+        surface._appliedPresentationMode = (WpfPresentationMode)e.NewValue;
         surface.DetachPrimarySurface(surface._attachedPrimarySession);
         surface.ConfigurePresentationHost();
         surface.UpdateOverlayWindow();
@@ -238,6 +242,10 @@ public sealed class MediaSurface : Grid
     {
         var surface = (MediaSurface)d;
         surface._overlayPresenter.Content = e.NewValue;
+        surface._overlayPresenter.Visibility = surface.PresentationMode == WpfPresentationMode.WpfComposited
+            && e.NewValue != null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         surface.UpdateOverlayWindow();
     }
 
@@ -356,6 +364,11 @@ public sealed class MediaSurface : Grid
         session.MediaStarted += OnSessionMediaStarted;
         session.MediaStopped += OnSessionMediaStopped;
         session.MediaEnded += OnSessionMediaEnded;
+        session.MediaLoaded += OnAutoHideMediaLoaded;
+        session.MediaClosed += OnAutoHideMediaClosed;
+        session.MediaPaused += OnAutoHideMediaPaused;
+        session.MediaLooped += OnAutoHideMediaLooped;
+        session.MediaError += OnAutoHideMediaError;
         session.PresentationFramePresented += OnSessionPresentationFramePresented;
     }
 
@@ -367,6 +380,11 @@ public sealed class MediaSurface : Grid
         session.MediaStarted -= OnSessionMediaStarted;
         session.MediaStopped -= OnSessionMediaStopped;
         session.MediaEnded -= OnSessionMediaEnded;
+        session.MediaLoaded -= OnAutoHideMediaLoaded;
+        session.MediaClosed -= OnAutoHideMediaClosed;
+        session.MediaPaused -= OnAutoHideMediaPaused;
+        session.MediaLooped -= OnAutoHideMediaLooped;
+        session.MediaError -= OnAutoHideMediaError;
         session.PresentationFramePresented -= OnSessionPresentationFramePresented;
         _showPrimarySurfaceAfterPresentation = false;
         _eventSession = null;
@@ -374,19 +392,28 @@ public sealed class MediaSurface : Grid
 
     private void OnSessionMediaStarted(object? sender, EventArgs e)
     {
-        _showPrimarySurfaceAfterPresentation = !IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession);
+        QueueAutoHideTransportSignal(static policy => policy.MediaStarted());
+        _showPrimarySurfaceAfterPresentation = !IsAutoHideEnabled
+            && !IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession);
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
     private void OnSessionMediaStopped(object? sender, EventArgs e)
     {
+        var session = sender as IMediaControlSession ?? _eventSession;
+        if (!IsStaleTerminalEvent(session))
+            QueueAutoHideHidden(SurfaceAutoHideHideReason.Stopped);
         _showPrimarySurfaceAfterPresentation = false;
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
     private void OnSessionMediaEnded(object? sender, EventArgs e)
     {
-        if (IsLoopingPlayback(sender as IMediaControlSession ?? _eventSession))
+        var session = sender as IMediaControlSession ?? _eventSession;
+        var isLooping = IsLoopingPlayback(session);
+        if (!IsStaleTerminalEvent(session))
+            QueueAutoHideMediaEnded(isLooping);
+        if (isLooping)
             return;
 
         _showPrimarySurfaceAfterPresentation = false;
@@ -395,6 +422,8 @@ public sealed class MediaSurface : Grid
 
     private void OnSessionPresentationFramePresented(object? sender, EventArgs e)
     {
+        QueueAutoHideFramePresented();
+
         // This event is raised from Core's native present/render thread, NOT the WPF UI thread.
         // Do not touch the Player dependency property here; read the plain, thread-safe _eventSession
         // reference instead. All UI-affine work is marshaled to the UI thread below.
@@ -410,7 +439,8 @@ public sealed class MediaSurface : Grid
         IMediaControlSession? session = Player;
         var shouldShow = _primaryAttached
             && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
-            && !_showPrimarySurfaceAfterPresentation;
+            && !_showPrimarySurfaceAfterPresentation
+            && (!AutoHide || _autoHidePolicy.IsContentVisible || IsAutoHidePresentationArmed);
 
         if (shouldShow)
         {
@@ -461,6 +491,10 @@ public sealed class MediaSurface : Grid
 
     private static bool IsLoopingPlayback(IMediaControlSession? session) =>
         session is { IsOpen: true, LoopMedia: true };
+
+    private bool IsStaleTerminalEvent(IMediaControlSession? session) =>
+        IsAutoHideEnabled
+        && session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused or MediaPlayerState.Buffering };
 
     private void AttachOwnerWindowHook()
     {

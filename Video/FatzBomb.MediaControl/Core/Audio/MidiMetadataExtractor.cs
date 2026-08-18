@@ -11,50 +11,18 @@ internal static class MidiMetadataExtractor
         TimeSpan duration,
         IReadOnlyList<MidiMarker> lyricOrTextMarkers)
     {
-        var titles = new List<string>();
-        var additionalInfo = new List<string>();
-        string? title = null;
-        string? artist = null;
-        string? writer = null;
-        string? lyricist = null;
-        string? year = null;
-        string? copyright = null;
-        string? keySignature = null;
-        string? tempo = null;
-        string? timeSignature = null;
-
-        foreach (MidiMarker marker in lyricOrTextMarkers)
-        {
-            var text = marker.Text?.Trim() ?? string.Empty;
-            if (text.StartsWith("@T", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
-                AddDistinct(titles, text[2..].Trim());
-            else if (text.StartsWith("@I", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
-            {
-                ParseInformation(
-                    text[2..].Trim(),
-                    ref title,
-                    ref artist,
-                    ref writer,
-                    ref lyricist,
-                    ref year,
-                    ref copyright,
-                    ref keySignature,
-                    ref tempo,
-                    ref timeSignature,
-                    additionalInfo);
-            }
-        }
-
-        title ??= titles.ElementAtOrDefault(0);
-        artist ??= titles.ElementAtOrDefault(1);
-        if (titles.Count > 2)
-        {
-            var thirdTitle = titles[2];
-            if (LooksLikeCopyright(thirdTitle) && string.IsNullOrWhiteSpace(copyright))
-                copyright = thirdTitle;
-            else
-                AddDistinct(additionalInfo, thirdTitle);
-        }
+        ParsedMarkerMetadata parsed = ParseMarkerMetadata(
+            lyricOrTextMarkers.Select(static marker => marker.Text));
+        var title = parsed.Title;
+        var artist = parsed.Artist;
+        var writer = parsed.Writer;
+        var lyricist = parsed.Lyricist;
+        var year = parsed.Year;
+        var copyright = parsed.Copyright;
+        var keySignature = parsed.KeySignature;
+        var tempo = parsed.Tempo;
+        var timeSignature = parsed.TimeSignature;
+        List<string> additionalInfo = [.. parsed.AdditionalInfo];
 
         MidiMarker[] trackNames = GetMarksSafe(stream, MidiMarkerType.TrackName);
         title ??= trackNames
@@ -116,6 +84,80 @@ internal static class MidiMetadataExtractor
             !hasEmbeddedMetadata,
             [.. additionalInfo]);
     }
+
+    internal static ParsedMarkerMetadata ParseMarkerMetadata(IEnumerable<string?> markerTexts)
+    {
+        ArgumentNullException.ThrowIfNull(markerTexts);
+
+        var titles = new List<string>();
+        var additionalInfo = new List<string>();
+        string? title = null;
+        string? artist = null;
+        string? writer = null;
+        string? lyricist = null;
+        string? year = null;
+        string? copyright = null;
+        string? keySignature = null;
+        string? tempo = null;
+        string? timeSignature = null;
+
+        foreach (string? markerText in markerTexts)
+        {
+            var text = markerText?.Trim() ?? string.Empty;
+            if (text.StartsWith("@T", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
+                AddDistinct(titles, text[2..].Trim());
+            else if (text.StartsWith("@I", StringComparison.OrdinalIgnoreCase) && text.Length > 2)
+            {
+                ParseInformation(
+                    text[2..].Trim(),
+                    ref title,
+                    ref artist,
+                    ref writer,
+                    ref lyricist,
+                    ref year,
+                    ref copyright,
+                    ref keySignature,
+                    ref tempo,
+                    ref timeSignature,
+                    additionalInfo);
+            }
+        }
+
+        title ??= titles.ElementAtOrDefault(0);
+        artist ??= titles.ElementAtOrDefault(1);
+        if (titles.Count > 2)
+        {
+            var thirdTitle = titles[2];
+            if (LooksLikeCopyright(thirdTitle) && string.IsNullOrWhiteSpace(copyright))
+                copyright = thirdTitle;
+            else
+                AddDistinct(additionalInfo, thirdTitle);
+        }
+
+        return new ParsedMarkerMetadata(
+            title,
+            artist,
+            writer,
+            lyricist,
+            year,
+            copyright,
+            keySignature,
+            tempo,
+            timeSignature,
+            additionalInfo);
+    }
+
+    internal sealed record ParsedMarkerMetadata(
+        string? Title,
+        string? Artist,
+        string? Writer,
+        string? Lyricist,
+        string? Year,
+        string? Copyright,
+        string? KeySignature,
+        string? Tempo,
+        string? TimeSignature,
+        IReadOnlyList<string> AdditionalInfo);
 
     internal static string FormatKeySignature(string value)
     {

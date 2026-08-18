@@ -21,5 +21,6 @@ public enum MediaCompositionLayerDirtyFlags
     ResourceAllocationChanged = 1 << 9,
     UploadRequired = 1 << 10,
     RenderRequired = 1 << 11,
-    FrameRateChanged = 1 << 12
+    FrameRateChanged = 1 << 12,
+    TransformChanged = 1 << 13
 }

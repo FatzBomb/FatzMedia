@@ -99,3 +99,8 @@ internal interface ILoopPlaybackControl
     bool LoopPlayback { get; set; }
     bool HandlesLoopInternally { get; }
 }
+
+internal interface IMediaLoopEventSource
+{
+    event EventHandler? MediaLooped;
+}

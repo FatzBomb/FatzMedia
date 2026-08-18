@@ -2,7 +2,9 @@
 
 ## Active
 
-- `active/029A_ACTIVE_SessionEventsFoundation.md` - additive public session/controller events (lifecycle, state, throttled position, seek, parameter changes) with documented ordering, throttling, and handler-exception isolation (2026-08-07)
+- None. Select and bound the next stage before implementation begins.
+
+Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Reverted
 
@@ -10,6 +12,10 @@
 
 ## Completed
 
+- `complete/030A_COMPLETED_VisualTransforms.md` — Core-owned base-visual transforms with software/Direct3D11 parity, optional whole-composition processing, Player validation flyouts, 438-test automated baseline, and user-confirmed manual smoke on both renderer paths (2026-08-17)
+- `complete/029C_COMPLETED_EventDrivenWpfAutoHide.md` — event-driven WPF surface AutoHide (default on, `--no-auto-hide` opt-out, internal-host-only visibility) with additive Core `HasVisualContent`; Release 0 warnings/errors, 406 tests, format/Core/WPF/parity gates, Core+WPF packs, WPF specialist and final diff review no blockers, manual Player AutoHide smoke passed (2026-08-08)
+- `complete/029B_COMPLETED_LoadResetPitchTempoOptions.md` — per-load pitch/tempo reset options with `MediaChangeReason.LoadReset`; Release 0 warnings/errors, 397 tests, format/Core/WPF/parity/package gates passed, strict review no blockers, manual reset smoke passed with both startup flags (2026-08-08)
+- `complete/029A_COMPLETED_SessionEventsFoundation.md` — host-facing session event surface with public ordering/throttling contracts; Release 0 warnings/errors, 389 tests, format/Core/WPF/parity/package gates passed; Player host smoke and `--software` runtime smoke passed (2026-08-08)
 - `complete/024A_COMPLETED_SoftwareRenderer.md` — portable deterministic in-memory BGRA composition with exact-pixel visual-regression coverage; Release Direct3D11 NativeHwndOverlay smoke confirmed for video/CDG play, seek, stop, and replay (2026-08-07)
 - `complete/028A_COMPLETED_LightweightWpfSurfaces.md` — self-contained background/karaoke surfaces with selectable native-HWND or WPF-composited presentation (2026-08-07)
 - `complete/025B_COMPLETED_RendererConfigurationOwnership.md` — Direct3D11 owns renderer-specific presentation options and DXGI present policy; portable Core contains no concrete renderer selection (2026-08-03)
@@ -38,19 +44,15 @@
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Recommended next: `future/029B_IDEA_LoadResetPitchTempoOptions.md` - independent opt-in
-pitch/tempo reset on media load.
+Recommended next: `future/030B_IDEA_SilenceTrimmingAnalysisCache.md` - audio silence trimming with a versioned media-analysis cache.
 
-Stages 029B-031B plus the revised 014A are the agreed feature sequence after Stage 029A:
-load-reset/auto-hide polish, visual transforms, analysis and trimming, prepared-next
-and audio crossfade, then streaming.
+Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
+auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
+trimming, prepared-next and audio crossfade, then streaming.
 
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/029B_IDEA_LoadResetPitchTempoOptions.md` - independent opt-in pitch/tempo reset on media load.
-- `future/029C_IDEA_EventDrivenWpfAutoHide.md` - event-driven AutoHide for the WPF surfaces.
-- `future/030A_IDEA_VisualTransforms.md` - Core-owned base-visual tint/hue/brightness/contrast/saturation/lightness transforms.
 - `future/030B_IDEA_SilenceTrimmingAnalysisCache.md` - audio silence trimming with a versioned media-analysis cache.
 - `future/031A_IDEA_PreparedNextPlaylistSlot.md` - host-owned playlist with a Core depth-one prepared-next slot.
 - `future/031B_IDEA_AudioFadeCrossfadeModel.md` - audio fade/crossfade envelope model for ordinary local audio.

@@ -53,6 +53,7 @@ public sealed class SoftwareCompositionRenderer
         }
 
         buffer.Clear(ResolveClearArgb(frame));
+        var transformWholeComposition = frame.BaseVisualTransform is { IsIdentity: false, IncludeOverlays: true };
         if (frame.HasBackground)
         {
             DrawBgraLayer(
@@ -67,7 +68,8 @@ public sealed class SoftwareCompositionRenderer
                     width,
                     height,
                     frame.EffectiveBackgroundStretchMode),
-                premultiplied: false);
+                premultiplied: false,
+                transformWholeComposition ? BaseVisualTransform.Identity : frame.BaseVisualTransform);
         }
 
         if (frame.HasWash)
@@ -78,6 +80,9 @@ public sealed class SoftwareCompositionRenderer
 
         if (frame.HasSubtitleOverlay)
             DrawSubtitle(buffer, frame);
+
+        if (transformWholeComposition)
+            ApplyFinalTransform(buffer, frame.BaseVisualTransform);
 
         return new SoftwareRenderOutput(
             SoftwareRenderStatus.Rendered,
@@ -199,7 +204,8 @@ public sealed class SoftwareCompositionRenderer
             frame.SubtitleHeight,
             frame.SubtitleStride,
             mapping,
-            premultiplied: true);
+            premultiplied: true,
+            BaseVisualTransform.Identity);
     }
 
     private static void DrawBgraLayer(
@@ -209,7 +215,8 @@ public sealed class SoftwareCompositionRenderer
         int sourceHeight,
         int sourceStride,
         SoftwareStretch mapping,
-        bool premultiplied)
+        bool premultiplied,
+        BaseVisualTransform transform)
     {
         for (var y = mapping.ClippedTop; y < mapping.ClippedBottom; y++)
         {
@@ -217,7 +224,17 @@ public sealed class SoftwareCompositionRenderer
             {
                 (int sourceX, int sourceY) = mapping.GetSourcePixel(x, y);
                 var sourceOffset = (sourceY * sourceStride) + (sourceX * 4);
-                if (premultiplied)
+                if (!transform.IsIdentity)
+                {
+                    (byte blue, byte green, byte red, byte alpha) = SoftwareBaseVisualTransform.ApplyStraightToPremultiplied(
+                        source[sourceOffset],
+                        source[sourceOffset + 1],
+                        source[sourceOffset + 2],
+                        source[sourceOffset + 3],
+                        transform);
+                    buffer.BlendPremultiplied(x, y, blue, green, red, alpha);
+                }
+                else if (premultiplied)
                 {
                     buffer.BlendPremultiplied(
                         x,
@@ -238,6 +255,24 @@ public sealed class SoftwareCompositionRenderer
                         source[sourceOffset + 3]);
                 }
             }
+        }
+    }
+
+    private static void ApplyFinalTransform(SoftwareCompositionBuffer buffer, BaseVisualTransform transform)
+    {
+        Span<byte> pixels = buffer.Pixels;
+        for (var offset = 0; offset < pixels.Length; offset += 4)
+        {
+            (byte blue, byte green, byte red, byte alpha) = SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied(
+                pixels[offset],
+                pixels[offset + 1],
+                pixels[offset + 2],
+                pixels[offset + 3],
+                transform);
+            pixels[offset] = blue;
+            pixels[offset + 1] = green;
+            pixels[offset + 2] = red;
+            pixels[offset + 3] = alpha;
         }
     }
 }

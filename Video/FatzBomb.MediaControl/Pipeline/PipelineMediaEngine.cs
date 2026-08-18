@@ -9,7 +9,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaErrorSource, IClockBackedMediaEngine
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine
 {
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
@@ -60,6 +60,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ArgumentNullException.ThrowIfNull(subtitleEngine);
         _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
+        _coordinator.PlaybackLooped += OnPlaybackLooped;
     }
 
     public IVideoEngine? Video => _coordinator.Video;
@@ -98,6 +99,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
 
     public event EventHandler? MediaEnded;
+    public event EventHandler? MediaLooped;
     public event EventHandler<VideoFrameEventArgs>? ImageFrameReady;
     public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady;
     public event EventHandler? BackgroundCleared;
@@ -287,6 +289,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ClearBackgroundCore(raiseEvent: false);
         _backgroundVideoScheduler.Dispose();
         _coordinator.PlaybackEnded -= OnPlaybackEnded;
+        _coordinator.PlaybackLooped -= OnPlaybackLooped;
         _coordinator.Dispose();
         _disposed = true;
     }
@@ -681,6 +684,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         MediaEnded?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnPlaybackLooped(object? sender, EventArgs e) => MediaLooped?.Invoke(this, EventArgs.Empty);
 
     private static bool RejectUnsupported(string path, FileType fileType)
     {

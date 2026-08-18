@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FatzBomb.MediaControl.Player.Controls;
 using FatzBomb.MediaControl.Player.ViewModels;
 
 namespace FatzBomb.MediaControl.Player;
@@ -53,9 +54,10 @@ public partial class MainWindow : Window
         _viewModel = new MainWindowViewModel();
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        FlyoutPanel.SecondaryWindowToggleRequested += FlyoutPanel_SecondaryWindowToggleRequested;
         MediaSurface.SecondaryOutputsChanged += MediaSurface_SecondaryOutputsChanged;
         UpdateSeekBarVisual();
-        UpdateProjectorButtonVisual();
+        UpdateSecondaryWindowCheckBox();
 
         if (App.StartupMediaPath is not null)
             _ = LoadStartupMediaAsync();
@@ -109,6 +111,9 @@ public partial class MainWindow : Window
 
     private void MediaViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.ClickCount == 1)
+            _viewModel.CloseFlyout();
+
         if (e.ClickCount != 2) return;
 
         ToggleFullScreen();
@@ -117,30 +122,29 @@ public partial class MainWindow : Window
 
     private void FullScreenButton_Click(object sender, RoutedEventArgs e)
     {
+        _viewModel.CloseFlyout();
         ToggleFullScreen();
         e.Handled = true;
     }
 
-    private void ProjectorButton_Click(object sender, RoutedEventArgs e)
+    private void FlyoutPanel_SecondaryWindowToggleRequested(object? sender, EventArgs e)
     {
-        _ = MediaSurface.IsSecondaryOutputOpen() ? MediaSurface.CloseSecondaryOutput() : MediaSurface.ShowSecondaryOutput();
+        if (MediaSurface.IsSecondaryOutputOpen())
+            _ = MediaSurface.CloseSecondaryOutput();
+        else
+            MediaSurface.ShowSecondaryOutput();
 
-        UpdateProjectorButtonVisual();
-        e.Handled = true;
+        UpdateSecondaryWindowCheckBox();
     }
 
-    private void MediaSurface_SecondaryOutputsChanged(object? sender, EventArgs e) => UpdateProjectorButtonVisual();
+    private void MediaSurface_SecondaryOutputsChanged(object? sender, EventArgs e) => UpdateSecondaryWindowCheckBox();
 
-    private void UpdateProjectorButtonVisual()
+    private void UpdateSecondaryWindowCheckBox()
     {
-        if (ProjectorButton == null)
+        if (FlyoutPanel == null)
             return;
 
-        var isOpen = MediaSurface.IsSecondaryOutputOpen();
-        ProjectorButton.ToolTip = isOpen
-            ? "Close secondary/projector output validation"
-            : "Open secondary/projector output validation";
-        ProjectorButton.Opacity = isOpen ? 1.0 : 0.72;
+        FlyoutPanel.IsSecondaryOutputOpen = MediaSurface.IsSecondaryOutputOpen();
     }
 
     private void SeekBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -248,11 +252,21 @@ public partial class MainWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && _isFullScreen)
+        if (e.Key == Key.Escape)
         {
-            ExitFullScreen();
-            e.Handled = true;
-            return;
+            if (_viewModel.ActiveFlyout != ViewModels.PlayerFlyout.None)
+            {
+                _viewModel.CloseFlyout();
+                e.Handled = true;
+                return;
+            }
+
+            if (_isFullScreen)
+            {
+                ExitFullScreen();
+                e.Handled = true;
+                return;
+            }
         }
 
         if (e.Key == Key.F11)
@@ -270,6 +284,8 @@ public partial class MainWindow : Window
 
     private void ToggleFullScreen()
     {
+        _viewModel.CloseFlyout();
+
         if (_isFullScreen)
             ExitFullScreen();
         else
@@ -410,7 +426,12 @@ public partial class MainWindow : Window
 
     private void FullScreenOverlayRoot_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!_isFullScreen || e.ClickCount != 2) return;
+        if (!_isFullScreen) return;
+
+        if (e.ClickCount == 1 && !IsDescendantOf(e.OriginalSource as DependencyObject, BottomChrome))
+            _viewModel.CloseFlyout();
+
+        if (e.ClickCount != 2) return;
         if (IsDescendantOf(e.OriginalSource as DependencyObject, BottomChrome)) return;
 
         ToggleFullScreen();
@@ -462,6 +483,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _fullScreenChromeTimer.Stop();
+        FlyoutPanel.SecondaryWindowToggleRequested -= FlyoutPanel_SecondaryWindowToggleRequested;
         MediaSurface.SecondaryOutputsChanged -= MediaSurface_SecondaryOutputsChanged;
         _ = MediaSurface.CloseSecondaryOutput();
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;

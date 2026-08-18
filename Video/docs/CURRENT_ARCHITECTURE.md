@@ -99,7 +99,9 @@ frame and size always produce byte-identical pixels. Deterministic rules:
 - **Backend** — the internal `SoftwareRendererBackend` accepts exactly one primary
   `ManagedBgraFrameSink` presentation surface, uses the surface's pixel size, and
   publishes the rendered frame through `IMediaPresentationFrameSink`. Native-frame and
-  device methods report unsupported without throwing.
+  device methods report unsupported without throwing. It retains no presentation
+  stretch or background-frame state: effective stretch travels on each composition
+  frame, and every render uses only the frame supplied by Core.
 
 ## Ownership
 
@@ -121,6 +123,16 @@ airspace limitations but introduces synchronous GPU-readback cost.
 The mode is selected before media is loaded and applies to the whole player session.
 Other UI adapters should use their best framework-native presentation path and only add
 an equivalent choice when their framework has a comparable limitation.
+
+If a WPF binding or imperative setter requests another presentation mode while media
+is open, the three WPF surfaces keep the applied mode without throwing or rebuilding
+their hosts. WPF retains the requested base value and the surface re-coerces it when
+the session closes or the lightweight player is released, applying the deferred mode
+only after the creation-time constraint is no longer active. In-place media
+replacement keeps the same session open, so it deliberately preserves the applied
+mode and carries the latest deferred request to the next true close/release boundary.
+This is pinned by an STA WPF dependency-property regression test using a fake Core
+platform factory; no native media or window handle is required.
 
 `BackgroundSurface` and `KaraokeSurface` live in the renderer-neutral WPF project and own
 their sessions after the host supplies an `IMediaControlPlatformFactory`, matching the
@@ -183,6 +195,10 @@ named `window` handle.
   3. System `.sf2` files (sgm.sb, etc.)
   4. Bundled `native/TimGM6mb.sf2` (5.7 MB compact GM soundfont; always present)
 - DLS-to-SF2 conversion is handled by a self-contained `DlsToSf2Converter` that reads DLS RIFF chunks directly with `BinaryReader` and writes a minimal valid SF2 with `BinaryWriter`. No external DLS2/SF2 library or `EndianBinaryIO` dependency is required. The converted SF2 is cached in LocalAppData.
+- The converter reads the DirectX DLS `INSTHEADER`, `RGNHEADER`, `WAVELINK`,
+  `WAVESAMPLE`, and `WAVELOOP` layouts at their specified field widths and writes a
+  32-bit RIFF payload size. A deterministic minimal DLS fixture pins bank/preset,
+  key/velocity ranges, sample rate/root key, and the resulting SF2 container.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
 
@@ -194,7 +210,7 @@ named `window` handle.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
 - MIDI markers are shifted 400ms earlier so syllable wipe highlighting leads the corresponding note, giving the singer visual preparation similar to CDG timing.
-- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession`, `MediaControlPlayer`, and the Player host UI.
+- `ShowMidiLyrics` (default `true`) toggles MIDI lyric display at runtime without affecting ordinary SRT/ASS subtitles. Exposed on `IMediaControlSession` and `MediaControlPlayer`; the Player host always sets it to `true` (the former host checkbox was removed in Stage 030A).
 - MIDI/KAR image/video sidecar rendering is supported, including archive KAR+background combinations.
 
 ### Karaoke Text Style
@@ -295,6 +311,277 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 - `MediaPlayerConfiguration.AudioOutputFallbackMode`: `FallbackToPrimary` (default) or `NoFallback`.
 - If an explicit device is unavailable at init and fallback is enabled, the engine retries on Primary.
 - Both `AudioEngine` and `VideoAudioEngine` resolve and select the configured BASS device before stream creation and latency queries.
+
+## Per-Load Effect Reset
+
+`MediaPlayerConfiguration.ResetPitchOnMediaLoad` and
+`ResetTempoOnMediaLoad` independently opt into returning pitch to `0` and tempo to
+`100` after each successful load. Both default to `false`. Resets run after the new
+active audio/clock engine is refreshed and before `MediaLoaded` or autoplay;
+`PitchChanged` / `TempoChanged` carry `MediaChangeReason.LoadReset` only when the
+value actually changes. Normal setter changes carry `MediaChangeReason.User`.
+
+`MediaChangeReason` (`User`/`LoadReset`) rides on `MediaValueChangedEventArgs<T>`,
+which gained an additive `Reason` property and a three-argument constructor
+overload; the existing two-argument constructor is preserved, so both source and
+binary compatibility hold for existing construction sites. The
+`MediaPlayerConfiguration` record struct gains two `init` properties
+(source-compatible; binary/ABI-relevant pre-1.0 because the struct layout grows).
+
+Stage 030A (2026-08-10) additionally exposed both options as runtime
+`IMediaControlSession` properties — `MediaControlPlayer.LoadBehavior.cs` (new
+partial) forwards them to mutable `MediaFile.ResetPitchOnMediaLoad` /
+`ResetTempoOnMediaLoad` options applied by `MediaFile.LoadCore` at each load —
+so hosts can toggle the resets live; the config flags seed the initial values.
+
+Implemented and closed 2026-08-08 (Release 0 warnings/errors, 397 tests, strict
+review no blockers; manual Player reset smoke passed with both startup flags —
+Core pitch/tempo reset to 0/100 and both WPF sliders visibly synchronized). See
+`roadmap/complete/029B_COMPLETED_LoadResetPitchTempoOptions.md`.
+
+## Control And Completion Serialization
+
+Public load, play, pause, stop, seek, close, and reset operations are admitted through
+one `MediaControlOperationQueue`. Natural-end handling uses that same queue rather
+than restarting the engine directly from a BASS/pipeline callback: end detection is
+queued first, host `MediaEnded` delivery is ordered next, and loop completion is
+queued afterward. `MediaControls` carries a transport-generation token so a Play,
+Pause, Stop, or Seek that wins the race invalidates stale end work before it can
+restart playback. This preserves the Stage 029A `MediaEnded` → `MediaLooped` ordering
+while allowing a host's `MediaEnded` handler to cancel a pending loop with Stop.
+
+`Dispose` shares the same lifecycle admission gate: it waits behind admitted work,
+runs teardown in an exclusive queue turn, drains terminal event deliveries, closes the
+old queue, and then publishes disposed state. Synchronous disposal from inside a
+serialized control callback is rejected because it cannot safely wait for its own
+active queue turn.
+
+Video/CDG seeks retain latest-wins settle signaling. After a successful seek, the
+player also checks the current engine position through near-exact equality; an
+already-settled/no-op seek therefore raises `SeekCompleted` without requiring a new
+decoder/CDG event. Real moves still complete from `IVideoEngine.PositionChanged` or
+`ICdgEngine.FrameInvalidated` through the wider 250 ms settle tolerance. Separating
+the two tolerances prevents a small asynchronous video seek from completing against
+its stale pre-seek position. Stop, natural end, close, reset, and failed seek clear
+pending completion state so stale signals cannot complete an obsolete request.
+
+## WPF Surface AutoHide (Stage 029C)
+
+Closed 2026-08-08 — Release 0 warnings/errors, 406 tests, format/Core/WPF/parity
+gates, Core and WPF nupkg/snupkg packs, WPF specialist and final diff review no
+blockers, and the manual Player AutoHide smoke passed (visual↔audio-only,
+video/CDG replacement, default behavior, background/transparency semantics,
+public `IsContentVisible`/`ContentVisibilityChanged` behavior). See
+`roadmap/complete/029C_COMPLETED_EventDrivenWpfAutoHide.md`.
+
+Stage 029C gives the Stage 028A WPF surfaces an event-driven visibility policy
+decided by the Stage 029A session lifecycle plus `PresentationFramePresented` as
+the positive proof of visual output — never file extensions or content flags:
+
+- Additive Core capability: `IMediaControlSession.HasVisualContent` — true when
+  the loaded media's content role includes a visual main (`Video`, `Cdg`,
+  `Image`, or `Subtitle`) or when a resolved composition background is present
+  (`MediaControlPlayer`: content flags OR `_mediaEngine.Background != null`).
+  It arms hidden targets so presentation can restart; it never makes a show
+  decision by itself.
+- `MediaSurface.AutoHide` dependency property, default `true` (standard media-player behavior).
+  It governs only the internal native/composited presentation host and never writes
+  the outer control's `Visibility`, background, or transparency, keeping the control
+  laid out so new frames can
+  still arrive while content is hidden. When `false`, current behavior is preserved
+  exactly. `BackgroundSurface` / `KaraokeSurface`
+  forward the same `AutoHide`, `IsContentVisible`, and `ContentVisibilityChanged`
+  surface for their inner media layer; their solid-color / canvas fallbacks are
+  independent of inner-media AutoHide.
+- Internal pure `SurfaceAutoHidePolicy` (`Idle → PendingShow → Shown → Hidden`)
+  in `FatzBomb.MediaControl.Wpf/SurfaceAutoHidePolicy.cs`, consumed by
+  `MediaSurface` (the `MediaSurface.AutoHide.cs` partial) with marshaled,
+  coalesced dispatcher transitions. Load only arms `PendingShow`; the surface
+  shows on the first presented frame. Explicit stop/close/failure hide; pause
+  stays shown; non-loop natural end hides; looping stays shown.
+- **Pre-`MediaLoaded` frame latch/replay (static images)** — the present fires
+  from Core's native present/render thread and `MediaLoaded` from the control
+  pipeline, marshaled separately, and a static image may present exactly one
+  frame. The adapter latches "a frame was presented" in an interlocked flag and,
+  when the queued `MediaLoaded` transition re-arms, replays that proof to go
+  straight to `Shown` without waiting for another present. The latch is cleared
+  on session change, hide transitions, and non-loop natural end, so it cannot
+  resurrect a stale show.
+- **Replacement contract (corrected)** — WPF-only signals cannot distinguish an
+  explicit `Stop` from the internal stop a replacement performs (both raise
+  `MediaStopped`), so a transient hide during a slow replacement is allowed. The
+  guarantees are only that the newest `MediaLoaded` re-arms, the first presented
+  frame of the new content shows, and the surface is never stuck hidden. No
+  no-flicker guarantee is made. A session-generation check plus the
+  `HasVisualContent` snapshot filter stale replacement frames: a present from a
+  replaced item (visual-capability flag 0 or old generation) cannot reveal a new
+  audio-only session.
+- The Wpf project exposes the internal policy via
+  `InternalsVisibleTo("FatzBomb.MediaControl.Tests")`; the Tests project added a
+  Wpf reference and `SurfaceAutoHidePolicyTests` covers the policy
+  deterministically. The `scripts/check-core-boundary.ps1` allow-list was updated
+  for the new references. The Player host enables AutoHide by default and exposes
+  `--no-auto-hide` for validation of the manual-control opt-out.
+
+## Base-Visual Transform Pipeline (Stage 030A)
+
+Implemented 2026-08-09; contract revised 2026-08-10 (independent per-channel
+RGB gains replace the former tint and color-wash members; `Lightness` removed)
+and 2026-08-11 (fixed order changed to hue → saturation → TV-style contrast
+gain → brightness offset → per-channel RGB gains; `IncludeOverlays`
+whole-composition mode added; Player host reworked to persistent chrome plus
+one-at-a-time Sync/Video/Audio/A-V flyouts; MIDI lyrics checkbox removed with
+`ShowMidiLyrics = true` always). Stage 030A fixes landed 2026-08-11 (second
+pass): the DirectComposition split-path cached base state now carries
+`BaseVisualTransform` (root-cause fix for static images — see below), and Loop
+moved from the A/V flyout to the persistent transport strip as a stateful icon
+button. Closed 2026-08-17 after automated validation (Release 0
+warnings/errors, 438 tests, gates, packs, focused final review PASS) and
+user-confirmed manual static-image Include Overlays off/on, loop icon, flyout,
+and both-renderer smoke. The completed specification lives at
+`roadmap/complete/030A_COMPLETED_VisualTransforms.md`; the fixed operation order and
+pinned coefficients below are the exact reference implemented by every path.
+
+`IMediaControlSession` (and `MediaControlPlayer`) exposes
+`BaseVisualTransform { get; set; }` plus a change-only `BaseVisualTransformChanged`
+event carrying previous/current `MediaValueChangedEventArgs<BaseVisualTransform>`
+(raised through `HostEventDispatcher`). `BaseVisualTransform` is a public
+immutable readonly record struct in Core (`Api/BaseVisualTransform.cs`):
+`RedGain` / `GreenGain` / `BlueGain` (each [0,2], default `1`),
+`HueDegrees` / `Brightness` (default `0`), `Contrast` / `Saturation`
+(default `1`), and `IncludeOverlays` (default `false`). There is **no
+`Lightness` member**, no tint member, and no color-wash member or preset type.
+Init accessors clamp to the pinned ranges and treat NaN as the identity
+default, so `default`/`new()` is always `BaseVisualTransform.Identity`
+(`IsIdentity == true`); gains at exactly `1` with neutral
+hue/brightness/contrast/saturation are identity, and `IncludeOverlays = true`
+with all-neutral color math remains identity (byte-identical output).
+
+**Ownership and flow** — Core owns the model, the exact per-stage math
+(`Core.Graphics.Composition.BaseVisualTransformMath`, internal), and the
+composition-plan carry. The session property delegates to
+`MediaPresentationCoordinator.BaseVisualTransform` (lock-protected,
+change-only); a change calls `PresentCurrentComposition("base visual transform
+changed")`, which re-renders the current composition **without re-uploading
+source pixels**. The transform rides on the Layer 0 `Background` layer
+descriptor (`MediaCompositionFrame.BaseVisualTransform` /
+`MediaCompositionLayer.BaseVisualTransform`) and reaches both renderers through
+the same public composition contract — no renderer internals leak into Core.
+
+**Default scope (Layer 0 only)** — with `IncludeOverlays = false` the transform
+applies exclusively to the base visual (main video/image and background
+video/image on the composition `Background` layer). Clear, wash, CDG overlay,
+subtitle, and karaoke text are never transformed, and no extra composition pass
+runs: the software renderer engages the transform only for the background/base
+draw and passes `BaseVisualTransform.Identity` on the subtitle draw; the D3D11
+subtitle pass keeps the legacy `_backgroundPixelShader`.
+
+**Whole-composition mode (`IncludeOverlays = true` + non-identity)** — the same
+math is applied to the completed composition as a whole — wash, CDG overlay,
+subtitle overlay, and any other overlays included — through a final postprocess
+pass. The transform is **moved** off Layer 0 for that frame: both renderers draw
+the base visual with identity and apply the transform exactly once to the final
+buffer, never double-applying it. `IncludeOverlays = true` with all-neutral
+color math stays byte-identical (identity bypass, no extra pass).
+
+**Software exact reference** — `FatzBomb.MediaControl.Rendering.Software`'s
+`SoftwareBaseVisualTransform` mirrors the Core reference math exactly
+(unpremultiply to straight sRGB → YIQ hue rotation → Rec.709 saturation →
+TV-style contrast gain (`rgb *= Contrast`, black stays black) → brightness
+offset (`rgb += Brightness`) → independent per-channel RGB gain →
+re-premultiply → round-to-nearest-away-from-zero BGRA8) and is applied only when
+the transform is non-identity, so identity output is byte-identical. In
+whole-composition mode the renderer skips the per-layer transform and runs
+`ApplyFinalTransform` over the completed premultiplied buffer
+(`SoftwareBaseVisualTransform.ApplyPremultipliedToPremultiplied`).
+`BaseVisualTransformTests.SoftwareMathMatchesCoreReference` and
+`SoftwarePremultipliedMathMatchesCoreReference` cross-check the software paths
+against the Core reference, and the renderer fixtures pin byte-exact outputs
+(`Render_IdentityTransform_IsByteIdentical`,
+`Render_TransformDoesNotReachSubtitle`, per-stage fixtures, combined order,
+`Render_IncludeOverlaysTransformsCompletedComposition`,
+`Render_IncludeOverlaysDoesNotDoubleApplyBackgroundTransform`,
+`Render_IncludeOverlaysWithNeutralMathIsByteIdentical`).
+
+**Per-channel RGB gain math** (final stage, per pixel, after all prior stages) —
+`R' = clamp(R * RedGain)`, `G' = clamp(G * GreenGain)`,
+`B' = clamp(B * BlueGain)`. Gain `0` removes the channel entirely
+(`GreenGain=0` + `BlueGain=0` leaves red-only; `RedGain=0` leaves cyan/aqua;
+all three `0` is black), gain `1` is neutral, and gain `2` doubles the channel
+and clips at 1.
+
+**Direct3D11** — two dedicated pixel shaders implement the same equations
+(constant buffer fields `TransformAdjustments` / `TransformBlend` /
+`TransformRgbGains`): `PSBaseVisual` (`_baseVisualPixelShader`), bound only when
+the layer transform is non-identity in per-layer mode, and
+`PSBaseVisualPremultiplied` (`_baseVisualPostPixelShader`), the whole-composition
+overwrite pass. Identity backgrounds and the subtitle layer keep `PSBackground`
+(`_backgroundPixelShader`), so the identity path is unchanged. In
+whole-composition mode the presenter composites the full frame — background
+drawn with identity — into a per-target cached offscreen B8G8R8A8 render target
+(`_postProcessTargets`, keyed by target ID, recreated on resize, disposed on
+reset), then runs `PSBaseVisualPremultiplied` as a no-blend overwrite onto the
+final target; the DirectComposition overlay split is disabled in this mode
+(`D3D11RendererPresentationServices.CanUseDirectCompositionOverlaySplit`). A
+transform change marks `MediaCompositionLayerDirtyFlags.TransformChanged |
+RenderRequired` (never `UploadRequired`) in `D3D11CompositionLayerState` —
+render-without-upload (covered by `D3D11CompositionLayerStateTests`).
+
+**Split-path base state carries the transform (root-cause fix, 2026-08-11)** —
+the DirectComposition overlay split path (`IncludeOverlays = false`) re-presents
+its static base only when the cached `DirectCompositionOverlaySplitBaseState`
+changes. That state originally omitted `BaseVisualTransform`, so transform
+changes were skipped for static images/backgrounds (which present a single
+frame), while video — whose frame revisions changed every frame — masked the
+bug. The record struct and `CreateDirectCompositionOverlaySplitBaseState` now
+include `frame.BaseVisualTransform`, so any transform change invalidates the
+cached base state and forces a re-present; pinned by
+`D3D11RendererPresentationServicesTests.DirectCompositionBaseStateChangesWhenStaticImageTransformChanges`
+(two base states built from the same frame/target differ when only the
+transform changes).
+
+**Hardware primary routing** — in `MediaPresentationCoordinator.PresentPrimaryVideoFrame`,
+a hardware frame with a non-identity transform routes through
+`RenderHardwareVideoCompositionFrame` (composition/shader path) instead of the
+direct zero-copy `PresentNativeFrame`; identity keeps the direct native path.
+The route is chosen from the transform state at frame-present time.
+
+**Player host UI** — the host keeps a persistent bottom chrome (timeline/seek,
+transport Open/Play/Pause/Stop, volume, fullscreen, status strip) and exposes
+four **one-at-a-time** flyouts via toggle buttons (Sync, Video, Audio, A/V;
+`ActiveFlyout`, active button highlighted). Flyout content is extracted to
+`Controls/PlayerFlyoutPanel.xaml`. The **Video flyout** drives the pipeline
+live: HUE (−180°…180°), SATURATION (0–2), BRIGHTNESS (−0.25–0.25), CONTRAST
+(0.5–1.5), and RED GAIN / GREEN GAIN / BLUE GAIN (0–2) sliders (no Lightness, no
+color wash, no preset type) plus an **Include Overlays** checkbox
+(`BaseVisualTransform.IncludeOverlays`) assemble a `BaseVisualTransform`
+straight into the session property (change-only, render-without-upload), and a
+Reset Visual command restores identity (gains `1/1/1`, hue/brightness `0`,
+contrast/saturation `1`, Include Overlays unchecked). The **Audio flyout** has
+pitch/tempo/normalize and runtime Reset Pitch on Load / Reset Tempo on Load
+checkboxes backed by additive `IMediaControlSession.ResetPitchOnMediaLoad` /
+`ResetTempoOnMediaLoad` properties (`MediaControlPlayer.LoadBehavior.cs` partial
+→ mutable `MediaFile` options applied per load), so the Stage 029B config flags
+are now also live session toggles. The **A/V flyout** carries Auto Play, Auto
+Hide (Stage 029C runtime toggle), the secondary/projector window toggle, video
+display mode, presentation mode, and CDG background opacity. **Loop Playback**
+lives on the persistent transport strip as a stateful icon button
+(`ToggleChromeButtonStyle`, accent highlight when `LoopPlayback` is on,
+`ToggleLoopCommand`); the duplicate A/V flyout Loop checkbox was removed
+(2026-08-11). The **Sync flyout** keeps the per-item A/V/CDG/subtitle 100ms
+offset buttons and reset. Every control works without startup flags; the flags
+(`--visual-transform-demo`, `--reset-pitch-on-load`, `--reset-tempo-on-load`,
+`--no-auto-hide`) initialize their corresponding controls for compatibility.
+`--visual-transform-demo` seeds the demo values (`RedGain=0.85`,
+`GreenGain=0.95`, `BlueGain=1.2`, `HueDegrees=30`, `Brightness=0.05`,
+`Contrast=1.15`, `Saturation=1.2`; no lightness, Include Overlays off) into the
+controls, which then flow through the same live path. The host sliders expose
+practical ranges — brightness −0.25…0.25, contrast 0.5…1.5 — while the public
+model retains −1…1 and 0…2. **MIDI lyrics** — the host always sets
+`ShowMidiLyrics = true`; the former MIDI lyrics checkbox was removed. The status
+line reports `Visual transform=IDENTITY|ACTIVE`, `AutoHide=`, and
+`Load resets: Pitch=…, Tempo=…` alongside renderer/presentation. Validation
+tooling only, not production UI.
 
 ## Session Reset
 

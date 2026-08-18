@@ -22,6 +22,12 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets or sets whether loading media should automatically begin playback.</summary>
     bool PlayOnLoad { get; set; }
 
+    /// <summary>Gets or sets whether pitch resets to zero after each successful media load.</summary>
+    bool ResetPitchOnMediaLoad { get; set; }
+
+    /// <summary>Gets or sets whether tempo resets to 100 percent after each successful media load.</summary>
+    bool ResetTempoOnMediaLoad { get; set; }
+
     /// <summary>Gets or sets whether playback loops when the end of media is reached.</summary>
     bool LoopMedia { get; set; }
 
@@ -46,6 +52,9 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets whether the loaded media has subtitle content.</summary>
     bool HasSubtitle { get; }
 
+    /// <summary>Gets whether Core has visual main content or a resolved composition background.</summary>
+    bool HasVisualContent { get; }
+
     /// <summary>Gets the available embedded and sidecar subtitle tracks for the current media.</summary>
     IReadOnlyList<SubtitleTrack> SubtitleTracks { get; }
 
@@ -66,6 +75,9 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Gets or sets how primary video content maps into the presentation surface.</summary>
     VideoDisplayMode VideoDisplayMode { get; set; }
+
+    /// <summary>Gets or sets the color transform applied only to the base visual layer.</summary>
+    BaseVisualTransform BaseVisualTransform { get; set; }
 
     /// <summary>Gets or sets the current playback position.</summary>
     TimeSpan Position { get; set; }
@@ -179,6 +191,45 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised when media playback is stopped.</summary>
     event EventHandler? MediaStopped;
+
+    /// <summary>Raised after a media source is loaded successfully and before optional autoplay.</summary>
+    event EventHandler<MediaLoadedEventArgs>? MediaLoaded;
+
+    /// <summary>Raised after the active media source is closed or replaced.</summary>
+    event EventHandler<MediaClosedEventArgs>? MediaClosed;
+
+    /// <summary>Raised after playback pauses.</summary>
+    event EventHandler<MediaPausedEventArgs>? MediaPaused;
+
+    /// <summary>Raised after loop playback commits its next lap.</summary>
+    event EventHandler<MediaLoopedEventArgs>? MediaLooped;
+
+    /// <summary>Raised when the public playback state changes.</summary>
+    event EventHandler<MediaStateChangedEventArgs>? StateChanged;
+
+    /// <summary>Raised at a throttled cadence while playing and immediately after position transitions.</summary>
+    event EventHandler<MediaPositionChangedEventArgs>? PositionChanged;
+
+    /// <summary>Raised after an accepted seek settles on its resulting position.</summary>
+    event EventHandler<MediaSeekCompletedEventArgs>? SeekCompleted;
+
+    /// <summary>Raised when the effective user volume changes.</summary>
+    event EventHandler<MediaValueChangedEventArgs<double>>? VolumeChanged;
+
+    /// <summary>Raised when pitch changes.</summary>
+    event EventHandler<MediaValueChangedEventArgs<int>>? PitchChanged;
+
+    /// <summary>Raised when tempo changes.</summary>
+    event EventHandler<MediaValueChangedEventArgs<int>>? TempoChanged;
+
+    /// <summary>Raised when normalization is enabled or disabled.</summary>
+    event EventHandler<MediaNormalizeChangedEventArgs>? NormalizeChanged;
+
+    /// <summary>Raised when loop playback is enabled or disabled.</summary>
+    event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;
+
+    /// <summary>Raised when the base-visual color transform changes.</summary>
+    event EventHandler<MediaValueChangedEventArgs<BaseVisualTransform>>? BaseVisualTransformChanged;
 
     /// <summary>
     /// Raised when a high-value failure occurs inside the media engine. Carries typed

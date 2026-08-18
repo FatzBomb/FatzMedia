@@ -45,6 +45,7 @@ public sealed class WindowsMediaControlPlatformFactoryTests
         }
 
         public VideoDisplayMode VideoDisplayMode { get; set; }
+        public BaseVisualTransform BaseVisualTransform { get; set; }
 
         public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface) => false;
         public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;

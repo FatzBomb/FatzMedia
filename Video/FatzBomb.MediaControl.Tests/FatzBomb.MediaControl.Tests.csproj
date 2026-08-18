@@ -24,6 +24,7 @@
 		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj" />
 		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
 		<ProjectReference Include="..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj" />
 	</ItemGroup>
 
 </Project>

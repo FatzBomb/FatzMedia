@@ -23,14 +23,17 @@ $projectReferences = @{
     )
     'FatzBomb.MediaControl.Player\FatzBomb.MediaControl.Player.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
     )
     'FatzBomb.MediaControl.Tests\FatzBomb.MediaControl.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
         '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
-        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj'
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
+        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj'
     )
 }
 

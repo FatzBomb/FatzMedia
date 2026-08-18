@@ -253,6 +253,180 @@ public sealed class SoftwareCompositionRendererTests
     }
 
     [Fact]
+    public void Render_IdentityTransform_IsByteIdentical()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(
+            [10, 20, 30, 128],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill);
+
+        SoftwareRenderOutput original = _renderer.Render(frame, 1, 1);
+        SoftwareRenderOutput identity = _renderer.Render(frame with { BaseVisualTransform = BaseVisualTransform.Identity }, 1, 1);
+
+        Assert.Equal(original.Pixels.ToArray(), identity.Pixels.ToArray());
+    }
+
+    [Fact]
+    public void Render_RgbGainsTransformOnlyBackgroundAndPreserveAlpha()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(
+            [255, 255, 255, 128],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill) with
+        {
+            ClearMode = MediaCompositionClearMode.Transparent,
+            BaseVisualTransform = new BaseVisualTransform
+            {
+                GreenGain = 0f,
+                BlueGain = 0f
+            }
+        };
+
+        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+
+        AssertPixel(output, 0, 0, blue: 0, green: 0, red: 128, alpha: 128);
+    }
+
+    [Fact]
+    public void Render_TransformDoesNotReachSubtitle()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(
+            [255, 255, 255, 255],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill) with
+        {
+            BaseVisualTransform = new BaseVisualTransform
+            {
+                GreenGain = 0f,
+                BlueGain = 0f
+            },
+            SubtitleBgra = new byte[] { 0, 255, 0, 255 },
+            SubtitleWidth = 1,
+            SubtitleHeight = 1,
+            SubtitleStride = 4
+        };
+
+        SoftwareRenderOutput output = _renderer.Render(frame, 1, 1);
+
+        AssertPixel(output, 0, 0, blue: 0, green: 255, red: 0, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_HueUsesPinnedYiqRotation()
+    {
+        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+            blue: 0,
+            green: 0,
+            red: 255,
+            new BaseVisualTransform { HueDegrees = 90f });
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 255, green: 0, red: 119, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_SaturationUsesPinnedRec709Luma()
+    {
+        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+            blue: 0,
+            green: 0,
+            red: 255,
+            new BaseVisualTransform { Saturation = 0f });
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 54, green: 54, red: 54, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_RgbGainsIndependentlyRemoveChannels()
+    {
+        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+            blue: 255,
+            green: 128,
+            red: 64,
+            new BaseVisualTransform
+            {
+                RedGain = 0f
+            });
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 255, green: 128, red: 0, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_IncludeOverlaysTransformsCompletedComposition()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(
+            [255, 255, 255, 255],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill) with
+        {
+            BaseVisualTransform = new BaseVisualTransform
+            {
+                GreenGain = 0f,
+                BlueGain = 0f,
+                IncludeOverlays = true
+            },
+            SubtitleBgra = new byte[] { 0, 255, 0, 255 },
+            SubtitleWidth = 1,
+            SubtitleHeight = 1,
+            SubtitleStride = 4
+        };
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 0, green: 0, red: 0, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_IncludeOverlaysDoesNotDoubleApplyBackgroundTransform()
+    {
+        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+            blue: 0,
+            green: 0,
+            red: 128,
+            new BaseVisualTransform { RedGain = 0.5f, IncludeOverlays = true });
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 0, green: 0, red: 64, alpha: 255);
+    }
+
+    [Fact]
+    public void Render_IncludeOverlaysWithNeutralMathIsByteIdentical()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(
+            [10, 20, 30, 128],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill);
+
+        SoftwareRenderOutput original = _renderer.Render(frame, 1, 1);
+        SoftwareRenderOutput scopedIdentity = _renderer.Render(
+            frame with { BaseVisualTransform = new BaseVisualTransform { IncludeOverlays = true } },
+            1,
+            1);
+
+        Assert.Equal(original.Pixels.ToArray(), scopedIdentity.Pixels.ToArray());
+    }
+
+    [Fact]
+    public void Render_CombinedTransformUsesFixedOrder()
+    {
+        MediaCompositionFrame frame = CreateTransformedPixelFrame(
+            blue: 153,
+            green: 102,
+            red: 51,
+            new BaseVisualTransform
+            {
+                Brightness = 0.1f,
+                Contrast = 1.5f,
+                RedGain = 0.5f,
+                GreenGain = 1.25f,
+                BlueGain = 0f
+            });
+
+        AssertPixel(_renderer.Render(frame, 1, 1), 0, 0, blue: 0, green: 223, red: 51, alpha: 255);
+    }
+
+    [Fact]
     public void Render_RetainedBackground_ReturnsUnsupported()
     {
         MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
@@ -320,6 +494,19 @@ public sealed class SoftwareCompositionRendererTests
             BackgroundStride = width * 4,
             BackgroundStretchMode = stretchMode,
             BackgroundRevision = 1
+        };
+
+    private static MediaCompositionFrame CreateTransformedPixelFrame(
+        byte blue,
+        byte green,
+        byte red,
+        BaseVisualTransform transform) => CreateBackgroundFrame(
+            [blue, green, red, 255],
+            width: 1,
+            height: 1,
+            MediaCompositionStretchMode.Fill) with
+        {
+            BaseVisualTransform = transform
         };
 
     private static void AssertPixel(

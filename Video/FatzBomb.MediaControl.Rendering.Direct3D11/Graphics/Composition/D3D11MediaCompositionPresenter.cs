@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
+using Vortice.DXGI;
 using Vortice.Mathematics;
 
 namespace FatzBomb.MediaControl.Core.Graphics.Composition;
@@ -31,6 +32,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private readonly List<D3D11PresentationTargetSnapshot> _scratchPresentationTargets = [];
 
     private ID3D11PixelShader? _backgroundPixelShader;
+    private ID3D11PixelShader? _baseVisualPixelShader;
+    private ID3D11PixelShader? _baseVisualPostPixelShader;
     private ID3D11PixelShader? _solidPixelShader;
     private ID3D11PixelShader? _premultipliedSolidPixelShader;
 
@@ -42,6 +45,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private ID3D11BlendState? _blendState;
     private ID3D11BlendState? _premultipliedBlendState;
     private ID3D11RasterizerState? _rasterizerState;
+    private readonly Dictionary<string, PostProcessTarget> _postProcessTargets = new(StringComparer.OrdinalIgnoreCase);
     private long _lastDrawnRevision = -1;
     private string? _lastLayerDiagnosticSummary;
     private bool _pipelineFailed;
@@ -318,8 +322,10 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             {
                 using ID3D11RenderTargetView targetRenderView = deviceResources.Device.CreateRenderTargetView(target.Texture);
                 if (!DrawToRenderTarget(
+                        deviceResources.Device,
                         deviceResources.Context,
                         frame,
+                        target.TargetId,
                         target.Width,
                         target.Height,
                         targetRenderView,
@@ -564,13 +570,20 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     };
 
     private bool DrawToRenderTarget(
+        ID3D11Device device,
         ID3D11DeviceContext context,
         MediaCompositionFrame frame,
+        string targetId,
         int outputWidth,
         int outputHeight,
         ID3D11RenderTargetView renderTargetView,
         bool clearTarget)
     {
+        var transformWholeComposition = frame.BaseVisualTransform is { IsIdentity: false, IncludeOverlays: true };
+        PostProcessTarget? postProcessTarget = null;
+        if (transformWholeComposition && !TryGetPostProcessTarget(device, targetId, outputWidth, outputHeight, out postProcessTarget))
+            return false;
+
         if (frame.HasShaderVisibleLayer && (_constantBuffer == null || _vertexShader == null
             || _samplerState == null || _blendState == null || _rasterizerState == null))
             return false;
@@ -578,10 +591,15 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
         context.IASetInputLayout(null);
         context.RSSetViewport(new Viewport(0, 0, outputWidth, outputHeight));
-        context.OMSetRenderTargets(renderTargetView);
+        ID3D11RenderTargetView compositionRenderTargetView = transformWholeComposition
+            ? postProcessTarget!.RenderTargetView
+            : renderTargetView;
+        context.OMSetRenderTargets(compositionRenderTargetView);
 
-        if (clearTarget)
-            context.ClearRenderTargetView(renderTargetView, ResolveClearColor(frame));
+        if (clearTarget || transformWholeComposition)
+            context.ClearRenderTargetView(
+                compositionRenderTargetView,
+                clearTarget ? ResolveClearColor(frame) : new Color4(0f, 0f, 0f, 0f));
 
         if (frame.HasShaderVisibleLayer)
         {
@@ -595,7 +613,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         if (frame.HasAnyBackground
             && backgroundLayer?.HasTexture == true
             && _backgroundPixelShader != null)
-            if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer))
+            if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer, applyTransform: !transformWholeComposition))
                 return false;
 
         D3D11CompositionLayerState? washLayer = _layerCache.TryGet(MediaCompositionLayerId.Wash);
@@ -623,6 +641,18 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         {
             if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer))
                 return false;
+        }
+
+        if (transformWholeComposition
+            && !DrawPostProcessToRenderTarget(
+                context,
+                frame.BaseVisualTransform,
+                outputWidth,
+                outputHeight,
+                renderTargetView,
+                postProcessTarget!.ShaderResourceView))
+        {
+            return false;
         }
 
         context.PSSetShaderResource(0, null!);
@@ -705,17 +735,54 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             subtitleLayer.MarkRendered(subtitleLayer.UploadedRevision);
     }
 
-    private bool DrawBackgroundLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState backgroundLayer)
+    private bool DrawBackgroundLayer(
+        ID3D11DeviceContext context,
+        int outputWidth,
+        int outputHeight,
+        D3D11CompositionLayerState backgroundLayer,
+        bool applyTransform = true)
     {
         ID3D11ShaderResourceView? shaderResourceView = backgroundLayer.ShaderResourceView;
-        if (shaderResourceView == null || _backgroundPixelShader == null)
+        if (shaderResourceView == null || _backgroundPixelShader == null || _baseVisualPixelShader == null)
             return false;
 
         RectD backgroundRect = ResolveBackgroundDestinationRect(backgroundLayer, outputWidth, outputHeight);
+        BaseVisualTransform transform = applyTransform
+            ? backgroundLayer.Descriptor?.BaseVisualTransform ?? BaseVisualTransform.Identity
+            : BaseVisualTransform.Identity;
 
-        SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
-        context.PSSetShader(_backgroundPixelShader);
+        SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0), transform);
+        context.PSSetShader(transform.IsIdentity ? _backgroundPixelShader : _baseVisualPixelShader);
         context.PSSetShaderResource(0, shaderResourceView);
+        context.Draw(4, 0);
+        context.PSSetShaderResource(0, null!);
+        return true;
+    }
+
+    private bool DrawPostProcessToRenderTarget(
+        ID3D11DeviceContext context,
+        BaseVisualTransform transform,
+        int outputWidth,
+        int outputHeight,
+        ID3D11RenderTargetView renderTargetView,
+        ID3D11ShaderResourceView sourceShaderResourceView)
+    {
+        if (_baseVisualPostPixelShader == null)
+            return false;
+
+        context.PSSetShaderResource(0, null!);
+        context.OMSetRenderTargets(renderTargetView);
+        context.RSSetViewport(new Viewport(0, 0, outputWidth, outputHeight));
+        context.OMSetBlendState(null);
+        SetQuadConstants(
+            context,
+            new RectD(0, 0, outputWidth, outputHeight),
+            outputWidth,
+            outputHeight,
+            new Vector4(0f, 0f, 0f, 0f),
+            transform);
+        context.PSSetShader(_baseVisualPostPixelShader);
+        context.PSSetShaderResource(0, sourceShaderResourceView);
         context.Draw(4, 0);
         context.PSSetShaderResource(0, null!);
         return true;
@@ -844,7 +911,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.Draw(4, 0);
     }
 
-    private void SetQuadConstants(ID3D11DeviceContext context, RectD destinationRect, int outputWidth, int outputHeight, Vector4 paletteInfo)
+    private void SetQuadConstants(
+        ID3D11DeviceContext context,
+        RectD destinationRect,
+        int outputWidth,
+        int outputHeight,
+        Vector4 paletteInfo,
+        BaseVisualTransform transform = default)
     {
         var left = (int)Math.Round(destinationRect.Left);
         var top = (int)Math.Round(destinationRect.Top);
@@ -860,7 +933,22 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 (float)((right / (double)outputWidth * 2.0) - 1.0),
                 (float)(1.0 - (bottom / (double)outputHeight * 2.0))),
             TextureRect = new Vector4(0f, 0f, 1f, 1f),
-            PaletteInfo = paletteInfo
+            PaletteInfo = paletteInfo,
+            TransformAdjustments = new Vector4(
+                transform.HueDegrees * (MathF.PI / 180f),
+                transform.Saturation,
+                transform.Brightness,
+                0f),
+            TransformBlend = new Vector4(
+                transform.Contrast,
+                0f,
+                0f,
+                0f),
+            TransformRgbGains = new Vector4(
+                transform.RedGain,
+                transform.GreenGain,
+                transform.BlueGain,
+                0f)
         };
 
         ID3D11Buffer constantBuffer = _constantBuffer
@@ -870,6 +958,65 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.UpdateSubresource(constantBytes, constantBuffer, 0, 0, 0, null);
         context.VSSetConstantBuffer(0, constantBuffer);
         context.PSSetConstantBuffer(0, constantBuffer);
+    }
+
+    private bool TryGetPostProcessTarget(
+        ID3D11Device device,
+        string targetId,
+        int width,
+        int height,
+        out PostProcessTarget? target)
+    {
+        if (_postProcessTargets.TryGetValue(targetId, out target))
+        {
+            if (target.Width == width && target.Height == height)
+                return true;
+
+            target.Dispose();
+            _postProcessTargets.Remove(targetId);
+            target = null;
+        }
+
+        ID3D11Texture2D? texture = null;
+        ID3D11RenderTargetView? renderTargetView = null;
+        ID3D11ShaderResourceView? shaderResourceView = null;
+        try
+        {
+            var description = new Texture2DDescription(
+                Format.B8G8R8A8_UNorm,
+                (uint)width,
+                (uint)height,
+                arraySize: 1,
+                mipLevels: 1,
+                BindFlags.ShaderResource | BindFlags.RenderTarget,
+                ResourceUsage.Default,
+                CpuAccessFlags.None,
+                sampleCount: 1,
+                sampleQuality: 0,
+                ResourceOptionFlags.None);
+            texture = device.CreateTexture2D(in description);
+            renderTargetView = device.CreateRenderTargetView(texture);
+            shaderResourceView = device.CreateShaderResourceView(texture);
+            target = new PostProcessTarget(texture, renderTargetView, shaderResourceView, width, height);
+            _postProcessTargets.Add(targetId, target);
+            return true;
+        }
+        catch
+        {
+            shaderResourceView?.Dispose();
+            renderTargetView?.Dispose();
+            texture?.Dispose();
+            target = null;
+            return false;
+        }
+    }
+
+    private void ReleasePostProcessTargets()
+    {
+        foreach (PostProcessTarget target in _postProcessTargets.Values)
+            target.Dispose();
+
+        _postProcessTargets.Clear();
     }
 
     private bool EnsureDrawPipeline(ID3D11Device device)
@@ -884,11 +1031,15 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 var vertexShaderBytecode = CompileShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
                 var pixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
                 var backgroundPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
+                var baseVisualPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
+                var baseVisualPostPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
                 var solidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
                 var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
                 _backgroundPixelShader = device.CreatePixelShader(backgroundPixelShaderBytecode);
+                _baseVisualPixelShader = device.CreatePixelShader(baseVisualPixelShaderBytecode);
+                _baseVisualPostPixelShader = device.CreatePixelShader(baseVisualPostPixelShaderBytecode);
                 _solidPixelShader = device.CreatePixelShader(solidPixelShaderBytecode);
                 _premultipliedSolidPixelShader = device.CreatePixelShader(premultipliedSolidPixelShaderBytecode);
             }
@@ -988,6 +1139,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             return _vertexShader != null
                 && _pixelShader != null
                 && _backgroundPixelShader != null
+                && _baseVisualPixelShader != null
+                && _baseVisualPostPixelShader != null
                 && _solidPixelShader != null
                 && _premultipliedSolidPixelShader != null
                 && _constantBuffer != null
@@ -1058,6 +1211,10 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _pixelShader = null;
         _backgroundPixelShader?.Dispose();
         _backgroundPixelShader = null;
+        _baseVisualPixelShader?.Dispose();
+        _baseVisualPixelShader = null;
+        _baseVisualPostPixelShader?.Dispose();
+        _baseVisualPostPixelShader = null;
         _solidPixelShader?.Dispose();
         _solidPixelShader = null;
         _premultipliedSolidPixelShader?.Dispose();
@@ -1072,9 +1229,10 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _premultipliedBlendState = null;
         _rasterizerState?.Dispose();
         _rasterizerState = null;
+        ReleasePostProcessTargets();
     }
 
-    private static byte[] CompileShaderBytecode(string shaderSource, string entryPoint, string targetProfile)
+    internal static byte[] CompileShaderBytecode(string shaderSource, string entryPoint, string targetProfile)
     {
         var sourceBytes = Encoding.UTF8.GetBytes(shaderSource);
         var hr = D3DCompile(
@@ -1158,14 +1316,41 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         public Vector4 DestinationRect;
         public Vector4 TextureRect;
         public Vector4 PaletteInfo;
+        public Vector4 TransformAdjustments;
+        public Vector4 TransformBlend;
+        public Vector4 TransformRgbGains;
     }
 
-    private const string CdgShaderSource = @"
+    private sealed class PostProcessTarget(
+        ID3D11Texture2D texture,
+        ID3D11RenderTargetView renderTargetView,
+        ID3D11ShaderResourceView shaderResourceView,
+        int width,
+        int height) : IDisposable
+    {
+        public ID3D11Texture2D Texture { get; } = texture;
+        public ID3D11RenderTargetView RenderTargetView { get; } = renderTargetView;
+        public ID3D11ShaderResourceView ShaderResourceView { get; } = shaderResourceView;
+        public int Width { get; } = width;
+        public int Height { get; } = height;
+
+        public void Dispose()
+        {
+            ShaderResourceView.Dispose();
+            RenderTargetView.Dispose();
+            Texture.Dispose();
+        }
+    }
+
+    internal const string CdgShaderSource = @"
 cbuffer CdgConstants : register(b0)
 {
     float4 DestinationRect;
     float4 TextureRect;
     float4 PaletteInfo;
+    float4 TransformAdjustments;
+    float4 TransformBlend;
+    float4 TransformRgbGains;
 };
 
 Texture2D IndexTexture : register(t0);
@@ -1205,6 +1390,67 @@ VertexOut VSMain(uint vertexId : SV_VertexID)
 float4 PSBackground(VertexOut input) : SV_TARGET
 {
     return IndexTexture.Sample(PointSampler, input.TexCoord);
+}
+
+float3 ApplyVisualTransform(float3 color)
+{
+    if (TransformAdjustments.x != 0.0f)
+    {
+        float y = dot(color, float3(0.299f, 0.587f, 0.114f));
+        float i = dot(color, float3(0.596f, -0.274f, -0.322f));
+        float q = dot(color, float3(0.211f, -0.523f, 0.312f));
+        float cosine = cos(TransformAdjustments.x);
+        float sine = sin(TransformAdjustments.x);
+        float rotatedI = (i * cosine) - (q * sine);
+        float rotatedQ = (i * sine) + (q * cosine);
+        color = saturate(float3(
+            y + (0.956f * rotatedI) + (0.621f * rotatedQ),
+            y - (0.272f * rotatedI) - (0.647f * rotatedQ),
+            y - (1.106f * rotatedI) + (1.703f * rotatedQ)));
+    }
+
+    if (TransformAdjustments.y != 1.0f)
+    {
+        float luma = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+        color = saturate(luma + ((color - luma) * TransformAdjustments.y));
+    }
+
+    if (TransformBlend.x != 1.0f)
+    {
+        color = saturate(color * TransformBlend.x);
+    }
+
+    if (TransformAdjustments.z != 0.0f)
+    {
+        color = saturate(color + TransformAdjustments.z);
+    }
+
+    if (any(TransformRgbGains.rgb != float3(1.0f, 1.0f, 1.0f)))
+    {
+        color = saturate(color * TransformRgbGains.rgb);
+    }
+
+    return color;
+}
+
+float4 PSBaseVisual(VertexOut input) : SV_TARGET
+{
+    float4 sampled = IndexTexture.Sample(PointSampler, input.TexCoord);
+    // A B8G8R8A8_UNORM SRV is exposed to HLSL as logical RGBA channels;
+    // the format describes memory layout and does not require a manual swizzle.
+    return float4(ApplyVisualTransform(sampled.rgb), sampled.a);
+}
+
+float4 PSBaseVisualPremultiplied(VertexOut input) : SV_TARGET
+{
+    float4 sampled = IndexTexture.Sample(PointSampler, input.TexCoord);
+    if (sampled.a <= 0.0f)
+    {
+        return float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    float3 color = ApplyVisualTransform(sampled.rgb / sampled.a);
+    return float4(color * sampled.a, sampled.a);
 }
 
 float4 PSSolid(VertexOut input) : SV_TARGET

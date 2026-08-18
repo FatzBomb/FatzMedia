@@ -383,6 +383,10 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             flags |= MediaCompositionLayerDirtyFlags.ColorChanged
                 | MediaCompositionLayerDirtyFlags.RenderRequired;
 
+        if (previous.BaseVisualTransform != current.BaseVisualTransform)
+            flags |= MediaCompositionLayerDirtyFlags.TransformChanged
+                | MediaCompositionLayerDirtyFlags.RenderRequired;
+
         return flags;
     }
 

@@ -400,6 +400,7 @@ internal sealed class D3D11RendererPresentationServices
         && !Backends.HasMultipleActiveTargets
         && !State.IsNativeLiveResizeInProgress
         && !Surfaces.ShouldSuppressDirectCompositionOverlaySplit
+        && (frame.BaseVisualTransform.IsIdentity || !frame.BaseVisualTransform.IncludeOverlays)
         && IsDirectCompositionOverlaySplitCandidate(frame);
 
     private void RecordDirectCompositionOverlaySplitDiagnostics(
@@ -474,7 +475,7 @@ internal sealed class D3D11RendererPresentationServices
         _directCompositionOverlaySplitOverlayState = default;
     }
 
-    private static DirectCompositionOverlaySplitBaseState CreateDirectCompositionOverlaySplitBaseState(
+    internal static DirectCompositionOverlaySplitBaseState CreateDirectCompositionOverlaySplitBaseState(
         MediaCompositionFrame frame,
         D3D11PresentationTargetSnapshot overlayTarget) => new(
         overlayTarget.Revision,
@@ -489,6 +490,7 @@ internal sealed class D3D11RendererPresentationServices
         frame.BackgroundHeight,
         frame.BackgroundStride,
         frame.EffectiveBackgroundStretchMode,
+        frame.BaseVisualTransform,
         frame.BackgroundNativeResource,
         frame.BackgroundNativeWidth,
         frame.BackgroundNativeHeight);
@@ -537,7 +539,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11PresentationFramePresenter FramePresenter { get; }
 
-    private readonly record struct DirectCompositionOverlaySplitBaseState(
+    internal readonly record struct DirectCompositionOverlaySplitBaseState(
         long TargetRevision,
         MediaCompositionClearMode ClearMode,
         uint ClearArgb,
@@ -550,6 +552,7 @@ internal sealed class D3D11RendererPresentationServices
         int BackgroundHeight,
         int BackgroundStride,
         MediaCompositionStretchMode BackgroundStretchMode,
+        BaseVisualTransform BaseVisualTransform,
         NativeVideoFrameResource? BackgroundNativeResource,
         int BackgroundNativeWidth,
         int BackgroundNativeHeight);

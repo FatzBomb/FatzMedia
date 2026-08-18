@@ -14,12 +14,32 @@ public partial class App : Application
 
     public static string? StartupMediaPath { get; private set; }
 
+    public static bool UseSoftwareRenderer { get; private set; }
+
+    public static bool ResetPitchOnMediaLoad { get; private set; }
+
+    public static bool ResetTempoOnMediaLoad { get; private set; }
+
+    public static bool AutoHideSurfaces { get; private set; } = true;
+
+    public static bool UseVisualTransformDemo { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        if (e.Args.Length > 0)
-            StartupMediaPath = e.Args[0];
+        UseSoftwareRenderer = e.Args.Any(static argument =>
+            string.Equals(argument, "--software", StringComparison.OrdinalIgnoreCase));
+        ResetPitchOnMediaLoad = e.Args.Any(static argument =>
+            string.Equals(argument, "--reset-pitch-on-load", StringComparison.OrdinalIgnoreCase));
+        ResetTempoOnMediaLoad = e.Args.Any(static argument =>
+            string.Equals(argument, "--reset-tempo-on-load", StringComparison.OrdinalIgnoreCase));
+        AutoHideSurfaces = !e.Args.Any(static argument =>
+            string.Equals(argument, "--no-auto-hide", StringComparison.OrdinalIgnoreCase));
+        UseVisualTransformDemo = e.Args.Any(static argument =>
+            string.Equals(argument, "--visual-transform-demo", StringComparison.OrdinalIgnoreCase));
+        StartupMediaPath = e.Args.FirstOrDefault(static argument =>
+            !argument.StartsWith("--", StringComparison.Ordinal));
 
         TryAttachDebugLog();
     }

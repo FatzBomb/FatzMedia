@@ -25,6 +25,7 @@ public readonly partial record struct MediaCompositionFrame
                 Stride = BackgroundStride,
                 StretchMode = EffectiveBackgroundStretchMode,
                 Opacity = 1.0d,
+                BaseVisualTransform = BaseVisualTransform,
                 BgraPixels = BackgroundBgra
             };
         }
@@ -42,6 +43,7 @@ public readonly partial record struct MediaCompositionFrame
                 Stride = BackgroundNativeWidth > 0 ? BackgroundNativeWidth * 4 : 0,
                 StretchMode = EffectiveBackgroundStretchMode,
                 Opacity = 1.0d,
+                BaseVisualTransform = BaseVisualTransform,
                 NativeResource = BackgroundNativeResource,
                 FramesPerSecond = BackgroundNativeFramesPerSecond
             };
@@ -59,7 +61,8 @@ public readonly partial record struct MediaCompositionFrame
                 Height = BackgroundHeight,
                 Stride = BackgroundStride,
                 StretchMode = EffectiveBackgroundStretchMode,
-                Opacity = 1.0d
+                Opacity = 1.0d,
+                BaseVisualTransform = BaseVisualTransform
             };
         }
 
@@ -140,6 +143,7 @@ public readonly partial record struct MediaCompositionFrame
                 Stride = BackgroundStride,
                 StretchMode = EffectiveBackgroundStretchMode,
                 Opacity = 1.0d,
+                BaseVisualTransform = BaseVisualTransform,
                 BgraPixels = BackgroundBgra
             }
             : HasNativeBackground
@@ -155,6 +159,7 @@ public readonly partial record struct MediaCompositionFrame
                     Stride = BackgroundNativeWidth > 0 ? BackgroundNativeWidth * 4 : 0,
                     StretchMode = EffectiveBackgroundStretchMode,
                     Opacity = 1.0d,
+                    BaseVisualTransform = BaseVisualTransform,
                     NativeResource = BackgroundNativeResource,
                     FramesPerSecond = BackgroundNativeFramesPerSecond
                 }
@@ -170,7 +175,8 @@ public readonly partial record struct MediaCompositionFrame
                         Height = BackgroundHeight,
                         Stride = BackgroundStride,
                         StretchMode = EffectiveBackgroundStretchMode,
-                        Opacity = 1.0d
+                        Opacity = 1.0d,
+                        BaseVisualTransform = BaseVisualTransform
                     }
                     : null;
 

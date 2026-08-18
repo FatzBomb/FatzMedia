@@ -5,6 +5,31 @@ namespace FatzBomb.MediaControl.Tests;
 public class MediaCompositionFrameTests
 {
     [Fact]
+    public void BackgroundLayerCarriesOnlyBaseVisualTransform()
+    {
+        var transform = new BaseVisualTransform { Brightness = 0.25f };
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        {
+            BackgroundBgra = new byte[4],
+            BackgroundWidth = 1,
+            BackgroundHeight = 1,
+            BackgroundStride = 4,
+            BaseVisualTransform = transform,
+            WashArgb = 0x80FFFFFF,
+            SubtitleBgra = new byte[4],
+            SubtitleWidth = 1,
+            SubtitleHeight = 1,
+            SubtitleStride = 4
+        };
+
+        MediaCompositionLayer[] layers = [.. frame.EnumerateLayers()];
+
+        Assert.Equal(transform, layers.Single(static layer => layer.Id == MediaCompositionLayerId.Background).BaseVisualTransform);
+        Assert.True(layers.Where(static layer => layer.Id != MediaCompositionLayerId.Background)
+            .All(static layer => layer.BaseVisualTransform.IsIdentity));
+    }
+
+    [Fact]
     public void EnumerateLayers_EmitsSeparateSubtitleBgraLayer()
     {
         var frame = new MediaCompositionFrame

@@ -56,6 +56,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 
 - Synchronous `new Player(...)` blocks the calling thread — `Bootstrap.EnsureInitialized()` loads BASS + FFmpeg DLLs synchronously via `LoadLibraryW`. Prefer the async factory from UI code.
 - Synchronous `Player.Pause()` / `Player.Stop()` block the calling thread — `PlaybackScheduler.StopAndWait()` calls `Task.Wait(2000)` on decode and presentation schedulers. Prefer async control APIs from UI code.
+- `Player.Dispose()` is synchronous and waits behind admitted media operations before teardown; do not call it on the UI thread while a long-running load/control operation is active.
 - `VideoPipeline.Open(path)` blocks the calling thread — creates decoder, opens audio engine, decodes first frame synchronously.
 - `MediaEnded` / `MediaStopped` events fire from background threads (BASS callback / presentation loop). Handlers must marshal to UI thread.
 - Seek is correctly non-blocking — runs on dedicated background seek threads with latest-wins pump.
@@ -69,7 +70,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | DI composition | `MediaPlayerServiceProvider.Create()` — singleton DI, no external overrides |
 | Pipeline orchestrator | `Pipeline.PlaybackCoordinator` (internal) — wires AudioPipeline + CdgPipeline + VideoPipeline |
 | MIDI lyric extraction | `Core.Audio.MidiLyricExtractor` (internal) — extracts and groups karaoke lyrics from BASS MIDI markers |
-| Karaoke rendering | `Core.Subtitle.SubtitleTextRenderer` (internal) — Direct2D/DWrite rasterization with wipe, scroll, and page-fade animation |
+| Karaoke rendering | `FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle.SubtitleTextRenderer` (internal) — Direct2D/DWrite rasterization with wipe, scroll, and page-fade animation |
 | Karaoke style config | `Core.Configuration.KaraokeTextStyle` — independent font/color/outline/shadow for karaoke lyrics |
 | Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains; image mains require explicit backgrounds |
 | Software renderer entry | `FatzBomb.MediaControl.Rendering.Software.SoftwarePresentationCoordinatorFactory` — host-selectable portable renderer coordinator; `SoftwareCompositionRenderer` produces deterministic premultiplied BGRA8 output |
@@ -117,7 +118,7 @@ Test files that mutate the static `FileTypes.Audio`/`FileTypes.Video` sets must 
 ## Verification
 
 1. `dotnet build` succeeds (no warnings in Release)
-2. `dotnet test` passes (370+ tests covering pure logic)
+2. `dotnet test` passes (464+ tests covering pure logic)
 3. Manual smoke test via Player (see `docs/VALIDATION.md` for checklist)
 4. WPF adapter boundary check — verify the Wpf project's `using` directives against `FatzBomb.MediaControl.*` namespaces that are renderer/pipeline/internal Cdg/D3D11 (should be none)
 

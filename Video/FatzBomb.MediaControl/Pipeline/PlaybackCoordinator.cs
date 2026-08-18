@@ -33,6 +33,8 @@ internal sealed class PlaybackCoordinator : IDisposable
         audio.PlaybackEnded += OnPlaybackEnded;
         cdg.PlaybackEnded += OnPlaybackEnded;
         video.PlaybackEnded += OnPlaybackEnded;
+        if (video is IMediaLoopEventSource loopEventSource)
+            loopEventSource.MediaLooped += OnPlaybackLooped;
 
         _session.AttachAudio(audio);
         _session.AttachCdg(cdg);
@@ -43,6 +45,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     public MediaState State => _session.State;
     public IClockSource ClockSource => _session.Clock;
     public event EventHandler? PlaybackEnded;
+    public event EventHandler? PlaybackLooped;
 
 
     public ICdgEngine? Cdg => _session.Cdg?.IsOpen == true ? _session.Cdg.Engine : null;
@@ -269,11 +272,15 @@ internal sealed class PlaybackCoordinator : IDisposable
         _session.Audio?.PlaybackEnded -= OnPlaybackEnded;
         _session.Cdg?.PlaybackEnded -= OnPlaybackEnded;
         _session.Video?.PlaybackEnded -= OnPlaybackEnded;
+        if (_session.Video is IMediaLoopEventSource loopEventSource)
+            loopEventSource.MediaLooped -= OnPlaybackLooped;
 
         _session.Dispose();
     }
 
     private void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+
+    private void OnPlaybackLooped(object? sender, EventArgs e) => PlaybackLooped?.Invoke(this, EventArgs.Empty);
 
     private void TryLoadEmbeddedSubtitles(string videoPath)
     {

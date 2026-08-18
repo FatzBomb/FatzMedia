@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-08-07
+Updated: 2026-08-17
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -41,6 +41,137 @@ gates, and `FatzBomb.MediaControl.Rendering.Software` nupkg and snupkg pack. The
 manual Direct3D11 Player regression smoke passed on 2026-08-07: the Release
 `NativeHwndOverlay` Player was verified for normal video/CDG play, seek, stop, and replay
 with no observed regressions, closing the stage.
+
+On 2026-08-08, Stage 029A was closed. Automated validation passed: Release build with 0
+warnings/errors, 389 tests, `dotnet format` verification, Core/WPF/presentation-parity
+gates, and Core package creation. Manual Player host smoke passed for the new session
+events across play, pause, stop, seek, natural end, and loop, plus
+volume/pitch/tempo/normalize/loop toggles, with no `PositionChanged` while paused and no
+control-queue stalls. `WpfComposited` running at a lower frame rate than
+`NativeHwndOverlay` is expected because composited frames go through managed GPU
+readback. The smoke exposed and the stage fixed an overlay visibility bug in
+`WpfComposited` and added the `--software` Player-host option (software renderer,
+software decoding, pinned `WpfComposited`). The software-renderer runtime smoke via
+`--software` passed on 2026-08-08, closing the final 029A manual item.
+
+On 2026-08-08, Stage 029B was closed. Automated validation passed: Release build with 0
+warnings/errors, 397 tests, `dotnet format` verification, Core/WPF/presentation-parity
+gates, and Core package creation, covering the per-load pitch/tempo reset options,
+`MediaChangeReason`, and the preserved `MediaValueChangedEventArgs` constructor
+compatibility. A strict implementation review reported no blockers. The manual Player
+reset smoke passed the same day with both startup flags
+(`--reset-pitch-on-load` / `--reset-tempo-on-load`): Core pitch reset to `0` and tempo
+reset to `100` on load, with both WPF sliders visibly synchronized to their neutral
+positions; default behavior (flags off) preserved user-set values across loads.
+
+Stage 029C (event-driven WPF surface AutoHide) was closed on 2026-08-08. Automated
+validation passed: Release build with 0 warnings/errors, 406 tests, `dotnet format`
+verification, Core/WPF/presentation-parity gates, Core and WPF nupkg/snupkg packs,
+and WPF specialist plus final diff reviews with no blockers. The manual Player
+AutoHide smoke passed the same day, confirming visual↔audio-only transitions,
+video/CDG replacement (never stuck hidden), default AutoHide-on behavior with the
+`--no-auto-hide` opt-out, background/transparency semantics (only the internal
+native/composited host is hidden/shown; the outer control is untouched), and the
+public `IsContentVisible` / `ContentVisibilityChanged` behavior. Stage 030A
+(base-visual transform pipeline) is the sole active roadmap stage: implemented
+2026-08-09 with automated validation green (see below); its manual visual-
+transform smoke on both renderer paths is pending and is required before the
+stage can be closed.
+
+On 2026-08-09, Stage 030A was implemented. Automated validation passed:
+Release build with 0 warnings/errors, 429 tests, `dotnet format` verification,
+and Core/WPF/presentation-parity gates all green. Core, Software, and Direct3D11
+nupkg + snupkg creation passed. The manual visual-transform smoke on both
+renderer paths (Direct3D11 `NativeHwndOverlay` and `--software` `WpfComposited`)
+is pending; the checklist is in the Stage 030A section below.
+
+On 2026-08-10, Stage 030A added the Player advanced validation controls: a
+collapsed `ADVANCED VALIDATION` expander with a live Auto Hide checkbox, runtime
+Reset Pitch on Load / Reset Tempo on Load checkboxes (additive
+`IMediaControlSession` properties via `MediaControlPlayer.LoadBehavior.cs` and
+mutable `MediaFile` options), RED GAIN / GREEN GAIN / BLUE GAIN (0–2), HUE,
+BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), and SATURATION (0–2) sliders (no
+Lightness), an IDENTITY/ACTIVE indicator, and a Reset Visual command. The
+controls work independently without startup flags; the existing startup flags
+initialize their corresponding controls for compatibility. The same day the
+contract was revised: independent per-channel RGB gains (`RedGain`/`GreenGain`/
+`BlueGain`, [0,2] default 1) replace the former tint-then-color-wash members and
+the HSL `Lightness` member was removed from the model and math (the former
+`ColorWashPreset.cs` type/file was dropped — no preset type remains). Automated
+validation passed: Release build with 0 warnings/errors, 430 tests, `dotnet
+format` verification, and Core/WPF/presentation-parity gates all green. Core,
+Software, and Direct3D11 nupkg + snupkg creation passed. The manual
+visual-transform/UI smoke on both renderer paths (Direct3D11
+`NativeHwndOverlay` and `--software` `WpfComposited`) remains the only pending
+gate; the checklist is in the Stage 030A section below.
+
+On 2026-08-11, the Stage 030A contract was finalized. The fixed operation order
+changed to hue → saturation → **TV-style contrast gain** (`rgb *= Contrast`,
+black remains black) → **brightness offset** (`rgb += Brightness`) → per-channel
+RGB gains, and a new `IncludeOverlays` member (default `false`) adds a
+whole-composition mode: with `IncludeOverlays = true` and a non-identity
+transform, the same math is applied to the completed composition as a whole
+(wash, CDG, subtitle, and other overlays) through a final postprocess that moves
+— never double-applies — the transform off Layer 0. Software postprocesses the
+premultiplied final buffer; Direct3D11 composites into a per-target cached
+offscreen B8G8R8A8 RTV and runs `PSBaseVisualPremultiplied` as an overwrite
+pass, with the DirectComposition overlay split disabled in this mode. The Player
+host UI was reworked to a persistent bottom chrome (timeline/transport/
+fullscreen/volume/status) plus one-at-a-time Sync/Video/Audio/A-V flyout
+buttons; flyout content moved to `Controls/PlayerFlyoutPanel.xaml`; the MIDI
+lyrics checkbox was removed and `ShowMidiLyrics = true` is always set. Latest
+independent validation passed: Release build with 0 warnings/errors, 437 tests,
+`dotnet format` verification, and Core/WPF/presentation-parity gates all green;
+Core, Software, and Direct3D11 nupkg + snupkg creation passed; final
+implementation reviews reported no blockers after fixes. The manual D3D11 +
+`--software` flyout/final-composite visual/UI smoke remains the only pending
+gate; the checklist is in the Stage 030A section below.
+
+On 2026-08-11, Stage 030A fixes landed. **Root cause recorded**: with
+`IncludeOverlays = false`, the DirectComposition split-path cached base state
+for static images/backgrounds omitted `BaseVisualTransform`, so transform
+changes were skipped for static images while per-frame video revisions masked
+the bug. **Fix**: `DirectCompositionOverlaySplitBaseState` now includes
+`BaseVisualTransform`, so any transform change invalidates the cached split
+base state and forces a re-present; the regression test
+`D3D11RendererPresentationServicesTests.DirectCompositionBaseStateChangesWhenStaticImageTransformChanges`
+pins it. The Loop control also moved from the A/V flyout to the persistent
+transport strip as a stateful icon button with accent highlight (the duplicate
+A/V Loop checkbox was removed). Automated validation passed: Release build with
+0 warnings/errors, **438 tests**, `dotnet format` verification, and
+Core/WPF/presentation-parity gates all green; the Direct3D11 nupkg + snupkg
+creation was re-verified for the split-state fix; focused final review PASS.
+The manual static-image Include Overlays off/on, loop icon, and both-renderer
+checks remain the only pending gate; the checklist is in the Stage 030A section
+below.
+
+On 2026-08-17, Stage 030A was closed after the latest manual smoke passed. The
+static-image split-path regression, Include Overlays off/on behavior, loop icon,
+flyout interactions, fullscreen/secondary presentation, and visual equivalence on
+the Direct3D11 `NativeHwndOverlay` and software `WpfComposited` paths were confirmed.
+The completed stage is archived at
+`roadmap/complete/030A_COMPLETED_VisualTransforms.md`.
+
+Later on 2026-08-17, the first engineering-audit reliability follow-up serialized
+natural-end loop completion with host transport operations and made video/CDG no-op
+seek completion deterministic. Release validation passed with 0 warnings/errors and
+449 tests, including stale-end, host-cancelled loop, settle-tolerance, small-delta
+asynchronous settle, latest-wins, no-op video/CDG, and terminal pending-seek coverage.
+
+The next engineering-audit follow-up on 2026-08-17 serialized `Dispose` with reset and
+admitted control work, added pure Soft Karaoke metadata tests, and added malformed plus
+successful minimal DLS-to-SF2 fixtures. The DLS fixture exposed and fixed structure
+field-offset errors, an invalid 64-bit SF2 RIFF-size write, and a declared RIFF size
+that omitted LIST type bytes. Release validation passed with 0 warnings/errors and
+460 tests.
+
+The next follow-up added fake-backed integration coverage for the real
+`MediaPresentationCoordinator` (surface lifecycle, retained refresh, frame forwarding,
+and successful device-loss recovery), documented the software backend's stateless
+contract, and replaced exception-throwing WPF `PresentationMode` callbacks with
+deferred coercion. An STA WPF regression test confirms the applied mode remains stable
+through in-place replacement and the latest deferred mode applies after explicit close.
+Release validation passed with 0 warnings/errors and 464 tests.
 
 ---
 
@@ -145,6 +276,59 @@ Run runtime validation in **Release x64** with host-supplied BASS and FFmpeg DLL
 present. See `docs/NATIVE_DEPENDENCIES.md` for supported versions, approved sources,
 licensing cautions, and search paths.
 
+The Player uses Direct3D11 by default. Launch it with `--software` to select the
+software renderer, software video decoding, and the required `WpfComposited`
+presentation mode:
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software "D:\path\to\media.mp4"
+```
+
+The independent Stage 029B startup flags validate per-load pitch/tempo resets (closed
+2026-08-08, including the manual smoke with both flags):
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-pitch-on-load
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-tempo-on-load
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --reset-pitch-on-load --reset-tempo-on-load
+```
+
+Stage 029C AutoHide is enabled by default on the Player host (closed 2026-08-08,
+including the manual smoke). Use `--no-auto-hide` for opt-out validation,
+or combine the default with `--software` for composited validation:
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- "D:\path\to\media.mp4"
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --no-auto-hide
+```
+
+Stage 030A (base-visual transform pipeline) is complete; its final manual smoke
+passed on 2026-08-17. The Player host exposes a persistent bottom chrome
+(timeline/transport/fullscreen/volume/status) plus one-at-a-time **Sync /
+Video / Audio / A-V** flyout buttons (only one open at a time; the active button
+is highlighted). The **Video flyout** carries live, Core-backed controls — HUE,
+SATURATION, BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), RED GAIN / GREEN GAIN /
+BLUE GAIN (0–2) sliders (no Lightness, no color wash, no preset type), an
+**Include Overlays** checkbox, and Reset Visual. The Audio flyout has
+pitch/tempo/normalize plus Reset Pitch on Load / Reset Tempo on Load; the A/V
+flyout has Auto Play, Auto Hide, the secondary/projector window toggle, display
+mode, presentation mode, and CDG background opacity; the Sync
+flyout has the per-item A/V/CDG/subtitle offsets. Loop Playback is a stateful
+icon button on the persistent transport strip (accent highlight when on,
+`ToggleLoopCommand`); the duplicate A/V flyout Loop checkbox was removed. Every
+control works without any startup flag. The flags below remain as compatibility initializers that seed
+their corresponding controls; exercise them on both renderer paths
+(`NativeHwndOverlay` D3D11 and `--software` `WpfComposited`):
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo "D:\path\to\media.mp4"
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --visual-transform-demo
+```
+
 Record:
 
 ```text
@@ -159,6 +343,138 @@ Scenario:
 Visible glitches:
 Logs:
 ```
+
+### Stage 030A visual-transform smoke (manual, passed 2026-08-17)
+
+There is no bundled media fixture — supply real media (e.g. a video with audio,
+an image file, an audio+CDG pair, and a KAR/MID file with embedded karaoke
+lyrics) so the base visual and the text/overlay layers can be observed together.
+Exercise the flyout controls directly (no startup flags required); the flags
+seed the same controls for compatibility. Run both renderer paths:
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --visual-transform-demo
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --visual-transform-demo
+```
+
+Expected on both paths:
+
+- **Each transform independently** — open the Video flyout and set one control
+  at a time (RED GAIN, GREEN GAIN, BLUE GAIN, hue, brightness, contrast,
+  saturation). With **Include Overlays off (default)**, confirm only the base
+  visual (main video/image and background video/image) changes. The status
+  line's `Visual transform=` flips to `ACTIVE` when any member is non-neutral
+  (gains not `1`, hue/brightness not `0`, contrast/saturation not `1`) and back
+  to `IDENTITY` after Reset Visual.
+- **Contrast vs brightness distinction** — with Include Overlays off, CONTRAST
+  is a TV-style gain: `rgb *= Contrast`, so black stays black and mid/high
+  values scale toward it (contrast below 1 flattens toward black, above 1
+  boosts). BRIGHTNESS is an additive offset: `rgb += Brightness`, so black
+  lifts/falls too. Verify both independently and together (e.g. contrast 0.5
+  with brightness +0.1 darkens but lifts black; the fixed order applies contrast
+  first, then brightness).
+- **Gain removes a channel** — RED GAIN at `0` removes red from the base
+  visual (the result skews toward cyan/aqua); GREEN GAIN at `0` removes green
+  (magenta-leaning); BLUE GAIN at `0` removes blue (yellow-leaning).
+- **Green=0 + Blue=0 → red-only** — with GREEN GAIN and BLUE GAIN both at `0`,
+  the base visual renders red-only (red channels survive, green/blue are
+  removed).
+- **Red=0 → cyan/aqua** — with RED GAIN at `0` (green/blue at `1`), the base
+  visual renders cyan/aqua (red removed, green/blue survive).
+- **Each channel boost** — set each gain individually to `2`: the matching
+  channel visibly boosts toward its pure hue and clips at 1; the other channels
+  are unaffected.
+- **All gains 0 = black** — RED/GREEN/BLUE at `0` renders the base visual
+  black.
+- **Hue / saturation independently** — hue rotation (YIQ) shifts colors without
+  changing gray; saturation (Rec.709 luma pivot) desaturates to grayscale at 0
+  and boosts at 2; each works alone and combined.
+- **Practical brightness / contrast** — brightness −0.25…0.25 and contrast
+  0.5…1.5 sliders visibly lighten/darken and flatten/boost the base visual;
+  identity positions (0.00 brightness, 1.00 contrast) are unchanged.
+- **No Lightness / no color wash** — there is no Lightness slider or model
+  member and no color-wash/preset control; the pipeline has no HSL-lightness or
+  wash stage (verify no stale control in the flyouts and that the status line
+  never reports one).
+- **Include Overlays off/on** — with Include Overlays **off**, the transform
+  never reaches wash, CDG overlay, subtitle, or karaoke text at any
+  gain/hue/brightness/contrast/saturation combination; overlay text stays
+  independently colored, alpha is preserved on semi-transparent backgrounds, and
+  no extra composition pass runs. Check **Include Overlays on** with a
+  non-identity transform (e.g. RED GAIN 0): the **completed composition** —
+  wash, CDG overlay, and subtitle/karaoke text included — transforms as a whole
+  with no visual double-darkening of the base visual. With Include Overlays on
+  but all-neutral color math, output is byte-identical to identity.
+- **Static-image transform (split-path regression)** — load a **static image**
+  (no video), keep **Include Overlays off**, and change a transform control
+  (e.g. RED GAIN): the still must update immediately to the new transform. This
+  is the root-cause scenario fixed 2026-08-11 — the DirectComposition split
+  path's cached base state omitted `BaseVisualTransform`, so static-image
+  transform changes were skipped while video (whose revisions changed every
+  frame) masked the bug. Verify the same live update with Include Overlays **on**
+  (whole-composition postprocess) and after switching image → video → image.
+- **Reset Visual** — restores every slider to identity (gains `1/1/1`,
+  hue/brightness `0`, contrast/saturation `1`, Include Overlays unchecked), the
+  presented output matches an identity launch, and no stale transform survives
+  the next load.
+- **Live Auto Hide toggle** — toggle the Auto Hide checkbox in the A/V flyout
+  at runtime across visual → audio-only media, replacement, stop, pause, and
+  natural end; the Stage 029C policy follows the checkbox (shown on first
+  presented frame, hidden on explicit stop/close/non-loop end, shown while
+  paused and looping, never stuck hidden) and the status line's `AutoHide=`
+  value tracks it.
+- **Loop icon (transport strip)** — the Loop control lives on the persistent
+  transport strip as a stateful icon button: click it and the accent highlight
+  turns on with `LoopPlayback` on (repeating playback loops the media); click
+  again and the highlight clears with looping off. There is **no** Loop
+  checkbox in the A/V flyout (duplicate removed 2026-08-11). Verify the loop
+  state survives play/pause/stop and media replacement, and that the icon's
+  highlight matches the status-line/repeat behavior.
+- **Reset Pitch/Tempo on Load (runtime toggles)** — Audio flyout: with both
+  checkboxes off, set non-default pitch/tempo (e.g. pitch −3, tempo 115), load
+  another track and confirm the values carry over. Then check one or both
+  checkboxes, set non-default values again, load, and confirm pitch resets to 0 /
+  tempo resets to 100 exactly for the enabled option(s) while the other carries
+  over — the two toggles are independent. The WPF sliders visibly return to
+  neutral via `PitchChanged` / `TempoChanged` (`MediaChangeReason.LoadReset`).
+- **MIDI/KAR auto lyrics** — load a KAR or MID file with embedded lyrics:
+  karaoke lyrics display automatically (the MIDI lyrics checkbox was removed;
+  `ShowMidiLyrics = true` is always set). Include Overlays on transforms the
+  karaoke text with the composition; Include Overlays off leaves it untouched.
+- **Demo seed** — `--visual-transform-demo` initializes the controls to the demo
+  values (`RedGain=0.85`, `GreenGain=0.95`, `BlueGain=1.2`, `HueDegrees=30`,
+  `Brightness=0.05`, `Contrast=1.15`, `Saturation=1.2`; no lightness, Include
+  Overlays off); the base visual visibly transforms and the status line reads
+  `Visual transform=ACTIVE`.
+- **Flyout mechanics** — open each of Sync / Video / Audio / A-V; only one is
+  visible at a time; the active button is highlighted; toggling the active
+  button again closes the flyout; starting playback or entering fullscreen
+  closes it. All four flyouts render correctly on both renderer paths.
+- **Fullscreen / secondary / multi-target** — toggle fullscreen (button or
+  double-click) with a transform active and confirm the transform persists on
+  the fullscreen output; open the secondary/projector window from the A/V
+  flyout and confirm it receives the same final Core-composed frame — with
+  Include Overlays on, both targets must show the whole-composition transform
+  (D3D11 composites per-target, and the DirectComposition overlay split is
+  disabled in this mode). Closing/re-opening the secondary window while playing
+  must not disturb the primary output.
+- **Both renderers** — repeat the gain/include-overlays checks on the Direct3D11
+  `NativeHwndOverlay` path **and** the `--software` `WpfComposited` path; the
+  two paths must produce visually equivalent per-channel-gain and
+  whole-composition results.
+- Replacement/resize/mode switch stays correct: changing media and resizing the
+  window keep the transform applied to the new base visual with no stale layers
+  (mode switch is not available with `--software`; the presentation mode is
+  pinned to `WpfComposited`).
+- Compare against an identity launch (all controls at defaults, or Reset
+  Visual): output is unchanged from pre-stage behavior — no wash, no hue shift,
+  no composition/shader-path change.
+- Status line reports the live state, e.g.
+  `Renderer: Direct3D11 | Presentation: NativeHwndOverlay | AutoHide=True |
+  Visual transform=ACTIVE | Load resets: Pitch=False, Tempo=True | ...`
+  (or `Renderer: Software` with `--software`).
 
 ---
 
@@ -197,7 +513,7 @@ Logs:
 31. A/V, CDG, and subtitle sync controls adjust their own timeline by 100ms per step without interrupting playback.
 32. Sync Reset returns all three controls to zero; loading a new media item also resets them.
 33. KAR/MID karaoke lyrics display with syllable wipe highlighting, scrolling, and page transitions.
-34. MIDI Lyrics checkbox toggles karaoke display on/off without affecting ordinary subtitles.
+34. MIDI/KAR karaoke lyrics display automatically (the host always sets `ShowMidiLyrics = true`; there is no MIDI Lyrics checkbox) and ordinary SRT/ASS subtitles are unaffected.
 35. Backward seek on MIDI karaoke immediately updates lyrics, highlighting, and scroll position.
 36. Karaoke lyrics maintain 16:9 aspect ratio when window is resized to non-16:9 dimensions.
 37. Image file with explicit background path renders the background behind the image.
@@ -277,7 +593,7 @@ Expected:
 - Backward seek immediately updates lyrics, highlighting, wipe progress, scroll, page/scale state, metadata opacity, countdown, and end-lyric fade.
 - Forward seek updates to correct position.
 - Seek while paused updates lyrics on slider release.
-- MIDI Lyrics checkbox toggles display without affecting SRT/ASS subtitles.
+- MIDI lyrics display is always enabled in the Player host (`ShowMidiLyrics = true`; no checkbox) without affecting SRT/ASS subtitles.
 - Image sidecars display behind MIDI/KAR lyrics; archive KAR+image renders correctly.
 - No excessive composition logs or no-op presents during static lyrics.
 - Karaoke lyrics do not flash during window resize.

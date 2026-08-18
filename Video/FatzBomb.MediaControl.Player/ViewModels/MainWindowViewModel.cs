@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FatzBomb.MediaControl;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Wpf;
 using FatzBomb.MediaControl.Player.Configuration;
 using System.Collections.ObjectModel;
@@ -12,6 +13,15 @@ using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
 
 namespace FatzBomb.MediaControl.Player.ViewModels;
 
+public enum PlayerFlyout
+{
+    None,
+    Sync,
+    Video,
+    Audio,
+    AV
+}
+
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
@@ -19,6 +29,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _positionTimer;
     private bool _isSeekPreviewActive;
     private DateTime _suppressPositionRefresh = DateTime.MinValue;
+    private int _pitch;
+    private int _tempo = 100;
     private bool _disposed;
 
     public MainWindowViewModel()
@@ -28,8 +40,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PlayCommand = new AsyncRelayCommand(PlayAsync, CanUsePlayer);
         PauseCommand = new AsyncRelayCommand(PauseAsync, CanUsePlayer);
         StopCommand = new AsyncRelayCommand(StopAsync, CanUsePlayer);
+        ToggleLoopCommand = new RelayCommand(() => LoopPlayback = !LoopPlayback);
         AdjustSyncCommand = new RelayCommand<string>(AdjustSync, _ => CanUseSync);
         ResetSyncCommand = new RelayCommand(ResetSync, () => CanUseSync);
+        ToggleFlyoutCommand = new RelayCommand<string?>(ToggleFlyout);
+        InitializeValidationControls();
 
         _positionTimer = new DispatcherTimer
         {
@@ -67,10 +82,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     ];
 
     public IReadOnlyList<WpfPresentationMode> PresentationModes { get; } =
-    [
-        WpfPresentationMode.NativeHwndOverlay,
-        WpfPresentationMode.WpfComposited
-    ];
+        App.UseSoftwareRenderer
+            ? [WpfPresentationMode.WpfComposited]
+            :
+            [
+                WpfPresentationMode.NativeHwndOverlay,
+                WpfPresentationMode.WpfComposited
+            ];
 
     public AsyncRelayCommand<string?> LoadMediaCommand { get; }
 
@@ -80,9 +98,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public AsyncRelayCommand StopCommand { get; }
 
+    public RelayCommand ToggleLoopCommand { get; }
+
     public RelayCommand<string> AdjustSyncCommand { get; }
 
     public RelayCommand ResetSyncCommand { get; }
+
+    public RelayCommand<string?> ToggleFlyoutCommand { get; }
 
     public bool IsBusy
     {
@@ -101,7 +123,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool CanUseSync => Player?.IsOpen == true;
 
-    public bool CanChangePresentationMode => !IsBusy && Player?.IsOpen != true;
+    public bool CanChangePresentationMode => !App.UseSoftwareRenderer && !IsBusy && Player?.IsOpen != true;
 
     [ObservableProperty]
     public partial string AudioVideoSyncText { get; private set; } = "+0.0s";
@@ -138,27 +160,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public int Pitch
     {
-        get;
+        get => _pitch;
         set
         {
             var clamped = Math.Clamp(value, -12, 12);
-            if (!SetProperty(ref field, clamped)) return;
+            if (!SetProperty(ref _pitch, clamped)) return;
             if (Player is { } player)
-                player.Effects.Pitch = field;
+                player.Effects.Pitch = _pitch;
         }
     }
 
     public int Tempo
     {
-        get;
+        get => _tempo;
         set
         {
             var clamped = Math.Clamp(value, 50, 200);
-            if (!SetProperty(ref field, clamped)) return;
+            if (!SetProperty(ref _tempo, clamped)) return;
             if (Player is { } player)
-                player.Effects.Tempo = field;
+                player.Effects.Tempo = _tempo;
         }
-    } = 100;
+    }
 
     public bool Normalize
     {
@@ -193,16 +215,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool ShowMidiLyrics
+    public PlayerFlyout ActiveFlyout
     {
         get;
         set
         {
             if (!SetProperty(ref field, value)) return;
-            if (Player is { } player)
-                player.ShowMidiLyrics = field;
+            OnPropertyChanged(nameof(IsSyncFlyoutActive));
+            OnPropertyChanged(nameof(IsVideoFlyoutActive));
+            OnPropertyChanged(nameof(IsAudioFlyoutActive));
+            OnPropertyChanged(nameof(IsAVFlyoutActive));
         }
-    } = true;
+    }
+
+    public bool IsSyncFlyoutActive => ActiveFlyout == PlayerFlyout.Sync;
+
+    public bool IsVideoFlyoutActive => ActiveFlyout == PlayerFlyout.Video;
+
+    public bool IsAudioFlyoutActive => ActiveFlyout == PlayerFlyout.Audio;
+
+    public bool IsAVFlyoutActive => ActiveFlyout == PlayerFlyout.AV;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -237,7 +269,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
             _ = SetProperty(ref field, value);
         }
-    } = WpfPresentationMode.NativeHwndOverlay;
+    } = App.UseSoftwareRenderer
+        ? WpfPresentationMode.WpfComposited
+        : WpfPresentationMode.NativeHwndOverlay;
 
     public double PositionSeconds
     {
@@ -295,6 +329,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             RefreshPlaybackPosition();
             RefreshSyncOffsets();
+            UpdateEffectOnUiThread(RefreshEffectValues);
             StatusText = loaded ? $"Loaded: {mediaPath}" : $"Could not load: {mediaPath}";
         }
         catch (Exception ex)
@@ -330,14 +365,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            var diagnosticsConfig = new MediaPlayerConfiguration(VideoDecodingMethod.Hardware)
+            var rendererName = App.UseSoftwareRenderer ? "Software" : "Direct3D11";
+            var decodingMethod = App.UseSoftwareRenderer
+                ? VideoDecodingMethod.Software
+                : VideoDecodingMethod.Hardware;
+            var diagnosticsConfig = new MediaPlayerConfiguration(decodingMethod)
             {
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
-                EnableVerboseLogging = false
+                EnableVerboseLogging = false,
+                ResetPitchOnMediaLoad = App.ResetPitchOnMediaLoad,
+                ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad
             };
 
-            var platformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
+            IMediaControlPlatformFactory platformFactory = App.UseSoftwareRenderer
+                ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
+                : new WindowsDirect3D11MediaControlPlatformFactory();
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
                 diagnosticsConfig,
                 NativeLibraryPaths,
@@ -355,13 +398,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Effects.Tempo = Tempo;
             player.PlayOnLoad = AutoPlay;
             player.LoopMedia = LoopPlayback;
-            player.ShowMidiLyrics = ShowMidiLyrics;
+            player.ShowMidiLyrics = true;
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
+            ApplyValidationControls(player);
             Player = player;
             RefreshSyncOffsets();
             player.MediaDiagnostic += OnPlayerDiagnostic;
             player.MediaError += OnPlayerError;
-            StatusText = $"Native DLL path: {string.Join("; ", NativeLibraryPaths)} | Presentation: {PresentationMode}";
+            player.PitchChanged += OnPlayerPitchChanged;
+            player.TempoChanged += OnPlayerTempoChanged;
+            var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
+            var transformSummary = $"Visual transform={BaseVisualTransformState}";
+            StatusText = $"Renderer: {rendererName} | Presentation: {PresentationMode} | AutoHide={AutoHideSurfaces} | {transformSummary} | {loadResetSummary} | Native DLL path: {string.Join("; ", NativeLibraryPaths)}";
         }
         catch (Exception ex)
         {
@@ -458,6 +506,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = "Playback sync offsets reset.";
     }
 
+    private void ToggleFlyout(string? key)
+    {
+        var flyout = key switch
+        {
+            "Sync" => PlayerFlyout.Sync,
+            "Video" => PlayerFlyout.Video,
+            "Audio" => PlayerFlyout.Audio,
+            "AV" => PlayerFlyout.AV,
+            _ => PlayerFlyout.None
+        };
+
+        ActiveFlyout = ActiveFlyout == flyout ? PlayerFlyout.None : flyout;
+    }
+
+    public void CloseFlyout() => ActiveFlyout = PlayerFlyout.None;
+
     private void RefreshSyncOffsets()
     {
         AudioVideoSyncText = FormatSyncOffset(Player?.AudioSyncOffset ?? TimeSpan.Zero);
@@ -513,25 +577,78 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     private void OnPlayerDiagnostic(object? sender, MediaDiagnosticEventArgs e)
-    {
-        if (Application.Current?.Dispatcher is not null && !Application.Current.Dispatcher.CheckAccess())
-        {
-            Application.Current.Dispatcher.Invoke(() => HandleDiagnostic(e.Level, e.Category, e.Message));
-            return;
-        }
-
-        HandleDiagnostic(e.Level, e.Category, e.Message);
-    }
+        => HandleDiagnosticOnUiThread(e.Level, e.Category, e.Message);
 
     private void OnPlayerError(object? sender, MediaErrorEventArgs e)
+        => HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
+
+    private void HandleDiagnosticOnUiThread(MediaDiagnosticLevel level, string category, string message)
     {
-        if (Application.Current?.Dispatcher is not null && !Application.Current.Dispatcher.CheckAccess())
+        if (_disposed)
+            return;
+
+        Dispatcher? dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
         {
-            Application.Current.Dispatcher.Invoke(() => HandleDiagnostic(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message));
+            HandleDiagnostic(level, category, message);
             return;
         }
 
-        HandleDiagnostic(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
+        _ = dispatcher.BeginInvoke(() =>
+        {
+            if (!_disposed)
+                HandleDiagnostic(level, category, message);
+        });
+    }
+
+    private void OnPlayerPitchChanged(object? sender, MediaValueChangedEventArgs<int> e)
+    {
+        UpdateEffectOnUiThread(() => SetPitchFromPlayer(e.CurrentValue));
+    }
+
+    private void OnPlayerTempoChanged(object? sender, MediaValueChangedEventArgs<int> e)
+    {
+        UpdateEffectOnUiThread(() => SetTempoFromPlayer(e.CurrentValue));
+    }
+
+    private void RefreshEffectValues()
+    {
+        if (Player is not { } player)
+            return;
+
+        SetPitchFromPlayer(player.Effects.Pitch);
+        SetTempoFromPlayer(player.Effects.Tempo);
+    }
+
+    private void SetPitchFromPlayer(int value)
+    {
+        _pitch = Math.Clamp(value, -12, 12);
+        OnPropertyChanged(nameof(Pitch));
+    }
+
+    private void SetTempoFromPlayer(int value)
+    {
+        _tempo = Math.Clamp(value, 50, 200);
+        OnPropertyChanged(nameof(Tempo));
+    }
+
+    private void UpdateEffectOnUiThread(Action update)
+    {
+        if (_disposed)
+            return;
+
+        Dispatcher? dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            update();
+            return;
+        }
+
+        _ = dispatcher.BeginInvoke(() =>
+        {
+            if (!_disposed)
+                update();
+        });
     }
 
     private void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
@@ -554,6 +671,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             player.MediaDiagnostic -= OnPlayerDiagnostic;
             player.MediaError -= OnPlayerError;
+            player.PitchChanged -= OnPlayerPitchChanged;
+            player.TempoChanged -= OnPlayerTempoChanged;
             player.Dispose();
         }
     }

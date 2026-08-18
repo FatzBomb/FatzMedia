@@ -81,6 +81,16 @@ public class MediaControlOperationQueueTests
     }
 
     [Fact]
+    public async Task Execute_NestedFromCallerTurn_RunsInlineWithoutDeadlock()
+    {
+        using var queue = new MediaControlOperationQueue("Test");
+
+        Task<int> operation = Task.Run(() => queue.Execute(() => queue.Execute(() => 42)));
+
+        Assert.Equal(42, await operation.WaitAsync(TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
     public async Task Execute_PropagatesTheOriginalException_NotAnAggregate()
     {
         using var queue = new MediaControlOperationQueue("test");

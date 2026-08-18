@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Threading;
 using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Controllers;
@@ -10,6 +11,7 @@ public sealed class MediaEffects
 {
     private readonly IMediaEngine _mediaEngine;
     private IAudioEngine? _subscribedAudioEngine;
+    private int _pitch;
     private int _tempo = 100;
 
     private bool HasAudio => _mediaEngine.Content.HasFlag(MediaContent.Audio);
@@ -78,9 +80,20 @@ public sealed class MediaEffects
         get;
         set
         {
-            field = Math.Clamp(value, 0.0, 1.0);
+            var clamped = Math.Clamp(value, 0.0, 1.0);
+            if (Math.Abs(field - clamped) < 0.000001)
+                return;
+
+            var previous = field;
+            field = clamped;
             if (HasAudio)
                 Audio.SetVolume(field);
+
+            HostEventDispatcher.Raise(
+                this,
+                VolumeChanged,
+                new MediaValueChangedEventArgs<double>(previous, field),
+                nameof(VolumeChanged));
         }
     } = 1.0;
 
@@ -89,14 +102,9 @@ public sealed class MediaEffects
     /// </summary>
     public int Pitch
     {
-        get;
-        set
-        {
-            field = Math.Clamp(value, -60, 60);
-            if (HasAudio)
-                Audio.SetPitch(field);
-        }
-    } = 0;
+        get => _pitch;
+        set => SetPitch(value, MediaChangeReason.User);
+    }
 
     /// <summary>
     /// Gets or sets the tempo as a percentage (5 to 5000, where 100 = normal speed).
@@ -106,14 +114,7 @@ public sealed class MediaEffects
         get => HasAudio
             ? Audio.CurrentTempo + 100
             : HasClockBackedTempo ? ClockSource!.TempoPercent + 100 : _tempo;
-        set
-        {
-            _tempo = Math.Clamp(value, 5, 5000);
-            if (HasAudio)
-                Audio.SetTempo(_tempo - 100);
-            else if (HasClockBackedTempo)
-                ClockSource!.SetTempo(_tempo - 100);
-        }
+        set => SetTempo(value, MediaChangeReason.User);
     }
 
     /// <summary>
@@ -127,11 +128,17 @@ public sealed class MediaEffects
         set
         {
             if (field == value) return;
+            var previous = field;
             field = value;
             if (HasAudio)
                 Audio.Normalize = value;
 
             Debug.WriteLine($"[MediaEffects] Normalization {(value ? "enabled" : "disabled")} by user");
+            HostEventDispatcher.Raise(
+                this,
+                NormalizeChanged,
+                new MediaNormalizeChangedEventArgs(previous, value, NormalizationGain),
+                nameof(NormalizeChanged));
         }
     } = true;
 
@@ -144,6 +151,60 @@ public sealed class MediaEffects
     /// Event raised when normalization gain changes (after analysis completes).
     /// </summary>
     public event EventHandler<double>? NormalizationGainChanged;
+
+    public event EventHandler<MediaValueChangedEventArgs<double>>? VolumeChanged;
+
+    public event EventHandler<MediaValueChangedEventArgs<int>>? PitchChanged;
+
+    public event EventHandler<MediaValueChangedEventArgs<int>>? TempoChanged;
+
+    public event EventHandler<MediaNormalizeChangedEventArgs>? NormalizeChanged;
+
+    internal void ApplyLoadReset(bool resetPitch, bool resetTempo)
+    {
+        if (resetPitch)
+            SetPitch(0, MediaChangeReason.LoadReset);
+        if (resetTempo)
+            SetTempo(100, MediaChangeReason.LoadReset);
+    }
+
+    private void SetPitch(int value, MediaChangeReason reason)
+    {
+        var clamped = Math.Clamp(value, -60, 60);
+        if (_pitch == clamped)
+            return;
+
+        var previous = _pitch;
+        _pitch = clamped;
+        if (HasAudio)
+            Audio.SetPitch(_pitch);
+
+        HostEventDispatcher.Raise(
+            this,
+            PitchChanged,
+            new MediaValueChangedEventArgs<int>(previous, _pitch, reason),
+            nameof(PitchChanged));
+    }
+
+    private void SetTempo(int value, MediaChangeReason reason)
+    {
+        var clamped = Math.Clamp(value, 5, 5000);
+        var previous = Tempo;
+        if (previous == clamped)
+            return;
+
+        _tempo = clamped;
+        if (HasAudio)
+            Audio.SetTempo(_tempo - 100);
+        else if (HasClockBackedTempo)
+            ClockSource!.SetTempo(_tempo - 100);
+
+        HostEventDispatcher.Raise(
+            this,
+            TempoChanged,
+            new MediaValueChangedEventArgs<int>(previous, Tempo, reason),
+            nameof(TempoChanged));
+    }
 
     private void OnNormalizationGainChanged(object? sender, double gain) => NormalizationGainChanged?.Invoke(this, gain);
 }

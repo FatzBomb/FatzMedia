@@ -11,6 +11,20 @@ public class AudioOutputConfigurationTests
 
         Assert.Equal(AudioOutputDeviceInfo.PrimaryDeviceIndex, configuration.AudioOutputDeviceIndex);
         Assert.Equal(AudioOutputFallbackMode.FallbackToPrimary, configuration.AudioOutputFallbackMode);
+        Assert.False(configuration.ResetPitchOnMediaLoad);
+        Assert.False(configuration.ResetTempoOnMediaLoad);
+    }
+
+    [Fact]
+    public void MediaPlayerConfiguration_LoadResetOptionsAreIndependent()
+    {
+        var pitchOnly = new MediaPlayerConfiguration { ResetPitchOnMediaLoad = true };
+        var tempoOnly = new MediaPlayerConfiguration { ResetTempoOnMediaLoad = true };
+
+        Assert.True(pitchOnly.ResetPitchOnMediaLoad);
+        Assert.False(pitchOnly.ResetTempoOnMediaLoad);
+        Assert.False(tempoOnly.ResetPitchOnMediaLoad);
+        Assert.True(tempoOnly.ResetTempoOnMediaLoad);
     }
 
     [Fact]

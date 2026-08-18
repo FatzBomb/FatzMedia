@@ -1,8 +1,12 @@
+using FatzBomb.MediaControl.Controllers;
+using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Threading;
+using System.Collections.Concurrent;
 
 namespace FatzBomb.MediaControl.Tests;
 
-public class MediaControlPlayerTests
+public sealed class MediaControlPlayerTests
 {
     [Fact]
     public void Constructor_NullPlatformFactory_Throws()
@@ -11,5 +15,748 @@ public class MediaControlPlayerTests
             new MediaControlPlayer(null!, MediaPlayerConfiguration.Auto, Array.Empty<string>()));
 
         Assert.Equal("platformFactory", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task Load_RaisesLoadedThenStateThenPosition()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var order = new ConcurrentQueue<string>();
+        var positionRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaLoaded += (_, _) => order.Enqueue("loaded");
+        player.StateChanged += (_, e) =>
+        {
+            if (e.CurrentState == MediaPlayerState.Stopped)
+                order.Enqueue("state");
+        };
+        player.PositionChanged += (_, _) =>
+        {
+            order.Enqueue("position");
+            positionRaised.TrySetResult();
+        };
+
+        Assert.True(player.Load("song.mp3"));
+        await positionRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["loaded", "state", "position"], order);
+    }
+
+    [Fact]
+    public async Task Stop_RaisesStoppedThenStateThenPosition()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
+        Assert.True(player.Load("song.mp3"));
+        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.StateChanged += (_, e) =>
+        {
+            if (e.CurrentState == MediaPlayerState.Playing)
+                playing.TrySetResult();
+        };
+        Assert.True(player.Play());
+        await playing.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var order = new ConcurrentQueue<string>();
+        var stoppedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaStopped += (_, _) => order.Enqueue("stopped");
+        player.StateChanged += (_, e) =>
+        {
+            if (e.CurrentState == MediaPlayerState.Stopped)
+                order.Enqueue("state");
+        };
+        player.PositionChanged += (_, e) =>
+        {
+            if (e.Position == TimeSpan.Zero)
+            {
+                order.Enqueue("position");
+                stoppedPosition.TrySetResult();
+            }
+        };
+
+        Assert.True(player.Stop());
+        await stoppedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["stopped", "state", "position"], order);
+    }
+
+    [Fact]
+    public async Task Seek_RaisesCompletedThenPosition()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
+        Assert.True(player.Load("song.mp3"));
+        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var order = new ConcurrentQueue<string>();
+        var seekPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        MediaSeekCompletedEventArgs? seekCompleted = null;
+        player.SeekCompleted += (_, e) =>
+        {
+            seekCompleted = e;
+            order.Enqueue("seek");
+        };
+        player.PositionChanged += (_, e) =>
+        {
+            if (e.Position == TimeSpan.FromSeconds(12))
+            {
+                order.Enqueue("position");
+                seekPosition.TrySetResult();
+            }
+        };
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        await seekPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["seek", "position"], order);
+        Assert.Equal(TimeSpan.FromSeconds(12), seekCompleted!.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(12), seekCompleted.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task VideoSeek_RaisesCompletedAfterTheSettledPositionSignal()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(12);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task VideoNoOpSeek_RaisesCompletedWithoutAnotherPositionSignal()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        video.Position = 12;
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task VideoSeek_IgnoresPositionOutsideSettleTolerance()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        video.RaisePositionChanged(13);
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(12);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task SmallVideoSeek_DoesNotCompleteFromThePreSeekPosition()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        video.Position = 11.9;
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(12);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task VideoSeek_LatestRequestWinsSettleCompletion()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(8)));
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        video.RaisePositionChanged(8);
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(12);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task CdgNoOpSeek_RaisesCompletedWithoutFrameInvalidation()
+    {
+        var engine = new TestMediaEngine
+        {
+            Content = MediaContent.Audio | MediaContent.Cdg,
+            TestCdg = new TestCdgEngine()
+        };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task Stop_ClearsPendingVideoSeekCompletion()
+    {
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        Assert.True(player.Play());
+        var completionCount = 0;
+        player.SeekCompleted += (_, _) => Interlocked.Increment(ref completionCount);
+
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+        Assert.True(player.Stop());
+        video.RaisePositionChanged(12);
+        await Task.Delay(100);
+
+        Assert.Equal(0, Volatile.Read(ref completionCount));
+    }
+
+    [Fact]
+    public async Task Pause_StopsPeriodicPositionNotifications()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
+        Assert.True(player.Load("song.mp3"));
+        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(player.Play());
+        Assert.True(player.Pause());
+        var countAfterPause = 0;
+        player.PositionChanged += (_, _) => Interlocked.Increment(ref countAfterPause);
+
+        await Task.Delay(PlaybackPositionNotifier.DefaultInterval + TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(0, Volatile.Read(ref countAfterPause));
+    }
+
+    [Fact]
+    public async Task NaturalEnd_RaisesEndedThenStateThenPosition()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
+        Assert.True(player.Load("song.mp3"));
+        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.StateChanged += (_, e) =>
+        {
+            if (e.CurrentState == MediaPlayerState.Playing)
+                playing.TrySetResult();
+        };
+        Assert.True(player.Play());
+        await playing.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var order = new ConcurrentQueue<string>();
+        var endedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaEnded += (_, _) => order.Enqueue("ended");
+        player.StateChanged += (_, e) =>
+        {
+            if (e.CurrentState == MediaPlayerState.Stopped)
+                order.Enqueue("state");
+        };
+        player.PositionChanged += (_, e) =>
+        {
+            if (e.Position == TimeSpan.FromSeconds(engine.Duration))
+            {
+                order.Enqueue("position");
+                endedPosition.TrySetResult();
+            }
+        };
+
+        engine.CompletePlayback();
+        await endedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["ended", "state", "position"], order);
+    }
+
+    [Fact]
+    public async Task InternalLoop_RaisesEndedThenLoopedThenPosition()
+    {
+        var engine = new TestMediaEngine { HandlesLoopInternally = true };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
+        Assert.True(player.Load("song.mp3"));
+        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        player.LoopMedia = true;
+
+        var order = new ConcurrentQueue<string>();
+        var loopPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaEnded += (_, _) => order.Enqueue("ended");
+        player.MediaLooped += (_, _) => order.Enqueue("looped");
+        player.PositionChanged += (_, e) =>
+        {
+            if (e.Position == TimeSpan.Zero)
+            {
+                order.Enqueue("position");
+                loopPosition.TrySetResult();
+            }
+        };
+
+        engine.RaiseMediaEnded();
+        await loopPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["ended", "looped", "position"], order);
+    }
+
+    [Fact]
+    public async Task MediaEndedHandler_StopCancelsQueuedLoopRestart()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.Play());
+        player.LoopMedia = true;
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopResult = false;
+        player.MediaEnded += (_, _) => stopResult = player.Stop();
+        player.MediaStopped += (_, _) => stopped.TrySetResult();
+
+        engine.RaiseMediaEnded();
+        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(stopResult);
+        Assert.Equal(1, engine.PlayCount);
+    }
+
+    [Fact]
+    public async Task EndSignalQueuedDuringStop_DoesNotRestartOrRaiseEnded()
+    {
+        using var releaseStop = new ManualResetEventSlim();
+        var stopEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.Play());
+        player.LoopMedia = true;
+        engine.BeforeStop = () =>
+        {
+            stopEntered.TrySetResult();
+            releaseStop.Wait();
+        };
+        var endedCount = 0;
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaEnded += (_, _) => Interlocked.Increment(ref endedCount);
+        player.MediaStopped += (_, _) => stopped.TrySetResult();
+
+        Task<bool> stop = player.StopAsync();
+        await stopEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        engine.RaiseMediaEnded();
+        releaseStop.Set();
+
+        Assert.True(await stop.WaitAsync(TimeSpan.FromSeconds(2)));
+        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, Volatile.Read(ref endedCount));
+        Assert.Equal(1, engine.PlayCount);
+    }
+
+    [Fact]
+    public void Load_WithPitchAndTempoReset_RaisesResetEventsBeforeLoaded()
+    {
+        var engine = new TestMediaEngine();
+        var configuration = new MediaPlayerConfiguration
+        {
+            ResetPitchOnMediaLoad = true,
+            ResetTempoOnMediaLoad = true
+        };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+        var order = new List<string>();
+        MediaValueChangedEventArgs<int>? pitchReset = null;
+        MediaValueChangedEventArgs<int>? tempoReset = null;
+        player.PitchChanged += (_, e) =>
+        {
+            pitchReset = e;
+            order.Add("pitch");
+        };
+        player.TempoChanged += (_, e) =>
+        {
+            tempoReset = e;
+            order.Add("tempo");
+        };
+        player.MediaLoaded += (_, _) => order.Add("loaded");
+
+        Assert.True(player.Load("song.mp3"));
+
+        Assert.Equal(["pitch", "tempo", "loaded"], order);
+        Assert.Equal(MediaChangeReason.LoadReset, pitchReset!.Reason);
+        Assert.Equal(0, pitchReset.CurrentValue);
+        Assert.Equal(MediaChangeReason.LoadReset, tempoReset!.Reason);
+        Assert.Equal(100, tempoReset.CurrentValue);
+        Assert.Equal(0, player.Effects.Pitch);
+        Assert.Equal(100, player.Effects.Tempo);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithTempoResetOnly_PreservesPitch()
+    {
+        var engine = new TestMediaEngine();
+        var configuration = new MediaPlayerConfiguration { ResetTempoOnMediaLoad = true };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+        var pitchEvents = 0;
+        MediaValueChangedEventArgs<int>? tempoReset = null;
+        player.PitchChanged += (_, _) => pitchEvents++;
+        player.TempoChanged += (_, e) => tempoReset = e;
+
+        Assert.True(await player.LoadAsync("song.mp3"));
+
+        Assert.Equal(0, pitchEvents);
+        Assert.Equal(5, player.Effects.Pitch);
+        Assert.Equal(100, player.Effects.Tempo);
+        Assert.Equal(MediaChangeReason.LoadReset, tempoReset!.Reason);
+    }
+
+    [Fact]
+    public void Load_DefaultConfigurationPreservesPitchAndTempo()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+        var changeEvents = 0;
+        player.PitchChanged += (_, _) => changeEvents++;
+        player.TempoChanged += (_, _) => changeEvents++;
+
+        Assert.True(player.Load("song.mp3"));
+
+        Assert.Equal(0, changeEvents);
+        Assert.Equal(5, player.Effects.Pitch);
+        Assert.Equal(125, player.Effects.Tempo);
+    }
+
+    [Fact]
+    public void Reset_UsesNewLoadResetConfiguration()
+    {
+        var firstEngine = new TestMediaEngine();
+        var resetEngine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(firstEngine, resetEngine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var resetConfiguration = new MediaPlayerConfiguration
+        {
+            ResetPitchOnMediaLoad = true,
+            ResetTempoOnMediaLoad = true
+        };
+
+        Assert.True(player.Reset(resetConfiguration, []));
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+
+        Assert.True(player.Load("song.mp3"));
+        Assert.Equal(0, player.Effects.Pitch);
+        Assert.Equal(100, player.Effects.Tempo);
+    }
+
+    [Fact]
+    public async Task Reset_WaitsForAdmittedLoadBeforeDisposingItsEngine()
+    {
+        using var releaseLoad = new ManualResetEventSlim();
+        var loadEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEngine = new TestMediaEngine
+        {
+            BeforeOpen = () =>
+            {
+                loadEntered.TrySetResult();
+                releaseLoad.Wait();
+            }
+        };
+        var resetEngine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(
+            new TestPlatformFactory(firstEngine, resetEngine),
+            MediaPlayerConfiguration.Auto,
+            []);
+
+        Task<bool> load = player.LoadAsync("song.mp3");
+        await loadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+
+        await Task.Delay(50);
+        Assert.False(reset.IsCompleted);
+
+        releaseLoad.Set();
+        Assert.True(await load.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(await reset.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(1, firstEngine.DisposeCount);
+        Assert.True(player.Load("replacement.mp3"));
+    }
+
+    [Fact]
+    public async Task Dispose_WaitsForAdmittedLoadBeforeDisposingItsEngine()
+    {
+        using var releaseLoad = new ManualResetEventSlim();
+        var loadEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new TestMediaEngine
+        {
+            BeforeOpen = () =>
+            {
+                loadEntered.TrySetResult();
+                releaseLoad.Wait();
+            }
+        };
+        var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+
+        Task<bool> load = player.LoadAsync("song.mp3");
+        await loadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task dispose = Task.Run(player.Dispose);
+
+        await Task.Delay(50);
+        Assert.False(dispose.IsCompleted);
+
+        releaseLoad.Set();
+        Assert.True(await load.WaitAsync(TimeSpan.FromSeconds(2)));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, engine.DisposeCount);
+        Assert.Throws<ObjectDisposedException>(() => player.Play());
+        player.Dispose();
+    }
+
+    [Fact]
+    public async Task Dispose_WaitsForConcurrentResetAndDisposesTheRebuiltEngine()
+    {
+        using var releaseReset = new ManualResetEventSlim();
+        var resetEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEngine = new TestMediaEngine();
+        var resetEngine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(firstEngine, resetEngine);
+        var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        factory.BeforeCreateServiceProvider = callCount =>
+        {
+            if (callCount == 2)
+            {
+                resetEntered.TrySetResult();
+                releaseReset.Wait();
+            }
+        };
+
+        Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+        await resetEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task dispose = Task.Run(player.Dispose);
+
+        await Task.Delay(50);
+        Assert.False(dispose.IsCompleted);
+
+        releaseReset.Set();
+        Assert.True(await reset.WaitAsync(TimeSpan.FromSeconds(2)));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, firstEngine.DisposeCount);
+        Assert.Equal(1, resetEngine.DisposeCount);
+        Assert.Throws<ObjectDisposedException>(() => player.Play());
+    }
+
+    [Fact]
+    public void Dispose_FromInlineControlEvent_IsRejectedUntilTheOperationCompletes()
+    {
+        var engine = new TestMediaEngine();
+        var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Exception? disposeException = null;
+        player.MediaStarted += (_, _) => disposeException = Record.Exception(player.Dispose);
+
+        Assert.True(player.Play());
+
+        Assert.IsType<InvalidOperationException>(disposeException);
+        player.Dispose();
+        Assert.Equal(1, engine.DisposeCount);
+    }
+
+    [Fact]
+    public void FailedLoad_DoesNotResetPitchOrTempo()
+    {
+        var engine = new TestMediaEngine { OpenSucceeds = false };
+        var configuration = new MediaPlayerConfiguration
+        {
+            ResetPitchOnMediaLoad = true,
+            ResetTempoOnMediaLoad = true
+        };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), configuration, []);
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+        var resetEvents = 0;
+        player.PitchChanged += (_, e) => resetEvents += e.Reason == MediaChangeReason.LoadReset ? 1 : 0;
+        player.TempoChanged += (_, e) => resetEvents += e.Reason == MediaChangeReason.LoadReset ? 1 : 0;
+
+        Assert.False(player.Load("missing.mp3"));
+        Assert.Equal(0, resetEvents);
+        Assert.Equal(5, player.Effects.Pitch);
+        Assert.Equal(125, player.Effects.Tempo);
+    }
+
+    [Fact]
+    public void HasVisualContentIncludesMainVisualsAndResolvedBackgrounds()
+    {
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.False(player.HasVisualContent);
+
+        engine.Content = MediaContent.Video;
+        Assert.True(player.HasVisualContent);
+
+        engine.Content = MediaContent.Audio;
+        _ = engine.SetBackground(MediaBackgroundCandidate.FromPath(MediaBackgroundKind.Image, "background.png"));
+        Assert.True(player.HasVisualContent);
+    }
+
+    [Fact]
+    public void BaseVisualTransformChangedFiresOnlyOnActualChange()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var changes = new List<MediaValueChangedEventArgs<BaseVisualTransform>>();
+        player.BaseVisualTransformChanged += (_, e) => changes.Add(e);
+        var transform = new BaseVisualTransform { Brightness = 0.25f };
+
+        player.BaseVisualTransform = transform;
+        player.BaseVisualTransform = transform;
+
+        MediaValueChangedEventArgs<BaseVisualTransform> change = Assert.Single(changes);
+        Assert.Equal(BaseVisualTransform.Identity, change.PreviousValue);
+        Assert.Equal(transform, change.CurrentValue);
+        Assert.Equal(MediaChangeReason.User, change.Reason);
+        Assert.Equal(transform, player.BaseVisualTransform);
+    }
+
+    [Fact]
+    public void LoadResetOptionsCanBeChangedForTheNextLoad()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        player.Effects.Pitch = 5;
+        player.Effects.Tempo = 125;
+        player.ResetPitchOnMediaLoad = true;
+        player.ResetTempoOnMediaLoad = false;
+
+        Assert.True(player.Load("first.mp3"));
+        Assert.Equal(0, player.Effects.Pitch);
+        Assert.Equal(125, player.Effects.Tempo);
+
+        player.Effects.Pitch = 7;
+        player.ResetPitchOnMediaLoad = false;
+        player.ResetTempoOnMediaLoad = true;
+
+        Assert.True(player.Load("second.mp3"));
+        Assert.Equal(7, player.Effects.Pitch);
+        Assert.Equal(100, player.Effects.Tempo);
+    }
+
+    private sealed class TestPlatformFactory : IMediaControlPlatformFactory
+    {
+        private readonly Queue<TestMediaEngine> _engines;
+        private readonly TestPresentationCoordinator _coordinator = new();
+        private int _createServiceProviderCount;
+
+        public TestPlatformFactory(params TestMediaEngine[] engines)
+        {
+            _engines = new Queue<TestMediaEngine>(engines);
+        }
+
+        public string LastNativeLoadMessage => string.Empty;
+
+        public Action<int>? BeforeCreateServiceProvider { get; set; }
+
+        public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);
+
+        public IMediaPresentationCoordinator CreatePresentationCoordinator(
+            IMediaEngine mediaEngine,
+            MediaPlayerConfiguration configuration) => _coordinator;
+
+        public IServiceProvider CreateServiceProvider(
+            MediaPlayerConfiguration configuration,
+            IReadOnlyList<string> nativeLibraryPaths)
+        {
+            var callCount = Interlocked.Increment(ref _createServiceProviderCount);
+            BeforeCreateServiceProvider?.Invoke(callCount);
+            return new TestServiceProvider(_engines.Dequeue());
+        }
+    }
+
+    private sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
+    {
+        private readonly IArchiveService _archiveService = new TestArchiveService();
+
+        public object? GetService(Type serviceType) => serviceType == typeof(IMediaEngine)
+            ? engine
+            : serviceType == typeof(IArchiveService)
+                ? _archiveService
+                : null;
+    }
+
+    private sealed class TestArchiveService : IArchiveService
+    {
+        public IArchiveHandle Open(string path) => throw new NotSupportedException();
+    }
+
+    private sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
+    {
+        public event EventHandler? FramePresented { add { } remove { } }
+
+        public VideoDisplayMode VideoDisplayMode { get; set; }
+        public BaseVisualTransform BaseVisualTransform { get; set; }
+
+        public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface) => false;
+        public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;
+        public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
+        public bool DetachPresentationSurface(string surfaceId) => false;
+        public void RefreshCurrentPosition() { }
+        public void RunOnRenderThread(Action action) => action();
+        public void StartRendering() { }
+        public void StopRendering() { }
+        public void RefreshAttachments() { }
+        public void Dispose() { }
     }
 }

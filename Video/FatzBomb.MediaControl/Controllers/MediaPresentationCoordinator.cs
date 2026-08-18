@@ -66,6 +66,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private bool _compositionBackgroundIsRetainedGpu;
     private long _compositionBackgroundRevision;
     private MediaCompositionStretchMode _primaryStretchMode = MediaCompositionStretchMode.UniformFit;
+    private BaseVisualTransform _baseVisualTransform;
     private CdgRenderSnapshot? _lastCdgSnapshot;
     private SubtitleRasterResult? _subtitleOverlay;
     private string? _subtitleText;
@@ -117,6 +118,31 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             PresentCurrentComposition("display mode changed");
         }
     } = VideoDisplayMode.Zoom;
+
+    public BaseVisualTransform BaseVisualTransform
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _baseVisualTransform;
+            }
+        }
+        set
+        {
+            lock (_lock)
+            {
+                if (_baseVisualTransform == value)
+                {
+                    return;
+                }
+
+                _baseVisualTransform = value;
+            }
+
+            PresentCurrentComposition("base visual transform changed");
+        }
+    }
 
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
     {
@@ -615,6 +641,12 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             }
         }
 
+        if (!BaseVisualTransform.IsIdentity)
+        {
+            RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + base visual transform");
+            return;
+        }
+
         lock (_lock)
         {
             if (!EnsureNativeFrameDevice(e))
@@ -795,6 +827,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 BackgroundStretchMode = stretch,
                 BackgroundUniformToFill = stretch == MediaCompositionStretchMode.UniformToFill,
                 BackgroundRevision = backgroundRevision,
+                BaseVisualTransform = _baseVisualTransform,
                 WashArgb = washArgb,
                 CdgOverlay = snapshot,
                 SubtitleBgra = subtitleOverlay?.Pixels ?? ReadOnlyMemory<byte>.Empty,
@@ -1082,6 +1115,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             BackgroundUniformToFill = (hasBackground || hasRetainedGpuBackground) && backgroundStretchMode == MediaCompositionStretchMode.UniformToFill,
             BackgroundRevision = hasBackground || hasRetainedGpuBackground ? backgroundRevision : -1,
             UseRetainedBackground = hasRetainedGpuBackground,
+            BaseVisualTransform = _baseVisualTransform,
             WashArgb = washArgb,
             CdgOverlay = cdgOverlay,
             SubtitleBgra = subtitleOverlay?.Pixels ?? ReadOnlyMemory<byte>.Empty,

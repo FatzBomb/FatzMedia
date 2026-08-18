@@ -18,6 +18,8 @@ internal sealed class LightweightPlayerController(
     public bool HasPlayerOrPendingCreation => _player != null || _playerCreationTask != null;
     public bool IsMediaOpen => _player?.IsOpen == true;
 
+    public event EventHandler? MediaClosed;
+
     public async Task<Player?> EnsurePlayerAsync(
         IMediaControlPlatformFactory? platformFactory,
         bool autoPlay,
@@ -48,6 +50,7 @@ internal sealed class LightweightPlayerController(
         }
 
         _player = player;
+        player.MediaClosed += OnPlayerMediaClosed;
         configurePlayer(player);
         player.PlayOnLoad = autoPlay;
         surface.PresentationMode = presentationMode;
@@ -79,7 +82,28 @@ internal sealed class LightweightPlayerController(
         surface.Player = null;
         Player? player = _player;
         _player = null;
+        if (player != null)
+            player.MediaClosed -= OnPlayerMediaClosed;
         player?.Dispose();
+        MediaClosed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPlayerMediaClosed(object? sender, MediaClosedEventArgs e)
+    {
+        if (_disposed)
+            return;
+
+        if (owner.Dispatcher.CheckAccess())
+        {
+            MediaClosed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        _ = owner.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_disposed)
+                MediaClosed?.Invoke(this, EventArgs.Empty);
+        }));
     }
 
     private async Task<Player?> CreatePlayerAsync(IMediaControlPlatformFactory platformFactory)

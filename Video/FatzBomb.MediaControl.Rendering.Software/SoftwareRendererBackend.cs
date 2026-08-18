@@ -58,12 +58,16 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
 
     public void SetPresentationStretch(MediaCompositionStretchMode stretchMode)
     {
+        // The software renderer is stateless; each composition frame carries its
+        // effective stretch mode, so there is no backend-level value to retain.
     }
 
     public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
 
     public void ClearCompositionBackgroundFrame()
     {
+        // No retained background resource exists. PresentComposition renders only
+        // from the frame supplied by Core.
     }
 
     public bool PresentComposition(MediaCompositionFrame frame)

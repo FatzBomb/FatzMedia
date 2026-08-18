@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Threading;
 
 namespace FatzBomb.MediaControl.Controllers;
 
@@ -13,9 +14,18 @@ public sealed class MediaFile
     private readonly MediaEffects? _mediaEffects;
     private readonly CdgVisuals? _cdgVisuals;
     private readonly IArchiveService? _archiveService;
+    private MediaSourceInfo? _currentSource;
     private int _loadGeneration;
 
-    internal MediaFile(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null, MediaControls? mediaControls = null, MediaEffects? mediaEffects = null, CdgVisuals? cdgVisuals = null, IArchiveService? archiveService = null)
+    internal MediaFile(
+        IMediaEngine mediaEngine,
+        IMediaRenderCoordinator? mediaRenderer = null,
+        MediaControls? mediaControls = null,
+        MediaEffects? mediaEffects = null,
+        CdgVisuals? cdgVisuals = null,
+        IArchiveService? archiveService = null,
+        bool resetPitchOnMediaLoad = false,
+        bool resetTempoOnMediaLoad = false)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
         _mediaEngine = mediaEngine;
@@ -24,12 +34,24 @@ public sealed class MediaFile
         _mediaEffects = mediaEffects;
         _cdgVisuals = cdgVisuals;
         _archiveService = archiveService;
+        ResetPitchOnMediaLoad = resetPitchOnMediaLoad;
+        ResetTempoOnMediaLoad = resetTempoOnMediaLoad;
     }
 
     /// <summary>
     /// Gets or sets whether to automatically start playback after loading.
     /// </summary>
     public bool PlayOnLoad { get; set; } = false;
+
+    /// <summary>Gets or sets whether pitch resets to zero after each successful load.</summary>
+    public bool ResetPitchOnMediaLoad { get; set; }
+
+    /// <summary>Gets or sets whether tempo resets to 100 percent after each successful load.</summary>
+    public bool ResetTempoOnMediaLoad { get; set; }
+
+    internal event EventHandler<MediaLoadedEventArgs>? MediaLoaded;
+
+    internal event EventHandler<MediaClosedEventArgs>? MediaClosed;
 
     /// <summary>Gets or sets whether Core should automatically load matching sidecar/archive backgrounds for overlay media.</summary>
     public bool BackgroundAutoDetect
@@ -215,10 +237,20 @@ public sealed class MediaFile
     public void Close()
     {
         InvalidatePendingPlayOnLoad();
+        MediaSourceInfo? closedSource = _currentSource;
+        _currentSource = null;
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
         _mediaRenderer?.RefreshAttachments();
+        if (closedSource != null)
+        {
+            HostEventDispatcher.Raise(
+                this,
+                MediaClosed,
+                new MediaClosedEventArgs(closedSource),
+                nameof(MediaClosed));
+        }
     }
 
     private int BeginLoadOperation() => Interlocked.Increment(ref _loadGeneration);
@@ -238,6 +270,8 @@ public sealed class MediaFile
             System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
             if (!(_mediaControls?.Stop() ?? false))
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "Stop failed or returned false");
+
+            RaiseMediaClosed();
         }
 
         _mediaEngine.ClearBackground();
@@ -253,8 +287,29 @@ public sealed class MediaFile
         ApplyCoreBackground(source, backgroundSource, ignoreSidecar);
 
         _mediaEffects?.RefreshActiveEngine();
+        _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
         _cdgVisuals?.Apply();
+        _currentSource = new MediaSourceInfo(source, _mediaEngine.Content);
+        HostEventDispatcher.Raise(
+            this,
+            MediaLoaded,
+            new MediaLoadedEventArgs(_currentSource, TimeSpan.FromSeconds(_mediaEngine.Duration)),
+            nameof(MediaLoaded));
         return true;
+    }
+
+    private void RaiseMediaClosed()
+    {
+        MediaSourceInfo? closedSource = _currentSource;
+        if (closedSource == null)
+            return;
+
+        _currentSource = null;
+        HostEventDispatcher.Raise(
+            this,
+            MediaClosed,
+            new MediaClosedEventArgs(closedSource),
+            nameof(MediaClosed));
     }
 
     private void ApplyCoreBackground(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)

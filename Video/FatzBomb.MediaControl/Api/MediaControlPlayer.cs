@@ -14,16 +14,26 @@ namespace FatzBomb.MediaControl;
 /// Core-owned media-control session. Framework adapters supply surfaces; this object owns playback,
 /// layer composition, native target fan-out, and presentation coordination.
 /// </summary>
-public class MediaControlPlayer : IMediaControlSession
+public partial class MediaControlPlayer : IMediaControlSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
+    private const double SeekSettleToleranceSeconds = 0.25;
+    private const double SeekImmediateCompletionToleranceSeconds = 0.001;
     private readonly IMediaControlPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
     private IMediaPresentationCoordinator _presentationCoordinator;
     private MediaControlOperationQueue _controlOperations;
+    private PlaybackPositionNotifier _positionNotifier;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _operationAdmissionGate = new();
+    private readonly Lock _seekCompletionGate = new();
     private IAudioDeviceMonitor? _audioDeviceMonitor;
+    private IVideoEngine? _seekVideoEngine;
+    private ICdgEngine? _seekCdgEngine;
+    private PendingSeek? _pendingSeek;
+    private int _hasPendingSeek;
+    private int _resetting;
     private bool _disposed;
 
     public MediaControlPlayer(
@@ -42,13 +52,23 @@ public class MediaControlPlayer : IMediaControlSession
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
         _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
-        Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
-        File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
+        Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
+        File = new MediaFile(
+            _mediaEngine,
+            _presentationCoordinator,
+            Controls,
+            Effects,
+            CdgVisuals,
+            archiveService,
+            configuration.ResetPitchOnMediaLoad,
+            configuration.ResetTempoOnMediaLoad);
         _controlOperations = new MediaControlOperationQueue("MediaControl");
+        _positionNotifier = CreatePositionNotifier();
 
         Controls.MediaEnded += OnControlsMediaEnded;
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
+        SubscribeNewSessionEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
 
         if (_mediaEngine is IMediaErrorSource errorSource)
@@ -125,6 +145,10 @@ public class MediaControlPlayer : IMediaControlSession
 
     public bool HasSubtitle => Content.HasFlag(MediaContent.Subtitle);
 
+    public bool HasVisualContent =>
+        (Content & (MediaContent.Video | MediaContent.Cdg | MediaContent.Image | MediaContent.Subtitle)) != 0
+        || _mediaEngine.Background != null;
+
     public IReadOnlyList<SubtitleTrack> SubtitleTracks => _mediaEngine.SubtitleTracks;
 
     public string? SelectedSubtitleTrackId => _mediaEngine.SelectedSubtitleTrackId;
@@ -176,47 +200,47 @@ public class MediaControlPlayer : IMediaControlSession
 
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    public bool Load(string path) => _controlOperations.Execute(() => File.Load(path));
+    public bool Load(string path) => ExecuteControlOperation(() => File.Load(path));
 
-    public bool Load(string path, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, ignoreSidecar));
+    public bool Load(string path, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, ignoreSidecar));
 
-    public bool Load(MediaInputSource source, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(source, ignoreSidecar));
+    public bool Load(MediaInputSource source, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(source, ignoreSidecar));
 
-    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, backgroundPath, ignoreSidecar));
+    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, backgroundPath, ignoreSidecar));
 
-    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => _controlOperations.Execute(() => File.Load(path, backgroundPaths, ignoreSidecar));
+    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, backgroundPaths, ignoreSidecar));
 
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        _controlOperations.Execute(() => File.Load(source, backgroundSource, ignoreSidecar));
+        ExecuteControlOperation(() => File.Load(source, backgroundSource, ignoreSidecar));
 
-    public Task<bool> LoadAsync(string path) => _controlOperations.Enqueue(() => File.LoadAsync(path));
+    public Task<bool> LoadAsync(string path) => EnqueueControlOperation(() => File.LoadAsync(path));
 
     public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
-        _controlOperations.Enqueue(() => File.LoadAsync(path, ignoreSidecar));
+        EnqueueControlOperation(() => File.LoadAsync(path, ignoreSidecar));
 
     public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
-        _controlOperations.Enqueue(() => File.LoadAsync(source, ignoreSidecar));
+        EnqueueControlOperation(() => File.LoadAsync(source, ignoreSidecar));
 
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        _controlOperations.Enqueue(() => File.LoadAsync(path, backgroundPath, ignoreSidecar));
+        EnqueueControlOperation(() => File.LoadAsync(path, backgroundPath, ignoreSidecar));
 
     public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        _controlOperations.Enqueue(() => File.LoadAsync(path, backgroundPaths, ignoreSidecar));
+        EnqueueControlOperation(() => File.LoadAsync(path, backgroundPaths, ignoreSidecar));
 
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        _controlOperations.Enqueue(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));
+        EnqueueControlOperation(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));
 
-    public bool Play() => _controlOperations.Execute(Controls.Play);
+    public bool Play() => ExecuteControlOperation(() => Controls.Play());
 
-    public Task<bool> PlayAsync() => _controlOperations.Enqueue(Controls.Play);
+    public Task<bool> PlayAsync() => EnqueueControlOperation(() => Controls.Play());
 
-    public bool Pause() => _controlOperations.Execute(Controls.Pause);
+    public bool Pause() => ExecuteControlOperation(() => Controls.Pause());
 
-    public Task<bool> PauseAsync() => _controlOperations.Enqueue(Controls.Pause);
+    public Task<bool> PauseAsync() => EnqueueControlOperation(() => Controls.Pause());
 
-    public bool Stop() => _controlOperations.Execute(Controls.Stop);
+    public bool Stop() => ExecuteControlOperation(() => Controls.Stop());
 
-    public Task<bool> StopAsync() => _controlOperations.Enqueue(Controls.Stop);
+    public Task<bool> StopAsync() => EnqueueControlOperation(() => Controls.Stop());
 
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
@@ -224,14 +248,47 @@ public class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            return _controlOperations.Execute(() =>
+            return ExecuteControlOperation(() =>
             {
-                var success = Controls.Seek(seconds);
-                if (success)
-                    _presentationCoordinator.RefreshCurrentPosition();
+                var requested = CleanPosition(seconds);
+                var target = _mediaEngine.Duration > 0
+                    ? Math.Clamp(requested, 0, _mediaEngine.Duration)
+                    : requested;
+                var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
+                if (waitsForSettle)
+                {
+                    lock (_seekCompletionGate)
+                    {
+                        _pendingSeek = new PendingSeek(requested, target);
+                        Volatile.Write(ref _hasPendingSeek, 1);
+                    }
+                }
 
-                return success;
+                var success = Controls.Seek(seconds);
+                if (!success)
+                {
+                    ClearPendingSeek();
+                    return false;
+                }
+
+                _presentationCoordinator.RefreshCurrentPosition();
+                if (!waitsForSettle)
+                {
+                    RaiseSeekCompleted(requested, _mediaEngine.Position);
+                    return true;
+                }
+
+                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds);
+                return true;
             });
+        }
+        catch (ObjectDisposedException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -261,7 +318,51 @@ public class MediaControlPlayer : IMediaControlSession
         _presentationCoordinator.RefreshCurrentPosition();
     }
 
-    public void Close() => File.Close();
+    public void Close() => ExecuteControlOperation(() =>
+    {
+        File.Close();
+        return true;
+    });
+
+    private T ExecuteControlOperation<T>(Func<T> operation)
+    {
+        ThrowIfResetting();
+        lock (_operationAdmissionGate)
+        {
+            ThrowIfResetting();
+            return _controlOperations.Execute(operation);
+        }
+    }
+
+    private Task<T> EnqueueControlOperation<T>(Func<T> operation)
+    {
+        ThrowIfResetting();
+        lock (_operationAdmissionGate)
+        {
+            ThrowIfResetting();
+            return _controlOperations.Enqueue(operation);
+        }
+    }
+
+    private Task<T> EnqueueControlOperation<T>(Func<Task<T>> operation)
+    {
+        ThrowIfResetting();
+        lock (_operationAdmissionGate)
+        {
+            ThrowIfResetting();
+            return _controlOperations.Enqueue(operation);
+        }
+    }
+
+    private void DispatchControlOperation(Action operation) =>
+        _ = _controlOperations.Enqueue(operation);
+
+    private void ThrowIfResetting()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Volatile.Read(ref _resetting) != 0)
+            throw new InvalidOperationException("Media control operations are unavailable while the player is resetting.");
+    }
 
     private double ApplySyncOffset(double seconds)
     {
@@ -315,107 +416,6 @@ public class MediaControlPlayer : IMediaControlSession
         return detached;
     }
 
-    public event EventHandler? MediaEnded;
-
-    public event EventHandler? MediaStarted;
-
-    public event EventHandler? PresentationFramePresented;
-
-    public event EventHandler? MediaStopped;
-
-    public event EventHandler<MediaErrorEventArgs>? MediaError;
-
-    public event EventHandler<MediaDiagnosticEventArgs>? MediaDiagnostic;
-
-    public event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;
-
-    private void OnControlsMediaEnded(object? sender, EventArgs e)
-    {
-        EventHandler? handler = MediaEnded;
-        if (handler == null)
-            return;
-
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
-    }
-
-    private void OnControlsMediaStarted(object? sender, EventArgs e)
-    {
-        EventHandler? handler = MediaStarted;
-        if (handler == null)
-            return;
-
-        try
-        {
-            handler.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlPlayer", $"MediaStarted handler failed: {ex.Message}", innerException: ex);
-        }
-    }
-
-    private void OnControlsMediaStopped(object? sender, EventArgs e)
-    {
-        EventHandler? handler = MediaStopped;
-        if (handler == null)
-            return;
-
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
-    }
-
-    private void OnPresentationFramePresented(object? sender, EventArgs e) => PresentationFramePresented?.Invoke(this, EventArgs.Empty);
-
-    private void OnEngineErrorOccurred(MediaErrorInfo info)
-    {
-        EventHandler<MediaErrorEventArgs>? handler = MediaError;
-        if (handler == null)
-            return;
-
-        var args = new MediaErrorEventArgs(info.Code, info.Message, info.SourcePath, info.InnerException);
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
-    }
-
-    private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
-    {
-        EventHandler<MediaDiagnosticEventArgs>? handler = MediaDiagnostic;
-        if (handler == null)
-            return;
-
-        var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
-    }
-
-    private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
-        _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
-
-    private void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
-    {
-        if (_disposed)
-            return;
-
-        DiagnosticRouter.Raise(
-            MediaDiagnosticLevel.Warning,
-            "AudioDeviceMonitor",
-            info.FailureMessage is { Length: > 0 }
-                ? info.FailureMessage
-                : $"Audio device change detected: kind={info.Kind}, name={info.DeviceName ?? "(unknown)"}; leaving playback under BASS/Windows control.",
-            innerException: null);
-
-        try
-        {
-            EventHandler<AudioDeviceChangedEventArgs>? handler = AudioDeviceChanged;
-            if (handler != null)
-            {
-                var args = new AudioDeviceChangedEventArgs(info);
-                handler.Invoke(this, args);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] AudioDeviceChanged dispatch failed: {ex.Message}");
-        }
-    }
-
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
@@ -433,129 +433,195 @@ public class MediaControlPlayer : IMediaControlSession
 
     public bool Reset(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
     {
-        if (!_disposed)
+        var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+        lock (_operationAdmissionGate)
         {
-            // 1. Stop all playback and close media
-            try { File.Close(); } catch { }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            MediaControlOperationQueue oldOperations = _controlOperations;
+            if (oldOperations.IsExecutingOperation)
+                throw new InvalidOperationException("Reset cannot run from inside a media control operation or event handler.");
 
-            // 2. Unsubscribe internal events
-            try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
-            try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
-            try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
-            try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
-            try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+            Volatile.Write(ref _resetting, 1);
             try
             {
-                if (_mediaEngine is IMediaErrorSource errorSource)
-                    errorSource.ErrorOccurred -= OnEngineErrorOccurred;
+                return oldOperations.Execute(() => ResetCore(configuration, resolvedNativeLibraryPaths));
             }
-            catch { }
-
-            // 3. Disconnect audio device monitor
-            if (_audioDeviceMonitor != null)
+            finally
             {
-                try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
-                try { _audioDeviceMonitor.Stop(); } catch { }
-                try { _audioDeviceMonitor.Dispose(); } catch { }
-                _audioDeviceMonitor = null;
+                oldOperations.Dispose();
+                Volatile.Write(ref _resetting, 0);
             }
+        }
+    }
 
-            // 4. Preserve presentation surfaces for reattachment
-            var surfaces = new Dictionary<string, MediaPresentationSurfaceDescriptor>(_presentationSurfaces, StringComparer.OrdinalIgnoreCase);
-            _presentationSurfaces.Clear();
+    private bool ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
+    {
+        // 1. Stop all playback and close media
+        try { File.Close(); } catch { }
 
-            // 5. Dispose old dependencies
-            try { Controls.Dispose(); } catch { }
-            try { _presentationCoordinator.Dispose(); } catch { }
-            try { _mediaEngine.Dispose(); } catch { }
-            try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
-            try { _controlOperations.Dispose(); } catch { }
+        // 2. Unsubscribe internal events
+        try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
+        try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
+        try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
+        try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeSeekCompletionSources(); } catch { }
+        try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
+        try { _positionNotifier.Dispose(); } catch { }
+        ClearPendingSeek();
+        try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+        try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try
+        {
+            if (_mediaEngine is IMediaErrorSource errorSource)
+                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
+        }
+        catch { }
 
-            // 6. Reinitialize with new configuration
-            var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-            _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
-
-            _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
-            IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
-
-            _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
-            Effects = new MediaEffects(_mediaEngine);
-            CdgVisuals = new CdgVisuals(_mediaEngine);
-            _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
-            Controls = new MediaControls(_mediaEngine, _presentationCoordinator);
-            File = new MediaFile(_mediaEngine, _presentationCoordinator, Controls, Effects, CdgVisuals, archiveService);
-            _controlOperations = new MediaControlOperationQueue("MediaControl");
-
-            // 7. Re-subscribe internal events
-            Controls.MediaEnded += OnControlsMediaEnded;
-            Controls.MediaStarted += OnControlsMediaStarted;
-            Controls.MediaStopped += OnControlsMediaStopped;
-            _presentationCoordinator.FramePresented += OnPresentationFramePresented;
-            if (_mediaEngine is IMediaErrorSource reinitErrorSource)
-                reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
-            DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-
-            // 8. Reattach preserved presentation surfaces
-            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
-                try { _ = AttachPresentationSurface(kvp.Value); } catch { }
-
-            // 9. Reconnect audio device monitor
-            try
-            {
-                _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
-                if (_audioDeviceMonitor != null)
-                {
-                    _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
-                    _audioDeviceMonitor.Start();
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
-            }
-
-            return true;
+        // 3. Disconnect audio device monitor
+        if (_audioDeviceMonitor != null)
+        {
+            try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
+            try { _audioDeviceMonitor.Stop(); } catch { }
+            try { _audioDeviceMonitor.Dispose(); } catch { }
+            _audioDeviceMonitor = null;
         }
 
-        throw new ObjectDisposedException(nameof(MediaControlPlayer));
+        // 4. Preserve presentation surfaces for reattachment
+        var surfaces = new Dictionary<string, MediaPresentationSurfaceDescriptor>(_presentationSurfaces, StringComparer.OrdinalIgnoreCase);
+        _presentationSurfaces.Clear();
+
+        // 5. Dispose old dependencies
+        try { Controls.Dispose(); } catch { }
+        try { _presentationCoordinator.Dispose(); } catch { }
+        try { _mediaEngine.Dispose(); } catch { }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+
+        // 6. Reinitialize with new configuration
+        _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
+
+        _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
+        IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
+
+        _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
+        Effects = new MediaEffects(_mediaEngine);
+        CdgVisuals = new CdgVisuals(_mediaEngine);
+        _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
+        Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
+        File = new MediaFile(
+            _mediaEngine,
+            _presentationCoordinator,
+            Controls,
+            Effects,
+            CdgVisuals,
+            archiveService,
+            configuration.ResetPitchOnMediaLoad,
+            configuration.ResetTempoOnMediaLoad);
+        _controlOperations = new MediaControlOperationQueue("MediaControl");
+        _positionNotifier = CreatePositionNotifier();
+
+        // 7. Re-subscribe internal events
+        Controls.MediaEnded += OnControlsMediaEnded;
+        Controls.MediaStarted += OnControlsMediaStarted;
+        Controls.MediaStopped += OnControlsMediaStopped;
+        SubscribeNewSessionEvents();
+        _presentationCoordinator.FramePresented += OnPresentationFramePresented;
+        if (_mediaEngine is IMediaErrorSource reinitErrorSource)
+            reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
+        DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
+
+        // 8. Reattach preserved presentation surfaces
+        foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
+            try { _ = AttachPresentationSurface(kvp.Value); } catch { }
+
+        // 9. Reconnect audio device monitor
+        try
+        {
+            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            if (_audioDeviceMonitor != null)
+            {
+                _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
+                _audioDeviceMonitor.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
+        }
+
+        return true;
     }
 
     public void Dispose()
     {
-        if (_disposed)
-            return;
+        lock (_operationAdmissionGate)
+        {
+            if (_disposed)
+                return;
 
-        try
-        {
-            _ = Stop();
-            File.Close();
-            Controls.MediaEnded -= OnControlsMediaEnded;
-            Controls.MediaStarted -= OnControlsMediaStarted;
-            Controls.MediaStopped -= OnControlsMediaStopped;
-            _presentationCoordinator.FramePresented -= OnPresentationFramePresented;
-            DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred;
-            if (_mediaEngine is IMediaErrorSource errorSource)
-                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
-            if (_audioDeviceMonitor != null)
+            MediaControlOperationQueue operations = _controlOperations;
+            if (operations.IsExecutingOperation)
+                throw new InvalidOperationException("Dispose cannot run from inside a media control operation or event handler.");
+
+            Volatile.Write(ref _resetting, 1);
+            var teardownRan = false;
+            try
             {
-                _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged;
-                try { _audioDeviceMonitor.Stop(); } catch { }
-                try { _audioDeviceMonitor.Dispose(); } catch { }
+                _ = operations.Execute(() =>
+                {
+                    teardownRan = true;
+                    DisposeCore();
+                    return true;
+                });
             }
-            Controls.Dispose();
-            _presentationCoordinator.Dispose();
-            _mediaEngine.Dispose();
-            (_serviceProvider as IDisposable)?.Dispose();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] Dispose failed: {ex.Message}");
-        }
-        finally
-        {
-            _controlOperations.Dispose();
-            _disposed = true;
-            GC.SuppressFinalize(this);
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MediaControlPlayer] Dispose failed: {ex.Message}");
+                if (!teardownRan)
+                    DisposeCore();
+            }
+            finally
+            {
+                operations.Dispose();
+                _disposed = true;
+                GC.SuppressFinalize(this);
+            }
         }
     }
+
+    private void DisposeCore()
+    {
+        try { _ = Controls.Stop(); } catch { }
+        try { File.Close(); } catch { }
+        try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
+        try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
+        try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
+        try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeSeekCompletionSources(); } catch { }
+        try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
+        try { _positionNotifier.Dispose(); } catch { }
+        ClearPendingSeek();
+        try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+        try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try
+        {
+            if (_mediaEngine is IMediaErrorSource errorSource)
+                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
+        }
+        catch { }
+
+        if (_audioDeviceMonitor != null)
+        {
+            try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
+            try { _audioDeviceMonitor.Stop(); } catch { }
+            try { _audioDeviceMonitor.Dispose(); } catch { }
+            _audioDeviceMonitor = null;
+        }
+
+        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
+        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
+        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
+    }
+
+    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds);
 }

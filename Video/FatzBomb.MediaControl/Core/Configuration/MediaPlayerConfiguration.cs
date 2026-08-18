@@ -122,6 +122,16 @@ public readonly record struct MediaPlayerConfiguration
     public string? MidiSoundfontPath { get; init; }
 
     /// <summary>
+    /// Whether pitch returns to the neutral value of 0 after each successful media load.
+    /// </summary>
+    public bool ResetPitchOnMediaLoad { get; init; }
+
+    /// <summary>
+    /// Whether tempo returns to the neutral value of 100 after each successful media load.
+    /// </summary>
+    public bool ResetTempoOnMediaLoad { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding.
     /// </summary>
@@ -137,6 +147,8 @@ public readonly record struct MediaPlayerConfiguration
         AudioOutputFallbackMode = AudioOutputFallbackMode.FallbackToPrimary;
         SubtitleStyle = new SubtitleTextStyle();
         KaraokeStyle = new KaraokeTextStyle();
+        ResetPitchOnMediaLoad = false;
+        ResetTempoOnMediaLoad = false;
     }
 
     /// <summary>

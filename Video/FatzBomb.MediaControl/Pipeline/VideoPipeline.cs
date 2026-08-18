@@ -19,7 +19,7 @@ internal sealed partial class VideoPipeline(
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
-    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine
+    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine, IMediaLoopEventSource
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -209,6 +209,7 @@ internal sealed partial class VideoPipeline(
     public event EventHandler? Closed;
     public event EventHandler<double>? PositionChanged;
     public event EventHandler? PlaybackEnded;
+    public event EventHandler? MediaLooped;
 
     public bool Open(string path)
     {
@@ -416,6 +417,7 @@ internal sealed partial class VideoPipeline(
         _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
         _state.SetPosition(loopTarget);
         PositionChanged?.Invoke(this, loopTarget);
+        MediaLooped?.Invoke(this, EventArgs.Empty);
         if (firstLoopFrame == null && !presentedSnapshot)
             _ = PresentFrameForCurrentPosition(forceReissue: true);
 
@@ -483,6 +485,7 @@ internal sealed partial class VideoPipeline(
         _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
         _state.SetPosition(freshPosition);
         PositionChanged?.Invoke(this, freshPosition);
+        MediaLooped?.Invoke(this, EventArgs.Empty);
         if (wrapFrame == null)
             _ = PresentFrameForCurrentPosition(forceReissue: true);
 
@@ -1794,6 +1797,7 @@ internal sealed partial class VideoPipeline(
         _clock.Start(loopTarget);
         _state.SetPosition(loopTarget);
         PositionChanged?.Invoke(this, loopTarget);
+        MediaLooped?.Invoke(this, EventArgs.Empty);
         _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
 
         if (wrapFrame == null)

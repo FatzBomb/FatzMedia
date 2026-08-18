@@ -110,7 +110,7 @@ internal static class DlsToSf2Converter
 
     private sealed record DlsInstrument(ushort Bank, ushort Preset, List<DlsRegion> Regions);
 
-    private static string? ConvertAndSave(string dlsPath, string cachePath)
+    internal static string? ConvertAndSave(string dlsPath, string cachePath)
     {
         using FileStream stream = File.OpenRead(dlsPath);
         var reader = new BinaryReader(stream, Encoding.ASCII);
@@ -268,13 +268,14 @@ internal static class DlsToSf2Converter
             else if (chunkName == "wsmp")
             {
                 _ = dls.ReadUInt32(); // cbSize
-                _ = dls.ReadUInt16(); // usUnityNote
                 unityNote = dls.ReadUInt16();
                 fineTune = dls.ReadInt16();
+                _ = dls.ReadInt32(); // lAttenuation
                 _ = dls.ReadUInt32(); // fulOptions
-                var cbSizeLoop = dls.ReadUInt32();
-                if (cbSizeLoop >= 16)
+                var loopCount = dls.ReadUInt32();
+                if (loopCount > 0)
                 {
+                    _ = dls.ReadUInt32(); // cbSize
                     _ = dls.ReadUInt32(); // ulType
                     loopStart = dls.ReadUInt32();
                     loopLength = dls.ReadUInt32();
@@ -305,11 +306,11 @@ internal static class DlsToSf2Converter
 
             if (chunkName == "insh")
             {
-                _ = dls.ReadUInt32(); // cbs
-                _ = dls.ReadUInt32(); // bank
-                var locale = dls.ReadUInt32();
-                bank = (ushort)((locale & 0x80000000) != 0 ? 128 : ((locale >> 8) & 0x7F));
-                preset = (ushort)(locale & 0x7F);
+                _ = dls.ReadUInt32(); // cRegions
+                var bankValue = dls.ReadUInt32();
+                var instrumentValue = dls.ReadUInt32();
+                bank = (ushort)((bankValue & 0x80000000) != 0 ? 128 : ((bankValue >> 8) & 0x7F));
+                preset = (ushort)(instrumentValue & 0x7F);
             }
             else if (chunkName == "LIST")
             {
@@ -371,12 +372,10 @@ internal static class DlsToSf2Converter
 
             if (chunkName == "rgnh")
             {
-                var keyRange = dls.ReadUInt16();
-                var velRange = dls.ReadUInt16();
-                keyLow = (byte)(keyRange & 0xFF);
-                keyHigh = (byte)((keyRange >> 8) & 0xFF);
-                velLow = (byte)(velRange & 0xFF);
-                velHigh = (byte)((velRange >> 8) & 0xFF);
+                keyLow = (byte)dls.ReadUInt16();
+                keyHigh = (byte)dls.ReadUInt16();
+                velLow = (byte)dls.ReadUInt16();
+                velHigh = (byte)dls.ReadUInt16();
                 _ = dls.ReadUInt16(); // fusOptions
                 _ = dls.ReadUInt16(); // usKeyGroup
             }
@@ -384,18 +383,20 @@ internal static class DlsToSf2Converter
             {
                 _ = dls.ReadUInt16(); // fusOptions
                 _ = dls.ReadUInt16(); // usPhaseGroup
+                _ = dls.ReadUInt32(); // ulChannel
                 tableIndex = dls.ReadUInt32(); // ulTableIndex
             }
             else if (chunkName == "wsmp")
             {
                 _ = dls.ReadUInt32(); // cbSize
-                _ = dls.ReadUInt16(); // usUnityNote
                 unityNote = dls.ReadUInt16();
                 fineTune = dls.ReadInt16();
+                _ = dls.ReadInt32(); // lAttenuation
                 _ = dls.ReadUInt32(); // fulOptions
-                var cbSizeLoop = dls.ReadUInt32();
-                if (cbSizeLoop >= 16)
+                var loopCount = dls.ReadUInt32();
+                if (loopCount > 0)
                 {
+                    _ = dls.ReadUInt32(); // cbSize
                     _ = dls.ReadUInt32(); // ulType
                     loopStart = dls.ReadUInt32();
                     loopLength = dls.ReadUInt32();
@@ -550,10 +551,11 @@ internal static class DlsToSf2Converter
         var pdtaBytes = pdtaData.ToArray();
 
         // Write RIFF container
-        var riffPayloadSize = 4u // "sfbk"
-            + 8u + infoBytes.Length // LIST + size + INFO data
-            + 8u + sdtaBytes.Length
-            + 8u + pdtaBytes.Length;
+        var riffPayloadSize = checked((uint)(
+            4 // "sfbk"
+            + 12 + infoBytes.Length // LIST + size + type + INFO data
+            + 12 + sdtaBytes.Length
+            + 12 + pdtaBytes.Length));
 
         writer.Write(Encoding.ASCII.GetBytes("RIFF"));
         writer.Write(riffPayloadSize);

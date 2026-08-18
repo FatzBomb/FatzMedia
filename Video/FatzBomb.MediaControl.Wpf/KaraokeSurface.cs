@@ -19,7 +19,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private readonly LightweightPlayerController _playerController;
     private int _sourceReloadQueued;
     private bool _restoringPlatformFactory;
-    private bool _restoringPresentationMode;
+    private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
 
     public KaraokeSurface()
@@ -27,7 +27,9 @@ public sealed class KaraokeSurface : Grid, IDisposable
         ClipToBounds = true;
         Background = CreateOpaqueBrush(CanvasColor);
         _surface = new MediaSurface();
+        _surface.ContentVisibilityChanged += OnInnerContentVisibilityChanged;
         _playerController = new LightweightPlayerController(this, _surface, ConfigurePlayer);
+        _playerController.MediaClosed += OnPlayerMediaClosed;
         _ = Children.Add(_surface);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -40,6 +42,32 @@ public sealed class KaraokeSurface : Grid, IDisposable
     }
 
     public IMediaControlSession? Session => _playerController.Session;
+
+    public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
+        nameof(AutoHide),
+        typeof(bool),
+        typeof(KaraokeSurface),
+        new PropertyMetadata(true, OnAutoHideChanged));
+
+    private static readonly DependencyPropertyKey IsContentVisiblePropertyKey =
+        DependencyProperty.RegisterReadOnly(
+            nameof(IsContentVisible),
+            typeof(bool),
+            typeof(KaraokeSurface),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty IsContentVisibleProperty =
+        IsContentVisiblePropertyKey.DependencyProperty;
+
+    public bool AutoHide
+    {
+        get => (bool)GetValue(AutoHideProperty);
+        set => SetValue(AutoHideProperty, value);
+    }
+
+    public bool IsContentVisible => (bool)GetValue(IsContentVisibleProperty);
+
+    public event EventHandler? ContentVisibilityChanged;
 
     public static readonly DependencyProperty PlatformFactoryProperty = DependencyProperty.Register(
         nameof(PlatformFactory),
@@ -69,7 +97,10 @@ public sealed class KaraokeSurface : Grid, IDisposable
         nameof(PresentationMode),
         typeof(WpfPresentationMode),
         typeof(KaraokeSurface),
-        new PropertyMetadata(WpfPresentationMode.NativeHwndOverlay, OnPresentationModeChanged));
+        new PropertyMetadata(
+            WpfPresentationMode.NativeHwndOverlay,
+            OnPresentationModeChanged,
+            CoercePresentationMode));
 
     public WpfPresentationMode PresentationMode
     {
@@ -110,6 +141,9 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((KaraokeSurface)d)._playerController.SetAutoPlay(e.NewValue is true);
 
+    private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((KaraokeSurface)d)._surface.AutoHide = e.NewValue is true;
+
     private static void OnPlatformFactoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (KaraokeSurface)d;
@@ -133,28 +167,24 @@ public sealed class KaraokeSurface : Grid, IDisposable
         throw new InvalidOperationException("PlatformFactory can only be changed before the player is created.");
     }
 
+    private static object CoercePresentationMode(DependencyObject d, object baseValue)
+    {
+        var surface = (KaraokeSurface)d;
+        if (surface._playerController.IsMediaOpen)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[{nameof(KaraokeSurface)}] PresentationMode change deferred until media is closed.");
+            return surface._appliedPresentationMode;
+        }
+
+        return baseValue;
+    }
+
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (KaraokeSurface)d;
-        if (surface._restoringPresentationMode)
-            return;
-
-        if (surface._playerController.IsMediaOpen)
-        {
-            surface._restoringPresentationMode = true;
-            try
-            {
-                surface.SetCurrentValue(PresentationModeProperty, e.OldValue);
-            }
-            finally
-            {
-                surface._restoringPresentationMode = false;
-            }
-
-            throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
-        }
-
-        surface._playerController.SetPresentationMode((WpfPresentationMode)e.NewValue);
+        surface._appliedPresentationMode = (WpfPresentationMode)e.NewValue;
+        surface._playerController.SetPresentationMode(surface._appliedPresentationMode);
     }
 
     private static void ConfigurePlayer(Player player)
@@ -244,6 +274,19 @@ public sealed class KaraokeSurface : Grid, IDisposable
         return new SolidColorBrush(color);
     }
 
+    private void OnInnerContentVisibilityChanged(object? sender, EventArgs e)
+    {
+        var isVisible = _surface.IsContentVisible;
+        if (IsContentVisible == isVisible)
+            return;
+
+        SetValue(IsContentVisiblePropertyKey, isVisible);
+        ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPlayerMediaClosed(object? sender, EventArgs e) =>
+        CoerceValue(PresentationModeProperty);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         QueueSourceReload();
@@ -261,6 +304,8 @@ public sealed class KaraokeSurface : Grid, IDisposable
         _sourceReloadQueued = 0;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
+        _surface.ContentVisibilityChanged -= OnInnerContentVisibilityChanged;
+        _playerController.MediaClosed -= OnPlayerMediaClosed;
         _playerController.Dispose();
     }
 }

@@ -13,6 +13,7 @@ public interface IMediaPresentationCoordinator : IMediaRenderCoordinator, IDispo
     event EventHandler? FramePresented;
 
     VideoDisplayMode VideoDisplayMode { get; set; }
+    BaseVisualTransform BaseVisualTransform { get; set; }
 
     bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface);
     bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight);

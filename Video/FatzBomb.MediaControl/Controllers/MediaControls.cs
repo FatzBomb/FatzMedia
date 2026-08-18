@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Threading;
 
 
 namespace FatzBomb.MediaControl.Controllers;
@@ -10,15 +11,25 @@ public sealed class MediaControls
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly IMediaRenderCoordinator? _mediaRenderer;
-    private bool _handlingMediaEnd;
-    private bool _disposed;
+    private readonly Action<Action>? _dispatchControlOperation;
+    private MediaPlayerState _lastReportedState;
+    private long _transportGeneration;
+    private volatile bool _handlingMediaEnd;
+    private volatile bool _disposed;
 
-    internal MediaControls(IMediaEngine mediaEngine, IMediaRenderCoordinator? mediaRenderer = null)
+    internal MediaControls(
+        IMediaEngine mediaEngine,
+        IMediaRenderCoordinator? mediaRenderer = null,
+        Action<Action>? dispatchControlOperation = null)
     {
         ArgumentNullException.ThrowIfNull(mediaEngine);
         _mediaEngine = mediaEngine;
         _mediaRenderer = mediaRenderer;
+        _dispatchControlOperation = dispatchControlOperation;
+        _lastReportedState = mediaEngine.State;
         _mediaEngine.MediaEnded += OnMediaEnded;
+        if (_mediaEngine is IMediaLoopEventSource loopEventSource)
+            loopEventSource.MediaLooped += OnEngineMediaLooped;
     }
 
     /// <summary>
@@ -29,9 +40,19 @@ public sealed class MediaControls
         get;
         set
         {
+            if (field == value)
+                return;
+
+            var previous = field;
             field = value;
             if (_mediaEngine is ILoopPlaybackControl loopPlaybackControl)
                 loopPlaybackControl.LoopPlayback = value;
+
+            HostEventDispatcher.Raise(
+                this,
+                LoopMediaChanged,
+                new MediaValueChangedEventArgs<bool>(previous, value),
+                nameof(LoopMediaChanged));
         }
     }
 
@@ -51,6 +72,14 @@ public sealed class MediaControls
     /// </summary>
     public event EventHandler? MediaStopped;
 
+    public event EventHandler<MediaPausedEventArgs>? MediaPaused;
+
+    public event EventHandler<MediaLoopedEventArgs>? MediaLooped;
+
+    public event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;
+
+    internal event EventHandler<MediaStateChangedEventArgs>? StateChanged;
+
     /// <summary>
     /// Starts media playback.
     /// </summary>
@@ -62,9 +91,11 @@ public sealed class MediaControls
         var success = _mediaEngine.Play();
         if (success)
         {
+            _ = Interlocked.Increment(ref _transportGeneration);
             _handlingMediaEnd = false;
 
             MediaStarted?.Invoke(this, EventArgs.Empty);
+            RaiseStateChanged();
 
             // Notify adapters before the first playback presentation so they can reveal
             // retained one-shot visuals such as explicitly supplied image backgrounds.
@@ -85,7 +116,15 @@ public sealed class MediaControls
         var success = _mediaEngine.Pause();
         if (success)
         {
+            _ = Interlocked.Increment(ref _transportGeneration);
             _handlingMediaEnd = false;
+
+            HostEventDispatcher.Raise(
+                this,
+                MediaPaused,
+                new MediaPausedEventArgs(Position),
+                nameof(MediaPaused));
+            RaiseStateChanged();
 
             // Stop rendering when paused
             StopRendering();
@@ -104,6 +143,7 @@ public sealed class MediaControls
         var success = _mediaEngine.Stop();
         if (success)
         {
+            _ = Interlocked.Increment(ref _transportGeneration);
             _handlingMediaEnd = false;
 
             // Stop rendering when stopped
@@ -111,6 +151,7 @@ public sealed class MediaControls
 
             // Fire stopped event
             MediaStopped?.Invoke(this, EventArgs.Empty);
+            RaiseStateChanged();
         }
         return success;
     }
@@ -121,7 +162,14 @@ public sealed class MediaControls
     public bool Seek(double seconds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _mediaEngine.Seek(seconds);
+        var success = _mediaEngine.Seek(seconds);
+        if (success)
+        {
+            _ = Interlocked.Increment(ref _transportGeneration);
+            _handlingMediaEnd = false;
+        }
+
+        return success;
     }
 
     /// <summary>
@@ -136,20 +184,25 @@ public sealed class MediaControls
 
     private void OnMediaEnded(object? sender, EventArgs e)
     {
-        if (_mediaRenderer is not null)
+        var transportGeneration = Volatile.Read(ref _transportGeneration);
+        if (_dispatchControlOperation is not null)
         {
-            _mediaRenderer.RunOnRenderThread(HandleMediaEnded);
+            _dispatchControlOperation(() => BeginMediaEnd(transportGeneration));
             return;
         }
 
-        HandleMediaEnded();
+        BeginMediaEnd(transportGeneration);
     }
 
-    private void HandleMediaEnded()
+    private void BeginMediaEnd(long transportGeneration)
     {
         try
         {
-            if (_disposed || _handlingMediaEnd || !_mediaEngine.IsOpen) return;
+            if (_disposed
+                || _handlingMediaEnd
+                || !_mediaEngine.IsOpen
+                || transportGeneration != Volatile.Read(ref _transportGeneration))
+                return;
 
             var position = _mediaEngine.Position;
             var duration = _mediaEngine.Duration;
@@ -158,12 +211,43 @@ public sealed class MediaControls
 
             MediaEnded?.Invoke(this, EventArgs.Empty);
 
+            if (_dispatchControlOperation is not null)
+            {
+                _dispatchControlOperation(() => CompleteMediaEnd(transportGeneration));
+                return;
+            }
+
+            CompleteMediaEnd(transportGeneration);
+        }
+        catch (Exception ex)
+        {
+            if (transportGeneration == Volatile.Read(ref _transportGeneration))
+                _handlingMediaEnd = false;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error beginning media end: {ex.Message}", innerException: ex);
+        }
+    }
+
+    private void CompleteMediaEnd(long transportGeneration)
+    {
+        try
+        {
+            if (_disposed
+                || !_handlingMediaEnd
+                || !_mediaEngine.IsOpen
+                || transportGeneration != Volatile.Read(ref _transportGeneration))
+                return;
+
             if (LoopMedia)
             {
                 System.Diagnostics.Debug.WriteLine("[MediaControls] Looping media");
 
                 if (_mediaEngine is ILoopPlaybackControl { HandlesLoopInternally: true })
                 {
+                    // Audio reports its internal wrap through PlaybackEnded. Video reports a
+                    // successful wrap through IMediaLoopEventSource instead; an ended video did
+                    // not loop successfully and must not synthesize MediaLooped here.
+                    if (!_mediaEngine.Content.HasFlag(MediaContent.Video))
+                        RaiseMediaLooped();
                     _handlingMediaEnd = false;
                     return;
                 }
@@ -176,27 +260,53 @@ public sealed class MediaControls
 
                 if (_mediaEngine.Play())
                 {
+                    _ = Interlocked.Increment(ref _transportGeneration);
                     MediaStarted?.Invoke(this, EventArgs.Empty);
                     StartRendering();
+                    RaiseMediaLooped();
                 }
             }
             else
             {
                 StopRendering();
+                RaiseStateChanged();
             }
 
             _handlingMediaEnd = false;
         }
         catch (Exception ex)
         {
-            _handlingMediaEnd = false;
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error handling media end: {ex.Message}", innerException: ex);
+            if (transportGeneration == Volatile.Read(ref _transportGeneration))
+                _handlingMediaEnd = false;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error completing media end: {ex.Message}", innerException: ex);
         }
     }
 
     private void StartRendering() => _mediaRenderer?.StartRendering();
 
     private void StopRendering() => _mediaRenderer?.StopRendering();
+
+    private void OnEngineMediaLooped(object? sender, EventArgs e) => RaiseMediaLooped();
+
+    private void RaiseMediaLooped() => HostEventDispatcher.Raise(
+        this,
+        MediaLooped,
+        new MediaLoopedEventArgs(Position),
+        nameof(MediaLooped));
+
+    internal bool ReportCurrentState() => RaiseStateChanged();
+
+    private bool RaiseStateChanged()
+    {
+        MediaPlayerState current = _mediaEngine.State;
+        if (current == _lastReportedState)
+            return false;
+
+        var args = new MediaStateChangedEventArgs(_lastReportedState, current);
+        _lastReportedState = current;
+        HostEventDispatcher.Raise(this, StateChanged, args, nameof(StateChanged));
+        return true;
+    }
 
     /// <summary>
     /// Disposes resources used by MediaControls.
@@ -208,5 +318,7 @@ public sealed class MediaControls
 
         _disposed = true;
         _mediaEngine.MediaEnded -= OnMediaEnded;
+        if (_mediaEngine is IMediaLoopEventSource loopEventSource)
+            loopEventSource.MediaLooped -= OnEngineMediaLooped;
     }
 }
