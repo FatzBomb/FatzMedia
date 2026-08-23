@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Updated: 2026-08-18
+Updated: 2026-08-22
 
 This checklist is for validating `FatzBombMedia` after cleanup, renderer, timing, WPF adapter, CDG, audio/clock, or reliability changes.
 
@@ -227,6 +227,17 @@ seek-to-effective-end then Play; normalization unchanged; exclusions/default pat
 unchanged) was not run and remains pending; the first uncached `Open` only warms the
 cache (a future explicit pre-analysis / prepared-next path supplies first-play
 cache).
+
+After the 2026-08-18 Stage 030B transport slice, the Player validation host gained
+the `--trim-silence` startup flag: it sets
+`MediaPlayerConfiguration.SilenceTrim = new SilenceTrimOptions { Enabled = true }`
+and the status line reports `Silence trim=True`. The automated gate was re-verified
+after the host flag: Release build 0 warnings/errors, 508 tests, `dotnet format`
+verification, Core/WPF/presentation-parity gates, and git diff check all pass. The
+native-file silence-trim smoke (cache-warm then reopen; trimmed leading start;
+exact tail end; repeated loops; tempo change; seek-to-effective-end then Play;
+normalization unchanged; exclusions/default) has not been run and remains pending;
+the stage stays active. See the Stage 030B smoke section below.
 
 ---
 
@@ -530,6 +541,40 @@ Expected on both paths:
   `Renderer: Direct3D11 | Presentation: NativeHwndOverlay | AutoHide=True |
   Visual transform=ACTIVE | Load resets: Pitch=False, Tempo=True | ...`
   (or `Renderer: Software` with `--software`).
+
+### Stage 030B silence-trim smoke (manual, pending)
+
+The Player validation host gained the `--trim-silence` startup flag after the
+Stage 030B transport commit: it sets
+`MediaPlayerConfiguration.SilenceTrim = new SilenceTrimOptions { Enabled = true }`
+and the status line reports `Silence trim=True`. The native-file smoke has not
+been run yet and remains pending:
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --trim-silence "D:\path\to\audio.mp3"
+dotnet run --project FatzBomb.MediaControl.Player -c Release -- --software --trim-silence "D:\path\to\audio.mp3"
+```
+
+Procedure and expected:
+
+- **Cache warm** — the first open of a local plain non-tracker audio file only
+  warms the analysis cache; wait for the `Silence analysis complete` diagnostic
+  (Info level, `AudioEngine`), then close and reload the same file so the cached
+  transport window activates.
+- **Trimmed leading start** — playback begins at the playable start, not the
+  source start.
+- **Effective duration/seek** — duration and seek positions reflect the effective
+  (trimmed) window; seeking maps to the correct source position.
+- **Exact tail end** — playback stops at the playable end; the trimmed tail does
+  not play.
+- **Repeated loops** — custom loops restart at the playable start each time.
+- **Tempo change** — changing tempo mid-play does not break the end sync.
+- **Seek-end then Play** — seeking to the effective end and pressing Play behaves
+  consistently (no out-of-window playback).
+- **Normalization unchanged** — gain results match the non-trimmed path.
+- **Exclusions/default** — CDG-paired, video, archive, tracker/MOD, and
+  live/stream inputs are unaffected; without `--trim-silence` (default) behavior
+  is unchanged and the status line reads `Silence trim=False`.
 
 ---
 

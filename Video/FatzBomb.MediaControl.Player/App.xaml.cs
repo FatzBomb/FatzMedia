@@ -24,6 +24,8 @@ public partial class App : Application
 
     public static bool UseVisualTransformDemo { get; private set; }
 
+    public static bool EnableSilenceTrim { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -38,6 +40,8 @@ public partial class App : Application
             string.Equals(argument, "--no-auto-hide", StringComparison.OrdinalIgnoreCase));
         UseVisualTransformDemo = e.Args.Any(static argument =>
             string.Equals(argument, "--visual-transform-demo", StringComparison.OrdinalIgnoreCase));
+        EnableSilenceTrim = e.Args.Any(static argument =>
+            string.Equals(argument, "--trim-silence", StringComparison.OrdinalIgnoreCase));
         StartupMediaPath = e.Args.FirstOrDefault(static argument =>
             !argument.StartsWith("--", StringComparison.Ordinal));
 

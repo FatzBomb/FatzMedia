@@ -375,7 +375,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 EnablePerformanceLogging = true,
                 EnableVerboseLogging = false,
                 ResetPitchOnMediaLoad = App.ResetPitchOnMediaLoad,
-                ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad
+                ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad,
+                SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim }
             };
 
             IMediaControlPlatformFactory platformFactory = App.UseSoftwareRenderer
@@ -409,7 +410,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.TempoChanged += OnPlayerTempoChanged;
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
-            StatusText = $"Renderer: {rendererName} | Presentation: {PresentationMode} | AutoHide={AutoHideSurfaces} | {transformSummary} | {loadResetSummary} | Native DLL path: {string.Join("; ", NativeLibraryPaths)}";
+            var trimSummary = $"Silence trim={App.EnableSilenceTrim}";
+            StatusText = $"Renderer: {rendererName} | Presentation: {PresentationMode} | AutoHide={AutoHideSurfaces} | {transformSummary} | {loadResetSummary} | {trimSummary} | Native DLL path: {string.Join("; ", NativeLibraryPaths)}";
         }
         catch (Exception ex)
         {

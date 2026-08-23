@@ -7,7 +7,9 @@ config, focused tests) implemented and validated 2026-08-18. Second slice (silen
 scan inside the background normalization-analysis task plus DI-registered shared
 analysis cache) implemented and validated 2026-08-18. Third slice (plain-audio
 transport/load/seek/end application) implemented and validated 2026-08-18. The
-real native-file analyzer/transport smoke was not run and remains pending.
+Player validation host gained the `--trim-silence` startup flag after the transport
+commit. The real native-file analyzer/transport smoke was not run and remains
+pending (see Player Validation-Host Flag).
 
 ## Objective
 
@@ -147,6 +149,26 @@ loops; tempo change mid-play; seek-to-effective-end then Play; normalization
 unchanged; exclusions/default path unchanged) was not run and remains pending. The
 first uncached `Open` only warms the cache; a future explicit pre-analysis /
 prepared-next path supplies first-play cache.
+
+## Player Validation-Host Flag (pending native smoke)
+
+Added after the third-slice transport commit: `--trim-silence` sets
+`MediaPlayerConfiguration.SilenceTrim = new SilenceTrimOptions { Enabled = true }`
+and the status line reports `Silence trim=True`. Pending native-file smoke:
+
+```powershell
+dotnet run --project FatzBomb.MediaControl.Player -- --trim-silence <audio-path>
+dotnet run --project FatzBomb.MediaControl.Player -- --software --trim-silence <audio-path>
+```
+
+- First open warms the cache; wait for the `Silence analysis complete` diagnostic,
+  then close and reload the same file to activate the cached transport window.
+- Verify: trimmed leading start, effective duration/seek, exact tail end, repeated
+  loops, tempo change mid-play, seek-to-effective-end then Play, normalization
+  unchanged, and exclusions/default path unchanged.
+- Automated gate re-verified after the host flag: Release build 0 warnings/errors,
+  508 tests, `dotnet format` verification, Core / WPF / presentation-parity gates,
+  and git diff check all pass. Manual smoke has not been run; the stage stays active.
 
 ## API Compatibility Note
 
