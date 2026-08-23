@@ -14,6 +14,9 @@ internal sealed class AudioStreamManager : IDisposable
 {
     #region Constants
 
+    // ManagedBass omits BASS_POS_FLUSH from PositionFlags; bass.h defines it as 0x1000000.
+    private const PositionFlags FlushPositionFlag = (PositionFlags)0x1000000;
+
     private const BassFlags CreateStreamFlags =
         BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
 
@@ -261,14 +264,17 @@ internal sealed class AudioStreamManager : IDisposable
     /// </summary>
     /// <param name="seconds">Target position in seconds</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetCurrentPosition(double seconds)
+    public void SetCurrentPosition(double seconds, bool flush = false)
     {
         var handle = GetPositionHandle();
         if (handle == 0) return;
 
         _trackerPositionTimeline.Reset();
         var bytes = MBass.ChannelSeconds2Bytes(handle, Math.Max(0.0, seconds));
-        if (!MBass.ChannelSetPosition(handle, bytes))
+        var positionFlags = flush
+            ? PositionFlags.Bytes | FlushPositionFlag
+            : PositionFlags.Bytes;
+        if (!MBass.ChannelSetPosition(handle, bytes, positionFlags))
         {
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,

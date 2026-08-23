@@ -165,3 +165,8 @@ internal interface IAudioAnalysisOpenControl
 {
     bool Open(string filePath, bool analyzeSilence);
 }
+
+internal interface IAudioTrimWindowProvider
+{
+    MediaAnalysisResult? ActiveTrimWindow { get; }
+}

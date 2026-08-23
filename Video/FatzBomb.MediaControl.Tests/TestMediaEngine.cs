@@ -259,7 +259,7 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider
 {
     public AudioEngineState State { get; private set; }
     public int PlayHandle => 0;
@@ -273,13 +273,15 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl
     public double Volume { get; private set; } = 1;
     public int Pitch { get; private set; }
     public bool? LastAnalyzeSilence { get; private set; }
+    public bool LoopPlayback { get; set; }
+    public MediaAnalysisResult? ActiveTrimWindow { get; set; }
 
     public event EventHandler<double>? NormalizationGainChanged { add { } remove { } }
-    public event EventHandler<AudioEngineState>? StateChanged { add { } remove { } }
+    public event EventHandler<AudioEngineState>? StateChanged;
     public event EventHandler? Opened { add { } remove { } }
     public event EventHandler? Closed { add { } remove { } }
-    public event EventHandler<double>? PositionChanged { add { } remove { } }
-    public event EventHandler? PlaybackEnded { add { } remove { } }
+    public event EventHandler<double>? PositionChanged;
+    public event EventHandler? PlaybackEnded;
 
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) => Task.FromResult(1d);
     public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) => Task.FromResult(1d);
@@ -291,12 +293,58 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl
         return Open(filePath);
     }
     public bool Open(IArchiveEntryInfo archiveEntry) => true;
-    public bool Play() { State = AudioEngineState.Playing; return true; }
-    public bool Pause() { State = AudioEngineState.Paused; return true; }
-    public bool Stop() { State = AudioEngineState.Stopped; Position = 0; return true; }
+    public bool Play()
+    {
+        if (ActiveTrimWindow is { } trimWindow)
+        {
+            if (trimWindow.EffectiveDuration <= 0)
+            {
+                return false;
+            }
+
+            if (Position < trimWindow.PlayableStart || Position >= trimWindow.PlayableEnd)
+            {
+                Position = trimWindow.PlayableStart;
+            }
+        }
+
+        SetState(AudioEngineState.Playing);
+        return true;
+    }
+
+    public bool Pause() { SetState(AudioEngineState.Paused); return true; }
+    public bool Stop() { SetState(AudioEngineState.Stopped); Position = 0; return true; }
     public void Close() => State = AudioEngineState.Null;
     public void SetVolume(double volume01) => Volume = volume01;
     public void SetPitch(int semitones) => Pitch = semitones;
     public void SetTempo(int percent) => CurrentTempo = percent;
+    public void RaisePositionChanged(double sourcePosition)
+    {
+        Position = sourcePosition;
+        PositionChanged?.Invoke(this, sourcePosition);
+    }
+
+    public void RaisePlaybackEnded()
+    {
+        if (ActiveTrimWindow is { } trimWindow)
+        {
+            Position = LoopPlayback ? trimWindow.PlayableStart : trimWindow.PlayableEnd;
+        }
+        else
+        {
+            Position = LoopPlayback ? 0 : Duration;
+        }
+
+        SetState(LoopPlayback ? AudioEngineState.Playing : AudioEngineState.Stopped);
+        PositionChanged?.Invoke(this, Position);
+        PlaybackEnded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SetState(AudioEngineState state)
+    {
+        State = state;
+        StateChanged?.Invoke(this, state);
+    }
+
     public void Dispose() => Close();
 }

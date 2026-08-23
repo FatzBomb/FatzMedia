@@ -12,8 +12,10 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider
 {
+    private const double CachedDurationToleranceSeconds = 0.25;
+
     #region Private Fields
 
     // Composition: Delegate specialized responsibilities to focused components
@@ -37,6 +39,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private readonly SyncProcedure _playbackEndedSyncProcedure;
     private int _playbackEndSyncHandle;
     private int _playbackEndSyncChannel;
+    private bool _loopPlayback;
+    private MediaAnalysisResult? _activeTrimWindow;
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private volatile bool _disposed;
@@ -140,13 +144,15 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     bool IAudioLoopControl.LoopPlayback
     {
-        get;
+        get => _loopPlayback;
         set
         {
-            field = value;
-            _streamManager.SetLoopPlayback(value);
+            _loopPlayback = value;
+            _streamManager.SetLoopPlayback(value && Volatile.Read(ref _activeTrimWindow) is null);
         }
     }
+
+    MediaAnalysisResult? IAudioTrimWindowProvider.ActiveTrimWindow => Volatile.Read(ref _activeTrimWindow);
 
     // Event declarations for state and lifecycle
     public event EventHandler<AudioEngineState>? StateChanged;
@@ -259,6 +265,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         {
             CancelNormalizationAnalysis();
             RemovePlaybackEndSync();
+            ResetActiveTrimWindow();
 
             // Auto-initialize BASS with optimal sample rate if not already done
             if (!_bassInitialized)
@@ -321,6 +328,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         {
             CancelNormalizationAnalysis();
             RemovePlaybackEndSync();
+            ResetActiveTrimWindow();
 
             // Auto-initialize BASS if not already done (use default for archive entries)
             if (!_bassInitialized)
@@ -377,9 +385,30 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         var playHandle = _streamManager.PlayHandle;
         if (playHandle == 0) return false;
 
+        var trimWindow = Volatile.Read(ref _activeTrimWindow);
+        if (trimWindow is not null)
+        {
+            if (trimWindow.EffectiveDuration <= 0)
+            {
+                return false;
+            }
+
+            var sourcePosition = _streamManager.GetCurrentPosition();
+            if (sourcePosition < trimWindow.PlayableStart
+                || sourcePosition >= trimWindow.PlayableEnd)
+            {
+                _streamManager.SetCurrentPosition(trimWindow.PlayableStart);
+            }
+        }
+
         if (_playbackEndSyncHandle == 0)
         {
             AttachPlaybackEndSync();
+        }
+
+        if (trimWindow is not null && _playbackEndSyncHandle == 0)
+        {
+            return false;
         }
 
         // Ensure the BASS device context is current before playing.
@@ -448,6 +477,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         RemovePlaybackEndSync();
 
         _streamManager.Close();
+        Volatile.Write(ref _activeTrimWindow, null);
         _normalizer.ResetGain(clearFxHandle: true);
         Closed?.Invoke(this, EventArgs.Empty);
         State = AudioEngineState.Stopped;
@@ -486,6 +516,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         percent = Math.Clamp(percent, -95, 5000);
         CurrentTempo = percent; // Track the current tempo setting
         _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
+        // BASS_FX position syncs remain tied to the same rendered audio position after
+        // a tempo change; only their wall-clock arrival changes, so no re-arm is needed.
     }
 
     /// <inheritdoc/>
@@ -537,10 +569,31 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             return;
         }
 
+        var syncFlags = SyncFlags.End | SyncFlags.Onetime;
+        var syncPosition = 0L;
+        var trimWindow = Volatile.Read(ref _activeTrimWindow);
+        if (trimWindow is not null
+            && trimWindow.PlayableEnd > 0
+            && trimWindow.PlayableEnd < _streamManager.DurationSeconds)
+        {
+            // Official BASS custom-loop guidance requires a mixtime position sync so
+            // the boundary is handled in the rendering update that reaches it.
+            syncFlags = SyncFlags.Position | SyncFlags.Mixtime | SyncFlags.Onetime;
+            syncPosition = MBass.ChannelSeconds2Bytes(playHandle, trimWindow.PlayableEnd);
+            if (syncPosition < 0)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Error,
+                    "AudioEngine",
+                    $"Failed to convert trim end {trimWindow.PlayableEnd:F3}s to a channel position: {MBass.LastError}");
+                return;
+            }
+        }
+
         _playbackEndSyncHandle = MBass.ChannelSetSync(
             playHandle,
-            SyncFlags.End | SyncFlags.Onetime,
-            0,
+            syncFlags,
+            syncPosition,
             _playbackEndedSyncProcedure,
             IntPtr.Zero);
         _playbackEndSyncChannel = _playbackEndSyncHandle != 0 ? playHandle : 0;
@@ -573,15 +626,27 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         _playbackEndSyncHandle = 0;
         _playbackEndSyncChannel = 0;
+        var trimWindow = Volatile.Read(ref _activeTrimWindow);
         if (((IAudioLoopControl)this).LoopPlayback)
         {
+            if (trimWindow is not null)
+            {
+                _streamManager.SetCurrentPosition(trimWindow.PlayableStart, flush: true);
+                AttachPlaybackEndSync();
+            }
+
             State = AudioEngineState.Playing;
-            PositionChanged?.Invoke(this, Position);
+            PositionChanged?.Invoke(this, trimWindow?.PlayableStart ?? Position);
         }
         else
         {
+            if (trimWindow is not null)
+            {
+                _ = MBass.ChannelStop(channel);
+            }
+
             State = AudioEngineState.Stopped;
-            PositionChanged?.Invoke(this, Duration);
+            PositionChanged?.Invoke(this, trimWindow?.PlayableEnd ?? Duration);
         }
 
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
@@ -626,7 +691,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         if (analysisCacheKey is { } mediaKey
             && _analysisCache.TryGet(mediaKey, out var cachedAnalysis)
-            && cachedAnalysis is not null)
+            && cachedAnalysis is not null
+            && TryActivateTrimWindow(cachedAnalysis))
         {
             ApplyCachedNormalizationGain(cacheKey, cachedAnalysis.NormalizationGain, sourceLabel);
             DiagnosticRouter.Raise(
@@ -761,6 +827,25 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         {
             _normalizer.SetNormalizeEnabled(true);
         }
+    }
+
+    private bool TryActivateTrimWindow(MediaAnalysisResult result)
+    {
+        if (!MediaAnalysisResultValidator.IsValid(result)
+            || Math.Abs(result.SourceDuration - _streamManager.DurationSeconds) > CachedDurationToleranceSeconds)
+        {
+            return false;
+        }
+
+        Volatile.Write(ref _activeTrimWindow, result);
+        _streamManager.SetLoopPlayback(false);
+        return true;
+    }
+
+    private void ResetActiveTrimWindow()
+    {
+        Volatile.Write(ref _activeTrimWindow, null);
+        _streamManager.SetLoopPlayback(_loopPlayback);
     }
 
     private void ApplyNormalizationPeakIfCurrent(double peak, string cacheKey, string sourceLabel, int generation, bool isFinal, CancellationToken cancellationToken)

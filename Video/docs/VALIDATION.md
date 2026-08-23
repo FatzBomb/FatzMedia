@@ -205,6 +205,29 @@ all green. The real native-file analyzer smoke (scan completion, cursor restore,
 reopen cache hit, gain unchanged) was not run and remains pending; fully silent
 media can produce zero playable duration, which the transport slice must handle.
 
+On 2026-08-18, the third slice of Stage 030B (plain-audio transport application) was
+implemented and validated while the stage remains active. Trim applies to transport
+only when a validated `MediaAnalysisResult` is already a cache hit synchronously
+during a local plain non-tracker audio `Open`; a late background scan only warms the
+cache for a subsequent open and never tightens duration during active playback.
+`AudioPipeline` maps effective duration/position, effective→source seek, and
+progress/end publication; `AudioEngine` positions `Play` at `PlayableStart`,
+suppresses the native source-end loop for an active trim, uses a BASS
+`Position | Mixtime | Onetime` sync at `PlayableEnd`, stops at the custom end, and
+custom loops seek to `PlayableStart` with the `BASS_POS_FLUSH` raw flag `0x1000000`
+(ManagedBass omits the enum member). Tempo changes do not require rearming the
+position sync. CDG-paired opens analyze `false`; video, archives, tracker/MOD, and
+live/stream remain excluded; disabled/default behavior is unchanged. Added 14
+`AudioPipelineTrimTests` transport cases — 44 focused 030B cases total (17 + 11 + 2
++ 14). Release validation passed: build with 0 warnings/errors, 508 tests,
+`dotnet format` verification, Core/WPF/presentation-parity gates, and git diff check
+all green. The real native-file smoke (cache-warm then reopen; trimmed leading
+start; exact tail end; repeated custom loops; tempo change mid-play;
+seek-to-effective-end then Play; normalization unchanged; exclusions/default path
+unchanged) was not run and remains pending; the first uncached `Open` only warms the
+cache (a future explicit pre-analysis / prepared-next path supplies first-play
+cache).
+
 ---
 
 ## 1. Build And Boundary

@@ -3,9 +3,9 @@
 ## Active
 
 - `active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md` - contract/cache foundation
-  (481 tests) and analyzer-scan (494 tests) slices implemented and validated
-  2026-08-18; plain-audio transport application and the native-file analyzer smoke
-  remain pending.
+  (481 tests), analyzer-scan (494 tests), and plain-audio transport application
+  (508 tests; 44 focused 030B cases) slices implemented and validated 2026-08-18;
+  the real native-file analyzer/transport smoke remains pending.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

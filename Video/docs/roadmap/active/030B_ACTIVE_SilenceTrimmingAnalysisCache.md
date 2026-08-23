@@ -5,9 +5,9 @@ Status: Active. First slice (contract, trim math, result validation, versioned
 local-file cache key, bounded in-memory cache, disabled-by-default `SilenceTrim`
 config, focused tests) implemented and validated 2026-08-18. Second slice (silence
 scan inside the background normalization-analysis task plus DI-registered shared
-analysis cache) implemented and validated 2026-08-18. Plain-audio transport/load/
-seek/end application remains pending, and the real native-file analyzer smoke was
-not run.
+analysis cache) implemented and validated 2026-08-18. Third slice (plain-audio
+transport/load/seek/end application) implemented and validated 2026-08-18. The
+real native-file analyzer/transport smoke was not run and remains pending.
 
 ## Objective
 
@@ -65,9 +65,11 @@ analysis record and bounded cache will also provide the analysis seam needed by 
 9. **API direction** - immutable public `SilenceTrimOptions`, `SilenceRegion`, and
    `MediaAnalysisResult` types form the future `AnalyzeAsync` result/option contract.
    Cache storage and trim calculation remain internal implementation details.
-10. **Transport application** - later plain-audio transport maps effective position zero
-    to the playable source start and synthesizes end at the playable source end. That
-    mapping is not part of the first slice.
+10. **Transport application** - plain-audio transport maps effective position zero
+    to the playable source start and synthesizes end at the playable source end.
+    Implemented in the third slice (see Third Slice); the mapping applies only when
+    a validated `MediaAnalysisResult` is already a cache hit synchronously during
+    open.
 
 ## First Slice
 
@@ -111,13 +113,49 @@ Implemented 2026-08-18 and validated (see Validation). The native-file analyzer 
 (scan completion, cursor restore, reopen cache hit, gain unchanged) was not run and
 remains pending; no transport/load/seek/end application is included in this slice.
 
+## Third Slice
+
+- Transport trim applies only when a validated `MediaAnalysisResult` is already a
+  cache hit synchronously during a local plain non-tracker audio `Open`. A late
+  background scan only warms the cache for a subsequent open and never tightens
+  duration during active/current playback.
+- Internal `IAudioTrimWindowProvider` (on `IAudioEngine`) exposes the active trim
+  window (`MediaAnalysisResult? ActiveTrimWindow`) to `AudioPipeline`.
+- `AudioPipeline` maps source/effective coordinates: effective duration
+  (`_trimWindow?.EffectiveDuration ?? Engine.Duration`), effective position
+  (`SourceToEffective`), effective→source seek (`EffectiveToSource`), and
+  progress/end publication in effective space. Stop/replay and pause/resume behave
+  consistently; a zero playable duration makes `Play` return `false`.
+- `AudioEngine` positions `Play` at `PlayableStart` when the source position is
+  outside the playable window, suppresses the native source-end loop while a trim
+  window is active, uses a BASS `Position | Mixtime | Onetime` sync at
+  `PlayableEnd`, stops at the custom end, and custom loops seek to `PlayableStart`
+  using the `BASS_POS_FLUSH` raw flag `0x1000000` (ManagedBass omits the enum
+  member). Official BASS docs support mixtime `SetPosition` custom loops; tempo
+  changes alter wall-clock arrival but do not require rearming the audio-position
+  sync.
+- CDG-paired opens explicitly analyze `false`; video, archives, tracker/MOD
+  formats, and live/stream inputs remain excluded. Disabled/default behavior
+  remains identity.
+- Focused coverage: 44 030B cases total (17 existing `SilenceTrimAnalysisTests` +
+  11 `SilenceRegionDetectorTests` + 2 `AudioPipelineAnalysisTests` gating cases +
+  14 new `AudioPipelineTrimTests` transport cases).
+
+Implemented 2026-08-18 and validated (see Validation). The real native-file smoke
+(cache-warm then reopen; trimmed leading start; exact tail end; repeated custom
+loops; tempo change mid-play; seek-to-effective-end then Play; normalization
+unchanged; exclusions/default path unchanged) was not run and remains pending. The
+first uncached `Open` only warms the cache; a future explicit pre-analysis /
+prepared-next path supplies first-play cache.
+
 ## API Compatibility Note
 
 - Public additions are additive and trimming defaults to disabled.
 - `MediaPlayerConfiguration` is a `readonly record struct`; adding one `init` property
   grows its value layout. This is source-compatible but binary/ABI-relevant pre-1.0.
-- Existing `Duration` behavior is unchanged until the transport slice is explicitly
-  implemented and validated.
+- Existing `Duration` behavior is unchanged while trim is disabled; the transport
+  slice (implemented and validated 2026-08-18) applies effective duration only when
+  a validated cache hit activates a trim window.
 
 ## Acceptance Criteria
 
@@ -131,15 +169,16 @@ remains pending; no transport/load/seek/end application is included in this slic
 - Cache reads reject version mismatches and invalid records; capacity is bounded.
 - No production load/play/seek/loop/end path consumes the new options in this slice.
 
-### Analyzer (implemented; native-file smoke pending) and Transport (Pending)
+### Analyzer and Transport (implemented; native-file smoke pending)
 
 - Analysis is cancellable, restores the decode-handle position, and is joined before
   handle reuse or disposal — implemented; native-file smoke of scan completion and
   cursor restore is pending.
 - Cache hits avoid rescanning and do not add measurable local-file open cost —
   implemented; reopen-cache-hit and gain-unchanged native-file smoke is pending.
-- Enabled trim applies only to plain local audio and maps seek/progress/end consistently —
-  the exclusion gate is implemented; the transport seek/progress/end mapping is pending.
+- Enabled trim applies only to plain local audio and maps seek/progress/end
+  consistently — implemented (third slice); native-file smoke of the trimmed
+  transport behavior is pending.
 - Disabled trim preserves current playback behavior and normalization results —
   validated.
 
@@ -161,6 +200,16 @@ check — all pass. The real native-file analyzer smoke (scan completion, cursor
 restore, reopen cache hit, gain unchanged) was not run and remains pending; no
 transport behavior is wired yet, so no transport smoke applies.
 
+Third-slice validation 2026-08-18: Release build 0 warnings/errors, 508 tests pass
+(44 focused 030B cases: 17 `SilenceTrimAnalysisTests` + 11
+`SilenceRegionDetectorTests` + 2 `AudioPipelineAnalysisTests` gating cases + 14
+`AudioPipelineTrimTests` transport cases), `dotnet format` verification, Core / WPF /
+presentation-parity gates, and git diff check — all pass. The real native-file smoke
+(cache-warm then reopen; trimmed leading start; exact tail end; repeated custom
+loops; tempo change mid-play; seek-to-effective-end then Play; normalization
+unchanged; exclusions/default path unchanged) was not run and remains pending; the
+first uncached `Open` only warms the cache for a subsequent open.
+
 ```powershell
 dotnet build -c Release FatzBomb.MediaControl.sln --no-restore
 dotnet test -c Release FatzBomb.MediaControl.sln --no-build --no-restore
@@ -178,13 +227,15 @@ dotnet format FatzBomb.MediaControl.sln --verify-no-changes --no-restore
 - Tail trimming needs a synthetic end boundary; relying only on BASS's source-end sync
   would play the trimmed tail and break loop timing.
 - Effective-space seek and source-space decode positions can diverge. Every seek, loop,
-  progress, and completion path must use one pinned mapping.
+  progress, and completion path must use one pinned mapping — implemented in the third
+  slice (`AudioPipeline.SourceToEffective` / `EffectiveToSource`); native-file smoke
+  pending.
 - CDG and video synchronization must not inherit plain-audio offsets accidentally.
 - A cache entry is optimization data, never authoritative input; malformed or stale data
   must degrade to a miss.
 - Fully silent media can produce a zero-length playable window (playable start equals
-  end, effective duration 0); the transport slice must handle zero-duration playback
-  explicitly.
+  end, effective duration 0) — the transport slice handles it: `Play` returns `false`
+  for a zero effective duration; native-file smoke pending.
 
 ## Explicit Non-Goals
 

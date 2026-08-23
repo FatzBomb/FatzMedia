@@ -583,12 +583,12 @@ line reports `Visual transform=IDENTITY|ACTIVE`, `AutoHide=`, and
 `Load resets: Pitch=…, Tempo=…` alongside renderer/presentation. Validation
 tooling only, not production UI.
 
-## Silence Trimming Analysis Cache (Stage 030B, active — contract, cache, and analyzer slices)
+## Silence Trimming Analysis Cache (Stage 030B, active — contract, cache, analyzer, and transport slices)
 
-Stage 030B is active (2026-08-18); the contract/cache-foundation and analyzer-scan
-slices are implemented and validated, while plain-audio transport application and the
-native-file analyzer smoke remain pending. The public API adds immutable
-`SilenceTrimOptions`
+Stage 030B is active (2026-08-18); the contract/cache-foundation, analyzer-scan, and
+plain-audio transport-application slices are implemented and validated, while the
+real native-file analyzer/transport smoke remains pending. The public API adds
+immutable `SilenceTrimOptions`
 (disabled by default: `Enabled = false`; pinned defaults threshold `-50 dBFS`,
 minimum qualifying edge silence `0.5 s`, retained edge padding `0.1 s`, independent
 `TrimLeading` / `TrimTrailing`), `SilenceRegion` (source-time start/end seconds),
@@ -626,6 +626,28 @@ explicitly disable silence analysis (`OpenAudioCdg` passes `analyzeSilence: fals
 and video, archives, tracker/MOD formats, and live/stream inputs remain excluded.
 Transport/duration/seek/loop/end trimming is still NOT implemented, so playback
 behavior is unchanged when the scan is enabled.
+
+**Transport slice (2026-08-18)** — trim is applied to transport only when a
+validated `MediaAnalysisResult` is already a cache hit synchronously during a local
+plain non-tracker audio `Open`; a late background scan only warms the cache for a
+subsequent open and never tightens duration during active/current playback. The
+internal `IAudioTrimWindowProvider` (on `IAudioEngine`) exposes the active window
+(`MediaAnalysisResult? ActiveTrimWindow`) to `AudioPipeline`, which maps
+source/effective coordinates: effective duration, effective position
+(`SourceToEffective`), effective→source seek (`EffectiveToSource`), and
+progress/end publication in effective space. Stop/replay and pause/resume behave
+consistently, and a zero playable duration makes `Play` return `false`.
+`AudioEngine.Play` positions at `PlayableStart` when the source position is outside
+the playable window, suppresses the native source-end loop while a trim window is
+active, attaches a BASS `Position | Mixtime | Onetime` sync at `PlayableEnd`
+(official BASS custom-loop guidance), stops at the custom end, and custom loops
+seek to `PlayableStart` with the `BASS_POS_FLUSH` raw flag `0x1000000`
+(ManagedBass omits the enum member; `AudioStreamManager.FlushPositionFlag`).
+Tempo changes alter wall-clock arrival of the position sync but do not require
+rearming it. CDG-paired opens pass `analyzeSilence: false`; video, archives,
+tracker/MOD formats, and live/stream inputs remain excluded; disabled/default
+behavior remains identity. The first uncached `Open` only warms the cache — a
+future explicit pre-analysis / prepared-next path supplies first-play cache.
 
 ## Session Reset
 

@@ -1,5 +1,6 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
@@ -10,6 +11,8 @@ internal sealed class AudioPipeline : IDisposable
     private string? _pendingOpenPath;
     private bool _disposed;
     private bool _ownStateForCurrentOpen = true;
+    private bool _analyzeSilenceForCurrentOpen;
+    private MediaAnalysisResult? _trimWindow;
 
     public AudioPipeline(IAudioEngine audioEngine, MediaState? state = null, bool ownsAudioEngine = false)
     {
@@ -30,16 +33,16 @@ internal sealed class AudioPipeline : IDisposable
 
     public bool IsOpen { get; private set; }
     public int PlayHandle => Engine.PlayHandle;
-    public double DurationSeconds => Engine.Duration;
+    public double DurationSeconds => _trimWindow?.EffectiveDuration ?? Engine.Duration;
 
     public double PositionSeconds
     {
-        get => Engine.Position;
+        get => SourceToEffective(Engine.Position);
         set
         {
             ThrowIfDisposed();
-            Engine.Position = value;
-            State.SetPosition(Engine.Position);
+            Engine.Position = EffectiveToSource(value);
+            State.SetPosition(SourceToEffective(Engine.Position));
         }
     }
 
@@ -58,22 +61,28 @@ internal sealed class AudioPipeline : IDisposable
 
         _pendingOpenPath = path;
         _ownStateForCurrentOpen = ownState;
+        _analyzeSilenceForCurrentOpen = analyzeSilence;
         var opened = Engine is IAudioAnalysisOpenControl analysisControl
             ? analysisControl.Open(path, analyzeSilence)
             : Engine.Open(path);
         if (!opened)
         {
             _pendingOpenPath = null;
+            ResetTrimWindow();
             State.Reset();
             return false;
         }
 
         _sourcePath = path;
         _pendingOpenPath = null;
-        IsOpen = true;
-        if (ownState)
+        if (!IsOpen)
         {
-            State.SetOpened(MediaContent.Audio, path, Engine.Duration);
+            IsOpen = true;
+            RefreshTrimWindow();
+            if (ownState)
+            {
+                State.SetOpened(MediaContent.Audio, path, DurationSeconds);
+            }
         }
         return true;
     }
@@ -88,6 +97,7 @@ internal sealed class AudioPipeline : IDisposable
         Close();
 
         _ownStateForCurrentOpen = ownState;
+        _analyzeSilenceForCurrentOpen = false;
         if (!Engine.Open(archiveEntry))
         {
             State.Reset();
@@ -95,10 +105,14 @@ internal sealed class AudioPipeline : IDisposable
         }
 
         _sourcePath = archiveEntry.Key;
-        IsOpen = true;
-        if (ownState)
+        if (!IsOpen)
         {
-            State.SetOpened(MediaContent.Audio, archiveEntry.Key, Engine.Duration);
+            IsOpen = true;
+            ResetTrimWindow();
+            if (ownState)
+            {
+                State.SetOpened(MediaContent.Audio, archiveEntry.Key, Engine.Duration);
+            }
         }
         return true;
     }
@@ -106,6 +120,11 @@ internal sealed class AudioPipeline : IDisposable
     public bool Play()
     {
         ThrowIfDisposed();
+
+        if (_trimWindow is { EffectiveDuration: <= 0 })
+        {
+            return false;
+        }
 
         if (!Engine.Play())
         {
@@ -138,7 +157,7 @@ internal sealed class AudioPipeline : IDisposable
             return false;
         }
 
-        State.SetPosition(Engine.Position);
+        State.SetPosition(SourceToEffective(Engine.Position));
         State.SetPlaybackState(MediaPlayerState.Stopped);
         return true;
     }
@@ -154,10 +173,10 @@ internal sealed class AudioPipeline : IDisposable
 
         var targetPosition = DurationSeconds > 0
             ? Math.Clamp(positionSeconds, 0, DurationSeconds)
-            : Math.Max(0, positionSeconds);
+            : _trimWindow is null ? Math.Max(0, positionSeconds) : 0;
 
-        Engine.Position = targetPosition;
-        State.SetPosition(Engine.Position);
+        Engine.Position = EffectiveToSource(targetPosition);
+        State.SetPosition(SourceToEffective(Engine.Position));
         return true;
     }
 
@@ -169,6 +188,7 @@ internal sealed class AudioPipeline : IDisposable
         }
 
         Engine.Close();
+        ResetTrimWindow();
         _sourcePath = null;
         _pendingOpenPath = null;
         IsOpen = false;
@@ -205,7 +225,8 @@ internal sealed class AudioPipeline : IDisposable
         IsOpen = true;
         if (_ownStateForCurrentOpen)
         {
-            State.SetOpened(MediaContent.Audio, _sourcePath, Engine.Duration);
+            RefreshTrimWindow();
+            State.SetOpened(MediaContent.Audio, _sourcePath, DurationSeconds);
         }
     }
 
@@ -213,10 +234,12 @@ internal sealed class AudioPipeline : IDisposable
     {
         _sourcePath = null;
         IsOpen = false;
+        ResetTrimWindow();
         State.Reset();
     }
 
-    private void OnAudioPositionChanged(object? sender, double positionSeconds) => State.SetPosition(positionSeconds);
+    private void OnAudioPositionChanged(object? sender, double positionSeconds) =>
+        State.SetPosition(SourceToEffective(positionSeconds));
 
     private void OnAudioPlaybackEnded(object? sender, EventArgs e)
     {
@@ -225,7 +248,7 @@ internal sealed class AudioPipeline : IDisposable
 
         if (Engine is IAudioLoopControl { LoopPlayback: true })
         {
-            State.SetPosition(Engine.Position);
+            State.SetPosition(SourceToEffective(Engine.Position));
             State.SetPlaybackState(MediaPlayerState.Playing);
         }
         else
@@ -245,6 +268,47 @@ internal sealed class AudioPipeline : IDisposable
         AudioEngineState.Stalled => MediaPlayerState.Buffering,
         _ => MediaPlayerState.Null
     };
+
+    private void RefreshTrimWindow()
+    {
+        _trimWindow = _analyzeSilenceForCurrentOpen
+            && Engine is IAudioTrimWindowProvider { ActiveTrimWindow: { } activeWindow }
+            && MediaAnalysisResultValidator.IsValid(activeWindow)
+                ? activeWindow
+                : null;
+    }
+
+    private void ResetTrimWindow()
+    {
+        _trimWindow = null;
+        _analyzeSilenceForCurrentOpen = false;
+    }
+
+    private double SourceToEffective(double sourcePosition)
+    {
+        if (_trimWindow is not { } trimWindow)
+        {
+            return sourcePosition;
+        }
+
+        return Math.Clamp(
+            sourcePosition - trimWindow.PlayableStart,
+            0,
+            trimWindow.EffectiveDuration);
+    }
+
+    private double EffectiveToSource(double effectivePosition)
+    {
+        if (_trimWindow is not { } trimWindow)
+        {
+            return effectivePosition;
+        }
+
+        return Math.Clamp(
+            trimWindow.PlayableStart + effectivePosition,
+            trimWindow.PlayableStart,
+            trimWindow.PlayableEnd);
+    }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }
