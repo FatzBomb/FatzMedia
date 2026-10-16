@@ -723,6 +723,16 @@ native-resource, and window-swapchain frames are rejected with a diagnostic unti
 slices. A lavapipe conformance suite compares output with `SoftwareCompositionRenderer`.
 See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 
+## Avalonia Adapter (Stage 027A, slice 1)
+
+`FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
+`MediaSurface` that attaches one primary managed frame-sink surface to any
+`IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
+final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
+It follows the same adapter rules as WPF, enforced by
+`scripts/check-adapter-boundary.ps1`. See
+`roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.

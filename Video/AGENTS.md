@@ -33,6 +33,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | `FatzBomb.MediaControl.Rendering.Vulkan` | Preview Vulkan renderer (slice 1: offscreen clear + background blit into a frame sink) | Targets `net10.0`; references Core only; Silk.NET.Vulkan |
 | `FatzBomb.MediaControl.Linux` | Linux platform composition — host-supplied BASS/FFmpeg `.so` loading, precision waits, BASS device monitoring, software decode policy | Targets `net10.0`; references Core only; pairs with any renderer factory |
 | `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop — `MediaSurface`, `BackgroundSurface`, `KaraokeSurface`, and `Player : MediaControlPlayer` | Controls accept an `IMediaControlPlatformFactory`; project must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
+| `FatzBomb.MediaControl.Avalonia` (Adapter) | Avalonia composited `MediaSurface` + bitmap conversions | References Core only; same adapter rules as WPF (`scripts/check-adapter-boundary.ps1`) |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
 ## LangVersion & Runtime Features

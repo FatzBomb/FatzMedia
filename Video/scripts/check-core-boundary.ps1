@@ -36,6 +36,13 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
     )
+    'FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Avalonia.Tests\FatzBomb.MediaControl.Avalonia.Tests.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj'
+    )
     'FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
@@ -114,7 +121,7 @@ $files = Get-ChildItem -Path $coreProject -Recurse -Filter '*.cs' |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
 
 foreach ($file in $files) {
-    $lines = Get-Content -Path $file.FullName
+    $lines = @(Get-Content -Path $file.FullName)
     for ($i = 0; $i -lt $lines.Count; $i++) {
         foreach ($pattern in $forbiddenPatterns) {
             if ($lines[$i] -match $pattern) {

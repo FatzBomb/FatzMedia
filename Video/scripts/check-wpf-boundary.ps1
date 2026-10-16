@@ -72,7 +72,7 @@ function Find-Violations {
 
     foreach ($file in $files) {
         $relative = Resolve-Path -Relative $file.FullName
-        $lines = Get-Content -Path $file.FullName
+        $lines = @(Get-Content -Path $file.FullName)
         for ($i = 0; $i -lt $lines.Count; $i++) {
             foreach ($pattern in $Patterns) {
                 if ($lines[$i] -match $pattern) {

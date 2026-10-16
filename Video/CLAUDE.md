@@ -36,13 +36,18 @@ per stage/slice. Release builds treat warnings as errors — write warning-clean
 
 ## Validation split
 
-- **Linux sandbox:** `dotnet build -c Release` of the portable `net10.0` projects
-  (Core, Rendering.Software, Linux platform packages) and, with
-  `-p:EnableWindowsTargeting=true`, the Windows-targeted projects. Tests that target
-  `net10.0` (portable/Linux test projects) run here. The Windows test project,
-  WPF, D3D11, native BASS/FFmpeg and media playback cannot run here.
+- **Linux sandbox:** `dotnet build -c Release` of the portable `net10.0` projects and,
+  with `EnableWindowsTargeting=true` (env var or `-p:`), the whole solution. The `net10.0`
+  test projects run here: `Portable.Tests`, `Linux.Tests`, `Rendering.Vulkan.Tests`
+  (needs Mesa lavapipe: `apt-get install mesa-vulkan-drivers`), `Avalonia.Tests`
+  (headless). `dotnet format FatzBomb.MediaControl.sln --verify-no-changes` works with
+  `EnableWindowsTargeting=true`. Boundary scripts run with the PowerShell .NET tool
+  (`dotnet tool install --global PowerShell`, then `DOTNET_ROOT=<sdk root> pwsh -File
+  scripts/check-*.ps1`). The Windows test project, WPF, D3D11, and BASS playback cannot
+  run here.
 - **Windows CI (`windows-latest`):** source of truth for the full build, the main
   test project, boundary scripts (`scripts/check-*.ps1`), presentation parity, and
-  `dotnet format --verify-no-changes`.
+  `dotnet format --verify-no-changes`. **Linux CI (`ubuntu-latest`)** runs the portable,
+  Linux, Vulkan (lavapipe), and Avalonia (headless) test projects.
 - **Manual:** native-DLL smoke on Windows per `docs/VALIDATION.md` and each stage's
   update note.
