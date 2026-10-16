@@ -20,6 +20,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented,
   pending manual smoke (`updates/020A_1`).
+- `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
+  (`updates/017A_1`); native scheduling integration not started.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -62,7 +64,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/017A_IDEA_DisplayRateCompositorRewrite.md`.
+Next stage: `future/015A_IDEA_BroadVideoPipelineSplit.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -71,7 +73,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.
 - `future/015A_IDEA_BroadVideoPipelineSplit.md` - incremental responsibility extraction.
 - `future/010A_IDEA_SoftwareVideoUploadCopyPath.md` - reduce software-frame copy and upload cost.
 - `future/018A_IDEA_CDGSnapshotOwnershipRedesignPooling.md` - explicit snapshot ownership and reuse.
