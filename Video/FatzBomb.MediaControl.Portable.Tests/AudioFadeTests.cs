@@ -286,6 +286,21 @@ public sealed class AudioFadeRunnerTests
     }
 
     [Fact]
+    public async Task Run_SessionEndedByTransport_StopsAtNextRamp()
+    {
+        var target = new RecordingTarget();
+        var runner = new AudioFadeRunner((_, _) =>
+        {
+            target.EndSession();
+            return Task.CompletedTask;
+        });
+        AudioFadeEnvelope envelope = AudioFadeEnvelope.Outgoing.WithPoint(new AudioFadePoint(0.5, 0.5));
+
+        Assert.False(await runner.RunAsync(target, envelope, TimeSpan.FromSeconds(2), 0, CancellationToken.None));
+        Assert.Equal(2, target.Calls.Count);
+    }
+
+    [Fact]
     public async Task Run_CallerCancellation_ReturnsFalse()
     {
         using var cts = new CancellationTokenSource();
@@ -297,19 +312,24 @@ public sealed class AudioFadeRunnerTests
 
     private sealed class RecordingTarget : IAudioFadeGainTarget
     {
+        private int _session;
+
         public List<(double Gain, TimeSpan Ramp)> Calls { get; } = [];
         public bool IsFadeAvailable { get; init; } = true;
         public int RejectAfter { get; init; } = int.MaxValue;
 
-        public bool SetFadeGain(double gain, TimeSpan ramp)
+        public int BeginFadeSession() => IsFadeAvailable ? ++_session : 0;
+
+        public bool SetFadeGain(int session, double gain, TimeSpan ramp)
         {
-            if (Calls.Count >= RejectAfter)
+            if (session != _session || Calls.Count >= RejectAfter)
                 return false;
 
             Calls.Add((gain, ramp));
             return true;
         }
 
-        public void ResetFadeGain() => Calls.Add((1, TimeSpan.Zero));
+        /// <summary>Simulates Stop/Open/Close ending the session.</summary>
+        public void EndSession() => _session++;
     }
 }

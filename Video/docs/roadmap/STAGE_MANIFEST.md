@@ -7,8 +7,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 
 - `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented, pending manual smoke
   (`updates/031A_1`); 30 focused tests.
-- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - slice 1 (envelope math, 43 tests)
-  implemented; slice 2 in progress.
+- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented, pending manual smoke
+  (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

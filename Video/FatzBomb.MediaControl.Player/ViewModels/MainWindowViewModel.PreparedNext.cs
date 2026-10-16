@@ -3,8 +3,9 @@ using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
 namespace FatzBomb.MediaControl.Player.ViewModels;
 
 /// <summary>
-/// Validation-host wiring for the Core prepared-next slot (Stage 031A). Started with
-/// <c>--prepare-next=&lt;path&gt;</c> and optionally <c>--auto-next</c>.
+/// Validation-host wiring for the Core prepared-next slot (Stage 031A) and its fades (Stage
+/// 031B). Started with <c>--prepare-next=&lt;path&gt;</c>, optionally <c>--auto-next</c> and
+/// <c>--fade-next=&lt;seconds&gt;</c>.
 /// </summary>
 public sealed partial class MainWindowViewModel
 {
@@ -13,6 +14,7 @@ public sealed partial class MainWindowViewModel
         player.PreparedNextChanged += OnPreparedNextChanged;
         player.PreparedNextTransitioned += OnPreparedNextTransitioned;
         player.AutoTransitionToPreparedNext = App.AutoTransitionToPreparedNext;
+        player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = App.PreparedNextFadeDuration };
         if (App.PrepareNextPath is { } path)
             _ = PrepareNextForValidationAsync(player, path);
     }
@@ -29,7 +31,7 @@ public sealed partial class MainWindowViewModel
         {
             var prepared = await player.PrepareNextAsync(path).ConfigureAwait(false);
             ReportPreparedNext(prepared
-                ? $"Prepared next: {path} (auto-next={App.AutoTransitionToPreparedNext})"
+                ? $"Prepared next: {path} (auto-next={App.AutoTransitionToPreparedNext}, fade={App.PreparedNextFadeDuration.TotalSeconds:F1}s)"
                 : $"Could not prepare next: {path}");
         }
         catch (Exception ex)

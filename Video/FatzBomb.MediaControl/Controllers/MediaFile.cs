@@ -111,6 +111,16 @@ public sealed class MediaFile
     }
 
     /// <summary>
+    /// Loads media without honoring <see cref="PlayOnLoad"/>, for callers that must prepare the new
+    /// media (for example its fade gain) before starting playback themselves.
+    /// </summary>
+    internal bool LoadWithoutAutoPlay(MediaInputSource source)
+    {
+        _ = BeginLoadOperation();
+        return LoadCore(source, backgroundSource: null, ignoreSidecar: false);
+    }
+
+    /// <summary>
     /// Loads a media file from the specified path (synchronous version).
     /// </summary>
     public bool Load(string path) => Load(path, ignoreSidecar: false);

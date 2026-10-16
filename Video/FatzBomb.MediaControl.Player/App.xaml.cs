@@ -30,6 +30,8 @@ public partial class App : Application
 
     public static bool AutoTransitionToPreparedNext { get; private set; }
 
+    public static TimeSpan PreparedNextFadeDuration { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -51,6 +53,15 @@ public partial class App : Application
             .Where(static argument => argument.StartsWith(prepareNextPrefix, StringComparison.OrdinalIgnoreCase))
             .Select(static argument => argument[prepareNextPrefix.Length..].Trim('"'))
             .FirstOrDefault(static path => path.Length > 0);
+        const string fadeNextPrefix = "--fade-next=";
+        PreparedNextFadeDuration = e.Args
+            .Where(static argument => argument.StartsWith(fadeNextPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => double.TryParse(
+                argument[fadeNextPrefix.Length..],
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var seconds) ? TimeSpan.FromSeconds(seconds) : TimeSpan.Zero)
+            .FirstOrDefault();
         AutoTransitionToPreparedNext = e.Args.Any(static argument =>
             string.Equals(argument, "--auto-next", StringComparison.OrdinalIgnoreCase));
         StartupMediaPath = e.Args.FirstOrDefault(static argument =>

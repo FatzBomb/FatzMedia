@@ -459,6 +459,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         // 1. Discard the prepared-next item (its analysis ran on the old engine), stop playback,
         //    and close media
         try { ClearPreparedNextForLifecycle(); } catch { }
+        try { _fadeRunner.Cancel(); } catch { }
         try { File.Close(); } catch { }
 
         // 2. Unsubscribe internal events
@@ -593,6 +594,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private void DisposeCore()
     {
         try { _preparedNext.Dispose(); } catch { }
+        try { _fadeRunner.Cancel(); } catch { }
         try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }

@@ -669,6 +669,21 @@ when the host intervened (transport generation, load generation, slot generation
 loop, or auto flag changed). `Reset` and `Dispose` clear the slot. See
 `roadmap/active/031A_ACTIVE_PreparedNextPlaylistSlot.md`.
 
+## Audio Fades (Stage 031B, implemented — pending manual smoke)
+
+Public `AudioFadePoint`, immutable sorted `AudioFadeEnvelope` (exact-position upsert,
+linear interpolation, `AudibleStart` for the leading zero plateau), and
+`AudioCrossfadeOptions` (shared duration, disabled by default). Internal
+`Core/Audio/Fade/AudioFadeSchedule` turns an envelope into chained linear ramps and
+`AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The BASS
+`AudioEngine` implements the target with a dedicated `BASS_FX_VOLUME` stage, so final
+gain = envelope x channel volume attribute (user volume) x normalization gain FX.
+Fade sessions end on Open/Close/Stop (Stop restores unity). `MediaControlPlayer`
+exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
+which turns 031A transitions into fade-through transitions; waits run off the control
+queue. Overlapping two-handle crossfades are deferred. See
+`roadmap/active/031B_ACTIVE_AudioFadeCrossfadeModel.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.

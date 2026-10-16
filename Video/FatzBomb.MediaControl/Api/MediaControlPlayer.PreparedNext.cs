@@ -90,10 +90,16 @@ public partial class MediaControlPlayer
         return true;
     }
 
-    public Task<bool> TransitionToPreparedNextAsync() =>
-        EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false));
+    public Task<bool> TransitionToPreparedNextAsync()
+    {
+        ThrowIfResetting();
+        AudioCrossfadeOptions fade = PreparedNextTransitionFade;
+        return fade.IsEnabled
+            ? RunFadedPreparedNextTransitionAsync(expectedGeneration: null, isAutomatic: false, fade, fadeOutgoing: true, stillValid: null)
+            : EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false, fade: null));
+    }
 
-    private async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic)
+    private async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic, AudioCrossfadeOptions? fade)
     {
         if (!_preparedNext.TryBeginTransition(expectedGeneration, out PreparedNextTransition? transition, out PreparedNextChange? claimed))
         {
@@ -106,9 +112,21 @@ public partial class MediaControlPlayer
         var success = false;
         try
         {
-            success = await File.LoadAsync(transition!.Source).ConfigureAwait(false);
-            if (success && !File.PlayOnLoad)
-                success = Controls.Play();
+            if (fade is null)
+            {
+                success = await File.LoadAsync(transition!.Source).ConfigureAwait(false);
+                if (success && !File.PlayOnLoad)
+                    success = Controls.Play();
+            }
+            else
+            {
+                success = File.LoadWithoutAutoPlay(transition!.Source);
+                if (success)
+                {
+                    PrimeIncomingFade(fade);
+                    success = Controls.Play();
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -146,23 +164,40 @@ public partial class MediaControlPlayer
         var loadGeneration = File.LoadGeneration;
         MediaControlOperationQueue queue = _controlOperations;
 
+        bool StillValid() =>
+            !_disposed
+            && _autoTransitionToPreparedNext
+            && !Controls.LoopMedia
+            && Controls.TransportGeneration == transportGeneration
+            && File.LoadGeneration == loadGeneration
+            && _preparedNext.IsReady(slotGeneration);
+
         // First hop lands after the MediaEnded delivery; the second hop lands after Core's
         // CompleteMediaEnd, which BeginMediaEnd queues after raising MediaEnded.
         _ = queue.Enqueue(() =>
         {
             _ = queue.Enqueue(() =>
             {
-                if (_disposed
-                    || !_autoTransitionToPreparedNext
-                    || Controls.LoopMedia
-                    || Controls.TransportGeneration != transportGeneration
-                    || File.LoadGeneration != loadGeneration
-                    || !_preparedNext.IsReady(slotGeneration))
-                {
+                if (!StillValid())
                     return Task.FromResult(false);
+
+                AudioCrossfadeOptions fade = PreparedNextTransitionFade;
+                if (!fade.IsEnabled)
+                    return TransitionToPreparedNextCoreAsync(slotGeneration, isAutomatic: true, fade: null);
+
+                // The outgoing media already ended, so only the incoming envelope applies. The
+                // faded path waits off the queue and re-validates before its load step.
+                using (ExecutionContext.SuppressFlow())
+                {
+                    _ = Task.Run(() => RunFadedPreparedNextTransitionAsync(
+                        slotGeneration,
+                        isAutomatic: true,
+                        fade,
+                        fadeOutgoing: false,
+                        StillValid));
                 }
 
-                return TransitionToPreparedNextCoreAsync(slotGeneration, isAutomatic: true);
+                return Task.FromResult(true);
             });
         });
     }

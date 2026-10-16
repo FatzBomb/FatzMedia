@@ -1,5 +1,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio.Fade;
 using ManagedBass;
+using ManagedBass.Fx;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -12,7 +14,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget
 {
     private const double CachedDurationToleranceSeconds = 0.25;
 
@@ -43,6 +45,17 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private MediaAnalysisResult? _activeTrimWindow;
     private readonly CancellationTokenSource _standaloneAnalysisLifetime = new();
     private int _standaloneAnalysisCount;
+    private readonly Lock _fadeGate = new();
+    private readonly VolumeParameters _fadeParameters = new()
+    {
+        fTarget = 1f,
+        fCurrent = 1f,
+        fTime = 0,
+        lCurve = 0,
+        lChannel = FXChannelFlags.All,
+    };
+    private int _fadeFxHandle;
+    private int _fadeSession;
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private volatile bool _disposed;
@@ -286,6 +299,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             if (!BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine"))
                 return false;
 
+            EndFadeSession(releaseHandle: true);
             var success = _streamManager.OpenFromPath(filePath);
             if (success)
             {
@@ -296,6 +310,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 if (playHandle != 0)
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
+                    SetupFadeFx(playHandle);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle}");
                 }
 
@@ -347,6 +362,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             if (!BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine"))
                 return false;
 
+            EndFadeSession(releaseHandle: true);
             var success = _streamManager.OpenFromArchive(archiveEntry);
             if (success)
             {
@@ -358,6 +374,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 if (playHandle != 0)
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
+                    SetupFadeFx(playHandle);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle} (archive)");
                 }
 
@@ -462,6 +479,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (playHandle == 0) return false;
 
         var success = MBass.ChannelStop(playHandle);
+        EndFadeSession(releaseHandle: false);
 
         // Reset positions for all streams
         _streamManager.ResetPosition();
@@ -477,6 +495,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         CancelNormalizationAnalysis();
         RemovePlaybackEndSync();
+        EndFadeSession(releaseHandle: true);
 
         _streamManager.Close();
         Volatile.Write(ref _activeTrimWindow, null);
@@ -596,6 +615,91 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 _ = MBass.StreamFree(handle);
             _ = Interlocked.Decrement(ref _standaloneAnalysisCount);
         }
+    }
+
+    int IAudioFadeGainTarget.BeginFadeSession()
+    {
+        lock (_fadeGate)
+        {
+            if (_fadeFxHandle == 0)
+                return 0;
+
+            _fadeSession = _fadeSession == int.MaxValue ? 1 : _fadeSession + 1;
+            return _fadeSession;
+        }
+    }
+
+    bool IAudioFadeGainTarget.SetFadeGain(int session, double gain, TimeSpan ramp)
+    {
+        lock (_fadeGate)
+        {
+            return session != 0
+                && session == _fadeSession
+                && _fadeFxHandle != 0
+                && ApplyFadeGainLocked(gain, ramp);
+        }
+    }
+
+    /// <summary>
+    /// Adds the envelope stage: a dedicated <c>BASS_FX_VOLUME</c> after the normalization gain FX.
+    /// It multiplies with the channel volume attribute (user volume) and the normalization FX, so
+    /// fades never change either of them.
+    /// </summary>
+    private void SetupFadeFx(int playHandle)
+    {
+        lock (_fadeGate)
+        {
+            _fadeSession = _fadeSession == int.MaxValue ? 1 : _fadeSession + 1;
+            _fadeFxHandle = MBass.ChannelSetFX(playHandle, EffectType.Volume, 0);
+            if (_fadeFxHandle != 0)
+            {
+                _ = ApplyFadeGainLocked(1, TimeSpan.Zero);
+                return;
+            }
+        }
+
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Fade FX unavailable on handle {playHandle}: {MBass.LastError}; fades are disabled for this media.");
+    }
+
+    /// <summary>
+    /// Ends the current fade session so pending ramps are rejected, and restores unity gain on a
+    /// still-open stream. Open/Close release the handle because the stream that owns it is freed.
+    /// </summary>
+    private void EndFadeSession(bool releaseHandle)
+    {
+        lock (_fadeGate)
+        {
+            _fadeSession = _fadeSession == int.MaxValue ? 1 : _fadeSession + 1;
+            if (releaseHandle)
+            {
+                _fadeFxHandle = 0;
+                return;
+            }
+
+            if (_fadeFxHandle != 0)
+                _ = ApplyFadeGainLocked(1, TimeSpan.Zero);
+        }
+    }
+
+    private bool ApplyFadeGainLocked(double gain, TimeSpan ramp)
+    {
+        var target = (float)(double.IsFinite(gain) ? Math.Clamp(gain, 0, 1) : 0);
+        var seconds = ramp.TotalSeconds;
+        _fadeParameters.fTarget = target;
+        _fadeParameters.lCurve = 0;
+        if (seconds > 0)
+        {
+            // fCurrent = -1 continues from the stage's present gain; fTime is the linear ramp length.
+            _fadeParameters.fCurrent = -1f;
+            _fadeParameters.fTime = (float)seconds;
+        }
+        else
+        {
+            _fadeParameters.fCurrent = target;
+            _fadeParameters.fTime = 0;
+        }
+
+        return MBass.FXSetParameters(_fadeFxHandle, _fadeParameters);
     }
 
     private void StopStandaloneAnalyses()

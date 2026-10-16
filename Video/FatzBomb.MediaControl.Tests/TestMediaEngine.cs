@@ -259,8 +259,24 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget
 {
+    private int _fadeSession;
+
+    public bool FadeAvailable { get; set; } = true;
+    public System.Collections.Concurrent.ConcurrentQueue<(double Gain, TimeSpan Ramp)> FadeCalls { get; } = new();
+
+    public int BeginFadeSession() => FadeAvailable ? Interlocked.Increment(ref _fadeSession) : 0;
+
+    public bool SetFadeGain(int session, double gain, TimeSpan ramp)
+    {
+        if (session != Volatile.Read(ref _fadeSession))
+            return false;
+
+        FadeCalls.Enqueue((gain, ramp));
+        return true;
+    }
+
     public AudioEngineState State { get; private set; }
     public int PlayHandle => 0;
     public int SourceHandle => 0;

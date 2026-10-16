@@ -194,6 +194,32 @@ public interface IMediaControlSession : IDisposable
     Task<bool> TransitionToPreparedNextAsync();
 
     /// <summary>
+    /// Gets or sets the fade applied by prepared-next transitions. Disabled by default. When
+    /// enabled, a manual transition fades the current audio out, waits the incoming envelope's
+    /// muted lead time, loads and starts the prepared item with its fade gain primed, then fades
+    /// it in. An automatic transition (the outgoing item already ended) applies only the incoming
+    /// fade. The outgoing and incoming items do not overlap.
+    /// </summary>
+    AudioCrossfadeOptions PreparedNextTransitionFade { get; set; }
+
+    /// <summary>
+    /// Fades the current local audio with an outgoing envelope (default: full to muted). Playback
+    /// continues; the host decides whether to stop. Returns <see langword="false"/> when the media
+    /// has no fade stage (video, live), the duration is zero, or the fade was cancelled or
+    /// superseded. Stop, load, and close end a running fade and restore unity fade gain.
+    /// </summary>
+    Task<bool> FadeOutAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fades the current local audio with an incoming envelope (default: muted to full), starting
+    /// at the envelope's audible start. Same return and cancellation rules as <see cref="FadeOutAsync"/>.
+    /// </summary>
+    Task<bool> FadeInAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels the running fade, leaving the gain where it reached.</summary>
+    void CancelFade();
+
+    /// <summary>
     /// Stops all running processes, disposes internal resources, then reinitializes the entire
     /// engine with the supplied configuration and native-library paths. Existing presentation
     /// surface registrations are preserved and reattached. No media is loaded after reset; the

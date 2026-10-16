@@ -3,19 +3,25 @@ namespace FatzBomb.MediaControl.Core.Audio.Fade;
 /// <summary>
 /// Audio stage that owns the fade envelope gain, independent of user volume and normalization.
 /// </summary>
+/// <remarks>
+/// Each fade runs inside a session. Opening, closing, or stopping media ends the current
+/// session and restores unity gain, so ramps from an older session are rejected and an
+/// interrupted fade never leaves the next playback muted.
+/// </remarks>
 internal interface IAudioFadeGainTarget
 {
-    /// <summary>Gets whether the fade stage is available on the current media.</summary>
-    bool IsFadeAvailable { get; }
+    /// <summary>
+    /// Starts a new fade session, superseding the previous one. Returns <c>0</c> when the fade
+    /// stage is unavailable for the current media.
+    /// </summary>
+    int BeginFadeSession();
 
     /// <summary>
     /// Starts a native linear ramp from the current fade gain to <paramref name="gain"/> over
-    /// <paramref name="ramp"/>; a zero ramp sets the gain immediately.
+    /// <paramref name="ramp"/>; a zero ramp sets the gain immediately. Returns
+    /// <see langword="false"/> when <paramref name="session"/> is no longer current.
     /// </summary>
-    bool SetFadeGain(double gain, TimeSpan ramp);
-
-    /// <summary>Restores unity fade gain immediately.</summary>
-    void ResetFadeGain();
+    bool SetFadeGain(int session, double gain, TimeSpan ramp);
 }
 
 /// <summary>
@@ -45,13 +51,14 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         CancellationTokenSource cts = Replace(cancellationToken);
         try
         {
-            if (!target.IsFadeAvailable || !target.SetFadeGain(envelope.Evaluate(startPosition), TimeSpan.Zero))
+            var session = target.BeginFadeSession();
+            if (session == 0 || !target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
                 return false;
 
             foreach (AudioFadeSegment segment in AudioFadeSchedule.Build(envelope, duration, startPosition))
             {
                 cts.Token.ThrowIfCancellationRequested();
-                if (!target.SetFadeGain(segment.ToGain, segment.Duration))
+                if (!target.SetFadeGain(session, segment.ToGain, segment.Duration))
                     return false;
 
                 await _delay(segment.Duration, cts.Token).ConfigureAwait(false);
