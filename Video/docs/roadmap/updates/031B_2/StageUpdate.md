@@ -79,5 +79,5 @@ fail on the previous code:
   pause, seek, stop, or load during the fade or muted lead abandons it too.
 - `CancelFade` racing a fade's completion could throw `ObjectDisposedException`.
 
-Extra manual smoke: during a manual faded transition, press Pause mid-fade: the next item
-does not load and the current item returns to full volume.
+The Player host has no manual-transition control, so these paths are covered by the
+automated tests only (`PlayerFadeTests.ManualFadedTransition_*`, `AudioFadeRunnerTests`).
