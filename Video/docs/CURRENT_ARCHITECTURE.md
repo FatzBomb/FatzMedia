@@ -743,6 +743,15 @@ equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
 `IMediaControlSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/active/020A_ACTIVE_AudioFilterFramework.md`.
 
+## CDG Snapshot Ownership (Stage 018A, slice 1)
+
+`CdgRenderSnapshot` is immutable and garbage-collected; it is never pooled. The
+presentation coordinator caches the latest one for retained refreshes and video
+composition, and renderers only read it during `PresentComposition` (Direct3D11's layer
+cache drops the payload). `CdgStateMachine.CreateSnapshot` returns the previous snapshot
+when nothing changed and shares immutable buffers otherwise where possible. See
+`roadmap/active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
