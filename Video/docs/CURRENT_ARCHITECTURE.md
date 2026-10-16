@@ -10,29 +10,21 @@
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
-Planned UI adapters remain separate projects using the same package pattern:
+UI adapters, renderer backends, and platform services are separate projects using the same
+package pattern. Status as of 2026-10-16:
 
-- `FatzBomb.MediaControl.WinUI`
-- `FatzBomb.MediaControl.Avalonia`
-- `FatzBomb.MediaControl.WinForms`
+- UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
+  `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
+- Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
+  frame-sink surfaces only) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
+- Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
+  `FatzBomb.MediaControl.MacOS` planned.
 
-Planned renderer backends are independently selectable packages:
-
-- `FatzBomb.MediaControl.Rendering.Vulkan`
-- `FatzBomb.MediaControl.Rendering.OpenGL`
-- `FatzBomb.MediaControl.Rendering.Metal`
-
-Planned non-Windows platform services remain separate from renderers and UI adapters:
-
-- `FatzBomb.MediaControl.Linux`
-- `FatzBomb.MediaControl.MacOS`
-
-The Software renderer is implemented; the backends above and non-Windows platform
-services are roadmap directions, not implemented projects. See
+See
 `roadmap/complete/024A_COMPLETED_SoftwareRenderer.md`,
-`roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
-`roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
-`roadmap/future/027A_IDEA_UiAdapterImplementations.md`.
+`roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`,
+`roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`, and
+`roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
 
 ## Platform Composition
 
