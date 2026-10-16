@@ -3,7 +3,6 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
-using NativeD3D11PresentationBridge = FatzBomb.MediaControl.Rendering.Direct3D11.NativeD3D11PresentationBridge;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 

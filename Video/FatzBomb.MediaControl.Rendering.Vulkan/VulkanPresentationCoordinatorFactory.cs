@@ -1,5 +1,4 @@
 using FatzBomb.MediaControl.Controllers;
-using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Subtitle;

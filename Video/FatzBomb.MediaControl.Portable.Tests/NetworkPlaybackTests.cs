@@ -6,7 +6,6 @@ using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
-using System.Collections.Concurrent;
 
 namespace FatzBomb.MediaControl.Tests;
 

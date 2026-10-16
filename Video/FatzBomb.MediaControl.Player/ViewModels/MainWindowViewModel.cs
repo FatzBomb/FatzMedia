@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using FatzBomb.MediaControl;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Wpf;

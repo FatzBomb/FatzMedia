@@ -5,7 +5,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using FatzBomb.MediaControl.Player.Controls;
 using FatzBomb.MediaControl.Player.ViewModels;
 
 namespace FatzBomb.MediaControl.Player;

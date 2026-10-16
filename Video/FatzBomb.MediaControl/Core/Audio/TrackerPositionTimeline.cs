@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace FatzBomb.MediaControl.Core.Audio;
 
 /// <summary>

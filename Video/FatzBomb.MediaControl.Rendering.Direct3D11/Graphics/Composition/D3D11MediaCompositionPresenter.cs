@@ -1,5 +1,4 @@
 using FatzBomb.MediaControl.Core.Cdg;
-using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;

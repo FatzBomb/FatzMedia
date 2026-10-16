@@ -1,7 +1,6 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;

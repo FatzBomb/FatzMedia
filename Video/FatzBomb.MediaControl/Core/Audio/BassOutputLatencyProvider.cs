@@ -1,5 +1,4 @@
 using FatzBomb.MediaControl.Core.Abstractions;
-using FatzBomb.MediaControl.Core.Audio;
 using ManagedBass;
 using MBass = ManagedBass.Bass;
 
