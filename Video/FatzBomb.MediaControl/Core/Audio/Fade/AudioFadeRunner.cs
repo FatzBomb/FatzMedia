@@ -24,6 +24,19 @@ internal interface IAudioFadeGainTarget
     bool SetFadeGain(int session, double gain, TimeSpan ramp);
 }
 
+/// <summary>How a fade run ended.</summary>
+internal enum AudioFadeOutcome
+{
+    /// <summary>The whole envelope was applied.</summary>
+    Completed,
+
+    /// <summary>The current media has no fade stage; nothing was applied.</summary>
+    Unavailable,
+
+    /// <summary>The fade was cancelled, superseded, or its session ended (stop, open, close).</summary>
+    Interrupted,
+}
+
 /// <summary>
 /// Runs one fade envelope as chained native ramps. Latest wins: starting a fade cancels the
 /// previous one, which leaves the gain where its last ramp had reached.
@@ -44,6 +57,16 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         AudioFadeEnvelope envelope,
         TimeSpan duration,
         double startPosition,
+        CancellationToken cancellationToken) =>
+        await RunWithOutcomeAsync(target, envelope, duration, startPosition, cancellationToken).ConfigureAwait(false)
+            == AudioFadeOutcome.Completed;
+
+    /// <summary>Runs the envelope like <see cref="RunAsync"/> and reports how it ended.</summary>
+    public async Task<AudioFadeOutcome> RunWithOutcomeAsync(
+        IAudioFadeGainTarget target,
+        AudioFadeEnvelope envelope,
+        TimeSpan duration,
+        double startPosition,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -52,23 +75,26 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         try
         {
             var session = target.BeginFadeSession();
-            if (session == 0 || !target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
-                return false;
+            if (session == 0)
+                return AudioFadeOutcome.Unavailable;
+
+            if (!target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
+                return AudioFadeOutcome.Interrupted;
 
             foreach (AudioFadeSegment segment in AudioFadeSchedule.Build(envelope, duration, startPosition))
             {
                 cts.Token.ThrowIfCancellationRequested();
                 if (!target.SetFadeGain(session, segment.ToGain, segment.Duration))
-                    return false;
+                    return AudioFadeOutcome.Interrupted;
 
                 await _delay(segment.Duration, cts.Token).ConfigureAwait(false);
             }
 
-            return !cts.Token.IsCancellationRequested;
+            return cts.Token.IsCancellationRequested ? AudioFadeOutcome.Interrupted : AudioFadeOutcome.Completed;
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return AudioFadeOutcome.Interrupted;
         }
         finally
         {
@@ -86,7 +112,25 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
             _current = null;
         }
 
-        current?.Cancel();
+        CancelQuietly(current);
+    }
+
+    /// <summary>
+    /// Returns the fade stage to full gain over <paramref name="ramp"/> unless another fade is
+    /// running, in which case that fade owns the gain. Returns <see langword="true"/> when a
+    /// restore ramp was applied.
+    /// </summary>
+    public bool RestoreUnityIfIdle(IAudioFadeGainTarget target, TimeSpan ramp)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (_gate)
+        {
+            if (_current != null)
+                return false;
+
+            var session = target.BeginFadeSession();
+            return session != 0 && target.SetFadeGain(session, 1, ramp);
+        }
     }
 
     private CancellationTokenSource Replace(CancellationToken cancellationToken)
@@ -99,8 +143,23 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
             _current = next;
         }
 
-        previous?.Cancel();
+        CancelQuietly(previous);
         return next;
+    }
+
+    /// <summary>
+    /// A detached source may already be disposed by its finishing run; that fade is over, so
+    /// there is nothing left to cancel.
+    /// </summary>
+    private static void CancelQuietly(CancellationTokenSource? source)
+    {
+        try
+        {
+            source?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private void Release(CancellationTokenSource cts)

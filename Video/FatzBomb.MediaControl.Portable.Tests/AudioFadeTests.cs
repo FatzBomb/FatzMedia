@@ -310,6 +310,58 @@ public sealed class AudioFadeRunnerTests
         Assert.False(await runner.RunAsync(new RecordingTarget(), AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(1), 0, cts.Token));
     }
 
+    [Fact]
+    public async Task RunWithOutcome_DistinguishesUnavailableFromInterrupted()
+    {
+        var runner = new AudioFadeRunner((_, _) => Task.CompletedTask);
+
+        Assert.Equal(
+            AudioFadeOutcome.Unavailable,
+            await runner.RunWithOutcomeAsync(new RecordingTarget { IsFadeAvailable = false }, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(1), 0, CancellationToken.None));
+        Assert.Equal(
+            AudioFadeOutcome.Interrupted,
+            await runner.RunWithOutcomeAsync(new RecordingTarget { RejectAfter = 1 }, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(1), 0, CancellationToken.None));
+        Assert.Equal(
+            AudioFadeOutcome.Completed,
+            await runner.RunWithOutcomeAsync(new RecordingTarget(), AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(1), 0, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RestoreUnityIfIdle_RampsToFullGainOnlyWhenNoFadeRuns()
+    {
+        var target = new RecordingTarget();
+        var delayStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new AudioFadeRunner(async (_, token) =>
+        {
+            delayStarted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+
+        Task<bool> running = runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromSeconds(5), 0, CancellationToken.None);
+        await delayStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(runner.RestoreUnityIfIdle(target, TimeSpan.FromMilliseconds(250)));
+
+        runner.Cancel();
+        Assert.False(await running.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(runner.RestoreUnityIfIdle(target, TimeSpan.FromMilliseconds(250)));
+        Assert.Equal((1d, TimeSpan.FromMilliseconds(250)), target.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task Cancel_RacingWithCompletion_NeverThrows()
+    {
+        var target = new RecordingTarget();
+        var runner = new AudioFadeRunner(async (_, _) => await Task.Yield());
+
+        for (var i = 0; i < 200; i++)
+        {
+            Task<bool> run = Task.Run(() => runner.RunAsync(target, AudioFadeEnvelope.Outgoing, TimeSpan.FromMilliseconds(1), 0, CancellationToken.None));
+            runner.Cancel();
+            _ = await run.WaitAsync(TimeSpan.FromSeconds(10));
+            runner.Cancel();
+        }
+    }
+
     private sealed class RecordingTarget : IAudioFadeGainTarget
     {
         private int _session;

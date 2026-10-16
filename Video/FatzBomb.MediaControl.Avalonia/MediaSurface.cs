@@ -25,6 +25,7 @@ public class MediaSurface : Control
     private IMediaControlSession? _attachedSession;
     private (int Width, int Height) _attachedPixelSize;
     private bool _isAttachedToTree;
+    private TopLevel? _topLevel;
 
     static MediaSurface()
     {
@@ -80,12 +81,25 @@ public class MediaSurface : Control
         base.OnAttachedToVisualTree(e);
         _isAttachedToTree = true;
         _sink ??= new AvaloniaFrameSink(InvalidateVisual);
+
+        // Moving to a monitor with another scale keeps Bounds (DIPs) unchanged, so size changes
+        // alone would miss the new pixel size.
+        _topLevel = TopLevel.GetTopLevel(this);
+        if (_topLevel is not null)
+            _topLevel.ScalingChanged += OnTopLevelScalingChanged;
+
         AttachOrResize();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttachedToTree = false;
+        if (_topLevel is not null)
+        {
+            _topLevel.ScalingChanged -= OnTopLevelScalingChanged;
+            _topLevel = null;
+        }
+
         Detach();
         _sink?.Dispose();
         _sink = null;
@@ -97,6 +111,8 @@ public class MediaSurface : Control
         base.OnSizeChanged(e);
         AttachOrResize();
     }
+
+    private void OnTopLevelScalingChanged(object? sender, EventArgs e) => AttachOrResize();
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

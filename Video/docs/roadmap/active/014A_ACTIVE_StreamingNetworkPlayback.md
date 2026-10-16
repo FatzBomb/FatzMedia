@@ -25,7 +25,9 @@ Events per row: local rows raise only the existing 029A events. Network rows add
 10 points while buffering), `StreamMetadataChanged` (ICY `StreamTitle`, Ogg
 `TITLE`/`ARTIST`), and `MediaDiagnostic` entries for connect, timeout, retry, and decode
 failures. `MediaEnded` means end-of-file for NetworkFile and stream drop for
-NetworkLive. Every row is cancelled by Stop, Close, or a new Load.
+NetworkLive. Once open, every row is stopped by Stop, Close, or a new Load. A network
+open in progress (connect attempts plus retry delays) is not interruptible; commands
+queue behind it (see `updates/014A_2`).
 
 ## Pinned Decisions
 

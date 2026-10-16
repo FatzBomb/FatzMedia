@@ -139,7 +139,7 @@ public sealed class VulkanConformanceTests
         VulkanBlit? blit = frame.HasBackground
             ? VulkanCompositionPlanner.PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, width, height, frame.EffectiveBackgroundStretchMode)
             : null;
-        var actual = compositor.Render(
+        ReadOnlySpan<byte> actual = compositor.Render(
             width,
             height,
             VulkanCompositionPlanner.ResolveClear(frame),
@@ -154,7 +154,7 @@ public sealed class VulkanConformanceTests
         var exact = 0;
         for (var pixel = 0; pixel < width * height; pixel++)
         {
-            if (expectedPixels.Slice(pixel * 4, 4).SequenceEqual(actual.AsSpan(pixel * 4, 4)))
+            if (expectedPixels.Slice(pixel * 4, 4).SequenceEqual(actual.Slice(pixel * 4, 4)))
                 exact++;
         }
 

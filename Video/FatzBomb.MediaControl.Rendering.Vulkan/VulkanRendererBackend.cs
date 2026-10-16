@@ -13,6 +13,10 @@ namespace FatzBomb.MediaControl.Rendering.Vulkan;
 internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
 {
     private readonly Lock _sync = new();
+
+    // Held for the whole render + sink hand-off so cleanup and dispose cannot tear the compositor
+    // down mid-frame. Lock order: _renderGate, then _sync.
+    private readonly Lock _renderGate = new();
     private VulkanOffscreenCompositor? _compositor;
     private MediaPresentationSurfaceDescriptor? _surface;
     private IMediaPresentationFrameSink? _sink;
@@ -104,44 +108,65 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             return false;
         }
 
-        try
+        var deviceLost = false;
+        lock (_renderGate)
         {
-            VulkanBlit? blit = frame.HasBackground
-                ? VulkanCompositionPlanner.PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, width, height, frame.EffectiveBackgroundStretchMode)
-                : null;
-            var pixels = compositor!.Render(
-                width,
-                height,
-                VulkanCompositionPlanner.ResolveClear(frame),
-                frame.HasBackground ? frame.BackgroundBgra.Span : [],
-                frame.BackgroundWidth,
-                frame.BackgroundHeight,
-                frame.BackgroundStride,
-                blit);
-            sink!.PresentFrame(pixels, width, height, width * 4);
-            FramePresented?.Invoke(this, EventArgs.Empty);
-            return true;
+            lock (_sync)
+            {
+                if (_disposed || !ReferenceEquals(_compositor, compositor))
+                    return false;
+            }
+
+            try
+            {
+                VulkanBlit? blit = frame.HasBackground
+                    ? VulkanCompositionPlanner.PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, width, height, frame.EffectiveBackgroundStretchMode)
+                    : null;
+                var pixels = compositor!.Render(
+                    width,
+                    height,
+                    VulkanCompositionPlanner.ResolveClear(frame),
+                    frame.HasBackground ? frame.BackgroundBgra.Span : [],
+                    frame.BackgroundWidth,
+                    frame.BackgroundHeight,
+                    frame.BackgroundStride,
+                    blit);
+                sink!.PresentFrame(pixels, width, height, width * 4);
+            }
+            catch (VulkanException exception)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Error,
+                    exception.IsDeviceLost ? DeviceLostDiagnosticCategory : "Vulkan",
+                    exception.Message,
+                    innerException: exception);
+                if (!exception.IsDeviceLost)
+                    return false;
+
+                deviceLost = true;
+            }
         }
-        catch (VulkanException exception)
+
+        if (deviceLost)
         {
-            DiagnosticRouter.Raise(
-                MediaDiagnosticLevel.Error,
-                exception.IsDeviceLost ? DeviceLostDiagnosticCategory : "Vulkan",
-                exception.Message,
-                innerException: exception);
-            if (exception.IsDeviceLost)
-                CleanupResources();
+            CleanupResources();
             return false;
         }
+
+        FramePresented?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public void CleanupResources()
     {
-        lock (_sync)
+        lock (_renderGate)
         {
-            _compositor?.Dispose();
-            _compositor = null;
-            IsInitialized = false;
+            lock (_sync)
+            {
+                _compositor?.Dispose();
+                _compositor = null;
+                IsInitialized = false;
+            }
         }
     }
 
@@ -153,17 +178,20 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     public void Dispose()
     {
-        lock (_sync)
+        lock (_renderGate)
         {
-            if (_disposed)
-                return;
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
 
-            _disposed = true;
-            _surface = null;
-            _sink = null;
-            _compositor?.Dispose();
-            _compositor = null;
-            IsInitialized = false;
+                _disposed = true;
+                _surface = null;
+                _sink = null;
+                _compositor?.Dispose();
+                _compositor = null;
+                IsInitialized = false;
+            }
         }
     }
 

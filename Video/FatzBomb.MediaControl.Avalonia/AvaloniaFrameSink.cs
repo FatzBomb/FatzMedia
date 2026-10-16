@@ -8,7 +8,9 @@ namespace FatzBomb.MediaControl.Avalonia;
 /// <summary>
 /// Receives final premultiplied BGRA frames from the selected renderer on its presentation
 /// thread and publishes the latest one to a <see cref="WriteableBitmap"/> on the UI thread.
-/// Frames that arrive while a publish is queued replace the pending frame (latest wins).
+/// Frames that arrive while a publish is queued replace the pending frame (latest wins). Two
+/// buffers alternate between the presentation thread and the UI thread, so steady playback
+/// does not allocate per frame.
 /// </summary>
 internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposable
 {
@@ -16,6 +18,7 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
     private readonly Action _frameUpdated;
     private readonly MediaPresentationFrameSinkHandle _handle;
     private byte[]? _pending;
+    private byte[]? _spare;
     private int _pendingWidth;
     private int _pendingHeight;
     private int _pendingStride;
@@ -34,6 +37,9 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
     /// <summary>Gets how many frames were published to the bitmap (UI thread only).</summary>
     public long PublishedFrames { get; private set; }
 
+    /// <summary>Gets how many frame buffers were allocated (diagnostics and tests).</summary>
+    internal int BufferAllocations { get; private set; }
+
     public MediaNativeSurfaceDescriptor CreateSurfaceDescriptor() => _handle.CreateSurfaceDescriptor();
 
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
@@ -47,8 +53,14 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
                 return;
 
             var length = stride * height;
+            if (_pending is null)
+                (_pending, _spare) = (_spare, null);
+
             if (_pending is null || _pending.Length < length)
+            {
                 _pending = new byte[length];
+                BufferAllocations++;
+            }
 
             bgraPixels[..length].CopyTo(_pending);
             (_pendingWidth, _pendingHeight, _pendingStride) = (width, height, stride);
@@ -78,6 +90,7 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
 
             _disposed = true;
             _pending = null;
+            _spare = null;
         }
 
         _handle.Dispose();
@@ -114,6 +127,13 @@ internal sealed class AvaloniaFrameSink : IMediaPresentationFrameSink, IDisposab
             var destination = new Span<byte>((void*)framebuffer.Address, framebuffer.RowBytes * height);
             for (var y = 0; y < height; y++)
                 pixels.AsSpan(y * stride, rowBytes).CopyTo(destination.Slice(y * framebuffer.RowBytes, rowBytes));
+        }
+
+        lock (_gate)
+        {
+            // Hand the copied-out buffer back for the next frame.
+            if (!_disposed && _spare is null)
+                _spare = pixels;
         }
 
         PublishedFrames++;

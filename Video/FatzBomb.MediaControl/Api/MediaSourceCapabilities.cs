@@ -79,8 +79,10 @@ public readonly record struct NetworkStreamProbe(long? ContentLength, bool Suppo
 /// <item><term>NetworkLive</term><description>no / no / yes / yes / yes / yes / no / no -
 /// <c>BufferingChanged</c>, <c>StreamMetadataChanged</c>, retry diagnostics; <c>MediaEnded</c> when the stream drops.</description></item>
 /// </list>
-/// Cancellation: every row is cancelled by Stop, Close, or a new Load. Network connects are
-/// bounded by <see cref="NetworkRetryPolicy.ConnectTimeout"/> per attempt.
+/// Cancellation: once a source is open, every row is stopped by Stop, Close, or a new Load. A
+/// network open in progress is not interruptible: it runs on the control queue for at most
+/// <see cref="NetworkRetryPolicy.ConnectTimeout"/> per attempt plus the retry delays, and
+/// commands issued meanwhile run after it.
 /// </remarks>
 public static class MediaSourceCapabilityMatrix
 {

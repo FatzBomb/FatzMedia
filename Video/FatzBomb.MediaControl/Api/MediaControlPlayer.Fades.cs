@@ -10,6 +10,9 @@ namespace FatzBomb.MediaControl;
 /// </summary>
 public partial class MediaControlPlayer
 {
+    /// <summary>Ramp used to bring outgoing media back to full gain when a faded transition fails.</summary>
+    private static readonly TimeSpan FailedTransitionRestoreRamp = TimeSpan.FromMilliseconds(250);
+
     private readonly AudioFadeRunner _fadeRunner = new();
     private AudioCrossfadeOptions _preparedNextTransitionFade = AudioCrossfadeOptions.Disabled;
 
@@ -40,11 +43,17 @@ public partial class MediaControlPlayer
     }
 
     /// <summary>
-    /// Fade-through transition: outgoing envelope on the current media, the incoming envelope's
+    /// Fade-through transition.
+    /// </summary>
+    /// <remarks>
+    /// Outgoing envelope on the current media, the incoming envelope's
     /// muted lead time as a gap, then the prepared item loads with its fade gain primed before
     /// playback starts, and the incoming envelope continues from its audible start. Runs off the
     /// control queue except for the load/play step, so controls stay responsive during fades.
-    /// </summary>
+    /// An interrupted outgoing fade (stop, <see cref="CancelFade"/>, or a newer fade) abandons
+    /// the transition; if the transition fails after the outgoing media was faded out, its
+    /// gain is restored so it does not keep playing silently.
+    /// </remarks>
     private async Task<bool> RunFadedPreparedNextTransitionAsync(
         long? expectedGeneration,
         bool isAutomatic,
@@ -55,11 +64,17 @@ public partial class MediaControlPlayer
         if (!_preparedNext.IsReady(expectedGeneration))
             return false;
 
+        IAudioFadeGainTarget? fadedOutgoing = null;
         if (fadeOutgoing
             && _mediaEngine.State == MediaPlayerState.Playing
             && _mediaEngine.Audio is IAudioFadeGainTarget outgoing)
         {
-            _ = await _fadeRunner.RunAsync(outgoing, fade.Outgoing, fade.Duration, 0, CancellationToken.None).ConfigureAwait(false);
+            AudioFadeOutcome outcome = await _fadeRunner.RunWithOutcomeAsync(outgoing, fade.Outgoing, fade.Duration, 0, CancellationToken.None).ConfigureAwait(false);
+            if (outcome == AudioFadeOutcome.Interrupted)
+                return false;
+
+            if (outcome == AudioFadeOutcome.Completed)
+                fadedOutgoing = outgoing;
         }
 
         TimeSpan mutedLead = fade.Duration * fade.Incoming.AudibleStart;
@@ -71,10 +86,18 @@ public partial class MediaControlPlayer
                 ? Task.FromResult(false)
                 : TransitionToPreparedNextCoreAsync(expectedGeneration, isAutomatic, fade)).ConfigureAwait(false);
 
-        if (transitioned && _mediaEngine.Audio is IAudioFadeGainTarget incoming)
+        if (!transitioned)
+        {
+            if (fadedOutgoing is not null)
+                _ = _fadeRunner.RestoreUnityIfIdle(fadedOutgoing, FailedTransitionRestoreRamp);
+
+            return false;
+        }
+
+        if (_mediaEngine.Audio is IAudioFadeGainTarget incoming)
             _ = await _fadeRunner.RunAsync(incoming, fade.Incoming, fade.Duration, fade.Incoming.AudibleStart, CancellationToken.None).ConfigureAwait(false);
 
-        return transitioned;
+        return true;
     }
 
     /// <summary>Sets the incoming fade gain before playback so the first samples are not at unity.</summary>

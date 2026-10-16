@@ -94,9 +94,19 @@ public partial class MediaControlPlayer
     {
         ThrowIfResetting();
         AudioCrossfadeOptions fade = PreparedNextTransitionFade;
-        return fade.IsEnabled
-            ? RunFadedPreparedNextTransitionAsync(expectedGeneration: null, isAutomatic: false, fade, fadeOutgoing: true, stillValid: null)
-            : EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false, fade: null));
+        if (!fade.IsEnabled)
+            return EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false, fade: null));
+
+        // The faded path waits off the queue; a pause, seek, stop, or load in the meantime
+        // means the host changed course, so the transition is abandoned.
+        var transportGeneration = Controls.TransportGeneration;
+        var loadGeneration = File.LoadGeneration;
+        bool StillValid() =>
+            !_disposed
+            && Controls.TransportGeneration == transportGeneration
+            && File.LoadGeneration == loadGeneration;
+
+        return RunFadedPreparedNextTransitionAsync(expectedGeneration: null, isAutomatic: false, fade, fadeOutgoing: true, StillValid);
     }
 
     private async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic, AudioCrossfadeOptions? fade)

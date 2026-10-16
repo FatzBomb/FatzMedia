@@ -59,7 +59,7 @@ internal static class IcyMetadataParser
         if (title is null && artist is null)
             return default;
 
-        return new StreamMetadata(title, artist, artist is null ? title : $"{artist} - {title}");
+        return new StreamMetadata(title, artist, artist is null ? title : title is null ? artist : $"{artist} - {title}");
     }
 
     private static StreamMetadata SplitArtistTitle(string raw)

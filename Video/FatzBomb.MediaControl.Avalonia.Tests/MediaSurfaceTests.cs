@@ -138,6 +138,27 @@ public sealed class MediaSurfaceTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void SteadyFrames_ReuseBuffersInsteadOfAllocating()
+    {
+        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        var surface = new MediaSurface { Player = session };
+        Window window = Show(surface, 4, 4);
+        _ = recorder.LastAttached!.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle);
+        _ = MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? sink);
+
+        var frame = new byte[4 * 4 * 4];
+        for (var i = 0; i < 10; i++)
+        {
+            sink!.PresentFrame(frame, 4, 4, 16);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.Equal(10, surface.FrameSink!.PublishedFrames);
+        Assert.Equal(1, surface.FrameSink.BufferAllocations);
+        window.Close();
+    }
+
     private static Window Show(MediaSurface surface, double width, double height)
     {
         var window = new Window { Width = width, Height = height, Content = surface };

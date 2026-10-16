@@ -65,3 +65,19 @@ restarts nor cancels it. `LoopMedia` still suppresses automatic transitions (031
 4. Stop during the fade-in, then Play: b plays at full gain (session reset).
 5. Pitch/tempo changes during the fade do not alter its wall-clock length.
 6. Video next item with `--fade-next`: transition happens, no fade, no errors.
+
+## Review follow-up (same day)
+
+A whole-branch review found three fade-transition defects, fixed with regression tests that
+fail on the previous code:
+
+- A faded transition that failed after the outgoing fade (slot cleared or stale, load
+  failed) left the current media playing at fade gain 0. The outgoing gain is now restored
+  over 250 ms unless another fade owns it.
+- A manual faded transition ignored Stop/CancelFade during the outgoing fade and still
+  loaded the next item. An interrupted outgoing fade now abandons the transition, and a
+  pause, seek, stop, or load during the fade or muted lead abandons it too.
+- `CancelFade` racing a fade's completion could throw `ObjectDisposedException`.
+
+Extra manual smoke: during a manual faded transition, press Pause mid-fade: the next item
+does not load and the current item returns to full volume.

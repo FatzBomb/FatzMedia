@@ -245,6 +245,16 @@ public sealed class IcyMetadataParserTests
     }
 
     [Fact]
+    public void ParseOgg_ArtistOnly_RawTitleIsArtistWithoutSeparator()
+    {
+        StreamMetadata metadata = IcyMetadataParser.ParseOggComments(["ARTIST=Foo"]);
+
+        Assert.Equal("Foo", metadata.Artist);
+        Assert.Null(metadata.Title);
+        Assert.Equal("Foo", metadata.RawTitle);
+    }
+
+    [Fact]
     public void ParseOgg_NoKnownFields_IsDefault() =>
         Assert.Equal(default, IcyMetadataParser.ParseOggComments(["ALBUM=x", "junk"]));
 }

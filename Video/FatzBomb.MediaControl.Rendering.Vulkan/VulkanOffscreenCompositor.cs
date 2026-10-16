@@ -42,6 +42,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
     private ImageResource? _targetImage;
     private BufferResource? _uploadBuffer;
     private BufferResource? _readbackBuffer;
+    private byte[] _output = [];
     private bool _disposed;
 
     private VulkanOffscreenCompositor(Vk vk) => _vk = vk;
@@ -88,9 +89,11 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
 
     /// <summary>
     /// Clears the target to <paramref name="clearBgraPremultiplied"/>, optionally blits the source
-    /// layer, and returns the target as tightly packed BGRA8 rows.
+    /// layer, and returns the target as tightly packed BGRA8 rows. The returned span is backed by a
+    /// buffer the compositor reuses; it is valid until the next <see cref="Render"/> or
+    /// <see cref="Dispose"/>, so callers copy it before rendering again.
     /// </summary>
-    public byte[] Render(
+    public ReadOnlySpan<byte> Render(
         int outputWidth,
         int outputHeight,
         (byte B, byte G, byte R, byte A) clearBgraPremultiplied,
@@ -189,12 +192,15 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
             Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
 
-            var output = new byte[checked(outputWidth * outputHeight * 4)];
+            var outputLength = checked(outputWidth * outputHeight * 4);
+            if (_output.Length != outputLength)
+                _output = new byte[outputLength];
+
             void* mapped;
-            Check(_vk.MapMemory(_device, _readbackBuffer.Value.Memory, 0, (ulong)output.Length, 0, &mapped), "vkMapMemory");
-            new ReadOnlySpan<byte>(mapped, output.Length).CopyTo(output);
+            Check(_vk.MapMemory(_device, _readbackBuffer.Value.Memory, 0, (ulong)outputLength, 0, &mapped), "vkMapMemory");
+            new ReadOnlySpan<byte>(mapped, outputLength).CopyTo(_output);
             _vk.UnmapMemory(_device, _readbackBuffer.Value.Memory);
-            return output;
+            return _output;
         }
     }
 
