@@ -58,7 +58,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private bool _disposed;
     private int _recoveryInProgress;
     private ReadOnlyMemory<byte> _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-    private byte[]? _compositionBackgroundCopyBuffer;
+    private RetainedFrameBuffer? _compositionBackgroundBuffer;
     private int _compositionBackgroundWidth;
     private int _compositionBackgroundHeight;
     private int _compositionBackgroundStride;
@@ -735,7 +735,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     {
         _ = UpdateSubtitleOverlay();
         MediaCompositionFrame frame;
-        byte[]? rentedBackground;
+        RetainedFrameBuffer? rentedBackground;
         CompositionPresentResult buildResult;
 
         if (deferIfCompositionBusy)
@@ -768,7 +768,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         bool retainedRefresh,
         string reason,
         out MediaCompositionFrame frame,
-        out byte[]? rentedBackground)
+        out RetainedFrameBuffer? rentedBackground)
     {
         frame = default;
         rentedBackground = null;
@@ -1018,7 +1018,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         if (updateSubtitleOverlay)
             _ = UpdateSubtitleOverlay(subtitlePositionSeconds);
         MediaCompositionFrame frame;
-        byte[]? rentedBackground;
+        RetainedFrameBuffer? rentedBackground;
         lock (_lock)
         {
             if (!EnsureBackendInitialized())
@@ -1030,7 +1030,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         return PresentSoftwareComposition(frame, rentedBackground);
     }
 
-    private CompositionPresentResult PresentSoftwareComposition(MediaCompositionFrame frame, byte[]? rentedBackground)
+    private CompositionPresentResult PresentSoftwareComposition(MediaCompositionFrame frame, RetainedFrameBuffer? rentedBackground)
     {
         try
         {
@@ -1044,8 +1044,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         }
         finally
         {
-            if (rentedBackground != null)
-                CompositionBackgroundPool.Return(rentedBackground);
+            rentedBackground?.Release();
         }
     }
 
@@ -1054,7 +1053,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         uint washArgb,
         bool retainedRefresh,
         string reason,
-        out byte[]? rentedBackground)
+        out RetainedFrameBuffer? rentedBackground)
     {
         rentedBackground = null;
         ReadOnlyMemory<byte> backgroundBgra;
@@ -1083,22 +1082,17 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             && backgroundWidth > 0
             && backgroundHeight > 0;
 
+        // The composition shares the retained pixels through a reference instead of copying
+        // them; SetCompositionLayer0Frame never overwrites a buffer a composition still holds.
         ReadOnlyMemory<byte> ownedBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-        if (hasBackground)
+        if (hasBackground && _compositionBackgroundBuffer is { } retainedBuffer)
         {
-            var backgroundLength = backgroundBgra.Length;
-            rentedBackground = CompositionBackgroundPool.Rent(backgroundLength);
-            try
-            {
-                backgroundBgra.Span.CopyTo(rentedBackground);
-                ownedBackgroundBgra = new ReadOnlyMemory<byte>(rentedBackground, 0, backgroundLength);
-            }
-            catch
-            {
-                CompositionBackgroundPool.Return(rentedBackground);
-                rentedBackground = null;
-                throw;
-            }
+            rentedBackground = retainedBuffer.AddReference();
+            ownedBackgroundBgra = backgroundBgra;
+        }
+        else
+        {
+            hasBackground = false;
         }
 
         SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
@@ -1217,11 +1211,18 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         lock (_lock)
         {
-            if (_compositionBackgroundCopyBuffer == null || _compositionBackgroundCopyBuffer.Length != required)
-                _compositionBackgroundCopyBuffer = new byte[required];
+            // Reuse the retained buffer in place only when no in-flight composition references it;
+            // otherwise retain into a fresh pooled buffer and let the last reader return the old one.
+            RetainedFrameBuffer? buffer = _compositionBackgroundBuffer;
+            if (buffer is null || !buffer.IsExclusive || buffer.Length != required)
+            {
+                buffer?.Release();
+                buffer = RetainedFrameBuffer.Rent(CompositionBackgroundPool, required);
+                _compositionBackgroundBuffer = buffer;
+            }
 
-            frame.PixelData.Span[..required].CopyTo(_compositionBackgroundCopyBuffer);
-            _compositionBackgroundBgra = new ReadOnlyMemory<byte>(_compositionBackgroundCopyBuffer, 0, required);
+            frame.PixelData.Span[..required].CopyTo(buffer.Memory.Span);
+            _compositionBackgroundBgra = buffer.Memory;
 
             _compositionBackgroundWidth = frame.Width;
             _compositionBackgroundHeight = frame.Height;
@@ -1243,7 +1244,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private void ClearCompositionLayer0FrameNoLock()
     {
         _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-        _compositionBackgroundCopyBuffer = null;
+        _compositionBackgroundBuffer?.Release();
+        _compositionBackgroundBuffer = null;
         _compositionBackgroundWidth = 0;
         _compositionBackgroundHeight = 0;
         _compositionBackgroundStride = 0;
@@ -1383,6 +1385,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             _rendererBackend.CleanupResources();
             _rendererBackend.Dispose();
+            ClearCompositionLayer0FrameNoLock();
         }
         _subtitleRasterizer.Dispose();
         _presentationScheduler.Dispose();

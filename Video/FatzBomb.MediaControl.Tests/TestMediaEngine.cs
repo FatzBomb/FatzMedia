@@ -52,7 +52,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public event EventHandler? MediaEnded;
     public event EventHandler? MediaLooped;
     public event EventHandler<VideoFrameEventArgs>? ImageFrameReady { add { } remove { } }
-    public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady { add { } remove { } }
+    public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady;
     public event EventHandler? BackgroundCleared { add { } remove { } }
 
     public void SetDisplayRefreshRate(double? refreshHz)
@@ -151,6 +151,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 
     public void RaiseMediaEnded() => MediaEnded?.Invoke(this, EventArgs.Empty);
+    public void RaiseBackgroundFrame(VideoFrameEventArgs frame) => BackgroundFrameReady?.Invoke(this, frame);
     public void CompletePlayback()
     {
         State = MediaPlayerState.Stopped;

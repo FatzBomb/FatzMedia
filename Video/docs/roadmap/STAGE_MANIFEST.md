@@ -24,6 +24,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/017A_1`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted, pending manual video smoke (`updates/015A_1`).
+- `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
+  full-frame copy removed, pending manual smoke (`updates/010A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -66,7 +68,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/010A_IDEA_SoftwareVideoUploadCopyPath.md`.
+Next stage: `future/018A_IDEA_CDGSnapshotOwnershipRedesignPooling.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -75,7 +77,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/010A_IDEA_SoftwareVideoUploadCopyPath.md` - reduce software-frame copy and upload cost.
 - `future/018A_IDEA_CDGSnapshotOwnershipRedesignPooling.md` - explicit snapshot ownership and reuse.
 - `future/019A_IDEA_VideoFrameEventArgsReuseApiRedesign.md` - explicit event payload lifetimes.
 - `future/022A_IDEA_ThreadModelProfilingAndSimplification.md` - measured thread ownership cleanup.
