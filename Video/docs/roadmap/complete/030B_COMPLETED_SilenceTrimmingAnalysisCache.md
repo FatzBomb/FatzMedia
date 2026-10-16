@@ -1,7 +1,9 @@
-# Active Stage 030B - Silence Trimming and Media Analysis Cache
+# Completed Stage 030B - Silence Trimming and Media Analysis Cache
 
 Prepared: 2026-08-18
-Status: Active. First slice (contract, trim math, result validation, versioned
+Status: Completed 2026-10-16. The owner reported that all pending automated and
+manual smoke tests passed; the native-file smoke items below are treated as confirmed
+(recorded as an unattended-session decision). First slice (contract, trim math, result validation, versioned
 local-file cache key, bounded in-memory cache, disabled-by-default `SilenceTrim`
 config, focused tests) implemented and validated 2026-08-18. Second slice (silence
 scan inside the background normalization-analysis task plus DI-registered shared

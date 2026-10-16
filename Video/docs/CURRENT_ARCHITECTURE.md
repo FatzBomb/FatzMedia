@@ -609,7 +609,7 @@ and invalid records as misses. The shared process-lifetime instance
 (`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
 container (`MediaControlServiceProvider`) and therefore survives player `Reset`.
 The pinned contract lives at
-`roadmap/active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md`.
+`roadmap/complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md`.
 
 **Analyzer slice (2026-08-18)** — for enabled plain local non-tracker audio, a
 cancellable sequential 0.1-second silence scan (`AudioSilenceAnalyzer`) runs inside
