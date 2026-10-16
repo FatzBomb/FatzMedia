@@ -26,6 +26,10 @@ public partial class App : Application
 
     public static bool EnableSilenceTrim { get; private set; }
 
+    public static string? PrepareNextPath { get; private set; }
+
+    public static bool AutoTransitionToPreparedNext { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -42,6 +46,13 @@ public partial class App : Application
             string.Equals(argument, "--visual-transform-demo", StringComparison.OrdinalIgnoreCase));
         EnableSilenceTrim = e.Args.Any(static argument =>
             string.Equals(argument, "--trim-silence", StringComparison.OrdinalIgnoreCase));
+        const string prepareNextPrefix = "--prepare-next=";
+        PrepareNextPath = e.Args
+            .Where(static argument => argument.StartsWith(prepareNextPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[prepareNextPrefix.Length..].Trim('"'))
+            .FirstOrDefault(static path => path.Length > 0);
+        AutoTransitionToPreparedNext = e.Args.Any(static argument =>
+            string.Equals(argument, "--auto-next", StringComparison.OrdinalIgnoreCase));
         StartupMediaPath = e.Args.FirstOrDefault(static argument =>
             !argument.StartsWith("--", StringComparison.Ordinal));
 

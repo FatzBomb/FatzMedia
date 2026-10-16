@@ -253,6 +253,8 @@ public sealed class MediaFile
         }
     }
 
+    internal int LoadGeneration => Volatile.Read(ref _loadGeneration);
+
     private int BeginLoadOperation() => Interlocked.Increment(ref _loadGeneration);
 
     private void InvalidatePendingPlayOnLoad() => _ = Interlocked.Increment(ref _loadGeneration);

@@ -54,6 +54,8 @@ public partial class MediaControlPlayer
         EventHandler? handler = MediaEnded;
         if (handler != null)
             _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+
+        ScheduleAutomaticPreparedNextTransition();
     }
 
     private void OnControlsMediaStarted(object? sender, EventArgs e)

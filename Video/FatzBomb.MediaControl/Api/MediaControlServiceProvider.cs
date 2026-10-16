@@ -39,6 +39,8 @@ public static class MediaControlServiceProvider
         _ = services.AddSingleton(MediaAnalysisCache.Shared);
         _ = services.AddSingleton<IAudioEngine>(provider =>
             CreateAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>()));
+        _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
+            provider.GetRequiredService<IAudioEngine>() as IMediaFileAnalyzer ?? UnavailableMediaFileAnalyzer.Instance);
         _ = services.AddSingleton<ICdgEngine, CdgEngine>();
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();

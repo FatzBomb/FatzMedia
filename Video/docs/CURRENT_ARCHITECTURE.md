@@ -583,11 +583,10 @@ line reports `Visual transform=IDENTITY|ACTIVE`, `AutoHide=`, and
 `Load resets: Pitch=…, Tempo=…` alongside renderer/presentation. Validation
 tooling only, not production UI.
 
-## Silence Trimming Analysis Cache (Stage 030B, active — contract, cache, analyzer, and transport slices)
+## Silence Trimming Analysis Cache (Stage 030B, completed)
 
-Stage 030B is active (2026-08-18); the contract/cache-foundation, analyzer-scan, and
-plain-audio transport-application slices are implemented and validated, while the
-real native-file analyzer/transport smoke remains pending. The public API adds
+Stage 030B is completed (2026-10-16): the contract/cache-foundation, analyzer-scan, and
+plain-audio transport-application slices are implemented and owner-confirmed. The public API adds
 immutable `SilenceTrimOptions`
 (disabled by default: `Enabled = false`; pinned defaults threshold `-50 dBFS`,
 minimum qualifying edge silence `0.5 s`, retained edge padding `0.1 s`, independent
@@ -647,7 +646,28 @@ Tempo changes alter wall-clock arrival of the position sync but do not require
 rearming it. CDG-paired opens pass `analyzeSilence: false`; video, archives,
 tracker/MOD formats, and live/stream inputs remain excluded; disabled/default
 behavior remains identity. The first uncached `Open` only warms the cache — a
-future explicit pre-analysis / prepared-next path supplies first-play cache.
+Stage 031A's prepared-next analysis supplies first-play cache.
+
+## Prepared-Next Slot (Stage 031A, implemented — pending manual smoke)
+
+Core owns a depth-one prepared-next slot; hosts own playlists and queues.
+`IMediaControlSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
+`AnalyzeAsync`, `PrepareNextAsync`, `ClearPreparedNext`,
+`TransitionToPreparedNextAsync`, `AutoTransitionToPreparedNext` (default off), and the
+`PreparedNextChanged` / `PreparedNextTransitioned` events. The internal
+`Core/Prepared/PreparedNextSlot` state machine (Empty → Analyzing → Ready →
+Transitioning → Empty; Ready → Stale when the prepared file's path/length/last-write
+identity changes) guards every completion with a generation so cleared or replaced
+items never resurrect. Analysis goes through the internal `IMediaFileAnalyzer`, which
+the BASS `AudioEngine` implements on its own decode stream (never the current media's
+handles) and which warms the shared 030B `MediaAnalysisCache` and normalization-gain
+cache, so the later transition load hits the cache instead of rescanning. Only local
+plain non-tracker audio is analyzed; other sources reach Ready with no analysis.
+Transitions run on the control queue (load, then play); automatic transitions are
+queued behind the host `MediaEnded` delivery and Core end completion and are skipped
+when the host intervened (transport generation, load generation, slot generation,
+loop, or auto flag changed). `Reset` and `Dispose` clear the slot. See
+`roadmap/active/031A_ACTIVE_PreparedNextPlaylistSlot.md`.
 
 ## Session Reset
 

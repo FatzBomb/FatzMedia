@@ -408,6 +408,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.MediaError += OnPlayerError;
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
+            StartPreparedNextValidation(player);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
             var trimSummary = $"Silence trim={App.EnableSilenceTrim}";
@@ -675,6 +676,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.MediaError -= OnPlayerError;
             player.PitchChanged -= OnPlayerPitchChanged;
             player.TempoChanged -= OnPlayerTempoChanged;
+            StopPreparedNextValidation(player);
             player.Dispose();
         }
     }

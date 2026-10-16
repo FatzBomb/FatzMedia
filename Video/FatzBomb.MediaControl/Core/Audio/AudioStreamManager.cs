@@ -20,7 +20,7 @@ internal sealed class AudioStreamManager : IDisposable
     private const BassFlags CreateStreamFlags =
         BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
 
-    private const BassFlags DecodeFlags =
+    internal const BassFlags DecodeFlags =
         BassFlags.Decode | BassFlags.Float | BassFlags.Prescan;
 
     // Tracker byte seeking requires Prescan on the decode source wrapped by BASS_FX.

@@ -158,6 +158,42 @@ public interface IMediaControlSession : IDisposable
     void Close();
 
     /// <summary>
+    /// Gets a snapshot of the depth-one prepared-next slot. The host owns its playlist; Core keeps at
+    /// most one item analyzed and ready.
+    /// </summary>
+    PreparedNextInfo PreparedNext { get; }
+
+    /// <summary>
+    /// Gets or sets whether a Ready prepared item starts automatically when the current media ends
+    /// naturally. Ignored while <see cref="LoopMedia"/> is enabled. Disabled by default.
+    /// </summary>
+    bool AutoTransitionToPreparedNext { get; set; }
+
+    /// <summary>
+    /// Analyzes a local media file without preparing or loading it, and warms the shared analysis
+    /// cache. Returns <see langword="null"/> when the source is not analyzable.
+    /// </summary>
+    Task<MediaAnalysisResult?> AnalyzeAsync(MediaInputSource source, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Analyzes and prepares a candidate into the depth-one slot, replacing any previously
+    /// prepared item. Current playback is unaffected. Returns <see langword="true"/> when the
+    /// candidate reached Ready, or <see langword="false"/> if it was invalid, cleared, replaced,
+    /// or cancelled first.
+    /// </summary>
+    Task<bool> PrepareNextAsync(MediaInputSource source, CancellationToken cancellationToken = default);
+
+    /// <summary>Discards the prepared item and cancels its analysis.</summary>
+    bool ClearPreparedNext();
+
+    /// <summary>
+    /// Loads the Ready prepared item as the current media and starts playback. Returns
+    /// <see langword="false"/> when no item is Ready, the prepared file changed (Stale), or the
+    /// load failed. The slot is empty afterwards in every case except Stale.
+    /// </summary>
+    Task<bool> TransitionToPreparedNextAsync();
+
+    /// <summary>
     /// Stops all running processes, disposes internal resources, then reinitializes the entire
     /// engine with the supplied configuration and native-library paths. Existing presentation
     /// surface registrations are preserved and reattached. No media is loaded after reset; the
@@ -212,6 +248,12 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised after an accepted seek settles on its resulting position.</summary>
     event EventHandler<MediaSeekCompletedEventArgs>? SeekCompleted;
+
+    /// <summary>Raised when the prepared-next slot changes state.</summary>
+    event EventHandler<PreparedNextChangedEventArgs>? PreparedNextChanged;
+
+    /// <summary>Raised after a prepared item became the current media.</summary>
+    event EventHandler<PreparedNextTransitionedEventArgs>? PreparedNextTransitioned;
 
     /// <summary>Raised when the effective user volume changes.</summary>
     event EventHandler<MediaValueChangedEventArgs<double>>? VolumeChanged;

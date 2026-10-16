@@ -178,6 +178,12 @@ public sealed class MediaControls
     public TimeSpan Position => TimeSpan.FromSeconds(_mediaEngine.Position);
 
     /// <summary>
+    /// Gets the transport generation, which advances on every accepted Play, Pause, Stop, Seek,
+    /// and loop restart so queued follow-up work can detect host intervention.
+    /// </summary>
+    internal long TransportGeneration => Volatile.Read(ref _transportGeneration);
+
+    /// <summary>
     /// Gets the total loaded media duration.
     /// </summary>
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);

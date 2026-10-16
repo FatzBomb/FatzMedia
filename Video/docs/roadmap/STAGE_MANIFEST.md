@@ -2,7 +2,11 @@
 
 ## Active
 
-None. The next stage is selected from the Future Ideas list below.
+Stages implemented in the unattended 2026-10-16 session stay here, each
+"implemented, pending manual smoke", until the owner confirms the smoke in its update note.
+
+- `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented, pending manual smoke
+  (`updates/031A_1`); 30 focused tests.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -45,7 +49,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/031A_IDEA_PreparedNextPlaylistSlot.md`.
+Next stage: `future/031B_IDEA_AudioFadeCrossfadeModel.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -54,7 +58,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/031A_IDEA_PreparedNextPlaylistSlot.md` - host-owned playlist with a Core depth-one prepared-next slot.
 - `future/031B_IDEA_AudioFadeCrossfadeModel.md` - audio fade/crossfade envelope model for ordinary local audio.
 - `future/014A_IDEA_StreamingNetworkPlayback.md` - direct HTTP/HTTPS audio/video with a source capability matrix.
 - `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.

@@ -12,7 +12,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer
 {
     private const double CachedDurationToleranceSeconds = 0.25;
 
@@ -41,6 +41,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private int _playbackEndSyncChannel;
     private bool _loopPlayback;
     private MediaAnalysisResult? _activeTrimWindow;
+    private readonly CancellationTokenSource _standaloneAnalysisLifetime = new();
+    private int _standaloneAnalysisCount;
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private volatile bool _disposed;
@@ -474,6 +476,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (_disposed) return;
 
         CancelNormalizationAnalysis();
+        StopStandaloneAnalyses();
         RemovePlaybackEndSync();
 
         _streamManager.Close();
@@ -518,6 +521,93 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Tempo, percent);
         // BASS_FX position syncs remain tied to the same rendered audio position after
         // a tempo change; only their wall-clock arrival changes, so no re-arm is needed.
+    }
+
+    /// <summary>
+    /// Analyzes a local plain-audio file on its own decode stream without touching the current
+    /// media, then warms the shared media-analysis and normalization-gain caches so a later open of
+    /// the same file applies the result without rescanning.
+    /// </summary>
+    async Task<MediaAnalysisResult?> IMediaFileAnalyzer.AnalyzeAsync(string filePath, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        if (_disposed || AudioStreamManager.IsTrackerFormat(filePath) || !File.Exists(filePath))
+            return null;
+
+        MediaAnalysisCacheKey? mediaKey = CreateMediaAnalysisCacheKey(filePath, analyzeSilence: true);
+        if (mediaKey is { } cachedKey
+            && _analysisCache.TryGet(cachedKey, out var cached)
+            && cached is not null)
+        {
+            return cached;
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _standaloneAnalysisLifetime.Token);
+        var token = linked.Token;
+        _ = Interlocked.Increment(ref _standaloneAnalysisCount);
+        var handle = 0;
+        try
+        {
+            handle = MBass.CreateStream(filePath, Flags: AudioStreamManager.DecodeFlags);
+            if (handle == 0)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Standalone analysis could not open '{filePath}': {MBass.LastError}", sourcePath: filePath);
+                return null;
+            }
+
+            var lengthBytes = MBass.ChannelGetLength(handle);
+            var sourceDuration = lengthBytes > 0 ? MBass.ChannelBytes2Seconds(handle, lengthBytes) : 0;
+            if (!double.IsFinite(sourceDuration) || sourceDuration <= 0)
+                return null;
+
+            var gainKey = CreatePathNormalizationCacheKey(filePath);
+            if (!NormalizationGainCache.TryGetValue(gainKey, out var normalizationGain))
+            {
+                var peak = await _normalizer.AnalyzePeakAsync(handle, updateGain: false, cancellationToken: token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                normalizationGain = AudioNormalizer.CalculateGainFromPeak(peak);
+                NormalizationGainCache[gainKey] = normalizationGain;
+            }
+
+            var scan = await _silenceAnalyzer.ScanAsync(handle, sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            var result = SilenceTrimCalculator.Calculate(scan.SourceDuration, scan.SilenceRegions, normalizationGain, _silenceTrim);
+            if (mediaKey is { } storeKey)
+                _ = _analysisCache.TryStore(storeKey, result);
+
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "AudioEngine",
+                $"Standalone analysis complete: {result.SilenceRegions.Count} region(s), playable={result.PlayableDuration:F3}s, gain={normalizationGain:F3}",
+                sourcePath: filePath);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _standaloneAnalysisLifetime.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Standalone analysis failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
+            return null;
+        }
+        finally
+        {
+            if (handle != 0)
+                _ = MBass.StreamFree(handle);
+            _ = Interlocked.Decrement(ref _standaloneAnalysisCount);
+        }
+    }
+
+    private void StopStandaloneAnalyses()
+    {
+        _standaloneAnalysisLifetime.Cancel();
+
+        // Standalone analyses own their decode handles. Cancellation is cooperative (one level
+        // window per check), so give them a short bounded join before engine teardown proceeds.
+        var deadline = Environment.TickCount64 + 2000;
+        while (Volatile.Read(ref _standaloneAnalysisCount) > 0 && Environment.TickCount64 < deadline)
+            Thread.Sleep(10);
     }
 
     /// <inheritdoc/>
