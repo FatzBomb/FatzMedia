@@ -115,8 +115,7 @@ idempotency, and explicit rejection from an inline control event.
 Resolved: 2026-08-17
 
 Stage 030A was archived after its manual smoke passed, active/completed roadmap links
-were updated, and this engineering register was added. The generated Graphify index
-still requires an incremental refresh after the current working tree is committed.
+were updated, and this engineering register was added.
 
 ## Current Validation Baseline
 

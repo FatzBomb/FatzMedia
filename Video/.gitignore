@@ -5,23 +5,15 @@ obj/
 *.suo
 *.nupkg
 *.snupkg
-graphify.bat
-graphify.ps1
 profiling/
 
 # Ignore the massive sea of root-level architectural notes
 /*-NOTES.md
 
-# Ignore local AI configurations
-graphify-out/
-
 # Remove Hash for Code Cleanup, add for normal use
 # *.md
 plans/
 # docs/
-
-# OpenCode local data / cache
-.opencode/
 
 /*.zip
 /*.patch
@@ -34,4 +26,3 @@ TestResults/
 artifacts/
 **/native/win-x64/*.dll
 **/native/*.dll
-# graphify-out/
