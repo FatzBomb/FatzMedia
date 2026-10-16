@@ -69,6 +69,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
         SubscribeNewSessionEvents();
+        SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
 
         if (_mediaEngine is IMediaErrorSource errorSource)
@@ -467,6 +468,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
         try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
         try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeNetworkEvents(); } catch { }
         try { UnsubscribeSeekCompletionSources(); } catch { }
         try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
         try { _positionNotifier.Dispose(); } catch { }
@@ -527,6 +529,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
         SubscribeNewSessionEvents();
+        SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
@@ -601,6 +604,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
         try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
         try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeNetworkEvents(); } catch { }
         try { UnsubscribeSeekCompletionSources(); } catch { }
         try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
         try { _positionNotifier.Dispose(); } catch { }

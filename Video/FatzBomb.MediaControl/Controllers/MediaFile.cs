@@ -301,7 +301,10 @@ public sealed class MediaFile
         _mediaEffects?.RefreshActiveEngine();
         _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
         _cdgVisuals?.Apply();
-        _currentSource = new MediaSourceInfo(source, _mediaEngine.Content);
+        _currentSource = new MediaSourceInfo(
+            source,
+            _mediaEngine.Content,
+            (_mediaEngine as IMediaSourceCapabilityProvider)?.CurrentCapabilities);
         HostEventDispatcher.Raise(
             this,
             MediaLoaded,

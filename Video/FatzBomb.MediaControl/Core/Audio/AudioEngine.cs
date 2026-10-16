@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio.Fade;
+using FatzBomb.MediaControl.Core.Network;
 using ManagedBass;
 using ManagedBass.Fx;
 using System.Collections.Concurrent;
@@ -14,7 +15,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource
 {
     private const double CachedDurationToleranceSeconds = 0.25;
 
@@ -56,6 +57,13 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     };
     private int _fadeFxHandle;
     private int _fadeSession;
+    private readonly NetworkRetryPolicy _networkRetry;
+    private readonly Lock _networkGate = new();
+    private readonly SyncProcedure _networkMetadataSyncProcedure;
+    private Timer? _networkMonitor;
+    private BufferingStateTracker? _bufferingTracker;
+    private MediaSourceCapabilities? _networkCapabilities;
+    private int _networkGeneration;
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private volatile bool _disposed;
@@ -92,8 +100,11 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         AudioStreamManager streamManager,
         IOutputLatencyProvider outputLatencyProvider,
         SilenceTrimOptions silenceTrim = default,
-        MediaAnalysisCache? analysisCache = null)
+        MediaAnalysisCache? analysisCache = null,
+        NetworkRetryPolicy? networkRetry = null)
     {
+        _networkRetry = networkRetry ?? NetworkRetryPolicy.Default;
+        _networkMetadataSyncProcedure = OnNetworkMetadataSync;
         _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         _silenceAnalyzer = new AudioSilenceAnalyzer();
         _analysisCache = analysisCache ?? MediaAnalysisCache.Shared;
@@ -300,6 +311,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 return false;
 
             EndFadeSession(releaseHandle: true);
+            StopNetworkMonitoring();
             var success = _streamManager.OpenFromPath(filePath);
             if (success)
             {
@@ -363,6 +375,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 return false;
 
             EndFadeSession(releaseHandle: true);
+            StopNetworkMonitoring();
             var success = _streamManager.OpenFromArchive(archiveEntry);
             if (success)
             {
@@ -496,6 +509,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         CancelNormalizationAnalysis();
         RemovePlaybackEndSync();
         EndFadeSession(releaseHandle: true);
+        StopNetworkMonitoring();
 
         _streamManager.Close();
         Volatile.Write(ref _activeTrimWindow, null);
@@ -617,6 +631,197 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
+    public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
+
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
+
+    MediaSourceCapabilities? INetworkAudioSource.NetworkCapabilities
+    {
+        get
+        {
+            lock (_networkGate)
+            {
+                return _networkCapabilities;
+            }
+        }
+    }
+
+    bool INetworkAudioSource.OpenUrl(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+
+        try
+        {
+            CancelNormalizationAnalysis();
+            RemovePlaybackEndSync();
+            ResetActiveTrimWindow();
+            EndFadeSession(releaseHandle: true);
+            StopNetworkMonitoring();
+
+            if (!_bassInitialized)
+            {
+                if (!Init(_requestedDevice))
+                {
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", "Failed to initialize BASS for network stream", sourcePath: url);
+                    return false;
+                }
+                _bassInitialized = true;
+            }
+
+            if (!BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine"))
+                return false;
+
+            // BASS network timeouts are process-wide settings; they are applied per open so the
+            // most recent player's policy governs its own connect.
+            MBass.NetTimeOut = (int)_networkRetry.ConnectTimeout.TotalMilliseconds;
+            MBass.NetReadTimeOut = (int)_networkRetry.ConnectTimeout.TotalMilliseconds;
+
+            var success = false;
+            for (var attempt = 1; attempt <= _networkRetry.MaxAttempts; attempt++)
+            {
+                if (attempt > 1)
+                {
+                    var delay = _networkRetry.GetDelayBeforeRetry(attempt - 1);
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Network retry {attempt - 1}/{_networkRetry.MaxRetries} in {delay.TotalSeconds:F1}s", sourcePath: url);
+                    Thread.Sleep(delay);
+                    if (_disposed)
+                        return false;
+                }
+
+                success = _streamManager.OpenFromUrl(url);
+                if (success)
+                    break;
+            }
+
+            if (!success)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Network stream unavailable after {_networkRetry.MaxAttempts} attempt(s): {MBass.LastError}", sourcePath: url);
+                return false;
+            }
+
+            _normalizer.ResetGain(clearFxHandle: true);
+            CurrentTempo = 0;
+            var playHandle = _streamManager.PlayHandle;
+            if (playHandle != 0)
+            {
+                _ = _normalizer.SetupGainFx(playHandle);
+                SetupFadeFx(playHandle);
+            }
+
+            // No pre-analysis for network sources: normalization stays at unity gain.
+            _normalizationReady = true;
+            NetworkStreamProbe probe = _streamManager.ProbeNetworkSource();
+            MediaSourceCapabilities capabilities = MediaSourceCapabilityMatrix.ForNetwork(probe);
+            StartNetworkMonitoring(capabilities);
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "AudioEngine",
+                $"Network stream connected: {capabilities.SourceClass}, length={probe.ContentLength?.ToString() ?? "unknown"}, ranges={probe.SupportsRangeRequests}, icy={probe.HasIcyMetadata}",
+                sourcePath: url);
+
+            AttachPlaybackEndSync();
+            Opened?.Invoke(this, EventArgs.Empty);
+            State = AudioEngineState.Stopped;
+            PublishNetworkMetadata();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Network open failed: {ex.Message}", sourcePath: url, innerException: ex);
+            return false;
+        }
+    }
+
+    private void StartNetworkMonitoring(MediaSourceCapabilities capabilities)
+    {
+        var syncHandle = _streamManager.NetworkSyncHandle;
+        lock (_networkGate)
+        {
+            var generation = ++_networkGeneration;
+            _networkCapabilities = capabilities;
+            _bufferingTracker = new BufferingStateTracker(0.05, Math.Clamp(MBass.NetPreBuffer / 100.0, 0.05, 1));
+            _networkMonitor = new Timer(_ => SampleNetworkBuffer(generation), null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
+        }
+
+        if (syncHandle != 0)
+        {
+            _ = MBass.ChannelSetSync(syncHandle, SyncFlags.MetadataReceived, 0, _networkMetadataSyncProcedure);
+            _ = MBass.ChannelSetSync(syncHandle, SyncFlags.OggChange, 0, _networkMetadataSyncProcedure);
+        }
+    }
+
+    private void StopNetworkMonitoring()
+    {
+        Timer? monitor;
+        lock (_networkGate)
+        {
+            _networkGeneration++;
+            monitor = _networkMonitor;
+            _networkMonitor = null;
+            _bufferingTracker = null;
+            _networkCapabilities = null;
+        }
+
+        // Syncs are freed with the stream; the timer is disposed here and stale callbacks are
+        // ignored by generation.
+        monitor?.Dispose();
+    }
+
+    private void SampleNetworkBuffer(int generation)
+    {
+        try
+        {
+            BufferingStateTracker? tracker;
+            lock (_networkGate)
+            {
+                if (generation != _networkGeneration || _bufferingTracker is null)
+                    return;
+
+                tracker = _bufferingTracker;
+            }
+
+            var (bufferedBytes, targetBytes, downloadComplete) = _streamManager.SampleNetworkBuffer();
+            bool changed;
+            double fill;
+            bool isBuffering;
+            lock (_networkGate)
+            {
+                if (generation != _networkGeneration)
+                    return;
+
+                changed = tracker.Update(bufferedBytes, targetBytes, downloadComplete, out fill);
+                isBuffering = tracker.IsBuffering;
+            }
+
+            if (changed)
+                BufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Network buffer sampling failed: {ex.Message}", innerException: ex);
+        }
+    }
+
+    private void OnNetworkMetadataSync(int handle, int channel, int data, IntPtr user) => PublishNetworkMetadata();
+
+    private void PublishNetworkMetadata()
+    {
+        try
+        {
+            StreamMetadata metadata = IcyMetadataParser.ParseIcy(_streamManager.ReadIcyMetadata());
+            if (metadata == default)
+                metadata = IcyMetadataParser.ParseOggComments(_streamManager.ReadOggComments());
+            if (metadata == default)
+                return;
+
+            StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(metadata.Title, metadata.Artist, metadata.RawTitle));
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Stream metadata read failed: {ex.Message}", innerException: ex);
+        }
+    }
+
     int IAudioFadeGainTarget.BeginFadeSession()
     {
         lock (_fadeGate)
@@ -734,6 +939,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         CancelNormalizationAnalysis();
         StopStandaloneAnalyses();
+        StopNetworkMonitoring();
 
         _streamManager?.Dispose();
 

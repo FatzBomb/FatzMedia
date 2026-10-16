@@ -259,8 +259,30 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource
 {
+    public bool NetworkOpenSucceeds { get; set; } = true;
+    public string? LastNetworkUrl { get; private set; }
+    public MediaSourceCapabilities? NetworkCapabilities { get; set; }
+    public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
+
+    public bool OpenUrl(string url)
+    {
+        LastNetworkUrl = url;
+        if (!NetworkOpenSucceeds)
+            return false;
+
+        SetState(AudioEngineState.Stopped);
+        return true;
+    }
+
+    public void RaiseBuffering(bool isBuffering, double fill) =>
+        BufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
+
+    public void RaiseStreamMetadata(string? title, string? artist) =>
+        StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(title, artist, $"{artist} - {title}"));
+
     private int _fadeSession;
 
     public bool FadeAvailable { get; set; } = true;

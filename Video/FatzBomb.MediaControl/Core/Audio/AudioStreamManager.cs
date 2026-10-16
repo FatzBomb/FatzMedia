@@ -205,6 +205,140 @@ internal sealed class AudioStreamManager : IDisposable
     }
 
     /// <summary>
+    /// Opens a direct HTTP/HTTPS audio stream. Only the playback source is created: a second
+    /// decode connection for analysis would double the network load, so network sources have no
+    /// analysis handle. The caller sets BASS network timeouts before calling.
+    /// </summary>
+    /// <returns>True if the stream connected and the playback chain was created.</returns>
+    public bool OpenFromUrl(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+
+        Close();
+
+        try
+        {
+            _sourceHandle = MBass.CreateStream(url, 0, CreateStreamFlags, null, IntPtr.Zero);
+            _sourceHandleIsMusic = false;
+            DecodeHandle = 0;
+            _decodeHandleIsMusic = false;
+            if (_sourceHandle == 0)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioStreamManager", $"Network connect failed: {MBass.LastError}", sourcePath: url);
+                return false;
+            }
+
+            IsNetworkSource = true;
+            AttachTempoProcessor();
+            ResetState();
+            return PlayHandle != 0;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"OpenFromUrl failed: {ex.Message}", sourcePath: url, innerException: ex);
+            Close();
+            return false;
+        }
+    }
+
+    /// <summary>Gets whether the open source is a network stream.</summary>
+    public bool IsNetworkSource { get; private set; }
+
+    private long? _networkContentLength;
+
+    /// <summary>
+    /// Describes the connected network stream for the capability matrix. A stream is finite only
+    /// when the server sent <c>Content-Length</c> or BASS reports a channel length; BASS returns
+    /// the download-buffer size as <c>FILEPOS_END</c> for block-streamed (unknown-length) sources,
+    /// so that value alone is not trusted. Range support comes from <c>Accept-Ranges: bytes</c>.
+    /// </summary>
+    public NetworkStreamProbe ProbeNetworkSource()
+    {
+        if (!IsNetworkSource || _sourceHandle == 0)
+            return new NetworkStreamProbe(null, false, false);
+
+        var headers = ReadMultiStringTag(_sourceHandle, TagType.HTTP);
+        var icyHeaders = ReadMultiStringTag(_sourceHandle, TagType.ICY);
+        long? contentLength = TryReadContentLength(headers);
+        if (contentLength is null && MBass.ChannelGetLength(_sourceHandle) > 0)
+        {
+            var end = MBass.StreamGetFilePosition(_sourceHandle, FileStreamPosition.End);
+            contentLength = end > 0 ? end : null;
+        }
+
+        var acceptsRanges = headers.Any(static header =>
+            header.StartsWith("Accept-Ranges:", StringComparison.OrdinalIgnoreCase)
+            && header.Contains("bytes", StringComparison.OrdinalIgnoreCase));
+        var hasIcy = icyHeaders.Count > 0
+            || headers.Any(static header => header.StartsWith("icy-", StringComparison.OrdinalIgnoreCase));
+        _networkContentLength = contentLength;
+        return new NetworkStreamProbe(contentLength, acceptsRanges, hasIcy);
+    }
+
+    internal static long? TryReadContentLength(IEnumerable<string> headers)
+    {
+        foreach (var header in headers)
+        {
+            const string prefix = "Content-Length:";
+            if (header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(header.AsSpan(prefix.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
+                && length > 0)
+            {
+                return length;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Samples the network buffer: bytes buffered ahead of decoding, the buffer target in bytes
+    /// (network buffer length x stream bitrate), and whether the whole source is downloaded.
+    /// </summary>
+    public (long BufferedBytes, long TargetBytes, bool DownloadComplete) SampleNetworkBuffer()
+    {
+        if (!IsNetworkSource || _sourceHandle == 0)
+            return (0, 0, true);
+
+        var buffered = MBass.StreamGetFilePosition(_sourceHandle, FileStreamPosition.Buffer);
+        var download = MBass.StreamGetFilePosition(_sourceHandle, FileStreamPosition.Download);
+        var complete = _networkContentLength is { } length && download >= length;
+
+        var bitrateKbps = MBass.ChannelGetAttribute(_sourceHandle, ChannelAttribute.Bitrate);
+        if (!double.IsFinite(bitrateKbps) || bitrateKbps <= 0)
+            bitrateKbps = 128;
+        var targetBytes = (long)(bitrateKbps * 1000 / 8 * (MBass.NetBufferLength / 1000.0));
+        return (buffered < 0 ? 0 : buffered, targetBytes, complete);
+    }
+
+    /// <summary>Gets the current ICY <c>StreamTitle</c> block, or <see langword="null"/>.</summary>
+    public string? ReadIcyMetadata()
+    {
+        if (!IsNetworkSource || _sourceHandle == 0)
+            return null;
+
+        var pointer = MBass.ChannelGetTags(_sourceHandle, TagType.META);
+        return pointer == IntPtr.Zero ? null : System.Runtime.InteropServices.Marshal.PtrToStringAnsi(pointer);
+    }
+
+    /// <summary>Gets the current Ogg comments of a chained Ogg stream.</summary>
+    public IReadOnlyList<string> ReadOggComments() =>
+        IsNetworkSource && _sourceHandle != 0 ? ReadMultiStringTag(_sourceHandle, TagType.OGG, utf8: true) : [];
+
+    /// <summary>Gets the handle that receives network syncs (the connected source stream).</summary>
+    public int NetworkSyncHandle => IsNetworkSource ? _sourceHandle : 0;
+
+    private static IReadOnlyList<string> ReadMultiStringTag(int handle, TagType tagType, bool utf8 = false)
+    {
+        var pointer = MBass.ChannelGetTags(handle, tagType);
+        if (pointer == IntPtr.Zero)
+            return [];
+
+        var values = utf8 ? Extensions.ExtractMultiStringUtf8(pointer) : Extensions.ExtractMultiStringAnsi(pointer);
+        return values ?? [];
+    }
+
+    /// <summary>
     /// Gets the appropriate handle for analysis operations (decode preferred).
     /// </summary>
     /// <returns>BASS handle for analysis, or 0 if none available</returns>
@@ -320,6 +454,8 @@ internal sealed class AudioStreamManager : IDisposable
 
         // Reset all handles and state
         PlayHandle = _sourceHandle = DecodeHandle = 0;
+        IsNetworkSource = false;
+        _networkContentLength = null;
         _sourceHandleIsMusic = false;
         _decodeHandleIsMusic = false;
         _trackerPositionTimeline.Reset();

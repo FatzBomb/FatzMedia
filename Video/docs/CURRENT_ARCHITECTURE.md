@@ -684,6 +684,22 @@ which turns 031A transitions into fade-through transitions; waits run off the co
 queue. Overlapping two-handle crossfades are deferred. See
 `roadmap/active/031B_ACTIVE_AudioFadeCrossfadeModel.md`.
 
+## Network Sources (Stage 014A, implemented — pending manual smoke)
+
+`MediaInputSource.FromUri` creates `NetworkUri` sources (http/https only, optional
+`MediaNetworkContent` hint). Behavior branches on `MediaSourceCapabilities` rows from
+the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
+NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
+`IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
+`MediaControlPlayer.CurrentSourceCapabilities` expose the row. HTTP audio opens through
+the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
+normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
+monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
+`StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
+Network sources skip sidecars, silence trim, normalization pre-analysis, and
+prepared-next analysis. Network video is deferred (file-path demuxer). See
+`roadmap/active/014A_ACTIVE_StreamingNetworkPlayback.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.

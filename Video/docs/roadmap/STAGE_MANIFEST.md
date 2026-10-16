@@ -9,8 +9,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/031A_1`); 30 focused tests.
 - `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented, pending manual smoke
   (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
-- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - slice 1 (capability matrix and
-  contracts, 49 tests) implemented; slice 2 (HTTP audio) in progress.
+- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented, pending manual smoke
+  (`updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

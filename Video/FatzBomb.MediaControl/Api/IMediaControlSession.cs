@@ -220,6 +220,12 @@ public interface IMediaControlSession : IDisposable
     void CancelFade();
 
     /// <summary>
+    /// Gets the capability row of the open source (see <see cref="MediaSourceCapabilityMatrix"/>),
+    /// or <see langword="null"/> when nothing is open.
+    /// </summary>
+    MediaSourceCapabilities? CurrentSourceCapabilities { get; }
+
+    /// <summary>
     /// Stops all running processes, disposes internal resources, then reinitializes the entire
     /// engine with the supplied configuration and native-library paths. Existing presentation
     /// surface registrations are preserved and reattached. No media is loaded after reset; the
@@ -274,6 +280,12 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised after an accepted seek settles on its resulting position.</summary>
     event EventHandler<MediaSeekCompletedEventArgs>? SeekCompleted;
+
+    /// <summary>Raised when a buffered (network) source starts or stops buffering, or its fill moves.</summary>
+    event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
+
+    /// <summary>Raised when a network source delivers new in-stream metadata.</summary>
+    event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
 
     /// <summary>Raised when the prepared-next slot changes state.</summary>
     event EventHandler<PreparedNextChangedEventArgs>? PreparedNextChanged;

@@ -138,6 +138,12 @@ public readonly record struct MediaPlayerConfiguration
     public SilenceTrimOptions SilenceTrim { get; init; }
 
     /// <summary>
+    /// Bounded retry policy for network sources. <see langword="null"/> uses
+    /// <see cref="NetworkRetryPolicy.Default"/> (one attempt, no retry).
+    /// </summary>
+    public NetworkRetryPolicy? NetworkRetry { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding.
     /// </summary>

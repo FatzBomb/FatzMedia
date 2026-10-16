@@ -136,6 +136,14 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
         _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key);
 
+    public bool OpenNetworkAudio(Uri uri) => _session.Audio?.OpenUrl(uri.AbsoluteUri) == true;
+
+    /// <summary>Gets the network capabilities of the open audio source, or <see langword="null"/>.</summary>
+    public MediaSourceCapabilities? NetworkAudioCapabilities =>
+        _session.Audio?.IsOpen == true && _session.Audio.Engine is INetworkAudioSource network
+            ? network.NetworkCapabilities
+            : null;
+
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
         if (_session.Audio?.Open(audioPath, ownState: false, analyzeSilence: false) != true || _session.Cdg == null)

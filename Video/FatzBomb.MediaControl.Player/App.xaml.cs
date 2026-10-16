@@ -32,6 +32,10 @@ public partial class App : Application
 
     public static TimeSpan PreparedNextFadeDuration { get; private set; }
 
+    public static Uri? StartupNetworkUri { get; private set; }
+
+    public static int NetworkRetries { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -61,6 +65,16 @@ public partial class App : Application
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture,
                 out var seconds) ? TimeSpan.FromSeconds(seconds) : TimeSpan.Zero)
+            .FirstOrDefault();
+        const string urlPrefix = "--url=";
+        StartupNetworkUri = e.Args
+            .Where(static argument => argument.StartsWith(urlPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => Uri.TryCreate(argument[urlPrefix.Length..].Trim('"'), UriKind.Absolute, out var uri) ? uri : null)
+            .FirstOrDefault(static uri => uri is not null);
+        const string retryPrefix = "--net-retries=";
+        NetworkRetries = e.Args
+            .Where(static argument => argument.StartsWith(retryPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => int.TryParse(argument[retryPrefix.Length..], out var retries) ? retries : 0)
             .FirstOrDefault();
         AutoTransitionToPreparedNext = e.Args.Any(static argument =>
             string.Equals(argument, "--auto-next", StringComparison.OrdinalIgnoreCase));

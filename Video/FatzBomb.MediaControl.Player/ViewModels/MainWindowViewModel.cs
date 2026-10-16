@@ -376,7 +376,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 EnableVerboseLogging = false,
                 ResetPitchOnMediaLoad = App.ResetPitchOnMediaLoad,
                 ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad,
-                SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim }
+                SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim },
+                NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries }
             };
 
             IMediaControlPlatformFactory platformFactory = App.UseSoftwareRenderer
@@ -409,6 +410,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
             StartPreparedNextValidation(player);
+            StartNetworkValidation(player);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
             var trimSummary = $"Silence trim={App.EnableSilenceTrim}";
@@ -677,6 +679,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.PitchChanged -= OnPlayerPitchChanged;
             player.TempoChanged -= OnPlayerTempoChanged;
             StopPreparedNextValidation(player);
+            StopNetworkValidation(player);
             player.Dispose();
         }
     }

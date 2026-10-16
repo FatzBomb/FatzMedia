@@ -77,7 +77,8 @@ public static class MediaControlServiceProvider
             new AudioStreamManager(),
             latencyProvider,
             configuration.SilenceTrim,
-            analysisCache);
+            analysisCache,
+            configuration.NetworkRetry);
         var requestedDevice = configuration.AudioOutputDeviceIndex;
         var initialized = audioEngine.Init(requestedDevice, 44100);
 
