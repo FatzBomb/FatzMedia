@@ -51,7 +51,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
 
     public event EventHandler? MediaEnded;
     public event EventHandler? MediaLooped;
-    public event EventHandler<VideoFrameEventArgs>? ImageFrameReady { add { } remove { } }
+    public event EventHandler<VideoFrameEventArgs>? ImageFrameReady;
     public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady;
     public event EventHandler? BackgroundCleared { add { } remove { } }
 
@@ -152,6 +152,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
 
     public void RaiseMediaEnded() => MediaEnded?.Invoke(this, EventArgs.Empty);
     public void RaiseBackgroundFrame(VideoFrameEventArgs frame) => BackgroundFrameReady?.Invoke(this, frame);
+    public void RaiseImageFrame(VideoFrameEventArgs frame) => ImageFrameReady?.Invoke(this, frame);
     public void CompletePlayback()
     {
         State = MediaPlayerState.Stopped;

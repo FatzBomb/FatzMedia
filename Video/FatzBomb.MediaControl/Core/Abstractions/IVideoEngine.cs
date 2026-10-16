@@ -3,8 +3,20 @@ using FatzBomb.MediaControl.Core.Graphics;
 
 namespace FatzBomb.MediaControl.Core.Abstractions;
 
+/// <summary>
+/// One decoded or supplied frame delivered to a synchronous consumer.
+/// </summary>
+/// <remarks>
+/// Lifetime contract: the event object and its payloads are valid only for the duration of
+/// the callback (or the renderer call that receives it). Consumers copy what they keep and must
+/// not store the event object. <see cref="PixelData"/> may be retained only when
+/// <see cref="PixelDataCanBeRetained"/> is true; <see cref="NativeResource"/> is always
+/// borrowed. Producers may re-raise a cached retainable instance (image frames, the loop-start
+/// snapshot) but never mutate an instance after raising it. See roadmap stage 019A.
+/// </remarks>
 public sealed class VideoFrameEventArgs : EventArgs
 {
+    /// <summary>Gets the BGRA pixels; valid during the callback only unless <see cref="PixelDataCanBeRetained"/>.</summary>
     public ReadOnlyMemory<byte> PixelData { get; init; } = ReadOnlyMemory<byte>.Empty;
 
     /// <summary>

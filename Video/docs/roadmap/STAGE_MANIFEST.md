@@ -28,6 +28,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   full-frame copy removed, pending manual smoke (`updates/010A_1`).
 - `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
   immutable snapshot reuse, pending manual CDG smoke (`updates/018A_1`).
+- `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
+  ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -70,7 +72,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/019A_IDEA_VideoFrameEventArgsReuseApiRedesign.md`.
+Next stage: `future/022A_IDEA_ThreadModelProfilingAndSimplification.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -79,5 +81,4 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/019A_IDEA_VideoFrameEventArgsReuseApiRedesign.md` - explicit event payload lifetimes.
 - `future/022A_IDEA_ThreadModelProfilingAndSimplification.md` - measured thread ownership cleanup.
