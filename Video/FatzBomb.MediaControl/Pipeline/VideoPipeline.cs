@@ -105,28 +105,12 @@ internal sealed partial class VideoPipeline(
     private const int SharedDemuxerPostSeekPrerollBudgetMilliseconds = 2500;
     private const int PostSeekMinimumBufferedFrames = 3;
     private const int PostSeekAdaptiveSuppressionWindows = 2;
-    private double _adaptiveVideoSeekProcessingMilliseconds;
+    private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
     private double _minimumCommittedVideoPresentationSeconds = double.NaN;
-    private const int DefaultVideoSeekIntervalMilliseconds = 75;
-    private const int MinVideoSeekIntervalMilliseconds = 75;
-    private const int MaxVideoSeekIntervalMilliseconds = 300;
-    private const double VideoSeekIntervalMultiplier = 1.5;
-    private const double VideoSeekIntervalPaddingMilliseconds = 25.0;
-    private const double VideoSeekProcessingEmaPreviousWeight = 0.75;
-    private const double VideoSeekProcessingEmaCurrentWeight = 0.25;
-    private const double VideoSeekTargetChangeThresholdSeconds = 0.025;
     private const double MaxPresentLatenessSeconds = 0.18;
     private const double TinyVideoSeekThresholdSeconds = 0.25;
     private const double PreviewMaxFrameDistanceSeconds = 2.0;
     private const double SettleMaxFrameDistanceSeconds = 0.50;
-    private const int HardwarePreviewDecodeBudgetMilliseconds = 85;
-    private const int HardwareSettleDecodeBudgetMilliseconds = 125;
-    private const int SoftwarePreviewDecodeBudgetMilliseconds = 65;
-    private const int SoftwareSettleDecodeBudgetMilliseconds = 95;
-    private const int HardwarePreviewDecodeMaxAttempts = 32;
-    private const int HardwareSettleDecodeMaxAttempts = 72;
-    private const int SoftwarePreviewDecodeMaxAttempts = 20;
-    private const int SoftwareSettleDecodeMaxAttempts = 44;
     private int _presentationDiagnosticFrames;
     private int _presentationDiagnosticDroppedFrames;
     private int _presentationDiagnosticSelectionSkippedFrames;
@@ -840,7 +824,7 @@ internal sealed partial class VideoPipeline(
     private void ClearActiveSeekTarget(double target)
     {
         lock (_seekPumpLock)
-            if (!double.IsNaN(_activeSeekTargetSeconds) && Math.Abs(_activeSeekTargetSeconds - target) <= VideoSeekTargetChangeThresholdSeconds)
+            if (!double.IsNaN(_activeSeekTargetSeconds) && Math.Abs(_activeSeekTargetSeconds - target) <= VideoSeekPolicy.TargetChangeThresholdSeconds)
                 _activeSeekTargetSeconds = double.NaN;
     }
 
@@ -872,11 +856,10 @@ internal sealed partial class VideoPipeline(
             return _pendingSeekSeconds.HasValue;
     }
 
-    private double NormalizeSeekTarget(double seconds) =>
-        !double.IsFinite(seconds) || seconds <= 0 ? 0 : Duration > 0 ? Math.Clamp(seconds, 0, Duration) : seconds;
+    private double NormalizeSeekTarget(double seconds) => VideoSeekPolicy.NormalizeTarget(seconds, Duration);
 
     private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) =>
-        double.IsNaN(previousTarget) || Math.Abs(target - previousTarget) > VideoSeekTargetChangeThresholdSeconds;
+        VideoSeekPolicy.IsMeaningfullyDifferentTarget(target, previousTarget);
 
     private void WaitForSeekPumpInterval()
     {
@@ -889,41 +872,15 @@ internal sealed partial class VideoPipeline(
             _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
     }
 
-    private int GetAdaptiveVideoSeekIntervalMilliseconds()
-    {
-        double measuredMilliseconds;
-        lock (_seekPumpLock)
-            measuredMilliseconds = _adaptiveVideoSeekProcessingMilliseconds;
+    private int GetAdaptiveVideoSeekIntervalMilliseconds() => _seekPumpTiming.IntervalMilliseconds;
 
-        if (measuredMilliseconds <= 0 || !double.IsFinite(measuredMilliseconds))
-            return DefaultVideoSeekIntervalMilliseconds;
-
-        var intervalMilliseconds = (measuredMilliseconds * VideoSeekIntervalMultiplier)
-            + VideoSeekIntervalPaddingMilliseconds;
-
-        return (int)Math.Round(Math.Clamp(
-            intervalMilliseconds,
-            MinVideoSeekIntervalMilliseconds,
-            MaxVideoSeekIntervalMilliseconds));
-    }
-
-    private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed)
-    {
-        var elapsedMilliseconds = elapsed.TotalMilliseconds;
-        if (elapsedMilliseconds <= 0 || !double.IsFinite(elapsedMilliseconds))
-            return;
-
-        lock (_seekPumpLock)
-            _adaptiveVideoSeekProcessingMilliseconds = _adaptiveVideoSeekProcessingMilliseconds <= 0
-                ? elapsedMilliseconds
-                : (_adaptiveVideoSeekProcessingMilliseconds * VideoSeekProcessingEmaPreviousWeight) + (elapsedMilliseconds * VideoSeekProcessingEmaCurrentWeight);
-    }
+    private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed) => _seekPumpTiming.Record(elapsed);
 
     private void ResetAdaptiveVideoSeekTiming()
     {
         lock (_seekPumpLock)
         {
-            _adaptiveVideoSeekProcessingMilliseconds = 0;
+            _seekPumpTiming.Reset();
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
     }
@@ -2042,32 +1999,14 @@ internal sealed partial class VideoPipeline(
         return currentFrame != null && Math.Abs(currentFrame.PresentationTime - target) <= TinyVideoSeekThresholdSeconds;
     }
 
-    private static bool IsSeekFrameAcceptable(double frameTime, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
-    {
-        if (Math.Abs(frameTime - target) > maxFrameDistance)
-            return false;
+    private static bool IsSeekFrameAcceptable(double frameTime, double target, double maxFrameDistance, bool requireAtOrAfterTarget) =>
+        VideoSeekPolicy.IsFrameAcceptable(frameTime, target, maxFrameDistance, requireAtOrAfterTarget);
 
-        // Preview mode can show a nearby frame on either side of the requested target. Commit
-        // seeks must never accept an earlier keyframe as the playback start visual; otherwise the
-        // decoder can resume far behind the requested target on long-GOP files.
-        return !requireAtOrAfterTarget || frameTime + 0.001 >= target;
-    }
+    private static int GetSeekDecodeBudgetMilliseconds(bool useFastPreviewBudget, VideoDecoder decoder) =>
+        VideoSeekPolicy.GetDecodeBudgetMilliseconds(useFastPreviewBudget, decoder.IsHardwareAccelerated);
 
-    private static int GetSeekDecodeBudgetMilliseconds(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
-        ? decoder.IsHardwareAccelerated
-            ? HardwarePreviewDecodeBudgetMilliseconds
-            : SoftwarePreviewDecodeBudgetMilliseconds
-        : decoder.IsHardwareAccelerated
-            ? HardwareSettleDecodeBudgetMilliseconds
-            : SoftwareSettleDecodeBudgetMilliseconds;
-
-    private static int GetSeekDecodeMaxAttempts(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
-        ? decoder.IsHardwareAccelerated
-            ? HardwarePreviewDecodeMaxAttempts
-            : SoftwarePreviewDecodeMaxAttempts
-        : decoder.IsHardwareAccelerated
-            ? HardwareSettleDecodeMaxAttempts
-            : SoftwareSettleDecodeMaxAttempts;
+    private static int GetSeekDecodeMaxAttempts(bool useFastPreviewBudget, VideoDecoder decoder) =>
+        VideoSeekPolicy.GetDecodeMaxAttempts(useFastPreviewBudget, decoder.IsHardwareAccelerated);
 
     private void DropFramesBeforeCommittedVideoTarget(VideoDecoder decoder)
     {
