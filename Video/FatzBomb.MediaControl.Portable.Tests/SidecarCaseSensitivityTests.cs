@@ -16,14 +16,18 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
     }
 
     [Fact]
-    public void UppercaseExtension_MatchesAndReturnsTheRealPath()
+    public void UppercaseExtension_MatchesTheSidecar()
     {
         var audio = CreateFile("song.mp3");
         var sidecar = CreateFile("song.PNG");
 
         MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audio, new NoArchives(), MediaContent.Audio);
 
-        Assert.Equal(sidecar, result!.Path);
+        // Linux lists the directory and returns the real name. Case-insensitive file systems
+        // (Windows, macOS) keep the original exact-name probe, whose path differs only in case
+        // and opens the same file.
+        Assert.Equal(sidecar, result!.Path, ignoreCase: !OperatingSystem.IsLinux());
+        Assert.True(File.Exists(result.Path));
     }
 
     [Fact]
