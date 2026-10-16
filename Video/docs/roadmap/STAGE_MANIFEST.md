@@ -9,6 +9,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/031A_1`); 30 focused tests.
 - `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented, pending manual smoke
   (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
+- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - slice 1 (capability matrix and
+  contracts, 49 tests) implemented; slice 2 (HTTP audio) in progress.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -51,7 +53,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/014A_IDEA_StreamingNetworkPlayback.md`.
+Next stage: `future/026B_IDEA_CrossPlatformPlatformServices.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -60,7 +62,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/014A_IDEA_StreamingNetworkPlayback.md` - direct HTTP/HTTPS audio/video with a source capability matrix.
 - `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
 - `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
 - `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
