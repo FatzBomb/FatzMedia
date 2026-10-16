@@ -700,6 +700,19 @@ Network sources skip sidecars, silence trim, normalization pre-analysis, and
 prepared-next analysis. Network video is deferred (file-path demuxer). See
 `roadmap/active/014A_ACTIVE_StreamingNetworkPlayback.md`.
 
+## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
+
+`FatzBomb.MediaControl.Linux` (net10.0, references Core only) supplies
+`LinuxMediaControlPlatformFactory` and the `IMediaControlPlatformServices`
+registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
+ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
+dependency order), a kernel-wait-plus-spin precision waiter, host-configured refresh
+timing, a BASS-snapshot device monitor using Core's `AudioDeviceChangeDetector`, the
+Core MIDI lyric extractor, software-only hardware-decode services, and an FFmpeg
+software capability scan. Renderer choice stays with the host (software renderer
+today). Sidecar extension matching in Core is case-insensitive on case-sensitive file
+systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.

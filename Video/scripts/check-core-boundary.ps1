@@ -28,6 +28,14 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
     )
+    'FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Linux.Tests\FatzBomb.MediaControl.Linux.Tests.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
+    )
     'FatzBomb.MediaControl.Portable.Tests\FatzBomb.MediaControl.Portable.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
@@ -79,7 +87,7 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
 }
 
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
-if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests') }) {
+if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests', 'FatzBomb.MediaControl.Linux.Tests') }) {
     throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects.'
 }
 

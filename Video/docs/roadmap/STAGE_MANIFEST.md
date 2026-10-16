@@ -11,6 +11,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
 - `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented, pending manual smoke
   (`updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
+- `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
+  (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
+  pending; macOS deferred.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -53,7 +56,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/026B_IDEA_CrossPlatformPlatformServices.md`.
+Next stage: `future/026A_IDEA_CrossPlatformRendererBackends.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -63,7 +66,6 @@ The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
 - `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
-- `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
 - `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
 - `future/020A_IDEA_AudioFilterFramework.md` - ordered, bypassable audio processing.
 - `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.

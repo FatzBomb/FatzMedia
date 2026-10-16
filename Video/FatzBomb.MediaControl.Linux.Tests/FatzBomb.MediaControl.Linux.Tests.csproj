@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<AssemblyName>FatzBomb.MediaControl.Linux.Tests</AssemblyName>
+		<RootNamespace>FatzBomb.MediaControl.Linux.Tests</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
+	</ItemGroup>
+
+</Project>

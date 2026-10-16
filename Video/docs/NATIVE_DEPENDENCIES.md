@@ -63,11 +63,30 @@ Passing an empty list also allows the Windows loader to probe the predefined pat
 |---|---|---|
 | `win-x64` | Supported | Current Windows, Direct3D11, WPF, Player, and native smoke-test target. |
 | `win-arm64` | Not supported | Requires dedicated BASS/FFmpeg validation and package targeting. |
-| `linux-*`, `osx-*`, `android-*` | Not supported | Require platform packages and native policies of their own. |
+| `linux-x64` | Preview (Stage 026B) | `FatzBomb.MediaControl.Linux`; FFmpeg load and software decode validated, BASS/player smoke pending. See Linux Native Target. |
+| `osx-*`, `android-*`, other `linux-*` | Not supported | Require platform packages and native policies of their own. |
 
 The managed Windows projects retain `net10.0-windows7.0` API compatibility, but the
 approved native runtime baseline is Windows 10/11 x64. A native distributor may have
 stricter OS or UCRT requirements than the managed TFM.
+
+## Linux Native Target (Stage 026B, pending manual smoke)
+
+`FatzBomb.MediaControl.Linux` follows the same host-owned policy: no binaries ship in
+the package. The host supplies shared libraries in a host path (absolute or relative to
+the app), `native/`, or `runtimes/linux-<arch>/native/`. System library directories are
+not searched implicitly.
+
+| Kind | Required | Optional |
+|---|---|---|
+| BASS | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
+| FFmpeg (avcodec 62 ABI, FFmpeg 8.x) | `libavutil.so.60`, `libswresample.so.6`, `libswscale.so.9`, `libavcodec.so.62`, `libavformat.so.62` | `libavfilter.so.11`, `libavdevice.so.62` |
+
+FFmpeg libraries must sit in one directory; they are preloaded in dependency order
+because typical builds reference each other by soname without an `$ORIGIN` run path.
+BASS core libraries are routed to ManagedBass through a `DllImport` resolver; add-ons
+use `BASS_PluginLoad`. The same licensing cautions as Windows apply (BASS commercial
+licence; FFmpeg LGPL vs GPL build choice).
 
 ## BASS Policy
 

@@ -39,6 +39,7 @@
 	<ItemGroup>
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Portable.Tests" />
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Linux.Tests" />
 	</ItemGroup>
 
 </Project>

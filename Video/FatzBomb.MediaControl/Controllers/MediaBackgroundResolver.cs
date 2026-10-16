@@ -57,14 +57,43 @@ internal static class MediaBackgroundResolver
             return;
         }
 
+        // Enumerate the directory instead of probing exact names so extension matching stays
+        // case-insensitive on case-sensitive file systems (Linux), as it is on Windows. The base
+        // name keeps the file system's own case rules.
+        List<string> candidates = EnumerateSidecarCandidates(directory, sourceBase);
         foreach (MediaBackgroundKind kind in PreferredKindOrder())
         {
-            foreach (var extension in GetExtensions(kind))
+            HashSet<string> extensions = GetExtensions(kind);
+            foreach (var candidatePath in candidates)
             {
-                var candidatePath = Path.Combine(directory, sourceBase + extension);
-                if (File.Exists(candidatePath))
+                if (extensions.Contains(Path.GetExtension(candidatePath)))
                     matches.Add(MediaBackgroundMatch.FromPath(kind, candidatePath));
             }
+        }
+    }
+
+    private static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
+    {
+        StringComparison baseComparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        // '*' and '?' are legal in Linux file names but are wildcards in search patterns.
+        var pattern = sourceBase.AsSpan().IndexOfAny('*', '?') >= 0 ? "*" : sourceBase + ".*";
+        try
+        {
+            return [.. Directory.EnumerateFiles(directory, pattern, new EnumerationOptions
+                {
+                    MatchCasing = MatchCasing.PlatformDefault,
+                    IgnoreInaccessible = true,
+                    RecurseSubdirectories = false,
+                })
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, baseComparison))
+                .Order(StringComparer.Ordinal)];
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 
