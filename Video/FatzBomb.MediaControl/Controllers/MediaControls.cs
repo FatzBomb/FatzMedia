@@ -243,7 +243,8 @@ public sealed class MediaControls
                 || transportGeneration != Volatile.Read(ref _transportGeneration))
                 return;
 
-            if (LoopMedia)
+            // Network sources never loop (a live stream cannot restart); their end is a stop.
+            if (LoopMedia && !IsNetworkSource)
             {
                 System.Diagnostics.Debug.WriteLine("[MediaControls] Looping media");
 
@@ -287,6 +288,9 @@ public sealed class MediaControls
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error completing media end: {ex.Message}", innerException: ex);
         }
     }
+
+    private bool IsNetworkSource =>
+        _mediaEngine is IMediaSourceCapabilityProvider { CurrentCapabilities.SourceClass: MediaSourceClass.NetworkFile or MediaSourceClass.NetworkLive };
 
     private void StartRendering() => _mediaRenderer?.StartRendering();
 

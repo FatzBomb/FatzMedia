@@ -128,6 +128,26 @@ public sealed class VulkanConformanceTests
         Assert.False(backend.Initialize());
     }
 
+    [Fact]
+    public void Backend_WithoutDevice_TriesOnceUntilCleanup()
+    {
+        var attempts = 0;
+        using var backend = new VulkanRendererBackend(() =>
+        {
+            attempts++;
+            return null;
+        });
+
+        Assert.False(backend.Initialize());
+        Assert.False(backend.Initialize());
+        Assert.False(backend.Initialize());
+        Assert.Equal(1, attempts);
+
+        backend.CleanupResources();
+        Assert.False(backend.Initialize());
+        Assert.Equal(2, attempts);
+    }
+
     private static void AssertMatchesSoftware(MediaCompositionFrame frame, int width, int height, double minimumExactRatio)
     {
         using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);

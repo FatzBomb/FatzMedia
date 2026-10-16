@@ -6,7 +6,7 @@ using FatzBomb.MediaControl.Core.Video;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider
 {
     private double _position;
 
@@ -42,6 +42,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public MediaContent Content { get; set; } = MediaContent.Audio;
     public bool LoopPlayback { get; set; }
     public bool HandlesLoopInternally { get; set; }
+    public MediaSourceCapabilities? CurrentCapabilities { get; set; }
     public bool OpenSucceeds { get; set; } = true;
     public Action? BeforeOpen { get; set; }
     public Action? BeforeStop { get; set; }

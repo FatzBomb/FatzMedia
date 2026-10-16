@@ -180,6 +180,23 @@ public sealed class PlayerFadeTests : IDisposable
     }
 
     [Fact]
+    public async Task ManualFadedTransition_SlotReplacedDuringFade_DoesNotLoadTheNewItem()
+    {
+        var engine = new TestMediaEngine();
+        using MediaControlPlayer player = await StartFadedTransitionAsync(engine);
+        Task<bool> transition = player.TransitionToPreparedNextAsync();
+        await WaitForAsync(() => engine.TestAudio.FadeCalls.Count >= 2);
+        var replacement = CreateFile("replacement.mp3");
+
+        Assert.True(await player.PrepareNextAsync(replacement).WaitAsync(Timeout));
+
+        Assert.False(await transition.WaitAsync(Timeout));
+        Assert.Equal(PreparedNextState.Ready, player.PreparedNext.State);
+        Assert.Equal(replacement, player.PreparedNext.Source!.FilePath);
+        Assert.Equal(1, engine.PlayCount);
+    }
+
+    [Fact]
     public async Task ManualFadedTransition_CancelFadeDuringOutgoing_AbandonsTransition()
     {
         var engine = new TestMediaEngine();

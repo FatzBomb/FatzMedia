@@ -65,3 +65,10 @@ dotnet run --project FatzBomb.MediaControl.Player -- --trim-silence "--prepare-n
   the first media close. Moved to `Dispose`; found during self-review before any
   native run. The native smoke in this note covers it (step 1 must reach Ready with
   analysis after the current item was loaded).
+
+## Review follow-up 2 (same day)
+
+- Only plain-audio files are analyzed when prepared; video, archives (MP3+G zips), images,
+  and CDG files go Ready without analysis and without a scan or warning.
+- Analysis runs off the caller's thread, so `PrepareNextAsync` from the UI thread never
+  blocks on opening/prescanning the file.

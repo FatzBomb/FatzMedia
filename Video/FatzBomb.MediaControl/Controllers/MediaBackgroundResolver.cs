@@ -57,9 +57,24 @@ internal static class MediaBackgroundResolver
             return;
         }
 
-        // Enumerate the directory instead of probing exact names so extension matching stays
-        // case-insensitive on case-sensitive file systems (Linux), as it is on Windows. The base
-        // name keeps the file system's own case rules.
+        // Case-insensitive file systems (Windows, macOS default) already match extensions in any
+        // case, so a few exact-name probes suffice. Case-sensitive ones (Linux) need a directory
+        // listing to match "song.PNG"; that costs one pass over the folder per load.
+        if (!IsCaseSensitiveFileSystem)
+        {
+            foreach (MediaBackgroundKind kind in PreferredKindOrder())
+            {
+                foreach (var extension in GetExtensions(kind))
+                {
+                    var candidatePath = Path.Combine(directory, sourceBase + extension);
+                    if (File.Exists(candidatePath))
+                        matches.Add(MediaBackgroundMatch.FromPath(kind, candidatePath));
+                }
+            }
+
+            return;
+        }
+
         List<string> candidates = EnumerateSidecarCandidates(directory, sourceBase);
         foreach (MediaBackgroundKind kind in PreferredKindOrder())
         {
@@ -72,11 +87,11 @@ internal static class MediaBackgroundResolver
         }
     }
 
+    private static bool IsCaseSensitiveFileSystem => !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS();
+
     private static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
     {
-        StringComparison baseComparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        const StringComparison baseComparison = StringComparison.Ordinal;
 
         // '*' and '?' are legal in Linux file names but are wildcards in search patterns.
         var pattern = sourceBase.AsSpan().IndexOfAny('*', '?') >= 0 ? "*" : sourceBase + ".*";

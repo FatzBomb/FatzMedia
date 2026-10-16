@@ -71,17 +71,24 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(envelope);
-        CancellationTokenSource cts = Replace(cancellationToken);
+        CancellationTokenSource cts = Replace(cancellationToken, out var superseded);
         try
         {
             var session = target.BeginFadeSession();
             if (session == 0)
                 return AudioFadeOutcome.Unavailable;
 
-            if (!target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
+            // A fade that interrupts a running one continues from the gain that fade reached:
+            // jumping to this envelope's start would be an audible step. Otherwise the envelope
+            // starts exactly at its own start gain.
+            IReadOnlyList<AudioFadeSegment> segments = AudioFadeSchedule.Build(envelope, duration, startPosition);
+            if ((!superseded || segments.Count == 0)
+                && !target.SetFadeGain(session, envelope.Evaluate(startPosition), TimeSpan.Zero))
+            {
                 return AudioFadeOutcome.Interrupted;
+            }
 
-            foreach (AudioFadeSegment segment in AudioFadeSchedule.Build(envelope, duration, startPosition))
+            foreach (AudioFadeSegment segment in segments)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 if (!target.SetFadeGain(session, segment.ToGain, segment.Duration))
@@ -133,7 +140,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
         }
     }
 
-    private CancellationTokenSource Replace(CancellationToken cancellationToken)
+    private CancellationTokenSource Replace(CancellationToken cancellationToken, out bool superseded)
     {
         var next = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationTokenSource? previous;
@@ -143,6 +150,7 @@ internal sealed class AudioFadeRunner(Func<TimeSpan, CancellationToken, Task>? d
             _current = next;
         }
 
+        superseded = previous is not null;
         CancelQuietly(previous);
         return next;
     }

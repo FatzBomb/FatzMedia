@@ -81,3 +81,15 @@ fail on the previous code:
 
 The Player host has no manual-transition control, so these paths are covered by the
 automated tests only (`PlayerFadeTests.ManualFadedTransition_*`, `AudioFadeRunnerTests`).
+
+## Review follow-up 2 (same day)
+
+- A natural end restores full fade gain, so a song faded out to its end replays or loops
+  audibly.
+- A fade that interrupts a running fade continues from the gain already reached instead of
+  jumping to its own start (no audible step).
+- A manual faded transition is pinned to the item that was Ready when it started; preparing
+  another item during the fade abandons the transition instead of loading the new one.
+- The natural-end gain reset lives in the BASS end callback, which cannot run in unit tests;
+  the Player host has no fade-out control, so it is verified by code review only until a
+  host exposes `FadeOutAsync`.

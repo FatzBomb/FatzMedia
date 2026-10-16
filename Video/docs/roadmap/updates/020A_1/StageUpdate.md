@@ -29,3 +29,11 @@ Delivered: see the stage file. 14 focused cases (`AudioEqualizerTests.cs`); Play
    recording the output).
 3. With Normalize on, the boosted track does not distort at full volume.
 4. Next track (load another file): the boost persists.
+
+## Review follow-up 2 (same day)
+
+- Bands at or above 45 % of the stream's sample rate (e.g. 16 kHz on a 22.05/32 kHz file)
+  are kept at 0 dB below that limit instead of being rejected by BASS_FX.
+- Volume, pitch, normalization, and equalizer changes made while no audio is open now reach
+  the engine on the next load (previously a pre-existing gap for volume and pitch too).
+- Extra manual smoke: `--eq=...` on a 22.05 kHz MP3 raises no "band update failed" warning.

@@ -65,6 +65,8 @@ $counterArgs = @('collect', '--process-id', $ProcessId, '--refresh-interval', '1
 
 Write-Host "Capturing '$Label' from process $ProcessId for $DurationSeconds s. Run the workflow now."
 $countersJob = Start-Process -FilePath $counters -ArgumentList $counterArgs -PassThru -NoNewWindow
+# Touch Handle now: without it, ExitCode can read as $null after WaitForExit on Windows.
+$null = $countersJob.Handle
 
 if (-not $SkipTrace) {
     $trace = Get-DotNetTool 'dotnet-trace'

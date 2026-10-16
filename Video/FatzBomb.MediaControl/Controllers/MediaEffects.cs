@@ -59,19 +59,31 @@ public sealed class MediaEffects
         _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
 
         _subscribedAudioEngine = current;
-        if (HasAudio)
-        {
-            _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
-            _subscribedAudioEngine.Normalize = Normalize;
-            _subscribedAudioEngine.SetVolume(Volume);
-            _subscribedAudioEngine.SetPitch(Pitch);
-            (_subscribedAudioEngine as IAudioFilterHost)?.SetEqualizer(Equalizer);
-        }
-
-        _subscribedAudioEngine.SetTempo(_tempo - 100);
+        _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
+        ApplyEffectsTo(_subscribedAudioEngine);
     }
 
-    internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
+    /// <summary>
+    /// Called after every load. The audio engine is usually the same singleton across loads, so
+    /// settings changed while no audio was open are pushed here even when the subscription is
+    /// unchanged; each setter is a no-op when its value already matches.
+    /// </summary>
+    internal void RefreshActiveEngine()
+    {
+        IAudioEngine? previous = _subscribedAudioEngine;
+        EnsureActiveAudioSubscription();
+        if (_subscribedAudioEngine is { } current && ReferenceEquals(previous, current))
+            ApplyEffectsTo(current);
+    }
+
+    private void ApplyEffectsTo(IAudioEngine engine)
+    {
+        engine.Normalize = Normalize;
+        engine.SetVolume(Volume);
+        engine.SetPitch(Pitch);
+        (engine as IAudioFilterHost)?.SetEqualizer(Equalizer);
+        engine.SetTempo(_tempo - 100);
+    }
 
     /// <summary>
     /// Gets or sets the volume (0.0 to 1.0).

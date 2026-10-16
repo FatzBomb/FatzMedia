@@ -61,6 +61,12 @@ internal enum EqualizerUpdateAction
 
 internal static class EqualizerUpdatePlanner
 {
+    /// <summary>
+    /// Fraction of the sample rate below which a peaking band is placed. BASS_FX rejects centres
+    /// at or above half the sample rate; the margin keeps the band's skirt inside the passband.
+    /// </summary>
+    public const double MaximumCenterFraction = 0.45;
+
     public static EqualizerUpdateAction Plan(int attachedBandCount, bool isAttached, AudioEqualizerSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -71,5 +77,19 @@ internal static class EqualizerUpdatePlanner
             return EqualizerUpdateAction.Create;
 
         return attachedBandCount == settings.Bands.Count ? EqualizerUpdateAction.Update : EqualizerUpdateAction.Rebuild;
+    }
+
+    /// <summary>
+    /// Returns the centre and gain to apply for <paramref name="band"/> on a stream sampled at
+    /// <paramref name="sampleRate"/> Hz. A band the stream cannot represent is kept (band indices
+    /// stay stable) but placed just below the limit at 0 dB, since there is no content to shape.
+    /// </summary>
+    public static (double CenterHz, double GainDb) ForSampleRate(AudioEqualizerBand band, int sampleRate)
+    {
+        if (sampleRate <= 0)
+            return (band.CenterHz, band.GainDb);
+
+        var limit = sampleRate * MaximumCenterFraction;
+        return band.CenterHz < limit ? (band.CenterHz, band.GainDb) : (limit, 0);
     }
 }

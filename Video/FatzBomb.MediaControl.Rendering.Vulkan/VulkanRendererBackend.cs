@@ -13,6 +13,7 @@ namespace FatzBomb.MediaControl.Rendering.Vulkan;
 internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
 {
     private readonly Lock _sync = new();
+    private bool _initializationFailed;
 
     // Held for the whole render + sink hand-off so cleanup and dispose cannot tear the compositor
     // down mid-frame. Lock order: _renderGate, then _sync.
@@ -43,8 +44,15 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             if (_compositor is not null)
                 return IsInitialized = true;
 
+            // Device creation is expensive and reports its failure; without a usable device it
+            // would otherwise be retried (and reported) on every frame. CleanupResources allows
+            // a new attempt.
+            if (_initializationFailed)
+                return false;
+
             _compositor = compositorFactory();
             IsInitialized = _compositor is not null;
+            _initializationFailed = !IsInitialized;
             return IsInitialized;
         }
     }
@@ -166,6 +174,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 _compositor?.Dispose();
                 _compositor = null;
                 IsInitialized = false;
+                _initializationFailed = false;
             }
         }
     }

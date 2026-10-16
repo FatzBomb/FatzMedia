@@ -223,6 +223,22 @@ public sealed class PreparedNextPlayerTests : IDisposable
         Assert.Equal(1, engine.PlayCount);
     }
 
+    [Theory]
+    [InlineData("karaoke.zip")]
+    [InlineData("lyrics.cdg")]
+    [InlineData("cover.png")]
+    public async Task PrepareNext_NonAudioFile_IsReadyWithoutRunningAnalysis(string name)
+    {
+        var analyzer = new FakeAnalyzer();
+        using var player = CreatePlayer(new TestMediaEngine(), analyzer);
+
+        Assert.True(await player.PrepareNextAsync(CreateFile(name)).WaitAsync(Timeout));
+
+        Assert.Equal(PreparedNextState.Ready, player.PreparedNext.State);
+        Assert.Null(player.PreparedNext.Analysis);
+        Assert.Empty(analyzer.Requests);
+    }
+
     [Fact]
     public async Task PrepareNext_MissingFile_ReturnsFalseAndStaysEmpty()
     {

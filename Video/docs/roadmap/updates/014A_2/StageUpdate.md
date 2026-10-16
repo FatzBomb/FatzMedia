@@ -59,3 +59,11 @@ Delivered:
    bounded time.
 5. `--url=https://host/clip.mp4`: `UnsupportedFormat` error, no crash.
 6. Local file playback, seeking, and archives unchanged.
+
+## Review follow-up 2 (same day)
+
+- Network sources never loop: with `LoopMedia` on, a network file or live stream that ends
+  stops and raises `MediaEnded` (previously the player reported Playing with no audio).
+- The first `StreamMetadataChanged` of a new stream is delivered after its `MediaLoaded`.
+- Extra manual smoke: turn Loop on, play a short progressive HTTP MP3 to its end: playback
+  stops cleanly (no endless "Playing" state).

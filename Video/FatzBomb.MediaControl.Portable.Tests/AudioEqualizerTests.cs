@@ -84,6 +84,22 @@ public sealed class EqualizerUpdatePlannerTests
         Assert.Equal(EqualizerUpdateAction.Rebuild, EqualizerUpdatePlanner.Plan(3, true, ten));
     }
 
+    [Theory]
+    [InlineData(16000, 44100, 16000, 6)]
+    [InlineData(16000, 22050, 9922.5, 0)]
+    [InlineData(16000, 32000, 14400, 0)]
+    [InlineData(8000, 22050, 8000, 6)]
+    [InlineData(16000, 0, 16000, 6)]
+    public void ForSampleRate_KeepsBandsBelowNyquistAndNeutralizesTheRest(double center, int sampleRate, double expectedCenter, double expectedGain)
+    {
+        var band = new AudioEqualizerBand(center, 6, 1);
+
+        (double centerHz, double gainDb) = EqualizerUpdatePlanner.ForSampleRate(band, sampleRate);
+
+        Assert.Equal(expectedCenter, centerHz, 3);
+        Assert.Equal(expectedGain, gainDb);
+    }
+
     [Fact]
     public void Equalizer_RunsBeforeGainAndFadeStages() =>
         Assert.True(AudioFilterStage.EqualizerPriority > AudioFilterStage.GainPriority);
@@ -123,6 +139,25 @@ public sealed class PlayerEqualizerTests
 
         Assert.Equal(applied, engine.TestAudio.EqualizerApplyCount);
         Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void SettingsChangedWhileNoAudioIsOpen_ReachTheEngineOnNextLoad()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new EqualizerTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("a.mp3"));
+        player.Close();
+        engine.Content = MediaContent.None;
+        AudioEqualizerSettings settings = AudioEqualizerSettings.CreateGraphic10Band(5);
+
+        player.Equalizer = settings;
+        player.Effects.Volume = 0.4;
+        engine.Content = MediaContent.Audio;
+        Assert.True(player.Load("b.mp3"));
+
+        Assert.Equal(settings, engine.TestAudio.Equalizer);
+        Assert.Equal(0.4, engine.TestAudio.Volume);
     }
 
     [Fact]

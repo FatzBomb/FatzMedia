@@ -117,12 +117,14 @@ internal sealed class BassEqualizerFilter : IAudioFilter
         }
 
         var ok = true;
+        var sampleRate = MBass.ChannelGetInfo(playHandle).Frequency;
         for (var band = 0; band < _settings.Bands.Count; band++)
         {
             AudioEqualizerBand settings = _settings.Bands[band];
+            (double centerHz, double gainDb) = EqualizerUpdatePlanner.ForSampleRate(settings, sampleRate);
             _parameters.lBand = band;
-            _parameters.fCenter = (float)settings.CenterHz;
-            _parameters.fGain = (float)settings.GainDb;
+            _parameters.fCenter = (float)centerHz;
+            _parameters.fGain = (float)gainDb;
             _parameters.fBandwidth = (float)settings.BandwidthOctaves;
             _parameters.fQ = 0;
             ok &= MBass.FXSetParameters(_fxHandle, _parameters);

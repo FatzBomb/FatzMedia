@@ -171,9 +171,13 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     /// <inheritdoc/>
     public int CurrentTempo { get; private set; } = 0;
 
+    /// <remarks>
+    /// Network sources never loop: a live stream cannot restart, and the native loop flag is not
+    /// applied to URL streams, so a requested loop reads as off and the end is a real stop.
+    /// </remarks>
     bool IAudioLoopControl.LoopPlayback
     {
-        get => _loopPlayback;
+        get => _loopPlayback && !_streamManager.IsNetworkSource;
         set
         {
             _loopPlayback = value;
@@ -1040,6 +1044,11 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         _playbackEndSyncHandle = 0;
         _playbackEndSyncChannel = 0;
+
+        // A fade that ran to the end (typically a fade-out) must not leave the next pass, a
+        // replay or a loop wrap, muted. Natural end closes the fade session like Stop does.
+        EndFadeSession(releaseHandle: false);
+
         var trimWindow = Volatile.Read(ref _activeTrimWindow);
         if (((IAudioLoopControl)this).LoopPlayback)
         {

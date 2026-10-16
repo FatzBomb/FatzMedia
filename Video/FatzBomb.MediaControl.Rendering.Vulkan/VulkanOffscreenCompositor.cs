@@ -110,12 +110,12 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             var hasSource = blit is { Source.IsEmpty: false, Destination.IsEmpty: false } && sourceWidth > 0 && sourceHeight > 0;
 
-            _targetImage = EnsureImage(_targetImage, (uint)outputWidth, (uint)outputHeight);
-            _readbackBuffer = EnsureBuffer(_readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit);
+            ImageResource targetImage = EnsureImage(ref _targetImage, (uint)outputWidth, (uint)outputHeight);
+            BufferResource readbackBuffer = EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit);
             if (hasSource)
             {
-                _sourceImage = EnsureImage(_sourceImage, (uint)sourceWidth, (uint)sourceHeight);
-                _uploadBuffer = EnsureBuffer(_uploadBuffer, (ulong)sourceWidth * (ulong)sourceHeight * 4, BufferUsageFlags.TransferSrcBit);
+                _ = EnsureImage(ref _sourceImage, (uint)sourceWidth, (uint)sourceHeight);
+                _ = EnsureBuffer(ref _uploadBuffer, (ulong)sourceWidth * (ulong)sourceHeight * 4, BufferUsageFlags.TransferSrcBit);
                 Upload(sourceBgra, sourceWidth, sourceHeight, sourceStride);
             }
 
@@ -123,7 +123,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
             Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
 
-            VkImage target = _targetImage.Value.Image;
+            VkImage target = targetImage.Image;
             Transition(target, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
             var clear = new ClearColorValue(
                 clearBgraPremultiplied.R / 255f,
@@ -170,7 +170,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 ImageSubresource = ColorLayers(),
                 ImageExtent = new Extent3D((uint)outputWidth, (uint)outputHeight, 1),
             };
-            _vk.CmdCopyImageToBuffer(_commandBuffer, target, ImageLayout.TransferSrcOptimal, _readbackBuffer.Value.Buffer, 1, &readback);
+            _vk.CmdCopyImageToBuffer(_commandBuffer, target, ImageLayout.TransferSrcOptimal, readbackBuffer.Buffer, 1, &readback);
             var hostBarrier = new BufferMemoryBarrier
             {
                 SType = StructureType.BufferMemoryBarrier,
@@ -178,7 +178,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 DstAccessMask = AccessFlags.HostReadBit,
                 SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
                 DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-                Buffer = _readbackBuffer.Value.Buffer,
+                Buffer = readbackBuffer.Buffer,
                 Offset = 0,
                 Size = Vk.WholeSize,
             };
@@ -197,9 +197,9 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 _output = new byte[outputLength];
 
             void* mapped;
-            Check(_vk.MapMemory(_device, _readbackBuffer.Value.Memory, 0, (ulong)outputLength, 0, &mapped), "vkMapMemory");
+            Check(_vk.MapMemory(_device, readbackBuffer.Memory, 0, (ulong)outputLength, 0, &mapped), "vkMapMemory");
             new ReadOnlySpan<byte>(mapped, outputLength).CopyTo(_output);
-            _vk.UnmapMemory(_device, _readbackBuffer.Value.Memory);
+            _vk.UnmapMemory(_device, readbackBuffer.Memory);
             return _output;
         }
     }
@@ -406,13 +406,17 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
         _vk.UnmapMemory(_device, upload.Memory);
     }
 
-    private ImageResource EnsureImage(ImageResource? existing, uint width, uint height)
+    /// <summary>
+    /// Re-creates <paramref name="resource"/> when its size differs. The old resource is cleared
+    /// before re-creation, and a partially created one is freed on failure, so a failed resize
+    /// never leaves destroyed handles in the field.
+    /// </summary>
+    private ImageResource EnsureImage(ref ImageResource? resource, uint width, uint height)
     {
-        if (existing is { } image && image.Width == width && image.Height == height)
+        if (resource is { } image && image.Width == width && image.Height == height)
             return image;
 
-        ImageResource? previous = existing;
-        Destroy(ref previous);
+        Destroy(ref resource);
         var info = new ImageCreateInfo
         {
             SType = StructureType.ImageCreateInfo,
@@ -427,30 +431,58 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             SharingMode = SharingMode.Exclusive,
             InitialLayout = ImageLayout.Undefined,
         };
-        VkImage handle;
-        Check(_vk.CreateImage(_device, &info, null, &handle), "vkCreateImage");
-        MemoryRequirements requirements;
-        _vk.GetImageMemoryRequirements(_device, handle, &requirements);
-        DeviceMemory memory = Allocate(requirements, MemoryPropertyFlags.DeviceLocalBit, fallback: MemoryPropertyFlags.None);
-        Check(_vk.BindImageMemory(_device, handle, memory, 0), "vkBindImageMemory");
-        return new ImageResource(handle, memory, width, height);
+        VkImage handle = default;
+        DeviceMemory memory = default;
+        try
+        {
+            Check(_vk.CreateImage(_device, &info, null, &handle), "vkCreateImage");
+            MemoryRequirements requirements;
+            _vk.GetImageMemoryRequirements(_device, handle, &requirements);
+            memory = Allocate(requirements, MemoryPropertyFlags.DeviceLocalBit, fallback: MemoryPropertyFlags.None);
+            Check(_vk.BindImageMemory(_device, handle, memory, 0), "vkBindImageMemory");
+            ImageResource created = new(handle, memory, width, height);
+            resource = created;
+            return created;
+        }
+        catch
+        {
+            if (memory.Handle != 0)
+                _vk.FreeMemory(_device, memory, null);
+            if (handle.Handle != 0)
+                _vk.DestroyImage(_device, handle, null);
+            throw;
+        }
     }
 
-    private BufferResource EnsureBuffer(BufferResource? existing, ulong size, BufferUsageFlags usage)
+    /// <summary>Grows <paramref name="resource"/> when too small, with the same failure safety as <see cref="EnsureImage"/>.</summary>
+    private BufferResource EnsureBuffer(ref BufferResource? resource, ulong size, BufferUsageFlags usage)
     {
-        if (existing is { } buffer && buffer.Size >= size)
+        if (resource is { } buffer && buffer.Size >= size)
             return buffer;
 
-        BufferResource? previous = existing;
-        Destroy(ref previous);
+        Destroy(ref resource);
         var info = new BufferCreateInfo { SType = StructureType.BufferCreateInfo, Size = size, Usage = usage, SharingMode = SharingMode.Exclusive };
-        VkBuffer handle;
-        Check(_vk.CreateBuffer(_device, &info, null, &handle), "vkCreateBuffer");
-        MemoryRequirements requirements;
-        _vk.GetBufferMemoryRequirements(_device, handle, &requirements);
-        DeviceMemory memory = Allocate(requirements, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, fallback: null);
-        Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
-        return new BufferResource(handle, memory, size);
+        VkBuffer handle = default;
+        DeviceMemory memory = default;
+        try
+        {
+            Check(_vk.CreateBuffer(_device, &info, null, &handle), "vkCreateBuffer");
+            MemoryRequirements requirements;
+            _vk.GetBufferMemoryRequirements(_device, handle, &requirements);
+            memory = Allocate(requirements, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, fallback: null);
+            Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
+            BufferResource created = new(handle, memory, size);
+            resource = created;
+            return created;
+        }
+        catch
+        {
+            if (memory.Handle != 0)
+                _vk.FreeMemory(_device, memory, null);
+            if (handle.Handle != 0)
+                _vk.DestroyBuffer(_device, handle, null);
+            throw;
+        }
     }
 
     private DeviceMemory Allocate(MemoryRequirements requirements, MemoryPropertyFlags preferred, MemoryPropertyFlags? fallback)
@@ -459,7 +491,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
         if (typeIndex < 0 && fallback is { } fallbackFlags)
             typeIndex = FindMemoryType(requirements.MemoryTypeBits, fallbackFlags);
         if (typeIndex < 0)
-            throw new InvalidOperationException($"No Vulkan memory type satisfies {preferred}.");
+            throw new VulkanException($"No memory type satisfies {preferred}; vkAllocateMemory", Result.ErrorOutOfDeviceMemory);
 
         var allocateInfo = new MemoryAllocateInfo
         {

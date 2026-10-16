@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Prepared;
 using FatzBomb.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,8 +38,7 @@ public partial class MediaControlPlayer
         if (!source.IsFile)
             return null;
 
-        IMediaFileAnalyzer analyzer = ResolveMediaFileAnalyzer();
-        return await analyzer.AnalyzeAsync(source.FilePath!, cancellationToken).ConfigureAwait(false);
+        return await AnalyzeFileAsync(source.FilePath!, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<bool> PrepareNextAsync(string path, CancellationToken cancellationToken = default) =>
@@ -51,7 +51,6 @@ public partial class MediaControlPlayer
         if (source.IsFile ? !System.IO.File.Exists(source.FilePath) : !source.IsBgraImage)
             return false;
 
-        IMediaFileAnalyzer analyzer = ResolveMediaFileAnalyzer();
         PreparedNextTicket ticket = _preparedNext.Begin(source, cancellationToken, out PreparedNextChange accepted);
         PublishPreparedNextChange(accepted);
 
@@ -59,7 +58,7 @@ public partial class MediaControlPlayer
         try
         {
             if (source.IsFile)
-                analysis = await analyzer.AnalyzeAsync(source.FilePath!, ticket.Token).ConfigureAwait(false);
+                analysis = await AnalyzeFileAsync(source.FilePath!, ticket.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -98,7 +97,9 @@ public partial class MediaControlPlayer
             return EnqueueControlOperation(() => TransitionToPreparedNextCoreAsync(expectedGeneration: null, isAutomatic: false, fade: null));
 
         // The faded path waits off the queue; a pause, seek, stop, or load in the meantime
-        // means the host changed course, so the transition is abandoned.
+        // means the host changed course, so the transition is abandoned. It is pinned to the
+        // item that is Ready now: replacing or clearing the slot during the fade abandons it too.
+        var slotGeneration = _preparedNext.Generation;
         var transportGeneration = Controls.TransportGeneration;
         var loadGeneration = File.LoadGeneration;
         bool StillValid() =>
@@ -106,7 +107,7 @@ public partial class MediaControlPlayer
             && Controls.TransportGeneration == transportGeneration
             && File.LoadGeneration == loadGeneration;
 
-        return RunFadedPreparedNextTransitionAsync(expectedGeneration: null, isAutomatic: false, fade, fadeOutgoing: true, StillValid);
+        return RunFadedPreparedNextTransitionAsync(slotGeneration, isAutomatic: false, fade, fadeOutgoing: true, StillValid);
     }
 
     private async Task<bool> TransitionToPreparedNextCoreAsync(long? expectedGeneration, bool isAutomatic, AudioCrossfadeOptions? fade)
@@ -217,6 +218,26 @@ public partial class MediaControlPlayer
 
     private IMediaFileAnalyzer ResolveMediaFileAnalyzer() =>
         _serviceProvider.GetService<IMediaFileAnalyzer>() ?? UnavailableMediaFileAnalyzer.Instance;
+
+    /// <summary>
+    /// Runs the plain-audio analyzer off the caller's thread (opening and prescanning a file is
+    /// synchronous work a UI thread must not do). Video, archives, images, and CDG files are not
+    /// plain audio and are not analyzed.
+    /// </summary>
+    private Task<MediaAnalysisResult?> AnalyzeFileAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!IsAnalyzableAudioFile(path))
+            return Task.FromResult<MediaAnalysisResult?>(null);
+
+        IMediaFileAnalyzer analyzer = ResolveMediaFileAnalyzer();
+        return Task.Run(() => analyzer.AnalyzeAsync(path, cancellationToken), cancellationToken);
+    }
+
+    internal static bool IsAnalyzableAudioFile(string path) =>
+        !FileTypes.IsVideo(path)
+        && !FileTypes.IsArchive(path)
+        && !FileTypes.IsImage(path)
+        && !FileTypes.IsCdg(path);
 
     private void PublishPreparedNextChange(PreparedNextChange change)
     {

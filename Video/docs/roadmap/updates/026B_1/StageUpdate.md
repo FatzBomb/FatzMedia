@@ -48,3 +48,9 @@ Delivered:
 5. Run the opt-in smokes:
    `FATZBOMB_LINUX_FFMPEG_DIR=<dir> FATZBOMB_LINUX_SAMPLE_VIDEO=<clip.mp4> dotnet test FatzBomb.MediaControl.Linux.Tests`.
 6. Windows regression: sidecar backgrounds (including `song.PNG`) still attach.
+
+## Review follow-up 2 (same day)
+
+- Sidecar lookup lists the directory only on case-sensitive file systems (Linux); Windows
+  and macOS keep the original exact-name probes, so large library folders load as fast as
+  before there.

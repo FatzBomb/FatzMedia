@@ -43,3 +43,12 @@ Delivered:
    swap `SoftwarePresentationCoordinatorFactory` for
    `VulkanPresentationCoordinatorFactory`: video plays with correct letterboxing;
    karaoke/CDG frames log the one-time "cannot draw this frame yet (Overlays)" warning.
+
+## Review follow-up 2 (same day)
+
+- A failed resize (out of device memory) no longer leaves freed Vulkan handles in use;
+  allocation failures surface as `VulkanException` and are handled by the backend.
+- Without a usable device, initialization is attempted once (one diagnostic) until
+  `CleanupResources`, instead of on every frame.
+- Known limitation kept: translucent backgrounds are blitted without blending (preview
+  slice; shader composition is slice 2).

@@ -43,6 +43,26 @@ public partial class MediaControlPlayer
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
         RaiseOnControlQueue(() => HostEventDispatcher.Raise(this, BufferingChanged, e, nameof(BufferingChanged)));
 
-    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) =>
-        RaiseOnControlQueue(() => HostEventDispatcher.Raise(this, StreamMetadataChanged, e, nameof(StreamMetadataChanged)));
+    /// <remarks>
+    /// Always queued, never raised inline: the engine publishes the first title while the load
+    /// operation is still running, and hosts must see it after that load's <c>MediaLoaded</c>.
+    /// </remarks>
+    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, StreamMetadataChanged, e, nameof(StreamMetadataChanged)));
+        }
+        catch (ObjectDisposedException)
+        {
+            // The player is resetting or disposing; the notification is dropped with it.
+        }
+        catch (InvalidOperationException)
+        {
+            // The queue stopped accepting work during teardown.
+        }
+    }
 }

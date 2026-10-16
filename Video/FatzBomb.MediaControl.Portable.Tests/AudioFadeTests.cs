@@ -264,7 +264,10 @@ public sealed class AudioFadeRunnerTests
 
         Assert.False(await first.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.True(await second.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Equal((1d, TimeSpan.FromSeconds(1)), target.Calls[^1]);
+
+        // The superseding fade ramps from wherever the first one had reached; it does not
+        // snap to its own start gain (0) first.
+        Assert.Equal([(1d, TimeSpan.Zero), (0d, TimeSpan.FromSeconds(5)), (1d, TimeSpan.FromSeconds(1))], target.Calls);
     }
 
     [Fact]

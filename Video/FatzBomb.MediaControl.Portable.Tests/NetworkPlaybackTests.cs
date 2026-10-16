@@ -174,6 +174,50 @@ public sealed class PlayerNetworkEventTests
     }
 
     [Fact]
+    public async Task LoopMedia_NetworkSourceEnd_StopsInsteadOfRestarting()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("radio.mp3"));
+        Assert.True(player.Play());
+        engine.CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed;
+        player.LoopMedia = true;
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var looped = 0;
+        player.MediaEnded += (_, _) => ended.TrySetResult();
+        player.MediaLooped += (_, _) => Interlocked.Increment(ref looped);
+
+        engine.CompletePlayback();
+        await ended.Task.WaitAsync(Timeout);
+        await player.FlushControlOperationsAsync().WaitAsync(Timeout);
+        await player.FlushControlOperationsAsync().WaitAsync(Timeout);
+
+        Assert.Equal(1, engine.PlayCount);
+        Assert.Equal(0, Volatile.Read(ref looped));
+    }
+
+    [Fact]
+    public async Task MetadataPublishedDuringLoad_ArrivesAfterMediaLoaded()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var order = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var metadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.MediaLoaded += (_, _) => order.Enqueue("loaded");
+        player.StreamMetadataChanged += (_, _) =>
+        {
+            order.Enqueue("metadata");
+            metadata.TrySetResult();
+        };
+        engine.BeforeOpen = () => engine.TestAudio.RaiseStreamMetadata("Title", "Artist");
+
+        Assert.True(player.Load("radio.mp3"));
+        await metadata.Task.WaitAsync(Timeout);
+
+        Assert.Equal(["loaded", "metadata"], order);
+    }
+
+    [Fact]
     public void Dispose_UnsubscribesNetworkEvents()
     {
         var engine = new TestMediaEngine();
