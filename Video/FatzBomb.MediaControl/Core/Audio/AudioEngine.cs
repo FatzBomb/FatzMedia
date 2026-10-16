@@ -476,7 +476,6 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (_disposed) return;
 
         CancelNormalizationAnalysis();
-        StopStandaloneAnalyses();
         RemovePlaybackEndSync();
 
         _streamManager.Close();
@@ -630,6 +629,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (_disposed) return;
 
         CancelNormalizationAnalysis();
+        StopStandaloneAnalyses();
 
         _streamManager?.Dispose();
 

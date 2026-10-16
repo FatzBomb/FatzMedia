@@ -57,3 +57,11 @@ dotnet run --project FatzBomb.MediaControl.Player -- --trim-silence "--prepare-n
 6. Prepare a file, modify it on disk (e.g. re-save), let the current item end with
    `--auto-next`: slot goes Ready -> Stale and nothing is loaded.
 7. With `--software` repeat step 2.
+
+## Follow-up fix (same day)
+
+- The first 031A commit placed the standalone-analysis shutdown in `AudioEngine.Close`
+  instead of `Dispose`, which would have cancelled every prepared-next analysis after
+  the first media close. Moved to `Dispose`; found during self-review before any
+  native run. The native smoke in this note covers it (step 1 must reach Ready with
+  analysis after the current item was loaded).
