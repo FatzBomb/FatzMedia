@@ -34,7 +34,7 @@ public sealed class PlaybackPositionNotifierTests
         };
 
         notifier.Start();
-        await first.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await first.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         await Task.Delay(100);
 
         Assert.Equal(1, Volatile.Read(ref count));
@@ -56,7 +56,7 @@ public sealed class PlaybackPositionNotifierTests
 
         notifier.Start();
 
-        await disposed.Task.WaitAsync(TimeSpan.FromMilliseconds(500));
+        await disposed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class PlaybackPositionNotifierTests
 
         notifier.Start();
 
-        await secondGeneration.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await secondGeneration.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(2, Volatile.Read(ref count));
     }
 

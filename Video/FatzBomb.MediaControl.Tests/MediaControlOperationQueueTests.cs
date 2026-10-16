@@ -33,7 +33,7 @@ public class MediaControlOperationQueueTests
             return 1;
         });
 
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var executeRan = new ManualResetEventSlim(false);
         Task<int> executeTask = Task.Run(() => queue.Execute(() => { executeRan.Set(); return 42; }));
@@ -45,8 +45,8 @@ public class MediaControlOperationQueueTests
 
         release.SetResult();
 
-        Assert.Equal(42, await executeTask.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Equal(1, await queued.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(42, await executeTask.WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal(1, await queued.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class MediaControlOperationQueueTests
             return innerThreadId;
         });
 
-        int result = await outer.WaitAsync(TimeSpan.FromSeconds(2));
+        int result = await outer.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         // Ran directly on the worker (no re-queueing, no deadlock).
         Assert.Equal(result, innerThreadId);
@@ -77,7 +77,7 @@ public class MediaControlOperationQueueTests
 
         Task<int> outer = queue.Enqueue(() => queue.Execute(() => queue.Execute(() => 5)));
 
-        Assert.Equal(5, await outer.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(5, await outer.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class MediaControlOperationQueueTests
 
         Task<int> operation = Task.Run(() => queue.Execute(() => queue.Execute(() => 42)));
 
-        Assert.Equal(42, await operation.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(42, await operation.WaitAsync(TestEnvironment.EventuallyTimeout));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class MediaControlOperationQueueTests
 
         Task<int> executeTask = Task.Run(() => queue.Execute<int>(() => throw expected));
 
-        var actual = await Assert.ThrowsAsync<InvalidOperationException>(() => executeTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var actual = await Assert.ThrowsAsync<InvalidOperationException>(() => executeTask.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Same(expected, actual);
     }
 
@@ -124,7 +124,7 @@ public class MediaControlOperationQueueTests
         });
 
         Assert.Equal("sync-result", syncResult);
-        Assert.True(await asyncOp.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(await asyncOp.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Equal(["async-start", "async-end", "sync"], order);
     }
 
