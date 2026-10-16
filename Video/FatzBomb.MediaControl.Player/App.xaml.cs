@@ -36,6 +36,8 @@ public partial class App : Application
 
     public static int NetworkRetries { get; private set; }
 
+    public static double[]? EqualizerGains { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -75,6 +77,14 @@ public partial class App : Application
         NetworkRetries = e.Args
             .Where(static argument => argument.StartsWith(retryPrefix, StringComparison.OrdinalIgnoreCase))
             .Select(static argument => int.TryParse(argument[retryPrefix.Length..], out var retries) ? retries : 0)
+            .FirstOrDefault();
+        const string eqPrefix = "--eq=";
+        EqualizerGains = e.Args
+            .Where(static argument => argument.StartsWith(eqPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[eqPrefix.Length..]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static gain => double.TryParse(gain, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : 0)
+                .ToArray())
             .FirstOrDefault();
         AutoTransitionToPreparedNext = e.Args.Any(static argument =>
             string.Equals(argument, "--auto-next", StringComparison.OrdinalIgnoreCase));

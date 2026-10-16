@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio.Fade;
+using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Network;
 using ManagedBass;
 using ManagedBass.Fx;
@@ -15,8 +16,10 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
+    private readonly BassEqualizerFilter _equalizer = new();
+
     private const double CachedDurationToleranceSeconds = 0.25;
 
     #region Private Fields
@@ -312,6 +315,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
             EndFadeSession(releaseHandle: true);
             StopNetworkMonitoring();
+            _equalizer.Forget();
             var success = _streamManager.OpenFromPath(filePath);
             if (success)
             {
@@ -323,6 +327,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
                     SetupFadeFx(playHandle);
+                    _ = _equalizer.Apply(playHandle);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle}");
                 }
 
@@ -376,6 +381,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
             EndFadeSession(releaseHandle: true);
             StopNetworkMonitoring();
+            _equalizer.Forget();
             var success = _streamManager.OpenFromArchive(archiveEntry);
             if (success)
             {
@@ -388,6 +394,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 {
                     _ = _normalizer.SetupGainFx(playHandle);
                     SetupFadeFx(playHandle);
+                    _ = _equalizer.Apply(playHandle);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Gain FX setup on handle {playHandle} (archive)");
                 }
 
@@ -510,6 +517,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         RemovePlaybackEndSync();
         EndFadeSession(releaseHandle: true);
         StopNetworkMonitoring();
+        _equalizer.Forget();
 
         _streamManager.Close();
         Volatile.Write(ref _activeTrimWindow, null);
@@ -657,6 +665,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             ResetActiveTrimWindow();
             EndFadeSession(releaseHandle: true);
             StopNetworkMonitoring();
+            _equalizer.Forget();
 
             if (!_bassInitialized)
             {
@@ -706,6 +715,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             {
                 _ = _normalizer.SetupGainFx(playHandle);
                 SetupFadeFx(playHandle);
+                _ = _equalizer.Apply(playHandle);
             }
 
             // No pre-analysis for network sources: normalization stays at unity gain.
@@ -821,6 +831,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Stream metadata read failed: {ex.Message}", innerException: ex);
         }
     }
+
+    AudioEqualizerSettings IAudioFilterHost.Equalizer => _equalizer.Settings;
+
+    bool IAudioFilterHost.SetEqualizer(AudioEqualizerSettings settings) => _equalizer.Configure(settings);
 
     int IAudioFadeGainTarget.BeginFadeSession()
     {

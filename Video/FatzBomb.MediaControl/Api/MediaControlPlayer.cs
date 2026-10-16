@@ -132,6 +132,12 @@ public partial class MediaControlPlayer : IMediaControlSession
         set => Effects.Normalize = value;
     }
 
+    public AudioEqualizerSettings Equalizer
+    {
+        get => Effects.Equalizer;
+        set => Effects.Equalizer = value;
+    }
+
     public bool IsOpen => _mediaEngine.IsOpen;
 
     public MediaPlayerState State => _mediaEngine.State;

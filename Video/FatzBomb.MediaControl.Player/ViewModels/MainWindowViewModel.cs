@@ -401,6 +401,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.PlayOnLoad = AutoPlay;
             player.LoopMedia = LoopPlayback;
             player.ShowMidiLyrics = true;
+            if (App.EqualizerGains is { } equalizerGains)
+                player.Equalizer = AudioEqualizerSettings.CreateGraphic10Band(equalizerGains);
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
             Player = player;

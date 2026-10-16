@@ -64,6 +64,12 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets or sets whether embedded MIDI/KAR lyrics are displayed when available.</summary>
     bool ShowMidiLyrics { get; set; }
 
+    /// <summary>
+    /// Gets or sets the equalizer applied to local and network audio streams (Stage 020A).
+    /// Disabled by default; disabled or all-neutral settings attach no native filter.
+    /// </summary>
+    AudioEqualizerSettings Equalizer { get; set; }
+
     /// <summary>Gets or sets the video offset relative to the physical audio clock.</summary>
     TimeSpan AudioSyncOffset { get; set; }
 
@@ -304,6 +310,9 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised when normalization is enabled or disabled.</summary>
     event EventHandler<MediaNormalizeChangedEventArgs>? NormalizeChanged;
+
+    /// <summary>Raised when the equalizer settings change.</summary>
+    event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
 
     /// <summary>Raised when loop playback is enabled or disabled.</summary>
     event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;

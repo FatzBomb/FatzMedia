@@ -45,6 +45,8 @@ public partial class MediaControlPlayer
 
     public event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;
 
+    public event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         ClearPendingSeek();
@@ -139,6 +141,9 @@ public partial class MediaControlPlayer
     private void OnEffectsNormalizeChanged(object? sender, MediaNormalizeChangedEventArgs e) =>
         HostEventDispatcher.Raise(this, NormalizeChanged, e, nameof(NormalizeChanged));
 
+    private void OnEffectsEqualizerChanged(object? sender, MediaValueChangedEventArgs<AudioEqualizerSettings> e) =>
+        HostEventDispatcher.Raise(this, EqualizerChanged, e, nameof(EqualizerChanged));
+
     private void OnControlsLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e) =>
         HostEventDispatcher.Raise(this, LoopMediaChanged, e, nameof(LoopMediaChanged));
 
@@ -216,6 +221,7 @@ public partial class MediaControlPlayer
         Effects.PitchChanged += OnEffectsPitchChanged;
         Effects.TempoChanged += OnEffectsTempoChanged;
         Effects.NormalizeChanged += OnEffectsNormalizeChanged;
+        Effects.EqualizerChanged += OnEffectsEqualizerChanged;
     }
 
     private void UnsubscribeNewSessionEvents()
@@ -230,6 +236,7 @@ public partial class MediaControlPlayer
         Effects.PitchChanged -= OnEffectsPitchChanged;
         Effects.TempoChanged -= OnEffectsTempoChanged;
         Effects.NormalizeChanged -= OnEffectsNormalizeChanged;
+        Effects.EqualizerChanged -= OnEffectsEqualizerChanged;
     }
 
     private void SubscribeSeekCompletionSources()

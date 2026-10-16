@@ -259,8 +259,18 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
+    public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
+    public int EqualizerApplyCount { get; private set; }
+
+    public bool SetEqualizer(AudioEqualizerSettings settings)
+    {
+        Equalizer = settings;
+        EqualizerApplyCount++;
+        return true;
+    }
+
     public bool NetworkOpenSucceeds { get; set; } = true;
     public string? LastNetworkUrl { get; private set; }
     public MediaSourceCapabilities? NetworkCapabilities { get; set; }

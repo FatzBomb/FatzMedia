@@ -733,6 +733,16 @@ It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
 
+## Audio Filter Framework (Stage 020A, slice 1)
+
+The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain
+-> fade envelope -> channel volume -> output. Internal `IAudioFilter` stages (priority
+order, bypass = no native stage, reported latency, lifecycle per stream) are hosted by
+the `AudioEngine` through `IAudioFilterHost`. The first filter is a BASS_FX PEAKEQ
+equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
+`IMediaControlSession.Equalizer`, `EqualizerChanged`). See
+`roadmap/active/020A_ACTIVE_AudioFilterFramework.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
