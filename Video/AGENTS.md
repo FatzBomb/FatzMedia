@@ -30,6 +30,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | `FatzBomb.MediaControl.Rendering.Software` | Portable deterministic software renderer — in-memory premultiplied BGRA8 composition with no GPU or window | Targets `net10.0`; references Core only |
 | `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, hardware-decode policy | References Core only; renderer selection belongs to the host composition root |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle | References Windows + Direct3D11 and exposes the current default platform factory |
+| `FatzBomb.MediaControl.Rendering.Vulkan` | Preview Vulkan renderer (slice 1: offscreen clear + background blit into a frame sink) | Targets `net10.0`; references Core only; Silk.NET.Vulkan |
 | `FatzBomb.MediaControl.Linux` | Linux platform composition — host-supplied BASS/FFmpeg `.so` loading, precision waits, BASS device monitoring, software decode policy | Targets `net10.0`; references Core only; pairs with any renderer factory |
 | `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop — `MediaSurface`, `BackgroundSurface`, `KaraokeSurface`, and `Player : MediaControlPlayer` | Controls accept an `IMediaControlPlatformFactory`; project must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |

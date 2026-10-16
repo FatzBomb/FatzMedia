@@ -14,6 +14,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
   (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
   pending; macOS deferred.
+- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slice 1 implemented
+  (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -56,7 +58,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: `future/026A_IDEA_CrossPlatformRendererBackends.md`.
+Next stage: `future/027A_IDEA_UiAdapterImplementations.md`.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
@@ -65,7 +67,6 @@ trimming, prepared-next and audio crossfade, then streaming.
 The list is ordered by recommended next work, cross-platform enablement, product
 features, then internal engine improvements.
 
-- `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
 - `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
 - `future/020A_IDEA_AudioFilterFramework.md` - ordered, bypassable audio processing.
 - `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.

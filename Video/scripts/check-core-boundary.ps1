@@ -28,6 +28,14 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
     )
+    'FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Rendering.Vulkan.Tests\FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
+    )
     'FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )

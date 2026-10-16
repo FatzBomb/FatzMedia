@@ -713,6 +713,16 @@ software capability scan. Renderer choice stays with the host (software renderer
 today). Sidecar extension matching in Core is case-insensitive on case-sensitive file
 systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 
+## Vulkan Renderer Preview (Stage 026A, slice 1)
+
+`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core only, Silk.NET.Vulkan) offers
+`VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
+1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
+blit using the software renderer's placement rules, and readback. Overlay, transform,
+native-resource, and window-swapchain frames are rejected with a diagnostic until later
+slices. A lavapipe conformance suite compares output with `SoftwareCompositionRenderer`.
+See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
+
 ## Session Reset
 
 - `IMediaControlSession.Reset(MediaPlayerConfiguration, IEnumerable<string>)` stops all playback, disposes the internal DI container and all engines/coordinators, rebuilds with the new config, and reattaches any existing presentation surfaces.
