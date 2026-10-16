@@ -5,7 +5,8 @@ $ErrorActionPreference = 'Stop'
 # CDG, video-frame, or GPU implementation types, and must not reference renderer projects.
 $root = Split-Path -Parent $PSScriptRoot
 $adapters = @(
-    'FatzBomb.MediaControl.Avalonia'
+    'FatzBomb.MediaControl.Avalonia',
+    'FatzBomb.MediaControl.WinForms'
 )
 
 $forbiddenPatterns = @(

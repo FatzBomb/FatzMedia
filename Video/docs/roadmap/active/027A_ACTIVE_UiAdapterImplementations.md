@@ -1,8 +1,8 @@
 # Active Stage 027A - UI Adapter Implementations
 
 Prepared: 2026-10-16
-Status: Avalonia slice implemented and validated headlessly on Linux. WinForms and WinUI 3
-slices follow (see Slices). Order changed from the idea (Avalonia first) per the owner's
+Status: Avalonia (slice 1) and WinForms (slice 3) implemented. Avalonia native-surface
+mode (slice 2) waits on the Vulkan swapchain slice; WinUI 3 (slice 4) is deferred. Order changed from the idea (Avalonia first) per the owner's
 session instructions.
 
 ## Framework-Adapter Conformance Checklist (extracted from WPF, pinned)
@@ -29,8 +29,11 @@ session instructions.
   (Windows, Linux) and any frame-sink renderer (software, Vulkan preview).
 - **Slice 2 - Avalonia native-surface mode:** `NativeControlHost` HWND/X11 descriptors for
   swapchain renderers (needs 026A swapchain slice).
-- **Slice 3 - WinForms:** HWND `MediaSurface` over Windows + Direct3D11.
-- **Slice 4 - WinUI 3:** `SwapChainPanel` or HWND interop surface.
+- **Slice 3 - WinForms (implemented):** `FatzBomb.MediaControl.WinForms` HWND
+  `MediaSurface` (Core only; pairs with Windows + Direct3D11).
+- **Slice 4 - WinUI 3 (deferred):** `SwapChainPanel` or HWND interop surface. Deferred
+  because the Windows App SDK XAML toolchain cannot be built or validated in the Linux
+  session and would add an unvalidated Windows-only build dependency to CI.
 
 ## Explicit Non-Goals
 

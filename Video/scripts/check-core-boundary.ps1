@@ -60,7 +60,11 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
-        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj'
+        '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
+        '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj'
+    )
+    'FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
 }
 

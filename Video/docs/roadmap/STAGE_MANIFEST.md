@@ -16,8 +16,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   pending; macOS deferred.
 - `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slice 1 implemented
   (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
-- `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia slice implemented
-  (`updates/027A_1`); WinForms/WinUI slices follow.
+- `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
+  implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
