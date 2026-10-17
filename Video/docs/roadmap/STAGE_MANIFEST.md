@@ -24,7 +24,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
   (`updates/017A_1`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
-  extracted, pending manual video smoke (`updates/015A_1`).
+  extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
+  `VideoSeekPump` with tests, pending a repeat of the seek smoke (`updates/015A_2`).
 - `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
   full-frame copy removed, pending manual smoke (`updates/010A_1`).
 - `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
