@@ -1,9 +1,10 @@
 # Active Stage 033A - FFmpeg Audio Parity and Unsupported-Format Fallback
 
 Prepared: 2026-10-17
-Status: Slice 1 (equalizer, fades, normalization for video audio) implemented, pending
-manual smoke (`updates/033A_1`). Slice 2 next. Owner decision (2026-10-17): implement now
-while the owner's native smoke of the 2026-10-16 stages is pending.
+Status: Slice 1 (equalizer, fades, normalization for video audio) and slice 2 (FFmpeg
+fallback for unsupported audio formats) implemented, pending manual smoke
+(`updates/033A_1`, `updates/033A_2`). Owner decision (2026-10-17): implement now while the
+owner's native smoke of the 2026-10-16 stages is pending.
 
 ## Why This Is Worth Doing
 
@@ -53,9 +54,9 @@ with no new playback code.
 - Decode speed is typically far faster than real time for audio-only files, so a song
   converts in well under a second on a modern PC. The stage measures this before
   committing to the threshold below.
-- Memory: 16-bit stereo 44.1 kHz PCM is about 10 MB per minute. Up to a configurable
-  limit (default about 20 minutes), the WAV stays in memory; above it, it goes to a temp
-  file that is deleted when the item closes.
+- Memory (as built: 32-bit float, so about 21 MB per minute at 44.1 kHz stereo): up to
+  160 MB (about 8 minutes) the WAV stays in memory; above it, it goes to a temp file that
+  is deleted when the item closes.
 - Prepared-next converts during `PrepareNextAsync`, so the transition is still instant.
 - The analysis cache and silence trimming key on the original file's identity, not the
   converted buffer.
@@ -66,6 +67,25 @@ Rejected alternative: a live FFmpeg pull stream for audio-only files. It would n
 own seek, length, loop, trimming, and analysis code to reach parity, which is the
 duplication this slice avoids. Slice 1 still uses live decode for video, where the audio
 must stay locked to the picture.
+
+## Slice 2 Acceptance Criteria
+
+- `FileTypes.FfmpegAudio` (registered by the Windows and Linux bootstraps once FFmpeg
+  loads) lists audio-only extensions FFmpeg decodes. A plain file whose extension only
+  that set claims routes to `FileType.Audio`, pairs with a `.cdg` companion, and appears
+  in `AcceptedMediaTypes.Audio`.
+- `AudioStreamManager.OpenFromPath` converts such a file with `FfmpegAudioFallback` and
+  opens the result as a normal BASS stream (in memory, or a temp file above 160 MB that
+  is deleted on close). A BASS-claimed file BASS cannot decode (for example ALAC in
+  `.m4a` without `bassalac`) retries through the same conversion.
+- The converted format is 32-bit float WAV at the source rate, at most two channels (the
+  format the video audio engine already plays), so nothing clips and BASS reads it
+  natively.
+- Prepared-next analysis of such a file converts it once and keeps the result for the
+  transition. The analysis and normalization caches key on the original file.
+- Diagnostics report each conversion (time, size, memory or temp file).
+- Focused tests for routing and the WAV header; the opt-in native test round-trips a
+  conversion through FFmpeg in memory and through a temp file.
 
 ## Slice 1 Acceptance Criteria
 

@@ -151,6 +151,7 @@ internal static partial class Bootstrap
             if (ok)
             {
                 FileTypes.Video.UnionWith(supportedFileTypes);
+                FileTypes.RegisterFfmpegAudio();
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", "All FFmpeg libraries loaded successfully");
                 return true;
             }

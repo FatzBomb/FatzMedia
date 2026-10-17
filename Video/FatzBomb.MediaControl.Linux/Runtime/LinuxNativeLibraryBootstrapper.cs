@@ -188,6 +188,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         }
 
         FileTypes.Video.UnionWith(LinuxNativeLibraryCatalog.VideoExtensions);
+        FileTypes.RegisterFfmpegAudio();
         return true;
     }
 

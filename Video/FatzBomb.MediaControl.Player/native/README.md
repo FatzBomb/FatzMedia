@@ -25,8 +25,10 @@ All seven FFmpeg DLLs must come from the same build.
 
 ## Optional
 
-Each BASS plugin adds file types. When one is missing, only its file types fail to
-open.
+Each BASS plugin adds file types. When one is missing, FFmpeg decodes those formats
+instead (Stage 033A), so they still open; BASS's own decoder is just faster to start and
+streams instead of converting. The exceptions are MIDI and CD tracks, which FFmpeg
+cannot play: without `bassmidi.dll` or `basscd.dll` those files do not open.
 
 | File | Adds |
 |---|---|

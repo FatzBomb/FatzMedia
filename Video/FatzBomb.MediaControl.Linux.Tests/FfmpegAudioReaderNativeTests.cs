@@ -4,7 +4,8 @@ using FatzBomb.MediaControl.Linux.Runtime;
 namespace FatzBomb.MediaControl.Linux.Tests;
 
 /// <summary>
-/// Opt-in native check of the FFmpeg audio path used for video-audio normalization (Stage 033A).
+/// Opt-in native check of the FFmpeg audio paths of Stage 033A: video-audio normalization and
+/// the unsupported-format conversion.
 /// Set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> as for <see cref="LinuxNativeSmokeTests"/>; the test
 /// writes its own WAV, so no sample file is needed. Without the variable it returns immediately.
 /// </summary>
@@ -17,16 +18,7 @@ public sealed class FfmpegAudioReaderNativeTests
         if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
             return;
 
-        var operations = new LinuxNativeOperations();
-        foreach (var fileName in LinuxNativeLibraryCatalog.FfmpegInLoadOrder)
-        {
-            var path = Path.Combine(directory, fileName);
-            if (File.Exists(path))
-                Assert.True(operations.TryLoad(path, out _), $"dlopen failed for {path}");
-        }
-
-        Assert.True(operations.TryActivateFfmpeg(directory));
-
+        ActivateFfmpeg(directory);
         var wav = Path.Combine(Path.GetTempPath(), $"fatzbomb-peak-{Guid.NewGuid():N}.wav");
         try
         {
@@ -51,6 +43,80 @@ public sealed class FfmpegAudioReaderNativeTests
         {
             File.Delete(wav);
         }
+    }
+
+    [Fact]
+    public void RealFfmpeg_ConvertsToAFloatWavFfmpegReadsBack_InMemoryAndAsTempFile()
+    {
+        var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
+        if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
+            return;
+
+        ActivateFfmpeg(directory);
+        var source = Path.Combine(Path.GetTempPath(), $"fatzbomb-convert-{Guid.NewGuid():N}.wav");
+        var roundTrip = Path.ChangeExtension(source, ".roundtrip.wav");
+        try
+        {
+            WriteStereoTone(source, sampleRate: 48000, seconds: 3, amplitude: 0.5, burstAtSeconds: 2, burstAmplitude: 0.75);
+
+            using (ConvertedAudio? inMemory = FfmpegAudioFallback.Take(source, CancellationToken.None))
+            {
+                Assert.NotNull(inMemory);
+                Assert.True(inMemory.IsInMemory);
+                Assert.Equal(FloatWav.HeaderBytes + (48000L * 3 * 2 * sizeof(float)), inMemory.Length);
+                File.WriteAllBytes(roundTrip, inMemory.InMemoryData.ToArray());
+                AssertReadsBack(roundTrip);
+            }
+
+            var previousLimit = FfmpegAudioFallback.MaxInMemoryBytes;
+            FfmpegAudioFallback.MaxInMemoryBytes = 64 * 1024;
+            try
+            {
+                string tempPath;
+                using (ConvertedAudio? spilled = FfmpegAudioFallback.Take(source, CancellationToken.None))
+                {
+                    Assert.NotNull(spilled);
+                    Assert.False(spilled.IsInMemory);
+                    tempPath = spilled.TempPath!;
+                    Assert.Equal(spilled.Length, new FileInfo(tempPath).Length);
+                    AssertReadsBack(tempPath);
+                }
+
+                Assert.False(File.Exists(tempPath), "the temp WAV is deleted on dispose");
+            }
+            finally
+            {
+                FfmpegAudioFallback.MaxInMemoryBytes = previousLimit;
+            }
+        }
+        finally
+        {
+            File.Delete(source);
+            File.Delete(roundTrip);
+        }
+
+        static void AssertReadsBack(string path)
+        {
+            using FfmpegAudioReader? reader = FfmpegAudioReader.Open(path);
+            Assert.NotNull(reader);
+            Assert.Equal(48000, reader.SampleRate);
+            Assert.Equal(2, reader.Channels);
+            Assert.InRange(reader.DurationSeconds, 2.99, 3.01);
+            Assert.InRange(FfmpegAudioPeakScanner.ScanDeep(reader, CancellationToken.None), 0.74, 0.76);
+        }
+    }
+
+    private static void ActivateFfmpeg(string directory)
+    {
+        var operations = new LinuxNativeOperations();
+        foreach (var fileName in LinuxNativeLibraryCatalog.FfmpegInLoadOrder)
+        {
+            var path = Path.Combine(directory, fileName);
+            if (File.Exists(path))
+                Assert.True(operations.TryLoad(path, out _), $"dlopen failed for {path}");
+        }
+
+        Assert.True(operations.TryActivateFfmpeg(directory));
     }
 
     private static void WriteStereoTone(string path, int sampleRate, int seconds, double amplitude, int burstAtSeconds, double burstAmplitude)

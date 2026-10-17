@@ -44,6 +44,7 @@ internal sealed class AudioStreamManager : IDisposable
     private int _sourceHandle;
     private bool _sourceHandleIsMusic;
     private bool _decodeHandleIsMusic;
+    private ConvertedAudio? _converted;
     private bool _loopPlayback;
     private readonly TrackerPositionTimeline _trackerPositionTimeline = new();
 
@@ -111,6 +112,8 @@ internal sealed class AudioStreamManager : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
         Close();
+        if (FfmpegAudioFallback.RequiresConversion(filePath))
+            return OpenConverted(filePath);
 
         try
         {
@@ -131,7 +134,8 @@ internal sealed class AudioStreamManager : IDisposable
 
             if (!ValidateStreamHandles())
             {
-                return false;
+                // A claimed extension BASS cannot decode (e.g. ALAC in .m4a without bassalac).
+                return FfmpegAudioFallback.CanRetryWithFfmpeg(filePath) && OpenConverted(filePath);
             }
 
             AttachTempoProcessor();
@@ -144,6 +148,43 @@ internal sealed class AudioStreamManager : IDisposable
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"OpenFromPath failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
             Close(); // Ensure cleanup on failure
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Opens a file no BASS plugin can decode through the FFmpeg fallback (Stage 033A): the
+    /// converted float WAV gets the same decode and tempo streams as any other file.
+    /// </summary>
+    private bool OpenConverted(string filePath)
+    {
+        try
+        {
+            ConvertedAudio? converted = FfmpegAudioFallback.Take(filePath, CancellationToken.None);
+            if (converted is null)
+                return false;
+
+            _converted = converted;
+            DecodeHandle = converted.CreateStream(DecodeFlags);
+            _sourceHandle = converted.CreateStream(CreateStreamFlags);
+            _decodeHandleIsMusic = false;
+            _sourceHandleIsMusic = false;
+            if (!ValidateStreamHandles())
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"BASS could not open the FFmpeg-decoded audio of '{filePath}': {MBass.LastError}", sourcePath: filePath);
+                Close();
+                return false;
+            }
+
+            AttachTempoProcessor();
+            ApplyLoopPlayback();
+            ResetState();
+            return PlayHandle != 0;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"FFmpeg fallback failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
+            Close();
             return false;
         }
     }
@@ -451,6 +492,10 @@ internal sealed class AudioStreamManager : IDisposable
             bool decodeHandleIsMusic = _decodeHandleIsMusic;
             SafeExecute(() => FreeSourceHandle(decodeHandle, decodeHandleIsMusic));
         }
+
+        // The converted WAV backs the streams just freed.
+        _converted?.Dispose();
+        _converted = null;
 
         // Reset all handles and state
         PlayHandle = _sourceHandle = DecodeHandle = 0;

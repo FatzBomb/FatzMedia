@@ -91,7 +91,10 @@ Approved source: Un4seen Developments only:
 - Required: `bass.dll`, `bass_fx.dll`.
 - Optional plugins: `bass_aac.dll`, `bass_ac3.dll`, `bassalac.dll`, `basscd.dll`,
   `bassflac.dll`, `bassmidi.dll`, `bassopus.dll`, and `basswma.dll`.
-- Optional plugin presence controls the corresponding accepted file extensions.
+- Optional plugin presence controls the corresponding accepted file extensions. When
+  FFmpeg is loaded, formats a missing plugin would have played (AAC/M4A, ALAC, FLAC,
+  Opus, AC-3, WMA, and other audio FFmpeg decodes) still open through the FFmpeg
+  fallback (Stage 033A); MIDI and CD audio still need `bassmidi` and `basscd`.
 
 BASS is free only for qualifying non-commercial use. Commercial host developers
 must obtain the appropriate BASS licence. Un4seen states that BASS licences apply to

@@ -581,7 +581,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         var handle = 0;
         try
         {
-            handle = MBass.CreateStream(filePath, Flags: AudioStreamManager.DecodeFlags);
+            // An FFmpeg-fallback file is converted now and kept, so its transition starts at once.
+            handle = FfmpegAudioFallback.RequiresConversion(filePath)
+                ? FfmpegAudioFallback.Prepare(filePath, token)?.CreateStream(AudioStreamManager.DecodeFlags) ?? 0
+                : MBass.CreateStream(filePath, Flags: AudioStreamManager.DecodeFlags);
             if (handle == 0)
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Standalone analysis could not open '{filePath}': {MBass.LastError}", sourcePath: filePath);
