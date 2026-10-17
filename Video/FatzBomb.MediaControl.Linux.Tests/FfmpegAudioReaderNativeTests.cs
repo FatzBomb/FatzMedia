@@ -83,6 +83,15 @@ public sealed class FfmpegAudioReaderNativeTests
                 }
 
                 Assert.False(File.Exists(tempPath), "the temp WAV is deleted on dispose");
+
+                // A prepared conversion is kept for the transition until released.
+                ConvertedAudio? prepared = FfmpegAudioFallback.Prepare(source, CancellationToken.None);
+                Assert.NotNull(prepared);
+                Assert.True(File.Exists(prepared.TempPath));
+                FfmpegAudioFallback.Release(source);
+                Assert.False(File.Exists(prepared.TempPath), "a released prepared conversion is deleted");
+                using ConvertedAudio? reconverted = FfmpegAudioFallback.Take(source, CancellationToken.None);
+                Assert.NotSame(prepared, reconverted);
             }
             finally
             {

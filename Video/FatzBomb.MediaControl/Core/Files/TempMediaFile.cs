@@ -37,6 +37,31 @@ internal static class TempMediaFile
     }
 
     /// <summary>
+    /// Best-effort deletion of scratch files with <paramref name="extension"/> last written more
+    /// than <paramref name="age"/> ago.
+    /// </summary>
+    public static void DeleteOlderThan(string extension, TimeSpan age)
+    {
+        try
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), TempSubfolderName);
+            if (!Directory.Exists(tempDir))
+                return;
+
+            DateTime cutoff = DateTime.UtcNow - age;
+            foreach (var path in Directory.EnumerateFiles(tempDir, "*" + extension))
+            {
+                if (File.GetLastWriteTimeUtc(path) < cutoff)
+                    TryDelete(path);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup of transient media scratch files.
+        }
+    }
+
+    /// <summary>
     /// Deletes <paramref name="path"/> if it exists. Best-effort: IO failures are
     /// swallowed, since scratch-file cleanup must never surface as an operation error.
     /// </summary>

@@ -52,6 +52,7 @@ internal static class FfmpegAudioFallback
 
     private static readonly Lock Gate = new();
     private static ConvertedAudio? _prepared;
+    private static int _sweptTempFiles;
 
     /// <summary>Converted WAVs larger than this go to a temp file instead of memory.</summary>
     internal static long MaxInMemoryBytes { get; set; } = DefaultMaxInMemoryBytes;
@@ -96,6 +97,26 @@ internal static class FfmpegAudioFallback
     }
 
     /// <summary>
+    /// Frees the prepared conversion of <paramref name="path"/>, if it is the one kept, when its
+    /// prepared-next item is cleared or replaced or its player is disposed.
+    /// </summary>
+    public static void Release(string path)
+    {
+        var identity = CreateIdentity(path);
+        ConvertedAudio? released = null;
+        lock (Gate)
+        {
+            if (_prepared?.SourceIdentity == identity)
+            {
+                released = _prepared;
+                _prepared = null;
+            }
+        }
+
+        released?.Dispose();
+    }
+
+    /// <summary>
     /// Returns the prepared conversion of <paramref name="path"/> when it is still current,
     /// otherwise converts now. The caller owns and disposes the result.
     /// </summary>
@@ -125,7 +146,13 @@ internal static class FfmpegAudioFallback
             return null;
         }
 
-        Stream output = new MemoryStream();
+        // Sized from the duration, with a little slack for container durations that run short, so
+        // the buffer does not grow by doubling (which could hold twice the converted size).
+        // Unknown or long durations start small and spill to a file.
+        var estimate = reader.DurationSeconds > 0
+            ? (long)((FloatWav.HeaderBytes + (Math.Ceiling(reader.DurationSeconds * reader.SampleRate) * reader.Channels * sizeof(float))) * 1.02) + 65536
+            : 0;
+        Stream output = new MemoryStream(estimate > 0 ? (int)Math.Min(estimate, MaxInMemoryBytes) : 0);
         string? tempPath = null;
         try
         {
@@ -148,9 +175,20 @@ internal static class FfmpegAudioFallback
 
                 if (output is MemoryStream memory && memory.Length + bytes.Length > MaxInMemoryBytes)
                 {
+                    SweepStaleTempFilesOnce();
                     tempPath = TempMediaFile.NewPath(".wav");
                     var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
-                    memory.WriteTo(file);
+                    try
+                    {
+                        memory.WriteTo(file);
+                    }
+                    catch
+                    {
+                        // Close the handle so the partial file can be deleted.
+                        file.Dispose();
+                        throw;
+                    }
+
                     memory.Dispose();
                     output = file;
                 }
@@ -188,6 +226,17 @@ internal static class FfmpegAudioFallback
             _ = Discard(output, tempPath);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Deletes converted WAVs left by a previous run that ended without closing them (a crash or
+    /// a killed process). Only files older than a day are touched, so another running instance's
+    /// current conversion is never removed.
+    /// </summary>
+    private static void SweepStaleTempFilesOnce()
+    {
+        if (Interlocked.Exchange(ref _sweptTempFiles, 1) == 0)
+            TempMediaFile.DeleteOlderThan(".wav", TimeSpan.FromDays(1));
     }
 
     private static ConvertedAudio? Discard(Stream output, string? tempPath)

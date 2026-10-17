@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Prepared;
 using FatzBomb.MediaControl.Core.Threading;
@@ -243,6 +244,12 @@ public partial class MediaControlPlayer
     {
         if (change.Previous == change.Current)
             return;
+
+        // An FFmpeg-fallback item converted ahead of time is freed once it leaves the slot
+        // (cleared, replaced, or stale); a transition has already taken its conversion.
+        if (change.Previous.Source?.FilePath is { } previousPath
+            && !string.Equals(previousPath, change.Current.Source?.FilePath, StringComparison.Ordinal))
+            FfmpegAudioFallback.Release(previousPath);
 
         var args = new PreparedNextChangedEventArgs(change.Previous, change.Current);
         RaiseOnControlQueue(() => HostEventDispatcher.Raise(this, PreparedNextChanged, args, nameof(PreparedNextChanged)));

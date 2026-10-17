@@ -66,3 +66,17 @@ Tests: 12 focused cases (`VideoAudioEffectsTests.cs`); opt-in native test
 8. A/V sync is unchanged with the EQ on and during fades (watch speech or a clapper).
 9. Regression: a plain song still fades, equalizes, and normalizes exactly as before (the
    fade stage moved to a shared class).
+
+## Review follow-up (same day)
+
+The independent review confirmed the lock order (the analysis never takes the engine lock or
+runs host code) and the FFmpeg decode loop. Known limits, not changed:
+
+- With Normalize on, play-on-load waits for the quick pass as it does for plain audio (at
+  most 2 s; normally well under that for a local file). Videos used to start without it.
+- A quiet but not silent opening (peak around 0.05) gives a high quick gain, up to 8x,
+  until the deep pass corrects it. Plain audio behaves the same; seeking into loud content
+  in those first seconds can be loud.
+- Closing or replacing a video waits for the analysis to stop. Its file open cannot be
+  cancelled, so on a slow network share that wait can be noticeable.
+

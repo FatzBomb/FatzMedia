@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
@@ -607,6 +608,12 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private void DisposeCore()
     {
+        try
+        {
+            if (_preparedNext.Snapshot.Source?.FilePath is { } preparedPath)
+                FfmpegAudioFallback.Release(preparedPath);
+        }
+        catch { }
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
         try { _ = Controls.Stop(); } catch { }

@@ -155,7 +155,19 @@ internal static partial class Bootstrap
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", $"Path found: {foundPath}");
             var tempPath = ffmpeg.RootPath;
             ffmpeg.RootPath = foundPath;
-            unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
+            string? loadError = null;
+            try
+            {
+                unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or NotSupportedException)
+            {
+                // FFmpeg.AutoGen throws, rather than returning null, when a DLL in the set cannot
+                // load (mixed builds, wrong architecture, or a missing dependency).
+                ok = false;
+                loadError = ex.Message;
+            }
+
             foreach (var dllFile in libraryFiles)
                 AddNativeCheck("FFmpeg", dllFile, isRequired: true, ok ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, Path.Combine(foundPath, dllFile));
 
@@ -168,7 +180,9 @@ internal static partial class Bootstrap
             }
             else
             {
-                AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
+                AddNativeLoadMessage(loadError is null
+                    ? "FFmpeg DLLs were found but did not load successfully."
+                    : $"FFmpeg DLLs were found but did not load successfully: {loadError}");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", "FFmpeg libraries found but failed to initialize");
                 ffmpeg.RootPath = tempPath;
                 return false;

@@ -126,6 +126,33 @@ public sealed class FfmpegAudioFallbackTests
         Assert.DoesNotContain(".mod", FileTypes.FfmpegAudioExtensions);
     }
 
+    [Fact]
+    public void DeleteOlderThan_RemovesOnlyStaleScratchFilesOfThatType()
+    {
+        var stale = TempMediaFile.NewPath(".wav");
+        var fresh = TempMediaFile.NewPath(".wav");
+        var otherType = TempMediaFile.NewPath(".fbkeep");
+        try
+        {
+            foreach (var path in new[] { stale, fresh, otherType })
+                File.WriteAllBytes(path, [1]);
+            File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddDays(-2));
+            File.SetLastWriteTimeUtc(otherType, DateTime.UtcNow.AddDays(-2));
+
+            TempMediaFile.DeleteOlderThan(".wav", TimeSpan.FromDays(1));
+
+            Assert.False(File.Exists(stale));
+            Assert.True(File.Exists(fresh));
+            Assert.True(File.Exists(otherType));
+        }
+        finally
+        {
+            TempMediaFile.TryDelete(stale);
+            TempMediaFile.TryDelete(fresh);
+            TempMediaFile.TryDelete(otherType);
+        }
+    }
+
     private static string Ascii(byte[] bytes, int offset) => Encoding.ASCII.GetString(bytes, offset, 4);
 
     private sealed class NoArchiveService : IArchiveService

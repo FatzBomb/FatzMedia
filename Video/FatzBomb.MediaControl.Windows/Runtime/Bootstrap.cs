@@ -54,7 +54,6 @@ internal static partial class Bootstrap
 
                 IsBassLoaded = LoadBass();
                 IsFfmpegLoaded = LoadFfmpeg();
-                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. searchPaths]);
 
                 _isInitialized = IsBassLoaded && IsFfmpegLoaded;
                 if (!_isInitialized)
@@ -71,6 +70,12 @@ internal static partial class Bootstrap
                 _ = Interlocked.Exchange(ref _initOnce, 0);
                 return IsInitialized;
             }
+            finally
+            {
+                // Recorded even when a load step throws, so the report never goes stale.
+                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. searchPaths]);
+            }
+
             return IsInitialized;
         }
 

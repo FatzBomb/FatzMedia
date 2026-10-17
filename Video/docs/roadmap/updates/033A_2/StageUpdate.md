@@ -34,8 +34,9 @@ Tests: 7 focused cases (`FfmpegAudioFallbackTests.cs`); the opt-in native test
   with a warning.
 - BASS stays first for every extension a loaded plugin claims. FFmpeg is the fallback,
   including when BASS claims the extension but cannot decode the file.
-- Only the most recent prepared conversion is kept (one slot). Clearing the prepared item
-  does not free it; the next prepare replaces it.
+- Only the most recent prepared conversion is kept (one slot, shared by the process). It is
+  freed when its item leaves the prepared-next slot (cleared, replaced, or stale) or its
+  player is disposed.
 - Files inside archives (MP3+G zips) still need a BASS plugin; the fallback covers plain
   files and `.cdg` companions only.
 - Opening a fallback file decodes the whole file before playback starts. The time is
@@ -67,3 +68,22 @@ Tests: 7 focused cases (`FfmpegAudioFallbackTests.cs`); the opt-in native test
 6. `song.ape` next to `song.cdg`: opening the `.cdg` pairs them and the lyrics stay in sync.
 7. Regression: MP3, FLAC (with `bassflac.dll`), and WMA still open through BASS, with no
    "Decoded with FFmpeg" lines.
+
+## Review follow-up (same day)
+
+An independent review of slices 1 and 2 and stage 034A found no deadlock, handle misuse, or
+WAV-header problem. Fixed here:
+
+- The prepared conversion was only freed by a later prepare, so a temp WAV for a long file
+  could stay on disk after clearing the slot or closing the app. It is now released as
+  described above. Temp WAVs older than a day, which a crashed or killed run left behind,
+  are swept on the first conversion of a run.
+- If the disk filled while a conversion moved from memory to its temp file, the file
+  handle leaked and the partial file stayed. The handle is now closed so the file is
+  deleted.
+- The in-memory buffer is sized from the file's duration instead of growing by doubling,
+  which could hold up to twice the converted size.
+
+Extra manual smoke: prepare a fallback file over 9 minutes, then Clear in the Next panel:
+its WAV disappears from `%TEMP%\FatzBombMediaControl`.
+
