@@ -80,3 +80,15 @@ runs host code) and the FFmpeg decode loop. Known limits, not changed:
 - Closing or replacing a video waits for the analysis to stop. Its file open cannot be
   cancelled, so on a slow network share that wait can be noticeable.
 
+## Smoke follow-up (2026-10-17)
+
+The owner's log for a film showed `Quick normalization complete, gain=8.000`, then
+`Deep normalization complete, gain=0.800` about 0.8 s later: a quiet opening made the
+quick pass boost 8x for the first moments of playback. For video the quick pass may now
+only attenuate (gain at most 1.0); any boost waits for the deep pass. The log line says
+"(boost waits for the full scan)" when the cap applies. Plain audio is unchanged (030B
+behaviour, owner-confirmed); the same cap could apply there if wanted.
+
+Extra manual smoke: Normalize on, open a film with a quiet opening: no loud burst at the
+start; the Log panel shows the capped quick line, then the deep line.
+

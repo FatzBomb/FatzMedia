@@ -59,6 +59,8 @@ internal sealed unsafe class VideoDecoder(
     public bool IsHardwareAccelerated { get; private set; }
     public string? HardwareAccelerationMethod { get; private set; }
     public NativeVideoDeviceResource? HardwareDevice { get; private set; }
+    /// <summary>The FFmpeg decoder in use, such as <c>av1</c>, <c>libdav1d</c>, or <c>h264</c>.</summary>
+    public string? DecoderName { get; private set; }
     public bool EndOfStream { get; private set; }
     public int MaxFrames { get; private set; } = MaxFramesCap;
     internal int VideoStreamIndex { get; private set; } = -1;
@@ -82,6 +84,10 @@ internal sealed unsafe class VideoDecoder(
     private int _hardwareTransferIssueLogs;
     private bool _loggedHardwarePixelFormat;
     private int _consecutiveHardwareDecodeFailures;
+    private int _hardwareFormatAccepted;
+    private int _hardwareFormatMissing;
+    private string? _formatsOfferedWithoutHardware;
+    private int _lastDecodeError;
 
     /// <summary>
     /// True when hardware decoding is configured and the hardware path has failed to produce a
@@ -248,6 +254,17 @@ internal sealed unsafe class VideoDecoder(
 
         if (allowHardware && TryOpenCodec(preferredCodec, useHardware: true))
         {
+            // Some hardware-capable decoders (FFmpeg's native av1) cannot decode in software. If no
+            // hardware device was configured, use the software decoder instead of one that yields
+            // no frames.
+            if (HardwareAccelerationMethod == null && preferredCodec != softwareCodec)
+            {
+                if (!TryOpenCodec(softwareCodec, useHardware: false))
+                    return false;
+
+                preferredCodec = softwareCodec;
+            }
+
             if (_enableDiagnostics)
             {
                 Debug.WriteLine(!string.IsNullOrWhiteSpace(HardwareAccelerationMethod)
@@ -261,7 +278,12 @@ internal sealed unsafe class VideoDecoder(
         {
             return false;
         }
+        else
+        {
+            preferredCodec = softwareCodec;
+        }
 
+        DecoderName = GetCodecName(preferredCodec);
         _videoFrame = ffmpeg.av_frame_alloc();
         if (_videoFrame == null) return false;
 
@@ -547,6 +569,7 @@ internal sealed unsafe class VideoDecoder(
         {
             if (*format == _hardwarePixelFormat)
             {
+                _hardwareFormatAccepted++;
                 IsHardwareAccelerated = true;
                 if (!_loggedHardwarePixelFormat)
                 {
@@ -558,6 +581,8 @@ internal sealed unsafe class VideoDecoder(
         }
 
         IsHardwareAccelerated = false;
+        _hardwareFormatMissing++;
+        _formatsOfferedWithoutHardware = DescribeOfferedFormats(formats);
         if (!_loggedHardwarePixelFormat)
         {
             if (_enableDiagnostics)
@@ -588,6 +613,9 @@ internal sealed unsafe class VideoDecoder(
             return DrainDecodedFrames() || frameDecoded;
         }
 
+        if (sendResult != ffmpeg.AVERROR_EOF)
+            _lastDecodeError = sendResult;
+
         if (sendResult != ffmpeg.AVERROR_EOF && _enableVerboseLogging && ShouldLogDecodeIssue(ref _packetSendIssueLogs))
         {
             Debug.WriteLine($"[VideoDecoder] avcodec_send_packet failed: {FormatFFmpegError(sendResult)} ({sendResult})");
@@ -611,6 +639,7 @@ internal sealed unsafe class VideoDecoder(
 
             if (receiveResult != AvErrorAgain && receiveResult != ffmpeg.AVERROR_EOF)
             {
+                _lastDecodeError = receiveResult;
                 NoteHardwareDecodeFailure();
                 if (_enableVerboseLogging && ShouldLogDecodeIssue(ref _frameReceiveIssueLogs))
                 {
@@ -819,6 +848,58 @@ internal sealed unsafe class VideoDecoder(
         return count <= DecodeIssueLogLimit || count % DecodeDiagnosticsFrameInterval == 0;
     }
 
+    /// <summary>
+    /// Describes the stream and the decoder for the host log, for example
+    /// <c>AV1 Main 10-bit 3840x1608 (yuv420p10le), decoder av1 via d3d11va</c>.
+    /// </summary>
+    public string DescribeDecodePath()
+    {
+        if (_videoStream == null)
+            return "no video stream";
+
+        AVCodecParameters* parameters = _videoStream->codecpar;
+        var codec = CodecName ?? "unknown";
+        var profile = ffmpeg.avcodec_profile_name(parameters->codec_id, parameters->profile);
+        var pixelFormat = ffmpeg.av_get_pix_fmt_name((AVPixelFormat)parameters->format) ?? "unknown format";
+        AVPixFmtDescriptor* descriptor = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)parameters->format);
+        var bitDepth = descriptor != null ? $" {descriptor->comp[0].depth}-bit" : string.Empty;
+        var path = IsHardwareAccelerated
+            ? $"via {HardwareAccelerationMethod}"
+            : HardwareAccelerationMethod != null ? $"in software ({HardwareAccelerationMethod} configured but not used)" : "in software";
+        return $"{codec.ToUpperInvariant()}{(string.IsNullOrEmpty(profile) ? string.Empty : $" {profile}")}{bitDepth} " +
+            $"{parameters->width}x{parameters->height} ({pixelFormat}), decoder {DecoderName ?? "unknown"} {path}";
+    }
+
+    /// <summary>
+    /// Explains why the hardware decoder produced no frame: whether FFmpeg offered the GPU
+    /// format, dropped it after the GPU decoder failed to start (an unsupported profile, bit
+    /// depth, or size), or decoded with errors.
+    /// </summary>
+    public string DescribeHardwareStartupFailure()
+    {
+        var reasons = new List<string>();
+        if (_hardwareFormatAccepted == 0 && _hardwareFormatMissing == 0)
+            reasons.Add("the decoder never asked for an output format (no decodable picture in the first packets)");
+        else if (_hardwareFormatAccepted > 0 && _hardwareFormatMissing > 0)
+            reasons.Add($"the GPU decoder failed to start, so FFmpeg withdrew {HardwareAccelerationMethod} (left: {_formatsOfferedWithoutHardware}); this GPU or driver likely does not support this profile, bit depth, or size");
+        else if (_hardwareFormatMissing > 0)
+            reasons.Add($"FFmpeg did not offer {HardwareAccelerationMethod} for this stream (offered: {_formatsOfferedWithoutHardware})");
+
+        if (_lastDecodeError != 0)
+            reasons.Add($"last FFmpeg error: {FormatFFmpegError(_lastDecodeError)}");
+
+        return reasons.Count > 0 ? string.Join("; ", reasons) : "no decoder error was reported";
+    }
+
+    private static string DescribeOfferedFormats(AVPixelFormat* formats)
+    {
+        var names = new List<string>();
+        for (AVPixelFormat* format = formats; *format != AVPixelFormat.AV_PIX_FMT_NONE && names.Count < 8; format++)
+            names.Add(ffmpeg.av_get_pix_fmt_name(*format) ?? ((int)*format).ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        return names.Count > 0 ? string.Join(", ", names) : "none";
+    }
+
     private static string FormatFFmpegError(int errorCode)
     {
         var buffer = stackalloc byte[ffmpeg.AV_ERROR_MAX_STRING_SIZE];
@@ -972,6 +1053,11 @@ internal sealed unsafe class VideoDecoder(
         _hardwareTransferIssueLogs = 0;
         _loggedHardwarePixelFormat = false;
         _consecutiveHardwareDecodeFailures = 0;
+        _hardwareFormatAccepted = 0;
+        _hardwareFormatMissing = 0;
+        _formatsOfferedWithoutHardware = null;
+        _lastDecodeError = 0;
+        DecoderName = null;
     }
 
     private void CleanupCodecContext()

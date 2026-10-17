@@ -74,5 +74,11 @@ public sealed class LinuxNativeSmokeTests
         Assert.NotNull(frame.Data);
         Assert.True(frame.Data.Take(frame.Length).Distinct().Count() > 8, "decoded frame looks blank");
         decoder.ReturnFrame(frame);
+
+        // 035A follow-up: the host log line names the stream and the decoder path.
+        var description = decoder.DescribeDecodePath();
+        Assert.Contains($"{frame.Width}x{frame.Height}", description);
+        Assert.Contains($"decoder {decoder.DecoderName} in software", description);
+        Assert.DoesNotContain("last FFmpeg error", decoder.DescribeHardwareStartupFailure());
     }
 }

@@ -254,6 +254,8 @@ internal sealed partial class VideoPipeline(
                 _ = TryFallbackToSoftwareVideo(path);
 
             _ = PresentFrameForCurrentPosition();
+            if (_videoDecoder != null)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoDecoder", $"Decoding {_videoDecoder.DescribeDecodePath()}", sourcePath: path);
         }
 
         ResetAdaptiveVideoSeekTiming();
@@ -1469,7 +1471,12 @@ internal sealed partial class VideoPipeline(
         if (_videoDecoder == null || string.IsNullOrWhiteSpace(_videoDecoder.HardwareAccelerationMethod))
             return false;
 
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}", sourcePath: path);
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            "VideoPipeline",
+            $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}. " +
+            $"Stream: {_videoDecoder.DescribeDecodePath()}. Reason: {_videoDecoder.DescribeHardwareStartupFailure()}.",
+            sourcePath: path);
         _videoDecoder.Dispose();
         _videoDecoder = new VideoDecoder(
             VideoDecodingMethod.Software,

@@ -17,6 +17,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
+    // The quick normalization pass may attenuate but not boost; see RunNormalizationAnalysis.
+    private const double MaxQuickPassGain = 1.0;
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IOutputLatencyProvider _outputLatencyProvider;
@@ -961,8 +963,16 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             if (reader is null)
                 return;
 
+            // Film and TV soundtracks often open quietly, so the quick pass (first seconds) can ask
+            // for the full 8x boost the deep pass then withdraws. Only let it attenuate; boosting
+            // waits for the deep pass.
             var quickPeak = FfmpegAudioPeakScanner.ScanQuick(reader, cancellationToken);
-            ApplyNormalizationPeak(quickPeak, cacheKey: null, generation, "Quick normalization complete");
+            var quickGain = AudioNormalizer.CalculateGainFromPeak(quickPeak);
+            ApplyNormalizationGain(
+                Math.Min(quickGain, MaxQuickPassGain),
+                cacheKey: null,
+                generation,
+                quickGain > MaxQuickPassGain ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete");
 
             var deepPeak = Math.Max(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
             ApplyNormalizationPeak(deepPeak, cacheKey, generation, "Deep normalization complete");

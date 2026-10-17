@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-08-17
+Updated: 2026-10-17
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -8,11 +8,36 @@ bounded roadmap stage.
 
 ## In Progress
 
-None.
+### ENG-011 - AV1 hardware decode falls back to software on some files
+
+Reported: 2026-10-17 (owner smoke, FFmpeg 9). `Scream 7.mkv` logged "Hardware video decode
+produced no usable startup frame; falling back to software"; other AV1 files decode on
+the GPU. The log did not say why, because the decoder's reasons went only to
+`Debug.WriteLine`, which Release builds drop.
+
+Done so far:
+- Every video open now logs `VideoDecoder: Decoding <codec> <profile> <bit depth> <size>
+  (<pixel format>), decoder <name> via <device>` or `in software`.
+- The fallback warning now names the stream and the reason: FFmpeg withdrew the GPU format
+  after the GPU decoder failed to start (unsupported profile, bit depth, or size), never
+  offered it, or the last FFmpeg error text.
+- Fixed a latent case on the way: if no hardware device could be created, the native `av1`
+  decoder (which cannot decode in software) was opened anyway and produced no video, with
+  no fallback. The software decoder (`libdav1d`) is now used instead.
+
+Next: the owner sends the new warning for the failing file. If the reason is an
+unsupported stream, the fallback is correct and only the message matters. Otherwise fix
+the cause.
 
 ## Open
 
-None.
+### ENG-012 - "Composition present failed" warnings on audio-only seeks
+
+Reported: 2026-10-17 (owner smoke log). Seeking an audio-only MP3 logs `Composition
+present failed reason=current position refreshed` (and `presentation started` on load)
+as warnings. Playback is unaffected. Pre-existing; not yet examined. Likely the renderer
+backend refusing to present when there is no visual layer, which should be quiet rather
+than a warning.
 
 ## Completed
 
