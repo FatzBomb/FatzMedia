@@ -32,9 +32,14 @@ Bold rows/items are extracted in slice 1.
 
 ## Next Seams (candidates, in order)
 
-1. Loop boundary math (`GetLoopOverflowPosition`, end tolerance, natural-end detection).
-2. Presentation-lead controller (`UpdateAdaptivePresentationLead` and thresholds).
-3. Post-seek recovery state machine.
+1. Seek pump state machine (added 2026-10-17 after the 035A smoke rounds): pending,
+   active, and sequence targets, preview-versus-settle choice, scrub settle target, and the
+   Play-during-seek rule, as a class driven through a small interface so its ordering can be
+   unit tested without FFmpeg. Every seek bug found in smoke lived here and could only be
+   checked by hand.
+2. Loop boundary math (`GetLoopOverflowPosition`, end tolerance, natural-end detection).
+3. Presentation-lead controller (`UpdateAdaptivePresentationLead` and thresholds).
+4. Post-seek recovery state machine.
 
 ## Explicit Non-Goals
 

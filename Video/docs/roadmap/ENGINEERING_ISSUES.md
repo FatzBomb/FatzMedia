@@ -8,7 +8,24 @@ bounded roadmap stage.
 
 ## In Progress
 
+None.
+
+## Open
+
+### ENG-012 - "Composition present failed" warnings on audio-only seeks
+
+Reported: 2026-10-17 (owner smoke log). Seeking an audio-only MP3 logs `Composition
+present failed reason=current position refreshed` (and `presentation started` on load)
+as warnings. Playback is unaffected. Pre-existing; not yet examined. Likely the renderer
+backend refusing to present when there is no visual layer, which should be quiet rather
+than a warning.
+
+## Completed
+
 ### ENG-011 - AV1 hardware decode falls back to software on some files
+
+Resolved: 2026-10-17 (owner smoke: `Scream 7.mkv` logs `decoder av1 via d3d11va, metadata OBUs
+removed`).
 
 Reported: 2026-10-17 (owner smoke, FFmpeg 9). `Scream 7.mkv` logged "Hardware video decode
 produced no usable startup frame; falling back to software"; other AV1 files decode on
@@ -50,21 +67,6 @@ picture needs is lost. The decode-path log line ends in `metadata OBUs removed` 
 active. A build without `filter_units` keeps the old behaviour (and the software fallback).
 Tested natively (Linux, real FFmpeg 9) with hand-built AV1 packets carrying malformed
 metadata.
-
-Next: the owner checks that `Scream 7.mkv` now logs `decoder av1 via d3d11va, metadata OBUs
-removed`. If it still falls back, the warning quotes FFmpeg's new reason.
-
-## Open
-
-### ENG-012 - "Composition present failed" warnings on audio-only seeks
-
-Reported: 2026-10-17 (owner smoke log). Seeking an audio-only MP3 logs `Composition
-present failed reason=current position refreshed` (and `presentation started` on load)
-as warnings. Playback is unaffected. Pre-existing; not yet examined. Likely the renderer
-backend refusing to present when there is no visual layer, which should be quiet rather
-than a warning.
-
-## Completed
 
 ### ENG-001 - Reset raced queued and in-flight control operations
 

@@ -3,7 +3,8 @@
 Stage: 035A.1 - Control-owned seek scrubbing
 Date: 2026-10-17
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke 2026-10-17: "seeking works pretty well now" (video drag,
+hold, release). Remaining smoke steps below not yet reported.
 
 Delivered: see the stage file.
 
