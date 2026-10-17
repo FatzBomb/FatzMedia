@@ -532,5 +532,99 @@
                 </StackPanel>
             </StackPanel>
         </Border>
+
+        <!--  Log flyout: engine diagnostics, newest first  -->
+        <Border Style="{StaticResource FlyoutPanelStyle}" Visibility="{Binding ActiveFlyout, Converter={StaticResource FlyoutVisibilityConverter}, ConverterParameter=Log}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="LOG" />
+                    <TextBlock
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding DiagnosticLog.Count, StringFormat='{}{0} entries, newest first'}" />
+                    <Button
+                        Width="64"
+                        Command="{Binding CopyLogCommand}"
+                        Content="Copy all"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Copy every entry, oldest first, to the clipboard" />
+                    <Button
+                        Width="52"
+                        Margin="6,0,0,0"
+                        Command="{Binding ClearLogCommand}"
+                        Content="Clear"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Clear this list (the log file keeps everything)" />
+                    <Button
+                        Width="92"
+                        Margin="6,0,0,0"
+                        Command="{Binding OpenLogFileCommand}"
+                        Content="Open log file"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="{Binding LogFilePath}" />
+                </StackPanel>
+                <ListBox
+                    Width="860"
+                    Height="240"
+                    Margin="0,7,0,0"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrushSoft}"
+                    FontFamily="Consolas"
+                    FontSize="11"
+                    ItemsSource="{Binding DiagnosticLog}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="58" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding TimeText}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Level}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Level}" Value="Warning">
+                                                    <Setter Property="Foreground" Value="#FFC857" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                    <Setter Property="Foreground" Value="#FF6B6B" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Foreground="{StaticResource AccentBrush}"
+                                    Text="{Binding Category}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding Category}" />
+                                <TextBlock
+                                    Grid.Column="3"
+                                    Foreground="{StaticResource SoftTextBrush}"
+                                    Text="{Binding Message}"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="4,1" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

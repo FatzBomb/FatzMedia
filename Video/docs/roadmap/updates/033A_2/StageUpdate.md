@@ -54,13 +54,13 @@ Tests: 7 focused cases (`FfmpegAudioFallbackTests.cs`); the opt-in native test
 
 ## Manual smoke (Windows, native DLLs)
 
-1. Move `bassflac.dll` out of `native\` and open a FLAC: it plays, with diagnostics
+1. Move `bassflac.dll` out of `native\` and open a FLAC: it plays, and the Log panel shows
    "Decoded '...' with FFmpeg in N ms". Note N for a typical song. Seek, loop, tempo,
    pitch, EQ, fades, and Normalize all work. Put the DLL back afterwards.
 2. Open a format no plugin covers, such as `.ape`, `.wv`, `.dsf`, or `.mka`: it plays the
    same way and appears in the open-file dialog's Audio filter.
 3. An ALAC `.m4a` without `bassalac.dll`: BASS fails, FFmpeg takes over, and it plays.
-4. A long file (over 9 minutes): diagnostics say "temp file". After closing it, the WAV is
+4. A long file (over 9 minutes): the Log panel says "temp file". After closing it, the WAV is
    gone from `%TEMP%\FatzBombMediaControl`.
 5. With `--trim-silence`, prepare a fallback file as the next item: the slot reaches Ready
    with analysis, and the transition starts without a second "Decoded ... with FFmpeg"

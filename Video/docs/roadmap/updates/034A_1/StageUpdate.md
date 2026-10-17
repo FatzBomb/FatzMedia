@@ -28,7 +28,7 @@ Tests: 11 focused cases in `NativeDependencyReportTests.cs` (Portable) and 3 in
 
 ## Manual smoke (Windows, native DLLs)
 
-1. Normal start with every DLL present: the Player's diagnostics panel shows no
+1. Normal start with every DLL present: the Player's Log panel shows no
    `NativeLibraries` lines (or only warnings for plugins you do not ship, such as
    `bassalac.dll`).
 2. Copy the `native` folder somewhere safe, then replace `avcodec-63.dll` with an FFmpeg 8

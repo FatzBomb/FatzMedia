@@ -58,7 +58,7 @@ Tests: 12 focused cases (`VideoAudioEffectsTests.cs`); opt-in native test
 5. Prepare a video as the next item with FADE 4 s and press Play next now from a song: the
    song fades out, then the video's sound fades in.
 6. Normalize on: a quiet video plays louder than with Normalize off; a loud film is not
-   louder than before. Diagnostics show "Quick normalization complete" then "Deep
+   louder than before. The Log panel shows "Quick normalization complete" then "Deep
    normalization complete" from `VideoAudioEngine`; re-opening the same file shows "Using
    cached normalization gain".
 7. Open a long video (1 hour+) and immediately open another: no hang, and the first file's

@@ -9,7 +9,7 @@ namespace FatzBomb.MediaControl.Player.ViewModels;
 /// Validation-host wiring for network sources (Stage 014A), driven from the Next flyout's URL
 /// box. <c>--url=&lt;http(s)://...&gt;</c> loads a stream after startup and
 /// <c>--net-retries=&lt;n&gt;</c> opts into bounded retries. Buffering, stream titles, and
-/// capabilities are shown in the flyout and logged to the diagnostics panel.
+/// capabilities are shown in the flyout and logged to the Log panel.
 /// </summary>
 public sealed partial class MainWindowViewModel
 {

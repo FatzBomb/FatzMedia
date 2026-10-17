@@ -15,7 +15,7 @@ Delivered:
   in `finally`, joined on dispose.
 - Auto transition on natural end (default off) and transition-now on the control queue.
 - Player validation host: `--prepare-next=<path>` and `--auto-next`; slot changes are
-  logged to the diagnostics panel/status line under category `PreparedNext`.
+  logged under category `PreparedNext` (Log panel; warnings also in the status line).
 - New portable `net10.0` test project (`FatzBomb.MediaControl.Portable.Tests`) that
   links the Windows-independent tests and hosts the 30 new 031A cases.
 
@@ -43,11 +43,11 @@ Delivered:
 dotnet run --project FatzBomb.MediaControl.Player -- --trim-silence "--prepare-next=<next-audio>" "--auto-next" <current-audio>
 ```
 
-1. Status/diagnostics show `Prepared next Empty -> Analyzing`, then `Analyzing -> Ready`
+1. The Log panel shows `Prepared next Empty -> Analyzing`, then `Analyzing -> Ready`
    with `effective=..., gain=...` and a `Standalone analysis complete` diagnostic while
    the current item keeps playing without glitches.
 2. Let the current item end: `MediaEnded`, then the next item loads and plays
-   immediately; diagnostics show `Transitioned to prepared next (automatic)` and the
+   immediately; the Log panel shows `Transitioned to prepared next (automatic)` and the
    AudioEngine reports `Using cached media analysis` (no rescan) for the next item.
 3. With silence trim on, the next item starts at its trimmed lead-in.
 4. Repeat without `--auto-next`: at end the current item stops and the slot stays

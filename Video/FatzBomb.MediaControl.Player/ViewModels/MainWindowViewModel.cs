@@ -19,7 +19,8 @@ public enum PlayerFlyout
     Video,
     Audio,
     AV,
-    Next
+    Next,
+    Log
 }
 
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
@@ -140,14 +141,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string StatusText { get; private set; } = "Native media engine is initializing.";
 
-    public ObservableCollection<DiagnosticLogEntry> DiagnosticLog { get; } = [];
-
-    private static void AppendToLog(ObservableCollection<DiagnosticLogEntry> log, DiagnosticLogEntry entry)
-    {
-        log.Add(entry);
-        while (log.Count > 200)
-            log.RemoveAt(0);
-    }
 
     public double Volume
     {
@@ -229,6 +222,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsAudioFlyoutActive));
             OnPropertyChanged(nameof(IsAVFlyoutActive));
             OnPropertyChanged(nameof(IsNextFlyoutActive));
+            OnPropertyChanged(nameof(IsLogFlyoutActive));
         }
     }
 
@@ -241,6 +235,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsAVFlyoutActive => ActiveFlyout == PlayerFlyout.AV;
 
     public bool IsNextFlyoutActive => ActiveFlyout == PlayerFlyout.Next;
+
+    public bool IsLogFlyoutActive => ActiveFlyout == PlayerFlyout.Log;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -533,6 +529,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             "Audio" => PlayerFlyout.Audio,
             "AV" => PlayerFlyout.AV,
             "Next" => PlayerFlyout.Next,
+            "Log" => PlayerFlyout.Log,
             _ => PlayerFlyout.None
         };
 
@@ -685,7 +682,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
     {
         var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
-        AppendToLog(DiagnosticLog, entry);
+        AppendToLog(entry);
 
         if (level >= MediaDiagnosticLevel.Warning)
             StatusText = $"[{level}] {category}: {message}";
