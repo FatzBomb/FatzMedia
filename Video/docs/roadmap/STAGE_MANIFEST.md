@@ -27,9 +27,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
   `VideoSeekPump` with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
 - `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
-  full-frame copy removed, pending manual smoke (`updates/010A_1`).
+  full-frame copy removed; owner smoke passed 2026-10-17 (`updates/010A_1`).
 - `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
-  immutable snapshot reuse, pending manual CDG smoke (`updates/018A_1`).
+  immutable snapshot reuse; owner CDG smoke passed 2026-10-17 (`updates/018A_1`).
 - `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
   ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
@@ -40,7 +40,7 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
 - `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
-  wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
+  wrong-version native files, implemented; owner smoke passed 2026-10-17 (`updates/034A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;

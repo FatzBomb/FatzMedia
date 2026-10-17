@@ -3,7 +3,7 @@
 Stage: 034A.1 - Native dependency report
 Date: 2026-10-17
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17
 
 Delivered: see the stage file. Also a "Shipping FFmpeg With Your App" checklist and a
 "Startup Dependency Report" section in `docs/NATIVE_DEPENDENCIES.md`.

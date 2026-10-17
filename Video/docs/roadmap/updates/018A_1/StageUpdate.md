@@ -3,7 +3,7 @@
 Stage: 018A.1 - CDG snapshot lifetime map, counters, immutable reuse
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17
 
 Delivered: see the stage file for the lifetime map and ownership decision.
 `CdgStateMachine.CreateSnapshot` reuses the previous immutable snapshot when nothing

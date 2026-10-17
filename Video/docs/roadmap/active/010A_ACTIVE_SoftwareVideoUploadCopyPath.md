@@ -2,7 +2,7 @@
 
 Prepared: 2026-10-16
 Status: Slice 1 (copy map, repeatable benchmark, removal of the per-composition snapshot
-copy) implemented, pending manual smoke.
+copy) implemented; owner smoke passed 2026-10-17.
 
 ## Copy and Ownership Map - one software-decoded frame (pinned)
 

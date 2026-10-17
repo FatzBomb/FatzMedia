@@ -1,8 +1,8 @@
 # Active Stage 018A - CDG Snapshot Ownership and Reuse
 
 Prepared: 2026-10-16
-Status: Slice 1 (lifetime map, counters, immutable snapshot reuse) implemented, pending
-manual CDG smoke.
+Status: Slice 1 (lifetime map, counters, immutable snapshot reuse) implemented; owner
+CDG smoke passed 2026-10-17.
 
 ## Lifetime Map (pinned)
 
