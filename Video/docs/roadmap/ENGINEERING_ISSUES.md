@@ -8,17 +8,29 @@ bounded roadmap stage.
 
 ## In Progress
 
-None.
+### ENG-012 - "Composition present failed" warnings on audio-only seeks
+
+Reported: 2026-10-17 (owner smoke log, confirmed still present after the 035A fixes).
+Seeking an audio-only MP3 logged `Composition present failed reason=current position
+refreshed` as a warning on every seek, and `presentation started` once on load. Playback
+was unaffected.
+
+Done (pending owner smoke):
+- `RefreshCurrentPosition` no longer presents when the media has nothing visual (no video,
+  image, CD+G, subtitles, or composition background). It used to send an empty frame on
+  every seek, which Direct3D11 refused.
+- The warning now quotes why the renderer refused: `IMediaRendererBackend` gains an
+  optional `LastPresentFailureReason` (default null), which Direct3D11 fills from each of
+  its failure points (no active presentation target, a layer that could not be prepared,
+  the primary target draw, the swap chain present). Those reasons used to go only to
+  `Debug.WriteLine`, which Release drops.
+
+Next: the owner seeks an MP3 again. The per-seek warnings should be gone. If the
+`presentation started` warning on load remains, it now names the failing step.
 
 ## Open
 
-### ENG-012 - "Composition present failed" warnings on audio-only seeks
-
-Reported: 2026-10-17 (owner smoke log). Seeking an audio-only MP3 logs `Composition
-present failed reason=current position refreshed` (and `presentation started` on load)
-as warnings. Playback is unaffected. Pre-existing; not yet examined. Likely the renderer
-backend refusing to present when there is no visual layer, which should be quiet rather
-than a warning.
+None.
 
 ## Completed
 

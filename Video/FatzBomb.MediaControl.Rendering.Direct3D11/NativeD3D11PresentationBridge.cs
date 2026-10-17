@@ -346,6 +346,15 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
+    public string? LastPresentFailureReason
+    {
+        get
+        {
+            lock (_lock)
+                return _presentation.LastCompositionFailureReason;
+        }
+    }
+
     public void CleanupResources()
     {
         lock (_lock)

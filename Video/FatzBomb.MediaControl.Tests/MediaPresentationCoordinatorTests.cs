@@ -68,6 +68,53 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void AudioOnlyRefresh_PresentsNothing()
+    {
+        // ENG-012: an audio file with nothing on screen re-presented an empty frame on every seek,
+        // which Direct3D11 refused, logging "Composition present failed" each time.
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var presentationCount = backend.PresentedFrames.Count;
+
+        coordinator.RefreshCurrentPosition();
+        coordinator.RefreshCurrentPosition();
+
+        Assert.Equal(presentationCount, backend.PresentedFrames.Count);
+    }
+
+    [Fact]
+    public void FailedPresent_DiagnosticQuotesTheBackendReason()
+    {
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var messages = new ConcurrentQueue<string>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (info.Category == "Composition")
+                messages.Enqueue(info.Message);
+        }
+
+        backend.PresentFailureReason = "no active D3D11 presentation target";
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            coordinator.RefreshCurrentPosition();
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+
+        Assert.Contains(
+            "Composition present failed reason=current position refreshed (no active D3D11 presentation target)",
+            messages);
+    }
+
+    [Fact]
     public void DeviceLostDiagnostic_ReinitializesSurfacesAndPresentsRecoveryFrame()
     {
         var backend = new RecordingRendererBackend();
@@ -159,10 +206,14 @@ public sealed class MediaPresentationCoordinatorTests
         public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
         public void ClearCompositionBackgroundFrame() { }
 
+        public string? PresentFailureReason { get; set; }
+
+        public string? LastPresentFailureReason => PresentFailureReason;
+
         public bool PresentComposition(MediaCompositionFrame frame)
         {
             PresentedFrames.Enqueue(frame);
-            return true;
+            return PresentFailureReason is null;
         }
 
         public void CleanupResources()

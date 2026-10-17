@@ -253,6 +253,12 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     {
         _renderPipeline.RenderCdgAtCurrentPosition(force: true);
         _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
+
+        // Audio with no picture, lyrics, subtitles, or background has nothing to redraw at the new
+        // position; presenting an empty frame on every seek only produced failed presents.
+        if (!HasCurrentVisualContent())
+            return;
+
         if (_attachedVideo == null && _attachedCdg == null && HasSubtitleContent)
             _ = BuildAndPresentSoftwareComposition(0, retainedRefresh: false, "current position refreshed");
         else
@@ -922,6 +928,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             return HasCompositionBackgroundNoLock();
     }
 
+    private string DescribeBackendPresentFailure() =>
+        _rendererBackend.LastPresentFailureReason is { Length: > 0 } reason ? $" ({reason})" : string.Empty;
+
     private bool HasCurrentVisualContent() =>
         _mediaEngine.Content.HasFlag(MediaContent.Image)
         || _mediaEngine.Content.HasFlag(MediaContent.Video)
@@ -1001,7 +1010,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         if (!_rendererBackend.PresentComposition(frame))
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
             return CompositionPresentResult.Failed;
         }
 
@@ -1036,7 +1045,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_rendererBackend.PresentComposition(frame))
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
                 return CompositionPresentResult.Failed;
             }
 
