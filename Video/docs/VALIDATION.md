@@ -379,7 +379,12 @@ is highlighted). The **Video flyout** carries live, Core-backed controls — HUE
 SATURATION, BRIGHTNESS (−0.25–0.25), CONTRAST (0.5–1.5), RED GAIN / GREEN GAIN /
 BLUE GAIN (0–2) sliders (no Lightness, no color wash, no preset type), an
 **Include Overlays** checkbox, and Reset Visual. The Audio flyout has
-pitch/tempo/normalize plus Reset Pitch on Load / Reset Tempo on Load; the A/V
+pitch/tempo/normalize plus Reset Pitch on Load / Reset Tempo on Load and a
+10-band **EQ** (on/off, ±12 dB per band, Flat; Stage 020A); the **Next** flyout
+(2026-10-17) has Choose... / Play next now / Clear for the prepared-next slot with
+its state line, Auto-next, a FADE length (0-10 s, 0 = instant), Fade out / Fade in /
+Cancel for the current item (3 s when FADE is 0), and a URL box with Open plus the
+stream title / buffering line (Stages 031A, 031B, 014A); the A/V
 flyout has Auto Play, Auto Hide, the secondary/projector window toggle, display
 mode, presentation mode, and CDG background opacity; the Sync
 flyout has the per-item A/V/CDG/subtitle offsets. Loop Playback is a stateful
@@ -514,10 +519,10 @@ Expected on both paths:
   `Brightness=0.05`, `Contrast=1.15`, `Saturation=1.2`; no lightness, Include
   Overlays off); the base visual visibly transforms and the status line reads
   `Visual transform=ACTIVE`.
-- **Flyout mechanics** — open each of Sync / Video / Audio / A-V; only one is
+- **Flyout mechanics** — open each of Sync / Video / Audio / A-V / Next; only one is
   visible at a time; the active button is highlighted; toggling the active
   button again closes the flyout; starting playback or entering fullscreen
-  closes it. All four flyouts render correctly on both renderer paths.
+  closes it. All five flyouts render correctly on both renderer paths.
 - **Fullscreen / secondary / multi-target** — toggle fullscreen (button or
   double-click) with a transform active and confirm the transform persists on
   the fullscreen output; open the secondary/projector window from the A/V

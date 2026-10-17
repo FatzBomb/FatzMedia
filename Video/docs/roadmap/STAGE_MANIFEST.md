@@ -6,7 +6,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 "implemented, pending manual smoke", until the owner confirms the smoke in its update note.
 
 - `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented, pending manual smoke
-  (`updates/031A_1`); 30 focused tests.
+  (`updates/031A_1`); 30 focused tests. Player host controls for 031A/031B/014A/020A in
+  `updates/031A_2`.
 - `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented, pending manual smoke
   (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
 - `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented, pending manual smoke

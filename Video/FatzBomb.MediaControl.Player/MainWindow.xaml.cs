@@ -54,6 +54,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         FlyoutPanel.SecondaryWindowToggleRequested += FlyoutPanel_SecondaryWindowToggleRequested;
+        FlyoutPanel.ChooseNextRequested += FlyoutPanel_ChooseNextRequested;
         MediaSurface.SecondaryOutputsChanged += MediaSurface_SecondaryOutputsChanged;
         UpdateSeekBarVisual();
         UpdateSecondaryWindowCheckBox();
@@ -80,6 +81,18 @@ public partial class MainWindow : Window
             {
                 _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+    }
+
+    private async void FlyoutPanel_ChooseNextRequested(object? sender, EventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Choose the next item",
+            Filter = _viewModel.Player?.OpenFileDialogFilter ?? "All files|*.*"
+        };
+
+        if (dialog.ShowDialog(this) == true)
+            await _viewModel.PrepareNextAsync(dialog.FileName);
     }
 
     private void Window_DragEnter(object sender, DragEventArgs e)
@@ -483,6 +496,7 @@ public partial class MainWindow : Window
     {
         _fullScreenChromeTimer.Stop();
         FlyoutPanel.SecondaryWindowToggleRequested -= FlyoutPanel_SecondaryWindowToggleRequested;
+        FlyoutPanel.ChooseNextRequested -= FlyoutPanel_ChooseNextRequested;
         MediaSurface.SecondaryOutputsChanged -= MediaSurface_SecondaryOutputsChanged;
         _ = MediaSurface.CloseSecondaryOutput();
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;

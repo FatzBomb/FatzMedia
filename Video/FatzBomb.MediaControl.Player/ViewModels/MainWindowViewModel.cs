@@ -18,7 +18,8 @@ public enum PlayerFlyout
     Sync,
     Video,
     Audio,
-    AV
+    AV,
+    Next
 }
 
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
@@ -44,6 +45,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ResetSyncCommand = new RelayCommand(ResetSync, () => CanUseSync);
         ToggleFlyoutCommand = new RelayCommand<string?>(ToggleFlyout);
         InitializeValidationControls();
+        InitializeEqualizerControls();
+        InitializePreparedNextControls();
+        InitializeNetworkControls();
 
         _positionTimer = new DispatcherTimer
         {
@@ -224,6 +228,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsVideoFlyoutActive));
             OnPropertyChanged(nameof(IsAudioFlyoutActive));
             OnPropertyChanged(nameof(IsAVFlyoutActive));
+            OnPropertyChanged(nameof(IsNextFlyoutActive));
         }
     }
 
@@ -234,6 +239,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsAudioFlyoutActive => ActiveFlyout == PlayerFlyout.Audio;
 
     public bool IsAVFlyoutActive => ActiveFlyout == PlayerFlyout.AV;
+
+    public bool IsNextFlyoutActive => ActiveFlyout == PlayerFlyout.Next;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -400,8 +407,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.PlayOnLoad = AutoPlay;
             player.LoopMedia = LoopPlayback;
             player.ShowMidiLyrics = true;
-            if (App.EqualizerGains is { } equalizerGains)
-                player.Equalizer = AudioEqualizerSettings.CreateGraphic10Band(equalizerGains);
+            player.Equalizer = BuildEqualizerSettings();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
             Player = player;
@@ -480,6 +486,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         StopCommand.NotifyCanExecuteChanged();
         AdjustSyncCommand.NotifyCanExecuteChanged();
         ResetSyncCommand.NotifyCanExecuteChanged();
+        RefreshPreparedNextCommandStates();
+        OpenUrlCommand.NotifyCanExecuteChanged();
     }
 
     private void AdjustSync(string? command)
@@ -520,6 +528,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             "Video" => PlayerFlyout.Video,
             "Audio" => PlayerFlyout.Audio,
             "AV" => PlayerFlyout.AV,
+            "Next" => PlayerFlyout.Next,
             _ => PlayerFlyout.None
         };
 

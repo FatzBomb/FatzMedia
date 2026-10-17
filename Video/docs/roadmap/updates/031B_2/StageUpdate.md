@@ -79,8 +79,9 @@ fail on the previous code:
   pause, seek, stop, or load during the fade or muted lead abandons it too.
 - `CancelFade` racing a fade's completion could throw `ObjectDisposedException`.
 
-The Player host has no manual-transition control, so these paths are covered by the
-automated tests only (`PlayerFadeTests.ManualFadedTransition_*`, `AudioFadeRunnerTests`).
+These paths are covered by `PlayerFadeTests.ManualFadedTransition_*` and
+`AudioFadeRunnerTests`; the Player host's Next flyout (`updates/031A_2`) now exercises them
+by hand.
 
 ## Review follow-up 2 (same day)
 
@@ -91,5 +92,4 @@ automated tests only (`PlayerFadeTests.ManualFadedTransition_*`, `AudioFadeRunne
 - A manual faded transition is pinned to the item that was Ready when it started; preparing
   another item during the fade abandons the transition instead of loading the new one.
 - The natural-end gain reset lives in the BASS end callback, which cannot run in unit tests;
-  the Player host has no fade-out control, so it is verified by code review only until a
-  host exposes `FadeOutAsync`.
+  verify it with the Next flyout's Fade out (`updates/031A_2` smoke step 6).

@@ -17,6 +17,7 @@ public sealed class FlyoutVisibilityConverter : IValueConverter
                 "Video" => PlayerFlyout.Video,
                 "Audio" => PlayerFlyout.Audio,
                 "AV" => PlayerFlyout.AV,
+                "Next" => PlayerFlyout.Next,
                 _ => PlayerFlyout.None
             };
 

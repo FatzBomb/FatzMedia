@@ -234,6 +234,14 @@
                                 Style="{StaticResource FlyoutButtonStyle}"
                                 Tag="{Binding IsAVFlyoutActive}"
                                 ToolTip="Playback, display, and output settings" />
+                            <Button
+                                Margin="5,0,0,0"
+                                Command="{Binding ToggleFlyoutCommand}"
+                                CommandParameter="Next"
+                                Content="Next"
+                                Style="{StaticResource FlyoutButtonStyle}"
+                                Tag="{Binding IsNextFlyoutActive}"
+                                ToolTip="Prepared next item, fades, and network streams" />
                         </StackPanel>
 
                         <!--  Volume  -->
