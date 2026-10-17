@@ -5,13 +5,13 @@
 Stages implemented in the unattended 2026-10-16 session stay here, each
 "implemented, pending manual smoke", until the owner confirms the smoke in its update note.
 
-- `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented, pending manual smoke
-  (`updates/031A_1`); 30 focused tests. Player host controls for 031A/031B/014A/020A in
+- `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented; owner smoke passed 2026-10-17
+  (Next panel; `updates/031A_1`); 30 focused tests. Player host controls for 031A/031B/014A/020A in
   `updates/031A_2`.
-- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented, pending manual smoke
-  (`updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
-- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented, pending manual smoke
-  (`updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
+- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented; owner smoke passed 2026-10-17
+  (fades; `updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
+- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented; owner smoke passed 2026-10-17
+  (radio, progressive MP3, retries, MP4 refusal; `updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
   (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
   pending; macOS deferred.
@@ -19,8 +19,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
   implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
-- `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented,
-  pending manual smoke (`updates/020A_1`).
+- `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
+  owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
   (`updates/017A_1`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
@@ -40,8 +40,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
-  and the release seek at the last drag position is ignored, so nothing jumps; implemented, pending manual smoke
-  (`updates/035A_1`).
+  and the release seek at the last drag position is ignored, so nothing jumps; implemented;
+  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
