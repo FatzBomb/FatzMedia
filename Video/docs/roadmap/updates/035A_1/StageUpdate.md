@@ -23,7 +23,23 @@ is more common"), and release still jumped a second or two. Now:
   stopped, either restarting from it after playback had moved on (before 035A) or
   re-seeking a paused video (first version).
 
+## Revision after the third smoke (same day)
+
+The owner reported that after a drag stopped, the picture paused on the shown frame for
+about a second, then played from a second or two ahead or behind. Cause: drag previews show
+the nearest decoded frame within 2 s of the mouse position (`PreviewMaxFrameDistanceSeconds`)
+for responsiveness, and the settle then sought exactly to the mouse position, decoding from
+the keyframe (the pause) and resuming there (the jump). Now an active scrub settles on the
+frame its last preview showed (`VideoSeekPolicy.GetScrubSettleTarget`), so playback carries on
+from the picture on screen. A lone click is unchanged and exact. During a scrub,
+`SeekCompleted` accepts whatever position the seek settled on.
+
 ## Decisions made without the owner
+
+- **Drags resume from the shown frame, not the mouse position**, up to 2 s apart. The seek
+  bar thumb moves to the frame's time once the drag settles. The alternative, decoding
+  exactly to the mouse position before resuming, keeps the pause and still changes the
+  picture.
 
 - **Matching rule:** "same position" means within 1 ms of the scrub's previous seek. The
   Player sends the exact same value on release; a host that rounds differently still seeks,
@@ -46,9 +62,9 @@ is more common"), and release still jumped a second or two. Now:
 
 ## Manual smoke (Windows, native DLLs)
 
-1. Play a video, drag the seek bar, hold still for 2 s (playback carries on from the drag
-   position), then release without moving: no jump; playback just continues. Repeat with
-   `--software`.
+1. Play a video, drag the seek bar, hold still: playback carries on from the frame on
+   screen, with no pause of about a second and no jump. Release without moving: no jump.
+   Repeat with `--software` and with a long-GOP file.
 2. Same with an MP3.
 3. Drag, hold, move a little more, release: playback continues from the new position.
 4. A quick drag and release: playback continues from the release point; the picture may

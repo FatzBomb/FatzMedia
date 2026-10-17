@@ -761,6 +761,11 @@ internal sealed partial class VideoPipeline(
             _ = _seekSignal.WaitOne();
 
             var lastPreviewTarget = double.NaN;
+            // The time of the frame an active scrub's preview put on screen. A scrub preview may
+            // show a frame up to PreviewMaxFrameDistanceSeconds from the target; settling exactly
+            // on the target would then resume a second or two from what the viewer is looking at,
+            // so the settle resumes from the shown frame instead.
+            var shownPreviewFrameTime = double.NaN;
             while (!_seekWorkerShutdown)
             {
                 if (!TryTakePendingSeek(out var target))
@@ -771,7 +776,7 @@ internal sealed partial class VideoPipeline(
                 {
                     if (!HasPendingSeekRequest())
                     {
-                        SettleSeekTarget(normalizedTarget);
+                        SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
                         break;
                     }
 
@@ -780,7 +785,8 @@ internal sealed partial class VideoPipeline(
 
                 // A lone click keeps preview exact so the displayed frame is the playback start.
                 // Once a second changing target arrives, this is an active scrub: allow nearby
-                // preview frames for responsive feedback until the final settle seeks exactly.
+                // preview frames for responsive feedback; the settle then resumes from the frame
+                // shown.
                 var allowPreviewFallback = !double.IsNaN(lastPreviewTarget);
                 var previewFramePresented = false;
                 try
@@ -793,6 +799,9 @@ internal sealed partial class VideoPipeline(
                 }
 
                 lastPreviewTarget = normalizedTarget;
+                shownPreviewFrameTime = allowPreviewFallback && previewFramePresented
+                    ? _currentFrame?.PresentationTime ?? double.NaN
+                    : double.NaN;
                 if (!previewFramePresented && !HasPendingSeekRequest())
                 {
                     SettleSeekTarget(normalizedTarget);
@@ -802,7 +811,7 @@ internal sealed partial class VideoPipeline(
                 WaitForSeekPumpInterval();
                 if (!HasPendingSeekRequest())
                 {
-                    SettleSeekTarget(normalizedTarget);
+                    SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
                     break;
                 }
             }

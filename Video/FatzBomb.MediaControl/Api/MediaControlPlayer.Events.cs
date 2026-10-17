@@ -275,6 +275,11 @@ public partial class MediaControlPlayer
         if (Volatile.Read(ref _hasPendingSeek) == 0)
             return;
 
+        // A video scrub settles on the frame its preview showed, which can be up to two seconds
+        // from the requested target (035A), so any settled position completes a scrub's seek.
+        if (Controls.IsScrubbing)
+            toleranceSeconds = double.PositiveInfinity;
+
         PendingSeek? pending;
         lock (_seekCompletionGate)
         {

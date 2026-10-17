@@ -32,6 +32,15 @@ public sealed class VideoSeekPolicyTests
         Assert.Equal(expected, VideoSeekPolicy.IsFrameAcceptable(frame, target, distance, commit));
 
     [Theory]
+    [InlineData(62.0, 60.4, 60.4)]
+    [InlineData(62.0, 63.5, 63.5)]
+    [InlineData(62.0, double.NaN, 62.0)]
+    [InlineData(62.0, double.PositiveInfinity, 62.0)]
+    [InlineData(62.0, -1.0, 62.0)]
+    public void ScrubSettleTarget_IsTheShownPreviewFrameWhenThereIsOne(double target, double shownFrame, double expected) =>
+        Assert.Equal(expected, VideoSeekPolicy.GetScrubSettleTarget(target, shownFrame));
+
+    [Theory]
     [InlineData(true, true, 85, 32)]
     [InlineData(false, true, 125, 72)]
     [InlineData(true, false, 65, 20)]

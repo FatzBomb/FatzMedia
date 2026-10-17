@@ -36,6 +36,11 @@ before, and it still jumped on release.
   playback from there. `MediaControlPlayer.Seek` still raises `SeekCompleted` for it, with
   the current position.
 - A media load or close ends the scrub.
+- When a video drag stops, playback resumes from the frame the drag preview put on screen,
+  not from the exact mouse position (third smoke: "pause on our stopped frame, then play a
+  second or two ahead or behind"). Drag previews show the nearest decoded frame, up to 2 s
+  from the target; the exact settle on the target is what jumped. A lone click still seeks
+  exactly. `SeekCompleted` during a scrub accepts the settled position.
 - `VideoPipeline.Play()` during a queued or settling seek marks playback as started and lets
   the exact settle resume from the target.
 - The Player test app's seek bar calls `BeginScrub` on mouse down and `Seek` then
@@ -44,8 +49,7 @@ before, and it still jumped on release.
 
 ## Explicit Non-Goals
 
-- Exact frames during a fast drag. Preview frames during an active drag stay approximate
-  (nearest decoded frame) for responsiveness; the seek pump settles each drag position
-  exactly once the mouse stops.
+- Exact positions for drags. A drag resumes from the previewed frame, up to 2 s from the
+  mouse position (keyframe-style seeking, as in most players). Clicks stay exact.
 - Audio scrubbing sound (playing short snippets while dragging).
 - Changing the seek pump's adaptive timing (015A).

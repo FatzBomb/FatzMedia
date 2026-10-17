@@ -39,6 +39,14 @@ internal static class VideoSeekPolicy
         return !requireAtOrAfterTarget || frameTime + 0.001 >= target;
     }
 
+    /// <summary>
+    /// Where an active scrub settles (Stage 035A): on the frame its last preview showed, so
+    /// playback carries on from the picture on screen, or on the target when no preview frame
+    /// was shown. A lone click never gets here; it seeks exactly.
+    /// </summary>
+    public static double GetScrubSettleTarget(double target, double shownPreviewFrameTime) =>
+        double.IsFinite(shownPreviewFrameTime) && shownPreviewFrameTime >= 0 ? shownPreviewFrameTime : target;
+
     public static int GetDecodeBudgetMilliseconds(bool useFastPreviewBudget, bool isHardwareAccelerated) => useFastPreviewBudget
         ? isHardwareAccelerated ? HardwarePreviewDecodeBudgetMilliseconds : SoftwarePreviewDecodeBudgetMilliseconds
         : isHardwareAccelerated ? HardwareSettleDecodeBudgetMilliseconds : SoftwareSettleDecodeBudgetMilliseconds;

@@ -39,8 +39,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
   wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
-  (`BeginScrub`/`EndScrub`): playback carries on and the release seek at the last drag
-  position is ignored, so release never jumps back; implemented, pending manual smoke
+  (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
+  and the release seek at the last drag position is ignored, so nothing jumps; implemented, pending manual smoke
   (`updates/035A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
