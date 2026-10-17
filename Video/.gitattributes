@@ -5,3 +5,4 @@
 *.dll -text
 *.exe -text
 *.sf2 -text
+*.spv binary

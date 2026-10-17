@@ -4,11 +4,11 @@ using FatzBomb.MediaControl.Core.Graphics.Composition;
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
 /// <summary>
-/// Vulkan renderer backend, vertical slice 1: one primary managed BGRA frame-sink surface,
-/// GPU clear plus background blit, CPU readback into the sink. Window-system swapchains,
-/// shader-based overlay composition, native video resources, and multi-target fan-out are
-/// later slices; frames that need them are rejected with a diagnostic instead of being drawn
-/// incorrectly.
+/// Vulkan renderer backend, preview slices 1-2: one primary managed BGRA frame-sink surface,
+/// GPU clear, background blit, wash and CDG overlay draws, CPU readback into the sink.
+/// Window-system swapchains, subtitles, base-visual transforms, native video resources, and
+/// multi-target fan-out are later slices; frames that need them are rejected with a diagnostic
+/// instead of being drawn incorrectly.
 /// </summary>
 internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
 {
@@ -127,18 +127,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
             try
             {
-                VulkanBlit? blit = frame.HasBackground
-                    ? VulkanCompositionPlanner.PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, width, height, frame.EffectiveBackgroundStretchMode)
-                    : null;
-                var pixels = compositor!.Render(
-                    width,
-                    height,
-                    VulkanCompositionPlanner.ResolveClear(frame),
-                    frame.HasBackground ? frame.BackgroundBgra.Span : [],
-                    frame.BackgroundWidth,
-                    frame.BackgroundHeight,
-                    frame.BackgroundStride,
-                    blit);
+                var pixels = compositor!.Render(VulkanCompositionPlanner.Plan(frame, width, height));
                 sink!.PresentFrame(pixels, width, height, width * 4);
             }
             catch (VulkanException exception)
@@ -216,7 +205,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Warning,
             "Vulkan",
-            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear and software BGRA backgrounds are supported.");
+            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA backgrounds, wash and CDG overlays are supported.");
     }
 
     private bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)

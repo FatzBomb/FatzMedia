@@ -15,8 +15,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
   (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
   pending; macOS deferred.
-- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slice 1 implemented
-  (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
+- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slices 1-2 implemented,
+  pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
+  validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
   implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
