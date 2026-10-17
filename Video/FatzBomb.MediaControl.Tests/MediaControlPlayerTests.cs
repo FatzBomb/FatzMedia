@@ -161,6 +161,34 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task ScrubVideoSeek_CompletesOnThePreviewedFrameButNotAtTheOldPosition()
+    {
+        // 035A review: during a scrub the immediate check after Seek must stay strict (the video
+        // seek is only queued), while the settle may land on the previewed frame near the target.
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.BeginScrub());
+        Assert.True(player.Seek(TimeSpan.FromSeconds(30)));
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(25);
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(28.6);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), args.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(28.6), args.ResultingPosition);
+    }
+
+    [Fact]
     public async Task VideoSeek_IgnoresPositionOutsideSettleTolerance()
     {
         var video = new TestVideoEngine();

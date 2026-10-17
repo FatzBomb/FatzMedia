@@ -156,12 +156,13 @@ public sealed class PlayerNetworkEventTests
     [Fact]
     public async Task BufferingAndMetadata_AreForwardedToHost()
     {
-        var engine = new TestMediaEngine();
+        var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
         using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var buffering = new TaskCompletionSource<MediaBufferingChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         var metadata = new TaskCompletionSource<MediaStreamMetadataChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         player.BufferingChanged += (_, e) => buffering.TrySetResult(e);
         player.StreamMetadataChanged += (_, e) => metadata.TrySetResult(e);
+        Assert.True(player.Load("radio.mp3"));
 
         engine.TestAudio.RaiseBuffering(true, 0.3);
         engine.TestAudio.RaiseStreamMetadata("One More Time", "Daft Punk");
@@ -199,7 +200,7 @@ public sealed class PlayerNetworkEventTests
     [Fact]
     public async Task MetadataPublishedDuringLoad_ArrivesAfterMediaLoaded()
     {
-        var engine = new TestMediaEngine();
+        var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
         using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var order = new System.Collections.Concurrent.ConcurrentQueue<string>();
         var metadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -215,6 +216,30 @@ public sealed class PlayerNetworkEventTests
         await metadata.Task.WaitAsync(Timeout);
 
         Assert.Equal(["loaded", "metadata"], order);
+    }
+
+    [Fact]
+    public async Task NotificationsQueuedBehindASwitchToALocalSource_AreDropped()
+    {
+        // Review follow-up: a buffering or title event from the old stream, queued behind a Load
+        // of a local file, must not reach the host as the new source's state.
+        var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
+        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var raised = 0;
+        player.BufferingChanged += (_, _) => Interlocked.Increment(ref raised);
+        player.StreamMetadataChanged += (_, _) => Interlocked.Increment(ref raised);
+        engine.BeforeOpen = () =>
+        {
+            engine.TestAudio.RaiseBuffering(true, 0.2);
+            engine.TestAudio.RaiseStreamMetadata("Old", "Stream");
+            engine.CurrentCapabilities = MediaSourceCapabilityMatrix.LocalFile;
+        };
+
+        Assert.True(player.Load("song.mp3"));
+        await player.FlushControlOperationsAsync().WaitAsync(Timeout);
+        await player.FlushControlOperationsAsync().WaitAsync(Timeout);
+
+        Assert.Equal(0, Volatile.Read(ref raised));
     }
 
     [Fact]

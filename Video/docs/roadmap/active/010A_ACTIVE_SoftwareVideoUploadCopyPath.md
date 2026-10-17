@@ -18,7 +18,7 @@ copy) implemented, pending manual smoke.
 
 ## Benchmark (`SoftwareVideoCopyBenchmark`, opt-in)
 
-`FATZBOMB_LINUX_FFMPEG_DIR=<ffmpeg8 libs> FATZBOMB_BENCHMARK_VIDEOS="a.mp4;b.mp4" dotnet test FatzBomb.MediaControl.Linux.Tests --filter SoftwareVideoCopyBenchmark --logger "console;verbosity=detailed"`
+`FATZBOMB_LINUX_FFMPEG_DIR=<FFmpeg 9.0.x libs> FATZBOMB_BENCHMARK_VIDEOS="a.mp4;b.mp4" dotnet test FatzBomb.MediaControl.Linux.Tests --filter SoftwareVideoCopyBenchmark --logger "console;verbosity=detailed"`
 
 Linux sandbox, 4 vCPU, FFmpeg 8.1, MPEG-4 Part 2 test clips (2026-10-16):
 

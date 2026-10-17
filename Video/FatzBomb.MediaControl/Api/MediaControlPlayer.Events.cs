@@ -270,21 +270,23 @@ public partial class MediaControlPlayer
 
     private void TryCompletePendingSeek(
         double resultingPosition,
-        double toleranceSeconds = SeekSettleToleranceSeconds)
+        double toleranceSeconds = SeekSettleToleranceSeconds,
+        bool isSettlement = true)
     {
         if (Volatile.Read(ref _hasPendingSeek) == 0)
             return;
-
-        // A video scrub settles on the frame its preview showed, which can be up to two seconds
-        // from the requested target (035A), so any settled position completes a scrub's seek.
-        if (Controls.IsScrubbing)
-            toleranceSeconds = double.PositiveInfinity;
 
         PendingSeek? pending;
         lock (_seekCompletionGate)
         {
             pending = _pendingSeek;
-            if (pending == null || Math.Abs(CleanPosition(resultingPosition) - pending.Value.TargetSeconds) > toleranceSeconds)
+            // Only a settlement notification for a seek made during a scrub may land on the
+            // previewed frame; the immediate check right after Seek stays strict, because the
+            // video seek has only been queued and the position is still the old one.
+            var tolerance = isSettlement && pending is { DuringScrub: true }
+                ? Math.Max(toleranceSeconds, ScrubSettleToleranceSeconds)
+                : toleranceSeconds;
+            if (pending == null || Math.Abs(CleanPosition(resultingPosition) - pending.Value.TargetSeconds) > tolerance)
                 return;
 
             _pendingSeek = null;

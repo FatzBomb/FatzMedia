@@ -19,6 +19,9 @@ public partial class MediaControlPlayer : IMediaControlSession
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
     private const double SeekImmediateCompletionToleranceSeconds = 0.001;
+    // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
+    // distance (2 s) from the target, plus the normal settle tolerance.
+    private const double ScrubSettleToleranceSeconds = 2.0 + SeekSettleToleranceSeconds;
     private readonly IMediaControlPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
@@ -284,7 +287,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                 {
                     lock (_seekCompletionGate)
                     {
-                        _pendingSeek = new PendingSeek(requested, target);
+                        _pendingSeek = new PendingSeek(requested, target, Controls.IsScrubbing);
                         Volatile.Write(ref _hasPendingSeek, 1);
                     }
                 }
@@ -303,7 +306,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                     return true;
                 }
 
-                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds);
+                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds, isSettlement: false);
                 return true;
             });
         }
@@ -662,5 +665,9 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
     }
 
-    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds);
+    /// <param name="DuringScrub">
+    /// The seek was requested during a scrub, so a video settle may land on the previewed frame
+    /// rather than the target (035A).
+    /// </param>
+    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds, bool DuringScrub);
 }

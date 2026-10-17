@@ -36,9 +36,12 @@ Delivered:
 - 60 Hz default refresh as a host option.
 - macOS deferred; Linux first per the session instructions.
 
-## Manual smoke (Linux desktop with BASS for Linux + FFmpeg 8.x shared libraries)
+## Manual smoke (Linux desktop with BASS for Linux + FFmpeg 9.0.x shared libraries)
 
-1. Put `libbass.so`, `libbass_fx.so`, optional add-ons, and FFmpeg 8 libs in an app
+The engine needs FFmpeg 9 since the FFmpeg.AutoGen 9 upgrade; the validation results above
+were recorded with FFmpeg 8.1 and stay as measured.
+
+1. Put `libbass.so`, `libbass_fx.so`, optional add-ons, and FFmpeg 9 libs in an app
    `native/` folder. Compose `new LinuxMediaControlPlatformFactory(new
    SoftwarePresentationCoordinatorFactory())` and create a `MediaControlPlayer`.
    `LastNativeLoadMessage` reports both directories.

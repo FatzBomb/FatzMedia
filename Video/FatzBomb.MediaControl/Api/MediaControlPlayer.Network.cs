@@ -41,7 +41,12 @@ public partial class MediaControlPlayer
     }
 
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
-        RaiseOnControlQueue(() => HostEventDispatcher.Raise(this, BufferingChanged, e, nameof(BufferingChanged)));
+        RaiseOnControlQueue(() =>
+        {
+            // Queued behind a Close or a Load of another source, the old stream's state is stale.
+            if (CurrentSourceCapabilities is { IsBuffered: true })
+                HostEventDispatcher.Raise(this, BufferingChanged, e, nameof(BufferingChanged));
+        });
 
     /// <remarks>
     /// Always queued, never raised inline: the engine publishes the first title while the load
@@ -54,7 +59,12 @@ public partial class MediaControlPlayer
 
         try
         {
-            _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, StreamMetadataChanged, e, nameof(StreamMetadataChanged)));
+            _ = _controlOperations.Enqueue(() =>
+            {
+                // As for buffering: a title queued behind a switch to a non-stream source is stale.
+                if (CurrentSourceCapabilities is { HasStreamMetadata: true })
+                    HostEventDispatcher.Raise(this, StreamMetadataChanged, e, nameof(StreamMetadataChanged));
+            });
         }
         catch (ObjectDisposedException)
         {

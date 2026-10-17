@@ -9,6 +9,11 @@ public partial class App : Application
     private TextWriterTraceListener? _logListener;
     private StreamWriter? _logWriter;
 
+    // The engine clamps fade lengths to 60 s; clamp here too so TimeSpan.FromSeconds cannot throw.
+
+    private const double MaxFadeNextSeconds = 60;
+
+
     public static string LogFilePath { get; } =
         Path.Combine(Path.GetTempPath(), "FatzBombMedia", "player-debug.log");
 
@@ -66,7 +71,9 @@ public partial class App : Application
                 argument[fadeNextPrefix.Length..],
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture,
-                out var seconds) ? TimeSpan.FromSeconds(seconds) : TimeSpan.Zero)
+                out var seconds) && double.IsFinite(seconds)
+                    ? TimeSpan.FromSeconds(Math.Clamp(seconds, 0, MaxFadeNextSeconds))
+                    : TimeSpan.Zero)
             .FirstOrDefault();
         const string urlPrefix = "--url=";
         StartupNetworkUri = e.Args
