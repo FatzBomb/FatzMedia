@@ -16,9 +16,10 @@ public sealed class MediaControls
     private long _transportGeneration;
     private volatile bool _handlingMediaEnd;
     private volatile bool _disposed;
+    private const double ScrubRepeatToleranceSeconds = 0.001;
     private readonly Lock _scrubGate = new();
     private bool _scrubbing;
-    private bool _scrubResumesPlayback;
+    private double _lastScrubTarget = double.NaN;
 
     internal MediaControls(
         IMediaEngine mediaEngine,
@@ -90,7 +91,6 @@ public sealed class MediaControls
     public bool Play()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ReleaseScrubHold();
 
         var success = _mediaEngine.Play();
         if (success)
@@ -116,7 +116,6 @@ public sealed class MediaControls
     public bool Pause()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ReleaseScrubHold();
 
         var success = _mediaEngine.Pause();
         if (success)
@@ -144,7 +143,6 @@ public sealed class MediaControls
     public bool Stop()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ReleaseScrubHold();
 
         var success = _mediaEngine.Stop();
         if (success)
@@ -168,11 +166,17 @@ public sealed class MediaControls
     public bool Seek(double seconds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (IsRepeatOfScrubTarget(seconds))
+            return true;
+
         var success = _mediaEngine.Seek(seconds);
         if (success)
         {
             _ = Interlocked.Increment(ref _transportGeneration);
             _handlingMediaEnd = false;
+            lock (_scrubGate)
+                if (_scrubbing)
+                    _lastScrubTarget = seconds;
         }
 
         return success;
@@ -196,16 +200,12 @@ public sealed class MediaControls
     }
 
     /// <summary>
-    /// Starts an interactive scrub, such as a seek-bar drag. Playback is held until
-    /// <see cref="EndScrub"/>, so <see cref="Seek"/> calls in between only move the position and
-    /// show a preview frame; nothing plays between them and nothing replays on release.
+    /// Starts an interactive scrub, such as a seek-bar drag. Playback carries on as usual and
+    /// each <see cref="Seek"/> moves it, but a seek to the same target as the previous seek of the
+    /// scrub is ignored. A seek bar sends one more seek on release; at the last drag position
+    /// that seek would restart playback from there, jumping back by however long it played while
+    /// the button was held.
     /// </summary>
-    /// <remarks>
-    /// The hold is internal: no <see cref="MediaPaused"/>, <see cref="MediaStarted"/>, or state
-    /// change is reported for it, although the engine reads paused while it lasts. Calling
-    /// <see cref="Play"/>, <see cref="Pause"/>, or <see cref="Stop"/> during a scrub, or loading
-    /// or closing media, cancels the resume.
-    /// </remarks>
     /// <returns>True when media is open and the scrub started (or was already active).</returns>
     public bool BeginScrub()
     {
@@ -215,59 +215,50 @@ public sealed class MediaControls
 
         lock (_scrubGate)
         {
-            if (_scrubbing)
-                return true;
-
-            _scrubbing = true;
-            _scrubResumesPlayback = _mediaEngine.State == MediaPlayerState.Playing && _mediaEngine.Pause();
+            if (!_scrubbing)
+            {
+                _scrubbing = true;
+                _lastScrubTarget = double.NaN;
+            }
         }
 
         return true;
     }
 
     /// <summary>
-    /// Ends a scrub started by <see cref="BeginScrub"/> and resumes playback from the last
-    /// <see cref="Seek"/> target if the media was playing when the scrub began. Seek to the final
-    /// position before calling this; a video seek still settling is finished before playback resumes.
+    /// Ends a scrub started by <see cref="BeginScrub"/>. Send the release seek first; it is
+    /// ignored when it repeats the last drag position.
     /// </summary>
     /// <returns>True when a scrub was active.</returns>
     public bool EndScrub()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        bool resume;
         lock (_scrubGate)
         {
             if (!_scrubbing)
                 return false;
 
             _scrubbing = false;
-            resume = _scrubResumesPlayback;
-            _scrubResumesPlayback = false;
+            _lastScrubTarget = double.NaN;
+            return true;
         }
-
-        if (resume && _mediaEngine.IsOpen && _mediaEngine.State == MediaPlayerState.Paused && !_mediaEngine.Play())
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", "Playback did not resume after the scrub.");
-            _ = RaiseStateChanged();
-        }
-
-        return true;
     }
 
-    /// <summary>Ends any scrub without resuming, as when media is loaded or closed mid-drag.</summary>
+    /// <summary>Ends any scrub, as when media is loaded or closed mid-drag.</summary>
     internal void CancelScrub()
     {
         lock (_scrubGate)
         {
             _scrubbing = false;
-            _scrubResumesPlayback = false;
+            _lastScrubTarget = double.NaN;
         }
     }
 
-    private void ReleaseScrubHold()
+    /// <summary>True when a scrub is active and <paramref name="seconds"/> repeats its last seek.</summary>
+    internal bool IsRepeatOfScrubTarget(double seconds)
     {
         lock (_scrubGate)
-            _scrubResumesPlayback = false;
+            return _scrubbing && !double.IsNaN(_lastScrubTarget) && Math.Abs(seconds - _lastScrubTarget) <= ScrubRepeatToleranceSeconds;
     }
 
     /// <summary>
@@ -401,11 +392,6 @@ public sealed class MediaControls
 
     private bool RaiseStateChanged()
     {
-        // A scrub's playback hold is internal; report state once the host takes over or it ends.
-        lock (_scrubGate)
-            if (_scrubbing && _scrubResumesPlayback)
-                return false;
-
         MediaPlayerState current = _mediaEngine.State;
         if (current == _lastReportedState)
             return false;

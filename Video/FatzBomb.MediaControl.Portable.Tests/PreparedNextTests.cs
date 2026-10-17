@@ -314,22 +314,40 @@ public sealed class PreparedNextPlayerTests : IDisposable
     }
 
     [Fact]
-    public async Task Scrub_LoadingMidDrag_DoesNotResumeTheNewItem()
+    public async Task Scrub_ReleaseSeekAtTheDragPosition_CompletesWithoutMoving()
     {
-        // Stage 035A facade: a load during a seek-bar drag cancels the scrub's resume.
+        // Stage 035A facade: the release seek of a drag at the last drag position is ignored.
         var engine = new TestMediaEngine();
         using var player = CreatePlayer(engine, new FakeAnalyzer());
         Assert.True(player.Load(CreateFile("first.mp3")));
         Assert.True(player.Play());
         Assert.True(player.BeginScrub());
-        Assert.Equal(MediaPlayerState.Paused, engine.State);
+        Assert.True(player.Controls.Seek(30));
+        engine.Position = 32;
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.Seek(30));
+        Assert.True(player.EndScrub());
+
+        Assert.Equal(32, engine.Position);
+        _ = await completed.Task.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task Scrub_LoadingMidDrag_EndsTheScrub()
+    {
+        var engine = new TestMediaEngine();
+        using var player = CreatePlayer(engine, new FakeAnalyzer());
+        Assert.True(player.Load(CreateFile("first.mp3")));
+        Assert.True(player.BeginScrub());
+        Assert.True(player.Controls.Seek(30));
 
         Assert.True(await player.LoadAsync(CreateFile("second.mp3")).WaitAsync(Timeout));
-        var playsBefore = engine.PlayCount;
 
-        Assert.False(player.EndScrub());
-        Assert.Equal(playsBefore, engine.PlayCount);
-        Assert.NotEqual(MediaPlayerState.Playing, engine.State);
+        Assert.False(player.Controls.IsScrubbing);
+        Assert.True(player.Seek(30));
+        Assert.Equal(30, engine.Position);
     }
 
     [Fact]

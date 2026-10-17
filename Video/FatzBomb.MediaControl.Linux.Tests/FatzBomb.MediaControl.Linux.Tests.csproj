@@ -6,6 +6,7 @@
 		<IsTestProject>true</IsTestProject>
 		<AssemblyName>FatzBomb.MediaControl.Linux.Tests</AssemblyName>
 		<RootNamespace>FatzBomb.MediaControl.Linux.Tests</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<ItemGroup>

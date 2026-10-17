@@ -88,6 +88,7 @@ internal sealed unsafe class VideoDecoder(
     private int _hardwareFormatMissing;
     private string? _formatsOfferedWithoutHardware;
     private int _lastDecodeError;
+    private bool _logCaptureActive;
 
     /// <summary>
     /// True when hardware decoding is configured and the hardware path has failed to produce a
@@ -429,6 +430,11 @@ internal sealed unsafe class VideoDecoder(
         _videoCodecCtx = ffmpeg.avcodec_alloc_context3(codec);
         if (_videoCodecCtx == null) return false;
 
+        // Keep FFmpeg's own messages until the first frame, so a failed hardware start can say why.
+        _logCaptureActive = useHardware;
+        if (useHardware)
+            FfmpegLogCapture.Begin(_videoCodecCtx);
+
         if (ffmpeg.avcodec_parameters_to_context(_videoCodecCtx, _videoStream->codecpar) < 0)
         {
             CleanupCodecContext();
@@ -666,6 +672,11 @@ internal sealed unsafe class VideoDecoder(
         // A frame was successfully received from the decoder — the hardware path is working, so
         // clear the consecutive-failure gate used for device-lost detection.
         _consecutiveHardwareDecodeFailures = 0;
+        if (_logCaptureActive)
+        {
+            _logCaptureActive = false;
+            FfmpegLogCapture.End(_videoCodecCtx);
+        }
 
         double rawPts = 0;
         var timebase = ffmpeg.av_q2d(_videoStream->time_base);
@@ -888,6 +899,10 @@ internal sealed unsafe class VideoDecoder(
         if (_lastDecodeError != 0)
             reasons.Add($"last FFmpeg error: {FormatFFmpegError(_lastDecodeError)}");
 
+        IReadOnlyList<string> ffmpegLines = _videoCodecCtx != null ? FfmpegLogCapture.Peek(_videoCodecCtx) : [];
+        if (ffmpegLines.Count > 0)
+            reasons.Add($"FFmpeg reported: {string.Join(" | ", ffmpegLines)}");
+
         return reasons.Count > 0 ? string.Join("; ", reasons) : "no decoder error was reported";
     }
 
@@ -1067,6 +1082,8 @@ internal sealed unsafe class VideoDecoder(
             return;
         }
 
+        FfmpegLogCapture.End(_videoCodecCtx);
+        _logCaptureActive = false;
         fixed (AVCodecContext** ctx = &_videoCodecCtx)
             ffmpeg.avcodec_free_context(ctx);
     }

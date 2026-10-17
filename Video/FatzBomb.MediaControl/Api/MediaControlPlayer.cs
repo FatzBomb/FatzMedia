@@ -271,6 +271,14 @@ public partial class MediaControlPlayer : IMediaControlSession
                 var target = _mediaEngine.Duration > 0
                     ? Math.Clamp(requested, 0, _mediaEngine.Duration)
                     : requested;
+                if (Controls.IsRepeatOfScrubTarget(seconds))
+                {
+                    // The release seek of a drag at the last drag position: already there or
+                    // playing on from it, so nothing moves.
+                    RaiseSeekCompleted(requested, _mediaEngine.Position);
+                    return true;
+                }
+
                 var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
                 if (waitsForSettle)
                 {

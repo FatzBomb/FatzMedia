@@ -23,24 +23,29 @@ timing, so it owns the drag semantics.
 
 ## Slice 1 Acceptance Criteria
 
+Revised after the owner's second smoke (2026-10-17): the first version held playback
+during the drag. The owner prefers playback to carry on while the button is held, as
+before, and it still jumped on release.
+
 - `MediaControls.BeginScrub()`, `EndScrub()`, and `IsScrubbing`; `MediaControlPlayer`
   `BeginScrub()` / `EndScrub()` on the control queue; `IMediaControlSession` members with
   default implementations that return false.
-- `BeginScrub` while playing holds playback (engine pause) without `MediaPaused`,
-  `MediaStarted`, or `StateChanged`; seeks in between only move the position and preview.
-  `EndScrub` resumes once, from the last target, only if playback was held.
-- `Play`, `Pause`, or `Stop` during a scrub, and a media load or close, cancel the resume;
-  host `Play`/`Pause`/`Stop` are reported as usual.
+- A scrub changes nothing about playback: it carries on, and each drag seek moves it.
+- A seek during a scrub that repeats the scrub's previous seek target (within 1 ms) is
+  ignored. That is the release seek at the last drag position, which used to restart
+  playback from there. `MediaControlPlayer.Seek` still raises `SeekCompleted` for it, with
+  the current position.
+- A media load or close ends the scrub.
 - `VideoPipeline.Play()` during a queued or settling seek marks playback as started and lets
   the exact settle resume from the target.
 - The Player test app's seek bar calls `BeginScrub` on mouse down and `Seek` then
   `EndScrub` on release.
-- Focused tests for the scrub state machine and the facade (Portable).
+- Focused tests for the scrub rules and the facade (Portable).
 
 ## Explicit Non-Goals
 
-- Exact frames during a fast drag. Preview frames during an active scrub stay approximate
-  (nearest decoded frame) for responsiveness; the release settles exactly, so a fast drag
-  released without a pause can still change the picture once.
+- Exact frames during a fast drag. Preview frames during an active drag stay approximate
+  (nearest decoded frame) for responsiveness; the seek pump settles each drag position
+  exactly once the mouse stops.
 - Audio scrubbing sound (playing short snippets while dragging).
 - Changing the seek pump's adaptive timing (015A).

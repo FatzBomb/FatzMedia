@@ -25,9 +25,19 @@ Done so far:
   decoder (which cannot decode in software) was opened anyway and produced no video, with
   no fallback. The software decoder (`libdav1d`) is now used instead.
 
-Next: the owner sends the new warning for the failing file. If the reason is an
-unsupported stream, the fallback is correct and only the message matters. Otherwise fix
-the cause.
+Owner's log with the new warning: `Stream: AV1 Main 8-bit 1920x1080 (yuv420p), decoder av1
+in software (d3d11va configured but not used). Reason: the decoder never asked for an output
+format (no decodable picture in the first packets); last FFmpeg error: Invalid data found
+when processing input.` So a plain 8-bit 1080p stream, which the GPU supports: FFmpeg's
+native `av1` decoder rejected the bitstream before it reached the sequence header, while
+`libdav1d` decodes the same packets. The GPU is not the problem.
+
+Since then the warning also quotes FFmpeg's own log lines for that decoder (up to six,
+through `FfmpegLogCapture`, which installs one process-wide FFmpeg log callback and passes
+everything else to FFmpeg's default logger).
+
+Next: the owner sends the warning again; FFmpeg's lines should name the rejected part
+(an OBU type, a header field, or a packet framing problem), which decides the fix.
 
 ## Open
 

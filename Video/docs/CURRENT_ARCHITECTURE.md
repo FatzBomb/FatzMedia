@@ -169,7 +169,7 @@ named `window` handle.
 - Main video decoding owns the Core-managed video demux cursor used for video seek, buffering, and proactive loop pre-seek.
 - `VideoAudioEngine` opens an independent FFmpeg cursor for the same source. This preserves codec priming/preroll semantics; routing initial audio packets through the video cursor caused a persistent startup offset with AV1 + E-AC-3 until the first seek.
 - Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
-- Seek-bar drags are bracketed by `BeginScrub`/`EndScrub` (035A): `MediaControls` holds playback for the drag without reporting a pause and resumes once on release. A video `Play` that arrives while a seek is queued or settling is applied by the settle, which resumes from the target.
+- Seek-bar drags are bracketed by `BeginScrub`/`EndScrub` (035A): playback carries on, and `MediaControls` ignores a scrub seek that repeats the previous one (the release seek at the last drag position). A video `Play` that arrives while a seek is queued or settling is applied by the settle, which resumes from the target.
 - Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
 
 ## Native Video Frames And Hardware Decode
