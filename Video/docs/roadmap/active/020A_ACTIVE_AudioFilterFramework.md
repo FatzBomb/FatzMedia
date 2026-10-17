@@ -38,4 +38,4 @@ chain. Output-latency correction (`IOutputLatencyProvider`) is unchanged.
 
 As in the original idea: no DAW/plugin host, no managed real-time callbacks, no default
 sound change, not every filter at once. Video-file audio (decoded by the video pipeline)
-is not equalized in this slice.
+is not equalized in this slice; Stage 033A slice 1 adds it.

@@ -33,6 +33,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
   capture script; Windows baseline capture pending (`updates/022A_1`).
+- `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
+  normalization for video audio) implemented, pending manual smoke (`updates/033A_1`);
+  slice 2 (FFmpeg fallback for unclaimed audio formats) next.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -79,11 +82,7 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
 
-- `future/033A_IDEA_FfmpegAudioParityAndFallback.md` - equalizer, fades, and normalization
-  for video audio, then an FFmpeg quick-conversion fallback for audio formats no BASS
-  plugin claims (owner decision, 2026-10-17).
-
-Next stage: 033A, after the manual smoke of the 2026-10-16 stages; then 032A.
+Next stage: finish 033A slice 2; then 032A (needs CD drive measurements first).
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and

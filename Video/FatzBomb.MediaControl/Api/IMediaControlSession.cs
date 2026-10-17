@@ -65,7 +65,8 @@ public interface IMediaControlSession : IDisposable
     bool ShowMidiLyrics { get; set; }
 
     /// <summary>
-    /// Gets or sets the equalizer applied to local and network audio streams (Stage 020A).
+    /// Gets or sets the equalizer applied to local and network audio streams and to the audio
+    /// of video files (Stages 020A, 033A).
     /// Disabled by default; disabled or all-neutral settings attach no native filter.
     /// </summary>
     AudioEqualizerSettings Equalizer { get; set; }
@@ -209,15 +210,16 @@ public interface IMediaControlSession : IDisposable
     AudioCrossfadeOptions PreparedNextTransitionFade { get; set; }
 
     /// <summary>
-    /// Fades the current local audio with an outgoing envelope (default: full to muted). Playback
+    /// Fades the current audio, including a video's soundtrack, with an outgoing envelope
+    /// (default: full to muted). Only the sound fades; video frames are unchanged. Playback
     /// continues; the host decides whether to stop. Returns <see langword="false"/> when the media
-    /// has no fade stage (video, live), the duration is zero, or the fade was cancelled or
-    /// superseded. Stop, load, and close end a running fade and restore unity fade gain.
+    /// has no audio stream, the duration is zero, or the fade was cancelled or superseded. Stop,
+    /// load, close, and a natural end restore unity fade gain.
     /// </summary>
     Task<bool> FadeOutAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fades the current local audio with an incoming envelope (default: muted to full), starting
+    /// Fades the current audio with an incoming envelope (default: muted to full), starting
     /// at the envelope's audible start. Same return and cancellation rules as <see cref="FadeOutAsync"/>.
     /// </summary>
     Task<bool> FadeInAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);

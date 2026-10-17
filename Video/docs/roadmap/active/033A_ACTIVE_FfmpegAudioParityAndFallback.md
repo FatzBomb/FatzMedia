@@ -1,7 +1,9 @@
-# Idea Stage 033A - FFmpeg Audio Parity and Unsupported-Format Fallback
+# Active Stage 033A - FFmpeg Audio Parity and Unsupported-Format Fallback
 
-Status: Good idea. Owner decision (2026-10-17): next stage after the manual smoke of the
-2026-10-16 stages. Two slices.
+Prepared: 2026-10-17
+Status: Slice 1 (equalizer, fades, normalization for video audio) implemented, pending
+manual smoke (`updates/033A_1`). Slice 2 next. Owner decision (2026-10-17): implement now
+while the owner's native smoke of the 2026-10-16 stages is pending.
 
 ## Why This Is Worth Doing
 
@@ -64,6 +66,24 @@ Rejected alternative: a live FFmpeg pull stream for audio-only files. It would n
 own seek, length, loop, trimming, and analysis code to reach parity, which is the
 duplication this slice avoids. Slice 1 still uses live decode for video, where the audio
 must stay locked to the picture.
+
+## Slice 1 Acceptance Criteria
+
+- `VideoAudioEngine` implements `IAudioFilterHost` and `IAudioFadeGainTarget`; the
+  equalizer (`BassEqualizerFilter`) and the fade stage (`BassFadeGainStage`, extracted from
+  `AudioEngine` unchanged) attach to its tempo stream, in the same chain order as plain
+  audio: equalizer, normalization gain FX, fade FX, channel volume attribute.
+- Normalization is a gain FX (it can amplify), driven by a background `FfmpegAudioReader`
+  that owns its own demuxer. `FfmpegAudioPeakScanner` samples the same windows as the BASS
+  analysis (quick: first 6 s; deep: up to 240 half-second windows across the file), and
+  the gain uses the same `AudioNormalizer.CalculateGainFromPeak`. Deep results are cached
+  per file identity (path, size, write time) or archive entry.
+- `IsNormalizationReady` is false until the quick pass finishes, so play-on-load waits for
+  it exactly as for plain audio. Gain events are raised in order on the thread pool, never
+  on the analysis thread, which `Close` joins.
+- Stop, a natural end, and a gapless loop wrap restore full fade gain (as plain audio does).
+- Focused tests for the pure parts; an opt-in native test checks the reader and scanner
+  against real FFmpeg on Linux.
 
 ## Recommended Immediate Action
 

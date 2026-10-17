@@ -46,6 +46,8 @@ restarts nor cancels it. `LoopMedia` still suppresses automatic transitions (031
   timing so the fade gain is primed before the first samples.
 - Fades apply to every media whose active audio engine is the BASS `AudioEngine`
   (plain audio, audio+CDG, archives); video and clock-only media return `false`.
+  (Superseded by 033A slice 1: video soundtracks fade too; only media without audio return
+  `false`.)
 
 ## Verification
 
@@ -64,7 +66,8 @@ restarts nor cancels it. `LoopMedia` still suppresses automatic transitions (031
    the fade with the level when loaded normally (should match).
 4. Stop during the fade-in, then Play: b plays at full gain (session reset).
 5. Pitch/tempo changes during the fade do not alter its wall-clock length.
-6. Video next item with `--fade-next`: transition happens, no fade, no errors.
+6. Video next item with `--fade-next`: transition happens and, since 033A slice 1, the
+   video's sound fades in (the picture does not).
 
 ## Review follow-up (same day)
 

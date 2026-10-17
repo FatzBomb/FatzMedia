@@ -5,8 +5,9 @@ using FatzBomb.MediaControl.Core.Audio.Fade;
 namespace FatzBomb.MediaControl;
 
 /// <summary>
-/// Envelope fades for ordinary local audio. Fade gain is its own native stage, multiplied with
-/// user volume and normalization, and runs in wall-clock time off the control queue.
+/// Envelope fades for local audio and video soundtracks. Fade gain is its own native stage,
+/// multiplied with user volume and normalization, and runs in wall-clock time off the control
+/// queue.
 /// </summary>
 public partial class MediaControlPlayer
 {

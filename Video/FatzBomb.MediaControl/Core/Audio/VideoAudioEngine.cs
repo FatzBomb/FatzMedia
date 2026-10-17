@@ -1,20 +1,23 @@
-
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio.Fade;
+using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Media;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
+internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
+    private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
@@ -47,6 +50,23 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
     private int _positionSnapshotTempoPercent;
     private bool _audioPushThrottled;
     private bool _disposed;
+
+    // Effects chain on PlayHandle, in the same order as AudioEngine: equalizer, normalization
+    // gain, fade envelope, then the channel volume attribute (user volume).
+    private readonly BassEqualizerFilter _equalizer = new();
+    private readonly AudioNormalizer _normalizer = new();
+    private readonly BassFadeGainStage _fade = new("VideoAudioEngine");
+
+    // Normalization runs on a background FfmpegAudioReader. _gainGate serializes gain FX writes
+    // between it and the Normalize setter; the analysis never takes _sync, so CloseCore can join
+    // it while holding _sync.
+    private readonly Lock _gainGate = new();
+    private CancellationTokenSource? _normalizationCts;
+    private Task? _normalizationTask;
+    private int _normalizationGeneration;
+    private volatile bool _normalizationReady = true;
+    private readonly Lock _gainEventGate = new();
+    private Task _gainEvents = Task.CompletedTask;
 
     // Gapless loop bookkeeping (see AudioLoopBoundaryTracker). _pendingLoopBoundaries and
     // _completedLoopSeconds are only ever touched from within _sync (GetPositionCore and
@@ -87,14 +107,15 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
         {
             lock (_sync)
             {
-                _normalize = value;
-                _ = ApplyVolume();
+                Volatile.Write(ref _normalize, value);
+                lock (_gainGate)
+                    _normalizer.SetNormalizeEnabled(value);
             }
         }
     }
 
-    public double NormalizationGain { get; private set; } = 1.0;
-    public bool IsNormalizationReady => true;
+    public double NormalizationGain => _normalizer.NormalizationGain;
+    public bool IsNormalizationReady => _normalizationReady;
     public int CurrentTempo { get; private set; }
     public double Duration { get; private set; }
     public bool IsOpen
@@ -226,7 +247,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
     {
         var crossed = AudioLoopBoundaryTracker.Advance(continuousPositionSeconds, _pendingLoopBoundaries, ref _completedLoopSeconds);
         if (crossed > 0)
+        {
             CompletedLoopCount += crossed;
+
+            // A fade that ran to the end of a lap must not leave the next lap muted.
+            _fade.EndSession(releaseHandle: false);
+        }
     }
 
     private void PublishPositionSnapshot(double position)
@@ -256,6 +282,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
     public bool Open(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        return OpenFile(filePath, CreatePathNormalizationCacheKey(filePath));
+    }
+
+    private bool OpenFile(string filePath, string? normalizationCacheKey)
+    {
         lock (_sync)
         {
             if (_disposed)
@@ -287,6 +318,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
             Duration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
             State = AudioEngineState.Stopped;
             PublishPositionSnapshot(_positionBaseSeconds);
+            StartNormalizationAnalysis(filePath, normalizationCacheKey);
             Opened?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
             return true;
@@ -298,13 +330,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
         ArgumentNullException.ThrowIfNull(archiveEntry);
         using var ms = new MemoryStream((int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue));
         archiveEntry.WriteTo(ms);
-        return OpenBytes(ms.ToArray());
+        return OpenBytes(ms.ToArray(), $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}");
     }
 
-    private bool OpenBytes(byte[] data)
+    private bool OpenBytes(byte[] data, string normalizationCacheKey)
     {
         var tempPath = TempMediaFile.Create(data);
-        var success = Open(tempPath);
+        var success = OpenFile(tempPath, normalizationCacheKey);
         if (success)
             lock (_sync)
                 _tempPath = tempPath;
@@ -445,6 +477,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
 
         ResetAudioBufferTracking();
         _ = SeekDecoder(0);
+        _fade.EndSession(releaseHandle: false);
         SetState(AudioEngineState.Stopped);
         PublishPositionSnapshot(0);
         PositionChanged?.Invoke(this, 0);
@@ -520,6 +553,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
     {
         if (_disposed)
             return;
+
+        // Join the analysis first: it reads the file (possibly a temp file deleted below) and
+        // writes the gain FX on PlayHandle.
+        CancelNormalizationAnalysis();
+        _fade.EndSession(releaseHandle: true);
+        _equalizer.Forget();
+        lock (_gainGate)
+            _normalizer.ResetGain(clearFxHandle: true);
 
         if (PlayHandle != 0)
         {
@@ -617,6 +658,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
         }
     }
 
+    // Analysis starts automatically on open; these report the gain it has reached so far.
     public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken)
     {
         NormalizationGainChanged?.Invoke(this, NormalizationGain);
@@ -628,6 +670,20 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
         NormalizationGainChanged?.Invoke(this, NormalizationGain);
         return Task.FromResult(NormalizationGain);
     }
+
+    AudioEqualizerSettings IAudioFilterHost.Equalizer => _equalizer.Settings;
+
+    bool IAudioFilterHost.SetEqualizer(AudioEqualizerSettings settings) => _equalizer.Configure(settings);
+
+    int IAudioFadeGainTarget.BeginFadeSession() => _fade.BeginFadeSession();
+
+    bool IAudioFadeGainTarget.SetFadeGain(int session, double gain, TimeSpan ramp) => _fade.SetFadeGain(session, gain, ramp);
+
+    /// <summary>
+    /// Restores full fade gain when playback reaches its natural end, so a fade-out that ran to
+    /// the end does not leave a replay muted (the plain-audio engine does the same).
+    /// </summary>
+    internal void EndFadeSessionAtEnd() => _fade.EndSession(releaseHandle: false);
 
     public void Dispose()
     {
@@ -703,6 +759,15 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
             return false;
         }
 
+        lock (_gainGate)
+        {
+            _normalizer.ResetGain(clearFxHandle: true);
+            _ = _normalizer.SetupGainFx(PlayHandle);
+            _normalizer.SetNormalizeEnabled(_normalize);
+        }
+
+        _fade.Attach(PlayHandle);
+        _ = _equalizer.Apply(PlayHandle);
         _ = ApplyVolume();
         _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Pitch, _pitch);
         _ = Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Tempo, CurrentTempo);
@@ -868,8 +933,128 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl
         if (PlayHandle == 0)
             return false;
 
-        var effectiveVolume = _volume * (_normalize ? NormalizationGain : 1.0);
-        return Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Volume, effectiveVolume);
+        // Normalization is its own FX stage (it can amplify); the attribute carries user volume only.
+        return Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Volume, _volume);
+    }
+
+    private void StartNormalizationAnalysis(string filePath, string? cacheKey)
+    {
+        CancelNormalizationAnalysis();
+        var generation = Volatile.Read(ref _normalizationGeneration);
+        if (cacheKey is not null && NormalizationGainCache.TryGetValue(cacheKey, out var cachedGain))
+        {
+            ApplyNormalizationGain(cachedGain, cacheKey, generation, "Using cached normalization gain");
+            return;
+        }
+
+        _normalizationReady = false;
+        var cts = new CancellationTokenSource();
+        _normalizationCts = cts;
+        _normalizationTask = Task.Run(() => RunNormalizationAnalysis(filePath, cacheKey, generation, cts.Token));
+    }
+
+    private void RunNormalizationAnalysis(string filePath, string? cacheKey, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using FfmpegAudioReader? reader = FfmpegAudioReader.Open(filePath);
+            if (reader is null)
+                return;
+
+            var quickPeak = FfmpegAudioPeakScanner.ScanQuick(reader, cancellationToken);
+            ApplyNormalizationPeak(quickPeak, cacheKey: null, generation, "Quick normalization complete");
+
+            var deepPeak = Math.Max(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
+            ApplyNormalizationPeak(deepPeak, cacheKey, generation, "Deep normalization complete");
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a new open or a close.
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoAudioEngine", $"Normalization analysis failed: {ex.Message}", innerException: ex);
+        }
+        finally
+        {
+            if (Volatile.Read(ref _normalizationGeneration) == generation)
+                _normalizationReady = true;
+        }
+    }
+
+    private void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message) =>
+        ApplyNormalizationGain(AudioNormalizer.CalculateGainFromPeak(peak), cacheKey, generation, message);
+
+    private void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message)
+    {
+        lock (_gainGate)
+        {
+            if (Volatile.Read(ref _normalizationGeneration) != generation)
+                return;
+
+            _normalizer.SetNormalizationGain(gain);
+            _normalizer.SetNormalizeEnabled(Volatile.Read(ref _normalize));
+            _normalizationReady = true;
+        }
+
+        if (cacheKey is not null)
+            NormalizationGainCache[cacheKey] = gain;
+
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoAudioEngine", $"{message}, gain={gain:F3}");
+        QueueNormalizationGainChanged(gain, generation);
+    }
+
+    /// <summary>
+    /// Raises <see cref="NormalizationGainChanged"/> in order on the thread pool. Host handlers
+    /// must never run on the analysis thread, which <see cref="CloseCore"/> joins under _sync.
+    /// </summary>
+    private void QueueNormalizationGainChanged(double gain, int generation)
+    {
+        lock (_gainEventGate)
+        {
+            _gainEvents = _gainEvents.ContinueWith(
+                _ =>
+                {
+                    if (Volatile.Read(ref _normalizationGeneration) == generation)
+                        NormalizationGainChanged?.Invoke(this, gain);
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+        }
+    }
+
+    private void CancelNormalizationAnalysis()
+    {
+        _ = Interlocked.Increment(ref _normalizationGeneration);
+        CancellationTokenSource? cts = _normalizationCts;
+        Task? task = _normalizationTask;
+        _normalizationCts = null;
+        _normalizationTask = null;
+        if (cts is null)
+        {
+            _normalizationReady = true;
+            return;
+        }
+
+        // The analysis handles its own exceptions; cancellation is checked once per decoded frame.
+        cts.Cancel();
+        task?.Wait();
+        cts.Dispose();
+        _normalizationReady = true;
+    }
+
+    private static string? CreatePathNormalizationCacheKey(string filePath)
+    {
+        try
+        {
+            var info = new FileInfo(filePath);
+            return info.Exists ? $"video|{info.FullName}|{info.Length}|{info.LastWriteTimeUtc.Ticks}" : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private void SetState(AudioEngineState state)

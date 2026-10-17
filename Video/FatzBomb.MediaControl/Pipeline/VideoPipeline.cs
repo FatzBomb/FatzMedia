@@ -1823,6 +1823,7 @@ internal sealed partial class VideoPipeline(
         if (HasAudio)
         {
             _ = _audioEngine!.Pause();
+            _audioEngine.EndFadeSessionAtEnd();
             _presentationClock.Pause(Duration);
         }
         else
