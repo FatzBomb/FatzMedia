@@ -37,3 +37,24 @@ the real worker thread.
 4. Seek while paused, then press Play: playback starts at the new position, never at the
    old one first.
 5. Loop on: a video loops cleanly at its end, and seeking near the end still works.
+
+## Review follow-up (same day, local review instead of a hosted one)
+
+A high-effort review of the slice found no behaviour change in the move. Fixed:
+
+- The `SeekPump` property allocated a delegate on every access (once per presented frame
+  and in seek decode loops). It is now a volatile read after a locked one-time creation.
+- Pre-existing, moved along: if `Stop` timed out joining a worker whose seek still held
+  the transport gate, a later `Start` could revive that worker next to the new one. `Start`
+  now waits for a lingering worker while the shutdown flag is still set.
+- Pre-existing: preview and settle exceptions went only to `Debug.WriteLine` (dropped in
+  Release). They are now `VideoPipeline` warnings.
+- One test asserted nothing; it is fixed, and a new test covers a preview without a frame
+  while a newer request waits.
+- Removed an unused `IsShuttingDown` property and a stale lock note in the stage file.
+
+Not changed: the interval-wait round trip and the one-line delegates (they keep the move
+behaviour-identical and the tests deterministic), and the target normalization in `Seek`
+(as before). `CdgPipeline` keeps its own copy of the latest-wins worker; folding it into
+`VideoSeekPump` is recorded as ENG-013.
+

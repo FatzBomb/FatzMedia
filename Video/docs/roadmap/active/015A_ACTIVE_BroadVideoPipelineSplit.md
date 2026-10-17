@@ -29,8 +29,7 @@ Bold rows/items are extracted (slice 1 unless marked).
 - `AdaptiveSeekPumpTiming` (thread-safe EMA): `Record`, `IntervalMilliseconds`, `Reset`.
 - `VideoPipeline` keeps its private methods as one-line delegates, so every call site,
   value, and lock scope that mattered is unchanged (the EMA had no cross-field invariants
-  with other `_seekPumpLock` state; `ResetAdaptiveVideoSeekTiming` still resets it and the
-  committed-target floor together under `_seekPumpLock`).
+  with other `_seekPumpLock` state). Slice 2 removed `_seekPumpLock`; see below.
 
 ## Slice 2 (implemented)
 

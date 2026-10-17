@@ -6,9 +6,22 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// </summary>
 internal sealed partial class VideoPipeline : IVideoSeekPumpHost
 {
+    private readonly Lock _seekPumpCreationGate = new();
     private VideoSeekPump? _seekPump;
 
-    private VideoSeekPump SeekPump => LazyInitializer.EnsureInitialized(ref _seekPump, () => new VideoSeekPump(this));
+    // Read on every presented frame and in seek decode loops: a plain volatile read once created.
+    private VideoSeekPump SeekPump => Volatile.Read(ref _seekPump) ?? CreateSeekPump();
+
+    private VideoSeekPump CreateSeekPump()
+    {
+        lock (_seekPumpCreationGate)
+        {
+            if (_seekPump is null)
+                Volatile.Write(ref _seekPump, new VideoSeekPump(this));
+
+            return _seekPump!;
+        }
+    }
 
     double IVideoSeekPumpHost.NormalizeSeekTarget(double seconds) => NormalizeSeekTarget(seconds);
 

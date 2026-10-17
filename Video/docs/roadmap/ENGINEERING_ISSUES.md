@@ -12,7 +12,14 @@ None.
 
 ## Open
 
-None.
+### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
+
+Reported: 2026-10-17 (review of 015A slice 2). `CdgPipeline` has its own copy of the seek
+worker (`StartSeekWorker`, `StopSeekWorker`, `SeekWorkerLoop`, `TryTakePendingSeek`, the
+interval wait), about 120 lines. `VideoSeekPump` now has the lingering-worker guard and
+surfaced errors; the CDG copy does not. Folding CDG into the pump (a host with no
+preview/settle distinction) would leave one implementation. Not urgent: CDG seeks are
+cheap, so the join timeout that triggers the lingering-worker case is unlikely there.
 
 ## Completed
 

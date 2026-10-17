@@ -67,12 +67,24 @@ public sealed class VideoSeekPumpTests
         // No frame to resume from, so the settle seeks exactly, without waiting for the interval.
         var host = new FakeHost { PreviewPresents = false, ShownFrameOffset = -1.3 };
         host.Pump.Request(10);
-        host.DuringNextWait(() => host.Pump.Request(20));
 
         host.Pump.DrainPendingRequests();
 
         Assert.Equal(["preview 10 exact", "settle 10"], host.Calls);
-        Assert.False(host.Pump.HasPendingRequest);
+        Assert.Equal(0, host.Waits);
+    }
+
+    [Fact]
+    public void PreviewWithoutAFrame_WithANewerRequest_WaitsThenPreviewsIt()
+    {
+        var host = new FakeHost { PreviewPresents = false };
+        host.Pump.Request(10);
+        host.DuringNextPreview(() => host.Pump.Request(20)); // the mouse moved during the preview
+
+        host.Pump.DrainPendingRequests();
+
+        Assert.Equal(["preview 10 exact", "preview 20 nearby", "settle 20"], host.Calls);
+        Assert.Equal(1, host.Waits);
     }
 
     [Fact]
@@ -181,7 +193,6 @@ public sealed class VideoSeekPumpTests
         host.Pump.Stop();
 
         Assert.Contains("settle 5", host.Calls);
-        Assert.True(host.Pump.IsShuttingDown);
         host.Pump.Dispose();
     }
 
@@ -189,6 +200,7 @@ public sealed class VideoSeekPumpTests
     {
         private readonly Queue<Action> _waitActions = new();
         private readonly Queue<Action> _settleActions = new();
+        private readonly Queue<Action> _previewActions = new();
         private double _currentFrameTime = double.NaN;
 
         public FakeHost() => Pump = new VideoSeekPump(this);
@@ -208,6 +220,10 @@ public sealed class VideoSeekPumpTests
 
         public void DuringSettle(Action action) => _settleActions.Enqueue(action);
 
+        public void DuringNextPreview(Action action) => _previewActions.Enqueue(action);
+
+        public int Waits { get; private set; }
+
         public double NormalizeSeekTarget(double seconds) => VideoSeekPolicy.NormalizeTarget(seconds, Duration);
 
         public bool RunSeek(double target, bool asPreview, bool allowPreviewFallback)
@@ -219,6 +235,8 @@ public sealed class VideoSeekPumpTests
                 if (asPreview)
                 {
                     Calls.Add($"preview {Format(target)} {(allowPreviewFallback ? "nearby" : "exact")}");
+                    if (_previewActions.TryDequeue(out Action? previewAction))
+                        previewAction();
                     if (PreviewPresents)
                         _currentFrameTime = allowPreviewFallback ? target + ShownFrameOffset : target;
                     return PreviewPresents;
@@ -241,6 +259,7 @@ public sealed class VideoSeekPumpTests
 
         public void WaitForPumpInterval()
         {
+            Waits++;
             if (RealWait)
                 Pump.WaitInterval(1);
             else if (_waitActions.TryDequeue(out Action? action))

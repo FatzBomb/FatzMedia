@@ -50,6 +50,9 @@ internal sealed class VideoSeekPump : IDisposable
     private readonly Lock _gate = new();
     private readonly AutoResetEvent _signal = new(false);
     private Thread? _thread;
+    // A worker whose join timed out (its seek still held the transport gate). Start waits for it
+    // while the shutdown flag is still set, so it cannot resume next to the new worker.
+    private Thread? _lingeringThread;
     private volatile bool _shutdown;
     private double? _pendingSeconds;
     private double _activeTargetSeconds = double.NaN;
@@ -64,13 +67,18 @@ internal sealed class VideoSeekPump : IDisposable
         _host = host;
     }
 
-    /// <summary>True once <see cref="Stop"/> has begun; in-flight work should give up.</summary>
-    public bool IsShuttingDown => _shutdown;
-
     /// <summary>Clears every target and starts the worker thread (restarting it if running).</summary>
     public void Start()
     {
         Stop();
+        if (_lingeringThread is { } lingering)
+        {
+            if (lingering.IsAlive && !lingering.Join(ShutdownJoinMilliseconds))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "The previous video seek worker has not exited; starting a new one anyway.");
+
+            _lingeringThread = null;
+        }
+
         Reset();
         _shutdown = false;
         _thread = new Thread(WorkerLoop)
@@ -95,7 +103,8 @@ internal sealed class VideoSeekPump : IDisposable
         _ = _signal.Set();
         try
         {
-            _ = thread.Join(ShutdownJoinMilliseconds);
+            if (!thread.Join(ShutdownJoinMilliseconds))
+                _lingeringThread = thread;
         }
         catch (Exception ex)
         {
@@ -279,7 +288,7 @@ internal sealed class VideoSeekPump : IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[VideoPipeline] Seek preview pump error: {ex.Message}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Seek preview failed: {ex.Message}", innerException: ex);
             }
 
             lastPreviewTarget = normalizedTarget;
@@ -327,7 +336,7 @@ internal sealed class VideoSeekPump : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VideoPipeline] Seek settle pump error: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Seek failed: {ex.Message}", innerException: ex);
         }
     }
 
