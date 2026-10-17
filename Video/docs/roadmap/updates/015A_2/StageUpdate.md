@@ -3,7 +3,7 @@
 Stage: 015A.2 - Seek pump state machine
 Date: 2026-10-17
 
-## Status: IMPLEMENTED - manual Player smoke pending (repeat of the 035A seek checks)
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17 (repeat of the 035A seek checks)
 
 Delivered: see slice 2 in the stage file. `VideoSeekPump` and `IVideoSeekPumpHost` are new;
 `VideoPipeline` lost about 250 lines of seek-pump state and loop, kept as one-line
