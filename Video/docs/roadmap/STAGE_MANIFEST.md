@@ -22,7 +22,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
-  (`updates/017A_1`); native scheduling integration not started.
+  (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel, pending
+  manual smoke (`updates/017A_2`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
   `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).

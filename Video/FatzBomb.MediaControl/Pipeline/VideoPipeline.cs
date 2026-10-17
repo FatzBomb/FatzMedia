@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
+using FatzBomb.MediaControl.Core.Graphics.Cadence;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
@@ -138,7 +139,32 @@ internal sealed partial class VideoPipeline(
     public string? HardwareAccelerationMethod => _videoDecoder?.HardwareAccelerationMethod;
 
 
-    public void SetDisplayRefreshRate(double? refreshHz) => _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
+    public void SetDisplayRefreshRate(double? refreshHz)
+    {
+        double? previous = _overrideRefreshHz;
+        _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
+        if (_isOpen && previous != _overrideRefreshHz)
+            ReportDisplayCadence(_currentVideoPath);
+    }
+
+    /// <summary>
+    /// Reports how the video's frame rate fits the display refresh rate (Stage 017A slice 2):
+    /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Diagnostic
+    /// only; presentation timing is unchanged.
+    /// </summary>
+    private void ReportDisplayCadence(string? path)
+    {
+        var refreshIntervalSeconds = GetDisplayRefreshIntervalSeconds();
+        if (!double.IsFinite(refreshIntervalSeconds) || refreshIntervalSeconds <= 0)
+            return;
+
+        var description = CadenceAdvice.Describe(FramesPerSecond, 1.0 / refreshIntervalSeconds);
+        if (description is null)
+            return;
+
+        var rateSource = _overrideRefreshHz is null ? "detected" : "set by the host";
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
+    }
 
     public void SetHostRenderEventDrivenPresentation(bool enabled)
     {
@@ -247,6 +273,8 @@ internal sealed partial class VideoPipeline(
             if (_videoDecoder != null)
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoDecoder", $"Decoding {_videoDecoder.DescribeDecodePath()}", sourcePath: path);
         }
+
+        ReportDisplayCadence(path);
 
         ResetAdaptiveVideoSeekTiming();
         StartSeekWorker();
