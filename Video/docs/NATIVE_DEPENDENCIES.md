@@ -5,14 +5,11 @@ Updated: 2026-07-17
 > **WARNING — GPL-ENABLED TRACKED FFMPEG EXECUTABLES**
 >
 > `FatzBomb.MediaControl.Player/native/ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are
-> **tracked in this repository** as a Gyan full-shared FFmpeg fixture built with
-> `--enable-gpl --enable-version3`. They exist **only** for local Player validation and
-> must **not** be redistributed with any package, host, or published artifact unless the
-> distributing host deliberately accepts and complies with the GPL terms. Deleting or
-> replacing them is a licensing-policy decision that requires owner action; this warning
-> exists because they currently remain tracked. Any host shipping these binaries must
-> review FFmpeg's compliance checklist (<https://ffmpeg.org/legal.html>) and obtain
-> appropriate legal review.
+> tracked in this repository as a Gyan full-shared build compiled with
+> `--enable-gpl --enable-version3`. **The app does not use them**: it probes and decodes
+> media in-process through the FFmpeg DLLs. The owner has approved removing them. Until
+> they are removed, they must not be redistributed with any package, host, or published
+> artifact.
 
 ## Responsibility
 
@@ -136,10 +133,10 @@ is at <https://ffmpeg.org/legal.html>.
 
 FFmpeg.org links to third-party Windows builds, including Gyan and BtbN, but those
 archives are not automatically approved for proprietary redistribution. Configuration
-and licence terms must be reviewed for each archive. In particular, the Gyan "full
-shared" fixture currently used for local Player validation is built with
-`--enable-gpl --enable-version3`; it is suitable for repository validation only unless
-the distributing host deliberately accepts and complies with the resulting GPL terms.
+and licence terms must be reviewed for each archive. In particular, Gyan "full" builds
+are compiled with `--enable-gpl --enable-version3`. They are suitable for local
+validation only, unless the distributing host deliberately accepts and complies with
+the resulting GPL terms.
 
 ## Binary-Free Package Layout
 
