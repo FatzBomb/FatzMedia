@@ -231,6 +231,66 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
         Assert.Contains("did not load", result.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Report_ListsEveryLibraryAndFlagsAnOldFfmpegVersion()
+    {
+        // FFmpeg 8 sonames where this control needs FFmpeg 9 (avcodec 63).
+        string[] ffmpeg8 = [.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Select(static name => DowngradeMajor(name))];
+        var dir = CreateLibraries(["libbass.so", "libbass_fx.so", "libbassflac.so", .. ffmpeg8]);
+
+        LinuxNativeLoadResult result = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]);
+        NativeDependencyReport report = result.Report;
+
+        Assert.False(report.RequiredLoaded);
+        Assert.Equal(NativeLibraryStatus.Loaded, Single(report, "libbass.so").Status);
+        Assert.Equal(NativeLibraryStatus.Loaded, Single(report, "libbassflac.so").Status);
+        Assert.Equal(NativeLibraryStatus.Missing, Single(report, "libbassopus.so").Status);
+        Assert.Contains(report.OptionalProblems, static check => check.FileName == "libbassopus.so");
+
+        var avcodec = $"libavcodec.so.{FFmpeg.AutoGen.ffmpeg.LIBAVCODEC_VERSION_MAJOR}";
+        NativeLibraryCheck codec = Single(report, avcodec);
+        Assert.Equal(NativeLibraryStatus.Missing, codec.Status);
+        Assert.True(codec.IsRequired);
+        Assert.Contains(DowngradeMajor(avcodec), codec.Hint, StringComparison.Ordinal);
+        Assert.Contains(codec.Hint!, result.Message, StringComparison.Ordinal);
+        Assert.Contains(report.Describe(), line => line.StartsWith($"FFmpeg {avcodec} (required) is missing.", StringComparison.Ordinal));
+        Assert.Equal([dir], report.SearchPaths.Where(path => path == dir));
+    }
+
+    [Fact]
+    public void Report_FullSet_IsAllLoaded()
+    {
+        var dir = CreateLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
+
+        NativeDependencyReport report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([dir]).Report;
+
+        Assert.True(report.RequiredLoaded);
+        Assert.Empty(report.RequiredProblems);
+        Assert.All(report.Libraries.Where(static check => check.Component == "FFmpeg"), static check => Assert.Equal(NativeLibraryStatus.Loaded, check.Status));
+    }
+
+    [Fact]
+    public void Report_FfmpegSplitAcrossFolders_MarksFoundFilesNotLoaded()
+    {
+        var first = CreateLibraries(["libbass.so", "libbass_fx.so", LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]]);
+        var second = CreateLibraries([.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Skip(1)]);
+
+        NativeDependencyReport report = new LinuxNativeLibraryBootstrapper(new FakeOperations(), _root, "linux-x64").EnsureInitialized([first, second]).Report;
+
+        NativeLibraryCheck avutil = Single(report, LinuxNativeLibraryCatalog.FfmpegInLoadOrder[0]);
+        Assert.Equal(NativeLibraryStatus.NotLoaded, avutil.Status);
+        Assert.Equal(Path.Combine(first, avutil.FileName), avutil.Path);
+    }
+
+    private static NativeLibraryCheck Single(NativeDependencyReport report, string fileName) =>
+        Assert.Single(report.Libraries, check => check.FileName == fileName);
+
+    private static string DowngradeMajor(string soname)
+    {
+        var index = soname.LastIndexOf('.');
+        return $"{soname[..(index + 1)]}{int.Parse(soname[(index + 1)..], System.Globalization.CultureInfo.InvariantCulture) - 1}";
+    }
+
     private string CreateLibraries(IEnumerable<string> fileNames)
     {
         var dir = Directory.CreateDirectory(Path.Combine(_root, "libs-" + Guid.NewGuid().ToString("N")[..6])).FullName;

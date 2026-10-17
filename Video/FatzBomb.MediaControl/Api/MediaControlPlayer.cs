@@ -105,6 +105,12 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
 
+    /// <summary>
+    /// Gets which native libraries loaded at startup, with the exact file names and folders, so a
+    /// host can report a missing or wrong-version file (see <see cref="NativeDependencyReport.Describe"/>).
+    /// </summary>
+    public NativeDependencyReport NativeDependencies => _platformFactory.NativeDependencies;
+
     public VideoDecodeCapabilities VideoDecodeCapabilities => _platformFactory.GetVideoDecodeCapabilities();
 
     public bool PlayOnLoad

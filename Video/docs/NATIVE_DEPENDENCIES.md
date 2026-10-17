@@ -136,6 +136,46 @@ are compiled with `--enable-gpl --enable-version3`. They are suitable for local
 validation only, unless the distributing host deliberately accepts and complies with
 the resulting GPL terms.
 
+### Shipping FFmpeg With Your App
+
+An LGPL build of the FFmpeg DLLs may be shipped inside a host's installer and updates,
+including a commercial, closed-source host. This is the host's checklist; it follows
+FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
+
+1. Use a shared (DLL) build compiled without `--enable-gpl` and without
+   `--enable-nonfree`. Check the build's configuration line (shipped with the archive, or
+   printed by `ffmpeg -version` from the same build). Gyan "full" builds do not qualify.
+2. Ship the seven DLLs unmodified, loaded dynamically as this control does, so users can
+   replace them with their own build.
+3. Include the LGPL licence text (2.1 or 3, matching the build) with the app, and credit
+   FFmpeg in the About box or documentation ("This software uses libraries from the
+   FFmpeg project under the LGPL").
+4. Make the exact matching source available: host the source tarball and build
+   configuration for the shipped version, or link to it from the same place users get
+   the app. The approved baseline above names the tarball.
+5. Do not forbid, in the EULA, the reverse engineering needed to debug modifications to
+   the FFmpeg libraries (both LGPL 2.1 and 3 require this).
+6. Ship the DLLs that match the control: FFmpeg 9.0.x for this binding. When an update
+   moves the control to a new FFmpeg major, the same app update must carry the new DLLs.
+   `MediaControlPlayer.NativeDependencies` reports any missing or wrong-version file at
+   startup, so a broken install is visible immediately.
+7. Codec patents (H.264, HEVC, AAC, and others) are a separate question from FFmpeg's
+   copyright licence and depend on the country; review them before a commercial release.
+
+## Startup Dependency Report
+
+`MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
+returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
+with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
+(found, but its set is incomplete), or `FailedToLoad`, plus the search paths. When a
+versioned file is missing and another version of it is present, the check carries a hint
+(for example "Found avcodec-62.dll, a different version; this control needs
+avcodec-63.dll."). `Describe()` gives one readable line per problem for a host to show.
+The Windows and Linux platforms fill it in; other platforms return
+`NativeDependencyReport.Empty`. When a required library fails, the player constructor
+throws (its message includes the hints), so read the report from the platform factory
+you passed in.
+
 ## Binary-Free Package Layout
 
 The Windows package reserves this layout without supplying DLLs:

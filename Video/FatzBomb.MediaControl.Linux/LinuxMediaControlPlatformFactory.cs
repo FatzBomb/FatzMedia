@@ -35,6 +35,8 @@ public sealed class LinuxMediaControlPlatformFactory : IMediaControlPlatformFact
     /// <inheritdoc />
     public string LastNativeLoadMessage => _bootstrapper.LastResult?.Message ?? string.Empty;
 
+    public NativeDependencyReport NativeDependencies => _bootstrapper.LastResult?.Report ?? NativeDependencyReport.Empty;
+
     /// <inheritdoc />
     public VideoDecodeCapabilities GetVideoDecodeCapabilities() =>
         LinuxVideoDecodeCapabilities.GetOrScan(_bootstrapper.LastResult?.IsFfmpegLoaded == true);

@@ -36,6 +36,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) and slice 2 (FFmpeg fallback for unclaimed audio
   formats) implemented, pending manual smoke (`updates/033A_1`, `updates/033A_2`).
+- `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
+  wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

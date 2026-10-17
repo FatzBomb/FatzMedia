@@ -26,7 +26,8 @@ internal sealed record LinuxNativeLoadResult(
     bool IsFfmpegLoaded,
     string? BassDirectory,
     string? FfmpegDirectory,
-    IReadOnlyList<string> Messages)
+    IReadOnlyList<string> Messages,
+    NativeDependencyReport Report)
 {
     public bool IsInitialized => IsBassLoaded && IsFfmpegLoaded;
 
@@ -76,7 +77,14 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             else if (!bassLoaded || !ffmpegLoaded)
                 messages.Add($"Search path(s): {string.Join("; ", searchPaths)}.");
 
-            var result = new LinuxNativeLoadResult(bassLoaded, ffmpegLoaded, bassDirectory, ffmpegDirectory, messages);
+            NativeDependencyReport report = BuildReport(searchPaths, bassLoaded, ffmpegLoaded, ffmpegDirectory);
+            foreach (NativeLibraryCheck check in report.Libraries)
+            {
+                if (check.Hint is not null)
+                    messages.Add(check.Hint);
+            }
+
+            var result = new LinuxNativeLoadResult(bassLoaded, ffmpegLoaded, bassDirectory, ffmpegDirectory, messages, report);
             LastResult = result;
             if (result.IsInitialized)
                 _success = result;
@@ -190,6 +198,74 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         FileTypes.Video.UnionWith(LinuxNativeLibraryCatalog.VideoExtensions);
         FileTypes.RegisterFfmpegAudio();
         return true;
+    }
+
+    private NativeDependencyReport BuildReport(IReadOnlyList<string> searchPaths, bool bassLoaded, bool ffmpegLoaded, string? ffmpegDirectory)
+    {
+        List<NativeLibraryCheck> checks = [];
+        // Listing the search paths is only needed to explain a missing file.
+        var presentNames = new Lazy<string[]>(() => [.. ListFileNames(searchPaths)]);
+        Dictionary<string, string> foundBass = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
+        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass)
+        {
+            if (_loadedBassByFileName.TryGetValue(library.FileName, out var loadedPath))
+                checks.Add(new NativeLibraryCheck("BASS", library.FileName, library.IsRequired, NativeLibraryStatus.Loaded, loadedPath));
+            else if (foundBass.TryGetValue(library.FileName, out var foundPath))
+            {
+                // Optional plugins are not attempted when a required library failed.
+                NativeLibraryStatus status = library.IsRequired || bassLoaded ? NativeLibraryStatus.FailedToLoad : NativeLibraryStatus.NotLoaded;
+                checks.Add(new NativeLibraryCheck("BASS", library.FileName, library.IsRequired, status, foundPath));
+            }
+            else
+                checks.Add(Missing("BASS", library.FileName, library.IsRequired, presentNames));
+        }
+
+        IEnumerable<string> requiredFfmpeg = LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Where(LinuxNativeLibraryCatalog.RequiredFfmpeg.Contains);
+        if (ffmpegLoaded && ffmpegDirectory is not null)
+        {
+            checks.AddRange(requiredFfmpeg.Select(fileName =>
+                new NativeLibraryCheck("FFmpeg", fileName, IsRequired: true, NativeLibraryStatus.Loaded, Path.Combine(ffmpegDirectory, fileName))));
+            return new NativeDependencyReport(checks, searchPaths);
+        }
+
+        // A folder with the full set that still failed is a load failure; otherwise report
+        // which files exist somewhere and which do not.
+        var completeDirectory = searchPaths.FirstOrDefault(path =>
+            LinuxNativeLibraryCatalog.RequiredFfmpeg.All(fileName => File.Exists(Path.Combine(path, fileName))));
+        Dictionary<string, string> foundFfmpeg = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.RequiredFfmpeg);
+        foreach (var fileName in requiredFfmpeg)
+        {
+            if (completeDirectory is not null)
+                checks.Add(new NativeLibraryCheck("FFmpeg", fileName, IsRequired: true, NativeLibraryStatus.FailedToLoad, Path.Combine(completeDirectory, fileName)));
+            else if (foundFfmpeg.TryGetValue(fileName, out var foundPath))
+                checks.Add(new NativeLibraryCheck("FFmpeg", fileName, IsRequired: true, NativeLibraryStatus.NotLoaded, foundPath));
+            else
+                checks.Add(Missing("FFmpeg", fileName, isRequired: true, presentNames));
+        }
+
+        return new NativeDependencyReport(checks, searchPaths);
+    }
+
+    private static NativeLibraryCheck Missing(string component, string fileName, bool isRequired, Lazy<string[]> presentNames) =>
+        new(component, fileName, isRequired, NativeLibraryStatus.Missing, Hint: NativeDependencyReport.FindVersionHint(fileName, presentNames.Value));
+
+    private static IEnumerable<string> ListFileNames(IReadOnlyList<string> searchPaths)
+    {
+        foreach (var path in searchPaths)
+        {
+            string[] files;
+            try
+            {
+                files = [.. Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()];
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+                yield return file;
+        }
     }
 
     private string? ResolveBassPath(string libraryName)

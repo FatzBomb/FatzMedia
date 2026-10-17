@@ -366,6 +366,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task InitializePlayerAsync()
     {
+        IMediaControlPlatformFactory? platformFactory = null;
         try
         {
             IsBusy = true;
@@ -386,7 +387,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries }
             };
 
-            IMediaControlPlatformFactory platformFactory = App.UseSoftwareRenderer
+            platformFactory = App.UseSoftwareRenderer
                 ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
                 : new WindowsDirect3D11MediaControlPlatformFactory();
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
@@ -418,6 +419,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.TempoChanged += OnPlayerTempoChanged;
             StartPreparedNextValidation(player);
             StartNetworkValidation(player);
+            ReportNativeDependencies(player.NativeDependencies);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
             var trimSummary = $"Silence trim={App.EnableSilenceTrim}";
@@ -426,6 +428,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             StartupError = ex;
+            if (platformFactory is not null)
+                ReportNativeDependencies(platformFactory.NativeDependencies);
             StatusText = $"Native DLLs unavailable: {ex.Message}";
         }
         finally
@@ -664,6 +668,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (!_disposed)
                 update();
         });
+    }
+
+    /// <summary>
+    /// Logs each native library that did not load, with its exact file name and any version hint
+    /// (for example an FFmpeg 8 DLL where FFmpeg 9 is needed). Required ones are errors.
+    /// </summary>
+    private void ReportNativeDependencies(NativeDependencyReport report)
+    {
+        IReadOnlyList<string> lines = report.Describe();
+        var requiredCount = report.RequiredProblems.Count;
+        for (var index = 0; index < lines.Count; index++)
+            HandleDiagnostic(index < requiredCount ? MediaDiagnosticLevel.Error : MediaDiagnosticLevel.Warning, "NativeLibraries", lines[index]);
     }
 
     private void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)

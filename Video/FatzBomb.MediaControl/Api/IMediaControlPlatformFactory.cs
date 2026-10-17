@@ -19,6 +19,12 @@ public interface IMediaControlPlatformFactory
     string LastNativeLoadMessage { get; }
 
     /// <summary>
+    /// Gets the per-library result of the most recent native-library initialization. Platforms
+    /// that do not check native libraries return <see cref="NativeDependencyReport.Empty"/>.
+    /// </summary>
+    NativeDependencyReport NativeDependencies => NativeDependencyReport.Empty;
+
+    /// <summary>
     /// Gets codec/container decode capabilities for the current platform and
     /// available hardware backends.
     /// </summary>
