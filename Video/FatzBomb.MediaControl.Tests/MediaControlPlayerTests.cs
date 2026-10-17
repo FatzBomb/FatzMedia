@@ -71,7 +71,9 @@ public sealed class MediaControlPlayerTests
         };
         player.PositionChanged += (_, e) =>
         {
-            if (e.Position == TimeSpan.Zero)
+            // While playing, the 250 ms position ticks also report zero (the test engine does not
+            // advance), so only a zero position after the Stopped state counts as Stop's own event.
+            if (e.Position == TimeSpan.Zero && order.Contains("state"))
             {
                 order.Enqueue("position");
                 stoppedPosition.TrySetResult();
