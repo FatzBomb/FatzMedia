@@ -23,8 +23,11 @@ public sealed class CadenceAdviceTests
     [InlineData(5000)]
     public void ToFrameRate_RejectsImplausibleRates(double hertz) => Assert.Null(CadenceAdvice.ToFrameRate(hertz));
 
-    [Fact]
-    public void Describe_UnknownFrameRate_ReturnsNull() => Assert.Null(CadenceAdvice.Describe(0, 60));
+    [Theory]
+    [InlineData(0, 60)]
+    [InlineData(1000, 60)] // a container timebase, not a cadence
+    [InlineData(24, 0)]
+    public void Describe_UnknownOrImplausibleRates_ReturnNull(double fps, double hz) => Assert.Null(CadenceAdvice.Describe(fps, hz));
 
     [Fact]
     public void Describe_24On60_IsThreeTwoPulldownWithSmoothRates()
@@ -61,7 +64,7 @@ public sealed class CadenceAdviceTests
     {
         var text = CadenceAdvice.Describe(25, 60);
 
-        Assert.Contains("between 2 and 3 refreshes", text);
+        Assert.Contains("frames are shown for 2 or 3 refreshes.", text);
         Assert.Contains("Smooth display rates for this video: 25, 50, 75, 100 Hz.", text);
     }
 
@@ -73,4 +76,16 @@ public sealed class CadenceAdviceTests
         Assert.Contains("about 17% of frames are never shown", text);
         Assert.Contains("Smooth display rates for this video: 60, 120, 240 Hz.", text);
     }
+
+    [Fact]
+    public void Describe_NearMatchFasterVideo_ReportsOccasionalSkips() =>
+        Assert.Contains("about every 16.7 s one frame is never shown", CadenceAdvice.Describe(60, 59.94));
+
+    [Fact]
+    public void Describe_UsualHoldOfOne_UsesTheSingular() =>
+        Assert.Contains("frames are shown for one refresh, but about every 16.7 s one is shown for 2.", CadenceAdvice.Describe(59.94, 60));
+
+    [Fact]
+    public void Describe_SlowDriftBeyondAMinute_IsNotCalledSmooth() =>
+        Assert.Contains("about every 66.7 s one is shown for 2", CadenceAdvice.Describe(60, 60.015));
 }

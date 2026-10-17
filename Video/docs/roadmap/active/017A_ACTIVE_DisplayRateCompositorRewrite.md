@@ -35,7 +35,7 @@ Phase (media-clock offset against vsync) only shifts which refresh shows each ne
 `CadenceAdvice` describes how the open video's frame rate fits the display refresh rate
 (smooth, 3:2 pulldown, occasional long hold, uneven mix, or skipped frames) and lists the
 common refresh rates that would be smooth. `VideoPipeline` raises it as an Info diagnostic
-(`VideoCadence`) on open and when the host sets a refresh rate. Report only.
+(`VideoCadence`) once per open. Report only.
 
 ## Next Slices
 

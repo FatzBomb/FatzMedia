@@ -139,18 +139,12 @@ internal sealed partial class VideoPipeline(
     public string? HardwareAccelerationMethod => _videoDecoder?.HardwareAccelerationMethod;
 
 
-    public void SetDisplayRefreshRate(double? refreshHz)
-    {
-        double? previous = _overrideRefreshHz;
-        _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
-        if (_isOpen && previous != _overrideRefreshHz)
-            ReportDisplayCadence(_currentVideoPath);
-    }
+    public void SetDisplayRefreshRate(double? refreshHz) => _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
 
     /// <summary>
     /// Reports how the video's frame rate fits the display refresh rate (Stage 017A slice 2):
-    /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Diagnostic
-    /// only; presentation timing is unchanged.
+    /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Raised once
+    /// per open. Diagnostic only; presentation timing is unchanged.
     /// </summary>
     private void ReportDisplayCadence(string? path)
     {
@@ -162,7 +156,11 @@ internal sealed partial class VideoPipeline(
         if (description is null)
             return;
 
-        var rateSource = _overrideRefreshHz is null ? "detected" : "set by the host";
+        // The platform rate can be a 60 Hz fallback, or another monitor's rate on Windows (DWM's
+        // global composition rate), so the report says where it came from.
+        var rateSource = _overrideRefreshHz is null
+            ? "reported by the platform, or 60 Hz when it cannot tell"
+            : "set by the host";
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
     }
 

@@ -26,3 +26,6 @@ TestResults/
 artifacts/
 **/native/win-x64/*.dll
 **/native/*.dll
+
+# Claude Code agent worktrees
+.claude/worktrees/
