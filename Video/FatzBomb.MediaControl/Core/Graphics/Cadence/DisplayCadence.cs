@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace FatzBomb.MediaControl.Core.Graphics.Cadence;
 
 /// <summary>Frame-rate expressed exactly as a rational (e.g. 24000/1001 for 23.976).</summary>
@@ -11,7 +13,9 @@ internal readonly record struct FrameRate(long Numerator, long Denominator)
 
     public static FrameRate FromInteger(int framesPerSecond) => new(framesPerSecond, 1);
 
-    public override string ToString() => Denominator == 1 ? $"{Numerator}" : $"{Value:0.###}";
+    public override string ToString() => Denominator == 1
+        ? Numerator.ToString(CultureInfo.InvariantCulture)
+        : Value.ToString("0.###", CultureInfo.InvariantCulture);
 }
 
 /// <summary>What one display refresh shows.</summary>

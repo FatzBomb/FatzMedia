@@ -15,20 +15,23 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
   (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
   pending; macOS deferred.
-- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slice 1 implemented
-  (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
+- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slices 1-2 implemented,
+  pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
+  validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
   implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
-  (`updates/017A_1`); native scheduling integration not started.
+  (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel, pending
+  manual smoke (`updates/017A_2`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
-  extracted, pending manual video smoke (`updates/015A_1`).
+  extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
+  `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
 - `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
-  full-frame copy removed, pending manual smoke (`updates/010A_1`).
+  full-frame copy removed; owner smoke passed 2026-10-17 (`updates/010A_1`).
 - `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
-  immutable snapshot reuse, pending manual CDG smoke (`updates/018A_1`).
+  immutable snapshot reuse; owner CDG smoke passed 2026-10-17 (`updates/018A_1`).
 - `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
   ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
@@ -39,7 +42,7 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
 - `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
-  wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
+  wrong-version native files, implemented; owner smoke passed 2026-10-17 (`updates/034A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;

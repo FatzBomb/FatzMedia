@@ -3,7 +3,7 @@
 Stage: 010A.1 - Copy map, benchmark, shared retained background
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17
 
 Delivered: see the stage file. New `Controllers/RetainedFrameBuffer.cs`;
 `MediaPresentationCoordinator` shares the retained buffer with compositions; benchmark in

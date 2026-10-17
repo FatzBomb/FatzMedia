@@ -1,9 +1,9 @@
 # Active Stage 017A - Display-Rate Compositor and Presentation Scheduling
 
 Prepared: 2026-10-16
-Status: Slice 1 (deterministic cadence model and specification) implemented. Native
-scheduling integration is deliberately not started (see Next Slices); playback behavior is
-unchanged.
+Status: Slice 1 (deterministic cadence model and specification) and slice 2 (cadence
+report in the host log, `updates/017A_2`) implemented. Native scheduling integration is
+deliberately not started (see Next Slices); playback behavior is unchanged.
 
 ## Cadence Model (pinned)
 
@@ -29,6 +29,13 @@ decides which already-decoded frame each refresh shows. Every target has its own
 | 60 | 50 | 1 | 1 in 6 | source faster than display: drops |
 
 Phase (media-clock offset against vsync) only shifts which refresh shows each new frame.
+
+## Slice 2 - Cadence report (2026-10-17)
+
+`CadenceAdvice` describes how the open video's frame rate fits the display refresh rate
+(smooth, 3:2 pulldown, occasional long hold, uneven mix, or skipped frames) and lists the
+common refresh rates that would be smooth. `VideoPipeline` raises it as an Info diagnostic
+(`VideoCadence`) once per open. Report only.
 
 ## Next Slices
 

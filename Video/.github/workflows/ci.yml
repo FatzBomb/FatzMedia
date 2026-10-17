@@ -1,8 +1,19 @@
 name: CI
 
+# Private repository: hosted runner minutes are billed (Windows at 2x). Run once per change:
+# for pull requests and for main, not again for every push to a PR branch. Changes that only
+# touch documentation skip CI; run it by hand from the Actions tab when needed.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
 
 permissions:
   contents: read

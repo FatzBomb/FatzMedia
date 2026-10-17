@@ -27,7 +27,7 @@ Host UI thread
     prepared-next standalone decode)      LongRunning (only while recovering)   the calling thread (no renderer threads)
                                         - "BackgroundVideoPresentation"
   CDG (CdgPipeline)                       LongRunning (sidecar video)
-  - "CdgSeek" dedicated thread          Platform
+  - "CdgSeek" thread (shared SeekPump)  Platform
   - packet decode on the presentation   - Windows "PollingAudioDeviceMonitor" (1 s poll)
     loop / seek thread                  - Linux "LinuxAudioDeviceMonitor" (poll)
   PlaybackPositionNotifier: PeriodicTimer on the pool (250 ms) while playing
@@ -36,8 +36,8 @@ Host UI thread
 
 Synchronization: 26 source files in Core, Windows, and Direct3D11 own a `System.Threading.Lock`; the central ones are the
 operation queue, `MediaPresentationCoordinator._lock` (composition state) and
-`_cdgSnapshotGate`, `CdgEngine._renderLock` / `CdgStateMachine._lock`, the VideoPipeline
-seek-pump lock, and `PlaybackScheduler._lock`. Cancellation: every `PlaybackScheduler`
+`_cdgSnapshotGate`, `CdgEngine._renderLock` / `CdgStateMachine._lock`, the `SeekPump` gate
+(one instance each for video and CDG since ENG-013), and `PlaybackScheduler._lock`. Cancellation: every `PlaybackScheduler`
 loop takes a `CancellationToken` and `StopAndWait` waits up to 2 s; seek threads use a
 shutdown flag + signal; timers are disposed with their owner.
 

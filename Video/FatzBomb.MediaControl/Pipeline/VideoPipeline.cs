@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
+using FatzBomb.MediaControl.Core.Graphics.Cadence;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
@@ -61,15 +62,6 @@ internal sealed partial class VideoPipeline(
     // replace the pending target until the pump interval elapses. This keeps progress-bar scrubbing
     // responsive without requiring host apps to understand mouse down/up, preview, or final commit.
     private readonly Lock _transportGate = new();
-    private readonly Lock _seekPumpLock = new();
-    private readonly AutoResetEvent _seekSignal = new(false);
-    private Thread? _seekThread;
-    private volatile bool _seekWorkerShutdown;
-    private double? _pendingSeekSeconds;
-    private double _activeSeekTargetSeconds = double.NaN;
-    // True from a Seek request until its exact settle completes with nothing newer queued. A Play
-    // in that window is applied by the settle, which resumes playback from the new position.
-    private bool _seekSequenceActive;
     private int _playbackEndSignaled;
     private string? _tempPath;
     private const int MaxBufferedVideoFrames = 12;
@@ -109,7 +101,6 @@ internal sealed partial class VideoPipeline(
     private const int PostSeekMinimumBufferedFrames = 3;
     private const int PostSeekAdaptiveSuppressionWindows = 2;
     private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
-    private double _minimumCommittedVideoPresentationSeconds = double.NaN;
     private const double MaxPresentLatenessSeconds = 0.18;
     private const double TinyVideoSeekThresholdSeconds = 0.25;
     private const double PreviewMaxFrameDistanceSeconds = 2.0;
@@ -149,6 +140,29 @@ internal sealed partial class VideoPipeline(
 
 
     public void SetDisplayRefreshRate(double? refreshHz) => _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
+
+    /// <summary>
+    /// Reports how the video's frame rate fits the display refresh rate (Stage 017A slice 2):
+    /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Raised once
+    /// per open. Diagnostic only; presentation timing is unchanged.
+    /// </summary>
+    private void ReportDisplayCadence(string? path)
+    {
+        var refreshIntervalSeconds = GetDisplayRefreshIntervalSeconds();
+        if (!double.IsFinite(refreshIntervalSeconds) || refreshIntervalSeconds <= 0)
+            return;
+
+        var description = CadenceAdvice.Describe(FramesPerSecond, 1.0 / refreshIntervalSeconds);
+        if (description is null)
+            return;
+
+        // The platform rate can be a 60 Hz fallback, or another monitor's rate on Windows (DWM's
+        // global composition rate), so the report says where it came from.
+        var rateSource = _overrideRefreshHz is null
+            ? "reported by the platform, or 60 Hz when it cannot tell"
+            : "set by the host";
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
+    }
 
     public void SetHostRenderEventDrivenPresentation(bool enabled)
     {
@@ -258,6 +272,8 @@ internal sealed partial class VideoPipeline(
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoDecoder", $"Decoding {_videoDecoder.DescribeDecodePath()}", sourcePath: path);
         }
 
+        ReportDisplayCadence(path);
+
         ResetAdaptiveVideoSeekTiming();
         StartSeekWorker();
         return true;
@@ -362,12 +378,7 @@ internal sealed partial class VideoPipeline(
         var loopBoundary = GetLoopBoundarySeconds(decoder);
         var loopTarget = GetLoopOverflowPosition(currentPosition, loopBoundary);
 
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = null;
-            _seekSequenceActive = false;
-            _minimumCommittedVideoPresentationSeconds = double.NaN;
-        }
+        SeekPump.CancelPendingRequest();
 
         if (_configuration.EnableVerboseLogging)
             Trace.WriteLine(
@@ -531,13 +542,7 @@ internal sealed partial class VideoPipeline(
             _generation++;
             _isPlaying = false;
             _loopPreSeekActive = false;
-            lock (_seekPumpLock)
-            {
-                _pendingSeekSeconds = null;
-                _seekSequenceActive = false;
-                _activeSeekTargetSeconds = double.NaN;
-                _minimumCommittedVideoPresentationSeconds = double.NaN;
-            }
+            SeekPump.Reset();
 
             // Sync (not zero): the engine's CompletedLoopCount persists across Stop, so a
             // mismatched baseline would fire a spurious wrap commit on the next Play tick.
@@ -587,14 +592,7 @@ internal sealed partial class VideoPipeline(
         if (!_isOpen)
             return false;
 
-        var target = NormalizeSeekTarget(seconds);
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = target;
-            _seekSequenceActive = true;
-        }
-
-        _ = _seekSignal.Set();
+        SeekPump.Request(NormalizeSeekTarget(seconds));
         return true;
     }
 
@@ -704,235 +702,15 @@ internal sealed partial class VideoPipeline(
         }
     }
 
-
-    private void StartSeekWorker()
-    {
-        StopSeekWorker();
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = null;
-            _seekSequenceActive = false;
-            _activeSeekTargetSeconds = double.NaN;
-            _minimumCommittedVideoPresentationSeconds = double.NaN;
-        }
-
-        _seekWorkerShutdown = false;
-        _seekThread = new Thread(SeekWorkerLoop)
-        {
-            IsBackground = true,
-            Name = "VideoSeek"
-        };
-        _seekThread.Start();
-    }
-
-    private void StopSeekWorker()
-    {
-        Thread? thread = _seekThread;
-        if (thread == null)
-            return;
-
-        // Signal and join without holding _transportGate: an in-flight SeekCore holds that gate, so
-        // joining here lets it finish, and Close re-acquires the gate afterwards before disposing.
-        _seekWorkerShutdown = true;
-        _ = _seekSignal.Set();
-        try
-        {
-            _ = thread.Join(2000);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[VideoPipeline] Seek worker join failed: {ex.Message}");
-        }
-
-        _seekThread = null;
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = null;
-            _seekSequenceActive = false;
-            _activeSeekTargetSeconds = double.NaN;
-            _minimumCommittedVideoPresentationSeconds = double.NaN;
-        }
-    }
-
-    private void SeekWorkerLoop()
-    {
-        while (!_seekWorkerShutdown)
-        {
-            _ = _seekSignal.WaitOne();
-
-            var lastPreviewTarget = double.NaN;
-            // The time of the frame an active scrub's preview put on screen. A scrub preview may
-            // show a frame up to PreviewMaxFrameDistanceSeconds from the target; settling exactly
-            // on the target would then resume a second or two from what the viewer is looking at,
-            // so the settle resumes from the shown frame instead.
-            var shownPreviewFrameTime = double.NaN;
-            while (!_seekWorkerShutdown)
-            {
-                if (!TryTakePendingSeek(out var target))
-                    break;
-
-                var normalizedTarget = NormalizeSeekTarget(target);
-                if (!IsMeaningfullyDifferentSeekTarget(normalizedTarget, lastPreviewTarget))
-                {
-                    if (!HasPendingSeekRequest())
-                    {
-                        SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
-                        break;
-                    }
-
-                    continue;
-                }
-
-                // A lone click keeps preview exact so the displayed frame is the playback start.
-                // Once a second changing target arrives, this is an active scrub: allow nearby
-                // preview frames for responsive feedback; the settle then resumes from the frame
-                // shown.
-                var allowPreviewFallback = !double.IsNaN(lastPreviewTarget);
-                var previewFramePresented = false;
-                try
-                {
-                    previewFramePresented = SeekCore(normalizedTarget, asPreview: true, allowPreviewFallback);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[VideoPipeline] Seek preview pump error: {ex.Message}");
-                }
-
-                lastPreviewTarget = normalizedTarget;
-                shownPreviewFrameTime = allowPreviewFallback && previewFramePresented
-                    ? _currentFrame?.PresentationTime ?? double.NaN
-                    : double.NaN;
-                if (!previewFramePresented && !HasPendingSeekRequest())
-                {
-                    SettleSeekTarget(normalizedTarget);
-                    break;
-                }
-
-                WaitForSeekPumpInterval();
-                if (!HasPendingSeekRequest())
-                {
-                    SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
-                    break;
-                }
-            }
-        }
-    }
-
-    private void SettleSeekTarget(double target)
-    {
-        if (_seekWorkerShutdown || HasSupersedingSeekRequest())
-            return;
-
-        try
-        {
-            _ = SeekCore(target, asPreview: false);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[VideoPipeline] Seek settle pump error: {ex.Message}");
-        }
-    }
-
-    private bool TryTakePendingSeek(out double target)
-    {
-        lock (_seekPumpLock)
-        {
-            if (!_pendingSeekSeconds.HasValue)
-            {
-                target = 0;
-                return false;
-            }
-
-            target = _pendingSeekSeconds.Value;
-            _pendingSeekSeconds = null;
-            return true;
-        }
-    }
-
-    private void SetActiveSeekTarget(double target)
-    {
-        lock (_seekPumpLock)
-            _activeSeekTargetSeconds = target;
-    }
-
-    private void ClearActiveSeekTarget(double target)
-    {
-        lock (_seekPumpLock)
-            if (!double.IsNaN(_activeSeekTargetSeconds) && Math.Abs(_activeSeekTargetSeconds - target) <= VideoSeekPolicy.TargetChangeThresholdSeconds)
-                _activeSeekTargetSeconds = double.NaN;
-    }
-
-    private void SetMinimumCommittedVideoPresentationTarget(double target)
-    {
-        lock (_seekPumpLock)
-            _minimumCommittedVideoPresentationSeconds = target;
-    }
-
-    private double GetMinimumCommittedVideoPresentationTarget()
-    {
-        lock (_seekPumpLock)
-            return _minimumCommittedVideoPresentationSeconds;
-    }
-
-    private bool HasSupersedingSeekRequest()
-    {
-        if (_seekWorkerShutdown)
-            return true;
-
-        lock (_seekPumpLock)
-            return _pendingSeekSeconds.HasValue && (double.IsNaN(_activeSeekTargetSeconds)
-                || IsMeaningfullyDifferentSeekTarget(_pendingSeekSeconds.Value, _activeSeekTargetSeconds));
-    }
-
-    private bool IsSeekSequenceActive()
-    {
-        lock (_seekPumpLock)
-            return _seekSequenceActive;
-    }
-
-    private void EndSeekSequenceIfSettled()
-    {
-        lock (_seekPumpLock)
-            if (!_pendingSeekSeconds.HasValue)
-                _seekSequenceActive = false;
-    }
-
-    private bool HasPendingSeekRequest()
-    {
-        lock (_seekPumpLock)
-            return _pendingSeekSeconds.HasValue;
-    }
-
     private double NormalizeSeekTarget(double seconds) => VideoSeekPolicy.NormalizeTarget(seconds, Duration);
-
-    private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) =>
-        VideoSeekPolicy.IsMeaningfullyDifferentTarget(target, previousTarget);
-
-    private void WaitForSeekPumpInterval()
-    {
-        var intervalMilliseconds = GetAdaptiveVideoSeekIntervalMilliseconds();
-        if (intervalMilliseconds <= 0)
-            return;
-
-        var started = Stopwatch.GetTimestamp();
-        while (!_seekWorkerShutdown && GetElapsedMilliseconds(started, Stopwatch.GetTimestamp()) < intervalMilliseconds)
-            _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
-    }
-
-    private int GetAdaptiveVideoSeekIntervalMilliseconds() => _seekPumpTiming.IntervalMilliseconds;
 
     private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed) => _seekPumpTiming.Record(elapsed);
 
     private void ResetAdaptiveVideoSeekTiming()
     {
-        lock (_seekPumpLock)
-        {
-            _seekPumpTiming.Reset();
-            _minimumCommittedVideoPresentationSeconds = double.NaN;
-        }
+        _seekPumpTiming.Reset();
+        SeekPump.ClearMinimumCommittedTarget();
     }
-
-    private static double GetElapsedMilliseconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     public void Close()
     {
@@ -991,7 +769,7 @@ internal sealed partial class VideoPipeline(
         _decodeScheduler.Dispose();
         _presentationScheduler.Dispose();
         _decoderRecoveryScheduler.Dispose();
-        _seekSignal.Dispose();
+        _seekPump?.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -1765,8 +1543,7 @@ internal sealed partial class VideoPipeline(
 
             // Clear the committed presentation target so position-0 frames aren't dropped
             // as "stale" by DropFramesBeforeCommittedVideoTarget.
-            lock (_seekPumpLock)
-                _minimumCommittedVideoPresentationSeconds = double.NaN;
+            SeekPump.ClearMinimumCommittedTarget();
 
             SeamlessLoopRestart.TopUpDecode(
                 decoder,

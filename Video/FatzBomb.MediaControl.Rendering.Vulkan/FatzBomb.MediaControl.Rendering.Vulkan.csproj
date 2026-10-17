@@ -8,7 +8,7 @@
     <PackageId>FatzBomb.MediaControl.Rendering.Vulkan</PackageId>
     <AssemblyName>FatzBomb.MediaControl.Rendering.Vulkan</AssemblyName>
     <RootNamespace>FatzBomb.MediaControl.Rendering.Vulkan</RootNamespace>
-    <Description>Vulkan renderer backend for FatzBomb.MediaControl (preview vertical slice: offscreen clear and BGRA background presentation).</Description>
+    <Description>Vulkan renderer backend for FatzBomb.MediaControl (preview: offscreen clear, BGRA background, wash and CDG overlay presentation).</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
@@ -24,6 +24,13 @@
 
   <ItemGroup>
     <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
+  </ItemGroup>
+
+  <!-- SPIR-V compiled from Shaders/*.vert|*.frag by scripts/compile-vulkan-shaders.sh and committed
+       (CI has no glslang). -->
+  <ItemGroup>
+    <None Remove="Shaders\*.spv" />
+    <EmbeddedResource Include="Shaders\*.spv" LogicalName="FatzBomb.MediaControl.Rendering.Vulkan.Shaders.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
