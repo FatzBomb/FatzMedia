@@ -3,9 +3,10 @@ using System.Diagnostics;
 namespace FatzBomb.MediaControl.Pipeline;
 
 /// <summary>
-/// What <see cref="VideoSeekPump"/> asks of the pipeline it drives (Stage 015A slice 2).
+/// What <see cref="SeekPump"/> asks of the pipeline it drives (Stage 015A slice 2; CDG uses it
+/// too since ENG-013).
 /// </summary>
-internal interface IVideoSeekPumpHost
+internal interface ISeekPumpHost
 {
     /// <summary>Clamps a requested position to the media (<see cref="VideoSeekPolicy.NormalizeTarget"/>).</summary>
     double NormalizeSeekTarget(double seconds);
@@ -27,10 +28,10 @@ internal interface IVideoSeekPumpHost
 }
 
 /// <summary>
-/// The latest-wins video seek pump, extracted from <c>VideoPipeline</c> without behaviour
-/// change (Stage 015A slice 2). It owns the pending, active, and minimum-committed targets,
-/// the "seek sequence" that makes Play during a seek wait for the settle, and the
-/// preview-then-settle loop that runs on the dedicated <c>VideoSeek</c> thread:
+/// The latest-wins seek pump, extracted from <c>VideoPipeline</c> without behaviour change
+/// (Stage 015A slice 2) and shared with <c>CdgPipeline</c> (ENG-013). It owns the pending,
+/// active, and minimum-committed targets, the "seek sequence" that makes Play during a seek
+/// wait for the settle, and the preview-then-settle loop that runs on a dedicated thread:
 /// <list type="bullet">
 /// <item>A lone request previews exactly; once a second, different target arrives it is an
 /// active scrub and previews may show a nearby frame.</item>
@@ -41,12 +42,14 @@ internal interface IVideoSeekPumpHost
 /// <see cref="DrainPendingRequests"/> runs one burst synchronously, so tests can replay
 /// drags, holds, and releases without FFmpeg or threads.
 /// </summary>
-internal sealed class VideoSeekPump : IDisposable
+internal sealed class SeekPump : IDisposable
 {
     private const int ShutdownJoinMilliseconds = 2000;
     private const int IntervalPollMilliseconds = 10;
 
-    private readonly IVideoSeekPumpHost _host;
+    private readonly ISeekPumpHost _host;
+    private readonly string _threadName;
+    private readonly string _diagnosticSource;
     private readonly Lock _gate = new();
     private readonly AutoResetEvent _signal = new(false);
     private Thread? _thread;
@@ -61,10 +64,17 @@ internal sealed class VideoSeekPump : IDisposable
     private bool _sequenceActive;
     private double _minimumCommittedSeconds = double.NaN;
 
-    public VideoSeekPump(IVideoSeekPumpHost host)
+    /// <param name="host">The pipeline the pump drives.</param>
+    /// <param name="threadName">Name of the worker thread, such as <c>VideoSeek</c>.</param>
+    /// <param name="diagnosticSource">Source reported with seek failures, such as <c>VideoPipeline</c>.</param>
+    public SeekPump(ISeekPumpHost host, string threadName, string diagnosticSource)
     {
         ArgumentNullException.ThrowIfNull(host);
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticSource);
         _host = host;
+        _threadName = threadName;
+        _diagnosticSource = diagnosticSource;
     }
 
     /// <summary>Clears every target and starts the worker thread (restarting it if running).</summary>
@@ -74,7 +84,7 @@ internal sealed class VideoSeekPump : IDisposable
         if (_lingeringThread is { } lingering)
         {
             if (lingering.IsAlive && !lingering.Join(ShutdownJoinMilliseconds))
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", "The previous video seek worker has not exited; starting a new one anyway.");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _diagnosticSource, $"The previous {_threadName} worker has not exited; starting a new one anyway.");
 
             _lingeringThread = null;
         }
@@ -84,7 +94,7 @@ internal sealed class VideoSeekPump : IDisposable
         _thread = new Thread(WorkerLoop)
         {
             IsBackground = true,
-            Name = "VideoSeek"
+            Name = _threadName
         };
         _thread.Start();
     }
@@ -108,7 +118,7 @@ internal sealed class VideoSeekPump : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VideoPipeline] Seek worker join failed: {ex.Message}");
+            Debug.WriteLine($"[{_diagnosticSource}] Seek worker join failed: {ex.Message}");
         }
 
         _thread = null;
@@ -235,7 +245,7 @@ internal sealed class VideoSeekPump : IDisposable
 
     /// <summary>
     /// Waits up to <paramref name="intervalMilliseconds"/>, waking early on shutdown. Used by the
-    /// pipeline's <see cref="IVideoSeekPumpHost.WaitForPumpInterval"/>.
+    /// pipeline's <see cref="ISeekPumpHost.WaitForPumpInterval"/>.
     /// </summary>
     public void WaitInterval(int intervalMilliseconds)
     {
@@ -288,7 +298,7 @@ internal sealed class VideoSeekPump : IDisposable
             }
             catch (Exception ex)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Seek preview failed: {ex.Message}", innerException: ex);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _diagnosticSource, $"Seek preview failed: {ex.Message}", innerException: ex);
             }
 
             lastPreviewTarget = normalizedTarget;
@@ -336,7 +346,7 @@ internal sealed class VideoSeekPump : IDisposable
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Seek failed: {ex.Message}", innerException: ex);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _diagnosticSource, $"Seek failed: {ex.Message}", innerException: ex);
         }
     }
 

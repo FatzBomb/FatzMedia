@@ -12,16 +12,29 @@ None.
 
 ## Open
 
-### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
-
-Reported: 2026-10-17 (review of 015A slice 2). `CdgPipeline` has its own copy of the seek
-worker (`StartSeekWorker`, `StopSeekWorker`, `SeekWorkerLoop`, `TryTakePendingSeek`, the
-interval wait), about 120 lines. `VideoSeekPump` now has the lingering-worker guard and
-surfaced errors; the CDG copy does not. Folding CDG into the pump (a host with no
-preview/settle distinction) would leave one implementation. Not urgent: CDG seeks are
-cheap, so the join timeout that triggers the lingering-worker case is unlikely there.
+None.
 
 ## Completed
+
+### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
+
+Resolved: 2026-10-17. Needs a CD+G scrub in the next Player smoke (drag the seek bar over
+a CD+G track: lyrics follow the drag and settle where it stops).
+
+Reported: 2026-10-17 (review of 015A slice 2). `CdgPipeline` had its own copy of the seek
+worker, about 120 lines, without the pump's lingering-worker guard.
+
+Fix:
+- `VideoSeekPump` is renamed `SeekPump` (`ISeekPumpHost`) and takes its thread name and
+  diagnostic source, so one implementation serves both pipelines. Thread names are
+  unchanged (`VideoSeek`, `CdgSeek`).
+- `CdgPipeline` implements the host: every preview is a full render (`SeekCore`); the
+  settle that follows always targets the last preview within the change threshold, so it
+  only ends the seek sequence instead of drawing the same frame twice. The 50 ms interval
+  and the 25 ms target-change threshold are the same as before. Join timeout on close
+  goes from 1 s to 2 s.
+- Tests: `CdgPipelineSeekTests` (one render per target with a rebuild, clamping, refused
+  before open).
 
 ### ENG-012 - "Composition present failed" warnings on audio-only seeks
 

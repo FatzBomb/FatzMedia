@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Portable.Tests;
 /// Stage 015A slice 2: the seek pump's ordering, replayed synchronously against a fake host.
 /// Every seek bug found in the 035A smoke rounds lived in this logic.
 /// </summary>
-public sealed class VideoSeekPumpTests
+public sealed class SeekPumpTests
 {
     [Fact]
     public void LoneClick_PreviewsExactlyThenSettlesOnTheTarget()
@@ -196,16 +196,16 @@ public sealed class VideoSeekPumpTests
         host.Pump.Dispose();
     }
 
-    private sealed class FakeHost : IVideoSeekPumpHost
+    private sealed class FakeHost : ISeekPumpHost
     {
         private readonly Queue<Action> _waitActions = new();
         private readonly Queue<Action> _settleActions = new();
         private readonly Queue<Action> _previewActions = new();
         private double _currentFrameTime = double.NaN;
 
-        public FakeHost() => Pump = new VideoSeekPump(this);
+        public FakeHost() => Pump = new SeekPump(this, "TestSeek", "SeekPumpTests");
 
-        public VideoSeekPump Pump { get; }
+        public SeekPump Pump { get; }
         public List<string> Calls { get; } = [];
         public double Duration { get; init; } = 3600;
         public bool PreviewPresents { get; init; } = true;

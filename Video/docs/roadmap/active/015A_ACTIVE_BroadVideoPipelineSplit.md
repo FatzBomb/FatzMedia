@@ -49,7 +49,9 @@ seek pump, and its ordering could only be checked by hand.
 - The pump's state used to share `_seekPumpLock` with the adaptive timing EMA. The EMA is
   thread-safe on its own and has no invariant with the targets (as slice 1 noted), so
   `ResetAdaptiveVideoSeekTiming` now resets the two separately.
-- 12 focused tests (`VideoSeekPumpTests`): click, drag-hold, release repeat, latest-wins
+- Renamed `SeekPump` / `ISeekPumpHost` (`Pipeline/SeekPump.cs`) when `CdgPipeline` moved
+  onto it (ENG-013); the names above are as delivered in slice 2.
+- 12 focused tests (`VideoSeekPumpTests`, now `SeekPumpTests`): click, drag-hold, release repeat, latest-wins
   bursts, preview without a frame, normalization, the seek sequence across a settle, the
   superseding rule, active-target clearing, cancel/reset, and the real worker thread.
 

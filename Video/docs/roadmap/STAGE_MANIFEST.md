@@ -25,7 +25,7 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   (`updates/017A_1`); native scheduling integration not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
-  `VideoSeekPump` with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
+  `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
 - `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
   full-frame copy removed; owner smoke passed 2026-10-17 (`updates/010A_1`).
 - `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,

@@ -1,31 +1,33 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
-using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, MediaState state)
+internal sealed class CdgPipeline : ISeekPumpHost
 {
-    private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
+    // CDG seek is already relatively cheap, but callers may still send many seek requests while
+    // scrubbing. The shared seek pump keeps only the latest target and renders it at a small
+    // internal cadence. This is intentionally not public API; hosts should simply call Seek(time).
+    private const int CdgSeekIntervalMilliseconds = 50;
+
+    private readonly MediaState _state;
+    private readonly Lock _transportGate = new();
+    private readonly SeekPump _seekPump;
     private CancellationTokenSource? _completionCts;
     private bool _isPairedWithAudio;
     private int _completionGeneration;
     private int _completionSignaled;
 
-    // CDG seek is already relatively cheap, but callers may still send many seek requests while
-    // scrubbing. Keep only the latest pending CDG target and process it at a small internal cadence.
-    // This is intentionally not public API; hosts should simply call Seek(time).
-    private readonly Lock _transportGate = new();
-    private readonly Lock _seekPumpLock = new();
-    private readonly AutoResetEvent _seekSignal = new(false);
-    private Thread? _seekThread;
-    private volatile bool _seekWorkerShutdown;
-    private double? _pendingSeekSeconds;
-    private const int CdgSeekIntervalMilliseconds = 50;
-    private const double CdgSeekTargetChangeThresholdSeconds = 0.025;
+    public CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, MediaState state)
+    {
+        Engine = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
+        Clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _state = state ?? throw new ArgumentNullException(nameof(state));
+        _seekPump = new SeekPump(this, "CdgSeek", "CdgPipeline");
+    }
 
-    private IClockSource Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
-    public ICdgEngine Engine { get; } = cdgEngine ?? throw new ArgumentNullException(nameof(cdgEngine));
+    private IClockSource Clock { get; }
+    public ICdgEngine Engine { get; }
     public bool IsOpen { get; private set; }
     public double DurationSeconds => Engine.TotalDurationSeconds;
     public event EventHandler? PlaybackEnded;
@@ -139,13 +141,7 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, Medi
             return false;
         }
 
-        var target = NormalizeSeekTarget(seconds);
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = target;
-        }
-
-        _ = _seekSignal.Set();
+        _seekPump.Request(NormalizeSeekTarget(seconds));
         return true;
     }
 
@@ -174,121 +170,28 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, Medi
         }
     }
 
-    private void StartSeekWorker()
-    {
-        StopSeekWorker();
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = null;
-        }
+    private void StartSeekWorker() => _seekPump.Start();
 
-        _seekWorkerShutdown = false;
-        _seekThread = new Thread(SeekWorkerLoop)
-        {
-            IsBackground = true,
-            Name = "CdgSeek"
-        };
-        _seekThread.Start();
+    private void StopSeekWorker() => _seekPump.Stop();
+
+    double ISeekPumpHost.NormalizeSeekTarget(double seconds) => NormalizeSeekTarget(seconds);
+
+    // CDG has no preview/settle split: each preview is a full render. The settle that follows
+    // always targets the last preview (within the change threshold), so it only ends the seek
+    // sequence; rendering again would draw the same frame twice.
+    bool ISeekPumpHost.RunSeek(double target, bool asPreview, bool allowPreviewFallback)
+    {
+        if (asPreview)
+            return SeekCore(target);
+
+        _seekPump.EndSequenceIfSettled();
+        return true;
     }
 
-    private void StopSeekWorker()
-    {
-        Thread? thread = _seekThread;
-        if (thread == null)
-        {
-            return;
-        }
+    // No nearby-frame previews, so the settle never resumes from a shown frame.
+    double ISeekPumpHost.CurrentFrameTime => double.NaN;
 
-        _seekWorkerShutdown = true;
-        _ = _seekSignal.Set();
-        try
-        {
-            _ = thread.Join(1000);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "CdgPipeline", $"Seek worker join failed: {ex.Message}", innerException: ex);
-        }
-
-        _seekThread = null;
-        lock (_seekPumpLock)
-        {
-            _pendingSeekSeconds = null;
-        }
-    }
-
-    private void SeekWorkerLoop()
-    {
-        while (!_seekWorkerShutdown)
-        {
-            _ = _seekSignal.WaitOne();
-
-            var lastProcessedTarget = double.NaN;
-            while (!_seekWorkerShutdown)
-            {
-                if (!TryTakePendingSeek(out var target))
-                {
-                    break;
-                }
-
-                var normalizedTarget = NormalizeSeekTarget(target);
-                if (!IsMeaningfullyDifferentSeekTarget(normalizedTarget, lastProcessedTarget))
-                {
-                    if (!HasPendingSeekRequest())
-                    {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                try
-                {
-                    _ = SeekCore(normalizedTarget);
-                }
-                catch (Exception ex)
-                {
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "CdgPipeline", $"Seek pump error: {ex.Message}", innerException: ex);
-                }
-
-                lastProcessedTarget = normalizedTarget;
-                WaitForSeekPumpInterval();
-                if (!HasPendingSeekRequest())
-                {
-                    break;
-                }
-            }
-        }
-    }
-
-    private bool TryTakePendingSeek(out double target)
-    {
-        lock (_seekPumpLock)
-        {
-            if (!_pendingSeekSeconds.HasValue)
-            {
-                target = 0;
-                return false;
-            }
-
-            target = _pendingSeekSeconds.Value;
-            _pendingSeekSeconds = null;
-            return true;
-        }
-    }
-
-    private bool HasPendingSeekRequest()
-    {
-        lock (_seekPumpLock)
-            return _pendingSeekSeconds.HasValue;
-    }
-
-    private void WaitForSeekPumpInterval()
-    {
-        var started = Stopwatch.GetTimestamp();
-        while (!_seekWorkerShutdown && GetElapsedMilliseconds(started, Stopwatch.GetTimestamp()) < CdgSeekIntervalMilliseconds)
-            _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
-    }
+    void ISeekPumpHost.WaitForPumpInterval() => _seekPump.WaitInterval(CdgSeekIntervalMilliseconds);
 
     private double NormalizeSeekTarget(double seconds) =>
         !double.IsFinite(seconds) || seconds <= 0
@@ -296,11 +199,6 @@ internal sealed class CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, Medi
             : DurationSeconds > 0
                 ? Math.Clamp(seconds, 0, DurationSeconds)
                 : seconds;
-
-    private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) => double.IsNaN(previousTarget)
-            || Math.Abs(target - previousTarget) > CdgSeekTargetChangeThresholdSeconds;
-
-    private static double GetElapsedMilliseconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     public void RenderAt(double seconds, bool forceRebuild)
     {
