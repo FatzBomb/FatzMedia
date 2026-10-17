@@ -17,8 +17,8 @@ using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto
 
 What it provides:
 
-- Host-supplied BASS (`libbass.so`, `libbass_fx.so`, optional add-ons) and FFmpeg 8.x
-  (`libavcodec.so.62` ABI) loading from host paths, `native/`, or
+- Host-supplied BASS (`libbass.so`, `libbass_fx.so`, optional add-ons) and FFmpeg 9.0.x
+  (`libavcodec.so.63` ABI) loading from host paths, `native/`, or
   `runtimes/linux-<arch>/native/`; no binaries are bundled. See
   `docs/NATIVE_DEPENDENCIES.md`.
 - High-resolution media-loop waits (kernel wait plus a 1 ms spin window).

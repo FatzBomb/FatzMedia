@@ -8,7 +8,7 @@ namespace FatzBomb.MediaControl.Linux.Tests;
 
 /// <summary>
 /// Opt-in native smoke: set <c>FATZBOMB_LINUX_FFMPEG_DIR</c> to a folder of FFmpeg shared
-/// libraries matching FFmpeg.AutoGen's ABI (avcodec major 62). Without it the test returns
+/// libraries matching FFmpeg.AutoGen's ABI (avcodec major 63, FFmpeg 9). Without it the test returns
 /// immediately; CI does not provide native binaries.
 /// </summary>
 public sealed class LinuxNativeSmokeTests

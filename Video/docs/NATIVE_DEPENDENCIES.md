@@ -80,7 +80,7 @@ not searched implicitly.
 | Kind | Required | Optional |
 |---|---|---|
 | BASS | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
-| FFmpeg (avcodec 62 ABI, FFmpeg 8.x) | `libavutil.so.60`, `libswresample.so.6`, `libswscale.so.9`, `libavcodec.so.62`, `libavformat.so.62` | `libavfilter.so.11`, `libavdevice.so.62` |
+| FFmpeg (avcodec 63 ABI, FFmpeg 9.0.x) | `libavutil.so.61`, `libswresample.so.7`, `libswscale.so.10`, `libavcodec.so.63`, `libavformat.so.63` | `libavfilter.so.12`, `libavdevice.so.63` |
 
 FFmpeg libraries must sit in one directory; they are preloaded in dependency order
 because typical builds reference each other by soname without an `$ORIGIN` run path.
@@ -109,14 +109,24 @@ the control remains responsible for their own BASS rights and each add-on's term
 
 ## FFmpeg Policy
 
-Approved source baseline: signed FFmpeg 8.1.2 source from
-<https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz>.
+Approved source baseline: signed FFmpeg 9.0.2 source from
+<https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz> (updated 2026-10-17 with the binding;
+the owner confirms the signed tarball).
 
-- Managed binding: `FFmpeg.AutoGen` 8.1.0.
-- Supported native release line: FFmpeg 8.1.x with library majors 62/62/62/11/60/6/9.
-- Verified repository validation fixture: FFmpeg 8.1.1.
-- Required DLLs: `avcodec-62.dll`, `avdevice-62.dll`, `avfilter-11.dll`,
-  `avformat-62.dll`, `avutil-60.dll`, `swresample-6.dll`, and `swscale-9.dll`.
+- Managed binding: `FFmpeg.AutoGen` 9.0.1.1 (upgraded from 8.1.0 on 2026-10-17).
+- Supported native release line: FFmpeg 9.0.x with library majors 63/63/63/12/61/7/10
+  (avcodec/avdevice/avformat/avfilter/avutil/swresample/swscale). FFmpeg 8 DLLs no
+  longer load.
+- Verified: FFmpeg 9.0.2 LGPL shared libraries on Linux (library load, decoder scan,
+  BGRA decode, decode benchmark on par with 8.1). Every FFmpeg function the engine calls
+  is exported by 9.0.2. Windows runtime smoke with 9.0.x DLLs is pending.
+- Required DLLs: `avcodec-63.dll`, `avdevice-63.dll`, `avfilter-12.dll`,
+  `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll`, and `swscale-10.dll`.
+- A convenient LGPL source for local testing is the NuGet package
+  `TqkLibrary.FFmpeg.Lgpl3.Native.win.x64` 9.0.2 (rename the `.nupkg` to `.zip`; the
+  DLLs are in `runtimes/win-x64/native`). It includes D3D11VA hardware decoding for
+  H.264/HEVC/VP9/AV1. As with any third-party build, review its configuration before
+  redistributing it.
 - Hosts must use a shared-library build; static executables alone are insufficient.
 
 For a proprietary host, the default approved build policy is an LGPL-compatible

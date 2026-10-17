@@ -12,19 +12,19 @@
 
 This is the host app's design-time native DLL folder.
 
-Put the x64 BASS and FFmpeg DLLs here:
+Put the x64 BASS and FFmpeg 9.0.x shared DLLs here (FFmpeg 8 DLLs no longer load):
 
 ```text
 FatzBomb.MediaControl.Player/native/
   bass.dll
   bass_fx.dll
-  avcodec-62.dll
-  avdevice-62.dll
-  avfilter-11.dll
-  avformat-62.dll
-  avutil-60.dll
-  swresample-6.dll
-  swscale-9.dll
+  avcodec-63.dll
+  avdevice-63.dll
+  avfilter-12.dll
+  avformat-63.dll
+  avutil-61.dll
+  swresample-7.dll
+  swscale-10.dll
 ```
 
 `FatzBomb.MediaControl.Player.csproj` copies `native/**/*.dll` to the player output folder, preserving the `native/` subfolder.

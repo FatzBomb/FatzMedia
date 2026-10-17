@@ -28,19 +28,19 @@
     ]
   },
   "ffmpeg": {
-    "bindingPackage": "FFmpeg.AutoGen 8.1.0",
-    "supportedReleaseLine": "8.1.x",
-    "verifiedRuntimeVersion": "8.1.1",
-    "approvedSourceRelease": "8.1.2",
-    "approvedSource": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+    "bindingPackage": "FFmpeg.AutoGen 9.0.1.1",
+    "supportedReleaseLine": "9.0.x",
+    "verifiedRuntimeVersion": "9.0.2",
+    "approvedSourceRelease": "9.0.2",
+    "approvedSource": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
     "requiredFiles": [
-      "avcodec-62.dll",
-      "avdevice-62.dll",
-      "avfilter-11.dll",
-      "avformat-62.dll",
-      "avutil-60.dll",
-      "swresample-6.dll",
-      "swscale-9.dll"
+      "avcodec-63.dll",
+      "avdevice-63.dll",
+      "avfilter-12.dll",
+      "avformat-63.dll",
+      "avutil-61.dll",
+      "swresample-7.dll",
+      "swscale-10.dll"
     ]
   }
 }
