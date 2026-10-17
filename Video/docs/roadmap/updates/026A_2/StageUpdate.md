@@ -86,3 +86,17 @@ Delivered:
 None needed beyond CI; Vulkan is not used by the Windows Player. Optionally, on a machine with
 a real Vulkan GPU, run `dotnet test FatzBomb.MediaControl.Rendering.Vulkan.Tests`: all pass and
 the conformance messages (on failure) name the GPU rather than llvmpipe.
+
+## Review follow-up (same day, local code review)
+
+- Boundary scripts, which the isolated worktree could not run, pass on the integrated
+  branch; Release build, format, and all four Linux-runnable test projects pass.
+- Not changed: overlay pipeline creation stays part of compositor initialization. A failure
+  there now disables Vulkan entirely rather than only wash/CDG frames; making it optional
+  would add guards around framebuffer creation and drawing for a failure the tests already
+  catch (missing SPIR-V) or that is unlikely on a device that passed the format checks.
+- Not changed: the ±1 wash tolerance and the texel-edge CDG scales (both above).
+- A reported overflow in the CDG pixel count does not apply: snapshots are always 300x216.
+- Duplicated placement/validation, the SPIR-V freshness check, and CDG upload caching are
+  recorded as ENG-014.
+
