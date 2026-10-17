@@ -79,8 +79,11 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
 
-Next stage: 032A is the only queued idea; continue the active stages' later slices after
-manual smoke first.
+- `future/033A_IDEA_FfmpegAudioParityAndFallback.md` - equalizer, fades, and normalization
+  for video audio, then an FFmpeg quick-conversion fallback for audio formats no BASS
+  plugin claims (owner decision, 2026-10-17).
+
+Next stage: 033A, after the manual smoke of the 2026-10-16 stages; then 032A.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
