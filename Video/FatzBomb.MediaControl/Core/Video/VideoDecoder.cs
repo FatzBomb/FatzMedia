@@ -89,6 +89,7 @@ internal sealed unsafe class VideoDecoder(
     private string? _formatsOfferedWithoutHardware;
     private int _lastDecodeError;
     private bool _logCaptureActive;
+    private Av1MetadataObuFilter? _av1MetadataFilter;
 
     /// <summary>
     /// True when hardware decoding is configured and the hardware path has failed to produce a
@@ -285,6 +286,8 @@ internal sealed unsafe class VideoDecoder(
         }
 
         DecoderName = GetCodecName(preferredCodec);
+        if (DecoderName == "av1")
+            _av1MetadataFilter = Av1MetadataObuFilter.TryCreate(_videoStream->codecpar, _videoStream->time_base);
         _videoFrame = ffmpeg.av_frame_alloc();
         if (_videoFrame == null) return false;
 
@@ -604,6 +607,9 @@ internal sealed unsafe class VideoDecoder(
         if (_frameQueue.Count >= MaxFrames) return false;
 
         var frameDecoded = DrainDecodedFrames();
+        if (_av1MetadataFilter != null && !_av1MetadataFilter.Filter(_packet))
+            return frameDecoded;
+
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, _packet);
         if (sendResult == AvErrorAgain)
         {
@@ -877,8 +883,9 @@ internal sealed unsafe class VideoDecoder(
         var path = IsHardwareAccelerated
             ? $"via {HardwareAccelerationMethod}"
             : HardwareAccelerationMethod != null ? $"in software ({HardwareAccelerationMethod} configured but not used)" : "in software";
+        var filtered = _av1MetadataFilter != null ? ", metadata OBUs removed" : string.Empty;
         return $"{codec.ToUpperInvariant()}{(string.IsNullOrEmpty(profile) ? string.Empty : $" {profile}")}{bitDepth} " +
-            $"{parameters->width}x{parameters->height} ({pixelFormat}), decoder {DecoderName ?? "unknown"} {path}";
+            $"{parameters->width}x{parameters->height} ({pixelFormat}), decoder {DecoderName ?? "unknown"} {path}{filtered}";
     }
 
     /// <summary>
@@ -1084,6 +1091,8 @@ internal sealed unsafe class VideoDecoder(
 
         FfmpegLogCapture.End(_videoCodecCtx);
         _logCaptureActive = false;
+        _av1MetadataFilter?.Dispose();
+        _av1MetadataFilter = null;
         fixed (AVCodecContext** ctx = &_videoCodecCtx)
             ffmpeg.avcodec_free_context(ctx);
     }
@@ -1146,6 +1155,7 @@ internal sealed unsafe class VideoDecoder(
         if (_videoCodecCtx != null)
         {
             ffmpeg.avcodec_flush_buffers(_videoCodecCtx);
+            _av1MetadataFilter?.Flush();
             if (_enableVerboseLogging) Debug.WriteLine("[VideoDecoder] Flushed codec buffers after seek");
         }
         if (clearQueue)

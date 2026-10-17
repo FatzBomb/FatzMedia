@@ -36,8 +36,23 @@ Since then the warning also quotes FFmpeg's own log lines for that decoder (up t
 through `FfmpegLogCapture`, which installs one process-wide FFmpeg log callback and passes
 everything else to FFmpeg's default logger).
 
-Next: the owner sends the warning again; FFmpeg's lines should name the rejected part
-(an OBU type, a header field, or a packet framing problem), which decides the fix.
+FFmpeg's lines for `Scream 7.mkv`: `trailing_zero_bit out of range: 1, but must be in
+[0,0]`, `Failed to read unit 1 (type 5): Invalid data`, `trailing_one_bit out of range`,
+then `Missing reference frame needed for show_existing_frame`. Type 5 is a metadata OBU
+(HDR10+, ITU-T T.35, timecode). The file's encoder wrote metadata OBUs with bad trailing
+bits; FFmpeg's native `av1` decoder parses metadata strictly and drops the whole packet,
+while `libdav1d` ignores them.
+
+Fix: `Av1MetadataObuFilter` runs FFmpeg's `filter_units` bitstream filter
+(`remove_types=5`) on packets for the native `av1` decoder. It splits packets into OBUs by
+their size fields without parsing them, so the malformed bytes are never read. Nothing the
+picture needs is lost. The decode-path log line ends in `metadata OBUs removed` when it is
+active. A build without `filter_units` keeps the old behaviour (and the software fallback).
+Tested natively (Linux, real FFmpeg 9) with hand-built AV1 packets carrying malformed
+metadata.
+
+Next: the owner checks that `Scream 7.mkv` now logs `decoder av1 via d3d11va, metadata OBUs
+removed`. If it still falls back, the warning quotes FFmpeg's new reason.
 
 ## Open
 
