@@ -8,14 +8,25 @@ bounded roadmap stage.
 
 ## In Progress
 
+None.
+
+## Open
+
+None.
+
+## Completed
+
 ### ENG-012 - "Composition present failed" warnings on audio-only seeks
+
+Resolved: 2026-10-17 (owner smoke: "all seems good" after seeking an MP3 with no
+background).
 
 Reported: 2026-10-17 (owner smoke log, confirmed still present after the 035A fixes).
 Seeking an audio-only MP3 logged `Composition present failed reason=current position
 refreshed` as a warning on every seek, and `presentation started` once on load. Playback
 was unaffected.
 
-Done (pending owner smoke):
+Fix:
 - `RefreshCurrentPosition` no longer presents when the media has nothing visual (no video,
   image, CD+G, subtitles, or composition background). It used to send an empty frame on
   every seek, which Direct3D11 refused.
@@ -24,15 +35,6 @@ Done (pending owner smoke):
   its failure points (no active presentation target, a layer that could not be prepared,
   the primary target draw, the swap chain present). Those reasons used to go only to
   `Debug.WriteLine`, which Release drops.
-
-Next: the owner seeks an MP3 again. The per-seek warnings should be gone. If the
-`presentation started` warning on load remains, it now names the failing step.
-
-## Open
-
-None.
-
-## Completed
 
 ### ENG-011 - AV1 hardware decode falls back to software on some files
 
