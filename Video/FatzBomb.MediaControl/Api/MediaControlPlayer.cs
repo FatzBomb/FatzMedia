@@ -255,6 +255,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public Task<bool> StopAsync() => EnqueueControlOperation(() => Controls.Stop());
 
+    public bool BeginScrub() => ExecuteControlOperation(() => Controls.BeginScrub());
+
+    public bool EndScrub() => ExecuteControlOperation(() => Controls.EndScrub());
+
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
     public bool Seek(double seconds)

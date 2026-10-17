@@ -16,6 +16,9 @@ public sealed class MediaControls
     private long _transportGeneration;
     private volatile bool _handlingMediaEnd;
     private volatile bool _disposed;
+    private readonly Lock _scrubGate = new();
+    private bool _scrubbing;
+    private bool _scrubResumesPlayback;
 
     internal MediaControls(
         IMediaEngine mediaEngine,
@@ -87,6 +90,7 @@ public sealed class MediaControls
     public bool Play()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ReleaseScrubHold();
 
         var success = _mediaEngine.Play();
         if (success)
@@ -112,6 +116,7 @@ public sealed class MediaControls
     public bool Pause()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ReleaseScrubHold();
 
         var success = _mediaEngine.Pause();
         if (success)
@@ -139,6 +144,7 @@ public sealed class MediaControls
     public bool Stop()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ReleaseScrubHold();
 
         var success = _mediaEngine.Stop();
         if (success)
@@ -176,6 +182,93 @@ public sealed class MediaControls
     /// Gets the current playback position.
     /// </summary>
     public TimeSpan Position => TimeSpan.FromSeconds(_mediaEngine.Position);
+
+    /// <summary>
+    /// Gets whether an interactive scrub started by <see cref="BeginScrub"/> is in progress.
+    /// </summary>
+    public bool IsScrubbing
+    {
+        get
+        {
+            lock (_scrubGate)
+                return _scrubbing;
+        }
+    }
+
+    /// <summary>
+    /// Starts an interactive scrub, such as a seek-bar drag. Playback is held until
+    /// <see cref="EndScrub"/>, so <see cref="Seek"/> calls in between only move the position and
+    /// show a preview frame; nothing plays between them and nothing replays on release.
+    /// </summary>
+    /// <remarks>
+    /// The hold is internal: no <see cref="MediaPaused"/>, <see cref="MediaStarted"/>, or state
+    /// change is reported for it, although the engine reads paused while it lasts. Calling
+    /// <see cref="Play"/>, <see cref="Pause"/>, or <see cref="Stop"/> during a scrub, or loading
+    /// or closing media, cancels the resume.
+    /// </remarks>
+    /// <returns>True when media is open and the scrub started (or was already active).</returns>
+    public bool BeginScrub()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_mediaEngine.IsOpen)
+            return false;
+
+        lock (_scrubGate)
+        {
+            if (_scrubbing)
+                return true;
+
+            _scrubbing = true;
+            _scrubResumesPlayback = _mediaEngine.State == MediaPlayerState.Playing && _mediaEngine.Pause();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Ends a scrub started by <see cref="BeginScrub"/> and resumes playback from the last
+    /// <see cref="Seek"/> target if the media was playing when the scrub began. Seek to the final
+    /// position before calling this; a video seek still settling is finished before playback resumes.
+    /// </summary>
+    /// <returns>True when a scrub was active.</returns>
+    public bool EndScrub()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        bool resume;
+        lock (_scrubGate)
+        {
+            if (!_scrubbing)
+                return false;
+
+            _scrubbing = false;
+            resume = _scrubResumesPlayback;
+            _scrubResumesPlayback = false;
+        }
+
+        if (resume && _mediaEngine.IsOpen && _mediaEngine.State == MediaPlayerState.Paused && !_mediaEngine.Play())
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", "Playback did not resume after the scrub.");
+            _ = RaiseStateChanged();
+        }
+
+        return true;
+    }
+
+    /// <summary>Ends any scrub without resuming, as when media is loaded or closed mid-drag.</summary>
+    internal void CancelScrub()
+    {
+        lock (_scrubGate)
+        {
+            _scrubbing = false;
+            _scrubResumesPlayback = false;
+        }
+    }
+
+    private void ReleaseScrubHold()
+    {
+        lock (_scrubGate)
+            _scrubResumesPlayback = false;
+    }
 
     /// <summary>
     /// Gets the transport generation, which advances on every accepted Play, Pause, Stop, Seek,
@@ -308,6 +401,11 @@ public sealed class MediaControls
 
     private bool RaiseStateChanged()
     {
+        // A scrub's playback hold is internal; report state once the host takes over or it ends.
+        lock (_scrubGate)
+            if (_scrubbing && _scrubResumesPlayback)
+                return false;
+
         MediaPlayerState current = _mediaEngine.State;
         if (current == _lastReportedState)
             return false;

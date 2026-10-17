@@ -314,6 +314,25 @@ public sealed class PreparedNextPlayerTests : IDisposable
     }
 
     [Fact]
+    public async Task Scrub_LoadingMidDrag_DoesNotResumeTheNewItem()
+    {
+        // Stage 035A facade: a load during a seek-bar drag cancels the scrub's resume.
+        var engine = new TestMediaEngine();
+        using var player = CreatePlayer(engine, new FakeAnalyzer());
+        Assert.True(player.Load(CreateFile("first.mp3")));
+        Assert.True(player.Play());
+        Assert.True(player.BeginScrub());
+        Assert.Equal(MediaPlayerState.Paused, engine.State);
+
+        Assert.True(await player.LoadAsync(CreateFile("second.mp3")).WaitAsync(Timeout));
+        var playsBefore = engine.PlayCount;
+
+        Assert.False(player.EndScrub());
+        Assert.Equal(playsBefore, engine.PlayCount);
+        Assert.NotEqual(MediaPlayerState.Playing, engine.State);
+    }
+
+    [Fact]
     public async Task TransitionNow_EmptySlot_ReturnsFalse()
     {
         var engine = new TestMediaEngine();

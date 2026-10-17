@@ -348,6 +348,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (!CanSeek) return;
         _isSeekPreviewActive = true;
+        _ = Player?.BeginScrub();
     }
 
     public void EndSeekPreview()
@@ -355,6 +356,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _isSeekPreviewActive = false;
         SuppressPositionRefresh();
         _ = Player?.Seek(SeekPositionSeconds);
+        _ = Player?.EndScrub();
     }
 
     public void CancelSeekPreview()

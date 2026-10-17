@@ -146,6 +146,19 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Seeks to a playback position in seconds.</summary>
     bool Seek(double seconds);
 
+    /// <summary>
+    /// Starts an interactive scrub (seek-bar drag): playback is held until <see cref="EndScrub"/>,
+    /// so seeks in between only move the position and show preview frames. Sessions without scrub
+    /// support return <see langword="false"/>, and hosts then seek as before.
+    /// </summary>
+    bool BeginScrub() => false;
+
+    /// <summary>
+    /// Ends a scrub and resumes playback from the last seek target if the media was playing when
+    /// the scrub began. Seek to the final position first.
+    /// </summary>
+    bool EndScrub() => false;
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 

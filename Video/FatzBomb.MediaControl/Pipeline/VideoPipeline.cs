@@ -67,6 +67,9 @@ internal sealed partial class VideoPipeline(
     private volatile bool _seekWorkerShutdown;
     private double? _pendingSeekSeconds;
     private double _activeSeekTargetSeconds = double.NaN;
+    // True from a Seek request until its exact settle completes with nothing newer queued. A Play
+    // in that window is applied by the settle, which resumes playback from the new position.
+    private bool _seekSequenceActive;
     private int _playbackEndSignaled;
     private string? _tempPath;
     private const int MaxBufferedVideoFrames = 12;
@@ -288,6 +291,17 @@ internal sealed partial class VideoPipeline(
             if (_isPlaying)
                 return true;
 
+            if (IsSeekSequenceActive())
+            {
+                // A seek is queued or settling. Starting now would play the old position until the
+                // seek stops playback again; the settle resumes playback from the target instead.
+                _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
+                _isPlaying = true;
+                _state.SetPlaybackState(MediaPlayerState.Playing);
+                RaiseState(VideoEngineState.Playing);
+                return true;
+            }
+
             _ = TryPrepareLoopRestartAtBeginning();
 
             if (HasAudio)
@@ -349,6 +363,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
 
@@ -517,6 +532,7 @@ internal sealed partial class VideoPipeline(
             lock (_seekPumpLock)
             {
                 _pendingSeekSeconds = null;
+                _seekSequenceActive = false;
                 _activeSeekTargetSeconds = double.NaN;
                 _minimumCommittedVideoPresentationSeconds = double.NaN;
             }
@@ -571,7 +587,10 @@ internal sealed partial class VideoPipeline(
 
         var target = NormalizeSeekTarget(seconds);
         lock (_seekPumpLock)
+        {
             _pendingSeekSeconds = target;
+            _seekSequenceActive = true;
+        }
 
         _ = _seekSignal.Set();
         return true;
@@ -675,6 +694,8 @@ internal sealed partial class VideoPipeline(
             finally
             {
                 ClearActiveSeekTarget(target);
+                if (!asPreview)
+                    EndSeekSequenceIfSettled();
             }
 
             return videoFramePresented;
@@ -688,6 +709,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _activeSeekTargetSeconds = double.NaN;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
@@ -724,6 +746,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _activeSeekTargetSeconds = double.NaN;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
@@ -848,6 +871,19 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
             return _pendingSeekSeconds.HasValue && (double.IsNaN(_activeSeekTargetSeconds)
                 || IsMeaningfullyDifferentSeekTarget(_pendingSeekSeconds.Value, _activeSeekTargetSeconds));
+    }
+
+    private bool IsSeekSequenceActive()
+    {
+        lock (_seekPumpLock)
+            return _seekSequenceActive;
+    }
+
+    private void EndSeekSequenceIfSettled()
+    {
+        lock (_seekPumpLock)
+            if (!_pendingSeekSeconds.HasValue)
+                _seekSequenceActive = false;
     }
 
     private bool HasPendingSeekRequest()
