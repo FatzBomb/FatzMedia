@@ -1,15 +1,10 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-07-17
+Updated: 2026-10-17
 
-> **WARNING — GPL-ENABLED TRACKED FFMPEG EXECUTABLES**
->
-> `FatzBomb.MediaControl.Player/native/ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are
-> tracked in this repository as a Gyan full-shared build compiled with
-> `--enable-gpl --enable-version3`. **The app does not use them**: it probes and decodes
-> media in-process through the FFmpeg DLLs. The owner has approved removing them. Until
-> they are removed, they must not be redistributed with any package, host, or published
-> artifact.
+The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
+and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
+them, and it probes and decodes media in-process through the FFmpeg DLLs.
 
 ## Responsibility
 
