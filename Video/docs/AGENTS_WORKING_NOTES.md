@@ -45,4 +45,6 @@ Do not move media logic, renderer policy, layer roles, CDG handling, timing, or 
 
 ## True Non-Goals
 
-Do not plan or implement VLC-style plugin/module architecture, Disc/DVD/Blu-ray playback, or playlist/library ownership inside the media engine.
+Do not plan or implement VLC-style plugin/module architecture, DVD/Blu-ray playback, or playlist/library ownership inside the media engine.
+
+Audio CD and CD+G disc playback are in scope (owner decision, 2026-10-17); see `roadmap/future/032A_IDEA_AudioCdAndCdgDiscPlayback.md`. DVD and Blu-ray stay out.

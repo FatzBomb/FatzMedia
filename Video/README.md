@@ -11,7 +11,11 @@ FatzBomb.MediaControl is a media-control solution with a UI-agnostic Core engine
 | `FatzBomb.MediaControl.Rendering.Software` | Portable deterministic software renderer — in-memory premultiplied BGRA8 composition with no GPU or window. |
 | `FatzBomb.MediaControl.Windows` | Windows native-library loading, endpoint integration, timing, and hardware-decode policy. |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle pairing Windows services with the current renderer. |
+| `FatzBomb.MediaControl.Rendering.Vulkan` | Preview Vulkan renderer backend (offscreen clear and background presentation into a frame sink). |
+| `FatzBomb.MediaControl.Linux` | Linux platform services: host-supplied BASS/FFmpeg shared-library loading, precision waits, BASS device monitoring, software decode. |
 | `FatzBomb.MediaControl.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It receives platform composition from the host and owns no renderer, pipeline, layer, timing, or final presentation logic. |
+| `FatzBomb.MediaControl.Avalonia` | Avalonia adapter: composited `MediaSurface` over the frame-sink contract and bitmap conversions. |
+| `FatzBomb.MediaControl.WinForms` | WinForms adapter: HWND `MediaSurface` attached as the primary presentation surface. |
 | `FatzBomb.MediaControl.Player` | WPF validation host used to exercise the Core engine through the WPF adapter. |
 
 Future UI integrations should be separate adapter projects using the same package style, for example `FatzBomb.MediaControl.WinUI`, `FatzBomb.MediaControl.Avalonia`, and `FatzBomb.MediaControl.WinForms`.

@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using FatzBomb.MediaControl;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Wpf;
@@ -19,7 +18,9 @@ public enum PlayerFlyout
     Sync,
     Video,
     Audio,
-    AV
+    AV,
+    Next,
+    Log
 }
 
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
@@ -45,6 +46,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ResetSyncCommand = new RelayCommand(ResetSync, () => CanUseSync);
         ToggleFlyoutCommand = new RelayCommand<string?>(ToggleFlyout);
         InitializeValidationControls();
+        InitializeEqualizerControls();
+        InitializePreparedNextControls();
+        InitializeNetworkControls();
 
         _positionTimer = new DispatcherTimer
         {
@@ -137,14 +141,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string StatusText { get; private set; } = "Native media engine is initializing.";
 
-    public ObservableCollection<DiagnosticLogEntry> DiagnosticLog { get; } = [];
-
-    private static void AppendToLog(ObservableCollection<DiagnosticLogEntry> log, DiagnosticLogEntry entry)
-    {
-        log.Add(entry);
-        while (log.Count > 200)
-            log.RemoveAt(0);
-    }
 
     public double Volume
     {
@@ -225,6 +221,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsVideoFlyoutActive));
             OnPropertyChanged(nameof(IsAudioFlyoutActive));
             OnPropertyChanged(nameof(IsAVFlyoutActive));
+            OnPropertyChanged(nameof(IsNextFlyoutActive));
+            OnPropertyChanged(nameof(IsLogFlyoutActive));
         }
     }
 
@@ -235,6 +233,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsAudioFlyoutActive => ActiveFlyout == PlayerFlyout.Audio;
 
     public bool IsAVFlyoutActive => ActiveFlyout == PlayerFlyout.AV;
+
+    public bool IsNextFlyoutActive => ActiveFlyout == PlayerFlyout.Next;
+
+    public bool IsLogFlyoutActive => ActiveFlyout == PlayerFlyout.Log;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -346,6 +348,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (!CanSeek) return;
         _isSeekPreviewActive = true;
+        _ = Player?.BeginScrub();
     }
 
     public void EndSeekPreview()
@@ -353,6 +356,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _isSeekPreviewActive = false;
         SuppressPositionRefresh();
         _ = Player?.Seek(SeekPositionSeconds);
+        _ = Player?.EndScrub();
     }
 
     public void CancelSeekPreview()
@@ -360,6 +364,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task InitializePlayerAsync()
     {
+        IMediaControlPlatformFactory? platformFactory = null;
         try
         {
             IsBusy = true;
@@ -376,10 +381,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 EnableVerboseLogging = false,
                 ResetPitchOnMediaLoad = App.ResetPitchOnMediaLoad,
                 ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad,
-                SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim }
+                SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim },
+                NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries }
             };
 
-            IMediaControlPlatformFactory platformFactory = App.UseSoftwareRenderer
+            platformFactory = App.UseSoftwareRenderer
                 ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
                 : new WindowsDirect3D11MediaControlPlatformFactory();
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
@@ -400,6 +406,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.PlayOnLoad = AutoPlay;
             player.LoopMedia = LoopPlayback;
             player.ShowMidiLyrics = true;
+            player.Equalizer = BuildEqualizerSettings();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
             Player = player;
@@ -408,6 +415,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.MediaError += OnPlayerError;
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
+            StartPreparedNextValidation(player);
+            StartNetworkValidation(player);
+            ReportNativeDependencies(player.NativeDependencies);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
             var trimSummary = $"Silence trim={App.EnableSilenceTrim}";
@@ -416,6 +426,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             StartupError = ex;
+            if (platformFactory is not null)
+                ReportNativeDependencies(platformFactory.NativeDependencies);
             StatusText = $"Native DLLs unavailable: {ex.Message}";
         }
         finally
@@ -476,6 +488,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         StopCommand.NotifyCanExecuteChanged();
         AdjustSyncCommand.NotifyCanExecuteChanged();
         ResetSyncCommand.NotifyCanExecuteChanged();
+        RefreshPreparedNextCommandStates();
+        OpenUrlCommand.NotifyCanExecuteChanged();
     }
 
     private void AdjustSync(string? command)
@@ -516,6 +530,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             "Video" => PlayerFlyout.Video,
             "Audio" => PlayerFlyout.Audio,
             "AV" => PlayerFlyout.AV,
+            "Next" => PlayerFlyout.Next,
+            "Log" => PlayerFlyout.Log,
             _ => PlayerFlyout.None
         };
 
@@ -653,10 +669,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         });
     }
 
+    /// <summary>
+    /// Logs each native library that did not load, with its exact file name and any version hint
+    /// (for example an FFmpeg 8 DLL where FFmpeg 9 is needed). Required ones are errors.
+    /// </summary>
+    private void ReportNativeDependencies(NativeDependencyReport report)
+    {
+        IReadOnlyList<string> lines = report.Describe();
+        var requiredCount = report.RequiredProblems.Count;
+        for (var index = 0; index < lines.Count; index++)
+            HandleDiagnostic(index < requiredCount ? MediaDiagnosticLevel.Error : MediaDiagnosticLevel.Warning, "NativeLibraries", lines[index]);
+    }
+
     private void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
     {
         var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
-        AppendToLog(DiagnosticLog, entry);
+        AppendToLog(entry);
 
         if (level >= MediaDiagnosticLevel.Warning)
             StatusText = $"[{level}] {category}: {message}";
@@ -675,6 +703,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.MediaError -= OnPlayerError;
             player.PitchChanged -= OnPlayerPitchChanged;
             player.TempoChanged -= OnPlayerTempoChanged;
+            StopPreparedNextValidation(player);
+            StopNetworkValidation(player);
             player.Dispose();
         }
     }

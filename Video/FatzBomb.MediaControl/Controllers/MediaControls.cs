@@ -16,6 +16,10 @@ public sealed class MediaControls
     private long _transportGeneration;
     private volatile bool _handlingMediaEnd;
     private volatile bool _disposed;
+    private const double ScrubRepeatToleranceSeconds = 0.001;
+    private readonly Lock _scrubGate = new();
+    private bool _scrubbing;
+    private double _lastScrubTarget = double.NaN;
 
     internal MediaControls(
         IMediaEngine mediaEngine,
@@ -162,11 +166,17 @@ public sealed class MediaControls
     public bool Seek(double seconds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (IsRepeatOfScrubTarget(seconds))
+            return true;
+
         var success = _mediaEngine.Seek(seconds);
         if (success)
         {
             _ = Interlocked.Increment(ref _transportGeneration);
             _handlingMediaEnd = false;
+            lock (_scrubGate)
+                if (_scrubbing)
+                    _lastScrubTarget = seconds;
         }
 
         return success;
@@ -176,6 +186,86 @@ public sealed class MediaControls
     /// Gets the current playback position.
     /// </summary>
     public TimeSpan Position => TimeSpan.FromSeconds(_mediaEngine.Position);
+
+    /// <summary>
+    /// Gets whether an interactive scrub started by <see cref="BeginScrub"/> is in progress.
+    /// </summary>
+    public bool IsScrubbing
+    {
+        get
+        {
+            lock (_scrubGate)
+                return _scrubbing;
+        }
+    }
+
+    /// <summary>
+    /// Starts an interactive scrub, such as a seek-bar drag. Playback carries on as usual and
+    /// each <see cref="Seek"/> moves it, but a seek to the same target as the previous seek of the
+    /// scrub is ignored. A seek bar sends one more seek on release; at the last drag position
+    /// that seek would restart playback from there, jumping back by however long it played while
+    /// the button was held.
+    /// </summary>
+    /// <returns>True when media is open and the scrub started (or was already active).</returns>
+    public bool BeginScrub()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_mediaEngine.IsOpen)
+            return false;
+
+        lock (_scrubGate)
+        {
+            if (!_scrubbing)
+            {
+                _scrubbing = true;
+                _lastScrubTarget = double.NaN;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Ends a scrub started by <see cref="BeginScrub"/>. Send the release seek first; it is
+    /// ignored when it repeats the last drag position.
+    /// </summary>
+    /// <returns>True when a scrub was active.</returns>
+    public bool EndScrub()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        lock (_scrubGate)
+        {
+            if (!_scrubbing)
+                return false;
+
+            _scrubbing = false;
+            _lastScrubTarget = double.NaN;
+            return true;
+        }
+    }
+
+    /// <summary>Ends any scrub, as when media is loaded or closed mid-drag.</summary>
+    internal void CancelScrub()
+    {
+        lock (_scrubGate)
+        {
+            _scrubbing = false;
+            _lastScrubTarget = double.NaN;
+        }
+    }
+
+    /// <summary>True when a scrub is active and <paramref name="seconds"/> repeats its last seek.</summary>
+    internal bool IsRepeatOfScrubTarget(double seconds)
+    {
+        lock (_scrubGate)
+            return _scrubbing && !double.IsNaN(_lastScrubTarget) && Math.Abs(seconds - _lastScrubTarget) <= ScrubRepeatToleranceSeconds;
+    }
+
+    /// <summary>
+    /// Gets the transport generation, which advances on every accepted Play, Pause, Stop, Seek,
+    /// and loop restart so queued follow-up work can detect host intervention.
+    /// </summary>
+    internal long TransportGeneration => Volatile.Read(ref _transportGeneration);
 
     /// <summary>
     /// Gets the total loaded media duration.
@@ -237,7 +327,8 @@ public sealed class MediaControls
                 || transportGeneration != Volatile.Read(ref _transportGeneration))
                 return;
 
-            if (LoopMedia)
+            // Network sources never loop (a live stream cannot restart); their end is a stop.
+            if (LoopMedia && !IsNetworkSource)
             {
                 System.Diagnostics.Debug.WriteLine("[MediaControls] Looping media");
 
@@ -281,6 +372,9 @@ public sealed class MediaControls
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControls", $"Error completing media end: {ex.Message}", innerException: ex);
         }
     }
+
+    private bool IsNetworkSource =>
+        _mediaEngine is IMediaSourceCapabilityProvider { CurrentCapabilities.SourceClass: MediaSourceClass.NetworkFile or MediaSourceClass.NetworkLive };
 
     private void StartRendering() => _mediaRenderer?.StartRendering();
 

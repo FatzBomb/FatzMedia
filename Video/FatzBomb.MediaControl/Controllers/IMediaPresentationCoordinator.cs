@@ -1,6 +1,3 @@
-using FatzBomb.MediaControl.Core.Abstractions;
-using FatzBomb.MediaControl.Core.Configuration;
-
 namespace FatzBomb.MediaControl.Controllers;
 
 /// <summary>

@@ -24,6 +24,12 @@ public interface IMediaRendererBackend : IDisposable
     void ClearCompositionBackgroundFrame();
     bool PresentComposition(MediaCompositionFrame frame);
 
+    /// <summary>
+    /// Why the last <see cref="PresentComposition"/> returned false (for example "no active
+    /// presentation target"), or null. Quoted in the host-visible failure diagnostic.
+    /// </summary>
+    string? LastPresentFailureReason => null;
+
     void CleanupResources();
 
     bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted);

@@ -21,6 +21,8 @@ public class WindowsMediaControlPlatformFactory : IMediaControlPlatformFactory
     /// <inheritdoc />
     public string LastNativeLoadMessage => Bootstrap.Message;
 
+    public NativeDependencyReport NativeDependencies => Bootstrap.NativeDependencies;
+
     /// <inheritdoc />
     public VideoDecodeCapabilities GetVideoDecodeCapabilities() =>
         WindowsVideoDecodeCapabilities.GetOrScan();

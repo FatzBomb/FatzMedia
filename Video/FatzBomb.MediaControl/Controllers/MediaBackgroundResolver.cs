@@ -57,14 +57,58 @@ internal static class MediaBackgroundResolver
             return;
         }
 
+        // Case-insensitive file systems (Windows, macOS default) already match extensions in any
+        // case, so a few exact-name probes suffice. Case-sensitive ones (Linux) need a directory
+        // listing to match "song.PNG"; that costs one pass over the folder per load.
+        if (!IsCaseSensitiveFileSystem)
+        {
+            foreach (MediaBackgroundKind kind in PreferredKindOrder())
+            {
+                foreach (var extension in GetExtensions(kind))
+                {
+                    var candidatePath = Path.Combine(directory, sourceBase + extension);
+                    if (File.Exists(candidatePath))
+                        matches.Add(MediaBackgroundMatch.FromPath(kind, candidatePath));
+                }
+            }
+
+            return;
+        }
+
+        List<string> candidates = EnumerateSidecarCandidates(directory, sourceBase);
         foreach (MediaBackgroundKind kind in PreferredKindOrder())
         {
-            foreach (var extension in GetExtensions(kind))
+            HashSet<string> extensions = GetExtensions(kind);
+            foreach (var candidatePath in candidates)
             {
-                var candidatePath = Path.Combine(directory, sourceBase + extension);
-                if (File.Exists(candidatePath))
+                if (extensions.Contains(Path.GetExtension(candidatePath)))
                     matches.Add(MediaBackgroundMatch.FromPath(kind, candidatePath));
             }
+        }
+    }
+
+    private static bool IsCaseSensitiveFileSystem => !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS();
+
+    private static List<string> EnumerateSidecarCandidates(string directory, string sourceBase)
+    {
+        const StringComparison baseComparison = StringComparison.Ordinal;
+
+        // '*' and '?' are legal in Linux file names but are wildcards in search patterns.
+        var pattern = sourceBase.AsSpan().IndexOfAny('*', '?') >= 0 ? "*" : sourceBase + ".*";
+        try
+        {
+            return [.. Directory.EnumerateFiles(directory, pattern, new EnumerationOptions
+                {
+                    MatchCasing = MatchCasing.PlatformDefault,
+                    IgnoreInaccessible = true,
+                    RecurseSubdirectories = false,
+                })
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBase, baseComparison))
+                .Order(StringComparer.Ordinal)];
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 

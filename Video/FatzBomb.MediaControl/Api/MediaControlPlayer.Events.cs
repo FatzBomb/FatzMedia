@@ -45,6 +45,8 @@ public partial class MediaControlPlayer
 
     public event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;
 
+    public event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         ClearPendingSeek();
@@ -54,6 +56,8 @@ public partial class MediaControlPlayer
         EventHandler? handler = MediaEnded;
         if (handler != null)
             _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+
+        ScheduleAutomaticPreparedNextTransition();
     }
 
     private void OnControlsMediaStarted(object? sender, EventArgs e)
@@ -85,6 +89,7 @@ public partial class MediaControlPlayer
 
     private void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
     {
+        Controls.CancelScrub();
         SubscribeSeekCompletionSources();
         HostEventDispatcher.Raise(this, MediaLoaded, e, nameof(MediaLoaded));
         if (!Controls.ReportCurrentState())
@@ -93,6 +98,7 @@ public partial class MediaControlPlayer
 
     private void OnFileMediaClosed(object? sender, MediaClosedEventArgs e)
     {
+        Controls.CancelScrub();
         _positionNotifier.Stop();
         ClearPendingSeek();
         UnsubscribeSeekCompletionSources();
@@ -136,6 +142,9 @@ public partial class MediaControlPlayer
 
     private void OnEffectsNormalizeChanged(object? sender, MediaNormalizeChangedEventArgs e) =>
         HostEventDispatcher.Raise(this, NormalizeChanged, e, nameof(NormalizeChanged));
+
+    private void OnEffectsEqualizerChanged(object? sender, MediaValueChangedEventArgs<AudioEqualizerSettings> e) =>
+        HostEventDispatcher.Raise(this, EqualizerChanged, e, nameof(EqualizerChanged));
 
     private void OnControlsLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e) =>
         HostEventDispatcher.Raise(this, LoopMediaChanged, e, nameof(LoopMediaChanged));
@@ -214,6 +223,7 @@ public partial class MediaControlPlayer
         Effects.PitchChanged += OnEffectsPitchChanged;
         Effects.TempoChanged += OnEffectsTempoChanged;
         Effects.NormalizeChanged += OnEffectsNormalizeChanged;
+        Effects.EqualizerChanged += OnEffectsEqualizerChanged;
     }
 
     private void UnsubscribeNewSessionEvents()
@@ -228,6 +238,7 @@ public partial class MediaControlPlayer
         Effects.PitchChanged -= OnEffectsPitchChanged;
         Effects.TempoChanged -= OnEffectsTempoChanged;
         Effects.NormalizeChanged -= OnEffectsNormalizeChanged;
+        Effects.EqualizerChanged -= OnEffectsEqualizerChanged;
     }
 
     private void SubscribeSeekCompletionSources()
@@ -259,7 +270,8 @@ public partial class MediaControlPlayer
 
     private void TryCompletePendingSeek(
         double resultingPosition,
-        double toleranceSeconds = SeekSettleToleranceSeconds)
+        double toleranceSeconds = SeekSettleToleranceSeconds,
+        bool isSettlement = true)
     {
         if (Volatile.Read(ref _hasPendingSeek) == 0)
             return;
@@ -268,7 +280,13 @@ public partial class MediaControlPlayer
         lock (_seekCompletionGate)
         {
             pending = _pendingSeek;
-            if (pending == null || Math.Abs(CleanPosition(resultingPosition) - pending.Value.TargetSeconds) > toleranceSeconds)
+            // Only a settlement notification for a seek made during a scrub may land on the
+            // previewed frame; the immediate check right after Seek stays strict, because the
+            // video seek has only been queued and the position is still the old one.
+            var tolerance = isSettlement && pending is { DuringScrub: true }
+                ? Math.Max(toleranceSeconds, ScrubSettleToleranceSeconds)
+                : toleranceSeconds;
+            if (pending == null || Math.Abs(CleanPosition(resultingPosition) - pending.Value.TargetSeconds) > tolerance)
                 return;
 
             _pendingSeek = null;

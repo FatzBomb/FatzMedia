@@ -9,8 +9,12 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider
 {
+    private MediaSourceCapabilities? _currentCapabilities;
+
+    public MediaSourceCapabilities? CurrentCapabilities => Volatile.Read(ref _currentCapabilities);
+
     private readonly IAudioEngine _audioEngine;
     private readonly IArchiveService _archiveService;
     private readonly PlaybackCoordinator _coordinator;
@@ -160,6 +164,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             _ => RejectUnsupported(path, fileTree.Type)
         };
 
+        if (opened)
+        {
+            Volatile.Write(ref _currentCapabilities, fileTree.Type is FileType.AudioArchive
+                or FileType.AudioCdgArchive
+                or FileType.CdgArchive
+                or FileType.VideoArchive
+                    ? MediaSourceCapabilityMatrix.Archive
+                    : MediaSourceCapabilityMatrix.LocalFile);
+        }
+
         if (!opened)
         {
             MediaErrorCode code = fileTree.Type is FileType.Unsupported or FileType.UnsupportedArchive
@@ -179,9 +193,54 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return source.Kind switch
         {
             MediaInputSourceKind.FilePath when !string.IsNullOrWhiteSpace(source.FilePath) => Open(source.FilePath),
-            MediaInputSourceKind.Bgra32Image => OpenImage(source),
+            MediaInputSourceKind.Bgra32Image => OpenInMemoryImage(source),
+            MediaInputSourceKind.NetworkUri when source.Uri is not null => OpenNetwork(source),
             _ => RejectUnknownSource(source)
         };
+    }
+
+    private bool OpenInMemoryImage(MediaInputSource source)
+    {
+        var opened = OpenImage(source);
+        if (opened)
+            Volatile.Write(ref _currentCapabilities, MediaSourceCapabilityMatrix.InMemoryImage);
+        return opened;
+    }
+
+    /// <summary>
+    /// Opens a direct HTTP/HTTPS source (Stage 014A). The host hint, or the URI path extension
+    /// through the same <see cref="FileTypes"/> sets as local files, selects audio or video;
+    /// network video is not supported yet and fails with a diagnostic.
+    /// </summary>
+    private bool OpenNetwork(MediaInputSource source)
+    {
+        if (IsOpen)
+            Close();
+        ImagePath = null;
+        _currentImageFrame = null;
+
+        Uri uri = source.Uri!;
+        var isVideo = source.NetworkContent switch
+        {
+            MediaNetworkContent.Video => true,
+            MediaNetworkContent.Audio => false,
+            _ => FileTypes.IsVideo(uri.AbsolutePath),
+        };
+
+        if (isVideo)
+        {
+            RaiseError(MediaErrorCode.UnsupportedFormat, "Network video is not supported yet; only HTTP/HTTPS audio streams can be opened.", uri.AbsoluteUri);
+            return false;
+        }
+
+        if (!_coordinator.OpenNetworkAudio(uri))
+        {
+            RaiseError(MediaErrorCode.OpenFailed, $"Failed to open network stream: {source.DisplayName}", uri.AbsoluteUri);
+            return false;
+        }
+
+        Volatile.Write(ref _currentCapabilities, _coordinator.NetworkAudioCapabilities ?? MediaSourceCapabilityMatrix.NetworkUnprobed);
+        return true;
     }
 
     private bool RejectUnknownSource(MediaInputSource source)
@@ -255,6 +314,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         ClearBackgroundCore(raiseEvent: true);
         _coordinator.Close();
+        Volatile.Write(ref _currentCapabilities, null);
         ImagePath = null;
         _currentImageFrame = null;
     }
@@ -262,6 +322,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     public bool Seek(double seconds)
     {
         ThrowIfDisposed();
+
+        // Only network rows gate seeking; local rows keep their existing behavior.
+        if (CurrentCapabilities is { IsBuffered: true, IsSeekable: false })
+            return false;
+
         return _coordinator.Seek(seconds);
     }
 

@@ -59,18 +59,31 @@ public sealed class MediaEffects
         _subscribedAudioEngine?.NormalizationGainChanged -= OnNormalizationGainChanged;
 
         _subscribedAudioEngine = current;
-        if (HasAudio)
-        {
-            _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
-            _subscribedAudioEngine.Normalize = Normalize;
-            _subscribedAudioEngine.SetVolume(Volume);
-            _subscribedAudioEngine.SetPitch(Pitch);
-        }
-
-        _subscribedAudioEngine.SetTempo(_tempo - 100);
+        _subscribedAudioEngine.NormalizationGainChanged += OnNormalizationGainChanged;
+        ApplyEffectsTo(_subscribedAudioEngine);
     }
 
-    internal void RefreshActiveEngine() => EnsureActiveAudioSubscription();
+    /// <summary>
+    /// Called after every load. The audio engine is usually the same singleton across loads, so
+    /// settings changed while no audio was open are pushed here even when the subscription is
+    /// unchanged; each setter is a no-op when its value already matches.
+    /// </summary>
+    internal void RefreshActiveEngine()
+    {
+        IAudioEngine? previous = _subscribedAudioEngine;
+        EnsureActiveAudioSubscription();
+        if (_subscribedAudioEngine is { } current && ReferenceEquals(previous, current))
+            ApplyEffectsTo(current);
+    }
+
+    private void ApplyEffectsTo(IAudioEngine engine)
+    {
+        engine.Normalize = Normalize;
+        engine.SetVolume(Volume);
+        engine.SetPitch(Pitch);
+        (engine as IAudioFilterHost)?.SetEqualizer(Equalizer);
+        engine.SetTempo(_tempo - 100);
+    }
 
     /// <summary>
     /// Gets or sets the volume (0.0 to 1.0).
@@ -151,6 +164,34 @@ public sealed class MediaEffects
     /// Event raised when normalization gain changes (after analysis completes).
     /// </summary>
     public event EventHandler<double>? NormalizationGainChanged;
+
+    /// <summary>
+    /// Gets or sets the equalizer (Stage 020A). Applied live to the open audio stream and to
+    /// every later stream; disabled/neutral settings attach no native filter.
+    /// </summary>
+    public AudioEqualizerSettings Equalizer
+    {
+        get;
+        set
+        {
+            value ??= AudioEqualizerSettings.Disabled;
+            if (field.Equals(value))
+                return;
+
+            AudioEqualizerSettings previous = field;
+            field = value;
+            if (HasAudio)
+                (Audio as IAudioFilterHost)?.SetEqualizer(value);
+
+            HostEventDispatcher.Raise(
+                this,
+                EqualizerChanged,
+                new MediaValueChangedEventArgs<AudioEqualizerSettings>(previous, value),
+                nameof(EqualizerChanged));
+        }
+    } = AudioEqualizerSettings.Disabled;
+
+    public event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
 
     public event EventHandler<MediaValueChangedEventArgs<double>>? VolumeChanged;
 

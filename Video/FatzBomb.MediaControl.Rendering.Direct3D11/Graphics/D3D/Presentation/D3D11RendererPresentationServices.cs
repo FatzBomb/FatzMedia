@@ -1,6 +1,5 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Cdg;
-using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
@@ -233,13 +232,18 @@ internal sealed class D3D11RendererPresentationServices
 
     public void ClearCompositionBackgroundFrame() => MediaCompositor.ClearBackgroundFrame();
 
+    /// <summary>Why the last visible composition present returned false, or null.</summary>
+    public string? LastCompositionFailureReason { get; private set; }
+
     public bool PresentMediaCompositionVisible(
         bool isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented)
     {
+        LastCompositionFailureReason = null;
         if (isDisposed || !_deviceResources.HasDevice)
         {
+            LastCompositionFailureReason = "renderer disposed or D3D11 device unavailable";
             if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: renderer disposed or D3D11 device unavailable.");
             return false;
         }
@@ -302,6 +306,7 @@ internal sealed class D3D11RendererPresentationServices
             reason: "media composition presentation");
         if (targets.Count == 0)
         {
+            LastCompositionFailureReason = "no active D3D11 presentation target";
             if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: no active D3D11 presentation target.");
             return false;
         }
@@ -313,16 +318,21 @@ internal sealed class D3D11RendererPresentationServices
                 VideoProcessorPresenter,
                 out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
         {
+            LastCompositionFailureReason = MediaCompositor.LastFailureReason ?? "media compositor draw failed";
             if (_configuration.EnableLogging) Debug.WriteLine($"[COMPOSITION] Visible present failed in media compositor reason={frame.Reason}.");
             return false;
         }
 
-        return Surfaces.NotifyTargetsPresented(
+        var presented = Surfaces.NotifyTargetsPresented(
             presentedTargets,
             State.IsNativeLiveResizeInProgress,
             syncImmediate: true,
             () => isDisposed,
             target => framePresented(target.Width, target.Height));
+        if (!presented)
+            LastCompositionFailureReason = "swap chain present was not completed";
+
+        return presented;
     }
 
     private bool PresentMediaCompositionWithDirectCompositionOverlaySplit(

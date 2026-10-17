@@ -26,6 +26,42 @@ internal static class TempMediaFile
     }
 
     /// <summary>
+    /// Returns a new unique scratch-file path under the shared media temp subfolder, creating the
+    /// subfolder if needed. The file itself is not created.
+    /// </summary>
+    public static string NewPath(string extension)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), TempSubfolderName);
+        _ = Directory.CreateDirectory(tempDir);
+        return Path.Combine(tempDir, Guid.NewGuid().ToString("N") + extension);
+    }
+
+    /// <summary>
+    /// Best-effort deletion of scratch files with <paramref name="extension"/> last written more
+    /// than <paramref name="age"/> ago.
+    /// </summary>
+    public static void DeleteOlderThan(string extension, TimeSpan age)
+    {
+        try
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), TempSubfolderName);
+            if (!Directory.Exists(tempDir))
+                return;
+
+            DateTime cutoff = DateTime.UtcNow - age;
+            foreach (var path in Directory.EnumerateFiles(tempDir, "*" + extension))
+            {
+                if (File.GetLastWriteTimeUtc(path) < cutoff)
+                    TryDelete(path);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup of transient media scratch files.
+        }
+    }
+
+    /// <summary>
     /// Deletes <paramref name="path"/> if it exists. Best-effort: IO failures are
     /// swallowed, since scratch-file cleanup must never surface as an operation error.
     /// </summary>

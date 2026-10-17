@@ -1,5 +1,3 @@
-using FatzBomb.MediaControl.Core.Audio;
-
 namespace FatzBomb.MediaControl.Core.Subtitle;
 
 public interface ISubtitleRasterizer : IDisposable

@@ -67,6 +67,9 @@ internal sealed partial class VideoPipeline(
     private volatile bool _seekWorkerShutdown;
     private double? _pendingSeekSeconds;
     private double _activeSeekTargetSeconds = double.NaN;
+    // True from a Seek request until its exact settle completes with nothing newer queued. A Play
+    // in that window is applied by the settle, which resumes playback from the new position.
+    private bool _seekSequenceActive;
     private int _playbackEndSignaled;
     private string? _tempPath;
     private const int MaxBufferedVideoFrames = 12;
@@ -105,28 +108,12 @@ internal sealed partial class VideoPipeline(
     private const int SharedDemuxerPostSeekPrerollBudgetMilliseconds = 2500;
     private const int PostSeekMinimumBufferedFrames = 3;
     private const int PostSeekAdaptiveSuppressionWindows = 2;
-    private double _adaptiveVideoSeekProcessingMilliseconds;
+    private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
     private double _minimumCommittedVideoPresentationSeconds = double.NaN;
-    private const int DefaultVideoSeekIntervalMilliseconds = 75;
-    private const int MinVideoSeekIntervalMilliseconds = 75;
-    private const int MaxVideoSeekIntervalMilliseconds = 300;
-    private const double VideoSeekIntervalMultiplier = 1.5;
-    private const double VideoSeekIntervalPaddingMilliseconds = 25.0;
-    private const double VideoSeekProcessingEmaPreviousWeight = 0.75;
-    private const double VideoSeekProcessingEmaCurrentWeight = 0.25;
-    private const double VideoSeekTargetChangeThresholdSeconds = 0.025;
     private const double MaxPresentLatenessSeconds = 0.18;
     private const double TinyVideoSeekThresholdSeconds = 0.25;
     private const double PreviewMaxFrameDistanceSeconds = 2.0;
     private const double SettleMaxFrameDistanceSeconds = 0.50;
-    private const int HardwarePreviewDecodeBudgetMilliseconds = 85;
-    private const int HardwareSettleDecodeBudgetMilliseconds = 125;
-    private const int SoftwarePreviewDecodeBudgetMilliseconds = 65;
-    private const int SoftwareSettleDecodeBudgetMilliseconds = 95;
-    private const int HardwarePreviewDecodeMaxAttempts = 32;
-    private const int HardwareSettleDecodeMaxAttempts = 72;
-    private const int SoftwarePreviewDecodeMaxAttempts = 20;
-    private const int SoftwareSettleDecodeMaxAttempts = 44;
     private int _presentationDiagnosticFrames;
     private int _presentationDiagnosticDroppedFrames;
     private int _presentationDiagnosticSelectionSkippedFrames;
@@ -267,6 +254,8 @@ internal sealed partial class VideoPipeline(
                 _ = TryFallbackToSoftwareVideo(path);
 
             _ = PresentFrameForCurrentPosition();
+            if (_videoDecoder != null)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoDecoder", $"Decoding {_videoDecoder.DescribeDecodePath()}", sourcePath: path);
         }
 
         ResetAdaptiveVideoSeekTiming();
@@ -303,6 +292,17 @@ internal sealed partial class VideoPipeline(
 
             if (_isPlaying)
                 return true;
+
+            if (IsSeekSequenceActive())
+            {
+                // A seek is queued or settling. Starting now would play the old position until the
+                // seek stops playback again; the settle resumes playback from the target instead.
+                _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
+                _isPlaying = true;
+                _state.SetPlaybackState(MediaPlayerState.Playing);
+                RaiseState(VideoEngineState.Playing);
+                return true;
+            }
 
             _ = TryPrepareLoopRestartAtBeginning();
 
@@ -365,6 +365,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
 
@@ -533,6 +534,7 @@ internal sealed partial class VideoPipeline(
             lock (_seekPumpLock)
             {
                 _pendingSeekSeconds = null;
+                _seekSequenceActive = false;
                 _activeSeekTargetSeconds = double.NaN;
                 _minimumCommittedVideoPresentationSeconds = double.NaN;
             }
@@ -587,7 +589,10 @@ internal sealed partial class VideoPipeline(
 
         var target = NormalizeSeekTarget(seconds);
         lock (_seekPumpLock)
+        {
             _pendingSeekSeconds = target;
+            _seekSequenceActive = true;
+        }
 
         _ = _seekSignal.Set();
         return true;
@@ -691,6 +696,8 @@ internal sealed partial class VideoPipeline(
             finally
             {
                 ClearActiveSeekTarget(target);
+                if (!asPreview)
+                    EndSeekSequenceIfSettled();
             }
 
             return videoFramePresented;
@@ -704,6 +711,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _activeSeekTargetSeconds = double.NaN;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
@@ -740,6 +748,7 @@ internal sealed partial class VideoPipeline(
         lock (_seekPumpLock)
         {
             _pendingSeekSeconds = null;
+            _seekSequenceActive = false;
             _activeSeekTargetSeconds = double.NaN;
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
@@ -752,6 +761,11 @@ internal sealed partial class VideoPipeline(
             _ = _seekSignal.WaitOne();
 
             var lastPreviewTarget = double.NaN;
+            // The time of the frame an active scrub's preview put on screen. A scrub preview may
+            // show a frame up to PreviewMaxFrameDistanceSeconds from the target; settling exactly
+            // on the target would then resume a second or two from what the viewer is looking at,
+            // so the settle resumes from the shown frame instead.
+            var shownPreviewFrameTime = double.NaN;
             while (!_seekWorkerShutdown)
             {
                 if (!TryTakePendingSeek(out var target))
@@ -762,7 +776,7 @@ internal sealed partial class VideoPipeline(
                 {
                     if (!HasPendingSeekRequest())
                     {
-                        SettleSeekTarget(normalizedTarget);
+                        SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
                         break;
                     }
 
@@ -771,7 +785,8 @@ internal sealed partial class VideoPipeline(
 
                 // A lone click keeps preview exact so the displayed frame is the playback start.
                 // Once a second changing target arrives, this is an active scrub: allow nearby
-                // preview frames for responsive feedback until the final settle seeks exactly.
+                // preview frames for responsive feedback; the settle then resumes from the frame
+                // shown.
                 var allowPreviewFallback = !double.IsNaN(lastPreviewTarget);
                 var previewFramePresented = false;
                 try
@@ -784,6 +799,9 @@ internal sealed partial class VideoPipeline(
                 }
 
                 lastPreviewTarget = normalizedTarget;
+                shownPreviewFrameTime = allowPreviewFallback && previewFramePresented
+                    ? _currentFrame?.PresentationTime ?? double.NaN
+                    : double.NaN;
                 if (!previewFramePresented && !HasPendingSeekRequest())
                 {
                     SettleSeekTarget(normalizedTarget);
@@ -793,7 +811,7 @@ internal sealed partial class VideoPipeline(
                 WaitForSeekPumpInterval();
                 if (!HasPendingSeekRequest())
                 {
-                    SettleSeekTarget(normalizedTarget);
+                    SettleSeekTarget(VideoSeekPolicy.GetScrubSettleTarget(normalizedTarget, shownPreviewFrameTime));
                     break;
                 }
             }
@@ -840,7 +858,7 @@ internal sealed partial class VideoPipeline(
     private void ClearActiveSeekTarget(double target)
     {
         lock (_seekPumpLock)
-            if (!double.IsNaN(_activeSeekTargetSeconds) && Math.Abs(_activeSeekTargetSeconds - target) <= VideoSeekTargetChangeThresholdSeconds)
+            if (!double.IsNaN(_activeSeekTargetSeconds) && Math.Abs(_activeSeekTargetSeconds - target) <= VideoSeekPolicy.TargetChangeThresholdSeconds)
                 _activeSeekTargetSeconds = double.NaN;
     }
 
@@ -866,17 +884,29 @@ internal sealed partial class VideoPipeline(
                 || IsMeaningfullyDifferentSeekTarget(_pendingSeekSeconds.Value, _activeSeekTargetSeconds));
     }
 
+    private bool IsSeekSequenceActive()
+    {
+        lock (_seekPumpLock)
+            return _seekSequenceActive;
+    }
+
+    private void EndSeekSequenceIfSettled()
+    {
+        lock (_seekPumpLock)
+            if (!_pendingSeekSeconds.HasValue)
+                _seekSequenceActive = false;
+    }
+
     private bool HasPendingSeekRequest()
     {
         lock (_seekPumpLock)
             return _pendingSeekSeconds.HasValue;
     }
 
-    private double NormalizeSeekTarget(double seconds) =>
-        !double.IsFinite(seconds) || seconds <= 0 ? 0 : Duration > 0 ? Math.Clamp(seconds, 0, Duration) : seconds;
+    private double NormalizeSeekTarget(double seconds) => VideoSeekPolicy.NormalizeTarget(seconds, Duration);
 
     private static bool IsMeaningfullyDifferentSeekTarget(double target, double previousTarget) =>
-        double.IsNaN(previousTarget) || Math.Abs(target - previousTarget) > VideoSeekTargetChangeThresholdSeconds;
+        VideoSeekPolicy.IsMeaningfullyDifferentTarget(target, previousTarget);
 
     private void WaitForSeekPumpInterval()
     {
@@ -889,41 +919,15 @@ internal sealed partial class VideoPipeline(
             _ = _seekSignal.WaitOne(TimeSpan.FromMilliseconds(10));
     }
 
-    private int GetAdaptiveVideoSeekIntervalMilliseconds()
-    {
-        double measuredMilliseconds;
-        lock (_seekPumpLock)
-            measuredMilliseconds = _adaptiveVideoSeekProcessingMilliseconds;
+    private int GetAdaptiveVideoSeekIntervalMilliseconds() => _seekPumpTiming.IntervalMilliseconds;
 
-        if (measuredMilliseconds <= 0 || !double.IsFinite(measuredMilliseconds))
-            return DefaultVideoSeekIntervalMilliseconds;
-
-        var intervalMilliseconds = (measuredMilliseconds * VideoSeekIntervalMultiplier)
-            + VideoSeekIntervalPaddingMilliseconds;
-
-        return (int)Math.Round(Math.Clamp(
-            intervalMilliseconds,
-            MinVideoSeekIntervalMilliseconds,
-            MaxVideoSeekIntervalMilliseconds));
-    }
-
-    private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed)
-    {
-        var elapsedMilliseconds = elapsed.TotalMilliseconds;
-        if (elapsedMilliseconds <= 0 || !double.IsFinite(elapsedMilliseconds))
-            return;
-
-        lock (_seekPumpLock)
-            _adaptiveVideoSeekProcessingMilliseconds = _adaptiveVideoSeekProcessingMilliseconds <= 0
-                ? elapsedMilliseconds
-                : (_adaptiveVideoSeekProcessingMilliseconds * VideoSeekProcessingEmaPreviousWeight) + (elapsedMilliseconds * VideoSeekProcessingEmaCurrentWeight);
-    }
+    private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed) => _seekPumpTiming.Record(elapsed);
 
     private void ResetAdaptiveVideoSeekTiming()
     {
         lock (_seekPumpLock)
         {
-            _adaptiveVideoSeekProcessingMilliseconds = 0;
+            _seekPumpTiming.Reset();
             _minimumCommittedVideoPresentationSeconds = double.NaN;
         }
     }
@@ -1476,7 +1480,12 @@ internal sealed partial class VideoPipeline(
         if (_videoDecoder == null || string.IsNullOrWhiteSpace(_videoDecoder.HardwareAccelerationMethod))
             return false;
 
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "VideoPipeline", $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}", sourcePath: path);
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            "VideoPipeline",
+            $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}. " +
+            $"Stream: {_videoDecoder.DescribeDecodePath()}. Reason: {_videoDecoder.DescribeHardwareStartupFailure()}.",
+            sourcePath: path);
         _videoDecoder.Dispose();
         _videoDecoder = new VideoDecoder(
             VideoDecodingMethod.Software,
@@ -1866,6 +1875,7 @@ internal sealed partial class VideoPipeline(
         if (HasAudio)
         {
             _ = _audioEngine!.Pause();
+            _audioEngine.EndFadeSessionAtEnd();
             _presentationClock.Pause(Duration);
         }
         else
@@ -2042,32 +2052,14 @@ internal sealed partial class VideoPipeline(
         return currentFrame != null && Math.Abs(currentFrame.PresentationTime - target) <= TinyVideoSeekThresholdSeconds;
     }
 
-    private static bool IsSeekFrameAcceptable(double frameTime, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
-    {
-        if (Math.Abs(frameTime - target) > maxFrameDistance)
-            return false;
+    private static bool IsSeekFrameAcceptable(double frameTime, double target, double maxFrameDistance, bool requireAtOrAfterTarget) =>
+        VideoSeekPolicy.IsFrameAcceptable(frameTime, target, maxFrameDistance, requireAtOrAfterTarget);
 
-        // Preview mode can show a nearby frame on either side of the requested target. Commit
-        // seeks must never accept an earlier keyframe as the playback start visual; otherwise the
-        // decoder can resume far behind the requested target on long-GOP files.
-        return !requireAtOrAfterTarget || frameTime + 0.001 >= target;
-    }
+    private static int GetSeekDecodeBudgetMilliseconds(bool useFastPreviewBudget, VideoDecoder decoder) =>
+        VideoSeekPolicy.GetDecodeBudgetMilliseconds(useFastPreviewBudget, decoder.IsHardwareAccelerated);
 
-    private static int GetSeekDecodeBudgetMilliseconds(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
-        ? decoder.IsHardwareAccelerated
-            ? HardwarePreviewDecodeBudgetMilliseconds
-            : SoftwarePreviewDecodeBudgetMilliseconds
-        : decoder.IsHardwareAccelerated
-            ? HardwareSettleDecodeBudgetMilliseconds
-            : SoftwareSettleDecodeBudgetMilliseconds;
-
-    private static int GetSeekDecodeMaxAttempts(bool useFastPreviewBudget, VideoDecoder decoder) => useFastPreviewBudget
-        ? decoder.IsHardwareAccelerated
-            ? HardwarePreviewDecodeMaxAttempts
-            : SoftwarePreviewDecodeMaxAttempts
-        : decoder.IsHardwareAccelerated
-            ? HardwareSettleDecodeMaxAttempts
-            : SoftwareSettleDecodeMaxAttempts;
+    private static int GetSeekDecodeMaxAttempts(bool useFastPreviewBudget, VideoDecoder decoder) =>
+        VideoSeekPolicy.GetDecodeMaxAttempts(useFastPreviewBudget, decoder.IsHardwareAccelerated);
 
     private void DropFramesBeforeCommittedVideoTarget(VideoDecoder decoder)
     {

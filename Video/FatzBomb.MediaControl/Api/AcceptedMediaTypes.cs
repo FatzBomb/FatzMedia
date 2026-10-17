@@ -31,7 +31,7 @@ public sealed record AcceptedMediaTypes(
         .Select(filter => filter.ToOpenFileDialogFilter()));
 
     internal static AcceptedMediaTypes FromCurrentRuntime() => new(
-            Sorted(FileTypes.Audio),
+            Sorted(FileTypes.Audio.Concat(FileTypes.FfmpegAudio)),
             Sorted(FileTypes.Video),
             Sorted(FileTypes.Archive),
             Sorted(FileTypes.Image),

@@ -156,7 +156,7 @@ public static class FileTreeBuilder
             tree.Type = FileType.Image;
             return tree;
         }
-        if (FileTypes.Audio.Contains(ext))
+        if (FileTypes.IsPlayableAudio(path))
         {
             tree.AudioPath = path;
             if (searchCompanionFile)
@@ -178,7 +178,7 @@ public static class FileTreeBuilder
             if (searchCompanionFile)
             {
                 // find first existing audio companion by trying known audio extensions
-                foreach (var aExt in FileTypes.Audio)
+                foreach (var aExt in FileTypes.Audio.Concat(FileTypes.FfmpegAudio.Except(FileTypes.Audio, StringComparer.OrdinalIgnoreCase)))
                 {
                     var audioPath = Path.ChangeExtension(path, aExt);
                     if (File.Exists(audioPath))

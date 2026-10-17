@@ -2,10 +2,48 @@
 
 ## Active
 
-- `active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md` - contract/cache foundation
-  (481 tests), analyzer-scan (494 tests), and plain-audio transport application
-  (508 tests; 44 focused 030B cases) slices implemented and validated 2026-08-18;
-  the real native-file analyzer/transport smoke remains pending.
+Stages implemented in the unattended 2026-10-16 session stay here, each
+"implemented, pending manual smoke", until the owner confirms the smoke in its update note.
+
+- `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented; owner smoke passed 2026-10-17
+  (Next panel; `updates/031A_1`); 30 focused tests. Player host controls for 031A/031B/014A/020A in
+  `updates/031A_2`.
+- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented; owner smoke passed 2026-10-17
+  (fades; `updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
+- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented; owner smoke passed 2026-10-17
+  (radio, progressive MP3, retries, MP4 refusal; `updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
+- `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
+  (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
+  pending; macOS deferred.
+- `active/026A_ACTIVE_CrossPlatformRendererBackends.md` - Vulkan slice 1 implemented
+  (`updates/026A_1`); validated on lavapipe; swapchains/shaders/OpenGL/Metal later.
+- `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
+  implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
+- `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
+  owner smoke passed 2026-10-17 (`updates/020A_1`).
+- `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
+  (`updates/017A_1`); native scheduling integration not started.
+- `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
+  extracted, pending manual video smoke (`updates/015A_1`).
+- `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
+  full-frame copy removed, pending manual smoke (`updates/010A_1`).
+- `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
+  immutable snapshot reuse, pending manual CDG smoke (`updates/018A_1`).
+- `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
+  ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
+- `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
+  capture script; Windows baseline capture pending (`updates/022A_1`).
+- `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
+  normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
+  film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
+  pending manual smoke: the owner has no such files yet (`updates/033A_1`,
+  `updates/033A_2`).
+- `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
+  wrong-version native files, implemented, pending manual smoke (`updates/034A_1`).
+- `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
+  (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
+  and the release seek at the last drag position is ignored, so nothing jumps; implemented;
+  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -15,6 +53,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md` — versioned media-analysis cache, background silence scan, and plain-audio trim transport; 508 automated tests; owner-confirmed native smoke (2026-10-16)
 - `complete/030A_COMPLETED_VisualTransforms.md` — Core-owned base-visual transforms with software/Direct3D11 parity, optional whole-composition processing, Player validation flyouts, 438-test automated baseline, and user-confirmed manual smoke on both renderer paths (2026-08-17)
 - `complete/029C_COMPLETED_EventDrivenWpfAutoHide.md` — event-driven WPF surface AutoHide (default on, `--no-auto-hide` opt-out, internal-host-only visibility) with additive Core `HasVisualContent`; Release 0 warnings/errors, 406 tests, format/Core/WPF/parity gates, Core+WPF packs, WPF specialist and final diff review no blockers, manual Player AutoHide smoke passed (2026-08-08)
 - `complete/029B_COMPLETED_LoadResetPitchTempoOptions.md` — per-load pitch/tempo reset options with `MediaChangeReason.LoadReset`; Release 0 warnings/errors, 397 tests, format/Core/WPF/parity/package gates passed, strict review no blockers, manual reset smoke passed with both startup flags (2026-08-08)
@@ -47,26 +86,16 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Current work: `active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md`. After 030B is
-completed, the recommended next stage is `future/031A_IDEA_PreparedNextPlaylistSlot.md`.
+- `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
+  BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
+  2026-10-17).
+
+Next stage: 032A (needs CD drive measurements first).
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and
 trimming, prepared-next and audio crossfade, then streaming.
 
-The list is ordered by recommended next work, cross-platform enablement, product
-features, then internal engine improvements.
+All previously listed ideas (through 022A) were moved to `active/` on 2026-10-16. Their
+deferred later slices are recorded in each active stage file.
 
-- `future/031A_IDEA_PreparedNextPlaylistSlot.md` - host-owned playlist with a Core depth-one prepared-next slot.
-- `future/031B_IDEA_AudioFadeCrossfadeModel.md` - audio fade/crossfade envelope model for ordinary local audio.
-- `future/014A_IDEA_StreamingNetworkPlayback.md` - direct HTTP/HTTPS audio/video with a source capability matrix.
-- `future/026A_IDEA_CrossPlatformRendererBackends.md` - Vulkan, OpenGL, and Metal renderer packages.
-- `future/026B_IDEA_CrossPlatformPlatformServices.md` - Linux and macOS platform-service packages.
-- `future/027A_IDEA_UiAdapterImplementations.md` - WinUI 3, WinForms, and Avalonia adapters.
-- `future/020A_IDEA_AudioFilterFramework.md` - ordered, bypassable audio processing.
-- `future/017A_IDEA_DisplayRateCompositorRewrite.md` - display-rate scheduling and frame-repeat policy.
-- `future/015A_IDEA_BroadVideoPipelineSplit.md` - incremental responsibility extraction.
-- `future/010A_IDEA_SoftwareVideoUploadCopyPath.md` - reduce software-frame copy and upload cost.
-- `future/018A_IDEA_CDGSnapshotOwnershipRedesignPooling.md` - explicit snapshot ownership and reuse.
-- `future/019A_IDEA_VideoFrameEventArgsReuseApiRedesign.md` - explicit event payload lifetimes.
-- `future/022A_IDEA_ThreadModelProfilingAndSimplification.md` - measured thread ownership cleanup.

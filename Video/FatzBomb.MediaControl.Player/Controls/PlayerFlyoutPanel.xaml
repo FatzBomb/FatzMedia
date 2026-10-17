@@ -295,6 +295,59 @@
                         IsChecked="{Binding ResetTempoOnMediaLoad, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="Reset tempo to 100% after the next successful media load" />
                 </DockPanel>
+                <Border
+                    Margin="0,7,0,0"
+                    Padding="8,5"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MiniPanelStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel Margin="0,0,10,0" VerticalAlignment="Center">
+                            <CheckBox
+                                Content="EQ"
+                                IsChecked="{Binding EqualizerEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="10-band graphic equalizer (applied before normalization and fades). Off or flat attaches nothing." />
+                            <Button
+                                Width="48"
+                                Margin="0,6,0,0"
+                                Command="{Binding FlattenEqualizerCommand}"
+                                Content="Flat"
+                                Style="{StaticResource SyncButtonStyle}"
+                                ToolTip="Set every band to 0 dB" />
+                        </StackPanel>
+                        <ItemsControl IsEnabled="{Binding EqualizerEnabled}" ItemsSource="{Binding EqualizerBands}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Width="36">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            Style="{StaticResource ValueTextStyle}"
+                                            Text="{Binding GainDb, StringFormat={}{0:+0;-0;0}}" />
+                                        <Slider
+                                            Height="72"
+                                            Margin="0,2"
+                                            HorizontalAlignment="Center"
+                                            IsSnapToTickEnabled="True"
+                                            Maximum="12"
+                                            Minimum="-12"
+                                            Orientation="Vertical"
+                                            TickFrequency="1"
+                                            ToolTip="{Binding ToolTipText}"
+                                            Value="{Binding GainDb, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            Style="{StaticResource LabelTextStyle}"
+                                            Text="{Binding Label}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
 
@@ -356,6 +409,221 @@
                             Value="{Binding CdgBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                 </Border>
+            </StackPanel>
+        </Border>
+
+        <!--  Next flyout: prepared-next slot, fades, and network streams  -->
+        <Border Style="{StaticResource FlyoutPanelStyle}" Visibility="{Binding ActiveFlyout, Converter={StaticResource FlyoutVisibilityConverter}, ConverterParameter=Next}">
+            <StackPanel>
+                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="NEXT" />
+                    <Button
+                        Width="78"
+                        Click="ChooseNextButton_Click"
+                        Content="Choose..."
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Pick the next item; it is analyzed in the background while the current item plays" />
+                    <TextBlock
+                        MinWidth="220"
+                        MaxWidth="420"
+                        Margin="10,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding PreparedNextText}"
+                        TextTrimming="CharacterEllipsis" />
+                    <Button
+                        Width="96"
+                        Command="{Binding PlayNextNowCommand}"
+                        Content="Play next now"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Switch to the prepared item now (fades when FADE is above 0)" />
+                    <Button
+                        Width="52"
+                        Margin="6,0,0,0"
+                        Command="{Binding ClearNextCommand}"
+                        Content="Clear"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Forget the prepared item" />
+                </StackPanel>
+                <StackPanel
+                    Margin="0,7,0,0"
+                    HorizontalAlignment="Center"
+                    Orientation="Horizontal">
+                    <CheckBox
+                        Margin="0,0,14,0"
+                        VerticalAlignment="Center"
+                        Content="Auto-next"
+                        IsChecked="{Binding AutoNext, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Start the prepared item automatically when the current one ends" />
+                    <TextBlock
+                        Margin="0,0,6,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="FADE" />
+                    <Slider
+                        Width="120"
+                        VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True"
+                        Maximum="10"
+                        Minimum="0"
+                        TickFrequency="0.5"
+                        ToolTip="Fade length for transitions to the next item; 0 switches instantly"
+                        Value="{Binding FadeSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock
+                        Width="36"
+                        Margin="6,0,14,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding FadeSeconds, StringFormat={}{0:0.#}s}" />
+                    <Button
+                        Width="70"
+                        Command="{Binding FadeOutCommand}"
+                        Content="Fade out"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="{Binding FadeOutToolTip}" />
+                    <Button
+                        Width="62"
+                        Margin="6,0,0,0"
+                        Command="{Binding FadeInCommand}"
+                        Content="Fade in"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="{Binding FadeInToolTip}" />
+                    <Button
+                        Width="58"
+                        Margin="6,0,0,0"
+                        Command="{Binding CancelFadeCommand}"
+                        Content="Cancel"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Stop the running fade; the volume stays where the fade reached" />
+                </StackPanel>
+                <StackPanel
+                    Margin="0,7,0,0"
+                    HorizontalAlignment="Center"
+                    Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="URL" />
+                    <TextBox
+                        Width="320"
+                        VerticalAlignment="Center"
+                        Text="{Binding NetworkUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="http:// or https:// audio stream (internet radio or an MP3/OGG file)" />
+                    <Button
+                        Width="64"
+                        Margin="6,0,0,0"
+                        Command="{Binding OpenUrlCommand}"
+                        Content="Open"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Load the URL as the current item" />
+                    <TextBlock
+                        MinWidth="160"
+                        MaxWidth="320"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding StreamInfoText}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!--  Log flyout: engine diagnostics, newest first  -->
+        <Border Style="{StaticResource FlyoutPanelStyle}" Visibility="{Binding ActiveFlyout, Converter={StaticResource FlyoutVisibilityConverter}, ConverterParameter=Log}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource LabelTextStyle}"
+                        Text="LOG" />
+                    <TextBlock
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ValueTextStyle}"
+                        Text="{Binding DiagnosticLog.Count, StringFormat='{}{0} entries, newest first'}" />
+                    <Button
+                        Width="64"
+                        Command="{Binding CopyLogCommand}"
+                        Content="Copy all"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Copy every entry, oldest first, to the clipboard" />
+                    <Button
+                        Width="52"
+                        Margin="6,0,0,0"
+                        Command="{Binding ClearLogCommand}"
+                        Content="Clear"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="Clear this list (the log file keeps everything)" />
+                    <Button
+                        Width="92"
+                        Margin="6,0,0,0"
+                        Command="{Binding OpenLogFileCommand}"
+                        Content="Open log file"
+                        Style="{StaticResource SyncButtonStyle}"
+                        ToolTip="{Binding LogFilePath}" />
+                </StackPanel>
+                <ListBox
+                    Width="860"
+                    Height="240"
+                    Margin="0,7,0,0"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrushSoft}"
+                    FontFamily="Consolas"
+                    FontSize="11"
+                    ItemsSource="{Binding DiagnosticLog}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="58" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding TimeText}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Level}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Level}" Value="Warning">
+                                                    <Setter Property="Foreground" Value="#FFC857" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                    <Setter Property="Foreground" Value="#FF6B6B" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Foreground="{StaticResource AccentBrush}"
+                                    Text="{Binding Category}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding Category}" />
+                                <TextBlock
+                                    Grid.Column="3"
+                                    Foreground="{StaticResource SoftTextBrush}"
+                                    Text="{Binding Message}"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="4,1" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
             </StackPanel>
         </Border>
     </Grid>

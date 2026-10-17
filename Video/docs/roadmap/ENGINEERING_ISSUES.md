@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-08-17
+Updated: 2026-10-17
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -15,6 +15,72 @@ None.
 None.
 
 ## Completed
+
+### ENG-012 - "Composition present failed" warnings on audio-only seeks
+
+Resolved: 2026-10-17 (owner smoke: "all seems good" after seeking an MP3 with no
+background).
+
+Reported: 2026-10-17 (owner smoke log, confirmed still present after the 035A fixes).
+Seeking an audio-only MP3 logged `Composition present failed reason=current position
+refreshed` as a warning on every seek, and `presentation started` once on load. Playback
+was unaffected.
+
+Fix:
+- `RefreshCurrentPosition` no longer presents when the media has nothing visual (no video,
+  image, CD+G, subtitles, or composition background). It used to send an empty frame on
+  every seek, which Direct3D11 refused.
+- The warning now quotes why the renderer refused: `IMediaRendererBackend` gains an
+  optional `LastPresentFailureReason` (default null), which Direct3D11 fills from each of
+  its failure points (no active presentation target, a layer that could not be prepared,
+  the primary target draw, the swap chain present). Those reasons used to go only to
+  `Debug.WriteLine`, which Release drops.
+
+### ENG-011 - AV1 hardware decode falls back to software on some files
+
+Resolved: 2026-10-17 (owner smoke: `Scream 7.mkv` logs `decoder av1 via d3d11va, metadata OBUs
+removed`).
+
+Reported: 2026-10-17 (owner smoke, FFmpeg 9). `Scream 7.mkv` logged "Hardware video decode
+produced no usable startup frame; falling back to software"; other AV1 files decode on
+the GPU. The log did not say why, because the decoder's reasons went only to
+`Debug.WriteLine`, which Release builds drop.
+
+Done so far:
+- Every video open now logs `VideoDecoder: Decoding <codec> <profile> <bit depth> <size>
+  (<pixel format>), decoder <name> via <device>` or `in software`.
+- The fallback warning now names the stream and the reason: FFmpeg withdrew the GPU format
+  after the GPU decoder failed to start (unsupported profile, bit depth, or size), never
+  offered it, or the last FFmpeg error text.
+- Fixed a latent case on the way: if no hardware device could be created, the native `av1`
+  decoder (which cannot decode in software) was opened anyway and produced no video, with
+  no fallback. The software decoder (`libdav1d`) is now used instead.
+
+Owner's log with the new warning: `Stream: AV1 Main 8-bit 1920x1080 (yuv420p), decoder av1
+in software (d3d11va configured but not used). Reason: the decoder never asked for an output
+format (no decodable picture in the first packets); last FFmpeg error: Invalid data found
+when processing input.` So a plain 8-bit 1080p stream, which the GPU supports: FFmpeg's
+native `av1` decoder rejected the bitstream before it reached the sequence header, while
+`libdav1d` decodes the same packets. The GPU is not the problem.
+
+Since then the warning also quotes FFmpeg's own log lines for that decoder (up to six,
+through `FfmpegLogCapture`, which installs one process-wide FFmpeg log callback and passes
+everything else to FFmpeg's default logger).
+
+FFmpeg's lines for `Scream 7.mkv`: `trailing_zero_bit out of range: 1, but must be in
+[0,0]`, `Failed to read unit 1 (type 5): Invalid data`, `trailing_one_bit out of range`,
+then `Missing reference frame needed for show_existing_frame`. Type 5 is a metadata OBU
+(HDR10+, ITU-T T.35, timecode). The file's encoder wrote metadata OBUs with bad trailing
+bits; FFmpeg's native `av1` decoder parses metadata strictly and drops the whole packet,
+while `libdav1d` ignores them.
+
+Fix: `Av1MetadataObuFilter` runs FFmpeg's `filter_units` bitstream filter
+(`remove_types=5`) on packets for the native `av1` decoder. It splits packets into OBUs by
+their size fields without parsing them, so the malformed bytes are never read. Nothing the
+picture needs is lost. The decode-path log line ends in `metadata OBUs removed` when it is
+active. A build without `filter_units` keeps the old behaviour (and the software fallback).
+Tested natively (Linux, real FFmpeg 9) with hand-built AV1 packets carrying malformed
+metadata.
 
 ### ENG-001 - Reset raced queued and in-flight control operations
 
@@ -115,8 +181,7 @@ idempotency, and explicit rejection from an inline control event.
 Resolved: 2026-08-17
 
 Stage 030A was archived after its manual smoke passed, active/completed roadmap links
-were updated, and this engineering register was added. The generated Graphify index
-still requires an incremental refresh after the current working tree is committed.
+were updated, and this engineering register was added.
 
 ## Current Validation Baseline
 

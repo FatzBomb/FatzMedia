@@ -13,6 +13,7 @@ internal static partial class Bootstrap
     public static bool IsInitialized => _isInitialized;
     public static string Message { get; set; } = string.Empty;
     public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
+    public static NativeDependencyReport NativeDependencies { get; private set; } = NativeDependencyReport.Empty;
     internal static string? RootPath { get; private set; }
     public static string? FfmpegPath => FFmpeg.AutoGen.ffmpeg.RootPath;
     internal static string? BassPath { get; private set; }
@@ -22,6 +23,7 @@ internal static partial class Bootstrap
     public static bool EnsureInitialized(IReadOnlyList<string> nativeLibraryPaths) => Initialize(nativeLibraryPaths);
     private static List<string> searchPaths = [];
     private static readonly List<string> _nativeLoadMessages = [];
+    private static readonly List<NativeLibraryCheck> _nativeChecks = [];
 
     private static bool Initialize(IReadOnlyList<string> nativeLibraryPaths)
     {
@@ -68,6 +70,12 @@ internal static partial class Bootstrap
                 _ = Interlocked.Exchange(ref _initOnce, 0);
                 return IsInitialized;
             }
+            finally
+            {
+                // Recorded even when a load step throws, so the report never goes stale.
+                NativeDependencies = new NativeDependencyReport([.. _nativeChecks], [.. searchPaths]);
+            }
+
             return IsInitialized;
         }
 
@@ -85,6 +93,38 @@ internal static partial class Bootstrap
             : $" {string.Join(" ", NativeLoadMessages)}";
 
         return $"Failed to load required native libraries. Search path(s): {searchPathText}.{details}";
+    }
+
+    private static void AddNativeCheck(string component, string fileName, bool isRequired, NativeLibraryStatus status, string? path = null)
+    {
+        string? hint = null;
+        if (status == NativeLibraryStatus.Missing)
+        {
+            hint = NativeDependencyReport.FindVersionHint(fileName, ListSearchPathFileNames());
+            if (hint is not null)
+                AddNativeLoadMessage(hint);
+        }
+
+        _nativeChecks.Add(new NativeLibraryCheck(component, fileName, isRequired, status, path, hint));
+    }
+
+    private static IEnumerable<string> ListSearchPathFileNames()
+    {
+        foreach (var path in searchPaths)
+        {
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(path, "*.dll", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>().ToArray();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+                yield return file;
+        }
     }
 
     private static void AddNativeLoadMessage(string message)

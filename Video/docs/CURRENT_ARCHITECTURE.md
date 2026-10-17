@@ -10,29 +10,21 @@
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
 - `FatzBomb.MediaControl.Player`: WPF validation host.
 
-Planned UI adapters remain separate projects using the same package pattern:
+UI adapters, renderer backends, and platform services are separate projects using the same
+package pattern. Status as of 2026-10-16:
 
-- `FatzBomb.MediaControl.WinUI`
-- `FatzBomb.MediaControl.Avalonia`
-- `FatzBomb.MediaControl.WinForms`
+- UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
+  `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
+- Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
+  frame-sink surfaces only) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
+- Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
+  `FatzBomb.MediaControl.MacOS` planned.
 
-Planned renderer backends are independently selectable packages:
-
-- `FatzBomb.MediaControl.Rendering.Vulkan`
-- `FatzBomb.MediaControl.Rendering.OpenGL`
-- `FatzBomb.MediaControl.Rendering.Metal`
-
-Planned non-Windows platform services remain separate from renderers and UI adapters:
-
-- `FatzBomb.MediaControl.Linux`
-- `FatzBomb.MediaControl.MacOS`
-
-The Software renderer is implemented; the backends above and non-Windows platform
-services are roadmap directions, not implemented projects. See
+See
 `roadmap/complete/024A_COMPLETED_SoftwareRenderer.md`,
-`roadmap/future/026A_IDEA_CrossPlatformRendererBackends.md`,
-`roadmap/future/026B_IDEA_CrossPlatformPlatformServices.md`, and
-`roadmap/future/027A_IDEA_UiAdapterImplementations.md`.
+`roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`,
+`roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`, and
+`roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
 
 ## Platform Composition
 
@@ -177,6 +169,7 @@ named `window` handle.
 - Main video decoding owns the Core-managed video demux cursor used for video seek, buffering, and proactive loop pre-seek.
 - `VideoAudioEngine` opens an independent FFmpeg cursor for the same source. This preserves codec priming/preroll semantics; routing initial audio packets through the video cursor caused a persistent startup offset with AV1 + E-AC-3 until the first seek.
 - Coordinated seek still repositions both cursors to the same target before video warm-up and audio resume.
+- Seek-bar drags are bracketed by `BeginScrub`/`EndScrub` (035A): playback carries on, and `MediaControls` ignores a scrub seek that repeats the previous one (the release seek at the last drag position), and `VideoPipeline` settles an active scrub on the frame its last preview showed. A video `Play` that arrives while a seek is queued or settling is applied by the settle, which resumes from the target.
 - Audio-backed gapless looping remains independent: video pre-seeks its cursor while `VideoAudioEngine` wraps its own decoder without stopping the BASS channel.
 
 ## Native Video Frames And Hardware Decode
@@ -583,11 +576,10 @@ line reports `Visual transform=IDENTITY|ACTIVE`, `AutoHide=`, and
 `Load resets: Pitch=…, Tempo=…` alongside renderer/presentation. Validation
 tooling only, not production UI.
 
-## Silence Trimming Analysis Cache (Stage 030B, active — contract, cache, analyzer, and transport slices)
+## Silence Trimming Analysis Cache (Stage 030B, completed)
 
-Stage 030B is active (2026-08-18); the contract/cache-foundation, analyzer-scan, and
-plain-audio transport-application slices are implemented and validated, while the
-real native-file analyzer/transport smoke remains pending. The public API adds
+Stage 030B is completed (2026-10-16): the contract/cache-foundation, analyzer-scan, and
+plain-audio transport-application slices are implemented and owner-confirmed. The public API adds
 immutable `SilenceTrimOptions`
 (disabled by default: `Enabled = false`; pinned defaults threshold `-50 dBFS`,
 minimum qualifying edge silence `0.5 s`, retained edge padding `0.1 s`, independent
@@ -609,7 +601,7 @@ and invalid records as misses. The shared process-lifetime instance
 (`MediaAnalysisCache.Shared`) is registered as a singleton into every Core DI
 container (`MediaControlServiceProvider`) and therefore survives player `Reset`.
 The pinned contract lives at
-`roadmap/active/030B_ACTIVE_SilenceTrimmingAnalysisCache.md`.
+`roadmap/complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md`.
 
 **Analyzer slice (2026-08-18)** — for enabled plain local non-tracker audio, a
 cancellable sequential 0.1-second silence scan (`AudioSilenceAnalyzer`) runs inside
@@ -647,7 +639,111 @@ Tempo changes alter wall-clock arrival of the position sync but do not require
 rearming it. CDG-paired opens pass `analyzeSilence: false`; video, archives,
 tracker/MOD formats, and live/stream inputs remain excluded; disabled/default
 behavior remains identity. The first uncached `Open` only warms the cache — a
-future explicit pre-analysis / prepared-next path supplies first-play cache.
+Stage 031A's prepared-next analysis supplies first-play cache.
+
+## Prepared-Next Slot (Stage 031A, implemented — pending manual smoke)
+
+Core owns a depth-one prepared-next slot; hosts own playlists and queues.
+`IMediaControlSession` exposes `PreparedNext` (immutable `PreparedNextInfo` snapshot),
+`AnalyzeAsync`, `PrepareNextAsync`, `ClearPreparedNext`,
+`TransitionToPreparedNextAsync`, `AutoTransitionToPreparedNext` (default off), and the
+`PreparedNextChanged` / `PreparedNextTransitioned` events. The internal
+`Core/Prepared/PreparedNextSlot` state machine (Empty → Analyzing → Ready →
+Transitioning → Empty; Ready → Stale when the prepared file's path/length/last-write
+identity changes) guards every completion with a generation so cleared or replaced
+items never resurrect. Analysis goes through the internal `IMediaFileAnalyzer`, which
+the BASS `AudioEngine` implements on its own decode stream (never the current media's
+handles) and which warms the shared 030B `MediaAnalysisCache` and normalization-gain
+cache, so the later transition load hits the cache instead of rescanning. Only local
+plain non-tracker audio is analyzed; other sources reach Ready with no analysis.
+Transitions run on the control queue (load, then play); automatic transitions are
+queued behind the host `MediaEnded` delivery and Core end completion and are skipped
+when the host intervened (transport generation, load generation, slot generation,
+loop, or auto flag changed). `Reset` and `Dispose` clear the slot. See
+`roadmap/active/031A_ACTIVE_PreparedNextPlaylistSlot.md`.
+
+## Audio Fades (Stage 031B, implemented — pending manual smoke)
+
+Public `AudioFadePoint`, immutable sorted `AudioFadeEnvelope` (exact-position upsert,
+linear interpolation, `AudibleStart` for the leading zero plateau), and
+`AudioCrossfadeOptions` (shared duration, disabled by default). Internal
+`Core/Audio/Fade/AudioFadeSchedule` turns an envelope into chained linear ramps and
+`AudioFadeRunner` applies them (latest wins) to an `IAudioFadeGainTarget`. The BASS
+`AudioEngine` implements the target with a dedicated `BASS_FX_VOLUME` stage, so final
+gain = envelope x channel volume attribute (user volume) x normalization gain FX.
+Fade sessions end on Open/Close/Stop (Stop restores unity). `MediaControlPlayer`
+exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
+which turns 031A transitions into fade-through transitions; waits run off the control
+queue. Overlapping two-handle crossfades are deferred. See
+`roadmap/active/031B_ACTIVE_AudioFadeCrossfadeModel.md`.
+
+## Network Sources (Stage 014A, implemented — pending manual smoke)
+
+`MediaInputSource.FromUri` creates `NetworkUri` sources (http/https only, optional
+`MediaNetworkContent` hint). Behavior branches on `MediaSourceCapabilities` rows from
+the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
+NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
+`IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
+`MediaControlPlayer.CurrentSourceCapabilities` expose the row. HTTP audio opens through
+the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
+normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
+monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
+`StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
+Network sources skip sidecars, silence trim, normalization pre-analysis, and
+prepared-next analysis. Network video is deferred (file-path demuxer). See
+`roadmap/active/014A_ACTIVE_StreamingNetworkPlayback.md`.
+
+## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
+
+`FatzBomb.MediaControl.Linux` (net10.0, references Core only) supplies
+`LinuxMediaControlPlatformFactory` and the `IMediaControlPlatformServices`
+registrations: host-supplied BASS/FFmpeg `.so` loading (dlopen by absolute path, a
+ManagedBass `DllImport` resolver, `BASS_PluginLoad` add-ons, FFmpeg preloaded in
+dependency order), a kernel-wait-plus-spin precision waiter, host-configured refresh
+timing, a BASS-snapshot device monitor using Core's `AudioDeviceChangeDetector`, the
+Core MIDI lyric extractor, software-only hardware-decode services, and an FFmpeg
+software capability scan. Renderer choice stays with the host (software renderer
+today). Sidecar extension matching in Core is case-insensitive on case-sensitive file
+systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
+
+## Vulkan Renderer Preview (Stage 026A, slice 1)
+
+`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core only, Silk.NET.Vulkan) offers
+`VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
+1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
+blit using the software renderer's placement rules, and readback. Overlay, transform,
+native-resource, and window-swapchain frames are rejected with a diagnostic until later
+slices. A lavapipe conformance suite compares output with `SoftwareCompositionRenderer`.
+See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
+
+## Avalonia Adapter (Stage 027A, slice 1)
+
+`FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
+`MediaSurface` that attaches one primary managed frame-sink surface to any
+`IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
+final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
+It follows the same adapter rules as WPF, enforced by
+`scripts/check-adapter-boundary.ps1`. See
+`roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
+
+## Audio Filter Framework (Stage 020A, slice 1)
+
+The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain
+-> fade envelope -> channel volume -> output. Internal `IAudioFilter` stages (priority
+order, bypass = no native stage, reported latency, lifecycle per stream) are hosted by
+the `AudioEngine` through `IAudioFilterHost`. The first filter is a BASS_FX PEAKEQ
+equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
+`IMediaControlSession.Equalizer`, `EqualizerChanged`). See
+`roadmap/active/020A_ACTIVE_AudioFilterFramework.md`.
+
+## CDG Snapshot Ownership (Stage 018A, slice 1)
+
+`CdgRenderSnapshot` is immutable and garbage-collected; it is never pooled. The
+presentation coordinator caches the latest one for retained refreshes and video
+composition, and renderers only read it during `PresentComposition` (Direct3D11's layer
+cache drops the payload). `CdgStateMachine.CreateSnapshot` returns the previous snapshot
+when nothing changed and shares immutable buffers otherwise where possible. See
+`roadmap/active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md`.
 
 ## Session Reset
 

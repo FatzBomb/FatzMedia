@@ -12,6 +12,9 @@ internal static partial class Bootstrap
     {
         if (IsBassLoaded) return true;
 
+        // A retry after a failed initialization replaces this component's earlier results.
+        _ = _nativeChecks.RemoveAll(static check => check.Component == "BASS");
+
         (string dllFile, string[] extensions, bool isRequired)[] libraryFiles =
         [
             ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav", ".mod", ".it", ".s3m", ".xm", ".mo3", ".mtm", ".umx"], true),
@@ -50,6 +53,7 @@ internal static partial class Bootstrap
                         ? LoadLibrary(loadPath) != IntPtr.Zero
                         : MBass.PluginLoad(loadPath) != 0;
 
+                    AddNativeCheck("BASS", dllFile, isRequired, loaded ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, loadPath);
                     if (loaded)
                     {
                         FileTypes.Audio.UnionWith(extensions);
@@ -74,6 +78,7 @@ internal static partial class Bootstrap
             }
             else
             {
+                AddNativeCheck("BASS", dllFile, isRequired, NativeLibraryStatus.Missing);
                 if (isRequired)
                 {
                     missingRequired.Add(dllFile);
@@ -124,6 +129,9 @@ internal static partial class Bootstrap
     {
         if (IsFfmpegLoaded) return true;
 
+        // A retry after a failed initialization replaces this component's earlier results.
+        _ = _nativeChecks.RemoveAll(static check => check.Component == "FFmpeg");
+
         string[] supportedFileTypes = [".3g2", ".3gp", ".asf", ".avi", ".f4v", ".flv", ".m2ts", ".m2v", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg",
                                           ".mpg", ".mts", ".mxf", ".ogm", ".ogv", ".qt", ".rm", ".rmvb", ".ts", ".vob", ".webm", ".wmv"];
 
@@ -147,16 +155,34 @@ internal static partial class Bootstrap
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", $"Path found: {foundPath}");
             var tempPath = ffmpeg.RootPath;
             ffmpeg.RootPath = foundPath;
-            unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
+            string? loadError = null;
+            try
+            {
+                unsafe { ok = ffmpeg.av_guess_format("avi", null, null) != null; }
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or NotSupportedException)
+            {
+                // FFmpeg.AutoGen throws, rather than returning null, when a DLL in the set cannot
+                // load (mixed builds, wrong architecture, or a missing dependency).
+                ok = false;
+                loadError = ex.Message;
+            }
+
+            foreach (var dllFile in libraryFiles)
+                AddNativeCheck("FFmpeg", dllFile, isRequired: true, ok ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, Path.Combine(foundPath, dllFile));
+
             if (ok)
             {
                 FileTypes.Video.UnionWith(supportedFileTypes);
+                FileTypes.RegisterFfmpegAudio();
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "FFmpeg", "All FFmpeg libraries loaded successfully");
                 return true;
             }
             else
             {
-                AddNativeLoadMessage("FFmpeg DLLs were found but did not load successfully.");
+                AddNativeLoadMessage(loadError is null
+                    ? "FFmpeg DLLs were found but did not load successfully."
+                    : $"FFmpeg DLLs were found but did not load successfully: {loadError}");
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", "FFmpeg libraries found but failed to initialize");
                 ffmpeg.RootPath = tempPath;
                 return false;
@@ -164,14 +190,26 @@ internal static partial class Bootstrap
         }
         else
         {
+            // No folder holds the full set: report which files exist anywhere and which do not.
+            Dictionary<string, string> partial = DirectoryScanner.LocateFiles(searchPaths, libraryFiles, true, CompatibilityLevel.Compatible);
             foreach (var dllFile in libraryFiles)
             {
+                if (partial.TryGetValue(dllFile, out var partialPath))
+                {
+                    AddNativeCheck("FFmpeg", dllFile, isRequired: true, NativeLibraryStatus.NotLoaded, partialPath);
+                    continue;
+                }
+
+                AddNativeCheck("FFmpeg", dllFile, isRequired: true, NativeLibraryStatus.Missing);
                 missingRequired.Add(dllFile);
             }
 
-            AddNativeLoadMessage($"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.");
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", $"FFmpeg libraries not found: {string.Join(", ", missingRequired)}");
-            Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: 0/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
+            var problem = missingRequired.Count == 0
+                ? "FFmpeg DLLs are split across folders; all seven must be in one folder."
+                : $"Missing required FFmpeg DLLs: {string.Join(", ", missingRequired)}.";
+            AddNativeLoadMessage(problem);
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "FFmpeg", problem);
+            Debug.WriteLine($"❌ FFmpeg failed to load!   [Files found: {libraryFiles.Length - missingRequired.Count}/{libraryFiles.Length}]   [Successful Load: 0/{libraryFiles.Length}]");
             return false;
         }
     }

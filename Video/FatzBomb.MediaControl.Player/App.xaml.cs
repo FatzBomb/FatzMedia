@@ -9,6 +9,11 @@ public partial class App : Application
     private TextWriterTraceListener? _logListener;
     private StreamWriter? _logWriter;
 
+    // The engine clamps fade lengths to 60 s; clamp here too so TimeSpan.FromSeconds cannot throw.
+
+    private const double MaxFadeNextSeconds = 60;
+
+
     public static string LogFilePath { get; } =
         Path.Combine(Path.GetTempPath(), "FatzBombMedia", "player-debug.log");
 
@@ -26,6 +31,18 @@ public partial class App : Application
 
     public static bool EnableSilenceTrim { get; private set; }
 
+    public static string? PrepareNextPath { get; private set; }
+
+    public static bool AutoTransitionToPreparedNext { get; private set; }
+
+    public static TimeSpan PreparedNextFadeDuration { get; private set; }
+
+    public static Uri? StartupNetworkUri { get; private set; }
+
+    public static int NetworkRetries { get; private set; }
+
+    public static double[]? EqualizerGains { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -42,6 +59,42 @@ public partial class App : Application
             string.Equals(argument, "--visual-transform-demo", StringComparison.OrdinalIgnoreCase));
         EnableSilenceTrim = e.Args.Any(static argument =>
             string.Equals(argument, "--trim-silence", StringComparison.OrdinalIgnoreCase));
+        const string prepareNextPrefix = "--prepare-next=";
+        PrepareNextPath = e.Args
+            .Where(static argument => argument.StartsWith(prepareNextPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[prepareNextPrefix.Length..].Trim('"'))
+            .FirstOrDefault(static path => path.Length > 0);
+        const string fadeNextPrefix = "--fade-next=";
+        PreparedNextFadeDuration = e.Args
+            .Where(static argument => argument.StartsWith(fadeNextPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => double.TryParse(
+                argument[fadeNextPrefix.Length..],
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var seconds) && double.IsFinite(seconds)
+                    ? TimeSpan.FromSeconds(Math.Clamp(seconds, 0, MaxFadeNextSeconds))
+                    : TimeSpan.Zero)
+            .FirstOrDefault();
+        const string urlPrefix = "--url=";
+        StartupNetworkUri = e.Args
+            .Where(static argument => argument.StartsWith(urlPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => Uri.TryCreate(argument[urlPrefix.Length..].Trim('"'), UriKind.Absolute, out var uri) ? uri : null)
+            .FirstOrDefault(static uri => uri is not null);
+        const string retryPrefix = "--net-retries=";
+        NetworkRetries = e.Args
+            .Where(static argument => argument.StartsWith(retryPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => int.TryParse(argument[retryPrefix.Length..], out var retries) ? retries : 0)
+            .FirstOrDefault();
+        const string eqPrefix = "--eq=";
+        EqualizerGains = e.Args
+            .Where(static argument => argument.StartsWith(eqPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[eqPrefix.Length..]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static gain => double.TryParse(gain, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : 0)
+                .ToArray())
+            .FirstOrDefault();
+        AutoTransitionToPreparedNext = e.Args.Any(static argument =>
+            string.Equals(argument, "--auto-next", StringComparison.OrdinalIgnoreCase));
         StartupMediaPath = e.Args.FirstOrDefault(static argument =>
             !argument.StartsWith("--", StringComparison.Ordinal));
 

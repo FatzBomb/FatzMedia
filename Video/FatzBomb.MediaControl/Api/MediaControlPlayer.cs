@@ -1,7 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +19,9 @@ public partial class MediaControlPlayer : IMediaControlSession
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
     private const double SeekImmediateCompletionToleranceSeconds = 0.001;
+    // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
+    // distance (2 s) from the target, plus the normal settle tolerance.
+    private const double ScrubSettleToleranceSeconds = 2.0 + SeekSettleToleranceSeconds;
     private readonly IMediaControlPlatformFactory _platformFactory;
     private IServiceProvider _serviceProvider;
     private IMediaEngine _mediaEngine;
@@ -69,6 +72,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
         SubscribeNewSessionEvents();
+        SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
 
         if (_mediaEngine is IMediaErrorSource errorSource)
@@ -105,6 +109,12 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public string LastNativeLoadMessage => _platformFactory.LastNativeLoadMessage;
 
+    /// <summary>
+    /// Gets which native libraries loaded at startup, with the exact file names and folders, so a
+    /// host can report a missing or wrong-version file (see <see cref="NativeDependencyReport.Describe"/>).
+    /// </summary>
+    public NativeDependencyReport NativeDependencies => _platformFactory.NativeDependencies;
+
     public VideoDecodeCapabilities VideoDecodeCapabilities => _platformFactory.GetVideoDecodeCapabilities();
 
     public bool PlayOnLoad
@@ -129,6 +139,12 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         get => Effects.Normalize;
         set => Effects.Normalize = value;
+    }
+
+    public AudioEqualizerSettings Equalizer
+    {
+        get => Effects.Equalizer;
+        set => Effects.Equalizer = value;
     }
 
     public bool IsOpen => _mediaEngine.IsOpen;
@@ -242,6 +258,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public Task<bool> StopAsync() => EnqueueControlOperation(() => Controls.Stop());
 
+    public bool BeginScrub() => ExecuteControlOperation(() => Controls.BeginScrub());
+
+    public bool EndScrub() => ExecuteControlOperation(() => Controls.EndScrub());
+
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
     public bool Seek(double seconds)
@@ -254,12 +274,20 @@ public partial class MediaControlPlayer : IMediaControlSession
                 var target = _mediaEngine.Duration > 0
                     ? Math.Clamp(requested, 0, _mediaEngine.Duration)
                     : requested;
+                if (Controls.IsRepeatOfScrubTarget(seconds))
+                {
+                    // The release seek of a drag at the last drag position: already there or
+                    // playing on from it, so nothing moves.
+                    RaiseSeekCompleted(requested, _mediaEngine.Position);
+                    return true;
+                }
+
                 var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
                 if (waitsForSettle)
                 {
                     lock (_seekCompletionGate)
                     {
-                        _pendingSeek = new PendingSeek(requested, target);
+                        _pendingSeek = new PendingSeek(requested, target, Controls.IsScrubbing);
                         Volatile.Write(ref _hasPendingSeek, 1);
                     }
                 }
@@ -278,7 +306,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                     return true;
                 }
 
-                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds);
+                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds, isSettlement: false);
                 return true;
             });
         }
@@ -456,7 +484,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private bool ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
     {
-        // 1. Stop all playback and close media
+        // 1. Discard the prepared-next item (its analysis ran on the old engine), stop playback,
+        //    and close media
+        try { ClearPreparedNextForLifecycle(); } catch { }
+        try { _fadeRunner.Cancel(); } catch { }
         try { File.Close(); } catch { }
 
         // 2. Unsubscribe internal events
@@ -464,6 +495,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
         try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
         try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeNetworkEvents(); } catch { }
         try { UnsubscribeSeekCompletionSources(); } catch { }
         try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
         try { _positionNotifier.Dispose(); } catch { }
@@ -524,6 +556,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
         SubscribeNewSessionEvents();
+        SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
@@ -590,12 +623,21 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private void DisposeCore()
     {
+        try
+        {
+            if (_preparedNext.Snapshot.Source?.FilePath is { } preparedPath)
+                FfmpegAudioFallback.Release(preparedPath);
+        }
+        catch { }
+        try { _preparedNext.Dispose(); } catch { }
+        try { _fadeRunner.Cancel(); } catch { }
         try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
         try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
         try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
         try { UnsubscribeNewSessionEvents(); } catch { }
+        try { UnsubscribeNetworkEvents(); } catch { }
         try { UnsubscribeSeekCompletionSources(); } catch { }
         try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
         try { _positionNotifier.Dispose(); } catch { }
@@ -623,5 +665,9 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
     }
 
-    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds);
+    /// <param name="DuringScrub">
+    /// The seek was requested during a scrub, so a video settle may land on the previewed frame
+    /// rather than the target (035A).
+    /// </param>
+    private readonly record struct PendingSeek(double RequestedSeconds, double TargetSeconds, bool DuringScrub);
 }

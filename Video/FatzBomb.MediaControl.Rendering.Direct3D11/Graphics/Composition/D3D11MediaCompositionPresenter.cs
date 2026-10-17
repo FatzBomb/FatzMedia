@@ -1,5 +1,4 @@
 using FatzBomb.MediaControl.Core.Cdg;
-using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
@@ -25,6 +24,15 @@ namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics = false, bool enableCompositionDiagnostics = false)
 {
     private const int CompositionDiagnosticInterval = 120;
+
+    /// <summary>Why the last <see cref="PresentToTargets(D3D11DeviceResources, MediaCompositionFrame, IReadOnlyList{D3D11PresentationTargetSnapshot}, D3D11VideoProcessorPresenter?, out IReadOnlyList{D3D11PresentationTargetSnapshot})"/> returned false, or null.</summary>
+    public string? LastFailureReason { get; private set; }
+
+    private void Fail(string reason, MediaCompositionFrame frame)
+    {
+        LastFailureReason = reason;
+        Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: {reason} reason={frame.Reason}.");
+    }
 
     private readonly D3D11CompositionLayerCache _layerCache = new();
     private readonly CompositionTargetRegistry _targetRegistry = new();
@@ -237,11 +245,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets)
     {
         presentedTargets = [];
+        LastFailureReason = null;
         if (deviceResources.Device == null
             || deviceResources.Context == null
             || targets.Count == 0)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: invalid device/targets count={targets.Count} reason={frame.Reason}.");
+            Fail($"no D3D11 device or presentation target (targets={targets.Count})", frame);
             return false;
         }
 
@@ -256,7 +265,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             List<D3D11PresentationTargetSnapshot> validTargets = _scratchValidTargets;
             if (validTargets.Count == 0)
             {
-                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: no valid targets reason={frame.Reason}.");
+                Fail("no valid presentation target", frame);
                 return false;
             }
 
@@ -270,7 +279,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             List<D3D11PresentationTargetSnapshot> presentationTargets = _scratchPresentationTargets;
             if (presentationTargets.Count == 0)
             {
-                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: target plan has no active presentation targets reason={frame.Reason}.");
+                Fail("target plan has no active presentation target", frame);
                 return false;
             }
 
@@ -295,25 +304,25 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
             if (!EnsureCompositionBackgroundFrame(deviceResources, frame, videoProcessorPresenter))
             {
-                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: background layer could not be prepared reason={frame.Reason}.");
+                Fail("background layer could not be prepared", frame);
                 return false;
             }
 
             if (!EnsureCompositionOverlayFrame(deviceResources, frame))
             {
-                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: overlay layer could not be prepared reason={frame.Reason}.");
+                Fail("overlay layer could not be prepared", frame);
                 return false;
             }
 
             if (!EnsureCompositionSubtitleFrame(deviceResources, frame))
             {
-                Debug.WriteLine($"[COMPOSITION-D3D11] Visible present skipped: subtitle layer could not be prepared reason={frame.Reason}.");
+                Fail("subtitle layer could not be prepared", frame);
                 return false;
             }
 
             if (frame.HasShaderVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
             {
-                Debug.WriteLine("[COMPOSITION-D3D11] Visible present skipped: shader pipeline is unavailable.");
+                Fail("shader pipeline is unavailable", frame);
                 return false;
             }
 
@@ -358,10 +367,14 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 _targetRegistry.MarkPlanConsumed();
             }
 
+            if (!requiredTargetDrew)
+                LastFailureReason = "drawing to the primary target failed";
+
             return requiredTargetDrew;
         }
         catch (Exception ex)
         {
+            LastFailureReason = $"{ex.GetType().Name}: {ex.Message}";
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Visible target present failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
             Reset();
             return false;

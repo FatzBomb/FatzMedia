@@ -6,7 +6,7 @@ using FatzBomb.MediaControl.Core.Video;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider
 {
     private double _position;
 
@@ -42,6 +42,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public MediaContent Content { get; set; } = MediaContent.Audio;
     public bool LoopPlayback { get; set; }
     public bool HandlesLoopInternally { get; set; }
+    public MediaSourceCapabilities? CurrentCapabilities { get; set; }
     public bool OpenSucceeds { get; set; } = true;
     public Action? BeforeOpen { get; set; }
     public Action? BeforeStop { get; set; }
@@ -51,8 +52,8 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
 
     public event EventHandler? MediaEnded;
     public event EventHandler? MediaLooped;
-    public event EventHandler<VideoFrameEventArgs>? ImageFrameReady { add { } remove { } }
-    public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady { add { } remove { } }
+    public event EventHandler<VideoFrameEventArgs>? ImageFrameReady;
+    public event EventHandler<VideoFrameEventArgs>? BackgroundFrameReady;
     public event EventHandler? BackgroundCleared { add { } remove { } }
 
     public void SetDisplayRefreshRate(double? refreshHz)
@@ -151,6 +152,8 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 
     public void RaiseMediaEnded() => MediaEnded?.Invoke(this, EventArgs.Empty);
+    public void RaiseBackgroundFrame(VideoFrameEventArgs frame) => BackgroundFrameReady?.Invoke(this, frame);
+    public void RaiseImageFrame(VideoFrameEventArgs frame) => ImageFrameReady?.Invoke(this, frame);
     public void CompletePlayback()
     {
         State = MediaPlayerState.Stopped;
@@ -259,8 +262,56 @@ internal sealed class TestCdgEngine : ICdgEngine
     public void Dispose() { }
 }
 
-internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider
+internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
+    public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
+    public int EqualizerApplyCount { get; private set; }
+
+    public bool SetEqualizer(AudioEqualizerSettings settings)
+    {
+        Equalizer = settings;
+        EqualizerApplyCount++;
+        return true;
+    }
+
+    public bool NetworkOpenSucceeds { get; set; } = true;
+    public string? LastNetworkUrl { get; private set; }
+    public MediaSourceCapabilities? NetworkCapabilities { get; set; }
+    public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
+
+    public bool OpenUrl(string url)
+    {
+        LastNetworkUrl = url;
+        if (!NetworkOpenSucceeds)
+            return false;
+
+        SetState(AudioEngineState.Stopped);
+        return true;
+    }
+
+    public void RaiseBuffering(bool isBuffering, double fill) =>
+        BufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
+
+    public void RaiseStreamMetadata(string? title, string? artist) =>
+        StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(title, artist, $"{artist} - {title}"));
+
+    private int _fadeSession;
+
+    public bool FadeAvailable { get; set; } = true;
+    public System.Collections.Concurrent.ConcurrentQueue<(double Gain, TimeSpan Ramp)> FadeCalls { get; } = new();
+
+    public int BeginFadeSession() => FadeAvailable ? Interlocked.Increment(ref _fadeSession) : 0;
+
+    public bool SetFadeGain(int session, double gain, TimeSpan ramp)
+    {
+        if (session != Volatile.Read(ref _fadeSession))
+            return false;
+
+        FadeCalls.Enqueue((gain, ramp));
+        return true;
+    }
+
     public AudioEngineState State { get; private set; }
     public int PlayHandle => 0;
     public int SourceHandle => 0;

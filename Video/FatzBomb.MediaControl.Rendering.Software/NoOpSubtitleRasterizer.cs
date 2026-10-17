@@ -1,4 +1,3 @@
-using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Subtitle;
 
 namespace FatzBomb.MediaControl.Rendering.Software;

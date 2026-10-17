@@ -1,18 +1,10 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-07-17
+Updated: 2026-10-17
 
-> **WARNING — GPL-ENABLED TRACKED FFMPEG EXECUTABLES**
->
-> `FatzBomb.MediaControl.Player/native/ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are
-> **tracked in this repository** as a Gyan full-shared FFmpeg fixture built with
-> `--enable-gpl --enable-version3`. They exist **only** for local Player validation and
-> must **not** be redistributed with any package, host, or published artifact unless the
-> distributing host deliberately accepts and complies with the GPL terms. Deleting or
-> replacing them is a licensing-policy decision that requires owner action; this warning
-> exists because they currently remain tracked. Any host shipping these binaries must
-> review FFmpeg's compliance checklist (<https://ffmpeg.org/legal.html>) and obtain
-> appropriate legal review.
+The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
+and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
+them, and it probes and decodes media in-process through the FFmpeg DLLs.
 
 ## Responsibility
 
@@ -63,11 +55,30 @@ Passing an empty list also allows the Windows loader to probe the predefined pat
 |---|---|---|
 | `win-x64` | Supported | Current Windows, Direct3D11, WPF, Player, and native smoke-test target. |
 | `win-arm64` | Not supported | Requires dedicated BASS/FFmpeg validation and package targeting. |
-| `linux-*`, `osx-*`, `android-*` | Not supported | Require platform packages and native policies of their own. |
+| `linux-x64` | Preview (Stage 026B) | `FatzBomb.MediaControl.Linux`; FFmpeg load and software decode validated, BASS/player smoke pending. See Linux Native Target. |
+| `osx-*`, `android-*`, other `linux-*` | Not supported | Require platform packages and native policies of their own. |
 
 The managed Windows projects retain `net10.0-windows7.0` API compatibility, but the
 approved native runtime baseline is Windows 10/11 x64. A native distributor may have
 stricter OS or UCRT requirements than the managed TFM.
+
+## Linux Native Target (Stage 026B, pending manual smoke)
+
+`FatzBomb.MediaControl.Linux` follows the same host-owned policy: no binaries ship in
+the package. The host supplies shared libraries in a host path (absolute or relative to
+the app), `native/`, or `runtimes/linux-<arch>/native/`. System library directories are
+not searched implicitly.
+
+| Kind | Required | Optional |
+|---|---|---|
+| BASS | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
+| FFmpeg (avcodec 63 ABI, FFmpeg 9.0.x) | `libavutil.so.61`, `libswresample.so.7`, `libswscale.so.10`, `libavcodec.so.63`, `libavformat.so.63` | `libavfilter.so.12`, `libavdevice.so.63` |
+
+FFmpeg libraries must sit in one directory; they are preloaded in dependency order
+because typical builds reference each other by soname without an `$ORIGIN` run path.
+BASS core libraries are routed to ManagedBass through a `DllImport` resolver; add-ons
+use `BASS_PluginLoad`. The same licensing cautions as Windows apply (BASS commercial
+licence; FFmpeg LGPL vs GPL build choice).
 
 ## BASS Policy
 
@@ -80,7 +91,10 @@ Approved source: Un4seen Developments only:
 - Required: `bass.dll`, `bass_fx.dll`.
 - Optional plugins: `bass_aac.dll`, `bass_ac3.dll`, `bassalac.dll`, `basscd.dll`,
   `bassflac.dll`, `bassmidi.dll`, `bassopus.dll`, and `basswma.dll`.
-- Optional plugin presence controls the corresponding accepted file extensions.
+- Optional plugin presence controls the corresponding accepted file extensions. When
+  FFmpeg is loaded, formats a missing plugin would have played (AAC/M4A, ALAC, FLAC,
+  Opus, AC-3, WMA, and other audio FFmpeg decodes) still open through the FFmpeg
+  fallback (Stage 033A); MIDI and CD audio still need `bassmidi` and `basscd`.
 
 BASS is free only for qualifying non-commercial use. Commercial host developers
 must obtain the appropriate BASS licence. Un4seen states that BASS licences apply to
@@ -90,14 +104,24 @@ the control remains responsible for their own BASS rights and each add-on's term
 
 ## FFmpeg Policy
 
-Approved source baseline: signed FFmpeg 8.1.2 source from
-<https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz>.
+Approved source baseline: signed FFmpeg 9.0.2 source from
+<https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz> (updated 2026-10-17 with the binding;
+the owner confirms the signed tarball).
 
-- Managed binding: `FFmpeg.AutoGen` 8.1.0.
-- Supported native release line: FFmpeg 8.1.x with library majors 62/62/62/11/60/6/9.
-- Verified repository validation fixture: FFmpeg 8.1.1.
-- Required DLLs: `avcodec-62.dll`, `avdevice-62.dll`, `avfilter-11.dll`,
-  `avformat-62.dll`, `avutil-60.dll`, `swresample-6.dll`, and `swscale-9.dll`.
+- Managed binding: `FFmpeg.AutoGen` 9.0.1.1 (upgraded from 8.1.0 on 2026-10-17).
+- Supported native release line: FFmpeg 9.0.x with library majors 63/63/63/12/61/7/10
+  (avcodec/avdevice/avformat/avfilter/avutil/swresample/swscale). FFmpeg 8 DLLs no
+  longer load.
+- Verified: FFmpeg 9.0.2 LGPL shared libraries on Linux (library load, decoder scan,
+  BGRA decode, decode benchmark on par with 8.1). Every FFmpeg function the engine calls
+  is exported by 9.0.2. Windows runtime smoke with 9.0.x DLLs is pending.
+- Required DLLs: `avcodec-63.dll`, `avdevice-63.dll`, `avfilter-12.dll`,
+  `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll`, and `swscale-10.dll`.
+- A convenient LGPL source for local testing is the NuGet package
+  `TqkLibrary.FFmpeg.Lgpl3.Native.win.x64` 9.0.2 (rename the `.nupkg` to `.zip`; the
+  DLLs are in `runtimes/win-x64/native`). It includes D3D11VA hardware decoding for
+  H.264/HEVC/VP9/AV1. As with any third-party build, review its configuration before
+  redistributing it.
 - Hosts must use a shared-library build; static executables alone are insufficient.
 
 For a proprietary host, the default approved build policy is an LGPL-compatible
@@ -107,10 +131,50 @@ is at <https://ffmpeg.org/legal.html>.
 
 FFmpeg.org links to third-party Windows builds, including Gyan and BtbN, but those
 archives are not automatically approved for proprietary redistribution. Configuration
-and licence terms must be reviewed for each archive. In particular, the Gyan "full
-shared" fixture currently used for local Player validation is built with
-`--enable-gpl --enable-version3`; it is suitable for repository validation only unless
-the distributing host deliberately accepts and complies with the resulting GPL terms.
+and licence terms must be reviewed for each archive. In particular, Gyan "full" builds
+are compiled with `--enable-gpl --enable-version3`. They are suitable for local
+validation only, unless the distributing host deliberately accepts and complies with
+the resulting GPL terms.
+
+### Shipping FFmpeg With Your App
+
+An LGPL build of the FFmpeg DLLs may be shipped inside a host's installer and updates,
+including a commercial, closed-source host. This is the host's checklist; it follows
+FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
+
+1. Use a shared (DLL) build compiled without `--enable-gpl` and without
+   `--enable-nonfree`. Check the build's configuration line (shipped with the archive, or
+   printed by `ffmpeg -version` from the same build). Gyan "full" builds do not qualify.
+2. Ship the seven DLLs unmodified, loaded dynamically as this control does, so users can
+   replace them with their own build.
+3. Include the LGPL licence text (2.1 or 3, matching the build) with the app, and credit
+   FFmpeg in the About box or documentation ("This software uses libraries from the
+   FFmpeg project under the LGPL").
+4. Make the exact matching source available: host the source tarball and build
+   configuration for the shipped version, or link to it from the same place users get
+   the app. The approved baseline above names the tarball.
+5. Do not forbid, in the EULA, the reverse engineering needed to debug modifications to
+   the FFmpeg libraries (both LGPL 2.1 and 3 require this).
+6. Ship the DLLs that match the control: FFmpeg 9.0.x for this binding. When an update
+   moves the control to a new FFmpeg major, the same app update must carry the new DLLs.
+   `MediaControlPlayer.NativeDependencies` reports any missing or wrong-version file at
+   startup, so a broken install is visible immediately.
+7. Codec patents (H.264, HEVC, AAC, and others) are a separate question from FFmpeg's
+   copyright licence and depend on the country; review them before a commercial release.
+
+## Startup Dependency Report
+
+`MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
+returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
+with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
+(found, but its set is incomplete), or `FailedToLoad`, plus the search paths. When a
+versioned file is missing and another version of it is present, the check carries a hint
+(for example "Found avcodec-62.dll, a different version; this control needs
+avcodec-63.dll."). `Describe()` gives one readable line per problem for a host to show.
+The Windows and Linux platforms fill it in; other platforms return
+`NativeDependencyReport.Empty`. When a required library fails, the player constructor
+throws (its message includes the hints), so read the report from the platform factory
+you passed in.
 
 ## Binary-Free Package Layout
 

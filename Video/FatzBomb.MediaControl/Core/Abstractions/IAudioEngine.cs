@@ -166,6 +166,15 @@ internal interface IAudioAnalysisOpenControl
     bool Open(string filePath, bool analyzeSilence);
 }
 
+/// <summary>Audio engines that host framework filters (Stage 020A).</summary>
+internal interface IAudioFilterHost
+{
+    AudioEqualizerSettings Equalizer { get; }
+
+    /// <summary>Stores the settings and applies them live to the open stream.</summary>
+    bool SetEqualizer(AudioEqualizerSettings settings);
+}
+
 internal interface IAudioTrimWindowProvider
 {
     MediaAnalysisResult? ActiveTrimWindow { get; }

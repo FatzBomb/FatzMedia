@@ -87,6 +87,36 @@ internal sealed class AudioPipeline : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Opens a direct HTTP/HTTPS audio source. Network sources never apply silence trim, and live
+    /// sources report zero duration.
+    /// </summary>
+    internal bool OpenUrl(string url)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(url) || Engine is not INetworkAudioSource network)
+            return false;
+
+        Close();
+
+        _ownStateForCurrentOpen = true;
+        _analyzeSilenceForCurrentOpen = false;
+        if (!network.OpenUrl(url))
+        {
+            State.Reset();
+            return false;
+        }
+
+        _sourcePath = url;
+        if (!IsOpen)
+        {
+            IsOpen = true;
+            ResetTrimWindow();
+            State.SetOpened(MediaContent.Audio, url, Engine.Duration);
+        }
+        return true;
+    }
+
     public bool Open(IArchiveEntryInfo archiveEntry) => Open(archiveEntry, ownState: true);
 
     internal bool Open(IArchiveEntryInfo archiveEntry, bool ownState)

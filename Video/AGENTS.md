@@ -1,7 +1,6 @@
 # FatzBombMedia — AGENTS.md
 
-*Local repo rules. Augments the global `~/.config/opencode/AGENTS.md`; these repo
-facts win where they conflict with global preferences.*
+*Repo rules for coding agents working in this repository.*
 
 ## Build & Run
 
@@ -30,7 +29,11 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | `FatzBomb.MediaControl.Rendering.Software` | Portable deterministic software renderer — in-memory premultiplied BGRA8 composition with no GPU or window | Targets `net10.0`; references Core only |
 | `FatzBomb.MediaControl.Windows` | Windows platform composition — native-library loading, endpoint integration, hardware-decode policy | References Core only; renderer selection belongs to the host composition root |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | Convenience integration bundle | References Windows + Direct3D11 and exposes the current default platform factory |
+| `FatzBomb.MediaControl.Rendering.Vulkan` | Preview Vulkan renderer (slice 1: offscreen clear + background blit into a frame sink) | Targets `net10.0`; references Core only; Silk.NET.Vulkan |
+| `FatzBomb.MediaControl.Linux` | Linux platform composition — host-supplied BASS/FFmpeg `.so` loading, precision waits, BASS device monitoring, software decode policy | Targets `net10.0`; references Core only; pairs with any renderer factory |
 | `FatzBomb.MediaControl.Wpf` (Adapter) | WPF interop — `MediaSurface`, `BackgroundSurface`, `KaraokeSurface`, and `Player : MediaControlPlayer` | Controls accept an `IMediaControlPlatformFactory`; project must NOT reference renderer, pipeline, internal Cdg, video-frame, or D3D11 types |
+| `FatzBomb.MediaControl.Avalonia` (Adapter) | Avalonia composited `MediaSurface` + bitmap conversions | References Core only; same adapter rules as WPF (`scripts/check-adapter-boundary.ps1`) |
+| `FatzBomb.MediaControl.WinForms` (Adapter) | WinForms HWND `MediaSurface` | References Core only; same adapter rules (`scripts/check-adapter-boundary.ps1`) |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
 
 ## LangVersion & Runtime Features
@@ -50,7 +53,7 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 - **Renderer choice is separate from OS choice** — hosts inject an `IMediaPresentationCoordinatorFactory` into the Windows/WPF composition chain. The Player host uses the `FatzBomb.MediaControl.Windows.Direct3D11` convenience bundle; the portable `FatzBomb.MediaControl.Rendering.Software` package offers the same seam through `SoftwarePresentationCoordinatorFactory`; future Vulkan/OpenGL/Metal renderers implement the same public Core contracts without changing Core playback, Windows services, or UI adapters.
 - **`.ConfigureAwait(false)` required** in all async pipeline code. Host app marshals events to UI thread explicitly.
 - **Before editing the Wpf adapter**, confirm no new `using` pulls a Core renderer / pipeline / internal-Cdg / D3D11 namespace into the adapter — that boundary is the repo's most important invariant (see Verification).
-- **Large engine/pipeline files are expected here.** D3D11 composition, decoders, swap-chain/presentation, and Cdg code are legitimately large and cohesive — do **not** propose splitting them on line count alone (this exempts them from the global file-size trigger). Apply that trigger to *new* UI, view-model, service, and glue code, not to the existing low-level engine.
+- **Large engine/pipeline files are expected here.** D3D11 composition, decoders, swap-chain/presentation, and Cdg code are legitimately large and cohesive — do **not** propose splitting them on line count alone. Keep *new* UI, view-model, service, and glue code small and focused instead.
 
 ## Threading Gotchas (Easy to Miss)
 
@@ -75,13 +78,6 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | Sidecar/background resolver | `Controllers.MediaBackgroundResolver` (internal) — auto-detects image/video sidecars for non-video/image mains; image mains require explicit backgrounds |
 | Software renderer entry | `FatzBomb.MediaControl.Rendering.Software.SoftwarePresentationCoordinatorFactory` — host-selectable portable renderer coordinator; `SoftwareCompositionRenderer` produces deterministic premultiplied BGRA8 output |
 | Native lib loader | `FatzBomb.MediaControl.Windows.Bootstrap.EnsureInitialized()` (internal) — load-once, synchronous, populates `FileTypes` |
-
-## Code Navigation
-
-If `graphify-out/graph.json` exists in this repo, query Graphify first for
-structural / code-flow / entrypoint questions before the index or grep (per global
-rules). The pipeline/adapter boundaries here are exactly the kind of thing the
-graph answers well.
 
 ## WPF / XAML / MVVM style (Player host)
 

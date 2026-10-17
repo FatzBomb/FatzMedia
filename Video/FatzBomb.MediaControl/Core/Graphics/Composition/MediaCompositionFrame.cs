@@ -1,5 +1,4 @@
 using FatzBomb.MediaControl.Core.Cdg;
-using FatzBomb.MediaControl.Core.Graphics;
 
 namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 

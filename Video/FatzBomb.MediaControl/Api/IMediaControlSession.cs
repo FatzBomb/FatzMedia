@@ -64,6 +64,13 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Gets or sets whether embedded MIDI/KAR lyrics are displayed when available.</summary>
     bool ShowMidiLyrics { get; set; }
 
+    /// <summary>
+    /// Gets or sets the equalizer applied to local and network audio streams and to the audio
+    /// of video files (Stages 020A, 033A).
+    /// Disabled by default; disabled or all-neutral settings attach no native filter.
+    /// </summary>
+    AudioEqualizerSettings Equalizer { get; set; }
+
     /// <summary>Gets or sets the video offset relative to the physical audio clock.</summary>
     TimeSpan AudioSyncOffset { get; set; }
 
@@ -139,6 +146,17 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Seeks to a playback position in seconds.</summary>
     bool Seek(double seconds);
 
+    /// <summary>
+    /// Starts an interactive scrub (seek-bar drag). Playback carries on and each seek moves it,
+    /// but a seek repeating the previous one of the scrub (the release seek at the last drag
+    /// position) is ignored, so release never jumps back. Sessions without scrub support return
+    /// <see langword="false"/>, and hosts then seek as before.
+    /// </summary>
+    bool BeginScrub() => false;
+
+    /// <summary>Ends a scrub. Send the release seek first.</summary>
+    bool EndScrub() => false;
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 
@@ -156,6 +174,75 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Closes the currently loaded media.</summary>
     void Close();
+
+    /// <summary>
+    /// Gets a snapshot of the depth-one prepared-next slot. The host owns its playlist; Core keeps at
+    /// most one item analyzed and ready.
+    /// </summary>
+    PreparedNextInfo PreparedNext { get; }
+
+    /// <summary>
+    /// Gets or sets whether a Ready prepared item starts automatically when the current media ends
+    /// naturally. Ignored while <see cref="LoopMedia"/> is enabled. Disabled by default.
+    /// </summary>
+    bool AutoTransitionToPreparedNext { get; set; }
+
+    /// <summary>
+    /// Analyzes a local media file without preparing or loading it, and warms the shared analysis
+    /// cache. Returns <see langword="null"/> when the source is not analyzable.
+    /// </summary>
+    Task<MediaAnalysisResult?> AnalyzeAsync(MediaInputSource source, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Analyzes and prepares a candidate into the depth-one slot, replacing any previously
+    /// prepared item. Current playback is unaffected. Returns <see langword="true"/> when the
+    /// candidate reached Ready, or <see langword="false"/> if it was invalid, cleared, replaced,
+    /// or cancelled first.
+    /// </summary>
+    Task<bool> PrepareNextAsync(MediaInputSource source, CancellationToken cancellationToken = default);
+
+    /// <summary>Discards the prepared item and cancels its analysis.</summary>
+    bool ClearPreparedNext();
+
+    /// <summary>
+    /// Loads the Ready prepared item as the current media and starts playback. Returns
+    /// <see langword="false"/> when no item is Ready, the prepared file changed (Stale), or the
+    /// load failed. The slot is empty afterwards in every case except Stale.
+    /// </summary>
+    Task<bool> TransitionToPreparedNextAsync();
+
+    /// <summary>
+    /// Gets or sets the fade applied by prepared-next transitions. Disabled by default. When
+    /// enabled, a manual transition fades the current audio out, waits the incoming envelope's
+    /// muted lead time, loads and starts the prepared item with its fade gain primed, then fades
+    /// it in. An automatic transition (the outgoing item already ended) applies only the incoming
+    /// fade. The outgoing and incoming items do not overlap.
+    /// </summary>
+    AudioCrossfadeOptions PreparedNextTransitionFade { get; set; }
+
+    /// <summary>
+    /// Fades the current audio, including a video's soundtrack, with an outgoing envelope
+    /// (default: full to muted). Only the sound fades; video frames are unchanged. Playback
+    /// continues; the host decides whether to stop. Returns <see langword="false"/> when the media
+    /// has no audio stream, the duration is zero, or the fade was cancelled or superseded. Stop,
+    /// load, close, and a natural end restore unity fade gain.
+    /// </summary>
+    Task<bool> FadeOutAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fades the current audio with an incoming envelope (default: muted to full), starting
+    /// at the envelope's audible start. Same return and cancellation rules as <see cref="FadeOutAsync"/>.
+    /// </summary>
+    Task<bool> FadeInAsync(TimeSpan duration, AudioFadeEnvelope? envelope = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels the running fade, leaving the gain where it reached.</summary>
+    void CancelFade();
+
+    /// <summary>
+    /// Gets the capability row of the open source (see <see cref="MediaSourceCapabilityMatrix"/>),
+    /// or <see langword="null"/> when nothing is open.
+    /// </summary>
+    MediaSourceCapabilities? CurrentSourceCapabilities { get; }
 
     /// <summary>
     /// Stops all running processes, disposes internal resources, then reinitializes the entire
@@ -213,6 +300,18 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Raised after an accepted seek settles on its resulting position.</summary>
     event EventHandler<MediaSeekCompletedEventArgs>? SeekCompleted;
 
+    /// <summary>Raised when a buffered (network) source starts or stops buffering, or its fill moves.</summary>
+    event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
+
+    /// <summary>Raised when a network source delivers new in-stream metadata.</summary>
+    event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
+
+    /// <summary>Raised when the prepared-next slot changes state.</summary>
+    event EventHandler<PreparedNextChangedEventArgs>? PreparedNextChanged;
+
+    /// <summary>Raised after a prepared item became the current media.</summary>
+    event EventHandler<PreparedNextTransitionedEventArgs>? PreparedNextTransitioned;
+
     /// <summary>Raised when the effective user volume changes.</summary>
     event EventHandler<MediaValueChangedEventArgs<double>>? VolumeChanged;
 
@@ -224,6 +323,9 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Raised when normalization is enabled or disabled.</summary>
     event EventHandler<MediaNormalizeChangedEventArgs>? NormalizeChanged;
+
+    /// <summary>Raised when the equalizer settings change.</summary>
+    event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
 
     /// <summary>Raised when loop playback is enabled or disabled.</summary>
     event EventHandler<MediaValueChangedEventArgs<bool>>? LoopMediaChanged;

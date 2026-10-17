@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Graphics;
 using FFmpeg.AutoGen;
-using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl;
 

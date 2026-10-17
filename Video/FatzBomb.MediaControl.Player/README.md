@@ -103,6 +103,14 @@ A real host may pass separate BASS and FFmpeg directories in search-priority ord
 The MediaControl packages do not copy or redistribute native DLLs. See
 `docs/NATIVE_DEPENDENCIES.md` for the complete host distribution policy.
 
+## Log panel
+
+The **Log** button in the toolbar opens every engine diagnostic (info, warnings, and
+errors), newest first, with Copy all, Clear, and Open log file. The latest warning or error
+also shows in the status line. Each entry is written to
+`%TEMP%\FatzBombMedia\player-debug.log`, which is overwritten on each start, so copy it
+before relaunching if you need it for a bug report.
+
 ## Smoke Test Checklist
 
 1. Audio file plays.

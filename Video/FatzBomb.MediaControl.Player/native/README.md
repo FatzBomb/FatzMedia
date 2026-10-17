@@ -1,44 +1,64 @@
 # Host Native DLL Drop Folder
 
-> **WARNING — GPL-ENABLED VALIDATION FIXTURE ONLY**
->
-> `ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are **tracked in this repository** as a
-> Gyan full-shared FFmpeg build compiled with `--enable-gpl --enable-version3`. They are
-> **repository-only validation fixtures** for the local Player. They must **not** be
-> copied, bundled, distributed, or republished with any package or host application
-> unless that host deliberately accepts and complies with the resulting GPL obligations.
-> Their presence here is under review; do not delete or replace them without owner
-> approval of the licensing/distribution policy (see `docs/NATIVE_DEPENDENCIES.md`).
+This is the Player's design-time native folder. The packages do not supply these
+binaries: obtain and license them according to `docs/NATIVE_DEPENDENCIES.md`. Use x64
+builds.
 
-This is the host app's design-time native DLL folder.
+## Required
 
-Put the x64 BASS and FFmpeg DLLs here:
+The Player needs these files to start playback:
 
 ```text
 FatzBomb.MediaControl.Player/native/
-  bass.dll
-  bass_fx.dll
-  avcodec-62.dll
-  avdevice-62.dll
-  avfilter-11.dll
-  avformat-62.dll
-  avutil-60.dll
-  swresample-6.dll
-  swscale-9.dll
+  bass.dll          audio playback
+  bass_fx.dll       tempo, pitch, equalizer, and fades
+  avcodec-63.dll    FFmpeg 9.0.x (FFmpeg 8 DLLs no longer load)
+  avdevice-63.dll
+  avfilter-12.dll
+  avformat-63.dll
+  avutil-61.dll
+  swresample-7.dll
+  swscale-10.dll
 ```
 
-`FatzBomb.MediaControl.Player.csproj` copies `native/**/*.dll` to the player output folder, preserving the `native/` subfolder.
+All seven FFmpeg DLLs must come from the same build.
 
-At runtime these files are copied beside `FatzBomb.MediaControl.Player.exe`:
+## Optional
 
-```text
-native/
-```
+Each BASS plugin adds file types. When one is missing, FFmpeg decodes those formats
+instead (Stage 033A), so they still open; BASS's own decoder is just faster to start and
+streams instead of converting. The exceptions are MIDI and CD tracks, which FFmpeg
+cannot play: without `bassmidi.dll` or `basscd.dll` those files do not open.
 
-`PlayerNativeLibraries` resolves that runtime folder and passes it into the WPF `Player`, which inherits the Core `MediaControlPlayer`.
+| File | Adds |
+|---|---|
+| `bass_aac.dll` | `.aac`, `.m4a`, `.m4b` |
+| `bassalac.dll` | Apple Lossless `.m4a` |
+| `bassflac.dll` | `.flac` |
+| `bassmidi.dll` | `.mid`, `.midi`, `.kar`, `.rmi` (MIDI karaoke) |
+| `bassopus.dll` | `.opus` |
+| `bass_ac3.dll` | `.ac3` |
+| `basswma.dll` | `.wma` |
+| `basscd.dll` | audio CD tracks (`.cda`) |
+| `TimGM6mb.sf2` | Fallback MIDI soundfont. It is used only when Windows' `gm.dls` is missing and no soundfont is configured. Check its licence before redistributing it. |
 
-The packages do not supply these binaries. Obtain and license them according to
-`docs/NATIVE_DEPENDENCIES.md`. The repository's current Gyan full FFmpeg fixture is
-GPL-enabled and is for validation only unless the distributing host accepts and
-complies with those terms. The tracked `ffmpeg.exe`/`ffplay.exe`/`ffprobe.exe`
-executables carry the same restriction and must not leave this repository.
+## Not used
+
+The app never runs the FFmpeg command-line tools (`ffmpeg.exe`, `ffplay.exe`,
+`ffprobe.exe`). It probes and decodes media in-process through the DLLs above. Install
+the tools on your PC for manual inspection (for example `winget install Gyan.FFmpeg`)
+instead of keeping them here.
+
+## How the folder reaches the app
+
+`FatzBomb.MediaControl.Player.csproj` copies `native/**/*.dll` and `native/**/*.sf2` to
+a `native/` folder beside `FatzBomb.MediaControl.Player.exe`. `PlayerNativeLibraries`
+resolves that folder and passes it to the WPF `Player`, which inherits the Core
+`MediaControlPlayer`.
+
+## Licensing
+
+Licensing matters only if you distribute the app. Gyan "full" FFmpeg builds are
+compiled with `--enable-gpl`. An LGPL build (see `docs/NATIVE_DEPENDENCIES.md`) is the
+default choice for a distributed host. BASS requires a licence from un4seen for
+commercial use.

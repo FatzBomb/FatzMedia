@@ -19,6 +19,8 @@ public sealed class CdgStateMachine
     private long _revision;
     private long _paletteRevision;
     private uint _backgroundWashArgb;
+    private CdgRenderSnapshot? _lastSnapshot;
+    private CdgSnapshotStatistics _snapshotStatistics;
 
     public CdgStateMachine() => Reset();
 
@@ -144,12 +146,63 @@ public sealed class CdgStateMachine
         }
     }
 
+    /// <summary>
+    /// Returns an immutable snapshot of the current indexed state. Snapshots are never pooled or
+    /// mutated after creation: the presentation coordinator caches the latest one for retained
+    /// refreshes and hands it to video composition on another thread, so ownership stays with
+    /// the garbage collector. When nothing observable changed since the previous
+    /// snapshot (same revisions, wash, background index, palette, and no pending dirty regions),
+    /// that snapshot instance is returned, or its immutable buffers are shared when only its dirty
+    /// list is stale, instead of copying the frame again.
+    /// </summary>
     public CdgRenderSnapshot CreateSnapshot(bool consumeDirtyRegions = true)
     {
         lock (_lock)
         {
+            var backgroundColorIndex = _colorManager.BackgroundColorIndex;
+            CdgRenderSnapshot? previous = _lastSnapshot;
+            var paletteUnchanged = previous != null && previous.PaletteArgb.Span.SequenceEqual(_paletteArgb);
+            if (previous != null
+                && paletteUnchanged
+                && _dirtyRects.Count == 0
+                && previous.Revision == _revision
+                && previous.PaletteRevision == _paletteRevision
+                && previous.BackgroundWashArgb == _backgroundWashArgb
+                && previous.BackgroundColorIndex == backgroundColorIndex)
+            {
+                if (!previous.HasDirtyRegions)
+                {
+                    _snapshotStatistics.SnapshotsReused++;
+                    return previous;
+                }
+
+                // Same frame, but the previous snapshot still reports regions that were consumed
+                // since. Share its immutable buffers and report a clean frame.
+                var clean = new CdgRenderSnapshot(
+                    _revision,
+                    _paletteRevision,
+                    previous.ColorIndices,
+                    previous.PaletteArgb,
+                    _backgroundWashArgb,
+                    backgroundColorIndex,
+                    []);
+                _lastSnapshot = clean;
+                _snapshotStatistics.SnapshotsCreated++;
+                return clean;
+            }
+
             var colorCopy = _colorIndices.ToArray();
-            var paletteCopy = _paletteArgb.ToArray();
+            ReadOnlyMemory<int> paletteCopy;
+            if (paletteUnchanged)
+            {
+                paletteCopy = previous!.PaletteArgb;
+            }
+            else
+            {
+                paletteCopy = _paletteArgb.ToArray();
+                _snapshotStatistics.PaletteCopies++;
+            }
+
             CdgDirtyRect[] dirtyCopy = _dirtyRects.Count == 0
                 ? []
                 : [.. _dirtyRects];
@@ -159,14 +212,31 @@ public sealed class CdgStateMachine
                 _dirtyRects.Clear();
             }
 
-            return new CdgRenderSnapshot(
+            var snapshot = new CdgRenderSnapshot(
                 _revision,
                 _paletteRevision,
                 colorCopy,
                 paletteCopy,
                 _backgroundWashArgb,
-                _colorManager.BackgroundColorIndex,
+                backgroundColorIndex,
                 dirtyCopy);
+            _lastSnapshot = snapshot;
+            _snapshotStatistics.SnapshotsCreated++;
+            _snapshotStatistics.ColorIndexCopies++;
+            _snapshotStatistics.ColorIndexBytesCopied += colorCopy.Length;
+            return snapshot;
+        }
+    }
+
+    /// <summary>Gets snapshot allocation/copy counters accumulated since construction.</summary>
+    internal CdgSnapshotStatistics SnapshotStatistics
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _snapshotStatistics;
+            }
         }
     }
 

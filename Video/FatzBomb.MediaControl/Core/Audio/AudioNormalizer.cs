@@ -286,7 +286,7 @@ internal sealed class AudioNormalizer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double CalculateGainFromPeak(double peak) => peak > 0.0 ? Math.Clamp(NormalizationTarget / peak, 0.0, 8.0) : 1.0;
+    internal static double CalculateGainFromPeak(double peak) => peak > 0.0 ? Math.Clamp(NormalizationTarget / peak, 0.0, 8.0) : 1.0;
 
     #endregion
 }

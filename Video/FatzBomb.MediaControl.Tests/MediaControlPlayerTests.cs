@@ -37,7 +37,7 @@ public sealed class MediaControlPlayerTests
         };
 
         Assert.True(player.Load("song.mp3"));
-        await positionRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await positionRaised.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.Equal(["loaded", "state", "position"], order);
     }
@@ -50,7 +50,7 @@ public sealed class MediaControlPlayerTests
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
-        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.StateChanged += (_, e) =>
@@ -59,7 +59,7 @@ public sealed class MediaControlPlayerTests
                 playing.TrySetResult();
         };
         Assert.True(player.Play());
-        await playing.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await playing.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var order = new ConcurrentQueue<string>();
         var stoppedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,7 +71,9 @@ public sealed class MediaControlPlayerTests
         };
         player.PositionChanged += (_, e) =>
         {
-            if (e.Position == TimeSpan.Zero)
+            // While playing, the 250 ms position ticks also report zero (the test engine does not
+            // advance), so only a zero position after the Stopped state counts as Stop's own event.
+            if (e.Position == TimeSpan.Zero && order.Contains("state"))
             {
                 order.Enqueue("position");
                 stoppedPosition.TrySetResult();
@@ -79,7 +81,7 @@ public sealed class MediaControlPlayerTests
         };
 
         Assert.True(player.Stop());
-        await stoppedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await stoppedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.Equal(["stopped", "state", "position"], order);
     }
@@ -92,7 +94,7 @@ public sealed class MediaControlPlayerTests
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
-        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var order = new ConcurrentQueue<string>();
         var seekPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -112,7 +114,7 @@ public sealed class MediaControlPlayerTests
         };
 
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
-        await seekPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await seekPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.Equal(["seek", "position"], order);
         Assert.Equal(TimeSpan.FromSeconds(12), seekCompleted!.RequestedPosition);
@@ -135,7 +137,7 @@ public sealed class MediaControlPlayerTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
@@ -153,9 +155,37 @@ public sealed class MediaControlPlayerTests
 
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
+    }
+
+    [Fact]
+    public async Task ScrubVideoSeek_CompletesOnThePreviewedFrameButNotAtTheOldPosition()
+    {
+        // 035A review: during a scrub the immediate check after Seek must stay strict (the video
+        // seek is only queued), while the settle may land on the previewed frame near the target.
+        var video = new TestVideoEngine();
+        var engine = new TestMediaEngine { Content = MediaContent.Video, TestVideo = video };
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("video.mp4"));
+        var completed = new TaskCompletionSource<MediaSeekCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.SeekCompleted += (_, e) => completed.TrySetResult(e);
+
+        Assert.True(player.BeginScrub());
+        Assert.True(player.Seek(TimeSpan.FromSeconds(30)));
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(25);
+        await Task.Delay(50);
+        Assert.False(completed.Task.IsCompleted);
+
+        video.RaisePositionChanged(28.6);
+
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), args.RequestedPosition);
+        Assert.Equal(TimeSpan.FromSeconds(28.6), args.ResultingPosition);
     }
 
     [Fact]
@@ -175,7 +205,7 @@ public sealed class MediaControlPlayerTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -196,7 +226,7 @@ public sealed class MediaControlPlayerTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -218,7 +248,7 @@ public sealed class MediaControlPlayerTests
 
         video.RaisePositionChanged(12);
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.RequestedPosition);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
@@ -238,7 +268,7 @@ public sealed class MediaControlPlayerTests
 
         Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
 
-        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        MediaSeekCompletedEventArgs args = await completed.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(TimeSpan.FromSeconds(12), args.ResultingPosition);
     }
 
@@ -269,7 +299,7 @@ public sealed class MediaControlPlayerTests
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
-        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.True(player.Play());
         Assert.True(player.Pause());
@@ -289,7 +319,7 @@ public sealed class MediaControlPlayerTests
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
-        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.StateChanged += (_, e) =>
@@ -298,7 +328,7 @@ public sealed class MediaControlPlayerTests
                 playing.TrySetResult();
         };
         Assert.True(player.Play());
-        await playing.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await playing.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         var order = new ConcurrentQueue<string>();
         var endedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -318,7 +348,7 @@ public sealed class MediaControlPlayerTests
         };
 
         engine.CompletePlayback();
-        await endedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await endedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.Equal(["ended", "state", "position"], order);
     }
@@ -331,7 +361,7 @@ public sealed class MediaControlPlayerTests
         var loadedPosition = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.PositionChanged += (_, _) => loadedPosition.TrySetResult();
         Assert.True(player.Load("song.mp3"));
-        await loadedPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadedPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         player.LoopMedia = true;
 
         var order = new ConcurrentQueue<string>();
@@ -348,7 +378,7 @@ public sealed class MediaControlPlayerTests
         };
 
         engine.RaiseMediaEnded();
-        await loopPosition.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loopPosition.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.Equal(["ended", "looped", "position"], order);
     }
@@ -367,7 +397,7 @@ public sealed class MediaControlPlayerTests
         player.MediaStopped += (_, _) => stopped.TrySetResult();
 
         engine.RaiseMediaEnded();
-        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await stopped.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
 
         Assert.True(stopResult);
         Assert.Equal(1, engine.PlayCount);
@@ -394,12 +424,12 @@ public sealed class MediaControlPlayerTests
         player.MediaStopped += (_, _) => stopped.TrySetResult();
 
         Task<bool> stop = player.StopAsync();
-        await stopEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await stopEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         engine.RaiseMediaEnded();
         releaseStop.Set();
 
-        Assert.True(await stop.WaitAsync(TimeSpan.FromSeconds(2)));
-        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(await stop.WaitAsync(TestEnvironment.EventuallyTimeout));
+        await stopped.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(0, Volatile.Read(ref endedCount));
         Assert.Equal(1, engine.PlayCount);
     }
@@ -523,15 +553,15 @@ public sealed class MediaControlPlayerTests
             []);
 
         Task<bool> load = player.LoadAsync("song.mp3");
-        await loadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
 
         await Task.Delay(50);
         Assert.False(reset.IsCompleted);
 
         releaseLoad.Set();
-        Assert.True(await load.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.True(await reset.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.True(await reset.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Equal(1, firstEngine.DisposeCount);
         Assert.True(player.Load("replacement.mp3"));
     }
@@ -552,15 +582,15 @@ public sealed class MediaControlPlayerTests
         var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
 
         Task<bool> load = player.LoadAsync("song.mp3");
-        await loadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await loadEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Task dispose = Task.Run(player.Dispose);
 
         await Task.Delay(50);
         Assert.False(dispose.IsCompleted);
 
         releaseLoad.Set();
-        Assert.True(await load.WaitAsync(TimeSpan.FromSeconds(2)));
-        await dispose.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
+        await dispose.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(1, engine.DisposeCount);
         Assert.Throws<ObjectDisposedException>(() => player.Play());
         player.Dispose();
@@ -585,15 +615,15 @@ public sealed class MediaControlPlayerTests
         };
 
         Task<bool> reset = Task.Run(() => player.Reset(MediaPlayerConfiguration.Auto, []));
-        await resetEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await resetEntered.Task.WaitAsync(TestEnvironment.EventuallyTimeout);
         Task dispose = Task.Run(player.Dispose);
 
         await Task.Delay(50);
         Assert.False(dispose.IsCompleted);
 
         releaseReset.Set();
-        Assert.True(await reset.WaitAsync(TimeSpan.FromSeconds(2)));
-        await dispose.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(await reset.WaitAsync(TestEnvironment.EventuallyTimeout));
+        await dispose.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(1, firstEngine.DisposeCount);
         Assert.Equal(1, resetEngine.DisposeCount);
         Assert.Throws<ObjectDisposedException>(() => player.Play());
