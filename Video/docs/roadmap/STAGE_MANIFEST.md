@@ -75,7 +75,12 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-Next stage: none queued in `future/`; continue the active stages' later slices after manual smoke.
+- `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
+  BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
+  2026-10-17).
+
+Next stage: 032A is the only queued idea; continue the active stages' later slices after
+manual smoke first.
 
 Stages 029C-031B plus the revised 014A are the agreed feature sequence after Stage 029B:
 auto-hide polish (029C, completed), visual transforms (030A, completed), analysis and

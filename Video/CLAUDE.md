@@ -23,8 +23,9 @@ layer roles, CDG, timing, or presentation into WPF or any adapter. Core must not
 reference Win32/Vortice/WPF/renderer/platform projects. Reference DAG is pinned in
 `scripts/check-core-boundary.ps1` — update it deliberately when adding projects.
 
-True non-goals: VLC-style plugin/module architecture, Disc/DVD/Blu-ray playback,
-playlist/library ownership inside the engine.
+True non-goals: VLC-style plugin/module architecture, DVD/Blu-ray playback,
+playlist/library ownership inside the engine. Audio CD and CD+G disc playback are in
+scope (future stage 032A).
 
 ## Working style
 
