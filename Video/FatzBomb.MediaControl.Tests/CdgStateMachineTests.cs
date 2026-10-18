@@ -316,6 +316,24 @@ public class CdgStateMachineTests
     }
 
     [Fact]
+    public void CreateSnapshot_DirtyRegionsAreRelativeToTheLastConsumingSnapshot()
+    {
+        var sm = new CdgStateMachine();
+        _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x05, 0x00));
+        CdgRenderSnapshot first = sm.CreateSnapshot();
+        Assert.Equal(-1, first.DirtyBaseRevision);
+
+        _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x06, 0x00));
+        CdgRenderSnapshot peek = sm.CreateSnapshot(consumeDirtyRegions: false);
+        _ = sm.ProcessPacket(MakePacket((byte)CdgConstants.Instruction.MemoryPreset, 0x07, 0x00));
+        CdgRenderSnapshot second = sm.CreateSnapshot();
+
+        Assert.Equal(first.Revision, peek.DirtyBaseRevision);
+        Assert.Equal(first.Revision, second.DirtyBaseRevision);
+        Assert.True(second.HasDirtyRegions);
+    }
+
+    [Fact]
     public void CreateSnapshot_ConsumesDirtyRegionsOnFirstCall()
     {
         var sm = new CdgStateMachine();
@@ -367,5 +385,16 @@ public class CdgStateMachineTests
 
         sm.BackgroundOpacity = 50;
         Assert.Equal(50, sm.BackgroundOpacity);
+    }
+
+    [Fact]
+    public void BackgroundOpacity_ReadsBackEveryPercentAsSet()
+    {
+        var sm = new CdgStateMachine();
+        for (byte percent = 0; percent <= 100; percent++)
+        {
+            sm.BackgroundOpacity = percent;
+            Assert.Equal(percent, sm.BackgroundOpacity);
+        }
     }
 }

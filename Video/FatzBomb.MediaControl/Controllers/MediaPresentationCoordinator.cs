@@ -284,7 +284,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     public void RefreshCurrentPosition()
     {
         _renderPipeline.RenderCdgAtCurrentPosition(force: true);
-        _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
+
+        // A plain video is presented by PresentCurrentComposition below (it presents the frame for
+        // the new position, or reissues the current one); rendering it here too presented it twice.
+        if (!IsPlainVideoComposition())
+            _renderPipeline.RenderVideoAtCurrentPosition(allowWhilePlaying: true);
 
         // Audio with no picture, lyrics, subtitles, or background has nothing to redraw at the new
         // position; presenting an empty frame on every seek only produced failed presents.
@@ -1018,13 +1022,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 return;
 
             MediaCompositionStretchMode stretch = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : _primaryStretchMode;
-            _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-            _compositionBackgroundWidth = frame.Width;
-            _compositionBackgroundHeight = frame.Height;
-            _compositionBackgroundStride = frame.Width * 4;
-            _compositionBackgroundStretchMode = stretch;
-            _compositionBackgroundIsRetainedGpu = true;
-            var backgroundRevision = ++_compositionBackgroundRevision;
+            var backgroundRevision = SetRetainedGpuBackgroundNoLock(frame, stretch);
             SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
             compositionFrame = new MediaCompositionFrame
@@ -1070,14 +1068,25 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             if (!EnsureNativeFrameDevice(frame))
                 return;
 
-            _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
-            _compositionBackgroundWidth = frame.Width;
-            _compositionBackgroundHeight = frame.Height;
-            _compositionBackgroundStride = frame.Width * 4;
-            _compositionBackgroundStretchMode = stretch;
-            _compositionBackgroundIsRetainedGpu = true;
-            _compositionBackgroundRevision++;
+            _ = SetRetainedGpuBackgroundNoLock(frame, stretch);
         }
+    }
+
+    /// <summary>
+    /// Makes the renderer-retained hardware frame the background and returns its revision. The
+    /// pooled CPU frame buffer is returned: hardware frames never use it.
+    /// </summary>
+    private long SetRetainedGpuBackgroundNoLock(VideoFrameEventArgs frame, MediaCompositionStretchMode stretch)
+    {
+        _compositionBackgroundBgra = ReadOnlyMemory<byte>.Empty;
+        _compositionBackgroundBuffer?.Release();
+        _compositionBackgroundBuffer = null;
+        _compositionBackgroundWidth = frame.Width;
+        _compositionBackgroundHeight = frame.Height;
+        _compositionBackgroundStride = frame.Width * 4;
+        _compositionBackgroundStretchMode = stretch;
+        _compositionBackgroundIsRetainedGpu = true;
+        return ++_compositionBackgroundRevision;
     }
 
     private bool TryGetCdgSnapshotForVideoComposition(out CdgRenderSnapshot? snapshot)
@@ -1164,6 +1173,13 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         return true;
     }
+
+    /// <summary>Whether <see cref="PresentCurrentComposition"/> presents through its video branch.</summary>
+    private bool IsPlainVideoComposition() =>
+        !HasCdgContent
+        && !_mediaEngine.Content.HasFlag(MediaContent.Image)
+        && _mediaEngine.Content.HasFlag(MediaContent.Video)
+        && !(_attachedVideo == null && _attachedCdg == null && HasSubtitleContent);
 
     private void PresentCurrentComposition(string reason)
     {

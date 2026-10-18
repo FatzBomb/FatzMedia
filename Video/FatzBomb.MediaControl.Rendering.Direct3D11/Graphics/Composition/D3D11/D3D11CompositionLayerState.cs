@@ -226,7 +226,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             if (UploadedRevision != snapshot.Revision)
             {
                 ReadOnlySpan<byte> indices = snapshot.ColorIndices.Span;
-                UploadCdgIndexRegions(context, CdgIndexTexture, snapshot, indices);
+                UploadCdgIndexRegions(context, CdgIndexTexture, snapshot, indices, UploadedRevision);
                 MarkUploaded(snapshot.Revision);
             }
 
@@ -464,15 +464,23 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
 
         CdgPaletteTexture = device.CreateTexture2D(in paletteDescription);
         CdgPaletteShaderResourceView = device.CreateShaderResourceView(CdgPaletteTexture);
+
+        // New textures hold nothing: the next snapshot is uploaded whole.
+        UploadedRevision = -1;
     }
 
     private static void UploadCdgIndexRegions(
         ID3D11DeviceContext context,
         ID3D11Texture2D indexTexture,
         CdgRenderSnapshot snapshot,
-        ReadOnlySpan<byte> indices)
+        ReadOnlySpan<byte> indices,
+        long textureRevision)
     {
-        if (!snapshot.HasDirtyRegions || snapshot.DirtyRects.Contains(CdgDirtyRect.FullFrame))
+        // The dirty regions only bring the texture up to date from the revision they are relative to.
+        if (!snapshot.HasDirtyRegions
+            || textureRevision < 0
+            || textureRevision != snapshot.DirtyBaseRevision
+            || snapshot.DirtyRects.Contains(CdgDirtyRect.FullFrame))
         {
             context.UpdateSubresource(indices[..CdgConstants.TotalPixels], indexTexture, 0, CdgConstants.FrameWidth, 0, null);
             return;

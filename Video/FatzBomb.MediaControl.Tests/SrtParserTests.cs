@@ -51,4 +51,24 @@ public class SrtParserTests
         Assert.Equal(3, cue.Sequence);
         Assert.Equal("Kept", cue.Text);
     }
+
+    [Fact]
+    public void Parse_WhitespaceOnlyLineEndsTheCue()
+    {
+        IReadOnlyList<SubtitleCue> cues = SrtParser.Parse("1\n00:00:01,000 --> 00:00:02,000\nFirst\n  \n2\n00:00:03,000 --> 00:00:04,000\nSecond\n");
+
+        Assert.Collection(
+            cues,
+            cue => Assert.Equal("First", cue.Text),
+            cue => Assert.Equal("Second", cue.Text));
+    }
+
+    [Fact]
+    public void Parse_IgnoresPositionHintsAfterTheEndTime()
+    {
+        SubtitleCue cue = Assert.Single(SrtParser.Parse("1\n00:00:01,000 --> 00:00:02,500 X1:40 X2:600 Y1:20 Y2:50\nPlaced\n"));
+
+        Assert.Equal(TimeSpan.FromSeconds(2.5), cue.End);
+        Assert.Equal("Placed", cue.Text);
+    }
 }

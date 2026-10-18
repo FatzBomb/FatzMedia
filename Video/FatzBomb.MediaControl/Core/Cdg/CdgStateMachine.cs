@@ -17,6 +17,9 @@ public sealed class CdgStateMachine
     private readonly Lock _lock = new();
 
     private long _revision;
+    // The revision of the last snapshot that consumed the dirty regions: pending regions are
+    // the changes since it.
+    private long _dirtyBaseRevision = -1;
     private long _paletteRevision;
     private uint _backgroundWashArgb;
     private CdgRenderSnapshot? _lastSnapshot;
@@ -234,10 +237,12 @@ public sealed class CdgStateMachine
             CdgDirtyRect[] dirtyCopy = _dirtyRects.Count == 0
                 ? []
                 : [.. _dirtyRects];
+            var dirtyBaseRevision = _dirtyBaseRevision;
 
             if (consumeDirtyRegions)
             {
                 _dirtyRects.Clear();
+                _dirtyBaseRevision = _revision;
             }
 
             var snapshot = new CdgRenderSnapshot(
@@ -247,7 +252,10 @@ public sealed class CdgStateMachine
                 paletteCopy,
                 _backgroundWashArgb,
                 backgroundColorIndex,
-                dirtyCopy);
+                dirtyCopy)
+            {
+                DirtyBaseRevision = dirtyBaseRevision,
+            };
             _lastSnapshot = snapshot;
             _snapshotStatistics.SnapshotsCreated++;
             _snapshotStatistics.ColorIndexCopies++;

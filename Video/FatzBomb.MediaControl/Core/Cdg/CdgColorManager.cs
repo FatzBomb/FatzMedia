@@ -75,7 +75,8 @@ internal sealed class CdgColorManager
     /// </summary>
     public byte BackgroundOpacity
     {
-        get => (byte)(_backgroundOpacity / 2.55);
+        // Rounds like the setter, so every 0-100 value reads back as set.
+        get => (byte)Math.Round(_backgroundOpacity * 100.0 / 255.0);
         set
         {
             var v = (byte)Math.Clamp((int)value, 0, 100);
