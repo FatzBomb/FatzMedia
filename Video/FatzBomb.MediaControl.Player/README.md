@@ -119,6 +119,13 @@ and sidecar files (`.srt`, `.ass`, `.ssa` next to the media). It refreshes whene
 loads or closes and is disabled when the media has no subtitles. The SUB buttons beside it
 shift subtitle timing.
 
+## Silent drag
+
+**Silent Drag** in the **Audio** flyout (on by default) mutes audio while the seek bar is
+dragged; it plays again when the drag rests for about a tenth of a second or is released. Off,
+drags sound as before. It sets `MediaControlPlayer.ScrubAudio`; the volume setting is not
+touched.
+
 ## Log panel
 
 The **Log** button in the toolbar opens every engine diagnostic (info, warnings, and

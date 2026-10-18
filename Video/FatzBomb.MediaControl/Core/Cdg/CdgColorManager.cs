@@ -217,6 +217,22 @@ internal sealed class CdgColorManager
 
     #endregion
 
+    /// <summary>
+    /// Captures the state CDG packets change (the color table and the border and background
+    /// indices), not the host's presentation settings (opacity, background override).
+    /// </summary>
+    internal CdgColorReplayState CaptureReplayState() =>
+        new([.. _colorTable], _borderColorIndex, BackgroundColorIndex);
+
+    /// <summary>Restores state from <see cref="CaptureReplayState"/>, keeping the host's presentation settings.</summary>
+    internal void RestoreReplayState(CdgColorReplayState state)
+    {
+        state.ColorTable.CopyTo(_colorTable, 0);
+        _borderColorIndex = state.BorderColorIndex;
+        BackgroundColorIndex = state.BackgroundColorIndex;
+        InvalidateColorState(invalidateWash: true);
+    }
+
     #region Private Methods
 
     private void LoadColorTableRange(ReadOnlySpan<byte> colorData, int offset)
@@ -288,3 +304,6 @@ internal sealed class CdgColorManager
 
     #endregion
 }
+
+/// <summary>The packet-driven part of <see cref="CdgColorManager"/> (Stage 022A slice 4 replay checkpoints).</summary>
+internal sealed record CdgColorReplayState(Color[] ColorTable, int BorderColorIndex, int BackgroundColorIndex);

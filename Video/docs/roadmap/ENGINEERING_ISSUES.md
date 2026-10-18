@@ -32,7 +32,9 @@ review:
 
 ### ENG-018 - Cadence report sometimes names the 60 Hz fallback instead of the monitor
 
-Fixed: 2026-10-18, pending owner smoke.
+Fixed: 2026-10-18. Owner smoke passed the same day: five loads (AV1, HEVC 10-bit, H.264),
+the window moved to the other monitor before each; every report named the monitor's own rate
+(60 Hz and 59.973 Hz alternating with the monitor), none the platform fallback.
 
 Reported: 2026-10-18 (owner logs, 036A smoke). The once-per-open `VideoCadence` line said
 `60 Hz ... reported by the platform` in some runs and `59.973 Hz ... of the monitor showing

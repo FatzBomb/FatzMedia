@@ -646,6 +646,7 @@ Procedure and expected:
 52. Changing WPF presentation mode before load succeeds; changing it while media is open is rejected.
 53. Video playback resumes from the settled seek visual without skipping ahead or replaying earlier frames.
 54. An authored MOD/S3M/XM/IT pattern loopback moves the seekbar back to its first-pass loop position even when whole-file looping is disabled.
+55. With Silent Drag on (Player Audio flyout), a seek-bar drag is silent while it moves, plays again within about 120 ms of holding still and on release, for audio, CD+G, and video soundtracks; user volume is unchanged.
 
 ---
 

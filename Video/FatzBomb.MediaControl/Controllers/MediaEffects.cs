@@ -10,7 +10,11 @@ namespace FatzBomb.MediaControl.Controllers;
 public sealed class MediaEffects
 {
     private readonly IMediaEngine _mediaEngine;
+    // Orders user-volume writes (host thread) against the scrub mute (control queue and the
+    // scrub timer) so the engine always ends on the level the latest decision asked for.
+    private readonly Lock _volumeGate = new();
     private IAudioEngine? _subscribedAudioEngine;
+    private bool _scrubMuted;
     private int _pitch;
     private int _tempo = 100;
 
@@ -79,10 +83,44 @@ public sealed class MediaEffects
     private void ApplyEffectsTo(IAudioEngine engine)
     {
         engine.Normalize = Normalize;
-        engine.SetVolume(Volume);
+        ApplyVolume(engine);
         engine.SetPitch(Pitch);
         (engine as IAudioFilterHost)?.SetEqualizer(Equalizer);
         engine.SetTempo(_tempo - 100);
+    }
+
+    /// <summary>
+    /// Mutes or restores the audio for a moving scrub (<see cref="ScrubAudioMuter"/>) without
+    /// changing <see cref="Volume"/>: the engine gets silence while muted and the user volume
+    /// again, with <paramref name="ramp"/> when it can slide, once restored.
+    /// </summary>
+    internal void SetScrubMuted(bool muted, TimeSpan ramp)
+    {
+        lock (_volumeGate)
+        {
+            if (_scrubMuted == muted)
+                return;
+
+            _scrubMuted = muted;
+            // Read without Audio: this runs off the control queue and must not resubscribe.
+            if (HasAudio && _mediaEngine.Audio is { } engine)
+                ApplyVolumeLocked(engine, ramp);
+        }
+    }
+
+    private void ApplyVolume(IAudioEngine engine)
+    {
+        lock (_volumeGate)
+            ApplyVolumeLocked(engine, TimeSpan.Zero);
+    }
+
+    private void ApplyVolumeLocked(IAudioEngine engine, TimeSpan ramp)
+    {
+        var volume = _scrubMuted ? 0 : Volume;
+        if (ramp > TimeSpan.Zero && engine is IAudioVolumeSlide slide)
+            slide.SlideVolume(volume, ramp);
+        else
+            engine.SetVolume(volume);
     }
 
     /// <summary>
@@ -100,7 +138,7 @@ public sealed class MediaEffects
             var previous = field;
             field = clamped;
             if (HasAudio)
-                Audio.SetVolume(field);
+                ApplyVolume(Audio);
 
             HostEventDispatcher.Raise(
                 this,

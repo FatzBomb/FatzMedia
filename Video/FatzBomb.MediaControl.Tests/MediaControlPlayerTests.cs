@@ -122,6 +122,144 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task SeekAsync_SeeksOnTheControlQueue_InOrderWithASynchronousSeek()
+    {
+        // Stage 022A slice 4: hosts send seek-bar drags through SeekAsync; a release Seek right
+        // after must not be overtaken by a drag seek still queued.
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        var requested = new ConcurrentQueue<TimeSpan>();
+        player.SeekCompleted += (_, e) => requested.Enqueue(e.RequestedPosition);
+
+        Task<bool> drag = player.SeekAsync(8);
+        Assert.True(player.Seek(TimeSpan.FromSeconds(12)));
+
+        Assert.True(await drag.WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal([TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(12)], requested);
+        Assert.Equal(12, engine.Position, precision: 3);
+    }
+
+    [Fact]
+    public async Task SeekAsync_DuringAScrub_LeavesThePreviewToTheSeekPump()
+    {
+        // Stage 022A slice 4 follow-up (owner capture cdg-2): a drag seek that also re-rendered
+        // and presented the current frame held the video lock through a vsync present and stalled
+        // the seek pump's preview render. Drag seeks skip that refresh, as Controls.Seek did; a
+        // seek outside a scrub still refreshes.
+        var engine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.BeginScrub());
+        var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
+
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal(before, Volatile.Read(ref factory.Coordinator.RefreshCount));
+
+        Assert.True(player.EndScrub());
+        Assert.True(await player.SeekAsync(40).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.True(Volatile.Read(ref factory.Coordinator.RefreshCount) > before);
+    }
+
+    [Fact]
+    public async Task SilentScrub_MutesBeforeTheDragSeek_AndRestoresTheVolumeWhenTheScrubEnds()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
+        player.ScrubAudioMuter.QuietPeriod = TimeSpan.FromHours(1); // the drag never rests here
+        var volumeAtSeek = double.NaN;
+        engine.OnSeek = _ => volumeAtSeek = engine.TestAudio.Volume;
+
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal(0, volumeAtSeek);
+        Assert.Equal(0, engine.TestAudio.Volume);
+
+        // A volume change mid-drag is kept for later, not applied over the mute.
+        player.Effects.Volume = 0.8;
+        Assert.Equal(0, engine.TestAudio.Volume);
+        Assert.Equal(0.8, player.Effects.Volume);
+
+        Assert.True(player.Seek(30)); // the release seek
+        Assert.True(player.EndScrub());
+        Assert.Equal(0.8, engine.TestAudio.Volume);
+
+        // Outside a scrub, seeks never mute.
+        Assert.True(player.Seek(10));
+        Assert.Equal(0.8, volumeAtSeek);
+    }
+
+    [Fact]
+    public async Task AudibleScrub_IsTheDefault_AndNeverMutes()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        var volumeAtSeek = double.NaN;
+        engine.OnSeek = _ => volumeAtSeek = engine.TestAudio.Volume;
+
+        Assert.Equal(MediaScrubAudio.Audible, player.ScrubAudio);
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.Equal(0.6, volumeAtSeek);
+        Assert.True(player.EndScrub());
+    }
+
+    [Fact]
+    public async Task SilentScrub_LoadingMidDrag_LeavesTheNewMediaAudible()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
+        player.ScrubAudioMuter.QuietPeriod = TimeSpan.FromHours(1); // the drag never rests here
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.True(player.Load("next.mp3"));
+
+        Assert.Equal(0.6, engine.TestAudio.Volume);
+        Assert.False(player.Controls.IsScrubbing);
+    }
+
+    [Fact]
+    public async Task SeekAsync_RequestsWaitingToRun_CollapseToTheNewest()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        var seeks = new ConcurrentQueue<double>();
+        using var firstEntered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        engine.OnSeek = seconds =>
+        {
+            seeks.Enqueue(seconds);
+            if (!firstEntered.IsSet)
+            {
+                firstEntered.Set();
+                release.Wait(TestEnvironment.EventuallyTimeout);
+            }
+        };
+
+        Task<bool> running = player.SeekAsync(1);
+        Assert.True(firstEntered.Wait(TestEnvironment.EventuallyTimeout));
+        Task<bool>[] waiting = [player.SeekAsync(2), player.SeekAsync(3), player.SeekAsync(4)];
+        release.Set();
+
+        Assert.True(await running.WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.All(await Task.WhenAll(waiting).WaitAsync(TestEnvironment.EventuallyTimeout), Assert.True);
+        Assert.Equal([1d, 4d], seeks);
+        Assert.Equal(4, engine.Position, precision: 3);
+    }
+
+    [Fact]
     public async Task VideoSeek_RaisesCompletedAfterTheSettledPositionSignal()
     {
         var video = new TestVideoEngine();
@@ -737,6 +875,8 @@ public sealed class MediaControlPlayerTests
 
         public string LastNativeLoadMessage => string.Empty;
 
+        public TestPresentationCoordinator Coordinator => _coordinator;
+
         public Action<int>? BeforeCreateServiceProvider { get; set; }
 
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);
@@ -771,7 +911,7 @@ public sealed class MediaControlPlayerTests
         public IArchiveHandle Open(string path) => throw new NotSupportedException();
     }
 
-    private sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
+    internal sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
     {
         public event EventHandler? FramePresented { add { } remove { } }
 
@@ -782,7 +922,9 @@ public sealed class MediaControlPlayerTests
         public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;
         public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
         public bool DetachPresentationSurface(string surfaceId) => false;
-        public void RefreshCurrentPosition() { }
+        public int RefreshCount;
+
+        public void RefreshCurrentPosition() => Interlocked.Increment(ref RefreshCount);
         public void RunOnRenderThread(Action action) => action();
         public void StartRendering() { }
         public void StopRendering() { }

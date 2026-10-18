@@ -42,7 +42,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   capture script (`updates/022A_1`); Windows baseline captured 2026-10-17; slice 2 removes
   the per-frame software and WPF buffers, the per-frame audio lock, and per-frame display-rate
   queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`); slice 3
-  reuses each scheduler's worker thread across seeks, owner smoke passed 2026-10-18 (`updates/022A_3`).
+  reuses each scheduler's worker thread across seeks, owner smoke passed 2026-10-18 (`updates/022A_3`);
+  slice 4 bounds CD+G seek replay with checkpoints and moves seek-bar drags onto the control
+  queue (`SeekAsync`), owner smoke passed 2026-10-18, lock waits 622 -> 556 ms per minute of
+  scrubbing with the render-loop CD+G waits gone (`updates/022A_4`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
@@ -57,7 +60,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;
-  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`).
+  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`). Slice 2: optional silent
+  drag (`MediaScrubAudio.SilentWhileMoving`; Player **Silent Drag**, on by default), muted
+  while the drag moves, audible when it rests (120 ms) or ends; implemented; owner smoke
+  passed 2026-10-18 (`updates/035A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

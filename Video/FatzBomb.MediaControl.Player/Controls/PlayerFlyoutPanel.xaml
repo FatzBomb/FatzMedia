@@ -304,9 +304,14 @@
                         IsChecked="{Binding ResetPitchOnMediaLoad, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="Reset pitch to 0 after the next successful media load" />
                     <CheckBox
+                        Margin="0,0,14,0"
                         Content="Reset Tempo on Load"
                         IsChecked="{Binding ResetTempoOnMediaLoad, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="Reset tempo to 100% after the next successful media load" />
+                    <CheckBox
+                        Content="Silent Drag"
+                        IsChecked="{Binding SilentDrag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Mute audio while the seek bar is dragged; it plays again when the drag rests or is released" />
                 </DockPanel>
                 <Border
                     Margin="0,7,0,0"

@@ -15,7 +15,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide
 {
     private readonly BassEqualizerFilter _equalizer = new();
 
@@ -528,7 +528,15 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
         // Just set volume directly - gain is handled separately by FX
         // No need for CalculateEffectiveVolume anymore
-        _ = MBass.ChannelSetAttribute(playHandle, ChannelAttribute.Volume, volume01);
+        _ = BassChannelVolume.Set(playHandle, volume01);
+    }
+
+    void IAudioVolumeSlide.SlideVolume(double volume01, TimeSpan duration)
+    {
+        var playHandle = _streamManager.PlayHandle;
+        if (playHandle == 0) return;
+
+        _ = BassChannelVolume.Slide(playHandle, volume01, duration);
     }
 
     /// <inheritdoc/>

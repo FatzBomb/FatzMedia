@@ -13,7 +13,18 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
     private readonly CdgStateMachine _cdgState = new();
     private readonly Lock _renderLock = new();
 
+    /// <summary>
+    /// Replay checkpoint spacing: 10 s of packets. Stage 022A slice 4: a seek used to replay every
+    /// packet from the start of the song under the render lock (about 72,000 for 4 minutes), which
+    /// blocked the render loop for up to 15 ms per seek in the owner's capture. A seek now restores
+    /// the nearest checkpoint at or before its target and replays at most this many packets.
+    /// </summary>
+    internal const int CheckpointIntervalPackets = 10 * CdgConstants.PacketsPerSecond;
+
     private CdgPacket[] _packets = [];
+    // Slot n holds the state after packets [0, n * CheckpointIntervalPackets), built at load; slot
+    // 0 is the reset state and stays null. About 65 KB each: 1.6 MB for a 4-minute song.
+    private CdgReplayCheckpoint?[] _checkpoints = [null];
     private int _startPacketIndex;
     private uint _backgroundWashArgb;
     private bool _disposed;
@@ -117,7 +128,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         using var ms = new MemoryStream();
         fs.CopyTo(ms);
         ms.Position = 0;
-        _packets = [.. InitializeCdgStream(ms)];
+        SetPackets([.. InitializeCdgStream(ms)]);
         ResetInternal();
         State = CdgEngineState.Ready;
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG file '{Path.GetFileName(filePath)}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
@@ -130,7 +141,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         using var ms = new MemoryStream();
         archiveEntry.WriteTo(ms);
         ms.Position = 0;
-        _packets = [.. InitializeCdgStream(ms)];
+        SetPackets([.. InitializeCdgStream(ms)]);
         ResetInternal();
         State = CdgEngineState.Ready;
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "CdgEngine", $"Loaded CDG archive entry '{archiveEntry.Key}' with {_packets.Length} packets, duration {TotalDurationSeconds:F2}s");
@@ -170,11 +181,15 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
             var endIndex = (long)(seconds * CdgConstants.PacketsPerSecond);
             endIndex = Math.Clamp(endIndex, 0, _packets.Length);
 
-            var rebuiltFromStart = false;
-            if (forceRebuild || endIndex < _startPacketIndex)
+            // Going back, or forward past a checkpoint: start from the nearest checkpoint at or before
+            // the target. Otherwise the current state is already exact and replay just continues,
+            // so a forced (authoritative) render at the current position replays nothing.
+            var slot = Math.Min((int)(endIndex / CheckpointIntervalPackets), _checkpoints.Length - 1);
+            var restored = false;
+            if (endIndex < _startPacketIndex || slot * CheckpointIntervalPackets > _startPacketIndex)
             {
-                ResetPacketStateForReplay();
-                rebuiltFromStart = true;
+                RestoreCheckpointUnsafe(slot);
+                restored = true;
             }
 
             var hasChanges = false;
@@ -186,7 +201,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
                 }
             }
 
-            if (hasChanges || rebuiltFromStart || (endIndex == 0 && _packets.Length > 0))
+            if (hasChanges || restored || forceRebuild || (endIndex == 0 && _packets.Length > 0))
             {
                 washChanged = RefreshBackgroundWashUnsafe();
                 shouldInvalidate = true;
@@ -219,6 +234,56 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
     {
         _cdgState.Reset();
         _startPacketIndex = 0;
+    }
+
+    private void RestoreCheckpointUnsafe(int slot)
+    {
+        if (_checkpoints[slot] is { } checkpoint)
+        {
+            _cdgState.RestoreReplayCheckpoint(checkpoint);
+            _startPacketIndex = slot * CheckpointIntervalPackets;
+        }
+        else
+        {
+            ResetPacketStateForReplay();
+        }
+    }
+
+    /// <summary>
+    /// Replays the whole song once on a scratch state machine, outside the render lock, keeping a
+    /// copy every <see cref="CheckpointIntervalPackets"/> (about 50 ms for a 4-minute song).
+    /// </summary>
+    private static CdgReplayCheckpoint?[] BuildCheckpoints(CdgPacket[] packets)
+    {
+        var checkpoints = new CdgReplayCheckpoint?[(packets.Length / CheckpointIntervalPackets) + 1];
+        var replay = new CdgStateMachine();
+        for (var index = 0; index < packets.Length; index++)
+        {
+            if (index > 0 && index % CheckpointIntervalPackets == 0)
+                checkpoints[index / CheckpointIntervalPackets] = replay.CaptureReplayCheckpoint();
+
+            _ = replay.ProcessPacket(packets[index]);
+        }
+
+        if (packets.Length > 0 && packets.Length % CheckpointIntervalPackets == 0)
+            checkpoints[^1] = replay.CaptureReplayCheckpoint();
+
+        return checkpoints;
+    }
+
+    /// <summary>
+    /// Swaps in a song's packets and checkpoints and resets the replay state in one lock, so no
+    /// render ever runs the new packets over the old song's state.
+    /// </summary>
+    private void SetPackets(CdgPacket[] packets)
+    {
+        CdgReplayCheckpoint?[] checkpoints = BuildCheckpoints(packets);
+        lock (_renderLock)
+        {
+            _packets = packets;
+            _checkpoints = checkpoints;
+            ResetPacketStateForReplay();
+        }
     }
 
     private void InvalidateFrame() => FrameInvalidated?.Invoke(this, EventArgs.Empty);
@@ -293,7 +358,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
         _disposed = true;
         Pause();
         ResetInternal();
-        _packets = [];
+        SetPackets([]);
         State = CdgEngineState.Closed;
         Closed?.Invoke(this, EventArgs.Empty);
     }

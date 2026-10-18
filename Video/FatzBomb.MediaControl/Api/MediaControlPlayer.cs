@@ -31,6 +31,9 @@ public partial class MediaControlPlayer : IMediaControlSession
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _operationAdmissionGate = new();
     private readonly Lock _seekCompletionGate = new();
+    private readonly Lock _queuedSeekGate = new();
+    private QueuedSeek? _queuedSeek;
+    private readonly ScrubAudioMuter _scrubAudio;
     private IAudioDeviceMonitor? _audioDeviceMonitor;
     private IVideoEngine? _seekVideoEngine;
     private ICdgEngine? _seekCdgEngine;
@@ -53,6 +56,8 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
+        // Reads Effects on every call: Reset replaces it.
+        _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
         CdgVisuals = new CdgVisuals(_mediaEngine);
         _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
@@ -128,6 +133,14 @@ public partial class MediaControlPlayer : IMediaControlSession
         get => Controls.LoopMedia;
         set => Controls.LoopMedia = value;
     }
+
+    public MediaScrubAudio ScrubAudio
+    {
+        get => _scrubAudio.Mode;
+        set => _scrubAudio.Mode = value;
+    }
+
+    internal ScrubAudioMuter ScrubAudioMuter => _scrubAudio;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -260,7 +273,12 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public bool BeginScrub() => ExecuteControlOperation(() => Controls.BeginScrub());
 
-    public bool EndScrub() => ExecuteControlOperation(() => Controls.EndScrub());
+    public bool EndScrub() => ExecuteControlOperation(() =>
+    {
+        var ended = Controls.EndScrub();
+        _scrubAudio.OnScrubEnded();
+        return ended;
+    });
 
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
@@ -268,47 +286,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            return ExecuteControlOperation(() =>
-            {
-                var requested = CleanPosition(seconds);
-                var target = _mediaEngine.Duration > 0
-                    ? Math.Clamp(requested, 0, _mediaEngine.Duration)
-                    : requested;
-                if (Controls.IsRepeatOfScrubTarget(seconds))
-                {
-                    // The release seek of a drag at the last drag position: already there or
-                    // playing on from it, so nothing moves.
-                    RaiseSeekCompleted(requested, _mediaEngine.Position);
-                    return true;
-                }
-
-                var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
-                if (waitsForSettle)
-                {
-                    lock (_seekCompletionGate)
-                    {
-                        _pendingSeek = new PendingSeek(requested, target, Controls.IsScrubbing);
-                        Volatile.Write(ref _hasPendingSeek, 1);
-                    }
-                }
-
-                var success = Controls.Seek(seconds);
-                if (!success)
-                {
-                    ClearPendingSeek();
-                    return false;
-                }
-
-                _presentationCoordinator.RefreshCurrentPosition();
-                if (!waitsForSettle)
-                {
-                    RaiseSeekCompleted(requested, _mediaEngine.Position);
-                    return true;
-                }
-
-                TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds, isSettlement: false);
-                return true;
-            });
+            return ExecuteControlOperation(() => SeekOperation(seconds, refreshPresentation: true));
         }
         catch (ObjectDisposedException)
         {
@@ -323,6 +301,157 @@ public partial class MediaControlPlayer : IMediaControlSession
             Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Seeks on the Core control queue, in order with every other control operation, so the
+    /// caller's thread does none of the seek work (Stage 022A slice 4: seek-bar drags kept the
+    /// host's UI thread busy for every mouse move). The newest request wins: a request made while
+    /// another is still queued (not yet running) replaces its target, and both callers get the
+    /// result of that one seek, so a host can call this for every mouse move.
+    /// </summary>
+    public Task<bool> SeekAsync(double seconds)
+    {
+        QueuedSeek queued;
+        lock (_queuedSeekGate)
+        {
+            if (_queuedSeek is { } waiting)
+            {
+                waiting.Seconds = seconds;
+                return waiting.Completion.Task;
+            }
+
+            queued = new QueuedSeek(seconds);
+            _queuedSeek = queued;
+        }
+
+        // Queued outside _queuedSeekGate: a synchronous Seek holds the admission gate while it
+        // waits for its turn, so taking that gate under ours could deadlock with the worker.
+        Task<bool> enqueued;
+        try
+        {
+            enqueued = EnqueueControlOperation(() => RunQueuedSeek(queued));
+        }
+        catch (Exception ex)
+        {
+            FailQueuedSeek(queued, ex);
+            throw;
+        }
+
+        // RunQueuedSeek never throws, so a faulted task means the queue refused the operation
+        // (disposed): fail it, or later requests would join a seek that never runs.
+        _ = enqueued.ContinueWith(
+            task => FailQueuedSeek(queued, task.Exception!.InnerException ?? task.Exception),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return queued.Completion.Task;
+    }
+
+    private void FailQueuedSeek(QueuedSeek queued, Exception exception)
+    {
+        lock (_queuedSeekGate)
+        {
+            if (ReferenceEquals(_queuedSeek, queued))
+                _queuedSeek = null;
+        }
+
+        _ = queued.Completion.TrySetException(exception);
+    }
+
+    private bool RunQueuedSeek(QueuedSeek queued)
+    {
+        double seconds;
+        lock (_queuedSeekGate)
+        {
+            seconds = queued.Seconds;
+            if (ReferenceEquals(_queuedSeek, queued))
+                _queuedSeek = null;
+        }
+
+        try
+        {
+            // A drag seek leaves the frame to the seek pump, which presents the scrub preview
+            // itself; re-rendering here held the video lock through a vsync present and stalled
+            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging).
+            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing);
+            _ = queued.Completion.TrySetResult(result);
+            return result;
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+        {
+            _ = queued.Completion.TrySetException(ex);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] Seek failed: {ex.Message}");
+            _ = queued.Completion.TrySetResult(false);
+            return false;
+        }
+    }
+
+    private sealed class QueuedSeek(double seconds)
+    {
+        public double Seconds { get; set; } = seconds;
+        public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private bool SeekOperation(double seconds, bool refreshPresentation)
+    {
+        var requested = CleanPosition(seconds);
+        var target = _mediaEngine.Duration > 0
+            ? Math.Clamp(requested, 0, _mediaEngine.Duration)
+            : requested;
+        if (Controls.IsRepeatOfScrubTarget(seconds))
+        {
+            // The release seek of a drag at the last drag position: already there or
+            // playing on from it, so nothing moves.
+            RaiseSeekCompleted(requested, _mediaEngine.Position);
+            return true;
+        }
+
+        var waitsForSettle = _mediaEngine.Video?.IsOpen == true || _mediaEngine.Cdg != null;
+        if (waitsForSettle)
+        {
+            lock (_seekCompletionGate)
+            {
+                _pendingSeek = new PendingSeek(requested, target, Controls.IsScrubbing);
+                Volatile.Write(ref _hasPendingSeek, 1);
+            }
+        }
+
+        // Silent scrubbing mutes before the seek moves the audio, so nothing of the new position
+        // is heard while the drag keeps moving. A slow seek (a network stream) holds the unmute
+        // until it returns, so the drag requests queued behind it are not heard either.
+        var trackedScrubSeek = Controls.IsScrubbing && _scrubAudio.OnScrubSeek();
+        bool success;
+        try
+        {
+            success = Controls.Seek(seconds);
+        }
+        finally
+        {
+            if (trackedScrubSeek)
+                _scrubAudio.OnScrubSeekFinished();
+        }
+
+        if (!success)
+        {
+            ClearPendingSeek();
+            return false;
+        }
+
+        if (refreshPresentation)
+            _presentationCoordinator.RefreshCurrentPosition();
+        if (!waitsForSettle)
+        {
+            RaiseSeekCompleted(requested, _mediaEngine.Position);
+            return true;
+        }
+
+        TryCompletePendingSeek(_mediaEngine.Position, SeekImmediateCompletionToleranceSeconds, isSettlement: false);
+        return true;
     }
 
     public bool SelectSubtitleTrack(string? trackId)
@@ -488,6 +617,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         //    and close media
         try { ClearPreparedNextForLifecycle(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
+        try { _scrubAudio.OnScrubEnded(); } catch { }
         try { File.Close(); } catch { }
 
         // 2. Unsubscribe internal events
@@ -631,6 +761,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         catch { }
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
+        try { _scrubAudio.Dispose(); } catch { }
         try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
