@@ -1,9 +1,10 @@
-# Active Stage 031B - Audio Fade and Crossfade Model
+# Completed Stage 031B - Audio Fade and Crossfade Model
 
 Prepared: 2026-10-16
-Status: Slice 1 (envelope math) and slice 2 (single-handle fade application and
-fade-through prepared-next transitions) implemented, pending manual smoke. A true
-overlapping two-handle crossfade is deferred (see Deferred).
+Status: Completed 2026-10-18. slice 1 (envelope math) and slice 2 (single-handle fades,
+fade-through prepared-next); owner smoke passed 2026-10-17 (`updates/031B_1`,
+`updates/031B_2`). The deferred overlapping crossfade moved to
+`future/040A_IDEA_OverlappingCrossfade.md`.
 
 ## Objective
 

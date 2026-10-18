@@ -3,7 +3,7 @@
 Stage: 031B.2 - Fade application and fade-through prepared-next transitions
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17 (stage completed 2026-10-18)
 
 Delivered:
 

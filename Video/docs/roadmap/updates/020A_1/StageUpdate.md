@@ -3,7 +3,7 @@
 Stage: 020A.1 - Filter contract + bypassable equalizer
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17 (stage completed 2026-10-18)
 
 Delivered: see the stage file. 14 focused cases (`AudioEqualizerTests.cs`); Player flag
 `--eq=<g31,g63,g125,g250,g500,g1k,g2k,g4k,g8k,g16k>` (dB).

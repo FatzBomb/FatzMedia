@@ -2,16 +2,9 @@
 
 ## Active
 
-Stages implemented in the unattended 2026-10-16 session stay here, each
-"implemented, pending manual smoke", until the owner confirms the smoke in its update note.
+Stages with a slice pending the owner's smoke or planned slices still to do. A stage moves to
+`complete/` once its slices have passed; its deferred follow-ups become future ideas.
 
-- `active/031A_ACTIVE_PreparedNextPlaylistSlot.md` - implemented; owner smoke passed 2026-10-17
-  (Next panel; `updates/031A_1`); 30 focused tests. Player host controls for 031A/031B/014A/020A in
-  `updates/031A_2`.
-- `active/031B_ACTIVE_AudioFadeCrossfadeModel.md` - implemented; owner smoke passed 2026-10-17
-  (fades; `updates/031B_1`, `updates/031B_2`); overlapping two-handle crossfade deferred.
-- `active/014A_ACTIVE_StreamingNetworkPlayback.md` - implemented; owner smoke passed 2026-10-17
-  (radio, progressive MP3, retries, MP4 refusal; `updates/014A_1`, `updates/014A_2`); HTTP audio only, network video deferred.
 - `active/026B_ACTIVE_CrossPlatformPlatformServices.md` - Linux baseline implemented
   (`updates/026B_1`); native FFmpeg + Core decode validated on Linux; BASS/player smoke
   pending; macOS deferred.
@@ -22,52 +15,11 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   implemented (`updates/027A_1`, `updates/027A_3`); slice 2 re-planned 2026-10-18 as an
   Avalonia GPU-shared surface (compositor import, no CPU copy or overlay window), not
   started; WinUI 3 deferred.
-- `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
-  owner smoke passed 2026-10-17 (`updates/020A_1`).
-- `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
-  (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel; owner
-  smoke passed 2026-10-18 (`updates/017A_2`); slice 3 takes the refresh rate of the monitor
-  showing the video from the renderer (Direct3D11); owner smoke passed 2026-10-18 (`updates/017A_3`);
-  slice 4 adds opt-in display-locked frame selection (`VideoFrameTiming.DisplayLocked`, Player
-  **Display-Locked**), from each monitor's vertical blanks; slice 5 gives each monitor its own
-  cadence (outputs on displays with different rates); owner smoke passed 2026-10-18,
-  opt-in and off by default (`updates/017A_4`, `updates/017A_5`).
-- `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
-  extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
-  `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
-- `active/010A_ACTIVE_SoftwareVideoUploadCopyPath.md` - copy map + benchmark + one
-  full-frame copy removed; owner smoke passed 2026-10-17 (`updates/010A_1`).
-- `active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md` - lifetime map, counters,
-  immutable snapshot reuse; owner CDG smoke passed 2026-10-17 (`updates/018A_1`).
-- `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
-  ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
-- `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
-  capture script (`updates/022A_1`); Windows baseline captured 2026-10-17; slice 2 removes
-  the per-frame software and WPF buffers, the per-frame audio lock, and per-frame display-rate
-  queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`); slice 3
-  reuses each scheduler's worker thread across seeks, owner smoke passed 2026-10-18 (`updates/022A_3`);
-  slice 4 bounds CD+G seek replay with checkpoints and moves seek-bar drags onto the control
-  queue (`SeekAsync`), owner smoke passed 2026-10-18, lock waits 622 -> 556 ms per minute of
-  scrubbing with the render-loop CD+G waits gone (`updates/022A_4`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
-- `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
-  wrong-version native files, implemented; owner smoke passed 2026-10-17 (`updates/034A_1`).
-- `active/036A_ACTIVE_RendererFallbackChain.md` - Direct3D11 falls back from the GPU to WARP
-  (Windows' software rasterizer) on its own; Core `FallbackPresentationCoordinatorFactory`
-  then the software renderer; Player `--renderer=auto|gpu|warp|software`; implemented;
-  owner smoke passed 2026-10-18 (`updates/036A_1`).
-- `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
-  (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
-  and the release seek at the last drag position is ignored, so nothing jumps; implemented;
-  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`). Slice 2: optional silent
-  drag (`MediaScrubAudio.SilentWhileMoving`; Player **Silent Drag**, on by default), muted
-  while the drag moves, audible when it rests (120 ms) or ends; implemented; owner smoke
-  passed 2026-10-18 (`updates/035A_2`).
-
 - `active/038A_ACTIVE_HdrVideoToneMapping.md` - slice 1 tone maps HDR10 (PQ) video to SDR on
   the CPU path for every renderer (BT.2390 curve, SDR white 203 nits; Player `--no-hdr-tonemap`
   to compare); owner confirmed 2026-10-18 (`updates/038A_1`). Slice 2 tone maps
@@ -82,6 +34,19 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
+- `complete/014A_COMPLETED_StreamingNetworkPlayback.md` — source capability matrix and HTTP/HTTPS audio with retries; owner smoke passed 2026-10-17; network video deferred to 039A (completed 2026-10-18)
+- `complete/015A_COMPLETED_BroadVideoPipelineSplit.md` — responsibility map, seek policy and the shared seek pump extracted; owner smoke passed 2026-10-17; remaining seams in 041A (completed 2026-10-18)
+- `complete/017A_COMPLETED_DisplayRateCompositorRewrite.md` — cadence model and report, per-monitor refresh rate, opt-in display-locked timing with per-display cadence; owner smoke passed 2026-10-18; later work in 041A (completed 2026-10-18)
+- `complete/018A_COMPLETED_CDGSnapshotOwnershipRedesignPooling.md` — CDG snapshot lifetime map, counters and immutable snapshot reuse; owner CDG smoke passed 2026-10-17 (completed 2026-10-18)
+- `complete/019A_COMPLETED_VideoFrameEventArgsReuseApiRedesign.md` — video frame event lifetime matrix, written ephemeral contract and conformance tests; no behaviour change (completed 2026-10-18)
+- `complete/020A_COMPLETED_AudioFilterFramework.md` — audio filter contract and bypassable parametric equalizer; owner smoke passed 2026-10-17 (completed 2026-10-18)
+- `complete/022A_COMPLETED_ThreadModelProfilingAndSimplification.md` — thread map and capture tooling, per-frame costs removed, reused scheduler threads, CD+G seek checkpoints; owner smoke passed 2026-10-18 (completed 2026-10-18)
+- `complete/031A_COMPLETED_PreparedNextPlaylistSlot.md` — depth-one prepared-next slot with Player Next panel; owner smoke passed 2026-10-17 (completed 2026-10-18)
+- `complete/031B_COMPLETED_AudioFadeCrossfadeModel.md` — fade envelopes, single-handle fades and fade-through transitions; owner smoke passed 2026-10-17; overlapping crossfade deferred to 040A (completed 2026-10-18)
+- `complete/034A_COMPLETED_NativeDependencyReport.md` — native dependency report; owner smoke passed 2026-10-17 (completed 2026-10-18)
+- `complete/035A_COMPLETED_ControlOwnedSeekScrubbing.md` — control-owned seek scrubbing and optional silent drag; owner smoke passed 2026-10-17/18 (completed 2026-10-18)
+- `complete/036A_COMPLETED_RendererFallbackChain.md` — renderer fallback chain (GPU, WARP, software) with Player `--renderer=`; owner smoke passed 2026-10-18 (completed 2026-10-18)
 - `complete/030B_COMPLETED_SilenceTrimmingAnalysisCache.md` — versioned media-analysis cache, background silence scan, and plain-audio trim transport; 508 automated tests; owner-confirmed native smoke (2026-10-16)
 - `complete/030A_COMPLETED_VisualTransforms.md` — Core-owned base-visual transforms with software/Direct3D11 parity, optional whole-composition processing, Player validation flyouts, 438-test automated baseline, and user-confirmed manual smoke on both renderer paths (2026-08-17)
 - `complete/029C_COMPLETED_EventDrivenWpfAutoHide.md` — event-driven WPF surface AutoHide (default on, `--no-auto-hide` opt-out, internal-host-only visibility) with additive Core `HasVisualContent`; Release 0 warnings/errors, 406 tests, format/Core/WPF/parity gates, Core+WPF packs, WPF specialist and final diff review no blockers, manual Player AutoHide smoke passed (2026-08-08)
@@ -115,6 +80,11 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
+- `future/039A_IDEA_NetworkVideoPlayback.md` - HTTP/HTTPS video, deferred from 014A.
+- `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
+  deferred from 031B.
+- `future/041A_IDEA_EngineInternalFollowUps.md` - small engine follow-ups left by completed
+  stages 010A, 015A, 017A, 019A and 022A.
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).

@@ -3,7 +3,7 @@
 Stage: 031A.2 - Player host controls for prepared-next, fades, network, and equalizer
 Date: 2026-10-17
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17 (stage completed 2026-10-18)
 
 The validation Player previously exercised 031A/031B/014A/020A only through startup flags,
 so a manual transition, manual fades, and live equalizer changes could not be tried by

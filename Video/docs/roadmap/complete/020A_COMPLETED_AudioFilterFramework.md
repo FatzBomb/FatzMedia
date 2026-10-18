@@ -1,8 +1,9 @@
-# Active Stage 020A - Audio Filter Framework
+# Completed Stage 020A - Audio Filter Framework
 
 Prepared: 2026-10-16
-Status: First vertical slice (bypassable parametric equalizer) implemented, pending manual
-smoke.
+Status: Completed 2026-10-18. slice 1 (audio filter contract and bypassable parametric
+equalizer); owner smoke passed 2026-10-17 (`updates/020A_1`). Video-file audio uses the same
+chain since 033A.
 
 ## Signal Chain Map (pinned)
 

@@ -1,10 +1,11 @@
-# Active Stage 022A - Thread Model Profiling and Simplification
+# Completed Stage 022A - Thread Model Profiling and Simplification
 
 Prepared: 2026-10-16
-Status: Slice 1 (thread-ownership map from code, repeatable capture tooling) implemented.
-The owner captured the Windows baseline on 2026-10-17 (below). Slice 2 removes the three
-costs it measured that are cheapest to remove (`updates/022A_2`). Slice 3 keeps each
-scheduler's worker thread across restarts (`updates/022A_3`).
+Status: Completed 2026-10-18. slices 1-4 (thread map and capture tooling; per-frame buffers,
+audio lock and rate queries removed; reused scheduler threads; CD+G seek checkpoints and
+off-UI-thread drag seeks); owner smoke passed 2026-10-18 (`updates/022A_1` to
+`updates/022A_4`). A fresh capture before more simplification is listed in
+`future/041A_IDEA_EngineInternalFollowUps.md`.
 
 ## Thread Ownership Map (pinned, from code)
 
