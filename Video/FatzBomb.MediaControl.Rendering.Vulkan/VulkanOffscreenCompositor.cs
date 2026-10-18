@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Core.Cdg;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -55,6 +56,8 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
     private Framebuffer _targetFramebuffer;
     private BufferResource? _uploadBuffer;
     private BufferResource? _cdgUploadBuffer;
+    private CdgRenderSnapshot? _cdgUploadedSnapshot;
+    private VkImage _cdgUploadedImage;
     private BufferResource? _readbackBuffer;
     private byte[] _output = [];
     private bool _disposed;
@@ -66,6 +69,9 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
 
     /// <summary>Gets the selected device's type.</summary>
     public PhysicalDeviceType DeviceType { get; private set; }
+
+    /// <summary>Gets how many times a CDG snapshot was expanded and uploaded (tests).</summary>
+    internal int CdgUploadCount { get; private set; }
 
     /// <summary>
     /// Creates the compositor, or returns <see langword="null"/> with a reason when no usable
@@ -126,20 +132,31 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 Upload(upload, background.Bgra.Span, background.Width, background.Height, background.Stride);
             }
 
+            // Snapshots are immutable and Core hands over the same object while the CDG frame is
+            // unchanged, so the texture from the last upload is still current for it (ENG-014:
+            // about 260 KB expanded and copied per frame otherwise).
+            var uploadCdg = false;
             if (plan.Cdg is { } cdg)
             {
-                _ = EnsureImage(ref _cdgImage, (uint)cdg.Snapshot.Width, (uint)cdg.Snapshot.Height, ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit);
-                var length = (ulong)cdg.Snapshot.Width * (ulong)cdg.Snapshot.Height * 4;
-                BufferResource upload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit);
+                ImageResource cdgTexture = EnsureImage(ref _cdgImage, (uint)cdg.Snapshot.Width, (uint)cdg.Snapshot.Height, ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit);
+                uploadCdg = !ReferenceEquals(cdg.Snapshot, _cdgUploadedSnapshot) || cdgTexture.Image.Handle != _cdgUploadedImage.Handle;
+            }
+
+            if (uploadCdg && plan.Cdg is { } cdgPlan)
+            {
+                // Forgotten until this frame's submission completes, so a failure re-uploads.
+                _cdgUploadedSnapshot = null;
+                var length = (ulong)cdgPlan.Snapshot.Width * (ulong)cdgPlan.Snapshot.Height * 4;
+                BufferResource cdgUpload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit);
                 void* mapped;
-                Check(_vk.MapMemory(_device, upload.Memory, 0, length, 0, &mapped), "vkMapMemory");
+                Check(_vk.MapMemory(_device, cdgUpload.Memory, 0, length, 0, &mapped), "vkMapMemory");
                 try
                 {
-                    VulkanCompositionPlanner.ExpandCdg(cdg.Snapshot, new Span<byte>(mapped, (int)length));
+                    VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>(mapped, (int)length));
                 }
                 finally
                 {
-                    _vk.UnmapMemory(_device, upload.Memory);
+                    _vk.UnmapMemory(_device, cdgUpload.Memory);
                 }
             }
 
@@ -182,16 +199,22 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 if (plan.Cdg is { } overlay)
                 {
                     ImageResource cdgImage = _cdgImage!.Value;
-                    Transition(cdgImage.Image, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
-                    CopyBufferToImage(_cdgUploadBuffer!.Value, cdgImage.Image, overlay.Snapshot.Width, overlay.Snapshot.Height);
-                    Barrier(
-                        cdgImage.Image,
-                        ImageLayout.TransferDstOptimal,
-                        ImageLayout.ShaderReadOnlyOptimal,
-                        AccessFlags.TransferWriteBit,
-                        AccessFlags.ShaderReadBit,
-                        PipelineStageFlags.TransferBit,
-                        PipelineStageFlags.FragmentShaderBit);
+                    // A reused texture is still in ShaderReadOnlyOptimal from the frame that
+                    // uploaded it, and that frame's submission has completed (fence wait).
+                    if (uploadCdg)
+                    {
+                        Transition(cdgImage.Image, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
+                        CopyBufferToImage(_cdgUploadBuffer!.Value, cdgImage.Image, overlay.Snapshot.Width, overlay.Snapshot.Height);
+                        Barrier(
+                            cdgImage.Image,
+                            ImageLayout.TransferDstOptimal,
+                            ImageLayout.ShaderReadOnlyOptimal,
+                            AccessFlags.TransferWriteBit,
+                            AccessFlags.ShaderReadBit,
+                            PipelineStageFlags.TransferBit,
+                            PipelineStageFlags.FragmentShaderBit);
+                    }
+
                     cdgView = cdgImage.View;
                 }
 
@@ -245,6 +268,12 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
             Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
             Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
+            if (uploadCdg && plan.Cdg is { } uploaded)
+            {
+                _cdgUploadedSnapshot = uploaded.Snapshot;
+                _cdgUploadedImage = _cdgImage!.Value.Image;
+                CdgUploadCount++;
+            }
 
             var outputLength = checked(outputWidth * outputHeight * 4);
             if (_output.Length != outputLength)
@@ -275,6 +304,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 Destroy(ref _sourceImage);
                 Destroy(ref _targetImage);
                 Destroy(ref _cdgImage);
+                _cdgUploadedSnapshot = null;
                 Destroy(ref _uploadBuffer);
                 Destroy(ref _cdgUploadBuffer);
                 Destroy(ref _readbackBuffer);

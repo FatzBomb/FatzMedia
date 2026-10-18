@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Regenerates the committed SPIR-V for FatzBomb.MediaControl.Rendering.Vulkan.
-# CI machines do not have glslang, so run this after editing any Shaders/*.vert or *.frag
-# source and commit the resulting .spv files (they are embedded into the assembly).
+# Run this after editing any Shaders/*.vert or *.frag source and commit the resulting .spv
+# files (they are embedded into the assembly). Linux CI fails when they do not match the
+# source (scripts/check-vulkan-shaders.sh).
 # Requires glslangValidator (Debian/Ubuntu: apt-get install glslang-tools).
 set -eu
 

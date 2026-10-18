@@ -101,8 +101,8 @@ public sealed class VulkanCompositionPlannerTests
         VulkanOverlayQuad quad = VulkanCompositionPlanner.PlanOverlay(300, 216, 640, 480, MediaCompositionStretchMode.UniformFit)!.Value;
 
         Assert.Equal(new PixelRect(0, 10, 640, 471), quad.Destination);
-        Assert.Equal(9.5, quad.DestinationTop);
-        Assert.Equal(461, quad.DestinationHeight);
+        Assert.Equal(9.5, quad.Placement.Destination.Top);
+        Assert.Equal(461, quad.Placement.Destination.Height);
         Assert.Equal(0.5f / 461f, quad.TexCoords.V0, 6);
         Assert.Equal(461.5f / 461f, quad.TexCoords.V1, 6);
         Assert.Equal((0, 0), quad.GetSourcePixel(0, 10));
@@ -275,6 +275,31 @@ public sealed class VulkanConformanceTests
         }
 
         static byte[] ExpectedOverBlack(ReadOnlySpan<byte> texel) => texel[3] == 0 ? [0, 0, 0, 255] : texel.ToArray();
+    }
+
+    /// <summary>ENG-014: an unchanged snapshot reuses the texture; a new one is uploaded.</summary>
+    [Fact]
+    public void UnchangedCdgSnapshot_ReusesTheUploadedTexture()
+    {
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        CdgRenderSnapshot snapshot = CdgFixtures.Snapshot();
+        VulkanFramePlan plan = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = snapshot }, 320, 240);
+        var first = compositor.Render(plan).ToArray();
+        var withoutCdg = VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty(), 320, 240);
+        _ = compositor.Render(withoutCdg);
+        var again = compositor.Render(plan).ToArray();
+
+        Assert.Equal(1, compositor.CdgUploadCount);
+        Assert.Equal(first, again);
+
+        CdgRenderSnapshot changed = CdgFixtures.Snapshot(backgroundIndex: 1);
+        var changedPixels = compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = changed }, 320, 240)).ToArray();
+
+        Assert.Equal(2, compositor.CdgUploadCount);
+        Assert.NotEqual(first, changedPixels);
     }
 
     [Fact]

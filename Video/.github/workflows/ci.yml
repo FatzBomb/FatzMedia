@@ -79,10 +79,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install Mesa lavapipe (software Vulkan) for renderer conformance
+      - name: Install Mesa lavapipe (software Vulkan) and glslang for renderer checks
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 glslang-tools
+
+      - name: Vulkan SPIR-V matches its GLSL source
+        run: ./scripts/check-vulkan-shaders.sh
 
       - name: Build portable, Linux, and Vulkan projects (Release)
         run: |

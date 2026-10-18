@@ -34,4 +34,12 @@ public sealed class CdgRenderSnapshot(
     public int BackgroundColorIndex { get; } = backgroundColorIndex;
     public IReadOnlyList<CdgDirtyRect> DirtyRects { get; } = dirtyRects;
     public bool HasDirtyRegions => DirtyRects.Count > 0;
+
+    /// <summary>
+    /// Gets whether a renderer can draw the snapshot as it is: it carries no pixel data at all
+    /// (nothing to draw), or a full frame of color indices and a palette. The software and
+    /// Vulkan renderers refuse a frame whose snapshot is not well formed.
+    /// </summary>
+    public bool IsWellFormed => (ColorIndices.IsEmpty && PaletteArgb.IsEmpty)
+        || (ColorIndices.Length >= Width * Height && !PaletteArgb.IsEmpty);
 }
