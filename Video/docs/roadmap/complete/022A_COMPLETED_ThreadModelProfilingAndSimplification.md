@@ -1,7 +1,7 @@
 # Completed Stage 022A - Thread Model Profiling and Simplification
 
 Prepared: 2026-10-16
-Status: Completed 2026-10-18. slices 1-4 (thread map and capture tooling; per-frame buffers,
+Status: Completed 2026-10-18. Slices 1-4 (thread map and capture tooling; per-frame buffers,
 audio lock and rate queries removed; reused scheduler threads; CD+G seek checkpoints and
 off-UI-thread drag seeks); owner smoke passed 2026-10-18 (`updates/022A_1` to
 `updates/022A_4`). A fresh capture before more simplification is listed in

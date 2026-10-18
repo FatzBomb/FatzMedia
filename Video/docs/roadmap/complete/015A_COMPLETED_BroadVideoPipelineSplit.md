@@ -1,7 +1,7 @@
 # Completed Stage 015A - VideoPipeline Responsibility Split
 
 Prepared: 2026-10-16
-Status: Completed 2026-10-18. slice 1 (responsibility map, seek policy and seek-pump timing)
+Status: Completed 2026-10-18. Slice 1 (responsibility map, seek policy and seek-pump timing)
 and slice 2 (seek pump state machine, now `SeekPump`); owner smoke passed 2026-10-17
 (`updates/015A_1`, `updates/015A_2`). The remaining seam candidates moved to
 `future/041A_IDEA_EngineInternalFollowUps.md`.

@@ -1,7 +1,7 @@
 # Completed Stage 036A - Renderer Fallback Chain
 
 Prepared: 2026-10-18
-Status: Completed 2026-10-18. slice 1 (Direct3D11 GPU, then WARP, then software; Player
+Status: Completed 2026-10-18. Slice 1 (Direct3D11 GPU, then WARP, then software; Player
 `--renderer=`); owner smoke passed 2026-10-18 (`updates/036A_1`).
 
 ## Why This Is Worth Doing

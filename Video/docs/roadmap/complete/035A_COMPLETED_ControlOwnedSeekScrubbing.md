@@ -1,7 +1,7 @@
 # Completed Stage 035A - Control-Owned Seek Scrubbing
 
 Prepared: 2026-10-17
-Status: Completed 2026-10-18. slice 1 (control-owned drags: playback carries on, no jump on
+Status: Completed 2026-10-18. Slice 1 (control-owned drags: playback carries on, no jump on
 release) and slice 2 (optional silent drag); owner smoke passed 2026-10-17 and 2026-10-18
 (`updates/035A_1`, `updates/035A_2`).
 

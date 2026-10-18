@@ -1,7 +1,7 @@
 # Completed Stage 034A - Native Dependency Report
 
 Prepared: 2026-10-17
-Status: Completed 2026-10-18. slice 1 (startup report of missing or wrong-version native
+Status: Completed 2026-10-18. Slice 1 (startup report of missing or wrong-version native
 files); owner smoke passed 2026-10-17 (`updates/034A_1`).
 
 ## Why This Is Worth Doing

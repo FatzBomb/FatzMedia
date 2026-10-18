@@ -1,7 +1,7 @@
 # Completed Stage 019A - Video Frame Event Ownership and Reuse
 
 Prepared: 2026-10-16
-Status: Completed 2026-10-18. slice 1 (consumer and lifetime matrix, written ephemeral
+Status: Completed 2026-10-18. Slice 1 (consumer and lifetime matrix, written ephemeral
 contract, conformance tests); no behaviour change, so no owner smoke beyond the regression runs
 (`updates/019A_1`). An explicit frame lease belongs with the 010A follow-up in
 `future/041A_IDEA_EngineInternalFollowUps.md`.

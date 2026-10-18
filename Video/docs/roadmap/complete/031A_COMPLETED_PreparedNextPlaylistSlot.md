@@ -1,7 +1,7 @@
 # Completed Stage 031A - Host Playlist and Core Prepared-Next Slot
 
 Prepared: 2026-10-16
-Status: Completed 2026-10-18. implemented; owner smoke passed 2026-10-17 (Next panel;
+Status: Completed 2026-10-18. Implemented; owner smoke passed 2026-10-17 (Next panel;
 `updates/031A_1`, host controls `updates/031A_2`).
 
 ## Objective

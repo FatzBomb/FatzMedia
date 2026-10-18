@@ -1,7 +1,7 @@
 # Completed Stage 010A - Software Video Upload/Copy Path
 
 Prepared: 2026-10-16
-Status: Completed 2026-10-18. slice 1 (copy map, benchmark, per-composition snapshot copy
+Status: Completed 2026-10-18. Slice 1 (copy map, benchmark, per-composition snapshot copy
 removed); owner smoke passed 2026-10-17 (`updates/010A_1`). Its open next slices (decoder frame
 lease, map-discard upload) moved to `future/041A_IDEA_EngineInternalFollowUps.md`.
 
