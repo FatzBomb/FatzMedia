@@ -87,6 +87,19 @@
                     Content="Reset"
                     Style="{StaticResource SyncButtonStyle}"
                     ToolTip="Reset per-item sync offsets" />
+                <TextBlock
+                    Margin="18,0,6,0"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource LabelTextStyle}"
+                    Text="SUBTITLES" />
+                <ComboBox
+                    MinWidth="170"
+                    DisplayMemberPath="Label"
+                    IsEnabled="{Binding HasSubtitleChoices}"
+                    ItemsSource="{Binding SubtitleChoices}"
+                    SelectedItem="{Binding SelectedSubtitle, Mode=TwoWay}"
+                    ToolTipService.ShowOnDisabled="True"
+                    ToolTip="Subtitle track: embedded tracks and sidecar files (.srt, .ass, .ssa) next to the media. Disabled when the media has none." />
             </StackPanel>
         </Border>
 

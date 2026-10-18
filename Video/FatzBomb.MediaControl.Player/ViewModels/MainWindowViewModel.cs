@@ -419,10 +419,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Equalizer = BuildEqualizerSettings();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
-            Player = player;
-            RefreshSyncOffsets();
+            // Subscribed before the surface binds to the player: attaching it creates the
+            // renderer device, whose diagnostic (which GPU or WARP) was lost when subscribed after.
             player.MediaDiagnostic += OnPlayerDiagnostic;
             player.MediaError += OnPlayerError;
+            StartSubtitleTracking(player);
+            Player = player;
+            RefreshSyncOffsets();
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
             StartPreparedNextValidation(player);

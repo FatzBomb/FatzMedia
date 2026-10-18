@@ -112,6 +112,13 @@ decodes in software); `software` (or the older `--software`) forces the software
 with the WPF-composited surface and software decoding. The status line names the renderer
 and device, and the Log panel's `Renderer` entries say what was tried and why.
 
+## Subtitles
+
+The **Sync** flyout has a **SUBTITLES** picker: Off plus the loaded media's embedded tracks
+and sidecar files (`.srt`, `.ass`, `.ssa` next to the media). It refreshes whenever media
+loads or closes and is disabled when the media has no subtitles. The SUB buttons beside it
+shift subtitle timing.
+
 ## Log panel
 
 The **Log** button in the toolbar opens every engine diagnostic (info, warnings, and
