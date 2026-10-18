@@ -32,7 +32,8 @@ review:
 
 ### ENG-017 - Software renderer drops frames at large output sizes
 
-Fixed: 2026-10-18, pending owner smoke.
+Fixed: 2026-10-18. Owner smoke passed the same day (`--software` fullscreen on an ultrawide,
+with the secondary window maximized, for video and CD+G).
 
 Reported: 2026-10-18 (owner smoke, `video-sw-4` capture). With `--software`, fullscreen
 video on an ultrawide monitor dropped frames visibly, and more with the secondary window
@@ -72,7 +73,8 @@ several windows) each fan out to up to one band per core on the thread pool.
 
 ### ENG-016 - Secondary window always blank in software mode
 
-Fixed: 2026-10-18, pending owner smoke.
+Fixed: 2026-10-18. Owner smoke passed the same day (with ENG-017: video and CD+G in the
+secondary window under `--software`).
 
 Reported: 2026-10-18 (owner smoke). With `--software`, the secondary/projector window stayed
 blank for video and for CD+G.
