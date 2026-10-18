@@ -30,10 +30,40 @@ review:
 
 ## Completed
 
+### ENG-015 - Secondary window blank or frozen with plain hardware video
+
+Resolved: 2026-10-18. Owner smoke passed the same day (secondary on the same and on another monitor, through seeks).
+
+Reported: 2026-10-18 (owner smoke). With hardware-decoded video and the secondary/projector
+window open, the secondary stayed blank on another monitor, or played until the first seek
+and then froze on one frame; `main` showed the same, so it predates this session's work.
+
+Cause: `MediaPresentationCoordinator.PresentPrimaryVideoFrame` sends a hardware frame with no
+subtitles and no picture adjustments to `IMediaRendererBackend.PresentNativeFrame`. Direct3D11
+draws that straight into the primary target and presents only the primary; fan-out to
+secondary targets happens only in `PresentComposition`. Frames reached the secondary only
+while something forced composition (CD+G, subtitles, a base visual transform), which is why
+the CD+G and transform checks passed. Present since the native branch was introduced
+(cbca3a9, 2026-07-18).
+
+Fix: while any non-primary surface is attached, hardware video is composed
+(`RenderHardwareVideoCompositionFrame`, as for subtitles), which presents every target; with
+only the primary attached the native fast path is unchanged. Cost: one extra blit and shader
+draw per target, only while a secondary window is open. Test:
+`MediaPresentationCoordinatorTests.HardwareVideoFrame_IsComposedWhileASecondaryWindowIsAttached`.
+The secondary count is read under the coordinator lock that attach/detach update it under,
+so no frame takes the native path after a secondary attached.
+
+Review (local) decisions: the fix stays in Core rather than making Direct3D11's native path
+fan out, since Core owns target fan-out and composition already presents every target; a
+failed backend detach still drops the surface from the coordinator first (existing
+behaviour); switching back to the native path leaves the last retained composition
+background in place, as the subtitle path already does when subtitles end.
+
 ### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
 
-Resolved: 2026-10-17. Needs a CD+G scrub in the next Player smoke (drag the seek bar over
-a CD+G track: lyrics follow the drag and settle where it stops).
+Resolved: 2026-10-17. Owner smoke passed 2026-10-18 (CD+G seek-bar drag: lyrics follow
+the drag and settle where it stops).
 
 Reported: 2026-10-17 (review of 015A slice 2). `CdgPipeline` had its own copy of the seek
 worker, about 120 lines, without the pump's lingering-worker guard.

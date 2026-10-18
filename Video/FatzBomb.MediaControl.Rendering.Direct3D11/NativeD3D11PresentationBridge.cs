@@ -14,6 +14,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private readonly D3D11RendererPresentationServices _presentation;
     private readonly Lock _lock = new();
     private readonly MediaPlayerConfiguration _configuration;
+    private readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
     private bool _disposed;
 
     public NativeD3D11PresentationBridge(
@@ -177,11 +178,25 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (!TryGetWin32Hwnd(surface, out nint hwnd))
             return false;
 
-        return surface.Role == MediaPresentationSurfaceRole.Primary
+        var attached = surface.Role == MediaPresentationSurfaceRole.Primary
             ? CreateDirectCompositionSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
                 || CreateNativeHwndSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
             : CreateSecondaryNativeHwndSurface(surface.Id, hwnd, surface.PixelWidth, surface.PixelHeight);
+        // Only the primary drives video timing. Attach also runs from the presentation thread
+        // when surfaces are recreated, so this queries Windows only for a new window.
+        if (attached && surface.Role == MediaPresentationSurfaceRole.Primary)
+            _refreshRates.PrimeIfMissing(hwnd);
+
+        return attached;
     }
+
+    /// <summary>
+    /// The refresh rate of the monitor showing a native-window surface (Stage 017A slice 3),
+    /// cached and refreshed in the background so moving the window to another monitor is
+    /// picked up within a second. Managed frame-sink surfaces have no monitor: null.
+    /// </summary>
+    public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) =>
+        !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out nint hwnd) ? _refreshRates.Get(hwnd) : null;
 
     public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)
     {
@@ -271,6 +286,9 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         {
             return false;
         }
+
+        if (TryGetWin32Hwnd(surface, out nint hwnd))
+            _refreshRates.Remove(hwnd);
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
         {
@@ -385,6 +403,8 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             _presentation.CleanupResources();
             _disposed = true;
         }
+
+        _refreshRates.Clear();
 
         if (_configuration.EnableLogging)
         {

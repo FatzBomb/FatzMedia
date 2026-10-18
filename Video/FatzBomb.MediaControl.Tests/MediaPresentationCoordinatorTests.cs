@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
@@ -135,6 +136,97 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(backend.IsInitialized);
     }
 
+    [Fact]
+    public void PrimarySurfaceRefreshRate_ReachesTheVideoEngine()
+    {
+        // Stage 017A slice 3: video timing uses the rate of the monitor showing the primary surface.
+        var backend = new RecordingRendererBackend { RefreshRateHz = 59.94 };
+        var video = new TestVideoEngine();
+        var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        Func<double?> source = Assert.IsType<Func<double?>>(video.RendererRefreshRateSource);
+        Assert.Null(source()); // no surface yet
+
+        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1920, 1080);
+        Assert.True(coordinator.AttachPresentationSurface(surface));
+        Assert.Equal(59.94, source());
+        Assert.Equal(surface, backend.LastRefreshRateSurface);
+
+        Assert.True(coordinator.ResizePresentationSurface(surface.Id, 1280, 720));
+        Assert.Equal(59.94, source());
+        Assert.Equal(1280, backend.LastRefreshRateSurface!.PixelWidth);
+
+        Assert.True(coordinator.DetachPresentationSurface(surface.Id));
+        Assert.Null(source());
+
+        coordinator.Dispose();
+        Assert.Null(video.RendererRefreshRateSource);
+    }
+
+    [Fact]
+    public void DetachingAnOldPrimary_KeepsTheNewPrimaryRefreshRate()
+    {
+        var backend = new RecordingRendererBackend { RefreshRateHz = 144 };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        MediaPresentationSurfaceDescriptor oldPrimary = CreatePrimarySurface(1920, 1080);
+        var newPrimary = new MediaPresentationSurfaceDescriptor(
+            "replacement-primary",
+            MediaPresentationSurfaceRole.Primary,
+            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x5678),
+            1920,
+            1080);
+
+        Assert.True(coordinator.AttachPresentationSurface(oldPrimary));
+        Assert.True(coordinator.AttachPresentationSurface(newPrimary));
+        Assert.True(coordinator.DetachPresentationSurface(oldPrimary.Id));
+
+        Assert.Equal(144, video.RendererRefreshRateSource!());
+        Assert.Equal(newPrimary.Id, backend.LastRefreshRateSurface!.Id);
+    }
+
+    [Fact]
+    public void HardwareVideoFrame_IsComposedWhileASecondaryWindowIsAttached()
+    {
+        // The native-frame path presents to the primary only; a secondary window must get the
+        // frame through composition, which fans out to every target.
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(1, backend.NativeFramePresents);
+
+        var secondary = new MediaPresentationSurfaceDescriptor(
+            "projector",
+            MediaPresentationSurfaceRole.Projector,
+            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x9abc),
+            1280,
+            720);
+        Assert.True(coordinator.AttachPresentationSurface(secondary));
+        var composedBefore = backend.PresentedFrames.Count;
+
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(1, backend.NativeFramePresents);
+        Assert.Equal("hardware video + secondary target", backend.PresentedFrames.Skip(composedBefore).Last().Reason);
+
+        Assert.True(coordinator.DetachPresentationSurface(secondary.Id));
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(2, backend.NativeFramePresents);
+    }
+
+    private static VideoFrameEventArgs HardwareFrame() => new()
+    {
+        Width = 1920,
+        Height = 1080,
+        Stride = 0,
+        PtsSeconds = 0,
+        NativeResource = new NativeVideoFrameResource(
+            new NativeVideoDeviceResource(MediaGraphicsBackendId.Direct3D11, DeviceHandle: 101),
+            ResourceHandle: 303,
+            SubresourceIndex: 0),
+    };
+
     private static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
         TestMediaEngine engine) => new(
@@ -203,12 +295,29 @@ public sealed class MediaPresentationCoordinatorTests
         }
 
         public void SetPresentationStretch(MediaCompositionStretchMode stretchMode) { }
-        public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
+        public bool AcceptsNativeFrames { get; set; }
+        public int NativeFramePresents { get; private set; }
+
+        public bool PresentNativeFrame(VideoFrameEventArgs frame)
+        {
+            if (AcceptsNativeFrames)
+                NativeFramePresents++;
+            return AcceptsNativeFrames;
+        }
         public void ClearCompositionBackgroundFrame() { }
 
         public string? PresentFailureReason { get; set; }
 
         public string? LastPresentFailureReason => PresentFailureReason;
+
+        public double? RefreshRateHz { get; set; }
+        public MediaPresentationSurfaceDescriptor? LastRefreshRateSurface { get; private set; }
+
+        public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface)
+        {
+            LastRefreshRateSurface = surface;
+            return RefreshRateHz;
+        }
 
         public bool PresentComposition(MediaCompositionFrame frame)
         {
@@ -225,7 +334,7 @@ public sealed class MediaPresentationCoordinatorTests
         public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
         {
             deviceAdopted = false;
-            return false;
+            return AcceptsNativeFrames;
         }
 
         public void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);

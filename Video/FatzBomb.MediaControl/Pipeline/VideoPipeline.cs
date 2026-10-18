@@ -20,7 +20,7 @@ internal sealed partial class VideoPipeline(
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
-    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine, IMediaLoopEventSource
+    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -51,6 +51,10 @@ internal sealed partial class VideoPipeline(
     // video side up with no audio calls at all.
     private int _lastObservedAudioLoopCount;
     private double? _overrideRefreshHz;
+    private Func<double?>? _rendererRefreshRateSource;
+    // Set on open; the first presentation-loop start reports the cadence, by which time the
+    // presentation coordinator has handed over the primary display's refresh rate.
+    private int _cadenceReportPending;
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
     private volatile bool _isPlaying;
@@ -141,14 +145,23 @@ internal sealed partial class VideoPipeline(
 
     public void SetDisplayRefreshRate(double? refreshHz) => _overrideRefreshHz = refreshHz is > 0 ? refreshHz : null;
 
+    void IRendererRefreshRateSink.SetRendererRefreshRateSource(Func<double?>? source) =>
+        Volatile.Write(ref _rendererRefreshRateSource, source);
+
     /// <summary>
     /// Reports how the video's frame rate fits the display refresh rate (Stage 017A slice 2):
     /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Raised once
-    /// per open. Diagnostic only; presentation timing is unchanged.
+    /// per open, when playback first starts. Diagnostic only; presentation timing is unchanged.
     /// </summary>
+    private void ReportPendingDisplayCadence()
+    {
+        if (Interlocked.Exchange(ref _cadenceReportPending, 0) == 1)
+            ReportDisplayCadence(_currentVideoPath);
+    }
+
     private void ReportDisplayCadence(string? path)
     {
-        var refreshIntervalSeconds = GetDisplayRefreshIntervalSeconds();
+        (var refreshIntervalSeconds, DisplayRefreshSource source) = ResolveDisplayRefresh();
         if (!double.IsFinite(refreshIntervalSeconds) || refreshIntervalSeconds <= 0)
             return;
 
@@ -158,9 +171,12 @@ internal sealed partial class VideoPipeline(
 
         // The platform rate can be a 60 Hz fallback, or another monitor's rate on Windows (DWM's
         // global composition rate), so the report says where it came from.
-        var rateSource = _overrideRefreshHz is null
-            ? "reported by the platform, or 60 Hz when it cannot tell"
-            : "set by the host";
+        var rateSource = source switch
+        {
+            DisplayRefreshSource.Host => "set by the host",
+            DisplayRefreshSource.Renderer => "of the monitor showing the video",
+            _ => "reported by the platform, or 60 Hz when it cannot tell",
+        };
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
     }
 
@@ -256,9 +272,10 @@ internal sealed partial class VideoPipeline(
         _clock.DurationSeconds = Duration;
         _presentationClock.Reset(0);
         ResetPresentationTimingController();
+        _currentVideoPath = path;
+        _ = Interlocked.Exchange(ref _cadenceReportPending, 1);
         _isOpen = true;
         _isPlaying = false;
-        _currentVideoPath = path;
         _state.SetOpened(MediaContent.Video | (HasAudio ? MediaContent.Audio : 0), path, Duration);
         RaiseState(VideoEngineState.Ready);
         Opened?.Invoke(this, EventArgs.Empty);
@@ -271,8 +288,6 @@ internal sealed partial class VideoPipeline(
             if (_videoDecoder != null)
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoDecoder", $"Decoding {_videoDecoder.DescribeDecodePath()}", sourcePath: path);
         }
-
-        ReportDisplayCadence(path);
 
         ResetAdaptiveVideoSeekTiming();
         StartSeekWorker();
@@ -339,6 +354,8 @@ internal sealed partial class VideoPipeline(
             StartDecodeLoop();
             if (!_hostRenderEventDrivenPresentation)
                 StartPresentationLoop();
+            else
+                ReportPendingDisplayCadence(); // no presentation loop to report from
             _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
             _state.SetPlaybackState(MediaPlayerState.Playing);
@@ -858,6 +875,8 @@ internal sealed partial class VideoPipeline(
         if (_configuration.EnableLogging && !pacer.IsHighResolution)
             Trace.WriteLine("[VideoPipeline] High-resolution presentation timer unavailable; using coarse wait fallback.");
 
+        ReportPendingDisplayCadence();
+
         while (!cancellationToken.IsCancellationRequested && generation == _generation)
         {
             var targetIntervalSeconds = GetPrimaryPresentationIntervalSeconds();
@@ -987,16 +1006,53 @@ internal sealed partial class VideoPipeline(
     private double GetPrimaryPresentationIntervalSeconds() =>
         VideoPresentationTiming.GetPrimaryPresentationInterval(FramesPerSecond, GetDisplayRefreshIntervalSeconds());
 
+    private double GetDisplayRefreshIntervalSeconds() => ResolveDisplayRefresh().IntervalSeconds;
+
+    // The presentation loop reads the display interval several times per frame (interval,
+    // lead, cadence checks). Resolving it at most every 100 ms keeps the renderer and DWM
+    // queries off the per-frame path (Stage 022A slice 2) and gives one frame one rate.
+    private static readonly long DisplayRefreshMemoTicks = Stopwatch.Frequency / 10;
+    private ResolvedDisplayRefresh? _resolvedDisplayRefresh;
+
+    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz, long Timestamp);
+
+    private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefresh()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var overrideHz = _overrideRefreshHz;
+        ResolvedDisplayRefresh? cached = Volatile.Read(ref _resolvedDisplayRefresh);
+        if (cached is not null && cached.OverrideHz == overrideHz && now - cached.Timestamp < DisplayRefreshMemoTicks)
+            return (cached.IntervalSeconds, cached.Source);
+
+        (var interval, DisplayRefreshSource source) = ResolveDisplayRefreshUncached(overrideHz);
+        Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz, now));
+        return (interval, source);
+    }
+
     /// <summary>
     /// Resolves the presentation tick interval: prefers an explicitly supplied monitor refresh
-    /// rate (see SetDisplayRefreshRate), since DWM's global composition timing does not reliably
-    /// reflect any one specific monitor on multi-monitor, mixed-refresh-rate setups. Falls back
-    /// to DWM auto-detection, then to 60Hz, if no override has been supplied.
+    /// rate (see SetDisplayRefreshRate), then the rate the renderer reports for the monitor
+    /// showing the primary surface (Stage 017A slice 3), since DWM's global composition timing
+    /// does not reliably reflect any one monitor on mixed-refresh-rate setups. Falls back to the
+    /// platform's detection (DWM on Windows), then to 60Hz.
     /// </summary>
-    private double GetDisplayRefreshIntervalSeconds() =>
-        _overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0
-            ? 1.0 / overrideHz
-            : _platformServices.GetPresentationRefreshIntervalSeconds();
+    private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefreshUncached(double? overrideHz)
+    {
+        if (overrideHz is { } hostHz && double.IsFinite(hostHz) && hostHz > 0)
+            return (1.0 / hostHz, DisplayRefreshSource.Host);
+
+        if (Volatile.Read(ref _rendererRefreshRateSource)?.Invoke() is { } rendererHz && double.IsFinite(rendererHz) && rendererHz > 0)
+            return (1.0 / rendererHz, DisplayRefreshSource.Renderer);
+
+        return (_platformServices.GetPresentationRefreshIntervalSeconds(), DisplayRefreshSource.Platform);
+    }
+
+    private enum DisplayRefreshSource
+    {
+        Host,
+        Renderer,
+        Platform,
+    }
 
     private void DecodeLoop(int generation, CancellationToken cancellationToken)
     {

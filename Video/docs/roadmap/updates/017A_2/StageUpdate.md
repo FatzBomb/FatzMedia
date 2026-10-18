@@ -3,7 +3,7 @@
 Stage: 017A.2 - Cadence report
 Date: 2026-10-17
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18
 
 Delivered:
 

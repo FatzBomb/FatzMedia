@@ -23,8 +23,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
-  (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel, pending
-  manual smoke (`updates/017A_2`); native scheduling integration not started.
+  (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel; owner
+  smoke passed 2026-10-18 (`updates/017A_2`); slice 3 takes the refresh rate of the monitor
+  showing the video from the renderer (Direct3D11); owner smoke passed 2026-10-18 (`updates/017A_3`);
+  frame selection at present time not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
   `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
@@ -35,7 +37,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
   ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
-  capture script; Windows baseline capture pending (`updates/022A_1`).
+  capture script (`updates/022A_1`); Windows baseline captured 2026-10-17; slice 2 removes
+  the per-frame software and WPF buffers, the per-frame audio lock, and per-frame display-rate
+  queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,

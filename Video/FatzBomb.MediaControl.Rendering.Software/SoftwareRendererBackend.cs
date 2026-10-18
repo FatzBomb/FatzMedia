@@ -7,6 +7,10 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
 {
     private readonly Lock _sync = new();
     private readonly SoftwareCompositionRenderer _renderer = new();
+    // One reusable composition buffer (Stage 022A slice 2). A present takes it out and puts it
+    // back, so concurrent presents (video and CDG/subtitle threads) never share it and no lock
+    // is held across the sink call; a concurrent present simply renders into a new buffer.
+    private SoftwareCompositionBuffer? _renderBuffer;
     private MediaPresentationSurfaceDescriptor? _surface;
     private IMediaPresentationFrameSink? _sink;
     private bool _disposed;
@@ -85,11 +89,18 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
             height = _surface.PixelHeight;
         }
 
-        SoftwareRenderOutput output = _renderer.Render(frame, width, height);
+        SoftwareCompositionBuffer? buffer = Interlocked.Exchange(ref _renderBuffer, null);
+        SoftwareRenderOutput output = _renderer.Render(frame, width, height, ref buffer);
+        if (output.IsRendered)
+        {
+            // The sink copies the span before returning, so the buffer can be reused next frame.
+            sink.PresentFrame(output.Pixels.Span, output.Width, output.Height, output.Stride);
+        }
+
+        ReturnRenderBuffer(buffer);
         if (!output.IsRendered)
             return false;
 
-        sink.PresentFrame(output.Pixels.Span, output.Width, output.Height, output.Stride);
         FramePresented?.Invoke(this, EventArgs.Empty);
         return true;
     }
@@ -102,6 +113,21 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
             _sink = null;
             IsInitialized = false;
         }
+
+        ReleaseRenderBuffer();
+    }
+
+    private void ReleaseRenderBuffer() => _ = Interlocked.Exchange(ref _renderBuffer, null);
+
+    private void ReturnRenderBuffer(SoftwareCompositionBuffer? buffer)
+    {
+        bool keep;
+        lock (_sync)
+            keep = !_disposed && IsInitialized;
+
+        // After cleanup or dispose the buffer is dropped, so teardown frees it.
+        if (keep && buffer != null)
+            _ = Interlocked.CompareExchange(ref _renderBuffer, buffer, null);
     }
 
     public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
@@ -122,6 +148,8 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
             _sink = null;
             IsInitialized = false;
         }
+
+        ReleaseRenderBuffer();
     }
 
     private bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)

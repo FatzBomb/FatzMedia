@@ -48,6 +48,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     private long _positionSnapshotTimestamp;
     private long _positionSnapshotDurationBits;
     private int _positionSnapshotAvailable;
+    // IsOpenCore as of the last open or close, published for lock-free IsOpen reads (Stage 022A
+    // slice 2: the video presentation loop asked IsOpen every frame and contended with the
+    // decode thread on _sync).
+    private volatile bool _openPublished;
     private int _positionSnapshotPlaying;
     private int _positionSnapshotTempoPercent;
     private bool _audioPushThrottled;
@@ -120,14 +124,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     public bool IsNormalizationReady => _normalizationReady;
     public int CurrentTempo { get; private set; }
     public double Duration { get; private set; }
-    public bool IsOpen
-    {
-        get
-        {
-            lock (_sync)
-                return IsOpenCore;
-        }
-    }
+    public bool IsOpen => _openPublished && _demuxer.IsOpen;
 
     public double Position
     {
@@ -321,6 +318,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             State = AudioEngineState.Stopped;
             PublishPositionSnapshot(_positionBaseSeconds);
             StartNormalizationAnalysis(filePath, normalizationCacheKey);
+            _openPublished = IsOpenCore;
             Opened?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
             return true;
@@ -555,6 +553,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     {
         if (_disposed)
             return;
+
+        _openPublished = false;
 
         // Join the analysis first: it reads the file (possibly a temp file deleted below) and
         // writes the gain FX on PlayHandle.

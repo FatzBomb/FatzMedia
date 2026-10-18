@@ -53,6 +53,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private readonly CdgPresentationRequestQueue _cdgPresentationQueue = new();
 
     private IVideoEngine? _attachedVideo;
+    // Read from the video presentation thread through _primaryRefreshRateSource.
+    private MediaPresentationSurfaceDescriptor? _primarySurface;
+    // Attached non-primary surfaces (secondary/projector windows); guarded by _lock.
+    private int _secondarySurfaceCount;
+    private readonly Func<double?> _primaryRefreshRateSource;
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
     private bool _disposed;
@@ -87,6 +92,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         _configuration = configuration;
         _renderPipeline = new RenderPipeline(_mediaEngine);
+        _primaryRefreshRateSource = GetPrimaryRefreshRateHz;
         _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _rendererBackend.FramePresented += OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
@@ -157,7 +163,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
             attached = AttachSurfaceNoLock(surface);
             if (attached)
+            {
                 _surfaces[surface.Id] = surface;
+                TrackPrimarySurface(surface);
+                UpdateSecondarySurfaceCountNoLock();
+            }
         }
 
         if (attached)
@@ -183,6 +193,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
             surface = surface.WithSize(pixelWidth, pixelHeight);
             _surfaces[surface.Id] = surface;
+            TrackPrimarySurface(surface);
 
             if (!_rendererBackend.ResizeSurface(surface))
                 return false;
@@ -235,6 +246,12 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_surfaces.Remove(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
                 return false;
+
+            UpdateSecondarySurfaceCountNoLock();
+
+            // Only the tracked primary: a host may attach a new primary before detaching the old.
+            if (Volatile.Read(ref _primarySurface)?.Id == surface.Id)
+                Volatile.Write(ref _primarySurface, null);
 
             if (!_rendererBackend.DetachSurface(surface))
                 return false;
@@ -470,6 +487,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             {
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
+                (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
             }
             catch
             {
@@ -484,6 +502,37 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _attachedVideo = _mediaEngine.Video;
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
+        (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(_primaryRefreshRateSource);
+    }
+
+    private void UpdateSecondarySurfaceCountNoLock() =>
+        _secondarySurfaceCount = _surfaces.Values.Count(static surface => surface.Role != MediaPresentationSurfaceRole.Primary);
+
+    private void TrackPrimarySurface(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (surface.Role == MediaPresentationSurfaceRole.Primary)
+            Volatile.Write(ref _primarySurface, surface);
+    }
+
+    /// <summary>
+    /// Refresh rate of the monitor showing the primary surface, as the renderer reports it
+    /// (Stage 017A slice 3). Called from the video presentation thread; renderers cache it.
+    /// </summary>
+    private double? GetPrimaryRefreshRateHz()
+    {
+        if (_disposed || Volatile.Read(ref _primarySurface) is not { } surface)
+            return null;
+
+        try
+        {
+            return _rendererBackend.GetSurfaceRefreshRateHz(surface);
+        }
+        catch (Exception ex)
+        {
+            // Timing falls back to the platform rate; a renderer bug must not stop playback.
+            Debug.WriteLine($"[MediaPresentationCoordinator] Refresh rate query failed: {ex.Message}");
+            return null;
+        }
     }
 
     private void AttachCdgIfAvailable()
@@ -653,13 +702,23 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             return;
         }
 
+        // The native-frame path presents to the primary target only. With a secondary or
+        // projector window attached, compose instead: composition fans the frame out to every
+        // target. Plain hardware video otherwise never reached the secondary window (it stayed
+        // blank, or froze on the last composed frame after a seek; ENG-015). Checked under the
+        // lock that attach and detach update it under, so no frame takes the stale path.
         lock (_lock)
         {
-            if (!EnsureNativeFrameDevice(e))
-                return;
+            if (_secondarySurfaceCount == 0)
+            {
+                if (EnsureNativeFrameDevice(e))
+                    _ = _rendererBackend.PresentNativeFrame(e);
 
-            _ = _rendererBackend.PresentNativeFrame(e);
+                return;
+            }
         }
+
+        RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + secondary target");
     }
 
     private void PresentVideoFrameAsCdgBackground(VideoFrameEventArgs e)
@@ -1306,6 +1365,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             {
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
+                (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
             }
             catch
             {
