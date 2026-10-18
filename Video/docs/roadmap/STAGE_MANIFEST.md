@@ -26,6 +26,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   hardware-decoded HDR10 in a Direct3D11 shader with the same curve (no copy back to the CPU;
   `--hdr-tonemap-cpu` to compare); implemented, pending manual smoke (`updates/038A_2`).
 
+- `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
+  stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
+  (`VideoLoopBoundary`); implemented, pending manual smoke (`updates/041A_1`).
+
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Reverted
@@ -83,8 +87,7 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/039A_IDEA_NetworkVideoPlayback.md` - HTTP/HTTPS video, deferred from 014A.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
-- `future/041A_IDEA_EngineInternalFollowUps.md` - small engine follow-ups left by completed
-  stages 010A, 015A, 017A, 019A and 022A.
+
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).

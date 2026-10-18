@@ -4,7 +4,7 @@ Prepared: 2026-10-16
 Status: Completed 2026-10-18. Slices 1-5 (cadence model, cadence report, per-monitor refresh
 rate, opt-in display-locked selection, per-display cadence); owner smoke passed 2026-10-18
 (`updates/017A_1` to `updates/017A_5`). Possible later work moved to
-`future/041A_IDEA_EngineInternalFollowUps.md`.
+`active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Cadence Model (pinned)
 

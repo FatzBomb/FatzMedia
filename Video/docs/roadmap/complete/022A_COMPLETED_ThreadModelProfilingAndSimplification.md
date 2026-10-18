@@ -5,7 +5,7 @@ Status: Completed 2026-10-18. Slices 1-4 (thread map and capture tooling; per-fr
 audio lock and rate queries removed; reused scheduler threads; CD+G seek checkpoints and
 off-UI-thread drag seeks); owner smoke passed 2026-10-18 (`updates/022A_1` to
 `updates/022A_4`). A fresh capture before more simplification is listed in
-`future/041A_IDEA_EngineInternalFollowUps.md`.
+`active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Thread Ownership Map (pinned, from code)
 

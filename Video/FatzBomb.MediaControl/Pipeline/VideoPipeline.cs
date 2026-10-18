@@ -1603,11 +1603,9 @@ internal sealed partial class VideoPipeline(
     }
 
     private bool HasReachedNaturalEnd(double position) =>
-        _isPlaying && Duration > 0 && position >= Duration - GetEndToleranceSeconds();
+        VideoLoopBoundary.HasReachedNaturalEnd(_isPlaying, Duration, position, GetEndToleranceSeconds());
 
-    private double GetEndToleranceSeconds() => FramesPerSecond > 0
-            ? Math.Clamp(1.0 / FramesPerSecond, 0.02, 0.12)
-            : 0.05;
+    private double GetEndToleranceSeconds() => VideoLoopBoundary.EndToleranceSeconds(FramesPerSecond);
 
     private bool ShouldRestartLoopPlayback(double currentPosition)
     {
@@ -1618,15 +1616,12 @@ internal sealed partial class VideoPipeline(
         if (decoder == null)
             return false;
 
-        var tolerance = GetEndToleranceSeconds();
-        var loopBoundary = GetLoopBoundarySeconds(decoder);
-
-        if (decoder.EndOfStream && decoder.FrameCount == 0 && currentPosition >= loopBoundary - tolerance)
-            return true;
-
-        // Metadata and EOF signaling can be imperfect. If playback has moved beyond the nominal
-        // boundary with no queued frames, restart rather than freezing forever on the retained frame.
-        return decoder.FrameCount == 0 && currentPosition >= loopBoundary + tolerance;
+        return VideoLoopBoundary.ShouldRestartLoop(
+            decoder.EndOfStream,
+            decoder.FrameCount,
+            currentPosition,
+            GetLoopBoundarySeconds(decoder),
+            GetEndToleranceSeconds());
     }
 
     // Proactively pre-seek the decoder while tail frames are still queued. The decoded tail stays
@@ -1738,25 +1733,20 @@ internal sealed partial class VideoPipeline(
             return true;
 
         VideoDecoder? decoder = _videoDecoder;
-        return decoder != null && decoder.EndOfStream && decoder.FrameCount <= 0 && (!HasAudio || currentPosition >= GetLoopBoundarySeconds(decoder) - GetEndToleranceSeconds());
+        return decoder != null && VideoLoopBoundary.HasDrainedAtEnd(
+            decoder.EndOfStream,
+            decoder.FrameCount,
+            HasAudio,
+            currentPosition,
+            GetLoopBoundarySeconds(decoder),
+            GetEndToleranceSeconds());
     }
 
-    private double GetLoopBoundarySeconds(VideoDecoder decoder)
-    {
-        var videoDuration = decoder.DurationSeconds;
-        return double.IsFinite(videoDuration) && videoDuration > 0
-            ? Duration > 0 ? Math.Min(Duration, videoDuration) : videoDuration
-            : Duration;
-    }
+    private double GetLoopBoundarySeconds(VideoDecoder decoder) =>
+        VideoLoopBoundary.LoopBoundarySeconds(decoder.DurationSeconds, Duration);
 
-    private static double GetLoopOverflowPosition(double currentPosition, double loopBoundary)
-    {
-        if (!double.IsFinite(currentPosition) || !double.IsFinite(loopBoundary) || loopBoundary <= 0)
-            return 0;
-
-        var overflow = currentPosition - loopBoundary;
-        return overflow <= 0 ? 0 : overflow >= loopBoundary ? overflow % loopBoundary : overflow;
-    }
+    private static double GetLoopOverflowPosition(double currentPosition, double loopBoundary) =>
+        VideoLoopBoundary.LoopOverflowPosition(currentPosition, loopBoundary);
 
     private void CompletePlaybackAtEnd()
     {

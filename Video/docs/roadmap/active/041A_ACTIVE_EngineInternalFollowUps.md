@@ -1,6 +1,9 @@
-# Idea Stage 041A - Engine-Internal Follow-Ups
+# Active Stage 041A - Engine-Internal Follow-Ups
 
-Status: Idea. Small optional follow-ups left by stages completed on 2026-10-18, collected here
+Prepared: 2026-10-18 (idea), activated 2026-10-18 (owner: "do 041a").
+Status: slice 1 (loop-boundary rules) implemented, pending manual smoke (`updates/041A_1`).
+
+Small optional follow-ups left by stages completed on 2026-10-18, collected here
 so the stages could close. Each item is its own bounded slice. Pick one at a time, measure
 first where noted, and leave out any that stop paying for themselves.
 
@@ -12,6 +15,7 @@ Next seams, in order:
 3. The post-seek recovery state machine.
 
 Each is an extraction with focused tests and no behavior change.
+- Slice 1 (seam 1) implemented: `Pipeline/VideoLoopBoundary.cs` (`updates/041A_1`).
 
 ## From 010A and 019A (software video copy path, frame ownership)
 
