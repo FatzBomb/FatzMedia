@@ -1,9 +1,10 @@
 # Active Stage 017A - Display-Rate Compositor and Presentation Scheduling
 
 Prepared: 2026-10-16
-Status: Slice 1 (deterministic cadence model and specification) and slice 2 (cadence
-report in the host log, `updates/017A_2`) implemented. Native scheduling integration is
-deliberately not started (see Next Slices); playback behavior is unchanged.
+Status: Slice 1 (deterministic cadence model and specification), slice 2 (cadence report in
+the host log, `updates/017A_2`), and slice 3 (per-monitor refresh rate from the renderer,
+`updates/017A_3`) implemented. Frame selection at present time is not started (see Next
+Slices).
 
 ## Cadence Model (pinned)
 
@@ -37,13 +38,19 @@ Phase (media-clock offset against vsync) only shifts which refresh shows each ne
 common refresh rates that would be smooth. `VideoPipeline` raises it as an Info diagnostic
 (`VideoCadence`) once per open. Report only.
 
+## Slice 3 - Per-monitor refresh rate (2026-10-18)
+
+`IMediaRendererBackend.GetSurfaceRefreshRateHz` reports the rate of the display showing a
+surface. Direct3D11 reads the window's monitor rate exactly from `QueryDisplayConfig`,
+cached and refreshed in the background. Video timing resolves host override > renderer
+(primary monitor) > platform (DWM) > 60 Hz, and the cadence report names the source.
+Vulkan/software return null until they present to windows.
+
 ## Next Slices
 
-1. Expose per-target refresh period from renderers (D3D11/DXGI frame statistics, Vulkan
-   present timing) through a renderer-neutral timing signal; no Core dependency on DWM.
-2. Use the model to choose frames at present time behind an opt-in option, with the
+1. Use the model to choose frames at present time behind an opt-in option, with the
    current source-cadence path as the default and fallback.
-3. Multi-target: each target runs its own cadence from the same composition plan; CDG and
+2. Multi-target: each target runs its own cadence from the same composition plan; CDG and
    subtitle layers keep updating independently.
 
 ## Explicit Non-Goals

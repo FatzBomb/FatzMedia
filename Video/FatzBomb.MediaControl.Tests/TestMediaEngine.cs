@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Video;
+using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
@@ -169,8 +170,12 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 }
 
-internal sealed class TestVideoEngine : IVideoEngine
+internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink
 {
+    public Func<double?>? RendererRefreshRateSource { get; private set; }
+
+    public void SetRendererRefreshRateSource(Func<double?>? source) => RendererRefreshRateSource = source;
+
     public bool IsOpen { get; set; } = true;
     public bool SeekUpdatesPosition { get; set; }
     public double Duration { get; set; } = 120;

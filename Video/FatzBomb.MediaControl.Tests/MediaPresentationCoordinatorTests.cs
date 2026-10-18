@@ -135,6 +135,54 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(backend.IsInitialized);
     }
 
+    [Fact]
+    public void PrimarySurfaceRefreshRate_ReachesTheVideoEngine()
+    {
+        // Stage 017A slice 3: video timing uses the rate of the monitor showing the primary surface.
+        var backend = new RecordingRendererBackend { RefreshRateHz = 59.94 };
+        var video = new TestVideoEngine();
+        var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        Func<double?> source = Assert.IsType<Func<double?>>(video.RendererRefreshRateSource);
+        Assert.Null(source()); // no surface yet
+
+        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1920, 1080);
+        Assert.True(coordinator.AttachPresentationSurface(surface));
+        Assert.Equal(59.94, source());
+        Assert.Equal(surface, backend.LastRefreshRateSurface);
+
+        Assert.True(coordinator.ResizePresentationSurface(surface.Id, 1280, 720));
+        Assert.Equal(59.94, source());
+        Assert.Equal(1280, backend.LastRefreshRateSurface!.PixelWidth);
+
+        Assert.True(coordinator.DetachPresentationSurface(surface.Id));
+        Assert.Null(source());
+
+        coordinator.Dispose();
+        Assert.Null(video.RendererRefreshRateSource);
+    }
+
+    [Fact]
+    public void DetachingAnOldPrimary_KeepsTheNewPrimaryRefreshRate()
+    {
+        var backend = new RecordingRendererBackend { RefreshRateHz = 144 };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        MediaPresentationSurfaceDescriptor oldPrimary = CreatePrimarySurface(1920, 1080);
+        var newPrimary = new MediaPresentationSurfaceDescriptor(
+            "replacement-primary",
+            MediaPresentationSurfaceRole.Primary,
+            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x5678),
+            1920,
+            1080);
+
+        Assert.True(coordinator.AttachPresentationSurface(oldPrimary));
+        Assert.True(coordinator.AttachPresentationSurface(newPrimary));
+        Assert.True(coordinator.DetachPresentationSurface(oldPrimary.Id));
+
+        Assert.Equal(144, video.RendererRefreshRateSource!());
+        Assert.Equal(newPrimary.Id, backend.LastRefreshRateSurface!.Id);
+    }
+
     private static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
         TestMediaEngine engine) => new(
@@ -209,6 +257,15 @@ public sealed class MediaPresentationCoordinatorTests
         public string? PresentFailureReason { get; set; }
 
         public string? LastPresentFailureReason => PresentFailureReason;
+
+        public double? RefreshRateHz { get; set; }
+        public MediaPresentationSurfaceDescriptor? LastRefreshRateSurface { get; private set; }
+
+        public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface)
+        {
+            LastRefreshRateSurface = surface;
+            return RefreshRateHz;
+        }
 
         public bool PresentComposition(MediaCompositionFrame frame)
         {

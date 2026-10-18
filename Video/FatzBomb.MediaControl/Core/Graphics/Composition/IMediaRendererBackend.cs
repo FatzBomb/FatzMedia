@@ -30,6 +30,15 @@ public interface IMediaRendererBackend : IDisposable
     /// </summary>
     string? LastPresentFailureReason => null;
 
+    /// <summary>
+    /// Refresh rate in Hz of the display currently showing <paramref name="surface"/>, or null
+    /// when the backend cannot tell (no native window, or the surface is not attached). Core
+    /// prefers it over the platform's global rate for video timing (Stage 017A). Called from
+    /// presentation threads, so implementations return a cached value and refresh it off the
+    /// caller's thread.
+    /// </summary>
+    double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) => null;
+
     void CleanupResources();
 
     bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted);

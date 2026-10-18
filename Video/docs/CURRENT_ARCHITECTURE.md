@@ -248,6 +248,16 @@ named `window` handle.
 - Backward seeks immediately recalculate active cue, syllable highlighting/wipe, scroll position, page fade/scale state, metadata opacity, countdown state, and end-lyric fade state.
 - Progress revision hashing now includes syllable wipe fraction, countdown revision, intro/end metadata opacity, end-lyric opacity, media-end state, and lyric-fade-end state to ensure no stale frame is skipped.
 
+## Display Refresh Rate
+
+Video presentation timing resolves the display rate in this order (Stage 017A): the host's
+`SetDisplayRefreshRate`, then the renderer's `IMediaRendererBackend.GetSurfaceRefreshRateHz`
+for the primary surface (Direct3D11 reads the window's monitor from `QueryDisplayConfig`,
+cached and refreshed off the presentation thread), then the platform's
+`IVideoPipelinePlatformServices` rate (DWM's global composition rate on Windows, a
+configured rate on Linux), then 60 Hz. `MediaPresentationCoordinator` hands the video
+pipeline the primary surface's rate through the internal `IRendererRefreshRateSink`.
+
 ## Device-Lost Recovery
 
 The Direct3D11 renderer and Core video pipeline detect and recover their independently owned D3D11 devices (Stages 005A/005B/005C); adapters are never involved.

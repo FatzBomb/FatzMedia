@@ -24,7 +24,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
   (`updates/017A_1`); slice 2 reports the video/display cadence in the Log panel; owner
-  smoke passed 2026-10-18 (`updates/017A_2`); native scheduling integration not started.
+  smoke passed 2026-10-18 (`updates/017A_2`); slice 3 takes the refresh rate of the monitor
+  showing the video from the renderer (Direct3D11), pending manual smoke (`updates/017A_3`);
+  frame selection at present time not started.
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
   `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).
