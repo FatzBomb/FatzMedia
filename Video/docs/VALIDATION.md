@@ -789,8 +789,9 @@ Video color (ENG-019):
   (Windows Media Player, mpv or VLC): blacks are black, not dark gray, and whites are not gray.
 - The same file with `--software` looks the same as with the GPU (Direct3D11) path.
 - An HDR10 file (the line says "HDR10/PQ, tone mapped to SDR") has normal contrast and color
-  (Stage 038A; steps in `docs/roadmap/updates/038A_1`). With `--no-hdr-tonemap` it looks
-  washed out, as before. HLG files are not tone mapped yet.
+  (Stage 038A; steps in `docs/roadmap/updates/038A_1` and `038A_2`). With hardware decoding
+  on Direct3D11 a `D3D11.Hdr` line says the GPU shader is used; `--hdr-tonemap-cpu` looks the
+  same. With `--no-hdr-tonemap` it looks washed out, as before. HLG is not tone mapped yet.
 
 ---
 

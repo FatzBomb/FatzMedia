@@ -1,8 +1,10 @@
 # Active Stage 038A - HDR Video Tone Mapping
 
 Prepared: 2026-10-18 (idea), activated 2026-10-18.
-Status: slice 1 (HDR10 tone mapping on the CPU path, every renderer) implemented 2026-10-18,
-pending manual smoke (`updates/038A_1`).
+Status: slice 1 (HDR10 tone mapping on the CPU path, every renderer) implemented 2026-10-18;
+owner confirmed 2026-10-18 ("continue, we are good"; `updates/038A_1`). Slice 2 (Direct3D11
+shader for hardware-decoded HDR10) implemented 2026-10-18, pending manual smoke
+(`updates/038A_2`).
 
 ## Why This Is Worth Doing
 
@@ -69,13 +71,28 @@ Acceptance criteria:
 Not in slice 1: HLG (needs an OOTF on luminance; shown as before), Dolby Vision profile 5,
 dynamic metadata, HDR output.
 
-## Slice 2 - Direct3D11 shader path (next)
+## Slice 2 - Direct3D11 shader path (implemented)
 
-Tone map hardware frames on the GPU with the same curve: copy the decoder's P010/NV12 slice
-to a shader-readable texture, convert YCbCr (BT.2020), PQ, BT.2390, primaries and gamma in a
-pixel shader into the presentation or composition texture. Removes slice 1's copy-back and CPU
-cost for hardware-decoded HDR on Direct3D11. The CPU path stays for software decode and the
-other renderers.
+Acceptance criteria:
+- Core: hardware-decoded HDR10 frames stay native and carry `NativeVideoFrameResource.HdrToneMap`
+  (`HdrToneMapRequest`: source peak, SDR white). `HdrToneMappingOptions.PreferCpu` (Player
+  `--hdr-tonemap-cpu`) keeps slice 1's CPU path for comparison.
+- Direct3D11: every hardware frame passes `D3D11VideoProcessorPresenter.BlitTextureToPresentation`
+  (native presentation and the composition background). A frame with a request is drawn by
+  `D3D11HdrToneMapPresenter`:
+  - the decoder's P010 slice is copied into a shader-readable P010 texture with R16 and
+    R16G16 plane views;
+  - a pixel shader does YCbCr (the frame's matrix and range), PQ, the BT.2390 curve on the
+    brightest channel, BT.2020 to BT.709 and gamma 2.4;
+  - it draws at the video processor's own source and destination rectangles, over black.
+- Without the shader path (not P010, or shader or resource creation failed), the video
+  processor gets the PQ input color space, so a driver that tone maps can. One warning names
+  the reason and `--hdr-tonemap-cpu`.
+- One `D3D11.Hdr` diagnostic says which path runs.
+- Test (Windows-only, `D3D11HdrToneMapTests`): the shader's formula with the presenter's
+  constants matches the CPU mapper within 2 of 255 levels on black, white, gray, colors and a
+  color past the BT.709 gamut; rectangles map to clip and texture space; a dim source is only
+  clipped.
 
 ## Must Preserve
 

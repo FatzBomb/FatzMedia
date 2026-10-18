@@ -46,6 +46,9 @@ public partial class App : Application
     /// <summary>Shows HDR video without tone mapping (<c>--no-hdr-tonemap</c>), for comparison.</summary>
     public static bool DisableHdrToneMapping { get; private set; }
 
+    /// <summary>Tone maps HDR video on the CPU instead of the GPU (<c>--hdr-tonemap-cpu</c>), for comparison.</summary>
+    public static bool PreferCpuHdrToneMapping { get; private set; }
+
     public static string? PrepareNextPath { get; private set; }
 
     public static bool AutoTransitionToPreparedNext { get; private set; }
@@ -91,6 +94,8 @@ public partial class App : Application
             string.Equals(argument, "--trim-silence", StringComparison.OrdinalIgnoreCase));
         DisableHdrToneMapping = e.Args.Any(static argument =>
             string.Equals(argument, "--no-hdr-tonemap", StringComparison.OrdinalIgnoreCase));
+        PreferCpuHdrToneMapping = e.Args.Any(static argument =>
+            string.Equals(argument, "--hdr-tonemap-cpu", StringComparison.OrdinalIgnoreCase));
         const string prepareNextPrefix = "--prepare-next=";
         PrepareNextPath = e.Args
             .Where(static argument => argument.StartsWith(prepareNextPrefix, StringComparison.OrdinalIgnoreCase))

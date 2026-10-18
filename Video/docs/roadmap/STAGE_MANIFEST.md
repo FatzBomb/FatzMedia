@@ -70,8 +70,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 
 - `active/038A_ACTIVE_HdrVideoToneMapping.md` - slice 1 tone maps HDR10 (PQ) video to SDR on
   the CPU path for every renderer (BT.2390 curve, SDR white 203 nits; Player `--no-hdr-tonemap`
-  to compare); implemented, pending manual smoke (`updates/038A_1`). Slice 2 (Direct3D11 shader
-  path) next.
+  to compare); owner confirmed 2026-10-18 (`updates/038A_1`). Slice 2 tone maps
+  hardware-decoded HDR10 in a Direct3D11 shader with the same curve (no copy back to the CPU;
+  `--hdr-tonemap-cpu` to compare); implemented, pending manual smoke (`updates/038A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

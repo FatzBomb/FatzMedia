@@ -3,7 +3,7 @@
 Stage: 038A.1 - HDR10 to SDR tone mapping on the CPU path
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner confirmed 2026-10-18 ("continue, we are good")
 
 Owner request: "038a", after ENG-019 left HDR files washed out (flagged by the `Decoding ...`
 line).

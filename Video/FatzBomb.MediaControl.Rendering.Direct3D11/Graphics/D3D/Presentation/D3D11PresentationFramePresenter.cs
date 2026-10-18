@@ -27,6 +27,7 @@ internal sealed class D3D11PresentationFramePresenter(
         int height,
         double framesPerSecond,
         VideoColorSpace colorSpace,
+        HdrToneMapRequest? toneMap,
         Func<int, int, bool> notifyPresented) =>
         !isDisposed
             && deviceResources.Context != null
@@ -46,6 +47,7 @@ internal sealed class D3D11PresentationFramePresenter(
             height,
             framesPerSecond,
             colorSpace,
+            toneMap,
             target.Width,
             target.Height,
             presentationState.NativePresentationStretch,

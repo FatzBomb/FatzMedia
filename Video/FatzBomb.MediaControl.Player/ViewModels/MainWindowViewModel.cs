@@ -451,7 +451,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad,
                 SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim },
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries },
-                HdrToneMapping = new HdrToneMappingOptions(Disabled: App.DisableHdrToneMapping)
+                HdrToneMapping = new HdrToneMappingOptions(
+                    Disabled: App.DisableHdrToneMapping,
+                    PreferCpu: App.PreferCpuHdrToneMapping)
             };
 
             // Logged before the engine starts, so they are there even when native loading fails.

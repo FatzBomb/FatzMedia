@@ -825,9 +825,11 @@ internal sealed unsafe class VideoDecoder(
 
     private bool TryQueueNativeHardwareFrame(double pts, long totalStart)
     {
-        // HDR10 frames are tone mapped on the CPU path (Stage 038A slice 1); the GPU still decodes them.
+        // HDR10 frames go to the renderer with a tone-map request (Stage 038A slice 2), unless
+        // the host asks for the CPU tone mapper; then they are copied back like software frames.
+        var toneMapped = IsToneMappedFrame();
         if (!_enableHardwareFrameOutput
-            || IsToneMappedFrame()
+            || (toneMapped && _hdrToneMapping.PreferCpu)
             || _hardwareDeviceContext == null
             || _hardwareDeviceTypeName == null
             || HardwareDevice == null)
@@ -851,7 +853,11 @@ internal sealed unsafe class VideoDecoder(
             return false;
         }
 
-        nativeResource = nativeResource with { ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE) };
+        nativeResource = nativeResource with
+        {
+            ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE, toneMapped),
+            HdrToneMap = toneMapped ? GetToneMapRequest() : null
+        };
 
         _frameQueue.Enqueue(new VideoFrameData
         {
@@ -1036,26 +1042,35 @@ internal sealed unsafe class VideoDecoder(
     /// </summary>
     private HdrToneMapper GetToneMapper()
     {
-        var referenceWhite = _hdrToneMapping.EffectiveReferenceWhiteNits;
-        var peak = FFmpegVideoColor.GetHdrPeakNits(_videoFrame, _videoStream, referenceWhite);
+        HdrToneMapRequest request = GetToneMapRequest(onCpu: true);
         if (_toneMapper is { } current
-            && Math.Abs(current.SourcePeakNits - peak.Nits) < 1
-            && current.ReferenceWhiteNits == referenceWhite)
+            && Math.Abs(current.SourcePeakNits - request.SourcePeakNits) < 1
+            && current.ReferenceWhiteNits == request.TargetPeakNits)
         {
             return current;
         }
 
-        _toneMapper = new HdrToneMapper(peak.Nits, referenceWhite);
+        return _toneMapper = new HdrToneMapper(request.SourcePeakNits, request.TargetPeakNits);
+    }
+
+    /// <summary>
+    /// The current frame's tone-map parameters: its peak luminance from the HDR10 metadata and the
+    /// configured SDR white. The first call per open logs them and where the mapping runs.
+    /// </summary>
+    private HdrToneMapRequest GetToneMapRequest(bool onCpu = false)
+    {
+        var referenceWhite = _hdrToneMapping.EffectiveReferenceWhiteNits;
+        var peak = FFmpegVideoColor.GetHdrPeakNits(_videoFrame, _videoStream, referenceWhite);
         if (!_toneMapReported)
         {
             _toneMapReported = true;
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
                 "VideoDecoder",
-                $"HDR10 video is tone mapped to SDR: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
+                $"HDR10 video is tone mapped to SDR {(onCpu ? "on the CPU" : "by the renderer")}: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
         }
 
-        return _toneMapper;
+        return new HdrToneMapRequest(peak.Nits, referenceWhite);
     }
 
     private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace, AVPixelFormat targetFormat)

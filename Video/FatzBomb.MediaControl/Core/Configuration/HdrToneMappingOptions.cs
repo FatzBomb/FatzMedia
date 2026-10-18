@@ -13,7 +13,11 @@ namespace FatzBomb.MediaControl.Core.Configuration;
 /// becomes SDR white; 0 uses <see cref="DefaultReferenceWhiteNits"/>. Lower values make HDR video
 /// brighter, higher values darker.
 /// </param>
-public readonly record struct HdrToneMappingOptions(bool Disabled = false, double ReferenceWhiteNits = 0)
+/// <param name="PreferCpu">
+/// Tone maps on the CPU even when the renderer can on the GPU: hardware-decoded frames are
+/// copied back. For comparison and diagnosis; the GPU path is faster.
+/// </param>
+public readonly record struct HdrToneMappingOptions(bool Disabled = false, double ReferenceWhiteNits = 0, bool PreferCpu = false)
 {
     /// <summary>BT.2408's HDR reference white (also mpv's default SDR target peak).</summary>
     public const double DefaultReferenceWhiteNits = 203;
