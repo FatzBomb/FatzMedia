@@ -3,7 +3,7 @@
 Stage: 041A.2 - Adaptive presentation-lead rules extracted
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (seek, loop with and without audio, end of playback: "success")
 
 Owner request: "do 041a". This slice is the second 015A seam.
 

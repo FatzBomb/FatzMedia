@@ -2,7 +2,8 @@
 
 Prepared: 2026-10-18 (idea), activated 2026-10-18 (owner: "do 041a").
 Status: slices 1-3 (the three 015A seams: loop-boundary rules, presentation-lead rules,
-post-seek recovery) implemented, pending manual smoke (`updates/041A_1` to `updates/041A_3`).
+post-seek recovery) implemented; owner smoke passed 2026-10-18 (`updates/041A_1` to
+`updates/041A_3`).
 The 010A/019A, 017A and 022A items are not started.
 
 Small optional follow-ups left by stages completed on 2026-10-18, collected here

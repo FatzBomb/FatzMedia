@@ -30,7 +30,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
   (`VideoLoopBoundary`), slice 2 the adaptive presentation-lead rules
   (`PresentationLeadController`), slice 3 the post-seek recovery state machine
-  (`PostSeekRecovery`); implemented, pending manual smoke (`updates/041A_1` to `updates/041A_3`).
+  (`PostSeekRecovery`); owner smoke passed 2026-10-18 (`updates/041A_1` to `updates/041A_3`).
+  The 010A/019A, 017A and 022A items are not started.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
