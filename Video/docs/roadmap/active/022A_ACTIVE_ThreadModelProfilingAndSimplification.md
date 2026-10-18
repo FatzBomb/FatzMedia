@@ -112,7 +112,7 @@ restart. The worker parks between runs, exits after 30 s idle or on dispose, and
 recreated on the next start. The public surface (`Start`, `Stop`, `StopAndWait`, `Dispose`)
 is unchanged, so no caller changed (`updates/022A_3`).
 
-## Slice 4 (implemented, pending manual smoke)
+## Slice 4 (implemented, owner smoke passed 2026-10-18)
 
 CD+G seeks restore the nearest replay checkpoint (every 10 s of packets, built once at load
 off the render lock) instead of replaying from the first packet under the lock, so any seek

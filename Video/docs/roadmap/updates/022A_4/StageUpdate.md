@@ -3,7 +3,7 @@
 Stage: 022A.4 - CD+G seek replay checkpoints; seek-bar drags off the UI thread
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (visual); follow-up below pending smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (with the follow-up, capture `cdg-3`)
 
 Owner capture `cdg-2` (60 s, CD+G and video scrubbing; everything looked right):
 - CD+G: the render loop no longer waits on the CD+G render lock during seeks (405 ms in the
@@ -16,6 +16,14 @@ Owner capture `cdg-2` (60 s, CD+G and video scrubbing; everything looked right):
   skip that refresh, as `Controls.Seek` did before this slice; the seek pumps present the
   preview themselves. `SeekAsync` outside a scrub and the release `Seek` refresh as before.
   Test: `SeekAsync_DuringAScrub_LeavesThePreviewToTheSeekPump` (mutation-checked).
+
+Owner capture `cdg-3` (same mix, with the follow-up): total lock waits 622 ms (`cdg`) ->
+8,054 ms (`cdg-2`) -> 556 ms. The seek-pump waits on the drag refresh are gone; the render
+loop waits 1 ms on the CD+G lock and the CD+G seek worker 0.03 ms. Left, and accepted: on
+the control-queue worker a drag seek's position read (`SeekOperation` -> `Position` ->
+`VideoAudioEngine.Position`) occasionally waits for the video seek pump's audio lock (6 waits,
+267 ms in total, up to 123 ms). No UI or render thread waits on it, and newer drag targets
+coalesce meanwhile.
 
 Baseline (owner `cdg` capture, 60 s of scrubbing a CD+G song):
 - The CD+G render loop waited on the CD+G engine's render lock 101 times, 405 ms in total, up

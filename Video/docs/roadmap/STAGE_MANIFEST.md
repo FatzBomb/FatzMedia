@@ -44,7 +44,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`); slice 3
   reuses each scheduler's worker thread across seeks, owner smoke passed 2026-10-18 (`updates/022A_3`);
   slice 4 bounds CD+G seek replay with checkpoints and moves seek-bar drags onto the control
-  queue (`SeekAsync`), pending manual smoke (`updates/022A_4`).
+  queue (`SeekAsync`), owner smoke passed 2026-10-18, lock waits 622 -> 556 ms per minute of
+  scrubbing with the render-loop CD+G waits gone (`updates/022A_4`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
