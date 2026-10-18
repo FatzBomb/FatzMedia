@@ -27,6 +27,7 @@ internal sealed class ScrubAudioMuter : IDisposable
     private readonly Lock _gate = new();
     private MediaScrubAudio _mode;
     private long _lastSeekTimestamp;
+    private int _seeksRunning;
     private bool _muted;
     private bool _armed;
     private bool _disposed;
@@ -85,14 +86,18 @@ internal sealed class ScrubAudioMuter : IDisposable
         }
     }
 
-    /// <summary>Called before each seek of a scrub moves the media.</summary>
-    public void OnScrubSeek()
+    /// <summary>
+    /// Called before each seek of a scrub moves the media. Returns <see langword="true"/> when
+    /// the seek is tracked; then call <see cref="OnScrubSeekFinished"/> once it returns.
+    /// </summary>
+    public bool OnScrubSeek()
     {
         lock (_gate)
         {
             if (_disposed || _mode != MediaScrubAudio.SilentWhileMoving)
-                return;
+                return false;
 
+            _seeksRunning++;
             _lastSeekTimestamp = _timeProvider.GetTimestamp();
             if (!_muted)
             {
@@ -105,6 +110,23 @@ internal sealed class ScrubAudioMuter : IDisposable
                 _armed = true;
                 _ = _timer.Change(_quietPeriod, Timeout.InfiniteTimeSpan);
             }
+
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// A tracked scrub seek returned. The quiet period counts from here: while a seek runs, the
+    /// drag requests behind it wait on the control queue and none of them has reached the muter.
+    /// </summary>
+    public void OnScrubSeekFinished()
+    {
+        lock (_gate)
+        {
+            if (_seeksRunning > 0)
+                _seeksRunning--;
+
+            _lastSeekTimestamp = _timeProvider.GetTimestamp();
         }
     }
 
@@ -129,6 +151,19 @@ internal sealed class ScrubAudioMuter : IDisposable
 
     private void OnQuietPeriodElapsed()
     {
+        try
+        {
+            OnQuietPeriodElapsedCore();
+        }
+        catch (Exception ex)
+        {
+            // A timer callback must not throw: that would end the process.
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, nameof(ScrubAudioMuter), $"Restoring audio after a scrub failed: {ex.Message}");
+        }
+    }
+
+    private void OnQuietPeriodElapsedCore()
+    {
         lock (_gate)
         {
             _armed = false;
@@ -136,8 +171,11 @@ internal sealed class ScrubAudioMuter : IDisposable
                 return;
 
             // The timer is armed once per quiet period rather than reset by every seek; a seek
-            // that arrived meanwhile pushes the unmute out by the rest of its own quiet period.
-            TimeSpan remaining = _quietPeriod - _timeProvider.GetElapsedTime(_lastSeekTimestamp);
+            // that arrived meanwhile pushes the unmute out by the rest of its own quiet period,
+            // and a seek still running holds it for a whole one.
+            TimeSpan remaining = _seeksRunning > 0
+                ? _quietPeriod
+                : _quietPeriod - _timeProvider.GetElapsedTime(_lastSeekTimestamp);
             if (remaining > TimeSpan.Zero)
             {
                 _armed = true;

@@ -21,11 +21,20 @@ Delivered: see the stage file, slice 2.
   `IAudioVolumeSlide` for the unmute ramp.
 - Player: **Silent Drag** in the Audio flyout, on by default.
 
-Tests: 7 cases in `ScrubAudioMuterTests.cs` (manual clock) and 3 in
+Tests: 10 cases in `ScrubAudioMuterTests.cs` (manual clock) and 3 in
 `MediaControlPlayerTests.cs` (`SilentScrub_MutesBeforeTheDragSeek_AndRestoresTheVolumeWhenTheScrubEnds`,
 `AudibleScrub_IsTheDefault_AndNeverMutes`, `SilentScrub_LoadingMidDrag_LeavesTheNewMediaAudible`),
 all in the shared folder, so they also run in Portable. Removing the mute call fails the
 first facade test.
+
+## Review follow-up (same day)
+
+- A scrub seek that outlasts the quiet period (a network stream, a slow tracker seek) no
+  longer lets audio through mid-drag: the quiet period counts from when the seek returns,
+  and no unmute happens while one runs. The drag requests queued behind it had not reached
+  the muter yet.
+- The quiet-period timer callback catches everything and reports it as a diagnostic: an
+  exception on a timer thread would end the process.
 
 ## Decisions made without the owner
 
@@ -50,7 +59,7 @@ first facade test.
 ## Verification
 
 - Linux: full-solution Release build clean (warnings as errors); `dotnet format
-  --verify-no-changes` clean; Portable tests pass (829); boundary scripts pass.
+  --verify-no-changes` clean; Portable tests pass (832); boundary scripts pass.
 - Not runnable here: BASS playback. Covered by the manual smoke below.
 
 ## Manual smoke (Windows, native DLLs)

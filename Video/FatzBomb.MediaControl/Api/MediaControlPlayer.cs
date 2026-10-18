@@ -422,11 +422,20 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
 
         // Silent scrubbing mutes before the seek moves the audio, so nothing of the new position
-        // is heard while the drag keeps moving.
-        if (Controls.IsScrubbing)
-            _scrubAudio.OnScrubSeek();
+        // is heard while the drag keeps moving. A slow seek (a network stream) holds the unmute
+        // until it returns, so the drag requests queued behind it are not heard either.
+        var trackedScrubSeek = Controls.IsScrubbing && _scrubAudio.OnScrubSeek();
+        bool success;
+        try
+        {
+            success = Controls.Seek(seconds);
+        }
+        finally
+        {
+            if (trackedScrubSeek)
+                _scrubAudio.OnScrubSeekFinished();
+        }
 
-        var success = Controls.Seek(seconds);
         if (!success)
         {
             ClearPendingSeek();

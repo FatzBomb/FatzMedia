@@ -12,6 +12,13 @@ public sealed class ScrubAudioMuterTests
     private readonly FakeTimeProvider _time = new();
     private readonly List<(bool Muted, TimeSpan Ramp)> _applied = [];
 
+    /// <summary>A scrub seek as the player makes it: tracked, then finished.</summary>
+    private static void Seek(ScrubAudioMuter muter)
+    {
+        if (muter.OnScrubSeek())
+            muter.OnScrubSeekFinished();
+    }
+
     private ScrubAudioMuter Create(MediaScrubAudio mode = MediaScrubAudio.SilentWhileMoving) =>
         new((muted, ramp) => _applied.Add((muted, ramp)), _time) { Mode = mode };
 
@@ -19,7 +26,7 @@ public sealed class ScrubAudioMuterTests
     public void Audible_LeavesTheAudioAlone()
     {
         using var muter = Create(MediaScrubAudio.Audible);
-        muter.OnScrubSeek();
+        Seek(muter);
         _time.Advance(Quiet * 2);
         muter.OnScrubEnded();
 
@@ -30,14 +37,14 @@ public sealed class ScrubAudioMuterTests
     public void AMovingDrag_StaysMuted_AndPlaysAgainOnceItRests()
     {
         using var muter = Create();
-        muter.OnScrubSeek();
+        Seek(muter);
         Assert.Equal([(true, TimeSpan.Zero)], _applied);
 
         // A drag that keeps moving: seeks closer together than the quiet period.
         for (var move = 0; move < 10; move++)
         {
             _time.Advance(TimeSpan.FromMilliseconds(100));
-            muter.OnScrubSeek();
+            Seek(muter);
         }
 
         Assert.True(muter.IsMuted);
@@ -52,12 +59,38 @@ public sealed class ScrubAudioMuterTests
     }
 
     [Fact]
+    public void ASlowSeek_HoldsTheMute_UntilAQuietPeriodAfterItReturns()
+    {
+        // A network seek can outlast the quiet period; the drag moves on meanwhile, its requests
+        // waiting on the control queue behind it.
+        using var muter = Create();
+        Assert.True(muter.OnScrubSeek());
+        _time.Advance(Quiet * 3);
+        Assert.True(muter.IsMuted);
+
+        muter.OnScrubSeekFinished();
+        _time.Advance(Quiet - TimeSpan.FromMilliseconds(1));
+        Assert.True(muter.IsMuted);
+
+        _time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.False(muter.IsMuted);
+        Assert.Equal([(true, TimeSpan.Zero), (false, ScrubAudioMuter.UnmuteRamp)], _applied);
+    }
+
+    [Fact]
+    public void AnUntrackedSeek_ReportsSo()
+    {
+        using var muter = Create(MediaScrubAudio.Audible);
+        Assert.False(muter.OnScrubSeek());
+    }
+
+    [Fact]
     public void ADragThatMovesAgain_MutesAgain()
     {
         using var muter = Create();
-        muter.OnScrubSeek();
+        Seek(muter);
         _time.Advance(Quiet);
-        muter.OnScrubSeek();
+        Seek(muter);
 
         Assert.True(muter.IsMuted);
         Assert.Equal([(true, TimeSpan.Zero), (false, ScrubAudioMuter.UnmuteRamp), (true, TimeSpan.Zero)], _applied);
@@ -67,7 +100,7 @@ public sealed class ScrubAudioMuterTests
     public void EndingTheScrub_PlaysAtOnce_AndTheTimerAddsNothing()
     {
         using var muter = Create();
-        muter.OnScrubSeek();
+        Seek(muter);
         muter.OnScrubEnded();
         _time.Advance(Quiet * 2);
         muter.OnScrubEnded();
@@ -80,9 +113,9 @@ public sealed class ScrubAudioMuterTests
     public void SwitchingToAudible_MidDrag_Unmutes()
     {
         using var muter = Create();
-        muter.OnScrubSeek();
+        Seek(muter);
         muter.Mode = MediaScrubAudio.Audible;
-        muter.OnScrubSeek();
+        Seek(muter);
         _time.Advance(Quiet * 2);
 
         Assert.False(muter.IsMuted);
@@ -94,10 +127,45 @@ public sealed class ScrubAudioMuterTests
     {
         var muter = Create();
         muter.Dispose();
-        muter.OnScrubSeek();
+        Seek(muter);
         _time.Advance(Quiet * 2);
 
         Assert.Empty(_applied);
+    }
+
+    [Fact]
+    public void AnUnexpectedFailureWhileRestoring_IsReported_NotThrownOnTheTimer()
+    {
+        var fail = false;
+        var diagnostics = new List<string>();
+        void OnDiagnostic(MediaDiagnosticInfo info)
+        {
+            if (info.Category == nameof(ScrubAudioMuter))
+                lock (diagnostics)
+                    diagnostics.Add(info.Message);
+        }
+
+        DiagnosticRouter.DiagnosticOccurred += OnDiagnostic;
+        try
+        {
+            using var muter = new ScrubAudioMuter((_, _) =>
+            {
+                if (fail)
+                    throw new IOException("device lost");
+            }, _time)
+            { Mode = MediaScrubAudio.SilentWhileMoving };
+
+            Seek(muter);
+            fail = true;
+            _time.Advance(Quiet);
+
+            lock (diagnostics)
+                Assert.Contains(diagnostics, message => message.Contains("device lost", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= OnDiagnostic;
+        }
     }
 
     [Fact]
@@ -111,7 +179,7 @@ public sealed class ScrubAudioMuterTests
         }, _time)
         { Mode = MediaScrubAudio.SilentWhileMoving };
 
-        muter.OnScrubSeek();
+        Seek(muter);
         _time.Advance(Quiet);
 
         Assert.Equal(2, calls);
