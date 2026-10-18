@@ -3,7 +3,8 @@
 Stage: 035A.2 - Silent drag
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke 2026-10-18 (250 ms build): "looks (and sounds) good";
+quiet period then shortened to 120 ms, pending a re-check
 
 Owner request: "option for silent drag if possible (still resumes at a drag pause, but not
 garbage while dragging)".
@@ -12,7 +13,7 @@ Delivered: see the stage file, slice 2.
 
 - `MediaScrubAudio` (`Audible`, `SilentWhileMoving`), `MediaControlPlayer.ScrubAudio`,
   `IMediaControlSession.ScrubAudio` (default `Audible`).
-- `Controllers/ScrubAudioMuter.cs`: mutes on each scrub seek, unmutes after a 250 ms quiet
+- `Controllers/ScrubAudioMuter.cs`: mutes on each scrub seek, unmutes after a 120 ms quiet
   period or when the scrub ends.
 - `MediaEffects.SetScrubMuted`: the engine gets 0 while muted and the user volume afterwards;
   one lock orders it against `Volume` writes.
@@ -38,15 +39,16 @@ first facade test.
 
 ## Decisions made without the owner
 
-- **Quiet period 250 ms.** A drag sends seeks every few tens of milliseconds while it moves;
-  250 ms of none means the hand has stopped. Shorter brings back short bursts of noise on a
-  slow drag; longer feels late. It is one constant
+- **Quiet period 120 ms** (first build 250 ms; owner smoke: "I don't 'feel' feedback as
+  quickly as I think I should"). A drag sends a seek per mouse move, every 8-16 ms while it
+  moves; 120 ms of none means the hand has stopped. Much shorter brings back short bursts
+  of noise on a slow drag (moves a pixel at a time); longer feels late. It is one constant
   (`ScrubAudioMuter.DefaultQuietPeriod`) if it needs tuning.
 - **Audio returns where playback is, not where the drag stopped.** Playback carries on
   muted during the rest (slice 1: a drag never pauses playback), so it is heard from about
-  250 ms past the rest position. Seeking back on unmute would add a seek and a glitch at the
-  moment audio returns.
-- **Mute is a step, unmute is a 40 ms ramp.** The mute lands right before a seek, which is a
+  120 ms past the rest position. Seeking back on unmute would add a seek and a glitch at
+  the moment audio returns.
+- **Mute is a step, unmute is a 20 ms ramp.** The mute lands right before a seek, which is a
   discontinuity anyway; a ramp there would let the start of the new position through.
 - **Channel volume attribute, not a new FX stage.** BASS applies FX when it fills the playback
   buffer, so an FX unmute would be heard only after the buffered (muted) audio played out,
@@ -65,7 +67,7 @@ first facade test.
 ## Manual smoke (Windows, native DLLs)
 
 1. MP3, Silent Drag on (default): drag the seek bar back and forth: no audio while moving.
-   Hold still: audio comes back within about a quarter second, without a click. Move again:
+   Hold still: audio comes back within about a tenth of a second, without a click. Move again:
    silent again. Release: audio plays on, no jump.
 2. Same with a video (its soundtrack) and with an MP3+CD+G.
 3. Change the volume slider mid-drag (keyboard or a second hand), release: the new volume.

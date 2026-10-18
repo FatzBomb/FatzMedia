@@ -122,7 +122,7 @@ shift subtitle timing.
 ## Silent drag
 
 **Silent Drag** in the **Audio** flyout (on by default) mutes audio while the seek bar is
-dragged; it plays again when the drag rests for about a quarter second or is released. Off,
+dragged; it plays again when the drag rests for about a tenth of a second or is released. Off,
 drags sound as before. It sets `MediaControlPlayer.ScrubAudio`; the volume setting is not
 touched.
 

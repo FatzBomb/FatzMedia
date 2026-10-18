@@ -15,10 +15,10 @@ namespace FatzBomb.MediaControl.Controllers;
 internal sealed class ScrubAudioMuter : IDisposable
 {
     /// <summary>How long a drag must rest before its audio comes back.</summary>
-    internal static readonly TimeSpan DefaultQuietPeriod = TimeSpan.FromMilliseconds(250);
+    internal static readonly TimeSpan DefaultQuietPeriod = TimeSpan.FromMilliseconds(120);
 
     /// <summary>Ramp that brings audio back, short enough to feel immediate without a click.</summary>
-    internal static readonly TimeSpan UnmuteRamp = TimeSpan.FromMilliseconds(40);
+    internal static readonly TimeSpan UnmuteRamp = TimeSpan.FromMilliseconds(20);
 
     private readonly Action<bool, TimeSpan> _setMuted;
     private readonly TimeProvider _timeProvider;

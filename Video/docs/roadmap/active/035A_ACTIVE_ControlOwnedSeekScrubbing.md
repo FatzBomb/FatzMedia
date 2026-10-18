@@ -59,8 +59,9 @@ Owner request (2026-10-18): an option for a silent drag, audible again when the 
   `MediaControlPlayer.ScrubAudio`, and `IMediaControlSession.ScrubAudio` with a default that
   stays `Audible`.
 - `SilentWhileMoving`: every seek during a scrub mutes before it moves the media, so nothing
-  of the new position is heard while the drag moves. Audio comes back with a 40 ms ramp
-  once no scrub seek has arrived for 250 ms (the drag rests), or at once when the scrub ends
+  of the new position is heard while the drag moves. Audio comes back with a 20 ms ramp
+  once no scrub seek has arrived for 120 ms (the drag rests;
+  250 ms in the first build, shortened at the owner's smoke), or at once when the scrub ends
   or the media loads or closes.
 - The mute is its own attenuation in `MediaEffects`: `Volume`, `VolumeChanged`, fades and
   normalization are untouched, and a volume change during the mute is applied on unmute.
