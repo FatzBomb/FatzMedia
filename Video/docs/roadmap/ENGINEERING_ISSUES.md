@@ -57,9 +57,18 @@ transforms; not kept as a test):
 - the wash blends whole vectors with an exact integer divide by 255 (the same arithmetic
   for the remainder); clear and opaque wash are fills;
 - outputs over 512K pixels are drawn in parallel row bands (each band writes only its own
-  rows, so the result does not depend on scheduling).
+  rows, so the result does not depend on scheduling), at most 8 bands of at least 128K
+  pixels.
 
 Result: 3440x1440 video 69 -> about 6 ms per frame; with wash and CD+G 120 -> about 9 ms.
+Owner capture `video-sw-5` (same steps as `video-sw-4`: fullscreen ultrawide plus the
+maximized secondary window): presentation thread 78.5% -> 11.9% busy; the drawing moved to
+thread-pool bands (about 0.4 of a core in total). That capture also showed one band per
+core (21 pool threads, each about 2% busy, about 1000 work items/s) costing about a fifth
+of the drawing time in fork/join and wakeups, so bands are now capped at 8. Some stutter
+remains with both windows full size; the trace points at WPF itself (the UI thread spends
+about 2 s per minute in `WriteableBitmap.WritePixels`, and WPF's native render thread, which
+the trace cannot sample, uploads two ultrawide bitmaps per frame).
 Test: `SoftwareCompositionRendererTests.Render_LargeFrame_MatchesThePerPixelBlendFormulas`
 checks every pixel of a banded 1200x864 render of background, wash, CD+G and premultiplied
 subtitles against the per-pixel formulas. Pixels are processed as little-endian BGRA words;

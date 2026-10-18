@@ -12,6 +12,11 @@ public sealed class SoftwareCompositionRenderer
 {
     private const long ParallelPixelThreshold = 512 * 1024;
     private const int MinRowsPerBand = 32;
+    // The owner's capture (20+ logical cores) showed one band per core costing about a fifth
+    // of the drawing time in fork/join and thread-pool wakeups, with 21 workers each about 2%
+    // busy; a few large bands already saturate memory bandwidth.
+    private const int MaxBands = 8;
+    private const long MinPixelsPerBand = 128 * 1024;
 
     public SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height)
     {
@@ -365,16 +370,19 @@ public sealed class SoftwareCompositionRenderer
 
     /// <summary>
     /// Runs <paramref name="drawRows"/> over [<paramref name="top"/>, <paramref name="bottom"/>),
-    /// split into parallel row bands when the area is large (ENG-017: one ultrawide frame is
-    /// about 5 million pixels). Each band writes only its own rows and reads shared input, so
+    /// split into at most <see cref="MaxBands"/> parallel row bands when the area is large
+    /// (ENG-017: one ultrawide frame is about 5 million pixels). Each band writes only its own rows and reads shared input, so
     /// the output is identical to one pass; small frames stay on the calling thread.
     /// </summary>
     private static void ForRowBands(int top, int bottom, int width, Action<int, int> drawRows)
     {
         var rows = bottom - top;
-        var bands = (long)rows * width < ParallelPixelThreshold
+        var pixels = (long)rows * width;
+        var bands = pixels < ParallelPixelThreshold
             ? 1
-            : Math.Min(Environment.ProcessorCount, rows / MinRowsPerBand);
+            : (int)Math.Min(
+                Math.Min(Environment.ProcessorCount, MaxBands),
+                Math.Min(rows / MinRowsPerBand, pixels / MinPixelsPerBand));
         if (bands <= 1)
         {
             if (rows > 0)
