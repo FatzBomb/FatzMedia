@@ -3,7 +3,7 @@
 Stage: 022A.3 - Reuse scheduler threads across restarts
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18
 
 Baseline: every `VideoPipeline.SeekCore` restarts the decode and presentation loops, and
 `PlaybackScheduler.Start` created a new LongRunning thread each time: about 55 + 55 OS

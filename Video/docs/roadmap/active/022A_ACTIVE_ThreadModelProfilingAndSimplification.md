@@ -103,7 +103,7 @@ Sources, from the sampled stacks and contention events:
 - `VideoPipeline` resolves the display interval at most every 100 ms instead of several times
   per frame (DWM is also only the fallback since 017A slice 3).
 
-## Slice 3 (implemented)
+## Slice 3 (implemented, owner smoke passed 2026-10-18)
 
 `PlaybackScheduler` runs its loops on one reused worker thread instead of a new LongRunning
 thread per `Start`. Starting a loop cancels the current one; the new loop runs on the same
