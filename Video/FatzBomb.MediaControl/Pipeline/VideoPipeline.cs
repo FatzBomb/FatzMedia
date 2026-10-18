@@ -88,23 +88,6 @@ internal sealed partial class VideoPipeline(
     ];
     private static readonly TimeSpan HardwareDecodeReprobeInterval = TimeSpan.FromSeconds(5);
     private const int PresentationDiagnosticsFrameInterval = 120;
-    private const double DefaultPresentationLeadRefreshIntervals = 0.75;
-    private const double MinimumPresentationLeadRefreshIntervals = 0.50;
-    private const double MaximumPresentationLeadRefreshIntervals = 1.25;
-    private const double PresentationLeadIncreaseStepRefreshIntervals = 0.125;
-    private const double PresentationLeadDecreaseStepRefreshIntervals = 0.0625;
-    private const double PresentationLeadClockLateIncreaseThresholdRefreshes = 0.65;
-    private const double PresentationLeadEarlyDecreaseThresholdRefreshes = 1.75;
-    private const double PresentationLeadGoodClockLateThresholdRefreshes = 0.35;
-    private const int PresentationLeadLateSampleIncreaseThreshold = 8;
-    private const int PostSeekRecoveryMilliseconds = 450;
-    private const int PostSeekUnderfilledRecoveryMilliseconds = 700;
-    private const int PostSeekEmptyQueueRecoveryMilliseconds = 900;
-    private const int PostSeekWarmupDecodeBudgetMilliseconds = 260;
-    private const int PostSeekWarmupRetryBudgetMilliseconds = 220;
-    private const int SharedDemuxerPostSeekPrerollBudgetMilliseconds = 2500;
-    private const int PostSeekMinimumBufferedFrames = 3;
-    private const int PostSeekAdaptiveSuppressionWindows = 2;
     private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
     private const double MaxPresentLatenessSeconds = 0.18;
     private const double DisplayLockedPtsToleranceSeconds = 0.0005;
@@ -121,8 +104,7 @@ internal sealed partial class VideoPipeline(
     private double _presentationDiagnosticLeadMs;
     private int _presentationDiagnosticClockLateSamples;
     private double _activePresentationLeadRefreshIntervals = double.NaN;
-    private long _postSeekRecoveryUntilTimestamp;
-    private int _postSeekAdaptiveSuppressionWindowsRemaining;
+    private readonly PostSeekRecovery _postSeekRecovery = new();
 
     public IAudioEngine? Audio => _audioEngine;
     public bool HasAudio => _audioEngine?.IsOpen == true;
@@ -1457,16 +1439,8 @@ internal sealed partial class VideoPipeline(
         return Duration > 0 ? Math.Min(Duration, targetPosition) : targetPosition;
     }
 
-    private double GetPresentationLeadSeconds()
-    {
-        var refreshInterval = GetDisplayRefreshIntervalSeconds();
-        if (!double.IsFinite(refreshInterval) || refreshInterval <= 0)
-            refreshInterval = 1.0 / 60.0;
-
-        var frameDuration = FramesPerSecond > 0 ? 1.0 / FramesPerSecond : 1.0 / 30.0;
-        var maxLead = Math.Clamp(frameDuration * 0.45, 0.0, 0.030);
-        return Math.Clamp(refreshInterval * GetActivePresentationLeadRefreshIntervals(), 0.0, maxLead);
-    }
+    private double GetPresentationLeadSeconds() =>
+        PresentationLeadController.LeadSeconds(GetDisplayRefreshIntervalSeconds(), FramesPerSecond, GetActivePresentationLeadRefreshIntervals());
 
     private double GetActivePresentationLeadRefreshIntervals()
     {
@@ -1479,50 +1453,29 @@ internal sealed partial class VideoPipeline(
         return active;
     }
 
-    private double GetInitialPresentationLeadRefreshIntervals()
-    {
-        var configured = _configuration.PresentationLeadRefreshIntervals;
-        if (!double.IsFinite(configured) || configured <= 0)
-            configured = DefaultPresentationLeadRefreshIntervals;
-
-        return Math.Clamp(configured, MinimumPresentationLeadRefreshIntervals, MaximumPresentationLeadRefreshIntervals);
-    }
+    private double GetInitialPresentationLeadRefreshIntervals() =>
+        PresentationLeadController.InitialLeadRefreshes(_configuration.PresentationLeadRefreshIntervals);
 
     private void ResetPresentationTimingController()
     {
         RequestDisplayLockedReset();
         _activePresentationLeadRefreshIntervals = GetInitialPresentationLeadRefreshIntervals();
-        _postSeekRecoveryUntilTimestamp = 0;
-        _postSeekAdaptiveSuppressionWindowsRemaining = 0;
+        _postSeekRecovery.Reset();
         ResetPresentationDiagnostics();
-    }
-
-    private bool IsPostSeekRecoveryActive()
-    {
-        var recoveryUntil = Interlocked.Read(ref _postSeekRecoveryUntilTimestamp);
-        return recoveryUntil > 0 && Stopwatch.GetTimestamp() < recoveryUntil;
     }
 
     private void BeginPostSeekPresentationRecovery()
     {
         RequestDisplayLockedReset();
         var bufferedFrames = _videoDecoder?.FrameCount ?? 0;
-        var recoveryMilliseconds = bufferedFrames <= 0
-            ? PostSeekEmptyQueueRecoveryMilliseconds
-            : bufferedFrames < PostSeekMinimumBufferedFrames
-                ? PostSeekUnderfilledRecoveryMilliseconds
-                : PostSeekRecoveryMilliseconds;
-
-        var until = Stopwatch.GetTimestamp() + (long)(recoveryMilliseconds / 1000.0 * Stopwatch.Frequency);
-        _ = Interlocked.Exchange(ref _postSeekRecoveryUntilTimestamp, until);
-        _ = Interlocked.Exchange(ref _postSeekAdaptiveSuppressionWindowsRemaining, PostSeekAdaptiveSuppressionWindows);
+        var recoveryMilliseconds = _postSeekRecovery.Begin(bufferedFrames, Stopwatch.GetTimestamp(), Stopwatch.Frequency);
         ResetPresentationDiagnostics();
         if (_configuration.EnableLogging)
         {
             Debug.WriteLine(
                 $"[VideoPipeline:SeekRecovery] Started {recoveryMilliseconds}ms recovery window; " +
                 $"buffered={bufferedFrames}/{GetTargetBufferedVideoFrames()}, lead={GetActivePresentationLeadRefreshIntervals():F3} refreshes, " +
-                $"adaptiveSuppress={PostSeekAdaptiveSuppressionWindows} windows.");
+                $"adaptiveSuppress={PostSeekRecovery.AdaptiveSuppressionWindows} windows.");
         }
     }
 
@@ -1532,7 +1485,7 @@ internal sealed partial class VideoPipeline(
         if (decoder == null)
             return;
 
-        var targetBufferedFrames = Math.Min(GetTargetBufferedVideoFrames(), Math.Max(PostSeekMinimumBufferedFrames, MinBufferedVideoFrames));
+        var targetBufferedFrames = PostSeekRecovery.WarmupTargetFrames(GetTargetBufferedVideoFrames(), MinBufferedVideoFrames);
         var decodedFrames = 0;
         int firstPassDecodedFrames;
 
@@ -1541,7 +1494,7 @@ internal sealed partial class VideoPipeline(
             firstPassDecodedFrames = DecodePostSeekWarmupFrames(
                 decoder,
                 targetBufferedFrames,
-                PostSeekWarmupDecodeBudgetMilliseconds);
+                PostSeekRecovery.WarmupDecodeBudgetMilliseconds);
 
             decodedFrames += firstPassDecodedFrames;
 
@@ -1554,7 +1507,7 @@ internal sealed partial class VideoPipeline(
                 decodedFrames += DecodePostSeekWarmupFrames(
                     decoder,
                     targetBufferedFrames,
-                    PostSeekWarmupRetryBudgetMilliseconds);
+                    PostSeekRecovery.WarmupRetryBudgetMilliseconds);
             }
 
             // A shared seek starts at the preceding video keyframe. Long-GOP
@@ -1567,7 +1520,7 @@ internal sealed partial class VideoPipeline(
                 decodedFrames += DecodePostSeekWarmupFrames(
                     decoder,
                     targetBufferedFrames,
-                    SharedDemuxerPostSeekPrerollBudgetMilliseconds);
+                    PostSeekRecovery.SharedDemuxerPrerollBudgetMilliseconds);
             }
         }
 
@@ -1576,7 +1529,7 @@ internal sealed partial class VideoPipeline(
             Debug.WriteLine(
                 $"[VideoPipeline:SeekRecovery] Warmed video queue after seek to {target:F3}s: " +
                 $"decoded={decodedFrames} (firstPass={firstPassDecodedFrames}), queued={decoder.FrameCount}/{targetBufferedFrames}, " +
-                $"budget={PostSeekWarmupDecodeBudgetMilliseconds}+{PostSeekWarmupRetryBudgetMilliseconds}ms.");
+                $"budget={PostSeekRecovery.WarmupDecodeBudgetMilliseconds}+{PostSeekRecovery.WarmupRetryBudgetMilliseconds}ms.");
         }
     }
 
@@ -1603,11 +1556,9 @@ internal sealed partial class VideoPipeline(
     }
 
     private bool HasReachedNaturalEnd(double position) =>
-        _isPlaying && Duration > 0 && position >= Duration - GetEndToleranceSeconds();
+        VideoLoopBoundary.HasReachedNaturalEnd(_isPlaying, Duration, position, GetEndToleranceSeconds());
 
-    private double GetEndToleranceSeconds() => FramesPerSecond > 0
-            ? Math.Clamp(1.0 / FramesPerSecond, 0.02, 0.12)
-            : 0.05;
+    private double GetEndToleranceSeconds() => VideoLoopBoundary.EndToleranceSeconds(FramesPerSecond);
 
     private bool ShouldRestartLoopPlayback(double currentPosition)
     {
@@ -1618,15 +1569,12 @@ internal sealed partial class VideoPipeline(
         if (decoder == null)
             return false;
 
-        var tolerance = GetEndToleranceSeconds();
-        var loopBoundary = GetLoopBoundarySeconds(decoder);
-
-        if (decoder.EndOfStream && decoder.FrameCount == 0 && currentPosition >= loopBoundary - tolerance)
-            return true;
-
-        // Metadata and EOF signaling can be imperfect. If playback has moved beyond the nominal
-        // boundary with no queued frames, restart rather than freezing forever on the retained frame.
-        return decoder.FrameCount == 0 && currentPosition >= loopBoundary + tolerance;
+        return VideoLoopBoundary.ShouldRestartLoop(
+            decoder.EndOfStream,
+            decoder.FrameCount,
+            currentPosition,
+            GetLoopBoundarySeconds(decoder),
+            GetEndToleranceSeconds());
     }
 
     // Proactively pre-seek the decoder while tail frames are still queued. The decoded tail stays
@@ -1738,25 +1686,20 @@ internal sealed partial class VideoPipeline(
             return true;
 
         VideoDecoder? decoder = _videoDecoder;
-        return decoder != null && decoder.EndOfStream && decoder.FrameCount <= 0 && (!HasAudio || currentPosition >= GetLoopBoundarySeconds(decoder) - GetEndToleranceSeconds());
+        return decoder != null && VideoLoopBoundary.HasDrainedAtEnd(
+            decoder.EndOfStream,
+            decoder.FrameCount,
+            HasAudio,
+            currentPosition,
+            GetLoopBoundarySeconds(decoder),
+            GetEndToleranceSeconds());
     }
 
-    private double GetLoopBoundarySeconds(VideoDecoder decoder)
-    {
-        var videoDuration = decoder.DurationSeconds;
-        return double.IsFinite(videoDuration) && videoDuration > 0
-            ? Duration > 0 ? Math.Min(Duration, videoDuration) : videoDuration
-            : Duration;
-    }
+    private double GetLoopBoundarySeconds(VideoDecoder decoder) =>
+        VideoLoopBoundary.LoopBoundarySeconds(decoder.DurationSeconds, Duration);
 
-    private static double GetLoopOverflowPosition(double currentPosition, double loopBoundary)
-    {
-        if (!double.IsFinite(currentPosition) || !double.IsFinite(loopBoundary) || loopBoundary <= 0)
-            return 0;
-
-        var overflow = currentPosition - loopBoundary;
-        return overflow <= 0 ? 0 : overflow >= loopBoundary ? overflow % loopBoundary : overflow;
-    }
+    private static double GetLoopOverflowPosition(double currentPosition, double loopBoundary) =>
+        VideoLoopBoundary.LoopOverflowPosition(currentPosition, loopBoundary);
 
     private void CompletePlaybackAtEnd()
     {
@@ -1978,7 +1921,7 @@ internal sealed partial class VideoPipeline(
             if (_configuration.EnableVerboseLogging) Debug.WriteLine($"[VideoPipeline:SmartSeek] Dropped {droppedFrames} stale post-seek video frame(s) before {minimumPresentationTime:F3}s.");
     }
 
-    private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
+    private bool ShouldSuppressLateFrameDrop() => _postSeekRecovery.ShouldSuppressLateFrameDrop(Stopwatch.GetTimestamp());
 
     private void PresentFrameForPosition(double targetPosition, double clockPosition, bool forceReissue = false, bool displayLocked = false)
     {
@@ -2115,18 +2058,12 @@ internal sealed partial class VideoPipeline(
 
         var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0.0;
         var activeLeadRefreshes = GetActivePresentationLeadRefreshIntervals();
-        var inSeekRecovery = IsPostSeekRecoveryActive();
-        var suppressedWindows = Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining);
-        string adaptiveAction;
-        if (inSeekRecovery)
-            adaptiveAction = "seek-recovery";
-        else if (suppressedWindows > 0)
+        var adaptiveAction = _postSeekRecovery.NextWindow(Stopwatch.GetTimestamp(), out var remaining) switch
         {
-            var remaining = Math.Max(0, Interlocked.Decrement(ref _postSeekAdaptiveSuppressionWindowsRemaining));
-            adaptiveAction = $"post-seek-suppress remaining={remaining}";
-        }
-        else
-            adaptiveAction = UpdateAdaptivePresentationLead(refreshIntervalMs);
+            PostSeekRecovery.WindowAction.Recovering => "seek-recovery",
+            PostSeekRecovery.WindowAction.Suppressed => $"post-seek-suppress remaining={remaining}",
+            _ => UpdateAdaptivePresentationLead(refreshIntervalMs),
+        };
 
         if (_configuration.EnablePerformanceLogging)
         {
@@ -2152,16 +2089,14 @@ internal sealed partial class VideoPipeline(
         if (!ShouldAdaptPresentationLead(refreshIntervalMs))
             return "hold-source-cadence";
 
-        var active = GetActivePresentationLeadRefreshIntervals();
-        var lateThresholdMs = GetAdaptiveClockLateThresholdMilliseconds(refreshIntervalMs);
-        var goodLateThresholdMs = refreshIntervalMs * PresentationLeadGoodClockLateThresholdRefreshes;
-        var earlyDecreaseThresholdMs = refreshIntervalMs * PresentationLeadEarlyDecreaseThresholdRefreshes;
-        var previous = active;
-
-        if (_presentationDiagnosticClockLateSamples >= PresentationLeadLateSampleIncreaseThreshold || _presentationDiagnosticMaxClockLateMs > lateThresholdMs * 2.0)
-            active = Math.Min(MaximumPresentationLeadRefreshIntervals, active + PresentationLeadIncreaseStepRefreshIntervals);
-        else if (_presentationDiagnosticClockLateSamples == 0 && _presentationDiagnosticMaxClockLateMs < goodLateThresholdMs && _presentationDiagnosticMaxEarlyMs > earlyDecreaseThresholdMs)
-            active = Math.Max(MinimumPresentationLeadRefreshIntervals, active - PresentationLeadDecreaseStepRefreshIntervals);
+        var previous = GetActivePresentationLeadRefreshIntervals();
+        var active = PresentationLeadController.Adjust(
+            previous,
+            _presentationDiagnosticClockLateSamples,
+            _presentationDiagnosticMaxClockLateMs,
+            _presentationDiagnosticMaxEarlyMs,
+            refreshIntervalMs,
+            FramesPerSecond);
 
         _activePresentationLeadRefreshIntervals = active;
         return Math.Abs(active - previous) < 0.0001
@@ -2171,16 +2106,8 @@ internal sealed partial class VideoPipeline(
                 : $"decrease {previous:F3}->{active:F3}";
     }
 
-    private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs)
-    {
-        var refreshThresholdMs = double.IsFinite(refreshIntervalMs) && refreshIntervalMs > 0
-            ? refreshIntervalMs * PresentationLeadClockLateIncreaseThresholdRefreshes
-            : 0;
-        var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0;
-        var sourceThresholdMs = frameIntervalMs > 0 ? frameIntervalMs * 0.75 : 0;
-
-        return Math.Max(refreshThresholdMs, sourceThresholdMs);
-    }
+    private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs) =>
+        PresentationLeadController.ClockLateThresholdMilliseconds(refreshIntervalMs, FramesPerSecond);
 
     private bool ShouldAdaptPresentationLead(double refreshIntervalMs)
     {

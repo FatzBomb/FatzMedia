@@ -1,9 +1,9 @@
-# Active Stage 014A - Streaming and Network Playback
+# Completed Stage 014A - Streaming and Network Playback
 
 Prepared: 2026-10-16
-Status: Slice 1 (capability matrix, URI source, retry policy, buffering/metadata
-contracts) implemented. Slice 2 (HTTP/HTTPS audio through BASS) implemented, pending
-manual smoke. HTTP video deferred (see Deferred).
+Status: Completed 2026-10-18. Slice 1 (capability matrix, URI source, retry and buffering
+contracts) and slice 2 (HTTP/HTTPS audio); owner smoke passed 2026-10-17 (`updates/014A_1`,
+`updates/014A_2`). Deferred network video moved to `future/039A_IDEA_NetworkVideoPlayback.md`.
 
 ## Objective
 

@@ -1,12 +1,10 @@
-# Active Stage 017A - Display-Rate Compositor and Presentation Scheduling
+# Completed Stage 017A - Display-Rate Compositor and Presentation Scheduling
 
 Prepared: 2026-10-16
-Status: Slice 1 (deterministic cadence model and specification), slice 2 (cadence report in
-the host log, `updates/017A_2`), and slice 3 (per-monitor refresh rate from the renderer,
-`updates/017A_3`) implemented and smoke-passed. Slice 4 (display-locked frame selection,
-opt-in, `updates/017A_4`) and slice 5 (each display its own cadence, `updates/017A_5`)
-implemented 2026-10-18; owner smoke passed 2026-10-18 after three rounds of fixes (smoke 4:
-near-equal to source cadence). Display-locked stays opt-in, off by default.
+Status: Completed 2026-10-18. Slices 1-5 (cadence model, cadence report, per-monitor refresh
+rate, opt-in display-locked selection, per-display cadence); owner smoke passed 2026-10-18
+(`updates/017A_1` to `updates/017A_5`). Possible later work moved to
+`active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Cadence Model (pinned)
 

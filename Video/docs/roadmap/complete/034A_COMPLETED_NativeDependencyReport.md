@@ -1,11 +1,8 @@
-# Active Stage 034A - Native Dependency Report
+# Completed Stage 034A - Native Dependency Report
 
 Prepared: 2026-10-17
-Status: Slice 1 implemented; owner smoke passed 2026-10-17 (`updates/034A_1`). Owner request
-(2026-10-17): report a missing or wrong-version native file clearly at startup. An
-automatic downloader was discussed and dropped: hosts can ship LGPL FFmpeg DLLs with
-their installer and updates (see "Shipping FFmpeg With Your App" in
-`docs/NATIVE_DEPENDENCIES.md`).
+Status: Completed 2026-10-18. Slice 1 (startup report of missing or wrong-version native
+files); owner smoke passed 2026-10-17 (`updates/034A_1`).
 
 ## Why This Is Worth Doing
 

@@ -3,7 +3,7 @@
 Stage: 022A.1 - Thread ownership map and capture tooling
 Date: 2026-10-16
 
-## Status: IMPLEMENTED (documentation + tooling) - baseline capture pending on Windows
+## Status: IMPLEMENTED (documentation + tooling) - Windows baseline captured 2026-10-17 (stage completed 2026-10-18)
 
 Delivered: the thread-ownership map, synchronization/cancellation summary, baseline
 workflow table, and `scripts/capture-thread-baseline.ps1` (validated on Linux against a

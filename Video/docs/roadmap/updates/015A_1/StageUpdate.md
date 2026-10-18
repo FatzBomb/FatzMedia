@@ -3,7 +3,7 @@
 Stage: 015A.1 - Seek policy and seek-pump timing extraction
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - behavior-preserving; manual video smoke pending
+## Status: IMPLEMENTED - behavior-preserving; covered by the 035A video-seek smoke, 2026-10-17 (stage completed 2026-10-18)
 
 Delivered: `Pipeline/VideoSeekPolicy.cs` (`VideoSeekPolicy`, `AdaptiveSeekPumpTiming`),
 `VideoPipeline` delegating to them (-75 lines), 24 cases pinning the values and rules.

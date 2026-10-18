@@ -3,7 +3,7 @@
 Stage: 031A.1 - Prepared-next slot
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-17 (stage completed 2026-10-18)
 
 Delivered:
 

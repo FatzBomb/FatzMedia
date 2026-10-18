@@ -1,10 +1,10 @@
-# Active Stage 015A - VideoPipeline Responsibility Split
+# Completed Stage 015A - VideoPipeline Responsibility Split
 
 Prepared: 2026-10-16
-Status: Slice 1 (responsibility map + seek policy and seek-pump timing extraction) and
-slice 2 (seek pump state machine) implemented. Video seeking passed the owner's smoke on
-2026-10-17 (035A); slice 2 is a behaviour-preserving move and passed the repeat of that
-smoke on 2026-10-17 (`updates/015A_2`).
+Status: Completed 2026-10-18. Slice 1 (responsibility map, seek policy and seek-pump timing)
+and slice 2 (seek pump state machine, now `SeekPump`); owner smoke passed 2026-10-17
+(`updates/015A_1`, `updates/015A_2`). The remaining seam candidates moved to
+`active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Responsibility Map (pinned)
 

@@ -3,7 +3,7 @@
 Stage: 019A.1 - Video frame lifetime matrix, contract, conformance tests
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - pending manual regression smoke
+## Status: IMPLEMENTED - no behavior change; covered by the regression smokes (stage completed 2026-10-18)
 
 Delivered: producer/consumer matrices and the API-impact evaluation in the stage file; the
 ephemeral-by-default contract in `VideoFrameEventArgs` XML docs; 4 conformance tests

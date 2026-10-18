@@ -681,7 +681,7 @@ Transitions run on the control queue (load, then play); automatic transitions ar
 queued behind the host `MediaEnded` delivery and Core end completion and are skipped
 when the host intervened (transport generation, load generation, slot generation,
 loop, or auto flag changed). `Reset` and `Dispose` clear the slot. See
-`roadmap/active/031A_ACTIVE_PreparedNextPlaylistSlot.md`.
+`roadmap/complete/031A_COMPLETED_PreparedNextPlaylistSlot.md`.
 
 ## Audio Fades (Stage 031B, implemented — pending manual smoke)
 
@@ -696,7 +696,7 @@ Fade sessions end on Open/Close/Stop (Stop restores unity). `MediaControlPlayer`
 exposes `FadeOutAsync`, `FadeInAsync`, `CancelFade`, and `PreparedNextTransitionFade`,
 which turns 031A transitions into fade-through transitions; waits run off the control
 queue. Overlapping two-handle crossfades are deferred. See
-`roadmap/active/031B_ACTIVE_AudioFadeCrossfadeModel.md`.
+`roadmap/complete/031B_COMPLETED_AudioFadeCrossfadeModel.md`.
 
 ## Network Sources (Stage 014A, implemented — pending manual smoke)
 
@@ -712,7 +712,7 @@ monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
 `StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
 prepared-next analysis. Network video is deferred (file-path demuxer). See
-`roadmap/active/014A_ACTIVE_StreamingNetworkPlayback.md`.
+`roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 
@@ -755,7 +755,7 @@ order, bypass = no native stage, reported latency, lifecycle per stream) are hos
 the `AudioEngine` through `IAudioFilterHost`. The first filter is a BASS_FX PEAKEQ
 equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
 `IMediaControlSession.Equalizer`, `EqualizerChanged`). See
-`roadmap/active/020A_ACTIVE_AudioFilterFramework.md`.
+`roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
 ## CDG Snapshot Ownership (Stage 018A, slice 1)
 
@@ -764,7 +764,7 @@ presentation coordinator caches the latest one for retained refreshes and video
 composition, and renderers only read it during `PresentComposition` (Direct3D11's layer
 cache drops the payload). `CdgStateMachine.CreateSnapshot` returns the previous snapshot
 when nothing changed and shares immutable buffers otherwise where possible. See
-`roadmap/active/018A_ACTIVE_CDGSnapshotOwnershipRedesignPooling.md`.
+`roadmap/complete/018A_COMPLETED_CDGSnapshotOwnershipRedesignPooling.md`.
 
 ## Session Reset
 

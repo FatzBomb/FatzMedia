@@ -1,8 +1,9 @@
-# Active Stage 010A - Software Video Upload/Copy Path
+# Completed Stage 010A - Software Video Upload/Copy Path
 
 Prepared: 2026-10-16
-Status: Slice 1 (copy map, repeatable benchmark, removal of the per-composition snapshot
-copy) implemented; owner smoke passed 2026-10-17.
+Status: Completed 2026-10-18. Slice 1 (copy map, benchmark, per-composition snapshot copy
+removed); owner smoke passed 2026-10-17 (`updates/010A_1`). Its open next slices (decoder frame
+lease, map-discard upload) moved to `active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Copy and Ownership Map - one software-decoded frame (pinned)
 

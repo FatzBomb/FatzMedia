@@ -1,8 +1,10 @@
-# Active Stage 019A - Video Frame Event Ownership and Reuse
+# Completed Stage 019A - Video Frame Event Ownership and Reuse
 
 Prepared: 2026-10-16
-Status: Slice 1 (consumer/lifetime matrix, written contract, consumer conformance tests)
-implemented. No behaviour or public API shape change; manual smoke is a regression check.
+Status: Completed 2026-10-18. Slice 1 (consumer and lifetime matrix, written ephemeral
+contract, conformance tests); no behaviour change, so no owner smoke beyond the regression runs
+(`updates/019A_1`). An explicit frame lease belongs with the 010A follow-up in
+`active/041A_ACTIVE_EngineInternalFollowUps.md`.
 
 ## Producer Matrix (pinned)
 
