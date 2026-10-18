@@ -35,6 +35,11 @@ acceptance criteria, focused xUnit tests for pure logic, write
 decisions made), mark the manifest "implemented, pending manual smoke". One commit
 per stage/slice. Release builds treat warnings as errors — write warning-clean code.
 
+Usage (owner rule): run helper agents (searches, code exploration, reviews, other
+subagent tasks) on Sonnet whenever Sonnet can do the task, to save usage. Only when it
+actually saves: keep the main model for work that needs it (hard debugging, timing or
+rendering design) and for forked copies of the main agent, which always use it.
+
 ## Validation split
 
 - **Linux sandbox:** `dotnet build -c Release` of the portable `net10.0` projects and,

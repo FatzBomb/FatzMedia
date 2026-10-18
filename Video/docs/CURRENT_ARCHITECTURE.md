@@ -75,7 +75,8 @@ frame and size always produce byte-identical pixels. Deterministic rules:
   `BackgroundHeight` / `BackgroundStride` stretched by `EffectiveBackgroundStretchMode`
   (`Original`, `UniformFit`, `Fill`, `UniformToFill`; `Auto` resolves through the
   effective-mode property). Scaling uses nearest-neighbor sampling at destination pixel
-  centers, and destination edges round half-away-from-zero (`SoftwareStretch`).
+  centers, and destination edges round half-away-from-zero (Core `NearestSampledPlacement`,
+  shared with the Vulkan renderer).
 - **Wash** — `WashArgb` straight-alpha blended over the background.
 - **CDG overlay** — index-based transparency: `CdgRenderSnapshot.BackgroundColorIndex`
   is skipped and every other palette entry is forced opaque, matching the Direct3D11

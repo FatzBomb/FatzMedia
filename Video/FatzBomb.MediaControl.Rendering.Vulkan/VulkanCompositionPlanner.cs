@@ -18,39 +18,28 @@ internal enum VulkanFrameSupport
 internal readonly record struct VulkanBackgroundLayer(ReadOnlyMemory<byte> Bgra, int Width, int Height, int Stride, VulkanBlit Blit);
 
 /// <summary>
-/// Nearest-sampled overlay placement with the software renderer's mapping: destination pixel
-/// (x, y) samples source pixel floor(((x + 0.5) - left) / width * sourceWidth) (likewise for
-/// y), clamped. <see cref="Destination"/> is the clipped integer rectangle that is drawn.
+/// A nearest-sampled overlay drawn as a textured quad over <see cref="Destination"/>, with the
+/// software renderer's sampling (Core <see cref="NearestSampledPlacement"/>).
 /// </summary>
-internal readonly record struct VulkanOverlayQuad(
-    PixelRect Destination,
-    double DestinationLeft,
-    double DestinationTop,
-    double DestinationWidth,
-    double DestinationHeight,
-    int SourceWidth,
-    int SourceHeight)
+internal readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placement)
 {
+    /// <summary>The clipped integer rectangle that is drawn.</summary>
+    public PixelRect Destination => new(Placement.ClippedLeft, Placement.ClippedTop, Placement.ClippedRight, Placement.ClippedBottom);
+
     /// <summary>
     /// Normalized texture coordinates at the edges of <see cref="Destination"/>. Interpolated
     /// across a viewport equal to <see cref="Destination"/>, pixel centre x + 0.5 receives
     /// ((x + 0.5) - left) / width, so nearest sampling picks <see cref="GetSourcePixel"/>.
     /// </summary>
     public (float U0, float V0, float U1, float V1) TexCoords => (
-        (float)((Destination.Left - DestinationLeft) / DestinationWidth),
-        (float)((Destination.Top - DestinationTop) / DestinationHeight),
-        (float)((Destination.Right - DestinationLeft) / DestinationWidth),
-        (float)((Destination.Bottom - DestinationTop) / DestinationHeight));
+        (float)((Placement.ClippedLeft - Placement.Destination.Left) / Placement.SamplingWidth),
+        (float)((Placement.ClippedTop - Placement.Destination.Top) / Placement.SamplingHeight),
+        (float)((Placement.ClippedRight - Placement.Destination.Left) / Placement.SamplingWidth),
+        (float)((Placement.ClippedBottom - Placement.Destination.Top) / Placement.SamplingHeight));
 
     /// <summary>The source pixel the software renderer samples for a destination pixel.</summary>
-    public (int X, int Y) GetSourcePixel(int destinationX, int destinationY)
-    {
-        var normalizedX = ((destinationX + 0.5) - DestinationLeft) / DestinationWidth;
-        var normalizedY = ((destinationY + 0.5) - DestinationTop) / DestinationHeight;
-        return (
-            Math.Clamp((int)Math.Floor(normalizedX * SourceWidth), 0, SourceWidth - 1),
-            Math.Clamp((int)Math.Floor(normalizedY * SourceHeight), 0, SourceHeight - 1));
-    }
+    public (int X, int Y) GetSourcePixel(int destinationX, int destinationY) =>
+        (Placement.GetSourceX(destinationX), Placement.GetSourceY(destinationY));
 }
 
 /// <summary>CDG overlay snapshot and where it lands on the output.</summary>
@@ -85,15 +74,10 @@ internal static class VulkanCompositionPlanner
             return VulkanFrameSupport.Subtitles;
         if (!frame.BaseVisualTransform.IsIdentity)
             return VulkanFrameSupport.BaseVisualTransform;
-        // Same validation as the software renderer, which refuses the whole frame.
-        if (frame.CdgOverlay is { } cdg
-            && (!cdg.ColorIndices.IsEmpty || !cdg.PaletteArgb.IsEmpty)
-            && (cdg.ColorIndices.Length < cdg.Width * cdg.Height || cdg.PaletteArgb.IsEmpty))
-        {
-            return VulkanFrameSupport.InvalidCdgSnapshot;
-        }
-
-        return VulkanFrameSupport.Supported;
+        // The software renderer refuses the whole frame for the same snapshot.
+        return frame.CdgOverlay is { IsWellFormed: false }
+            ? VulkanFrameSupport.InvalidCdgSnapshot
+            : VulkanFrameSupport.Supported;
     }
 
     /// <summary>Plans a frame that <see cref="Classify"/> reported as supported.</summary>
@@ -148,64 +132,38 @@ internal static class VulkanCompositionPlanner
         if (sourceWidth <= 0 || sourceHeight <= 0 || outputWidth <= 0 || outputHeight <= 0)
             return null;
 
-        RectD destination = ViewportGeometry.DestinationRect(sourceWidth, sourceHeight, outputWidth, outputHeight, stretchMode);
-        if (destination.Width <= 0 || destination.Height <= 0)
-            return null;
-
-        var left = Round(destination.X);
-        var top = Round(destination.Y);
-        var right = Round(destination.Right);
-        var bottom = Round(destination.Bottom);
-        var clippedLeft = Math.Clamp(left, 0, outputWidth);
-        var clippedTop = Math.Clamp(top, 0, outputHeight);
-        var clippedRight = Math.Clamp(right, 0, outputWidth);
-        var clippedBottom = Math.Clamp(bottom, 0, outputHeight);
-        if (clippedRight <= clippedLeft || clippedBottom <= clippedTop)
+        var placement = NearestSampledPlacement.Create(sourceWidth, sourceHeight, outputWidth, outputHeight, stretchMode);
+        RectD destination = placement.Destination;
+        if (destination.Width <= 0 || destination.Height <= 0 || placement.IsEmpty)
             return null;
 
         // Map the clipped destination back into source space (only differs from the full
         // source when the destination extends past the output, e.g. UniformToFill).
         double ToSourceX(int x) => (x - destination.X) / destination.Width * sourceWidth;
         double ToSourceY(int y) => (y - destination.Y) / destination.Height * sourceHeight;
-        var sourceLeft = Math.Clamp(Round(ToSourceX(clippedLeft)), 0, sourceWidth);
-        var sourceTop = Math.Clamp(Round(ToSourceY(clippedTop)), 0, sourceHeight);
-        var sourceRight = Math.Clamp(Round(ToSourceX(clippedRight)), 0, sourceWidth);
-        var sourceBottom = Math.Clamp(Round(ToSourceY(clippedBottom)), 0, sourceHeight);
+        var sourceLeft = Math.Clamp(NearestSampledPlacement.RoundEdge(ToSourceX(placement.ClippedLeft)), 0, sourceWidth);
+        var sourceTop = Math.Clamp(NearestSampledPlacement.RoundEdge(ToSourceY(placement.ClippedTop)), 0, sourceHeight);
+        var sourceRight = Math.Clamp(NearestSampledPlacement.RoundEdge(ToSourceX(placement.ClippedRight)), 0, sourceWidth);
+        var sourceBottom = Math.Clamp(NearestSampledPlacement.RoundEdge(ToSourceY(placement.ClippedBottom)), 0, sourceHeight);
         if (sourceRight <= sourceLeft || sourceBottom <= sourceTop)
             return null;
 
         return new VulkanBlit(
             new PixelRect(sourceLeft, sourceTop, sourceRight, sourceBottom),
-            new PixelRect(clippedLeft, clippedTop, clippedRight, clippedBottom));
+            new PixelRect(placement.ClippedLeft, placement.ClippedTop, placement.ClippedRight, placement.ClippedBottom));
     }
 
     /// <summary>
-    /// Plans a nearest-sampled overlay the way <c>SoftwareStretch.Create</c> does (the Vulkan
-    /// package must not reference the software renderer, so the small formula lives here), or
-    /// returns <see langword="null"/> when no destination pixel is covered.
+    /// Plans a nearest-sampled overlay with the software renderer's placement, or returns
+    /// <see langword="null"/> when no destination pixel is covered.
     /// </summary>
     public static VulkanOverlayQuad? PlanOverlay(int sourceWidth, int sourceHeight, int outputWidth, int outputHeight, MediaCompositionStretchMode stretchMode)
     {
         if (sourceWidth <= 0 || sourceHeight <= 0 || outputWidth <= 0 || outputHeight <= 0)
             return null;
 
-        RectD destination = ViewportGeometry.DestinationRect(sourceWidth, sourceHeight, outputWidth, outputHeight, stretchMode);
-        var clipped = new PixelRect(
-            Math.Clamp(Round(destination.Left), 0, outputWidth),
-            Math.Clamp(Round(destination.Top), 0, outputHeight),
-            Math.Clamp(Round(destination.Right), 0, outputWidth),
-            Math.Clamp(Round(destination.Bottom), 0, outputHeight));
-        if (clipped.IsEmpty)
-            return null;
-
-        return new VulkanOverlayQuad(
-            clipped,
-            destination.Left,
-            destination.Top,
-            Math.Max(1, destination.Width),
-            Math.Max(1, destination.Height),
-            sourceWidth,
-            sourceHeight);
+        var placement = NearestSampledPlacement.Create(sourceWidth, sourceHeight, outputWidth, outputHeight, stretchMode);
+        return placement.IsEmpty ? null : new VulkanOverlayQuad(placement);
     }
 
     /// <summary>
@@ -238,8 +196,6 @@ internal static class VulkanCompositionPlanner
             texel[3] = 255;
         }
     }
-
-    private static int Round(double value) => checked((int)Math.Round(value, MidpointRounding.AwayFromZero));
 
     private static byte Premultiply(byte value, byte alpha) => (byte)(((value * alpha) + 127) / 255);
 }

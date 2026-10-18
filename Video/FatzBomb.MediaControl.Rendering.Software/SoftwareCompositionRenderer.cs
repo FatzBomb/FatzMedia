@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Graphics.Geometry;
 
 namespace FatzBomb.MediaControl.Rendering.Software;
 
@@ -97,7 +98,7 @@ public sealed class SoftwareCompositionRenderer
                 frame.BackgroundWidth,
                 frame.BackgroundHeight,
                 frame.BackgroundStride,
-                SoftwareStretch.Create(
+                NearestSampledPlacement.Create(
                     frame.BackgroundWidth,
                     frame.BackgroundHeight,
                     width,
@@ -139,9 +140,7 @@ public sealed class SoftwareCompositionRenderer
             return "The software background buffer is invalid.";
         }
 
-        if (frame.CdgOverlay is { } cdg
-            && (!cdg.ColorIndices.IsEmpty || !cdg.PaletteArgb.IsEmpty)
-            && (cdg.ColorIndices.Length < cdg.Width * cdg.Height || cdg.PaletteArgb.IsEmpty))
+        if (frame.CdgOverlay is { IsWellFormed: false })
         {
             return "The CDG snapshot is invalid.";
         }
@@ -228,7 +227,7 @@ public sealed class SoftwareCompositionRenderer
         if (snapshot.BackgroundColorIndex < 0)
             return;
 
-        var mapping = SoftwareStretch.Create(
+        var mapping = NearestSampledPlacement.Create(
             snapshot.Width,
             snapshot.Height,
             buffer.Width,
@@ -266,8 +265,8 @@ public sealed class SoftwareCompositionRenderer
 
     private static void DrawSubtitle(SoftwareCompositionBuffer buffer, MediaCompositionFrame frame)
     {
-        SoftwareStretch mapping = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
-            ? SoftwareStretch.CreateCanvasPlacement(
+        NearestSampledPlacement mapping = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
+            ? NearestSampledPlacement.CreateCanvasPlacement(
                 frame.SubtitleWidth,
                 frame.SubtitleHeight,
                 frame.SubtitleCanvasLeft,
@@ -276,7 +275,7 @@ public sealed class SoftwareCompositionRenderer
                 frame.SubtitleCanvasHeight,
                 buffer.Width,
                 buffer.Height)
-            : SoftwareStretch.Create(
+            : NearestSampledPlacement.Create(
                 frame.SubtitleWidth,
                 frame.SubtitleHeight,
                 buffer.Width,
@@ -299,7 +298,7 @@ public sealed class SoftwareCompositionRenderer
         int sourceWidth,
         int sourceHeight,
         int sourceStride,
-        SoftwareStretch mapping,
+        NearestSampledPlacement mapping,
         bool premultiplied,
         BaseVisualTransform transform)
     {
