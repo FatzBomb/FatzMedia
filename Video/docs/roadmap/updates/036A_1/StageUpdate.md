@@ -3,7 +3,14 @@
 Stage: 036A.1 - Renderer fallback chain (GPU, WARP, software)
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18
+
+Owner smoke (RTX 5090, ultrawide): default picked `Direct3D11: GPU, NVIDIA GeForce RTX 5090,
+feature level Level_11_0`; `--renderer=warp` played AV1 1080p (libdav1d) windowed, fullscreen
+and with the secondary window, as smooth as `--software` (at most occasional minor stutter);
+`--renderer=software` as before; `--renderer=banana` warned and ran as auto. The `D3D11`
+device line was missing from the Log in every run: the Player subscribed to diagnostics
+after binding the surface, which creates the device. Fixed in the Player (subscribe first).
 
 Baseline: Direct3D11 created its device with `DriverType.Hardware` only, and nothing chose
 another renderer. Without a usable GPU device, video did not show unless the host passed

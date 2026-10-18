@@ -1,7 +1,7 @@
 # Active Stage 036A - Renderer Fallback Chain
 
 Prepared: 2026-10-18
-Status: slice 1 implemented, pending manual smoke (`updates/036A_1`).
+Status: slice 1 implemented; owner smoke passed 2026-10-18 (`updates/036A_1`).
 
 ## Why This Is Worth Doing
 
