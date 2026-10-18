@@ -19,7 +19,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
   validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
-  implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
+  implemented (`updates/027A_1`, `updates/027A_3`); slice 2 re-planned 2026-10-18 as an
+  Avalonia GPU-shared surface (compositor import, no CPU copy or overlay window), not
+  started; WinUI 3 deferred.
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
