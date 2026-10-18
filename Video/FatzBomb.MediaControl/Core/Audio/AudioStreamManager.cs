@@ -17,8 +17,10 @@ internal sealed class AudioStreamManager : IDisposable
     // ManagedBass omits BASS_POS_FLUSH from PositionFlags; bass.h defines it as 0x1000000.
     private const PositionFlags FlushPositionFlag = (PositionFlags)0x1000000;
 
+    // The source is wrapped by a tempo stream, so it decodes. (BASS_FX_FREESOURCE is a
+    // TempoCreate flag; Close frees the source itself.)
     private const BassFlags CreateStreamFlags =
-        BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
+        BassFlags.Decode | BassFlags.Float;
 
     internal const BassFlags DecodeFlags =
         BassFlags.Decode | BassFlags.Float | BassFlags.Prescan;
@@ -562,9 +564,11 @@ internal sealed class AudioStreamManager : IDisposable
 
     private void ApplyLoopPlayback()
     {
-        SetLoopFlag(_sourceHandle, _loopPlayback);
+        // A live stream cannot restart: network sources never get the native loop flag.
+        bool enabled = _loopPlayback && !IsNetworkSource;
+        SetLoopFlag(_sourceHandle, enabled);
         if (PlayHandle != _sourceHandle)
-            SetLoopFlag(PlayHandle, _loopPlayback);
+            SetLoopFlag(PlayHandle, enabled);
     }
 
     private static void SetLoopFlag(int handle, bool enabled)

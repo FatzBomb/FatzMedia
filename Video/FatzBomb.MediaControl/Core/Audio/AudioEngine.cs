@@ -283,6 +283,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
+        // A disposed engine would create BASS streams nothing frees.
+        if (_disposed)
+            return false;
+
         try
         {
             CancelNormalizationAnalysis();
@@ -350,6 +354,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     public bool Open(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
+
+        if (_disposed)
+            return false;
 
         try
         {
@@ -662,6 +669,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
 
+        if (_disposed)
+            return false;
+
         try
         {
             CancelNormalizationAnalysis();
@@ -954,7 +964,21 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
+    // BASS calls sync procedures on its own threads, where an exception would end the process:
+    // a failing event subscriber is reported instead.
     private void OnPlaybackEndedSync(int handle, int channel, int data, IntPtr user)
+    {
+        try
+        {
+            HandlePlaybackEnded(channel);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", $"Playback end handling failed: {ex.Message}", innerException: ex);
+        }
+    }
+
+    private void HandlePlaybackEnded(int channel)
     {
         if (channel != _playbackEndSyncChannel)
         {
@@ -972,10 +996,11 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         if (((IAudioLoopControl)this).LoopPlayback)
         {
             if (trimWindow is not null)
-            {
                 _streamManager.SetCurrentPosition(trimWindow.PlayableStart, flush: true);
-                AttachPlaybackEndSync();
-            }
+
+            // The sync is one-shot: re-arm it for the next wrap, which the native loop flag
+            // (untrimmed) or the seek above (trimmed) starts, so every wrap is reported.
+            AttachPlaybackEndSync();
 
             State = AudioEngineState.Playing;
             PositionChanged?.Invoke(this, trimWindow?.PlayableStart ?? Position);

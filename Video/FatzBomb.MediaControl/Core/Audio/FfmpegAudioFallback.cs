@@ -52,7 +52,6 @@ internal static class FfmpegAudioFallback
 
     private static readonly Lock Gate = new();
     private static ConvertedAudio? _prepared;
-    private static int _sweptTempFiles;
 
     /// <summary>Converted WAVs larger than this go to a temp file instead of memory.</summary>
     internal static long MaxInMemoryBytes { get; set; } = DefaultMaxInMemoryBytes;
@@ -175,7 +174,6 @@ internal static class FfmpegAudioFallback
 
                 if (output is MemoryStream memory && memory.Length + bytes.Length > MaxInMemoryBytes)
                 {
-                    SweepStaleTempFilesOnce();
                     tempPath = TempMediaFile.NewPath(".wav");
                     var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
                     try
@@ -226,17 +224,6 @@ internal static class FfmpegAudioFallback
             _ = Discard(output, tempPath);
             throw;
         }
-    }
-
-    /// <summary>
-    /// Deletes converted WAVs left by a previous run that ended without closing them (a crash or
-    /// a killed process). Only files older than a day are touched, so another running instance's
-    /// current conversion is never removed.
-    /// </summary>
-    private static void SweepStaleTempFilesOnce()
-    {
-        if (Interlocked.Exchange(ref _sweptTempFiles, 1) == 0)
-            TempMediaFile.DeleteOlderThan(".wav", TimeSpan.FromDays(1));
     }
 
     private static ConvertedAudio? Discard(Stream output, string? tempPath)

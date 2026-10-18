@@ -1,40 +1,57 @@
+using System.Collections.Concurrent;
+using FatzBomb.MediaControl.Core.Abstractions;
+
 namespace FatzBomb.MediaControl.Core.Files;
 
 /// <summary>
-/// Shared helpers for transient media scratch files written from in-memory byte
-/// buffers (e.g. archive-extracted or streamed audio/video). Consolidates temp-file
-/// creation and best-effort deletion previously duplicated across the video and
-/// audio pipelines.
+/// Shared helpers for transient media scratch files (archive-extracted media and converted
+/// audio): unique paths, stale-file sweeping and best-effort deletion.
 /// </summary>
 internal static class TempMediaFile
 {
     private const string TempSubfolderName = "FatzBombMediaControl";
+
     /// <summary>The extension of media scratch files.</summary>
     public const string MediaExtension = ".media";
 
-    /// <summary>
-    /// Writes <paramref name="data"/> to a uniquely named scratch file under the
-    /// shared media temp subfolder and returns its full path. The subfolder is
-    /// created if it does not already exist.
-    /// </summary>
-    public static string Create(byte[] data)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), TempSubfolderName);
-        _ = Directory.CreateDirectory(tempDir);
-        var tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + MediaExtension);
-        File.WriteAllBytes(tempPath, data);
-        return tempPath;
-    }
+    private static readonly TimeSpan StaleAge = TimeSpan.FromDays(1);
+    private static readonly ConcurrentDictionary<string, byte> SweptExtensions = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns a new unique scratch-file path under the shared media temp subfolder, creating the
-    /// subfolder if needed. The file itself is not created.
+    /// subfolder if needed. The file itself is not created. The first call for an extension also
+    /// deletes files of that extension a previous run left behind (a crash or a killed process);
+    /// only files older than a day are touched, so another running instance's files are kept.
     /// </summary>
     public static string NewPath(string extension)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), TempSubfolderName);
         _ = Directory.CreateDirectory(tempDir);
+        if (SweptExtensions.TryAdd(extension, 0))
+            DeleteOlderThan(extension, StaleAge);
+
         return Path.Combine(tempDir, Guid.NewGuid().ToString("N") + extension);
+    }
+
+    /// <summary>
+    /// Copies an archive entry to a new scratch file with <see cref="MediaExtension"/> and returns
+    /// its path; the partial file is deleted if the copy fails.
+    /// </summary>
+    public static string CreateFromArchiveEntry(IArchiveEntryInfo archiveEntry)
+    {
+        var tempPath = NewPath(MediaExtension);
+        try
+        {
+            using var output = File.Create(tempPath);
+            archiveEntry.WriteTo(output);
+        }
+        catch
+        {
+            TryDelete(tempPath);
+            throw;
+        }
+
+        return tempPath;
     }
 
     /// <summary>

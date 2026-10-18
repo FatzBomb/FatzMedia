@@ -79,6 +79,38 @@ public sealed class DlsToSf2ConverterTests
         }
     }
 
+    [Fact]
+    public void ConvertAndSave_SampleIdsAndLoopsFollowTheConvertedWaves()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "FatzBombMedia.Tests", Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(tempDirectory);
+        var sourcePath = Path.Combine(tempDirectory, "skipped.dls");
+        var outputPath = Path.Combine(tempDirectory, "skipped.sf2");
+
+        try
+        {
+            // An 8-bit wave (not converted) precedes the 16-bit wave the region plays, which
+            // loops samples 1-2 of its 4.
+            File.WriteAllBytes(sourcePath, CreateMinimalDls(leadingUnsupportedWave: true, loop: (1, 2)));
+
+            _ = DlsToSf2Converter.ConvertAndSave(sourcePath, outputPath);
+
+            byte[] sf2 = File.ReadAllBytes(outputPath);
+            int igen = FindChunk(sf2, "igen") + 8;
+            Assert.Equal((ushort)53, BitConverter.ToUInt16(sf2, igen + 12));
+            Assert.Equal((short)0, BitConverter.ToInt16(sf2, igen + 14));
+
+            int shdr = FindChunk(sf2, "shdr") + 8;
+            Assert.Equal("Sample1", ReadPaddedString(sf2, shdr, 20));
+            Assert.Equal(1u, BitConverter.ToUInt32(sf2, shdr + 28));
+            Assert.Equal(3u, BitConverter.ToUInt32(sf2, shdr + 32));
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
     private static byte[] CreateHeader(string container, string type)
     {
         using var stream = new MemoryStream();
@@ -89,7 +121,7 @@ public sealed class DlsToSf2ConverterTests
         return stream.ToArray();
     }
 
-    private static byte[] CreateMinimalDls()
+    private static byte[] CreateMinimalDls(bool leadingUnsupportedWave = false, (uint Start, uint Length)? loop = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
@@ -122,12 +154,30 @@ public sealed class DlsToSf2ConverterTests
                                 chunk.Write((ushort)0);
                                 chunk.Write((ushort)0);
                                 chunk.Write(1u);
-                                chunk.Write(0u);
+                                chunk.Write(leadingUnsupportedWave ? 1u : 0u);
                             });
                             WriteWaveSampleChunk(region);
                         }));
                 }));
             WriteList(riff, "wvpl", wavePool =>
+            {
+                if (leadingUnsupportedWave)
+                {
+                    WriteList(wavePool, "wave", wave =>
+                    {
+                        WriteChunk(wave, "fmt ", chunk =>
+                        {
+                            chunk.Write((ushort)1);
+                            chunk.Write((ushort)1);
+                            chunk.Write(22050u);
+                            chunk.Write(22050u);
+                            chunk.Write((ushort)1);
+                            chunk.Write((ushort)8);
+                        });
+                        WriteChunk(wave, "data", chunk => chunk.Write(new byte[] { 128, 129 }));
+                    });
+                }
+
                 WriteList(wavePool, "wave", wave =>
                 {
                     WriteChunk(wave, "fmt ", chunk =>
@@ -146,13 +196,14 @@ public sealed class DlsToSf2ConverterTests
                         chunk.Write((short)-2);
                         chunk.Write((short)0);
                     });
-                    WriteWaveSampleChunk(wave);
-                }));
+                    WriteWaveSampleChunk(wave, loop);
+                });
+            });
         });
         return stream.ToArray();
     }
 
-    private static void WriteWaveSampleChunk(BinaryWriter writer) =>
+    private static void WriteWaveSampleChunk(BinaryWriter writer, (uint Start, uint Length)? loop = null) =>
         WriteChunk(writer, "wsmp", chunk =>
         {
             chunk.Write(20u);
@@ -160,7 +211,14 @@ public sealed class DlsToSf2ConverterTests
             chunk.Write((short)0);
             chunk.Write(0);
             chunk.Write(0u);
-            chunk.Write(0u);
+            chunk.Write(loop is null ? 0u : 1u);
+            if (loop is { } wsmpLoop)
+            {
+                chunk.Write(16u);
+                chunk.Write(0u);
+                chunk.Write(wsmpLoop.Start);
+                chunk.Write(wsmpLoop.Length);
+            }
         });
 
     private static void WriteList(BinaryWriter writer, string type, Action<BinaryWriter> writeContents) =>

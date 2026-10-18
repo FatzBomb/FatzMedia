@@ -329,19 +329,7 @@ internal sealed partial class VideoPipeline(
         ArgumentNullException.ThrowIfNull(archiveEntry);
 
         // Streamed straight to the scratch file: no in-memory copies of the whole video.
-        var tempPath = TempMediaFile.NewPath(TempMediaFile.MediaExtension);
-        try
-        {
-            using (FileStream file = File.Create(tempPath))
-                archiveEntry.WriteTo(file);
-        }
-        catch
-        {
-            TempMediaFile.TryDelete(tempPath);
-            throw;
-        }
-
-        return OpenTempFile(tempPath);
+        return OpenTempFile(TempMediaFile.CreateFromArchiveEntry(archiveEntry));
     }
 
     public bool Play()
