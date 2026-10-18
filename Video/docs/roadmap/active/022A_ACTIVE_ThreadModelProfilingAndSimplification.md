@@ -112,12 +112,18 @@ restart. The worker parks between runs, exits after 30 s idle or on dispose, and
 recreated on the next start. The public surface (`Start`, `Stop`, `StopAndWait`, `Dispose`)
 is unchanged, so no caller changed (`updates/022A_3`).
 
+## Slice 4 (implemented, pending manual smoke)
+
+CD+G seeks restore the nearest replay checkpoint (every 10 s of packets, built once at load
+off the render lock) instead of replaying from the first packet under the lock, so any seek
+replays at most 10 s of packets (about 1 ms against 50 ms for a 4-minute song). Seek-bar drags
+go through the new `SeekAsync` on the Core control queue, where the newest waiting request
+wins, instead of running `Controls.Seek` on the UI thread. Snapshot arrays stay unpooled (5 MB/s,
+gen-0 only; snapshots are shared and immutable per 018A) (`updates/022A_4`).
+
 ## Simplification Candidates (remaining, one per slice)
 
-- CDG: shorten `_renderLock` hold time during seek replay, or render the seek replay into a
-  separate state machine and swap it in.
-- CDG: pool or diff snapshot index arrays (018A owns snapshot lifetime).
-- Player: route seek-bar drags through the async operation queue.
+None from the baseline captures. Re-capture (`cdg-2`, `video-hw-2`) before choosing more.
 
 ## Acceptance Criteria (slice 1)
 

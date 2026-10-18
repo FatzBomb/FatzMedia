@@ -118,8 +118,12 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
         Position = 0;
     }
 
+    /// <summary>Called on every engine seek (tests that need to observe or hold a seek).</summary>
+    public Action<double>? OnSeek { get; set; }
+
     public bool Seek(double seconds)
     {
+        OnSeek?.Invoke(seconds);
         if (TestVideo is { IsOpen: true } video)
             return video.Seek(seconds);
 

@@ -147,6 +147,14 @@ public interface IMediaControlSession : IDisposable
     bool Seek(double seconds);
 
     /// <summary>
+    /// Seeks to a playback position in seconds asynchronously on the Core control queue, in order
+    /// with other control operations; the newest request replaces one still waiting to run. Hosts
+    /// use it for seek-bar drags so the UI thread does no seek work. Sessions without a control
+    /// queue seek synchronously.
+    /// </summary>
+    Task<bool> SeekAsync(double seconds) => Task.FromResult(Seek(seconds));
+
+    /// <summary>
     /// Starts an interactive scrub (seek-bar drag). Playback carries on and each seek moves it,
     /// but a seek repeating the previous one of the scrub (the release seek at the last drag
     /// position) is ignored, so release never jumps back. Sessions without scrub support return

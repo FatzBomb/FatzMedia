@@ -42,11 +42,15 @@ public interface ICdgEngine : IDisposable
     void RenderAtSeconds(double seconds);
 
     /// <summary>
-    /// Renders CDG graphics at the specified time position, optionally rebuilding
-    /// from packet zero for an authoritative seek frame.
+    /// Renders CDG graphics at the specified time position, optionally as an authoritative seek
+    /// frame.
     /// </summary>
     /// <param name="seconds">Time position in seconds to render at</param>
-    /// <param name="forceRebuild">True when the current CDG state should be replayed from the beginning</param>
+    /// <param name="forceRebuild">
+    /// True for an authoritative frame: the state is guaranteed to equal a replay from the first
+    /// packet and the frame is invalidated even if nothing changed. <see cref="Cdg.CdgEngine"/>
+    /// restores the nearest replay checkpoint when it has to move back (Stage 022A slice 4).
+    /// </param>
     void RenderAtSeconds(double seconds, bool forceRebuild);
 
     // Visual tweaks. Colors are packed as ARGB values so the core remains UI-framework independent.

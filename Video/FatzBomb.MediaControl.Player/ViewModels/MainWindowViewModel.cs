@@ -301,7 +301,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
             PositionSeconds = target;
             SuppressPositionRefresh();
-            _ = Player?.Controls.Seek(target);
+            QueueDragSeek(target);
+        }
+    }
+
+    // Stage 022A slice 4: drag seeks run on the engine's control queue, not the UI thread;
+    // SeekAsync keeps only the newest of the requests still waiting, so every move can send one.
+    private void QueueDragSeek(double target)
+    {
+        if (Player is { } player)
+            _ = SendDragSeekAsync(player, target);
+    }
+
+    private static async Task SendDragSeekAsync(FatzMediaPlayer player, double target)
+    {
+        try
+        {
+            _ = await player.SeekAsync(target);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Closed mid-drag: nothing left to seek.
+        }
+        catch (InvalidOperationException)
+        {
+            // Resetting mid-drag: the release seek reports any real problem.
         }
     }
 

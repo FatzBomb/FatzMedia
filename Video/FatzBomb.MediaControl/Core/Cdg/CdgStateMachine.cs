@@ -133,6 +133,34 @@ public sealed class CdgStateMachine
         }
     }
 
+    /// <summary>
+    /// Captures everything CDG packets change (pixels and the packet-driven color state), so
+    /// replay can resume here instead of from the first packet (Stage 022A slice 4).
+    /// </summary>
+    internal CdgReplayCheckpoint CaptureReplayCheckpoint()
+    {
+        lock (_lock)
+            return new CdgReplayCheckpoint(_colorIndices.ToArray(), _colorManager.CaptureReplayState());
+    }
+
+    /// <summary>
+    /// Returns to a captured state: the same pixels and colors as replaying every packet up to
+    /// the capture point from <see cref="Reset"/>. The host's presentation settings (opacity,
+    /// background override) stay as they are now. The whole frame is reported dirty.
+    /// </summary>
+    internal void RestoreReplayCheckpoint(CdgReplayCheckpoint checkpoint)
+    {
+        lock (_lock)
+        {
+            checkpoint.ColorIndices.CopyTo(_colorIndices, 0);
+            _colorManager.RestoreReplayState(checkpoint.ColorState);
+            _paletteRevision++;
+            RefreshColorStateUnsafe(addDirtyRect: false);
+            AddDirtyRectUnsafe(CdgDirtyRect.FullFrame);
+            _revision++;
+        }
+    }
+
     public void CopyColorIndices(Span<byte> destination)
     {
         if (destination.Length < _colorIndices.Length)
@@ -537,3 +565,6 @@ public sealed class CdgStateMachine
         }
     }
 }
+
+/// <summary>A copy of the packet-driven CDG state at one packet index (Stage 022A slice 4).</summary>
+internal sealed record CdgReplayCheckpoint(byte[] ColorIndices, CdgColorReplayState ColorState);
