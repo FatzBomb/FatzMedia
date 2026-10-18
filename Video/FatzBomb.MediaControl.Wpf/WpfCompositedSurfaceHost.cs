@@ -16,6 +16,10 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
     private readonly MediaPresentationFrameSinkHandle _sinkHandle;
     private readonly Lock _frameGate = new();
     private byte[]? _pendingPixels;
+    // The array the UI thread last published, handed back for the next frame so presenting
+    // does not allocate a surface-sized array per frame (Stage 022A: about 55 MB/s in
+    // software mode at normal window size, several hundred when maximized).
+    private byte[]? _sparePixels;
     private int _pendingWidth;
     private int _pendingHeight;
     private int _pendingStride;
@@ -33,6 +37,9 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
 
     public MediaNativeSurfaceDescriptor CreateSurfaceDescriptor() => _sinkHandle.CreateSurfaceDescriptor();
 
+    /// <summary>Gets how many frame buffers were allocated (diagnostics and tests).</summary>
+    internal int BufferAllocations { get; private set; }
+
     public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
     {
         if (_disposed
@@ -47,8 +54,19 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
         lock (_frameGate)
         {
             var requiredLength = checked(stride * height);
+            if (_pendingPixels == null)
+            {
+                // Drop a spare left over from a much larger window (after a maximize).
+                if (_sparePixels is { } spare && spare.Length <= 2L * requiredLength)
+                    _pendingPixels = spare;
+                _sparePixels = null;
+            }
+
             if (_pendingPixels == null || _pendingPixels.Length < requiredLength)
+            {
                 _pendingPixels = new byte[requiredLength];
+                BufferAllocations++;
+            }
 
             bgraPixels[..requiredLength].CopyTo(_pendingPixels);
             _pendingWidth = width;
@@ -101,6 +119,11 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
         }
 
         _bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+        lock (_frameGate)
+        {
+            if (!_disposed && _sparePixels == null)
+                _sparePixels = pixels;
+        }
     }
 
     public void Dispose()
@@ -113,6 +136,7 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
         lock (_frameGate)
         {
             _pendingPixels = null;
+            _sparePixels = null;
             _updateQueued = false;
         }
 

@@ -30,6 +30,28 @@ review:
 
 ## Completed
 
+### ENG-015 - Secondary window blank or frozen with plain hardware video
+
+Resolved: 2026-10-18, pending the owner's Player smoke (VALIDATION item 21).
+
+Reported: 2026-10-18 (owner smoke). With hardware-decoded video and the secondary/projector
+window open, the secondary stayed blank on another monitor, or played until the first seek
+and then froze on one frame; `main` showed the same, so it predates this session's work.
+
+Cause: `MediaPresentationCoordinator.PresentPrimaryVideoFrame` sends a hardware frame with no
+subtitles and no picture adjustments to `IMediaRendererBackend.PresentNativeFrame`. Direct3D11
+draws that straight into the primary target and presents only the primary; fan-out to
+secondary targets happens only in `PresentComposition`. Frames reached the secondary only
+while something forced composition (CD+G, subtitles, a base visual transform), which is why
+the CD+G and transform checks passed. Present since the native branch was introduced
+(cbca3a9, 2026-07-18).
+
+Fix: while any non-primary surface is attached, hardware video is composed
+(`RenderHardwareVideoCompositionFrame`, as for subtitles), which presents every target; with
+only the primary attached the native fast path is unchanged. Cost: one extra blit and shader
+draw per target, only while a secondary window is open. Test:
+`MediaPresentationCoordinatorTests.HardwareVideoFrame_IsComposedWhileASecondaryWindowIsAttached`.
+
 ### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
 
 Resolved: 2026-10-17. Owner smoke passed 2026-10-18 (CD+G seek-bar drag: lyrics follow

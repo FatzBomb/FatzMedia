@@ -190,7 +190,9 @@ internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink
     public bool IsHardwareAccelerated => false;
     public string? HardwareAccelerationMethod => null;
 
-    public event EventHandler<VideoFrameEventArgs>? FrameReady { add { } remove { } }
+    public event EventHandler<VideoFrameEventArgs>? FrameReady;
+
+    public void RaiseFrame(VideoFrameEventArgs frame) => FrameReady?.Invoke(this, frame);
     public event EventHandler<VideoEngineState>? StateChanged { add { } remove { } }
     public event EventHandler? PlaybackEnded { add { } remove { } }
     public event EventHandler? Opened { add { } remove { } }

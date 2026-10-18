@@ -55,3 +55,17 @@ used to block that caller until the open finished (the presentation loop is stop
 an open, and blocking it was the cost being removed); its demuxer read is the same plain read
 the locked version used.
 
+## Second capture (owner, 2026-10-18)
+
+`video-sw-2` after this slice: steady software playback fell from about 109 MB/s to about
+55 MB/s, which is exactly half. The rest was one more surface-sized array per frame, in the
+WPF composited sink (`WpfCompositedSurfaceHost.PresentFrame` allocated `_pendingPixels` every
+frame because publishing set it to null). Bursts of 150-425 MB/s were the same allocation
+while the window was maximized (a 6-8x larger surface), not a new cost. Fixed by keeping the
+published array as a spare for the next frame, the pattern the Avalonia sink uses; a spare
+more than twice the needed size (left over from a maximize) is dropped
+(`WpfCompositedSurfaceHostTests`). Expected after this: about the hardware-mode rate
+(~1 MB/s). Re-record `video-sw-3` to confirm.
+
+The same capture round found ENG-015 (secondary window with hardware video), fixed separately.
+

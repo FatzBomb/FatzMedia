@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
@@ -183,6 +184,49 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.Equal(newPrimary.Id, backend.LastRefreshRateSurface!.Id);
     }
 
+    [Fact]
+    public void HardwareVideoFrame_IsComposedWhileASecondaryWindowIsAttached()
+    {
+        // The native-frame path presents to the primary only; a secondary window must get the
+        // frame through composition, which fans out to every target.
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(1, backend.NativeFramePresents);
+
+        var secondary = new MediaPresentationSurfaceDescriptor(
+            "projector",
+            MediaPresentationSurfaceRole.Projector,
+            MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x9abc),
+            1280,
+            720);
+        Assert.True(coordinator.AttachPresentationSurface(secondary));
+        var composedBefore = backend.PresentedFrames.Count;
+
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(1, backend.NativeFramePresents);
+        Assert.Equal("hardware video + secondary target", backend.PresentedFrames.Skip(composedBefore).Last().Reason);
+
+        Assert.True(coordinator.DetachPresentationSurface(secondary.Id));
+        video.RaiseFrame(HardwareFrame());
+        Assert.Equal(2, backend.NativeFramePresents);
+    }
+
+    private static VideoFrameEventArgs HardwareFrame() => new()
+    {
+        Width = 1920,
+        Height = 1080,
+        Stride = 0,
+        PtsSeconds = 0,
+        NativeResource = new NativeVideoFrameResource(
+            new NativeVideoDeviceResource(MediaGraphicsBackendId.Direct3D11, DeviceHandle: 101),
+            ResourceHandle: 303,
+            SubresourceIndex: 0),
+    };
+
     private static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
         TestMediaEngine engine) => new(
@@ -251,7 +295,14 @@ public sealed class MediaPresentationCoordinatorTests
         }
 
         public void SetPresentationStretch(MediaCompositionStretchMode stretchMode) { }
-        public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
+        public bool AcceptsNativeFrames { get; set; }
+        public int NativeFramePresents { get; private set; }
+
+        public bool PresentNativeFrame(VideoFrameEventArgs frame)
+        {
+            NativeFramePresents++;
+            return true;
+        }
         public void ClearCompositionBackgroundFrame() { }
 
         public string? PresentFailureReason { get; set; }
@@ -282,7 +333,7 @@ public sealed class MediaPresentationCoordinatorTests
         public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
         {
             deviceAdopted = false;
-            return false;
+            return AcceptsNativeFrames;
         }
 
         public void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);

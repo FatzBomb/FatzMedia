@@ -55,6 +55,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private IVideoEngine? _attachedVideo;
     // Read from the video presentation thread through _primaryRefreshRateSource.
     private MediaPresentationSurfaceDescriptor? _primarySurface;
+    // Attached non-primary surfaces (secondary/projector windows), read on the video thread.
+    private volatile int _secondarySurfaceCount;
     private readonly Func<double?> _primaryRefreshRateSource;
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
@@ -164,6 +166,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             {
                 _surfaces[surface.Id] = surface;
                 TrackPrimarySurface(surface);
+                UpdateSecondarySurfaceCountNoLock();
             }
         }
 
@@ -243,6 +246,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_surfaces.Remove(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
                 return false;
+
+            UpdateSecondarySurfaceCountNoLock();
 
             // Only the tracked primary: a host may attach a new primary before detaching the old.
             if (Volatile.Read(ref _primarySurface)?.Id == surface.Id)
@@ -500,6 +505,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(_primaryRefreshRateSource);
     }
 
+    private void UpdateSecondarySurfaceCountNoLock() =>
+        _secondarySurfaceCount = _surfaces.Values.Count(static surface => surface.Role != MediaPresentationSurfaceRole.Primary);
+
     private void TrackPrimarySurface(MediaPresentationSurfaceDescriptor surface)
     {
         if (surface.Role == MediaPresentationSurfaceRole.Primary)
@@ -691,6 +699,16 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         if (!BaseVisualTransform.IsIdentity)
         {
             RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + base visual transform");
+            return;
+        }
+
+        // The native-frame path presents to the primary target only. With a secondary or
+        // projector window attached, compose instead: composition fans the frame out to every
+        // target. Plain hardware video otherwise never reached the secondary window (it stayed
+        // blank, or froze on the last composed frame after a seek).
+        if (_secondarySurfaceCount > 0)
+        {
+            RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + secondary target");
             return;
         }
 
