@@ -134,6 +134,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         MediaCompositionStretchMode stretchMode,
         long backgroundRevision)
     {
@@ -176,6 +177,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     width,
                     height,
                     normalizedFps,
+                    colorSpace,
                     width,
                     height,
                     MediaCompositionStretchMode.Fill))
@@ -273,12 +275,17 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             CompositionTargetPlan targetPlan = _targetRegistry.CreatePlan();
             _scratchPresentationTargets.Clear();
             foreach (D3D11PresentationTargetSnapshot target in validTargets)
-                if (targetPlan.ShouldPresentTarget(target.TargetId))
+                if (targetPlan.ShouldPresentTarget(target.TargetId) && IsForTarget(frame, target.TargetId))
                     _scratchPresentationTargets.Add(target);
 
             List<D3D11PresentationTargetSnapshot> presentationTargets = _scratchPresentationTargets;
             if (presentationTargets.Count == 0)
             {
+                // A composition for some targets only (display-locked video on several monitors)
+                // whose surfaces just detached: nothing to present, not a failure.
+                if (frame.Targets is not null)
+                    return true;
+
                 Fail("target plan has no active presentation target", frame);
                 return false;
             }
@@ -397,6 +404,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 frame.BackgroundNativeWidth,
                 frame.BackgroundNativeHeight,
                 frame.BackgroundNativeFramesPerSecond,
+                resource.ColorSpace,
                 frame.EffectiveBackgroundStretchMode,
                 frame.BackgroundRevision);
         }
@@ -438,6 +446,21 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         frame.RetainedRefresh
         && !updatePlan.HasWork
         && !targetPlan.HasMetadataWork;
+
+    /// <summary>
+    /// Whether a composition is for a target (Stage 017A slice 5): the primary final target by
+    /// role, a secondary window by the surface id inside its target id.
+    /// </summary>
+    private static bool IsForTarget(MediaCompositionFrame frame, string targetId) =>
+        frame.Targets is null
+        || (targetId == CompositionTargetDescriptor.PrimaryFinalTargetId
+            ? frame.Targets.IncludesPrimary
+            : frame.Targets.Includes(isPrimary: false, ToSurfaceId(targetId)));
+
+    private static string ToSurfaceId(string targetId) =>
+        targetId.StartsWith(D3D11PresentationBackendSet.SecondaryNativeHwndTargetPrefix, StringComparison.Ordinal)
+            ? targetId[D3D11PresentationBackendSet.SecondaryNativeHwndTargetPrefix.Length..]
+            : targetId;
 
     private static bool IsCdgOverlayOnlyCompositionCandidate(
         MediaCompositionFrame frame,

@@ -26,6 +26,7 @@ internal sealed class D3D11PresentationFramePresenter(
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         Func<int, int, bool> notifyPresented) =>
         !isDisposed
             && deviceResources.Context != null
@@ -44,6 +45,7 @@ internal sealed class D3D11PresentationFramePresenter(
             width,
             height,
             framesPerSecond,
+            colorSpace,
             target.Width,
             target.Height,
             presentationState.NativePresentationStretch,

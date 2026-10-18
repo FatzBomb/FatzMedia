@@ -47,6 +47,15 @@ public readonly partial record struct MediaCompositionFrame
     public long SubtitleRevision { get; init; }
 
     public bool RetainedRefresh { get; init; }
+
+    /// <summary>
+    /// The targets this composition is for, or null for every target (Stage 017A slice 5:
+    /// display-locked video presents each display's surfaces at that display's refreshes).
+    /// </summary>
+    public MediaCompositionTargetFilter? Targets { get; init; }
+
+    /// <summary>Whether a target receives this composition (always, without a filter).</summary>
+    public bool IsForTarget(bool isPrimary, string surfaceId) => Targets?.Includes(isPrimary, surfaceId) ?? true;
     public string Reason { get; init; }
 
     public bool HasBackground => !BackgroundBgra.IsEmpty

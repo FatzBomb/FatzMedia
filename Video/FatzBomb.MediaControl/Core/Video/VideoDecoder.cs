@@ -43,6 +43,7 @@ internal sealed unsafe class VideoDecoder(
     private AVPixelFormat _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private string? _hardwareDeviceTypeName;
     private AVPixelFormat _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    private VideoColorSpace _scalerColorSpace;
     private AVCodecContext_get_format? _getFormatCallback;
 
     private int _videoLinesize;
@@ -732,7 +733,7 @@ internal sealed unsafe class VideoDecoder(
         try
         {
             var sourceFormat = (AVPixelFormat)sourceFrame->format;
-            if (!EnsureScaler(sourceFormat))
+            if (!EnsureScaler(sourceFormat, GetFrameColorSpace(sourceFormat)))
             {
                 return;
             }
@@ -813,6 +814,8 @@ internal sealed unsafe class VideoDecoder(
             return false;
         }
 
+        nativeResource = nativeResource with { ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE) };
+
         _frameQueue.Enqueue(new VideoFrameData
         {
             Kind = VideoFrameKind.NativeHardware,
@@ -884,8 +887,13 @@ internal sealed unsafe class VideoDecoder(
             ? $"via {HardwareAccelerationMethod}"
             : HardwareAccelerationMethod != null ? $"in software ({HardwareAccelerationMethod} configured but not used)" : "in software";
         var filtered = _av1MetadataFilter != null ? ", metadata OBUs removed" : string.Empty;
+        var color = FFmpegVideoColor.Describe(
+            FFmpegVideoColor.FromTags(parameters->color_space, parameters->color_range, (AVPixelFormat)parameters->format),
+            parameters->width,
+            parameters->height,
+            parameters->color_trc);
         return $"{codec.ToUpperInvariant()}{(string.IsNullOrEmpty(profile) ? string.Empty : $" {profile}")}{bitDepth} " +
-            $"{parameters->width}x{parameters->height} ({pixelFormat}), decoder {DecoderName ?? "unknown"} {path}{filtered}";
+            $"{parameters->width}x{parameters->height} ({pixelFormat}, {color}), decoder {DecoderName ?? "unknown"} {path}{filtered}";
     }
 
     /// <summary>
@@ -960,9 +968,14 @@ internal sealed unsafe class VideoDecoder(
         return _softwareFrame;
     }
 
-    private bool EnsureScaler(AVPixelFormat sourceFormat)
+    /// <summary>The decoded frame's color tags, unspecified parts resolved by frame size.</summary>
+    private VideoColorSpace GetFrameColorSpace(AVPixelFormat softwareFormat) =>
+        FFmpegVideoColor.FromTags(_videoFrame->colorspace, _videoFrame->color_range, softwareFormat)
+            .Resolve(Width, Height);
+
+    private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace)
     {
-        if (_swsVideo != null && sourceFormat == _scalerSourcePixelFormat)
+        if (_swsVideo != null && sourceFormat == _scalerSourcePixelFormat && colorSpace == _scalerColorSpace)
         {
             return true;
         }
@@ -984,6 +997,20 @@ internal sealed unsafe class VideoDecoder(
             if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] Failed to create scaler for {ffmpeg.av_get_pix_fmt_name(sourceFormat)}.");
             _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
             return false;
+        }
+
+        // Without this swscale converts every YUV frame as BT.601 limited range: HD video's
+        // colors come out dull and full-range video's blacks and whites clip.
+        _scalerColorSpace = colorSpace;
+        AVPixFmtDescriptor* descriptor = ffmpeg.av_pix_fmt_desc_get(sourceFormat);
+        if (descriptor != null && (descriptor->flags & ffmpeg.AV_PIX_FMT_FLAG_RGB) == 0)
+        {
+            int* coefficients = ffmpeg.sws_getCoefficients(FFmpegVideoColor.ToSwsColorspace(colorSpace.Matrix));
+            var table = new int_array4();
+            for (uint i = 0; i < 4; i++)
+                table[i] = coefficients[i];
+            var sourceFullRange = colorSpace.Range == VideoColorRange.Full ? 1 : 0;
+            _ = ffmpeg.sws_setColorspaceDetails(_swsVideo, in table, sourceFullRange, in table, 1, 0, 1 << 16, 1 << 16);
         }
 
         return true;

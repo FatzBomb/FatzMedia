@@ -4,6 +4,7 @@ using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 
@@ -34,6 +35,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private readonly Lock _queuedSeekGate = new();
     private QueuedSeek? _queuedSeek;
     private readonly ScrubAudioMuter _scrubAudio;
+    private VideoFrameTiming _videoFrameTiming = VideoFrameTiming.SourceCadence;
     private IAudioDeviceMonitor? _audioDeviceMonitor;
     private IVideoEngine? _seekVideoEngine;
     private ICdgEngine? _seekCdgEngine;
@@ -141,6 +143,16 @@ public partial class MediaControlPlayer : IMediaControlSession
     }
 
     internal ScrubAudioMuter ScrubAudioMuter => _scrubAudio;
+
+    public VideoFrameTiming VideoFrameTiming
+    {
+        get => _videoFrameTiming;
+        set
+        {
+            _videoFrameTiming = value;
+            ApplyVideoFrameTiming();
+        }
+    }
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -692,6 +704,8 @@ public partial class MediaControlPlayer : IMediaControlSession
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
+        ApplyVideoFrameTiming();
+
         // 8. Reattach preserved presentation surfaces
         foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
             try { _ = AttachPresentationSurface(kvp.Value); } catch { }
@@ -712,6 +726,14 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
 
         return true;
+    }
+
+    // The video pipeline lives as long as the engine, so the setting holds across media; Reset
+    // creates a new engine and applies it again.
+    private void ApplyVideoFrameTiming()
+    {
+        if (_mediaEngine is IVideoFrameTimingControl control)
+            control.FrameTiming = _videoFrameTiming;
     }
 
     public void Dispose()

@@ -768,7 +768,28 @@ Not acceptable:
 - Repeated visible hitch every few seconds with no corresponding late/drop diagnostic.
 - Secondary output drifting or stuttering differently from primary.
 
+Display-locked timing (Player A/V flyout **Display-Locked**, Stage 017A slices 4 and 5):
+
+- The Log shows "Display-locked video timing on: ..." within a second of playback with the
+  Direct3D11 renderer and native windows. With software output or WPF-composited surfaces it
+  shows "unavailable", and playback uses source cadence.
+- The "Display-locked timing over ..." line (every 60 s and on pause) lists refreshes per frame.
+  - 24 fps on 60 Hz: 2s and 3s in equal numbers.
+  - 30 on 60: all 2s.
+  - 24 on 120: all 5s.
+  - Presents that finished after their refresh stay near zero.
+
 If visible stutter remains with near-zero drops/skips, capture profiling data rather than changing selector logic blindly.
+
+Video color (ENG-019):
+
+- The Log's "Decoding ..." line for each video names its color space, for example
+  `(yuv420p, BT.709 limited range)`. "(assumed)" means the file has no color tags.
+- With brightness and contrast at their defaults, an SDR video matches another player
+  (Windows Media Player, mpv or VLC): blacks are black, not dark gray, and whites are not gray.
+- The same file with `--software` looks the same as with the GPU (Direct3D11) path.
+- An HDR file (the line says "HDR10/PQ") still looks washed out: tone mapping is not
+  implemented.
 
 ---
 

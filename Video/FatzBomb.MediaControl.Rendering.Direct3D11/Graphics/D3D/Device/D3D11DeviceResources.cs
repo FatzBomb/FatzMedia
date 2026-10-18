@@ -35,6 +35,9 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
     public ID3D11DeviceContext? Context { get; private set; }
     public ID3D11VideoDevice? VideoDevice { get; private set; }
     public ID3D11VideoContext? VideoContext { get; private set; }
+
+    /// <summary>The video context's DXGI color-space interface (Windows 10 and later), or null.</summary>
+    public ID3D11VideoContext1? VideoContext1 { get; private set; }
     public IntPtr NativeDevicePointer { get; private set; }
 
     private ID3D11Multithread? _multithreadProtection;
@@ -267,6 +270,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         VideoDevice = Device.QueryInterfaceOrNull<ID3D11VideoDevice>();
         VideoContext = Context.QueryInterfaceOrNull<ID3D11VideoContext>();
+        VideoContext1 = Context.QueryInterfaceOrNull<ID3D11VideoContext1>();
         _multithreadProtection = Device.QueryInterfaceOrNull<ID3D11Multithread>();
         _ = (_multithreadProtection?.SetMultithreadProtected(true));
 
@@ -285,8 +289,10 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         _multithreadProtection?.Dispose();
         _multithreadProtection = null;
         VideoDevice?.Dispose();
+        VideoContext1?.Dispose();
         VideoContext?.Dispose();
         VideoDevice = null;
+        VideoContext1 = null;
         VideoContext = null;
     }
 

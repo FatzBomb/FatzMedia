@@ -107,6 +107,7 @@ internal sealed partial class VideoPipeline(
     private const int PostSeekAdaptiveSuppressionWindows = 2;
     private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
     private const double MaxPresentLatenessSeconds = 0.18;
+    private const double DisplayLockedPtsToleranceSeconds = 0.0005;
     private const double TinyVideoSeekThresholdSeconds = 0.25;
     private const double PreviewMaxFrameDistanceSeconds = 2.0;
     private const double SettleMaxFrameDistanceSeconds = 0.50;
@@ -945,6 +946,27 @@ internal sealed partial class VideoPipeline(
                 diagnosticSumGapMs = 0;
             }
 
+            // Display-locked timing (Stage 017A slice 4): wait for the moment just before the
+            // display's next refresh, then present the frame for that refresh.
+            DisplayLockedSlot? displayLockedSlot = null;
+            DisplayLockedTarget? displayLockedTarget = null;
+            if (_isPlaying && TryGetDisplayLockedSlot(out DisplayLockedSlot nextSlot, out DisplayLockedTarget? nextTarget))
+            {
+                var waitTicks = nextSlot.WakeTimestamp - Stopwatch.GetTimestamp();
+                if (waitTicks > 0)
+                    pacer.WaitFor(TimeSpan.FromSeconds(waitTicks / (double)Stopwatch.Frequency), cancellationToken.WaitHandle);
+
+                if (cancellationToken.IsCancellationRequested || generation != _generation)
+                    continue;
+
+                displayLockedSlot = nextSlot;
+                displayLockedTarget = nextTarget;
+            }
+            else if (!_isPlaying)
+            {
+                OnDisplayLockedIdle();
+            }
+
             if (_isPlaying)
             {
                 var restartedLoop = false;
@@ -957,7 +979,9 @@ internal sealed partial class VideoPipeline(
                         // the audio-driven wrap commits below (audio-backed video only).
                         TryPreSeekLoopStart();
 
-                        var currentPosition = PresentFrameForCurrentPosition();
+                        var currentPosition = displayLockedSlot is { } slot && displayLockedTarget is not null
+                            ? PresentFrameForDisplayLockedSlot(slot, displayLockedTarget)
+                            : PresentFrameForCurrentPosition();
 
                         // Gapless audio-backed loop: the audio engine wraps its own decoder
                         // and never stops its BASS channel (VideoAudioEngine.LoopPlayback /
@@ -990,6 +1014,10 @@ internal sealed partial class VideoPipeline(
                 if (restartedLoop)
                     pacer.Reset();
             }
+
+            // The next pass waits for the following refresh.
+            if (displayLockedSlot is not null)
+                continue;
 
             if (IsSourceCadencePlayback(FramesPerSecond))
             {
@@ -1460,6 +1488,7 @@ internal sealed partial class VideoPipeline(
 
     private void ResetPresentationTimingController()
     {
+        RequestDisplayLockedReset();
         _activePresentationLeadRefreshIntervals = GetInitialPresentationLeadRefreshIntervals();
         _postSeekRecoveryUntilTimestamp = 0;
         _postSeekAdaptiveSuppressionWindowsRemaining = 0;
@@ -1474,6 +1503,7 @@ internal sealed partial class VideoPipeline(
 
     private void BeginPostSeekPresentationRecovery()
     {
+        RequestDisplayLockedReset();
         var bufferedFrames = _videoDecoder?.FrameCount ?? 0;
         var recoveryMilliseconds = bufferedFrames <= 0
             ? PostSeekEmptyQueueRecoveryMilliseconds
@@ -1948,7 +1978,7 @@ internal sealed partial class VideoPipeline(
 
     private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
 
-    private void PresentFrameForPosition(double targetPosition, double clockPosition, bool forceReissue = false)
+    private void PresentFrameForPosition(double targetPosition, double clockPosition, bool forceReissue = false, bool displayLocked = false)
     {
         VideoDecoder? decoder = _videoDecoder;
         if (decoder == null)
@@ -1956,9 +1986,13 @@ internal sealed partial class VideoPipeline(
 
         DropFramesBeforeCommittedVideoTarget(decoder);
 
-        var maxPresentationTime = Math.Min(
-            targetPosition + GetFrameLeadTolerance(decoder.FramesPerSecond),
-            clockPosition + GetFrameSelectionLeadLimit(decoder.FramesPerSecond));
+        // Display-locked timing already asks for the refresh's own media time: the latest frame
+        // due by then, with only enough slack for timestamp rounding.
+        var maxPresentationTime = displayLocked
+            ? targetPosition + DisplayLockedPtsToleranceSeconds
+            : Math.Min(
+                targetPosition + GetFrameLeadTolerance(decoder.FramesPerSecond),
+                clockPosition + GetFrameSelectionLeadLimit(decoder.FramesPerSecond));
         VideoFrameData? frameToPresent = null;
         var dequeuedFrames = 0;
 
@@ -1982,6 +2016,7 @@ internal sealed partial class VideoPipeline(
                 break;
 
             if (frameToPresent != null
+                && !displayLocked
                 && !ShouldAdvanceSelectionToFrame(decoder.FramesPerSecond, clockPosition, frameToPresent.PresentationTime, nextFrame.PresentationTime))
             {
                 break;
@@ -2247,6 +2282,7 @@ internal sealed partial class VideoPipeline(
 
     private VideoFrameEventArgs CreateFrameEventArgs(VideoFrameData frame) => new()
     {
+        Targets = t_frameReadyTargets,
         PixelData = frame.Data != null
             ? new ReadOnlyMemory<byte>(frame.Data, 0, frame.Length)
             : ReadOnlyMemory<byte>.Empty,

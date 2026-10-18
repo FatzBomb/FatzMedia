@@ -38,4 +38,7 @@ public sealed record NativeVideoFrameResource(
 {
     public MediaGraphicsBackendId BackendId => Device.BackendId;
     public bool IsValid => ResourceHandle != 0;
+
+    /// <summary>How the frame's YCbCr values map to RGB, resolved by the producer (never unspecified when Core decodes it).</summary>
+    public VideoColorSpace ColorSpace { get; init; }
 }

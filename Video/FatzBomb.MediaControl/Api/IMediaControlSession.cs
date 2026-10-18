@@ -177,6 +177,18 @@ public interface IMediaControlSession : IDisposable
         set { }
     }
 
+    /// <summary>
+    /// Gets or sets how video frames are timed (Stage 017A): <see cref="VideoFrameTiming.SourceCadence"/>
+    /// (the default) or <see cref="VideoFrameTiming.DisplayLocked"/>, which follows each display's
+    /// refreshes where the renderer reports their timing. Sessions without the choice keep source
+    /// cadence.
+    /// </summary>
+    VideoFrameTiming VideoFrameTiming
+    {
+        get => VideoFrameTiming.SourceCadence;
+        set { }
+    }
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 

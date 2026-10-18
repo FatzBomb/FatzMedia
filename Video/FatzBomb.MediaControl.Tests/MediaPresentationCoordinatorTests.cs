@@ -5,6 +5,7 @@ using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Pipeline;
 using System.Collections.Concurrent;
 
 namespace FatzBomb.MediaControl.Tests;
@@ -215,6 +216,109 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.Equal(2, backend.NativeFramePresents);
     }
 
+    [Fact]
+    public void PresentationTiming_GroupsSurfacesByDisplay()
+    {
+        // Stage 017A slice 5: surfaces on one monitor share a group; a surface without timing
+        // follows the primary; with more than one display each group carries its target filter.
+        var backend = new RecordingRendererBackend();
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        MediaPresentationSurfaceDescriptor primary = CreatePrimarySurface(1920, 1080);
+        MediaPresentationSurfaceDescriptor sameMonitor = Secondary("preview", 0x2001);
+        MediaPresentationSurfaceDescriptor projector = Secondary("projector", 0x2002);
+        MediaPresentationSurfaceDescriptor noTiming = Secondary("frame-sink", 0x2003);
+        var display1 = new PresentationVsyncTiming(11, 1_000_000, 166_667);
+        var display2 = new PresentationVsyncTiming(22, 1_000_500, 200_000);
+        backend.VsyncTimings[primary.Id] = display1;
+        backend.VsyncTimings[sameMonitor.Id] = display1;
+        backend.VsyncTimings[projector.Id] = display2;
+        foreach (MediaPresentationSurfaceDescriptor surface in new[] { primary, sameMonitor, projector, noTiming })
+            Assert.True(coordinator.AttachPresentationSurface(surface));
+
+        List<PresentationTimingGroup> groups = QueryGroups(video);
+
+        Assert.Equal(2, groups.Count);
+        PresentationTimingGroup first = groups[0];
+        Assert.True(first.IncludesPrimary);
+        Assert.Equal(display1, first.Timing);
+        Assert.Equal(new[] { noTiming.Id, primary.Id, sameMonitor.Id }.Order(), first.SurfaceIds.Order());
+        Assert.True(first.Targets!.IncludesPrimary);
+        Assert.Equal(new[] { noTiming.Id, sameMonitor.Id }.Order(), first.Targets.SecondarySurfaceIds.Order());
+        PresentationTimingGroup second = groups[1];
+        Assert.False(second.IncludesPrimary);
+        Assert.Equal(display2, second.Timing);
+        Assert.Equal(projector.Id, Assert.Single(second.SurfaceIds));
+        Assert.False(second.Targets!.IncludesPrimary);
+        Assert.True(second.Targets.Includes(isPrimary: false, projector.Id));
+        Assert.False(second.Targets.Includes(isPrimary: false, sameMonitor.Id));
+
+        // The projector moves to the primary's monitor: one group, which needs no filter.
+        backend.VsyncTimings[projector.Id] = display1;
+        PresentationTimingGroup only = Assert.Single(QueryGroups(video));
+        Assert.Null(only.Targets);
+        Assert.Equal(4, only.SurfaceIds.Count);
+    }
+
+    [Fact]
+    public void PresentationTiming_IsEmptyWithoutPrimaryTiming()
+    {
+        var backend = new RecordingRendererBackend();
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video });
+        MediaPresentationSurfaceDescriptor projector = Secondary("projector", 0x2002);
+        backend.VsyncTimings[projector.Id] = new PresentationVsyncTiming(22, 1_000_000, 200_000);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        Assert.True(coordinator.AttachPresentationSurface(projector));
+
+        Assert.Empty(QueryGroups(video));
+    }
+
+    [Fact]
+    public void AFrameForSomeDisplays_IsComposedForTheirTargetsOnly()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        Assert.True(coordinator.AttachPresentationSurface(Secondary("projector", 0x2002)));
+        var targets = new MediaCompositionTargetFilter(includesPrimary: false, ["projector"]);
+
+        video.RaiseFrame(HardwareFrame(targets));
+        Assert.Same(targets, backend.PresentedFrames.Last().Targets);
+
+        // The filter belongs to that frame only.
+        video.RaiseFrame(HardwareFrame());
+        Assert.Null(backend.PresentedFrames.Last().Targets);
+    }
+
+    private static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
+    {
+        var groups = new List<PresentationTimingGroup>();
+        video.PresentationTimingSource!(groups);
+        return groups;
+    }
+
+    private static MediaPresentationSurfaceDescriptor Secondary(string id, nint hwnd) => new(
+        id,
+        MediaPresentationSurfaceRole.Projector,
+        MediaNativeSurfaceDescriptor.Win32Hwnd(hwnd),
+        1280,
+        720);
+
+    private static VideoFrameEventArgs HardwareFrame(MediaCompositionTargetFilter? targets) => new()
+    {
+        Width = 1920,
+        Height = 1080,
+        Stride = 0,
+        PtsSeconds = 0,
+        NativeResource = new NativeVideoFrameResource(
+            new NativeVideoDeviceResource(MediaGraphicsBackendId.Direct3D11, DeviceHandle: 101),
+            ResourceHandle: 303,
+            SubresourceIndex: 0),
+        Targets = targets,
+    };
+
     private static VideoFrameEventArgs HardwareFrame() => new()
     {
         Width = 1920,
@@ -312,6 +416,10 @@ public sealed class MediaPresentationCoordinatorTests
 
         public double? RefreshRateHz { get; set; }
         public MediaPresentationSurfaceDescriptor? LastRefreshRateSurface { get; private set; }
+        public Dictionary<string, PresentationVsyncTiming> VsyncTimings { get; } = [];
+
+        public bool TryGetSurfaceVsyncTiming(MediaPresentationSurfaceDescriptor surface, out PresentationVsyncTiming timing) =>
+            VsyncTimings.TryGetValue(surface.Id, out timing);
 
         public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface)
         {

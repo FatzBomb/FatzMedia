@@ -92,6 +92,46 @@ public sealed class SoftwareRendererBackendTests
     }
 
     [Fact]
+    public void ACompositionForSomeTargets_ReachesThoseTargetsOnly()
+    {
+        // Stage 017A slice 5: display-locked video on two monitors presents each one's targets.
+        var backend = new SoftwareRendererBackend();
+        var primarySink = new RecordingFrameSink();
+        var projectorSink = new RecordingFrameSink();
+        using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
+        using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
+        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 3, 2) with
+        {
+            Id = "secondary",
+            Role = MediaPresentationSurfaceRole.Projector
+        };
+        Assert.True(backend.AttachSurface(CreateSurface(primaryHandle, 2, 1)));
+        Assert.True(backend.AttachSurface(projector));
+
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty() with
+        {
+            Targets = new MediaCompositionTargetFilter(includesPrimary: false, ["secondary"])
+        }));
+        Assert.Equal(0, primarySink.Width);
+        Assert.Equal((3, 2), (projectorSink.Width, projectorSink.Height));
+
+        projectorSink.Width = 0;
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty() with
+        {
+            Targets = new MediaCompositionTargetFilter(includesPrimary: true, [])
+        }));
+        Assert.Equal((2, 1), (primarySink.Width, primarySink.Height));
+        Assert.Equal(0, projectorSink.Width);
+
+        // A filter whose surfaces are gone is nothing to do, not a failure.
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty() with
+        {
+            Targets = new MediaCompositionTargetFilter(includesPrimary: false, ["detached"])
+        }));
+        backend.Dispose();
+    }
+
+    [Fact]
     public void PresentComposition_ReportsThePrimaryResult_WhenAPrimaryIsAttached()
     {
         var backend = new SoftwareRendererBackend();

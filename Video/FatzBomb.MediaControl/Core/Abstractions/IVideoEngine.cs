@@ -36,6 +36,12 @@ public sealed class VideoFrameEventArgs : EventArgs
     public NativeVideoFrameResource? NativeResource { get; init; }
 
     public bool IsNativeHardwareFrame => NativeResource is { IsValid: true };
+
+    /// <summary>
+    /// The presentation targets this frame is for, or null for all (Stage 017A slice 5:
+    /// display-locked video on several monitors raises a frame once per display).
+    /// </summary>
+    internal Core.Graphics.Composition.MediaCompositionTargetFilter? Targets { get; init; }
 }
 
 public interface IVideoEngine : IDisposable

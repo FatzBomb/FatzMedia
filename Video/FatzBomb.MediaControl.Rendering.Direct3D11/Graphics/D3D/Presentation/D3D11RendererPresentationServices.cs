@@ -204,6 +204,7 @@ internal sealed class D3D11RendererPresentationServices
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         Func<int, int, bool> notifyPresented) => FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
@@ -212,6 +213,7 @@ internal sealed class D3D11RendererPresentationServices
             width,
             height,
             framesPerSecond,
+            colorSpace,
             notifyPresented);
 
     public bool NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(

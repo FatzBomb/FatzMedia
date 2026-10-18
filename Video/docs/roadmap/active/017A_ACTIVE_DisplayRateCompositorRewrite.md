@@ -3,8 +3,10 @@
 Prepared: 2026-10-16
 Status: Slice 1 (deterministic cadence model and specification), slice 2 (cadence report in
 the host log, `updates/017A_2`), and slice 3 (per-monitor refresh rate from the renderer,
-`updates/017A_3`) implemented. Frame selection at present time is not started (see Next
-Slices).
+`updates/017A_3`) implemented and smoke-passed. Slice 4 (display-locked frame selection,
+opt-in, `updates/017A_4`) and slice 5 (each display its own cadence, `updates/017A_5`)
+implemented 2026-10-18; owner smoke passed 2026-10-18 after three rounds of fixes (smoke 4:
+near-equal to source cadence). Display-locked stays opt-in, off by default.
 
 ## Cadence Model (pinned)
 
@@ -46,12 +48,60 @@ cached and refreshed in the background. Video timing resolves host override > re
 (primary monitor) > platform (DWM) > 60 Hz, and the cadence report names the source.
 Vulkan/software return null until they present to windows.
 
+## Slice 4 - Display-locked frame selection (2026-10-18)
+
+`VideoFrameTiming.DisplayLocked` (public; `MediaControlPlayer.VideoFrameTiming`,
+`IMediaControlSession.VideoFrameTiming`; default `SourceCadence`, unchanged):
+
+- The renderer reports each surface's display timing:
+  `IMediaRendererBackend.TryGetSurfaceVsyncTiming` returns a `PresentationVsyncTiming`
+  (display key, last vertical blank, period).
+  - Direct3D11 keeps one vblank clock per monitor (`MonitorVblankClocks`). A background thread
+    waits on the monitor's own blanks (`IDXGIOutput.WaitForVBlank`) and keeps a phase-locked
+    grid (`VblankGrid`).
+  - The thread runs only while timing is asked for and stops after 3 s without a query.
+- The presentation loop wakes a measured budget (2 to 12 ms, under 60 % of a refresh) before
+  the next refresh and presents the frame for that refresh.
+- The media time at the refresh comes from the audio clock projected to the refresh and passed
+  through `VsyncMediaClock`. This is an alpha-beta filter on the refresh grid:
+  - it averages the clock's read jitter;
+  - it follows drift and tempo;
+  - it restarts on seeks, loops and pauses.
+- Selection is the cadence model with a half-refresh phase (`DisplayLockedTiming`): each frame
+  starts on the refresh nearest its timestamp.
+- `CadencePhaseLock` adds hysteresis for cadences with up to 4 phase families (2.5, 2, 3, 5
+  refreshes per frame), so a drift crossing breaks the cadence once instead of flip-flopping.
+- With no current timing (software output, WPF-composited surface, timing not measured yet),
+  each pass falls back to the source-cadence path.
+- The Log panel (`VideoFrameTiming`) reports when the mode turns on or is unavailable and why.
+  Every 60 s, and on pause, it gives the refreshes-per-frame histogram, late presents, drift
+  steps and clock restarts.
+- Player: **Display-Locked** check box in the A/V flyout, off by default.
+
+## Slice 5 - Each display its own cadence (2026-10-18)
+
+With display-locked timing and surfaces on monitors with different refresh rates:
+- The coordinator groups the attached surfaces by display (`PresentationTimingGroup`). A
+  surface the renderer has no timing for follows the primary's display.
+- The loop serves whichever display's refresh comes next, with that display's own filtered
+  clock, phase lock, work budget and statistics.
+- Decoded frames stay shared and only move forward on the one media clock. A display whose
+  refresh reaches the current frame later shows it then (the frame is raised again for that
+  display).
+- A frame raised for some displays carries their targets (`VideoFrameEventArgs.Targets`,
+  internal). The coordinator composes for those targets only (`MediaCompositionFrame.Targets`,
+  a `MediaCompositionTargetFilter`). Direct3D11 and the software renderer honour it; Vulkan
+  presents to every target, as before.
+- CD+G, subtitle, background and retained refreshes are not filtered: they go to every target
+  as before.
+- With one display (or all surfaces on one monitor) nothing is filtered; slice 4's behaviour.
+
 ## Next Slices
 
-1. Use the model to choose frames at present time behind an opt-in option, with the
-   current source-cadence path as the default and fallback.
-2. Multi-target: each target runs its own cadence from the same composition plan; CDG and
-   subtitle layers keep updating independently.
+None planned. The owner's smoke settled the default: source cadence, display-locked opt-in.
+Possible later work:
+- display-locked as the default for Direct3D11 native windows, if later smokes show it ahead;
+- vertical-blank timing for WPF-composited and Vulkan surfaces.
 
 ## Explicit Non-Goals
 
