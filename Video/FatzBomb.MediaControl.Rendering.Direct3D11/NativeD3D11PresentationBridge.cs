@@ -340,6 +340,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
                 frame.Width,
                 frame.Height,
                 frame.FramesPerSecond,
+                resource.ColorSpace,
                 NotifyPresentedResult);
         }
     }

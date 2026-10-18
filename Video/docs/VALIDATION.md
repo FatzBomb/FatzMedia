@@ -781,6 +781,16 @@ Display-locked timing (Player A/V flyout **Display-Locked**, Stage 017A slices 4
 
 If visible stutter remains with near-zero drops/skips, capture profiling data rather than changing selector logic blindly.
 
+Video color (ENG-019):
+
+- The Log's "Decoding ..." line for each video names its color space, for example
+  `(yuv420p, BT.709 limited range)`. "(assumed)" means the file has no color tags.
+- With brightness and contrast at their defaults, an SDR video matches another player
+  (Windows Media Player, mpv or VLC): blacks are black, not dark gray, and whites are not gray.
+- The same file with `--software` looks the same as with the GPU (Direct3D11) path.
+- An HDR file (the line says "HDR10/PQ") still looks washed out: tone mapping is not
+  implemented.
+
 ---
 
 ## 6. Extended Timing / Presentation Profiling

@@ -27,6 +27,10 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private int _videoProcessorOutputHeight;
     private double _videoProcessorFps;
     private IntPtr _videoProcessorOutputTexturePointer;
+    private VideoColorSpace? _appliedColorSpace;
+
+    /// <summary>What every presentation and composition texture holds: full-range sRGB-gamma BT.709 RGB.</summary>
+    private const ColorSpaceType OutputColorSpace = ColorSpaceType.RgbFullG22NoneP709;
 
     private readonly VideoProcessorStream[] _streams =
     [
@@ -47,6 +51,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode stretch)
@@ -70,6 +75,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             width,
             height,
             framesPerSecond,
+            colorSpace,
             presentationWidth,
             presentationHeight,
             stretch);
@@ -83,6 +89,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode stretch)
@@ -119,6 +126,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
+        ApplyColorSpaces(deviceResources, sourceTexture, presentationTexture, colorSpace.Resolve(width, height));
         (Vortice.RawRect Source, Vortice.RawRect Destination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
         ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, Source, Destination);
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
@@ -150,6 +158,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         _videoProcessorOutputHeight = 0;
         _videoProcessorOutputTexturePointer = IntPtr.Zero;
         _videoProcessorFps = 0;
+        _appliedColorSpace = null;
         _streams[0].InputSurface = null;
     }
 
@@ -224,6 +233,67 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         }
         return true;
     }
+
+    /// <summary>
+    /// Tells the processor the frame's YCbCr matrix and range and asks for full-range RGB.
+    /// Left unset, both are the driver's choice: some assume full-range input or limited-range
+    /// output (a GPU control panel's video "dynamic range" setting can decide it), which shows
+    /// video washed out, and all of them use BT.601 for HD video. A conversion the driver does
+    /// not offer through the DXGI color spaces (checked first) uses the older description,
+    /// which has no BT.2020 and maps it to BT.709.
+    /// </summary>
+    private void ApplyColorSpaces(
+        D3D11DeviceResources deviceResources,
+        ID3D11Texture2D sourceTexture,
+        ID3D11Texture2D presentationTexture,
+        VideoColorSpace colorSpace)
+    {
+        if (_videoProcessor == null || _appliedColorSpace == colorSpace)
+        {
+            return;
+        }
+
+        ColorSpaceType inputColorSpace = ToDxgiColorSpace(colorSpace);
+        if (deviceResources.VideoContext1 is { } videoContext1
+            && SupportsConversion(sourceTexture, presentationTexture, inputColorSpace))
+        {
+            videoContext1.VideoProcessorSetStreamColorSpace1(_videoProcessor, 0, inputColorSpace);
+            videoContext1.VideoProcessorSetOutputColorSpace1(_videoProcessor, OutputColorSpace);
+        }
+        else if (deviceResources.VideoContext is { } videoContext)
+        {
+            videoContext.VideoProcessorSetStreamColorSpace(_videoProcessor, 0, new VideoProcessorColorSpace
+            {
+                YCbCr_Matrix = colorSpace.Matrix == VideoColorMatrix.Bt601 ? 0u : 1u,
+                Nominal_Range = (uint)(colorSpace.Range == VideoColorRange.Full
+                    ? VideoProcessorNominalRange.Range_0_255
+                    : VideoProcessorNominalRange.Range_16_235)
+            });
+            videoContext.VideoProcessorSetOutputColorSpace(_videoProcessor, new VideoProcessorColorSpace { RGB_Range = 0 });
+        }
+
+        _appliedColorSpace = colorSpace;
+    }
+
+    private bool SupportsConversion(ID3D11Texture2D sourceTexture, ID3D11Texture2D presentationTexture, ColorSpaceType inputColorSpace)
+    {
+        using ID3D11VideoProcessorEnumerator1? enumerator1 = _videoProcessorEnumerator?.QueryInterfaceOrNull<ID3D11VideoProcessorEnumerator1>();
+        return enumerator1 != null && enumerator1.CheckVideoProcessorFormatConversion(
+            sourceTexture.Description.Format,
+            inputColorSpace,
+            presentationTexture.Description.Format,
+            OutputColorSpace);
+    }
+
+    internal static ColorSpaceType ToDxgiColorSpace(VideoColorSpace colorSpace) => (colorSpace.Matrix, colorSpace.Range == VideoColorRange.Full) switch
+    {
+        (VideoColorMatrix.Bt601, false) => ColorSpaceType.YcbcrStudioG22LeftP601,
+        (VideoColorMatrix.Bt601, true) => ColorSpaceType.YcbcrFullG22LeftP601,
+        (VideoColorMatrix.Bt2020, false) => ColorSpaceType.YcbcrStudioG22LeftP2020,
+        (VideoColorMatrix.Bt2020, true) => ColorSpaceType.YcbcrFullG22LeftP2020,
+        (_, true) => ColorSpaceType.YcbcrFullG22LeftP709,
+        _ => ColorSpaceType.YcbcrStudioG22LeftP709
+    };
 
     private static (Vortice.RawRect Source, Vortice.RawRect Destination) CalculateVideoProcessorRects(
         int sourceWidth,

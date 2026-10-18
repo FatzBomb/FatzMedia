@@ -31,6 +31,7 @@ internal sealed class D3D11FramePresenter(
         int width,
         int height,
         double framesPerSecond,
+        VideoColorSpace colorSpace,
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode presentationStretch,
@@ -62,6 +63,7 @@ internal sealed class D3D11FramePresenter(
                 width,
                 height,
                 framesPerSecond,
+                colorSpace,
                 presentationWidth,
                 presentationHeight,
                 presentationStretch);

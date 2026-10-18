@@ -8,7 +8,50 @@ bounded roadmap stage.
 
 ## In Progress
 
-None.
+### ENG-019 - Video color left to defaults: washed out or dull on some setups
+
+Fixed: 2026-10-18, pending owner smoke.
+
+Reported: 2026-10-18 (owner). Since early in the 2026-10-16 to 10-18 run, videos looked
+slightly washed out; raising contrast and lowering brightness corrected them.
+
+Investigation:
+- No commit in the run touched color handling, shaders or swap-chain formats.
+- FFmpeg 8.1 and 9.0 swscale give identical YUV-to-BGRA levels (16 to 0, 235 to 255),
+  tested with both library sets.
+
+What was wrong in both versions: nothing told either conversion to RGB the video's color
+space.
+- **GPU path (D3D11VA frames through the D3D11 video processor).** Neither the stream's
+  nor the output's color space was set, so the driver chose both. A driver that assumes
+  full-range input or limited-range output shows video washed out. A GPU control panel's
+  video "dynamic range" setting or a driver update can change that choice without any change
+  here.
+- **CPU path (swscale).** Every frame was converted as BT.601 limited range.
+  - HD video uses BT.709, so its colors came out dull: a BT.709 pure red decoded to 230,0,0.
+  - Full-range video was clipped: full-range gray 32 decoded to 17.
+
+Fix:
+- Core reads each frame's FFmpeg color tags into `VideoColorSpace` (matrix and range).
+  Untagged parts are filled in by frame size: BT.709 for HD, BT.601 for SD, and limited
+  range.
+- The software conversion passes the tags to swscale (`sws_setColorspaceDetails`). The same
+  clips now decode to 251,0,0 and 31.
+- Native hardware frames carry the color space (`NativeVideoFrameResource.ColorSpace`).
+  - The Direct3D11 video processor sets the stream's DXGI color space and full-range BT.709
+    RGB output (`VideoProcessorSetStreamColorSpace1` / `SetOutputColorSpace1`), once the
+    driver confirms the conversion.
+  - Otherwise it uses the older color-space description.
+- The per-file "Decoding ..." log line names the color space and flags HDR (PQ/HLG) video.
+  Such video is shown without tone mapping, so it looks washed out on any path.
+
+Not covered: HDR tone mapping and HDR output.
+
+Tests: `VideoColorSpaceTests` (tag mapping, size-based defaults, swscale tables, log text) and
+`D3D11VideoColorSpaceTests` (DXGI mapping, Windows-only). The decoder's CPU conversion was
+checked against FFmpeg 9 on Linux with BT.709 and full-range clips (values above).
+
+Smoke: `docs/VALIDATION.md`, "Video color (ENG-019)".
 
 ## Open
 
