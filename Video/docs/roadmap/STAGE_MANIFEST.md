@@ -30,8 +30,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   showing the video from the renderer (Direct3D11); owner smoke passed 2026-10-18 (`updates/017A_3`);
   slice 4 adds opt-in display-locked frame selection (`VideoFrameTiming.DisplayLocked`, Player
   **Display-Locked**), from each monitor's vertical blanks; slice 5 gives each monitor its own
-  cadence (outputs on displays with different rates); implemented, pending manual smoke
-  (`updates/017A_4`, `updates/017A_5`).
+  cadence (outputs on displays with different rates); owner smoke passed 2026-10-18,
+  opt-in and off by default (`updates/017A_4`, `updates/017A_5`).
 - `active/015A_ACTIVE_BroadVideoPipelineSplit.md` - responsibility map + seek seams
   extracted (`updates/015A_1`); slice 2 moves the seek pump state machine into
   `VideoSeekPump` (now `SeekPump`, shared with CD+G per ENG-013) with tests; owner smoke passed 2026-10-17 (`updates/015A_2`).

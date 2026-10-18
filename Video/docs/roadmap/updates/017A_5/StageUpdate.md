@@ -3,7 +3,7 @@
 Stage: 017A.5 - Each display its own cadence
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (smoke 4: near-equal to source cadence)
 
 Owner request: "Continue 17a (4 and 5)".
 
@@ -77,6 +77,25 @@ missed the cut-off about once a second and showed a refresh later: the small jum
 Fixed: the wake-up lead is at least half a refresh (8.3 ms at 60 Hz), within the existing 2 to
 12 ms and 60 % caps. Selection still uses the refresh's own media time, and frames are decoded
 well ahead, so only the present moves earlier.
+
+## Owner smoke 4 (2026-10-18): passed, near-equal to display-locked off
+
+Owner: "I won't say perfect, but my eyes can play tricks staring so long. So close at least, if
+not equal."
+
+Log, two one-minute reports (24 fps on 60 Hz, perfect is about 1438 frames on 3598 refreshes):
+
+| Report | Frames / refreshes | Held 2 / 3 | Late presents | Missed refreshes | Fallbacks, re-measurements |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1435 / 3596 | 716 / 720 | 6 | 4 | 0 |
+| 2 | 1438 / 3600 | - | 1 | 0 | 0 |
+
+Late presents fell from 52 a minute (smoke 3) to 1 to 6, so the half-refresh lead fixed the
+missed compositor cut-off. The 2:3 mix is even.
+
+Keep or remove: kept as an opt-in Player option, off by default (owner: "it could be needed for
+some people"). Source cadence stays the default; display-locked is for setups where the monitor's own
+blank timing gives a better cadence (displays at different rates, rates that drift from nominal).
 
 ## Decisions made without the owner
 

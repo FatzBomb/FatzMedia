@@ -3,7 +3,7 @@
 Stage: 017A.4 - Display-locked frame selection
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (after the `updates/017A_5` fixes)
 
 Owner request: "Continue 17a (4 and 5)".
 

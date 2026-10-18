@@ -5,7 +5,8 @@ Status: Slice 1 (deterministic cadence model and specification), slice 2 (cadenc
 the host log, `updates/017A_2`), and slice 3 (per-monitor refresh rate from the renderer,
 `updates/017A_3`) implemented and smoke-passed. Slice 4 (display-locked frame selection,
 opt-in, `updates/017A_4`) and slice 5 (each display its own cadence, `updates/017A_5`)
-implemented 2026-10-18, pending manual smoke.
+implemented 2026-10-18; owner smoke passed 2026-10-18 after three rounds of fixes (smoke 4:
+near-equal to source cadence). Display-locked stays opt-in, off by default.
 
 ## Cadence Model (pinned)
 
@@ -97,8 +98,9 @@ With display-locked timing and surfaces on monitors with different refresh rates
 
 ## Next Slices
 
-None planned. Possible later work, once the owner's smoke settles the defaults:
-- display-locked as the default for Direct3D11 native windows;
+None planned. The owner's smoke settled the default: source cadence, display-locked opt-in.
+Possible later work:
+- display-locked as the default for Direct3D11 native windows, if later smokes show it ahead;
 - vertical-blank timing for WPF-composited and Vulkan surfaces.
 
 ## Explicit Non-Goals
