@@ -88,15 +88,6 @@ internal sealed partial class VideoPipeline(
     ];
     private static readonly TimeSpan HardwareDecodeReprobeInterval = TimeSpan.FromSeconds(5);
     private const int PresentationDiagnosticsFrameInterval = 120;
-    private const double DefaultPresentationLeadRefreshIntervals = 0.75;
-    private const double MinimumPresentationLeadRefreshIntervals = 0.50;
-    private const double MaximumPresentationLeadRefreshIntervals = 1.25;
-    private const double PresentationLeadIncreaseStepRefreshIntervals = 0.125;
-    private const double PresentationLeadDecreaseStepRefreshIntervals = 0.0625;
-    private const double PresentationLeadClockLateIncreaseThresholdRefreshes = 0.65;
-    private const double PresentationLeadEarlyDecreaseThresholdRefreshes = 1.75;
-    private const double PresentationLeadGoodClockLateThresholdRefreshes = 0.35;
-    private const int PresentationLeadLateSampleIncreaseThreshold = 8;
     private const int PostSeekRecoveryMilliseconds = 450;
     private const int PostSeekUnderfilledRecoveryMilliseconds = 700;
     private const int PostSeekEmptyQueueRecoveryMilliseconds = 900;
@@ -1457,16 +1448,8 @@ internal sealed partial class VideoPipeline(
         return Duration > 0 ? Math.Min(Duration, targetPosition) : targetPosition;
     }
 
-    private double GetPresentationLeadSeconds()
-    {
-        var refreshInterval = GetDisplayRefreshIntervalSeconds();
-        if (!double.IsFinite(refreshInterval) || refreshInterval <= 0)
-            refreshInterval = 1.0 / 60.0;
-
-        var frameDuration = FramesPerSecond > 0 ? 1.0 / FramesPerSecond : 1.0 / 30.0;
-        var maxLead = Math.Clamp(frameDuration * 0.45, 0.0, 0.030);
-        return Math.Clamp(refreshInterval * GetActivePresentationLeadRefreshIntervals(), 0.0, maxLead);
-    }
+    private double GetPresentationLeadSeconds() =>
+        PresentationLeadController.LeadSeconds(GetDisplayRefreshIntervalSeconds(), FramesPerSecond, GetActivePresentationLeadRefreshIntervals());
 
     private double GetActivePresentationLeadRefreshIntervals()
     {
@@ -1479,14 +1462,8 @@ internal sealed partial class VideoPipeline(
         return active;
     }
 
-    private double GetInitialPresentationLeadRefreshIntervals()
-    {
-        var configured = _configuration.PresentationLeadRefreshIntervals;
-        if (!double.IsFinite(configured) || configured <= 0)
-            configured = DefaultPresentationLeadRefreshIntervals;
-
-        return Math.Clamp(configured, MinimumPresentationLeadRefreshIntervals, MaximumPresentationLeadRefreshIntervals);
-    }
+    private double GetInitialPresentationLeadRefreshIntervals() =>
+        PresentationLeadController.InitialLeadRefreshes(_configuration.PresentationLeadRefreshIntervals);
 
     private void ResetPresentationTimingController()
     {
@@ -2142,16 +2119,14 @@ internal sealed partial class VideoPipeline(
         if (!ShouldAdaptPresentationLead(refreshIntervalMs))
             return "hold-source-cadence";
 
-        var active = GetActivePresentationLeadRefreshIntervals();
-        var lateThresholdMs = GetAdaptiveClockLateThresholdMilliseconds(refreshIntervalMs);
-        var goodLateThresholdMs = refreshIntervalMs * PresentationLeadGoodClockLateThresholdRefreshes;
-        var earlyDecreaseThresholdMs = refreshIntervalMs * PresentationLeadEarlyDecreaseThresholdRefreshes;
-        var previous = active;
-
-        if (_presentationDiagnosticClockLateSamples >= PresentationLeadLateSampleIncreaseThreshold || _presentationDiagnosticMaxClockLateMs > lateThresholdMs * 2.0)
-            active = Math.Min(MaximumPresentationLeadRefreshIntervals, active + PresentationLeadIncreaseStepRefreshIntervals);
-        else if (_presentationDiagnosticClockLateSamples == 0 && _presentationDiagnosticMaxClockLateMs < goodLateThresholdMs && _presentationDiagnosticMaxEarlyMs > earlyDecreaseThresholdMs)
-            active = Math.Max(MinimumPresentationLeadRefreshIntervals, active - PresentationLeadDecreaseStepRefreshIntervals);
+        var previous = GetActivePresentationLeadRefreshIntervals();
+        var active = PresentationLeadController.Adjust(
+            previous,
+            _presentationDiagnosticClockLateSamples,
+            _presentationDiagnosticMaxClockLateMs,
+            _presentationDiagnosticMaxEarlyMs,
+            refreshIntervalMs,
+            FramesPerSecond);
 
         _activePresentationLeadRefreshIntervals = active;
         return Math.Abs(active - previous) < 0.0001
@@ -2161,16 +2136,8 @@ internal sealed partial class VideoPipeline(
                 : $"decrease {previous:F3}->{active:F3}";
     }
 
-    private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs)
-    {
-        var refreshThresholdMs = double.IsFinite(refreshIntervalMs) && refreshIntervalMs > 0
-            ? refreshIntervalMs * PresentationLeadClockLateIncreaseThresholdRefreshes
-            : 0;
-        var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0;
-        var sourceThresholdMs = frameIntervalMs > 0 ? frameIntervalMs * 0.75 : 0;
-
-        return Math.Max(refreshThresholdMs, sourceThresholdMs);
-    }
+    private double GetAdaptiveClockLateThresholdMilliseconds(double refreshIntervalMs) =>
+        PresentationLeadController.ClockLateThresholdMilliseconds(refreshIntervalMs, FramesPerSecond);
 
     private bool ShouldAdaptPresentationLead(double refreshIntervalMs)
     {
