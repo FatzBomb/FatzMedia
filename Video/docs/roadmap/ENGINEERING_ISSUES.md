@@ -65,8 +65,9 @@ Owner capture `video-sw-5` (same steps as `video-sw-4`: fullscreen ultrawide plu
 maximized secondary window): presentation thread 78.5% -> 11.9% busy; the drawing moved to
 thread-pool bands (about 0.4 of a core in total). That capture also showed one band per
 core (21 pool threads, each about 2% busy, about 1000 work items/s) costing about a fifth
-of the drawing time in fork/join and wakeups, so bands are now capped at 8. Some stutter
-remains with both windows full size; the trace points at WPF itself (the UI thread spends
+of the drawing time in fork/join and wakeups, so bands are now capped at 8; owner smoke
+after the cap: noticeably less stutter, only occasional. What remains with both windows full
+size is accepted as the known limit of `--software` (a test/fallback mode); the trace points at WPF itself (the UI thread spends
 about 2 s per minute in `WriteableBitmap.WritePixels`, and WPF's native render thread, which
 the trace cannot sample, uploads two ultrawide bitmaps per frame).
 Test: `SoftwareCompositionRendererTests.Render_LargeFrame_MatchesThePerPixelBlendFormulas`
