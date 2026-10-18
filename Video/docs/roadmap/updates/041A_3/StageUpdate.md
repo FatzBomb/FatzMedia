@@ -30,6 +30,12 @@ The three 015A seams are now done (slices 1-3).
 ## Verification
 
 - Linux: the full solution builds with no warnings; Portable 953 tests pass.
+- A Sonnet review compared every moved expression in slices 1-3 with the original inline code
+  and found them behavior-identical: conditions, operators, constants, clamps, NaN and zero
+  handling, Interlocked/Volatile use, and the order of reads and side effects. It found no
+  leftover references to the removed members. The only differences are cosmetic: decoder
+  getters are now read once as arguments instead of short-circuited, and the reset uses
+  `Interlocked.Exchange`.
 
 ## Manual smoke (Windows, quick; covers slices 1-3)
 
