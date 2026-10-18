@@ -82,14 +82,24 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
         var primaryExpected = false;
         var primaryPresented = false;
         var anyPresented = false;
+        var anyIncluded = false;
         foreach (Target target in targets)
         {
             var isPrimary = target.Surface.Role == MediaPresentationSurfaceRole.Primary;
+            // A composition for some targets only (display-locked video on several monitors).
+            if (!frame.IsForTarget(isPrimary, target.Surface.Id))
+                continue;
+
+            anyIncluded = true;
             var presented = Present(frame, target);
             primaryExpected |= isPrimary;
             primaryPresented |= isPrimary && presented;
             anyPresented |= presented;
         }
+
+        // A filter that matches no attached target (its surface just detached) is nothing to do.
+        if (!anyIncluded)
+            return frame.Targets is not null;
 
         var succeeded = primaryExpected ? primaryPresented : anyPresented;
         if (succeeded)

@@ -240,6 +240,102 @@ public sealed class DisplayLockedTimingTests
         Assert.InRange(holds.Average(), 2.39, 2.41);
     }
 
+    [Fact]
+    public void TwoDisplays_EachKeepTheirOwnCadence_FromSharedFrames()
+    {
+        // Stage 017A slice 5: 25 fps on a 60 Hz primary and a 50 Hz projector. The loop serves the
+        // display whose refresh comes next; the shared frame moves forward once, and a display
+        // whose refresh reaches it later shows it then. Each display keeps its own model cadence.
+        (List<int> primary, List<int> projector) = SimulateTwoDisplays(25, 60, 50, seconds: 30);
+
+        Assert.All(projector, hold => Assert.Equal(2, hold)); // 50 / 25: every frame twice
+        Assert.All(primary, hold => Assert.True(hold is 2 or 3, $"hold {hold}"));
+        Assert.InRange(primary.Average(), 2.39, 2.41); // 60 / 25
+    }
+
+    /// <summary>
+    /// Mirrors the pipeline's multi-display loop: per display a filtered clock, phase lock and
+    /// last frame shown; one shared current frame that only moves forward.
+    /// </summary>
+    private static (List<int> Primary, List<int> Secondary) SimulateTwoDisplays(double fps, double primaryHz, double secondaryHz, int seconds)
+    {
+        var random = new Random(17);
+        var frameSeconds = 1 / fps;
+        var displays = new[] { new SimulatedDisplay(primaryHz, phase: 0.0013), new SimulatedDisplay(secondaryHz, phase: 0.0071) };
+        long current = -1;
+        var budget = Ticks(0.004);
+        var end = Start + Ticks(seconds);
+        while (true)
+        {
+            // The display whose wake-up comes first.
+            SimulatedDisplay? next = null;
+            DisplayLockedSlot slot = default;
+            foreach (SimulatedDisplay display in displays)
+            {
+                Assert.True(DisplayLockedTiming.TryGetNextSlot(display.TimingAt(display.LastVsync + 1), display.LastVsync + 1, budget, display.LastVsync, out DisplayLockedSlot candidate));
+                if (next is null || candidate.WakeTimestamp < slot.WakeTimestamp)
+                {
+                    next = display;
+                    slot = candidate;
+                }
+            }
+
+            if (slot.VsyncTimestamp > end)
+                break;
+
+            var media = (slot.VsyncTimestamp - Start) / (double)Frequency;
+            var observed = media + (((random.NextDouble() * 2) - 1) * 0.002);
+            var filtered = next!.Clock.Update(slot.VsyncTimestamp, observed);
+            next.PhaseLock.Configure(next.PeriodSeconds, fps);
+            var selection = DisplayLockedTiming.GetSelectionTime(filtered, next.PeriodSeconds) + next.PhaseLock.Offset;
+            var due = FrameAt(selection, frameSeconds);
+            if (due > current)
+                current = due; // the shared frame moves forward
+
+            var shows = current * frameSeconds <= selection + 0.0005 ? current : next.Shown;
+            if (shows != next.Shown && next.Shown >= 0)
+                next.PhaseLock.OnFrameStarted(selection, shows * frameSeconds);
+
+            next.Record(slot, shows);
+            next.LastVsync = slot.VsyncTimestamp;
+        }
+
+        return (displays[0].Holds(skip: 30), displays[1].Holds(skip: 30));
+    }
+
+    private sealed class SimulatedDisplay(double hertz, double phase)
+    {
+        private readonly List<int> _holds = [];
+        private long _frameStart;
+
+        public double PeriodSeconds { get; } = 1 / hertz;
+
+        public VsyncMediaClock Clock { get; } = new(Frequency);
+
+        public CadencePhaseLock PhaseLock { get; } = new();
+
+        public long LastVsync { get; set; }
+
+        public long Shown { get; private set; } = -1;
+
+        public PresentationVsyncTiming TimingAt(long now) =>
+            new(1, Start + Ticks(phase) + (long)(Math.Floor((now - Start) / (PeriodSeconds * Frequency)) * PeriodSeconds * Frequency), Ticks(PeriodSeconds));
+
+        public void Record(DisplayLockedSlot slot, long shows)
+        {
+            if (shows != Shown)
+            {
+                if (Shown >= 0)
+                    _holds.Add((int)Math.Round((slot.VsyncTimestamp - _frameStart) / (PeriodSeconds * Frequency)));
+
+                _frameStart = slot.VsyncTimestamp;
+                Shown = shows;
+            }
+        }
+
+        public List<int> Holds(int skip) => _holds.Count > skip + 1 ? _holds[skip..^1] : _holds;
+    }
+
     private static readonly long Start = Frequency * 100;
 
     private static long Ticks(double seconds) => (long)Math.Round(seconds * Frequency);

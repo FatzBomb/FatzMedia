@@ -949,7 +949,8 @@ internal sealed partial class VideoPipeline(
             // Display-locked timing (Stage 017A slice 4): wait for the moment just before the
             // display's next refresh, then present the frame for that refresh.
             DisplayLockedSlot? displayLockedSlot = null;
-            if (_isPlaying && TryGetDisplayLockedSlot(out DisplayLockedSlot nextSlot))
+            DisplayLockedTarget? displayLockedTarget = null;
+            if (_isPlaying && TryGetDisplayLockedSlot(out DisplayLockedSlot nextSlot, out DisplayLockedTarget? nextTarget))
             {
                 var waitTicks = nextSlot.WakeTimestamp - Stopwatch.GetTimestamp();
                 if (waitTicks > 0)
@@ -959,6 +960,7 @@ internal sealed partial class VideoPipeline(
                     continue;
 
                 displayLockedSlot = nextSlot;
+                displayLockedTarget = nextTarget;
             }
             else if (!_isPlaying)
             {
@@ -977,8 +979,8 @@ internal sealed partial class VideoPipeline(
                         // the audio-driven wrap commits below (audio-backed video only).
                         TryPreSeekLoopStart();
 
-                        var currentPosition = displayLockedSlot is { } slot
-                            ? PresentFrameForDisplayLockedSlot(slot)
+                        var currentPosition = displayLockedSlot is { } slot && displayLockedTarget is not null
+                            ? PresentFrameForDisplayLockedSlot(slot, displayLockedTarget)
                             : PresentFrameForCurrentPosition();
 
                         // Gapless audio-backed loop: the audio engine wraps its own decoder
@@ -2280,6 +2282,7 @@ internal sealed partial class VideoPipeline(
 
     private VideoFrameEventArgs CreateFrameEventArgs(VideoFrameData frame) => new()
     {
+        Targets = t_frameReadyTargets,
         PixelData = frame.Data != null
             ? new ReadOnlyMemory<byte>(frame.Data, 0, frame.Length)
             : ReadOnlyMemory<byte>.Empty,

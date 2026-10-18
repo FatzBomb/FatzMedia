@@ -174,11 +174,15 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 }
 
-internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink
+internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, IPresentationTimingSink
 {
     public Func<double?>? RendererRefreshRateSource { get; private set; }
 
     public void SetRendererRefreshRateSource(Func<double?>? source) => RendererRefreshRateSource = source;
+
+    public PresentationTimingSource? PresentationTimingSource { get; private set; }
+
+    public void SetPresentationTimingSource(PresentationTimingSource? source) => PresentationTimingSource = source;
 
     public bool IsOpen { get; set; } = true;
     public bool SeekUpdatesPosition { get; set; }

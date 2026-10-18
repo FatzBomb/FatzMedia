@@ -6,10 +6,14 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// The presentation surfaces on one display and that display's vertical-blank timing (Stage
 /// 017A slices 4 and 5). Surfaces on the same monitor share a group, so they present together.
 /// </summary>
+/// <param name="Targets">
+/// The group's surfaces as a composition filter; null when every surface is in this one group.
+/// </param>
 internal readonly record struct PresentationTimingGroup(
     PresentationVsyncTiming Timing,
     bool IncludesPrimary,
-    IReadOnlyList<string> SurfaceIds);
+    IReadOnlyList<string> SurfaceIds,
+    MediaCompositionTargetFilter? Targets = null);
 
 /// <summary>Fills <paramref name="destination"/> (cleared by the caller) with the current groups.</summary>
 internal delegate void PresentationTimingSource(List<PresentationTimingGroup> destination);

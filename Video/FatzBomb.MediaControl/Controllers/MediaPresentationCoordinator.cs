@@ -59,9 +59,16 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private int _secondarySurfaceCount;
     private readonly Func<double?> _primaryRefreshRateSource;
     private readonly PresentationTimingSource _presentationTimingSource;
-    // The primary surface's id as the one-entry list a timing group carries (cached: the
-    // timing source runs once per display refresh).
-    private string[] _primaryTimingSurfaceIds = [];
+    // Attached surfaces, republished on attach/resize/detach, for the timing source: it runs
+    // on the video presentation thread once per display refresh and must not take _lock.
+    private MediaPresentationSurfaceDescriptor[] _surfaceSnapshot = [];
+    // How surfaces group by display; rebuilt only when the surfaces or their displays change.
+    // Presentation thread only.
+    private TimingLayout? _timingLayout;
+    private PresentationVsyncTiming[] _scratchSurfaceTimings = [];
+    // The targets of the video frame being presented on this thread (Stage 017A slice 5).
+    [ThreadStatic]
+    private static MediaCompositionTargetFilter? t_videoFrameTargets;
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
     private bool _disposed;
@@ -172,6 +179,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 _surfaces[surface.Id] = surface;
                 TrackPrimarySurface(surface);
                 UpdateSecondarySurfaceCountNoLock();
+                PublishSurfaceSnapshotNoLock();
             }
         }
 
@@ -199,6 +207,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             surface = surface.WithSize(pixelWidth, pixelHeight);
             _surfaces[surface.Id] = surface;
             TrackPrimarySurface(surface);
+            PublishSurfaceSnapshotNoLock();
 
             if (!_rendererBackend.ResizeSurface(surface))
                 return false;
@@ -253,6 +262,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 return false;
 
             UpdateSecondarySurfaceCountNoLock();
+            PublishSurfaceSnapshotNoLock();
 
             // Only the tracked primary: a host may attach a new primary before detaching the old.
             if (Volatile.Read(ref _primarySurface)?.Id == surface.Id)
@@ -542,36 +552,132 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         }
     }
 
+    private void PublishSurfaceSnapshotNoLock() => Volatile.Write(ref _surfaceSnapshot, [.. _surfaces.Values]);
+
     /// <summary>
-    /// The vertical-blank timing of the display showing the primary surface, for display-locked
-    /// video timing (Stage 017A slice 4). Called from the video presentation thread once per
-    /// display refresh; renderers return cached timing.
+    /// The displays showing the attached surfaces and their vertical-blank timing, for
+    /// display-locked video timing (Stage 017A slices 4 and 5). Surfaces on one monitor form one
+    /// group; a surface the renderer has no timing for joins the primary's group. Nothing is
+    /// reported while the primary has no timing. Called from the video presentation thread once
+    /// per display refresh; renderers return cached timing.
     /// </summary>
     private void FillPresentationTimingGroups(List<PresentationTimingGroup> destination)
     {
-        if (_disposed || Volatile.Read(ref _primarySurface) is not { } surface)
+        if (_disposed || Volatile.Read(ref _primarySurface) is not { } primary)
             return;
 
+        MediaPresentationSurfaceDescriptor[] surfaces = Volatile.Read(ref _surfaceSnapshot);
+        if (_scratchSurfaceTimings.Length < surfaces.Length)
+            _scratchSurfaceTimings = new PresentationVsyncTiming[surfaces.Length];
+
+        PresentationVsyncTiming[] timings = _scratchSurfaceTimings;
+        var primaryIndex = -1;
         try
         {
-            if (!_rendererBackend.TryGetSurfaceVsyncTiming(surface, out PresentationVsyncTiming timing) || !timing.IsValid)
-                return;
-
-            string[] ids = Volatile.Read(ref _primaryTimingSurfaceIds);
-            if (ids.Length != 1 || !string.Equals(ids[0], surface.Id, StringComparison.Ordinal))
+            for (var index = 0; index < surfaces.Length; index++)
             {
-                ids = [surface.Id];
-                Volatile.Write(ref _primaryTimingSurfaceIds, ids);
-            }
+                if (!_rendererBackend.TryGetSurfaceVsyncTiming(surfaces[index], out timings[index]) || !timings[index].IsValid)
+                    timings[index] = default;
 
-            destination.Add(new PresentationTimingGroup(timing, IncludesPrimary: true, ids));
+                if (string.Equals(surfaces[index].Id, primary.Id, StringComparison.OrdinalIgnoreCase))
+                    primaryIndex = index;
+            }
         }
         catch (Exception ex)
         {
             // Timing falls back to source cadence; a renderer bug must not stop playback.
             Debug.WriteLine($"[MediaPresentationCoordinator] Vertical-blank timing query failed: {ex.Message}");
+            return;
         }
+
+        if (primaryIndex < 0 || !timings[primaryIndex].IsValid)
+            return;
+
+        TimingLayout layout = GetTimingLayout(surfaces, timings, primaryIndex);
+        foreach (TimingLayout.Group group in layout.Groups)
+            destination.Add(new PresentationTimingGroup(timings[group.TimingSurfaceIndex], group.IncludesPrimary, group.SurfaceIds, group.Targets));
     }
+
+    private TimingLayout GetTimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, PresentationVsyncTiming[] timings, int primaryIndex)
+    {
+        TimingLayout? layout = _timingLayout;
+        if (layout is not null && layout.Matches(surfaces, timings, primaryIndex))
+            return layout;
+
+        layout = TimingLayout.Create(surfaces, timings, primaryIndex);
+        _timingLayout = layout;
+        return layout;
+    }
+
+    /// <summary>The attached surfaces grouped by the display showing them.</summary>
+    private sealed class TimingLayout
+    {
+        private readonly MediaPresentationSurfaceDescriptor[] _surfaces;
+        private readonly long[] _displayKeys;
+        private readonly int _primaryIndex;
+
+        private TimingLayout(MediaPresentationSurfaceDescriptor[] surfaces, long[] displayKeys, int primaryIndex, Group[] groups)
+        {
+            _surfaces = surfaces;
+            _displayKeys = displayKeys;
+            _primaryIndex = primaryIndex;
+            Groups = groups;
+        }
+
+        public Group[] Groups { get; }
+
+        public bool Matches(MediaPresentationSurfaceDescriptor[] surfaces, PresentationVsyncTiming[] timings, int primaryIndex)
+        {
+            if (!ReferenceEquals(surfaces, _surfaces) || primaryIndex != _primaryIndex)
+                return false;
+
+            for (var index = 0; index < surfaces.Length; index++)
+                if (timings[index].DisplayKey != _displayKeys[index] || timings[index].IsValid != (_displayKeys[index] != 0))
+                    return false;
+
+            return true;
+        }
+
+        public static TimingLayout Create(MediaPresentationSurfaceDescriptor[] surfaces, PresentationVsyncTiming[] timings, int primaryIndex)
+        {
+            var keys = new long[surfaces.Length];
+            for (var index = 0; index < surfaces.Length; index++)
+                keys[index] = timings[index].IsValid ? timings[index].DisplayKey : 0;
+
+            // The primary's display first; a surface without timing follows the primary.
+            var primaryKey = keys[primaryIndex];
+            var order = new List<long> { primaryKey };
+            foreach (var key in keys)
+                if (key != 0 && !order.Contains(key))
+                    order.Add(key);
+
+            var groups = new Group[order.Count];
+            for (var groupIndex = 0; groupIndex < order.Count; groupIndex++)
+            {
+                var key = order[groupIndex];
+                var members = Enumerable.Range(0, surfaces.Length)
+                    .Where(index => keys[index] == key || (key == primaryKey && keys[index] == 0))
+                    .ToArray();
+                var includesPrimary = members.Contains(primaryIndex);
+                MediaCompositionTargetFilter? targets = order.Count == 1
+                    ? null
+                    : new MediaCompositionTargetFilter(
+                        includesPrimary,
+                        members.Where(index => index != primaryIndex).Select(index => surfaces[index].Id));
+                var timingIndex = includesPrimary ? primaryIndex : members.First(index => keys[index] == key);
+                groups[groupIndex] = new Group(includesPrimary, [.. members.Select(index => surfaces[index].Id)], targets, timingIndex);
+            }
+
+            return new TimingLayout(surfaces, keys, primaryIndex, groups);
+        }
+
+        public sealed record Group(bool IncludesPrimary, string[] SurfaceIds, MediaCompositionTargetFilter? Targets, int TimingSurfaceIndex);
+    }
+
+    // During a frame raised for some displays only, every composition built on this thread goes
+    // to those displays' targets.
+    private static MediaCompositionFrame ForVideoFrameTargets(MediaCompositionFrame frame) =>
+        t_videoFrameTargets is { } targets && frame.Targets is null ? frame with { Targets = targets } : frame;
 
     private void AttachCdgIfAvailable()
     {
@@ -696,6 +802,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     private void OnVideoFrameReady(object? sender, VideoFrameEventArgs e)
     {
+        t_videoFrameTargets = e.Targets;
         try
         {
             if (HasCdgContent)
@@ -709,6 +816,10 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Video frame present failed: {ex.Message}", innerException: ex);
+        }
+        finally
+        {
+            t_videoFrameTargets = null;
         }
     }
 
@@ -1105,7 +1216,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         if (!EnsureBackendInitialized())
             return CompositionPresentResult.Failed;
 
-        if (!_rendererBackend.PresentComposition(frame))
+        if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
             return CompositionPresentResult.Failed;
@@ -1140,7 +1251,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     {
         try
         {
-            if (!_rendererBackend.PresentComposition(frame))
+            if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
                 return CompositionPresentResult.Failed;
