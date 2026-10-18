@@ -3,7 +3,19 @@
 Stage: 022A.4 - CD+G seek replay checkpoints; seek-bar drags off the UI thread
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (visual); follow-up below pending smoke
+
+Owner capture `cdg-2` (60 s, CD+G and video scrubbing; everything looked right):
+- CD+G: the render loop no longer waits on the CD+G render lock during seeks (405 ms in the
+  `cdg` baseline, none now); the CD+G seek worker's waits fell from 67 ms to about 2 ms.
+- Video drags (regression, fixed in a follow-up commit): each coalesced drag seek ran the full
+  seek path on the control queue, including `RefreshCurrentPosition`, which renders and
+  presents the current frame (a vsync present) while holding the video pipeline lock. The
+  video seek pump, rendering the scrub preview, waited 4.3 s in total (12 ms average, up to
+  50 ms) and the refresh waited 2.3 s for it. Drag seeks (a `SeekAsync` during a scrub) now
+  skip that refresh, as `Controls.Seek` did before this slice; the seek pumps present the
+  preview themselves. `SeekAsync` outside a scrub and the release `Seek` refresh as before.
+  Test: `SeekAsync_DuringAScrub_LeavesThePreviewToTheSeekPump` (mutation-checked).
 
 Baseline (owner `cdg` capture, 60 s of scrubbing a CD+G song):
 - The CD+G render loop waited on the CD+G engine's render lock 101 times, 405 ms in total, up
@@ -49,9 +61,9 @@ Delivered:
   now bounded to 10 s of packets, so the lock hold is short without a second state machine or
   a swap protocol. Built at load rather than as playback first passes each point, so a first
   seek into an unplayed part is bounded too, at the cost of about 45 ms of load time.
-- Drag seeks now take the full seek path (`SeekCompleted`, position refresh), like the release
-  seek and 035A's scrub tests, instead of calling `Controls.Seek` directly on the UI thread;
-  the work is on the control queue and coalesced.
+- Drag seeks go through the control queue with the seek bookkeeping (`SeekCompleted`) but
+  without the presentation refresh, which the seek pumps already do (see the `cdg-2` result
+  above); the release seek keeps the refresh.
 - CD+G snapshot arrays are not pooled. CD+G playback allocates about 5 MB/s (a gen-0 collection
   about every 3 s, sub-millisecond), and snapshots are immutable and shared across threads and
   the composition cache for an unknown time (018A's ownership decision); reusing their arrays

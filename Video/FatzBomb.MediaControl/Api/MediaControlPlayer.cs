@@ -270,7 +270,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         try
         {
-            return ExecuteControlOperation(() => SeekOperation(seconds));
+            return ExecuteControlOperation(() => SeekOperation(seconds, refreshPresentation: true));
         }
         catch (ObjectDisposedException)
         {
@@ -355,7 +355,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         try
         {
-            var result = SeekOperation(seconds);
+            // A drag seek leaves the frame to the seek pump, which presents the scrub preview
+            // itself; re-rendering here held the video lock through a vsync present and stalled
+            // that preview (owner capture cdg-2: 4.3 s of seek-pump waits per minute of dragging).
+            var result = SeekOperation(seconds, refreshPresentation: !Controls.IsScrubbing);
             _ = queued.Completion.TrySetResult(result);
             return result;
         }
@@ -378,7 +381,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private bool SeekOperation(double seconds)
+    private bool SeekOperation(double seconds, bool refreshPresentation)
     {
         var requested = CleanPosition(seconds);
         var target = _mediaEngine.Duration > 0
@@ -409,7 +412,8 @@ public partial class MediaControlPlayer : IMediaControlSession
             return false;
         }
 
-        _presentationCoordinator.RefreshCurrentPosition();
+        if (refreshPresentation)
+            _presentationCoordinator.RefreshCurrentPosition();
         if (!waitsForSettle)
         {
             RaiseSeekCompleted(requested, _mediaEngine.Position);

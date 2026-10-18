@@ -141,6 +141,28 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task SeekAsync_DuringAScrub_LeavesThePreviewToTheSeekPump()
+    {
+        // Stage 022A slice 4 follow-up (owner capture cdg-2): a drag seek that also re-rendered
+        // and presented the current frame held the video lock through a vsync present and stalled
+        // the seek pump's preview render. Drag seeks skip that refresh, as Controls.Seek did; a
+        // seek outside a scrub still refreshes.
+        var engine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.BeginScrub());
+        var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
+
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal(before, Volatile.Read(ref factory.Coordinator.RefreshCount));
+
+        Assert.True(player.EndScrub());
+        Assert.True(await player.SeekAsync(40).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.True(Volatile.Read(ref factory.Coordinator.RefreshCount) > before);
+    }
+
+    [Fact]
     public async Task SeekAsync_RequestsWaitingToRun_CollapseToTheNewest()
     {
         var engine = new TestMediaEngine();
@@ -786,6 +808,8 @@ public sealed class MediaControlPlayerTests
 
         public string LastNativeLoadMessage => string.Empty;
 
+        public TestPresentationCoordinator Coordinator => _coordinator;
+
         public Action<int>? BeforeCreateServiceProvider { get; set; }
 
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);
@@ -820,7 +844,7 @@ public sealed class MediaControlPlayerTests
         public IArchiveHandle Open(string path) => throw new NotSupportedException();
     }
 
-    private sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
+    internal sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
     {
         public event EventHandler? FramePresented { add { } remove { } }
 
@@ -831,7 +855,9 @@ public sealed class MediaControlPlayerTests
         public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;
         public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
         public bool DetachPresentationSurface(string surfaceId) => false;
-        public void RefreshCurrentPosition() { }
+        public int RefreshCount;
+
+        public void RefreshCurrentPosition() => Interlocked.Increment(ref RefreshCount);
         public void RunOnRenderThread(Action action) => action();
         public void StartRendering() { }
         public void StopRendering() { }
