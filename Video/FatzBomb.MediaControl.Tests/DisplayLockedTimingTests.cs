@@ -407,6 +407,61 @@ public sealed class DisplayLockedTimingTests
         public List<int> Holds(int skip) => _holds.Count > skip + 1 ? _holds[skip..^1] : _holds;
     }
 
+    [Fact]
+    public void TwoDisplaysRefreshingTogether_DoNotStarveEachOther_WhenOnePassServesBoth()
+    {
+        // Owner smoke 2 (017A): two monitors at 59.96 and 60.00 Hz drift in and out of step every
+        // ~24 s. Serving one display per pass, each pass (3 ms of work) made the other display miss
+        // its refresh while they were in step: hundreds of missed refreshes a minute.
+        var oneAtATime = CountMissedRefreshes(batch: false);
+        var together = CountMissedRefreshes(batch: true);
+
+        Assert.True(oneAtATime > 100, $"one display per pass missed {oneAtATime}");
+        Assert.Equal(0, together);
+    }
+
+    /// <summary>
+    /// Mirrors the pipeline's pass scheduling for two displays over 60 s, each pass taking 3 ms:
+    /// returns the refreshes the displays did not get a pass for.
+    /// </summary>
+    private static long CountMissedRefreshes(bool batch)
+    {
+        var periods = new[] { Ticks(1 / 59.96), Ticks(1 / 60.0) };
+        var phases = new[] { 0L, Ticks(0.009) };
+        var lastVsync = new long[2];
+        var work = Ticks(0.003);
+        var budget = Ticks(0.0055);
+        var now = Start + Ticks(0.05);
+        long missed = 0;
+        while (now < Start + Ticks(60))
+        {
+            var slots = new DisplayLockedSlot[2];
+            for (var display = 0; display < 2; display++)
+            {
+                var timing = new PresentationVsyncTiming(display + 1, Start + phases[display] + ((now - Start - phases[display]) / periods[display] * periods[display]), periods[display]);
+                Assert.True(DisplayLockedTiming.TryGetNextSlot(timing, now, budget, lastVsync[display], out slots[display]));
+            }
+
+            var first = slots[0].WakeTimestamp <= slots[1].WakeTimestamp ? 0 : 1;
+            now = Math.Max(now, slots[first].WakeTimestamp);
+            for (var display = 0; display < 2; display++)
+            {
+                var served = display == first || (batch && slots[display].WakeTimestamp <= slots[first].WakeTimestamp + work + Ticks(0.001));
+                if (!served)
+                    continue;
+
+                if (lastVsync[display] != 0)
+                    missed += Math.Max(0, (long)Math.Round((slots[display].VsyncTimestamp - lastVsync[display]) / (double)periods[display]) - 1);
+
+                lastVsync[display] = slots[display].VsyncTimestamp;
+            }
+
+            now += work;
+        }
+
+        return missed;
+    }
+
     private static readonly long Start = Frequency * 100;
 
     private static long Ticks(double seconds) => (long)Math.Round(seconds * Frequency);

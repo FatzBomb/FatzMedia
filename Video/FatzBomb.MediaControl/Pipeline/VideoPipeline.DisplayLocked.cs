@@ -34,6 +34,9 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
     private readonly List<PresentationTimingGroup> _timingGroups = [];
     private readonly Dictionary<long, DisplayLockedTarget> _displayLockedTargets = [];
+    // The displays one pass presents for, earliest refresh first (presentation thread only).
+    private readonly List<BatchMember> _displayLockedBatch = [];
+    private int _displayLockedDisplayCount;
     private PresentationTimingSource? _presentationTimingSource;
     private volatile VideoFrameTiming _frameTiming = VideoFrameTiming.SourceCadence;
     private int _displayLockedResetRequested;
@@ -81,22 +84,38 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         var now = Stopwatch.GetTimestamp();
         var primaryCurrent = false;
+        _displayLockedBatch.Clear();
+        _displayLockedDisplayCount = 0;
         foreach (PresentationTimingGroup group in _timingGroups)
         {
             if (!group.Timing.IsValid)
                 continue;
 
+            _displayLockedDisplayCount++;
             DisplayLockedTarget display = GetDisplayLockedTarget(group);
             var budget = DisplayLockedTiming.GetBudgetTicks(display.WorkSeconds, group.Timing.PeriodTicks);
             if (!DisplayLockedTiming.TryGetNextSlot(group.Timing, now, budget, display.LastVsync, out DisplayLockedSlot candidate))
                 continue;
 
             primaryCurrent |= group.IncludesPrimary;
+            _displayLockedBatch.Add(new BatchMember(candidate, display));
             if (target is null || candidate.WakeTimestamp < slot.WakeTimestamp)
             {
                 slot = candidate;
                 target = display;
             }
+        }
+
+        // One pass serves every display whose own wake-up falls before this pass would be done:
+        // monitors refreshing at almost the same moment (two 60 Hz monitors drift in and out of
+        // step) would otherwise take turns, each pass making the other miss its refresh.
+        if (target is not null)
+        {
+            var passTicks = (long)((double.IsNaN(target.WorkSeconds) ? DisplayLockedTiming.InitialBudget.TotalSeconds : target.WorkSeconds) * Stopwatch.Frequency)
+                + (Stopwatch.Frequency / 1000);
+            var batchUntil = slot.WakeTimestamp + passTicks;
+            _ = _displayLockedBatch.RemoveAll(member => member.Slot.WakeTimestamp > batchUntil);
+            _displayLockedBatch.Sort(static (a, b) => a.Slot.VsyncTimestamp.CompareTo(b.Slot.VsyncTimestamp));
         }
 
         ForgetDisplaysNotShowingTheVideo(now);
@@ -187,9 +206,11 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     }
 
     /// <summary>
-    /// Presents the frame for <paramref name="slot"/>'s refresh to <paramref name="display"/>'s
-    /// surfaces and returns the raw clock position for the loop's end and loop-wrap checks. Runs
-    /// under the presentation lock.
+    /// Presents for the displays of this pass (<see cref="_displayLockedBatch"/>, earliest refresh
+    /// first; <paramref name="slot"/> and <paramref name="display"/> are its first) and returns the
+    /// raw clock position for the loop's end and loop-wrap checks. Each display works out the
+    /// media time of its own refresh; the frame for the earliest refresh is presented once to all
+    /// of their surfaces. Runs under the presentation lock.
     /// </summary>
     private double PresentFrameForDisplayLockedSlot(DisplayLockedSlot slot, DisplayLockedTarget display)
     {
@@ -200,11 +221,60 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
                 each.Clock.Reset();
         }
 
-        VsyncMediaClock clock = display.Clock;
+        if (_displayLockedBatch.Count == 0)
+            _displayLockedBatch.Add(new BatchMember(slot, display));
+
         var clockPosition = GetPresentationPosition();
-        var secondsToVsync = (slot.VsyncTimestamp - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency;
-        var mediaAtVsync = clock.Update(slot.VsyncTimestamp, clockPosition + (secondsToVsync * clock.Rate));
-        var periodSeconds = slot.PeriodTicks / (double)Stopwatch.Frequency;
+        var now = Stopwatch.GetTimestamp();
+        for (var index = 0; index < _displayLockedBatch.Count; index++)
+        {
+            BatchMember member = _displayLockedBatch[index];
+            _displayLockedBatch[index] = member with { Selection = GetDisplayLockedSelection(member, clockPosition, now) };
+        }
+
+        var selection = _displayLockedBatch[0].Selection;
+        var batchCoversEveryDisplay = _displayLockedBatch.Count >= _displayLockedDisplayCount;
+        double? shownToAll = null;
+        t_frameReadyTargets = MergeTargets(_displayLockedBatch, batchCoversEveryDisplay);
+        try
+        {
+            var before = _currentFrame?.PresentationTime;
+            PresentFrameForPosition(selection, selection, forceReissue: false, displayLocked: true);
+            if (_currentFrame is { } current)
+            {
+                if (current.PresentationTime != before)
+                {
+                    shownToAll = current.PresentationTime;
+                }
+                else if (_displayLockedDisplayCount > 1)
+                {
+                    // Displays of this pass that have not shown the frame another display moved on
+                    // to get it now, at their own refresh.
+                    ReissueToLaggingDisplays(current.PresentationTime);
+                }
+            }
+        }
+        finally
+        {
+            t_frameReadyTargets = null;
+        }
+
+        var workEnd = Stopwatch.GetTimestamp();
+        var workSeconds = (workEnd - workStart) / (double)Stopwatch.Frequency;
+        foreach (BatchMember member in _displayLockedBatch)
+            FinishDisplayLockedRefresh(member, shownToAll ?? member.ReissuedTime, workEnd, workSeconds);
+
+        _displayLockedBatch.Clear();
+        return clockPosition;
+    }
+
+    private double GetDisplayLockedSelection(BatchMember member, double clockPosition, long now)
+    {
+        DisplayLockedTarget display = member.Display;
+        VsyncMediaClock clock = display.Clock;
+        var secondsToVsync = (member.Slot.VsyncTimestamp - now) / (double)Stopwatch.Frequency;
+        var mediaAtVsync = clock.Update(member.Slot.VsyncTimestamp, clockPosition + (secondsToVsync * clock.Rate));
+        var periodSeconds = member.Slot.PeriodTicks / (double)Stopwatch.Frequency;
 
         // A restarted clock (seek, loop, jump) starts the cadence afresh: the phase lock forgets
         // its offset. It also clears itself when the refresh period or frame rate changes.
@@ -216,46 +286,66 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             phaseLock.Reset();
         }
 
-        var selection = ApplyAudioVideoOffset(DisplayLockedTiming.GetSelectionTime(mediaAtVsync, periodSeconds) + phaseLock.Offset);
-        MediaCompositionTargetFilter? targets = display.Group.Targets;
-        double? shown = null;
-        t_frameReadyTargets = targets;
-        try
+        return ApplyAudioVideoOffset(DisplayLockedTiming.GetSelectionTime(mediaAtVsync, periodSeconds) + phaseLock.Offset);
+    }
+
+    private void ReissueToLaggingDisplays(double currentTime)
+    {
+        var lagging = 0;
+        for (var index = 0; index < _displayLockedBatch.Count; index++)
         {
-            var before = _currentFrame?.PresentationTime;
-            PresentFrameForPosition(selection, selection, forceReissue: false, displayLocked: true);
-            if (_currentFrame is { } current)
+            BatchMember member = _displayLockedBatch[index];
+            if (currentTime != member.Display.LastShown && currentTime <= member.Selection + DisplayLockedPtsToleranceSeconds)
             {
-                if (current.PresentationTime != before)
-                {
-                    shown = current.PresentationTime;
-                }
-                else if (targets is not null
-                    && current.PresentationTime != display.LastShown
-                    && current.PresentationTime <= selection + DisplayLockedPtsToleranceSeconds)
-                {
-                    // Another display moved the frame on; this one shows it at its own refresh.
-                    ReissueCurrentFrame();
-                    shown = current.PresentationTime;
-                }
+                _displayLockedBatch[index] = member with { ReissuedTime = currentTime };
+                lagging++;
             }
         }
-        finally
+
+        if (lagging == 0)
+            return;
+
+        t_frameReadyTargets = lagging == _displayLockedBatch.Count
+            ? MergeTargets(_displayLockedBatch, _displayLockedBatch.Count >= _displayLockedDisplayCount)
+            : MergeTargets(_displayLockedBatch.Where(static member => member.ReissuedTime is not null).ToList(), coversEveryDisplay: false);
+        ReissueCurrentFrame();
+    }
+
+    // The targets of several displays as one filter: none when they are every display.
+    private static MediaCompositionTargetFilter? MergeTargets(List<BatchMember> members, bool coversEveryDisplay)
+    {
+        if (coversEveryDisplay || members.Count == 0)
+            return null;
+
+        if (members.Count == 1)
+            return members[0].Display.Group.Targets;
+
+        var includesPrimary = false;
+        var secondaries = new List<string>();
+        foreach (BatchMember member in members)
         {
-            t_frameReadyTargets = null;
+            if (member.Display.Group.Targets is not { } targets)
+                return null;
+
+            includesPrimary |= targets.IncludesPrimary;
+            secondaries.AddRange(targets.SecondarySurfaceIds);
         }
 
+        return new MediaCompositionTargetFilter(includesPrimary, secondaries);
+    }
+
+    private void FinishDisplayLockedRefresh(BatchMember member, double? shown, long workEnd, double workSeconds)
+    {
+        DisplayLockedTarget display = member.Display;
         var newFrame = shown is not null && shown != display.LastShown;
         if (shown is { } shownTime)
         {
             display.LastShown = shownTime;
             if (newFrame)
-                phaseLock.OnFrameStarted(selection, shownTime);
+                display.PhaseLock.OnFrameStarted(member.Selection, shownTime);
         }
 
-        var workEnd = Stopwatch.GetTimestamp();
-        display.LastVsync = slot.VsyncTimestamp;
-        var workSeconds = (workEnd - workStart) / (double)Stopwatch.Frequency;
+        display.LastVsync = member.Slot.VsyncTimestamp;
         display.WorkSeconds = double.IsNaN(display.WorkSeconds)
             ? workSeconds
             : (display.WorkSeconds * 0.9) + (workSeconds * 0.1);
@@ -264,19 +354,21 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         // the next frame was not decoded in time (or was dropped as too late).
         var starved = FramesPerSecond > 0
             && _currentFrame is { } onScreen
-            && selection - onScreen.PresentationTime > 1.5 / FramesPerSecond;
+            && member.Selection - onScreen.PresentationTime > 1.5 / FramesPerSecond;
         display.Statistics.Record(
-            slot,
+            member.Slot,
             newFrame,
-            late: workEnd > slot.VsyncTimestamp,
+            late: workEnd > member.Slot.VsyncTimestamp,
             workSeconds,
             starved,
-            clock.Restarts,
-            phaseLock.Wraps,
+            display.Clock.Restarts,
+            display.PhaseLock.Wraps,
             display.Group.Timing.Resyncs);
         ReportDisplayLockedStatisticsIfDue(display, force: false);
-        return clockPosition;
     }
+
+    /// <summary>One display served by a pass: its refresh, its selection, and a re-raised frame.</summary>
+    private readonly record struct BatchMember(DisplayLockedSlot Slot, DisplayLockedTarget Display, double Selection = 0, double? ReissuedTime = null);
 
     /// <summary>The loop is not presenting (paused, stopped): report what the last run did.</summary>
     private void OnDisplayLockedIdle()

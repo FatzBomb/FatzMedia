@@ -32,6 +32,30 @@ surfaces just detached is a no-op, not a failure.
 - A two-display simulation: 25 fps keeps an even 2:2 on a 50 Hz projector while the 60 Hz primary
   keeps its 2/3 mix, from shared frames.
 
+## Owner smoke 2 (2026-10-18): stutters with two windows; none with display-locked off
+
+Both runs had the secondary window on the second monitor (59.96 and 60.00 Hz). The new counters
+ruled out three causes, all at or near zero:
+- source-cadence passes 0;
+- vertical-blank re-measurements 0;
+- undecoded-frame waits 3 to 5.
+
+Each display missed about 170 refreshes a minute, in about 80 gaps (longest 333 and 567 ms),
+with almost no slow passes.
+
+Cause: slice 5 served one display per pass, whichever refresh came first. Two monitors at almost
+the same rate drift in and out of step (every ~24 s here). While their refreshes fell within
+one pass's work of each other, serving one made the other miss its refresh, and the next pass
+did the same. So one display kept losing turns for up to half a second, on a regular cycle.
+
+Fixed: a pass serves every display whose own wake-up falls before the pass would be done.
+- Each display still works out its own refresh's media time, phase lock and statistics.
+- The frame for the earliest refresh is presented once, to all of their surfaces.
+- A display that has not shown the frame another display moved on to gets it in the same pass.
+
+Test: a 60 s schedule simulation at 59.96 and 60.00 Hz with 3 ms passes misses more than 100
+refreshes serving one display per pass, and none with the fix.
+
 ## Decisions made without the owner
 
 - **Frames stay shared and only move forward.** Each display picks when it shows a frame, not a
