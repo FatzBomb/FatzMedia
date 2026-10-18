@@ -51,6 +51,14 @@ Fix: while any non-primary surface is attached, hardware video is composed
 only the primary attached the native fast path is unchanged. Cost: one extra blit and shader
 draw per target, only while a secondary window is open. Test:
 `MediaPresentationCoordinatorTests.HardwareVideoFrame_IsComposedWhileASecondaryWindowIsAttached`.
+The secondary count is read under the coordinator lock that attach/detach update it under,
+so no frame takes the native path after a secondary attached.
+
+Review (local) decisions: the fix stays in Core rather than making Direct3D11's native path
+fan out, since Core owns target fan-out and composition already presents every target; a
+failed backend detach still drops the surface from the coordinator first (existing
+behaviour); switching back to the native path leaves the last retained composition
+background in place, as the subtitle path already does when subtitles end.
 
 ### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
 

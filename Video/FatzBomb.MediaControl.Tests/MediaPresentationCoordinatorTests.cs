@@ -300,8 +300,9 @@ public sealed class MediaPresentationCoordinatorTests
 
         public bool PresentNativeFrame(VideoFrameEventArgs frame)
         {
-            NativeFramePresents++;
-            return true;
+            if (AcceptsNativeFrames)
+                NativeFramePresents++;
+            return AcceptsNativeFrames;
         }
         public void ClearCompositionBackgroundFrame() { }
 

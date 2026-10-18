@@ -55,8 +55,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private IVideoEngine? _attachedVideo;
     // Read from the video presentation thread through _primaryRefreshRateSource.
     private MediaPresentationSurfaceDescriptor? _primarySurface;
-    // Attached non-primary surfaces (secondary/projector windows), read on the video thread.
-    private volatile int _secondarySurfaceCount;
+    // Attached non-primary surfaces (secondary/projector windows); guarded by _lock.
+    private int _secondarySurfaceCount;
     private readonly Func<double?> _primaryRefreshRateSource;
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
@@ -705,20 +705,20 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         // The native-frame path presents to the primary target only. With a secondary or
         // projector window attached, compose instead: composition fans the frame out to every
         // target. Plain hardware video otherwise never reached the secondary window (it stayed
-        // blank, or froze on the last composed frame after a seek).
-        if (_secondarySurfaceCount > 0)
-        {
-            RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + secondary target");
-            return;
-        }
-
+        // blank, or froze on the last composed frame after a seek; ENG-015). Checked under the
+        // lock that attach and detach update it under, so no frame takes the stale path.
         lock (_lock)
         {
-            if (!EnsureNativeFrameDevice(e))
-                return;
+            if (_secondarySurfaceCount == 0)
+            {
+                if (EnsureNativeFrameDevice(e))
+                    _ = _rendererBackend.PresentNativeFrame(e);
 
-            _ = _rendererBackend.PresentNativeFrame(e);
+                return;
+            }
         }
+
+        RenderHardwareVideoCompositionFrame(e, forceZoomToFill: false, "hardware video + secondary target");
     }
 
     private void PresentVideoFrameAsCdgBackground(VideoFrameEventArgs e)
