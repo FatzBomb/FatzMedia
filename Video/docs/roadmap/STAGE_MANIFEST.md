@@ -112,6 +112,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
+- `future/038A_IDEA_HdrVideoToneMapping.md` - HDR (PQ/HLG) video tone mapping to SDR, then HDR
+  output on HDR displays; follows ENG-019's explicit color spaces (owner decision, 2026-10-18).
 
 Next stage: 032A (needs CD drive measurements first).
 
