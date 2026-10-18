@@ -20,7 +20,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
-
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
   (`VideoLoopBoundary`), slice 2 the adaptive presentation-lead rules
