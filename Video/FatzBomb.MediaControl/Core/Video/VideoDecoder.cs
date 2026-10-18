@@ -744,7 +744,7 @@ internal sealed unsafe class VideoDecoder(
 
         var transferStart = totalStart;
         AVFrame* sourceFrame = GetSoftwareFrameForProcessing();
-        var transferMs = GetElapsedMilliseconds(transferStart);
+        var transferMs = Stopwatch.GetElapsedTime(transferStart).TotalMilliseconds;
         if (sourceFrame == null)
         {
             return;
@@ -768,7 +768,7 @@ internal sealed unsafe class VideoDecoder(
             var bufferStart = Stopwatch.GetTimestamp();
             var frameData = _framePool.Rent(frameSize);
             rentedFrameData = frameData;
-            bufferMs = GetElapsedMilliseconds(bufferStart);
+            bufferMs = Stopwatch.GetElapsedTime(bufferStart).TotalMilliseconds;
 
             byte_ptrArray8 dstData = new();
             int_array8 dstLinesize = new();
@@ -790,7 +790,7 @@ internal sealed unsafe class VideoDecoder(
                 }
 
                 toneMapper.Convert(scratch, scratchStride, frameData, _videoLinesize, Width, Height);
-                scaleMs = GetElapsedMilliseconds(scaleStart);
+                scaleMs = Stopwatch.GetElapsedTime(scaleStart).TotalMilliseconds;
             }
             else
             {
@@ -802,7 +802,7 @@ internal sealed unsafe class VideoDecoder(
                     var scaleStart = Stopwatch.GetTimestamp();
                     _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
                         0, Height, dstData, dstLinesize);
-                    scaleMs = GetElapsedMilliseconds(scaleStart);
+                    scaleMs = Stopwatch.GetElapsedTime(scaleStart).TotalMilliseconds;
                 }
             }
 
@@ -833,7 +833,7 @@ internal sealed unsafe class VideoDecoder(
                 transferMs,
                 scaleMs,
                 bufferMs,
-                GetElapsedMilliseconds(totalStart));
+                Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         }
     }
 
@@ -896,7 +896,7 @@ internal sealed unsafe class VideoDecoder(
             PresentationTime = pts
         });
 
-        RecordDecodeDiagnostics(0, 0, 0, GetElapsedMilliseconds(totalStart));
+        RecordDecodeDiagnostics(0, 0, 0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         return true;
     }
 

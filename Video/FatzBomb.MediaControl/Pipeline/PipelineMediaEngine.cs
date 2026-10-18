@@ -451,7 +451,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 restartCount++;
                 if (_configuration.EnableVerboseLogging)
                 {
-                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
                     Trace.WriteLine(
                         $"[BackgroundVideo] Restart #{restartCount} at {elapsedSec:F2}s, lastPts={lastPresentedPts:F3}s, maxPts={maxPresentedPts:F3}s, " +
                         $"iterations={iterationCount}, queueDepth={decoder.FrameCount}, fps={decoder.FramesPerSecond:F2}");
@@ -471,7 +471,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
                 if (_configuration.EnableVerboseLogging && iterationCount > 0 && iterationCount % 60 == 0)
                 {
-                    var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
                     Trace.WriteLine(
                         $"[BackgroundVideo] iter={iterationCount}, elapsed={elapsedSec:F2}s, pts={frame.PresentationTime:F3}s, " +
                         $"hw={frame.IsNativeHardwareFrame}, queueDepth={decoder.FrameCount}");
@@ -484,7 +484,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             // position-0 frames are ready before the tail runs out. See SeamlessLoopRestart.
             if (SeamlessLoopRestart.TryPreSeekToStart(decoder) && _configuration.EnableVerboseLogging)
             {
-                var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
                 Trace.WriteLine(
                     $"[BackgroundVideo] Pre-seek to start at {elapsedSec:F2}s, queued={decoder.FrameCount}, " +
                     $"lastPts={lastPresentedPts:F3}s");
@@ -525,7 +525,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 {
                     if (_configuration.EnableVerboseLogging)
                     {
-                        var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                        var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
                         Trace.WriteLine(
                             $"[BackgroundVideo] DecodeNextFrame returned false at iter={iterationCount}, elapsed={elapsedSec:F2}s, " +
                             $"lastPts={lastPresentedPts:F3}s, attempts={attempts}, queueDepth={decoder.FrameCount}");
@@ -543,7 +543,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         VideoFrameData? finalFrame = decoder.GetNextFrame();
         if (finalFrame == null && _configuration.EnableVerboseLogging)
         {
-            var elapsedSec = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+            var elapsedSec = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
             Trace.WriteLine(
                 $"[BackgroundVideo] No frame produced before restart: restart#{restartCount}, elapsed={elapsedSec:F2}s, " +
                 $"lastPts={lastPresentedPts:F3}s, queueDepth={decoder.FrameCount}");

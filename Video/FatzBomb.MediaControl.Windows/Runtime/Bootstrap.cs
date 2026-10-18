@@ -1,4 +1,3 @@
-//#pragma warning disable IDE0130
 using System.Diagnostics;
 
 namespace FatzBomb.MediaControl;
@@ -16,9 +15,6 @@ internal static partial class Bootstrap
     public static string Message { get; set; } = string.Empty;
     public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
     public static NativeDependencyReport NativeDependencies { get; private set; } = NativeDependencyReport.Empty;
-    internal static string? RootPath { get; private set; }
-    public static string? FfmpegPath => FFmpeg.AutoGen.ffmpeg.RootPath;
-    internal static string? BassPath { get; private set; }
     public static bool EnsureInitialized(string? userLibraryPath = null) =>
         EnsureInitialized(ToNativeLibraryPathArray(userLibraryPath));
 
@@ -53,7 +49,6 @@ internal static partial class Bootstrap
                         candidatePaths.Add(defaultPath);
                 }
 
-                RootPath = candidatePaths.FirstOrDefault();
                 searchPaths = candidatePaths;
 
 

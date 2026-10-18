@@ -84,8 +84,6 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 
     public void Dispose() => Stop();
 
-    internal void OnPollTick() => CheckForChanges();
-
     private void CaptureBaseline()
     {
         if (!MBass.GetInfo(out BassInfo info))

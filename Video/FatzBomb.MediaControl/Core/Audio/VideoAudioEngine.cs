@@ -153,7 +153,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         if (Volatile.Read(ref _positionSnapshotPlaying) != 0)
         {
             var timestamp = Interlocked.Read(ref _positionSnapshotTimestamp);
-            var elapsedSeconds = (Stopwatch.GetTimestamp() - timestamp) / (double)Stopwatch.Frequency;
+            var elapsedSeconds = Stopwatch.GetElapsedTime(timestamp).TotalSeconds;
             if (double.IsFinite(elapsedSeconds) && elapsedSeconds > 0)
             {
                 var tempoPercent = Volatile.Read(ref _positionSnapshotTempoPercent);

@@ -73,7 +73,7 @@ internal sealed class AudioPresentationClock
 
     private void UpdateRate(double audioPosition, long now)
     {
-        var elapsed = GetElapsedSeconds(_lastSampleTimestamp, now);
+        var elapsed = Stopwatch.GetElapsedTime(_lastSampleTimestamp, now).TotalSeconds;
         if (elapsed >= MinimumRateSampleSeconds)
         {
             var audioDelta = audioPosition - _lastSamplePositionSeconds;
@@ -88,7 +88,7 @@ internal sealed class AudioPresentationClock
         }
     }
 
-    private double EstimatePosition(long now) => _anchorPositionSeconds + (GetElapsedSeconds(_anchorTimestamp, now) * _rate);
+    private double EstimatePosition(long now) => _anchorPositionSeconds + (Stopwatch.GetElapsedTime(_anchorTimestamp, now).TotalSeconds * _rate);
 
     private void Reanchor(double positionSeconds, long now)
     {
@@ -115,6 +115,4 @@ internal sealed class AudioPresentationClock
     }
 
     private static double Clean(double seconds) => double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
-
-    private static double GetElapsedSeconds(long startTimestamp, long endTimestamp) => (endTimestamp - startTimestamp) / (double)Stopwatch.Frequency;
 }

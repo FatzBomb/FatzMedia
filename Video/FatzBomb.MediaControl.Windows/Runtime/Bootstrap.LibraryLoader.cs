@@ -42,8 +42,6 @@ internal static partial class Bootstrap
 
         Dictionary<string, string> found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
 
-        Debug.WriteLine("");
-
         foreach ((var dllFile, var extensions, var isRequired) in libraryFiles)
             if (found.TryGetValue(dllFile, out var loadPath))
             {
@@ -91,17 +89,6 @@ internal static partial class Bootstrap
                 }
 
             }
-
-        // Get Common Shared Path if all required libraries are found
-        if (foundRequired == totalRequired && totalRequired > 0)
-        {
-            var commonPath = Path.GetDirectoryName(found.First().Value);
-            if (commonPath != null && found.Values.All(p => Path.GetDirectoryName(p) == commonPath))
-            {
-                BassPath = commonPath;
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"Common path for required libraries: {BassPath}");
-            }
-        }
 
         loadSuccess = foundRequired >= totalRequired;
         if (missingRequired.Count > 0)

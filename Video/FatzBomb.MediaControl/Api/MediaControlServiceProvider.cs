@@ -44,6 +44,7 @@ public static class MediaControlServiceProvider
         _ = services.AddSingleton<ICdgEngine, CdgEngine>();
         _ = services.AddSingleton<ISubtitleEngine, SubtitleEngine>();
         _ = services.AddSingleton<IArchiveService, SharpArchiveAdapter>();
+        _ = services.AddSingleton<IMidiLyricProvider, BassMidiLyricProvider>();
     }
 
     private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration)

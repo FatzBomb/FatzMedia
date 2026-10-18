@@ -10,7 +10,7 @@ real Linux hardware with BASS. macOS and Linux hardware decode are later slices.
 | Registration / concern | Windows | Linux (this slice) | Classification |
 |---|---|---|---|
 | Native library loading | `Bootstrap` (LoadLibraryW, `*.dll`) | `LinuxNativeLibraryBootstrapper` (dlopen, `lib*.so`, DllImport resolver, FFmpeg dependency-order preload) | OS-specific |
-| `IMidiLyricProvider` | BASS marker provider | same Core `MidiLyricExtractor` | portable logic, per-package registration |
+| `IMidiLyricProvider` | Core `BassMidiLyricProvider` (registered by `MediaControlServiceProvider`) | same | shared Core default; no per-platform copy |
 | `IPrecisionWaiterFactory` | Win32 high-resolution waitable timer | kernel wait + 1 ms spin | OS-specific |
 | `IVideoPipelinePlatformServices` | DWM refresh interval | host option (`LinuxPlatformOptions.DisplayRefreshRateHz`, default 60) | OS-specific |
 | `IVideoHardwareAccelerationServices` | D3D11VA/DXVA | `SoftwareOnlyVideoHardwareAccelerationServices` | portable fallback; VA-API later |

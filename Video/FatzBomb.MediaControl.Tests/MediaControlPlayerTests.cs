@@ -915,22 +915,6 @@ public sealed class MediaControlPlayerTests
         }
     }
 
-    private sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
-    {
-        private readonly IArchiveService _archiveService = new TestArchiveService();
-
-        public object? GetService(Type serviceType) => serviceType == typeof(IMediaEngine)
-            ? engine
-            : serviceType == typeof(IArchiveService)
-                ? _archiveService
-                : null;
-    }
-
-    private sealed class TestArchiveService : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
-    }
-
     internal sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
     {
         public event EventHandler? FramePresented { add { } remove { } }

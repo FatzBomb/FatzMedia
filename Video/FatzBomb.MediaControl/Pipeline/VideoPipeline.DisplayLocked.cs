@@ -260,7 +260,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         }
 
         var workEnd = Stopwatch.GetTimestamp();
-        var workSeconds = (workEnd - workStart) / (double)Stopwatch.Frequency;
+        var workSeconds = Stopwatch.GetElapsedTime(workStart, workEnd).TotalSeconds;
         foreach (BatchMember member in _displayLockedBatch)
             FinishDisplayLockedRefresh(member, shownToAll ?? member.ReissuedTime, workEnd, workSeconds);
 
@@ -545,7 +545,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
                 {
                     _missedRefreshes += missed;
                     _gaps++;
-                    _longestGapMs = Math.Max(_longestGapMs, (slot.VsyncTimestamp - _lastVsync) * 1000.0 / Stopwatch.Frequency);
+                    _longestGapMs = Math.Max(_longestGapMs, Stopwatch.GetElapsedTime(_lastVsync, slot.VsyncTimestamp).TotalMilliseconds);
                 }
             }
 
@@ -601,7 +601,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         public string Describe(string label)
         {
-            var seconds = (_lastVsync - _firstVsync) / (double)Stopwatch.Frequency;
+            var seconds = Stopwatch.GetElapsedTime(_firstVsync, _lastVsync).TotalSeconds;
             var hertz = _periodTicks > 0 ? Stopwatch.Frequency / (double)_periodTicks : 0;
             var holds = string.Join(
                 ", ",

@@ -28,16 +28,6 @@ internal sealed class CdgColorManager
     /// </summary>
     public ReadOnlySpan<int> ColorLut => _colorArgbLut.AsSpan();
 
-    public int CurrentBackgroundArgb
-    {
-        get
-        {
-            _ = UpdateLutIfNeeded();
-            var backgroundIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
-            return _colorArgbLut[backgroundIndex];
-        }
-    }
-
     public int BackgroundColorIndex { get; private set; } = -1;
 
     /// <summary>
