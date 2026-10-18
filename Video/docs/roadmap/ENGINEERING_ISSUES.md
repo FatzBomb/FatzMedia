@@ -30,6 +30,46 @@ review:
 
 ## Completed
 
+### ENG-017 - Software renderer drops frames at large output sizes
+
+Fixed: 2026-10-18, pending owner smoke.
+
+Reported: 2026-10-18 (owner smoke, `video-sw-4` capture). With `--software`, fullscreen
+video on an ultrawide monitor dropped frames visibly, and more with the secondary window
+open (ENG-016 renders each composition once per window).
+
+Cause: `SoftwareCompositionRenderer` mapped and blended every output pixel generically: two
+double divisions and a floor for the source pixel, checked offsets, and a divide-by-255
+blend per channel, even for opaque video. The capture shows the presentation thread 78.5%
+busy, 89% of it in `SoftwareCompositionRenderer.Render`. Measured in the sandbox (4 cores),
+3440x1440 output from 1920x1080 video: 69 ms per frame (about 14 fps at most); with a
+partial wash and CD+G, 120 ms.
+
+Fix, with output byte-identical to before (checked during the change with a 400-scene
+golden hash over random sizes, stretch modes, alpha values, wash, CD+G, subtitles and
+transforms; not kept as a test):
+- each layer maps its source columns once (`SoftwareStretch.MapColumns`) and each row once,
+  instead of both per pixel;
+- opaque source pixels are copied and transparent ones skipped, which is what the blend
+  formulas give for alpha 255 and 0 (premultiplied: only when the colour is zero too); CD+G
+  palette entries are always opaque, so they are written directly;
+- the wash blends whole vectors with an exact integer divide by 255 (the same arithmetic
+  for the remainder); clear and opaque wash are fills;
+- outputs over 512K pixels are drawn in parallel row bands (each band writes only its own
+  rows, so the result does not depend on scheduling).
+
+Result: 3440x1440 video 69 -> about 6 ms per frame; with wash and CD+G 120 -> about 9 ms.
+Test: `SoftwareCompositionRendererTests.Render_LargeFrame_MatchesThePerPixelBlendFormulas`
+checks every pixel of a banded 1200x864 render of background, wash, CD+G and premultiplied
+subtitles against the per-pixel formulas. Pixels are processed as little-endian BGRA words;
+a big-endian platform gets `UnsupportedFrame` instead of wrong colours.
+
+Not changed: the base-visual transform paths still blend per pixel (only while a picture
+adjustment is active); the WPF sink still copies each frame once and uploads it with
+`WritePixels`; the whole output is cleared even under an opaque background (opacity is per
+pixel, so it is not known up front); and presents that overlap (video and CD+G threads,
+several windows) each fan out to up to one band per core on the thread pool.
+
 ### ENG-016 - Secondary window always blank in software mode
 
 Fixed: 2026-10-18, pending owner smoke.

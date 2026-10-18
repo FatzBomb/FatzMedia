@@ -50,13 +50,25 @@ internal readonly record struct SoftwareStretch(
         return Create(sourceWidth, sourceHeight, outputWidth, outputHeight, destination);
     }
 
-    public (int X, int Y) GetSourcePixel(int destinationX, int destinationY)
+    // Each axis maps independently, so renderers map every column once per layer and every row
+    // once per row instead of both per pixel (ENG-017).
+    public int GetSourceX(int destinationX)
     {
         var normalizedX = ((destinationX + 0.5) - DestinationLeft) / DestinationWidth;
+        return Math.Clamp((int)Math.Floor(normalizedX * SourceWidth), 0, SourceWidth - 1);
+    }
+
+    public int GetSourceY(int destinationY)
+    {
         var normalizedY = ((destinationY + 0.5) - DestinationTop) / DestinationHeight;
-        var sourceX = Math.Clamp((int)Math.Floor(normalizedX * SourceWidth), 0, SourceWidth - 1);
-        var sourceY = Math.Clamp((int)Math.Floor(normalizedY * SourceHeight), 0, SourceHeight - 1);
-        return (sourceX, sourceY);
+        return Math.Clamp((int)Math.Floor(normalizedY * SourceHeight), 0, SourceHeight - 1);
+    }
+
+    /// <summary>Fills <paramref name="sourceColumns"/> with the source column of each clipped destination column.</summary>
+    public void MapColumns(Span<int> sourceColumns)
+    {
+        for (var index = 0; index < sourceColumns.Length; index++)
+            sourceColumns[index] = GetSourceX(ClippedLeft + index);
     }
 
     private static SoftwareStretch Create(
