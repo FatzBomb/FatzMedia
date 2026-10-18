@@ -210,6 +210,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private static MediaScrubAudio ToScrubAudio(bool silentDrag) =>
         silentDrag ? MediaScrubAudio.SilentWhileMoving : MediaScrubAudio.Audible;
 
+    /// <summary>
+    /// Times video frames to each display's refreshes (Stage 017A slices 4 and 5) instead of the
+    /// video's own frame times. Off by default while it is validated.
+    /// </summary>
+    public bool DisplayLockedTiming
+    {
+        get;
+        set
+        {
+            if (!SetProperty(ref field, value)) return;
+            if (Player is { } player)
+                player.VideoFrameTiming = ToFrameTiming(field);
+        }
+    }
+
+    private static VideoFrameTiming ToFrameTiming(bool displayLocked) =>
+        displayLocked ? VideoFrameTiming.DisplayLocked : VideoFrameTiming.SourceCadence;
+
     public bool AutoPlay
     {
         get;
@@ -457,6 +475,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Effects.Tempo = Tempo;
             player.PlayOnLoad = AutoPlay;
             player.ScrubAudio = ToScrubAudio(SilentDrag);
+            player.VideoFrameTiming = ToFrameTiming(DisplayLockedTiming);
             player.LoopMedia = LoopPlayback;
             player.ShowMidiLyrics = true;
             player.Equalizer = BuildEqualizerSettings();

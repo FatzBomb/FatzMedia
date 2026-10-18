@@ -100,6 +100,17 @@ internal sealed class PlaybackCoordinator : IDisposable
     /// coordinator's lifetime. See IVideoEngine.SetDisplayRefreshRate for details.
     /// </summary>
     public void SetDisplayRefreshRate(double? refreshHz) => _session.Video?.SetDisplayRefreshRate(refreshHz);
+
+    /// <summary>Video frame timing (Stage 017A slice 4), applied to the stable video pipeline.</summary>
+    public VideoFrameTiming VideoFrameTiming
+    {
+        get => (_session.Video as IVideoFrameTimingControl)?.FrameTiming ?? VideoFrameTiming.SourceCadence;
+        set
+        {
+            if (_session.Video is IVideoFrameTimingControl control)
+                control.FrameTiming = value;
+        }
+    }
     public IAudioEngine ActiveAudio => _session.Video?.IsOpen == true
         ? _session.Video.HasAudio ? _session.Video.Audio! : _session.ClockAudio
         : _session.Audio?.IsOpen == true

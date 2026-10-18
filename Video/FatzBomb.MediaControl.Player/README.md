@@ -119,6 +119,14 @@ and sidecar files (`.srt`, `.ass`, `.ssa` next to the media). It refreshes whene
 loads or closes and is disabled when the media has no subtitles. The SUB buttons beside it
 shift subtitle timing.
 
+## Display-locked timing
+
+**Display-Locked** in the **A/V** flyout (off by default) times video frames to the refreshes of
+the monitor showing the video instead of the video's own frame times: an even 3:2 for 24 fps on
+60 Hz, with no stray 3:3:1. It needs the Direct3D11 renderer with native windows (the default
+MODE). The Log panel's `VideoFrameTiming` entries say when it is on, or why it is unavailable,
+and summarize the cadence every minute. It sets `MediaControlPlayer.VideoFrameTiming`.
+
 ## Silent drag
 
 **Silent Drag** in the **Audio** flyout (on by default) mutes audio while the seek bar is

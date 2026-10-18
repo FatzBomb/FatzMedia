@@ -9,7 +9,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl
 {
     private MediaSourceCapabilities? _currentCapabilities;
 
@@ -84,6 +84,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     IClockSource IClockBackedMediaEngine.ClockSource => _coordinator.ClockSource;
 
     public void SetDisplayRefreshRate(double? refreshHz) => _coordinator.SetDisplayRefreshRate(refreshHz);
+
+    VideoFrameTiming IVideoFrameTimingControl.FrameTiming
+    {
+        get => _coordinator.VideoFrameTiming;
+        set => _coordinator.VideoFrameTiming = value;
+    }
     public string? ImagePath { get; private set; }
     public bool BackgroundAutoDetect { get; set; } = true;
     public MediaBackgroundCandidate? Background { get; private set; }

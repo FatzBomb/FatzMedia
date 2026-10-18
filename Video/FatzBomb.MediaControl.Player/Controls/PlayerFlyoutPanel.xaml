@@ -385,6 +385,11 @@
                         Click="SecondaryWindowCheckBox_Click"
                         Content="Secondary Window"
                         ToolTip="Toggle secondary/projector output validation" />
+                    <CheckBox
+                        Margin="8,0,0,0"
+                        Content="Display-Locked"
+                        IsChecked="{Binding DisplayLockedTiming, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Time video frames to each monitor's refreshes (even 3:2 for 24 fps on 60 Hz). Needs the Direct3D11 renderer with native windows; the Log panel says when it is on." />
                 </StackPanel>
                 <Border
                     Margin="0,7,0,0"

@@ -58,6 +58,10 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     // Attached non-primary surfaces (secondary/projector windows); guarded by _lock.
     private int _secondarySurfaceCount;
     private readonly Func<double?> _primaryRefreshRateSource;
+    private readonly PresentationTimingSource _presentationTimingSource;
+    // The primary surface's id as the one-entry list a timing group carries (cached: the
+    // timing source runs once per display refresh).
+    private string[] _primaryTimingSurfaceIds = [];
     private ICdgEngine? _attachedCdg;
     private bool _isRenderingActive;
     private bool _disposed;
@@ -93,6 +97,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _configuration = configuration;
         _renderPipeline = new RenderPipeline(_mediaEngine);
         _primaryRefreshRateSource = GetPrimaryRefreshRateHz;
+        _presentationTimingSource = FillPresentationTimingGroups;
         _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _rendererBackend.FramePresented += OnFramePresented;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
@@ -488,6 +493,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
                 (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
+                (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(null);
             }
             catch
             {
@@ -503,6 +509,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
         (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(_primaryRefreshRateSource);
+        (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(_presentationTimingSource);
     }
 
     private void UpdateSecondarySurfaceCountNoLock() =>
@@ -532,6 +539,37 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             // Timing falls back to the platform rate; a renderer bug must not stop playback.
             Debug.WriteLine($"[MediaPresentationCoordinator] Refresh rate query failed: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// The vertical-blank timing of the display showing the primary surface, for display-locked
+    /// video timing (Stage 017A slice 4). Called from the video presentation thread once per
+    /// display refresh; renderers return cached timing.
+    /// </summary>
+    private void FillPresentationTimingGroups(List<PresentationTimingGroup> destination)
+    {
+        if (_disposed || Volatile.Read(ref _primarySurface) is not { } surface)
+            return;
+
+        try
+        {
+            if (!_rendererBackend.TryGetSurfaceVsyncTiming(surface, out PresentationVsyncTiming timing) || !timing.IsValid)
+                return;
+
+            string[] ids = Volatile.Read(ref _primaryTimingSurfaceIds);
+            if (ids.Length != 1 || !string.Equals(ids[0], surface.Id, StringComparison.Ordinal))
+            {
+                ids = [surface.Id];
+                Volatile.Write(ref _primaryTimingSurfaceIds, ids);
+            }
+
+            destination.Add(new PresentationTimingGroup(timing, IncludesPrimary: true, ids));
+        }
+        catch (Exception ex)
+        {
+            // Timing falls back to source cadence; a renderer bug must not stop playback.
+            Debug.WriteLine($"[MediaPresentationCoordinator] Vertical-blank timing query failed: {ex.Message}");
         }
     }
 
@@ -1366,6 +1404,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
                 _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
                 (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
+                (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(null);
             }
             catch
             {

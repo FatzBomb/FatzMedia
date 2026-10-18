@@ -15,6 +15,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private readonly Lock _lock = new();
     private readonly MediaPlayerConfiguration _configuration;
     private readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
+    private readonly MonitorVblankClocks _vblankClocks = new();
     private bool _disposed;
 
     public NativeD3D11PresentationBridge(
@@ -198,6 +199,18 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     /// </summary>
     public double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) =>
         !Volatile.Read(ref _disposed) && TryGetWin32Hwnd(surface, out nint hwnd) ? _refreshRates.Get(hwnd) : null;
+
+    /// <summary>
+    /// The vertical-blank timing of the monitor showing a native-window surface (Stage 017A slice
+    /// 4), from that monitor's own blanks. Managed frame-sink surfaces have no monitor: false.
+    /// </summary>
+    public bool TryGetSurfaceVsyncTiming(MediaPresentationSurfaceDescriptor surface, out PresentationVsyncTiming timing)
+    {
+        timing = default;
+        return !Volatile.Read(ref _disposed)
+            && TryGetWin32Hwnd(surface, out nint hwnd)
+            && _vblankClocks.TryGet(hwnd, _refreshRates.Get(hwnd), out timing);
+    }
 
     public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)
     {
@@ -406,6 +419,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
 
         _refreshRates.Clear();
+        _vblankClocks.Dispose();
 
         if (_configuration.EnableLogging)
         {

@@ -39,6 +39,19 @@ public interface IMediaRendererBackend : IDisposable
     /// </summary>
     double? GetSurfaceRefreshRateHz(MediaPresentationSurfaceDescriptor surface) => null;
 
+    /// <summary>
+    /// Vertical-blank timing of the display showing <paramref name="surface"/> (Stage 017A slice
+    /// 4), for <see cref="VideoFrameTiming.DisplayLocked"/> video timing. Returns false when the
+    /// backend cannot tell (no native window, not attached, or the display's timing is not
+    /// available yet); Core then keeps source-cadence timing. Called from the video presentation
+    /// thread once per display refresh, so implementations return cached data.
+    /// </summary>
+    bool TryGetSurfaceVsyncTiming(MediaPresentationSurfaceDescriptor surface, out PresentationVsyncTiming timing)
+    {
+        timing = default;
+        return false;
+    }
+
     void CleanupResources();
 
     bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted);
