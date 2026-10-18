@@ -7,12 +7,9 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
 {
     private readonly Lock _sync = new();
     private readonly SoftwareCompositionRenderer _renderer = new();
-    // One reusable composition buffer (Stage 022A slice 2). A present takes it out and puts it
-    // back, so concurrent presents (video and CDG/subtitle threads) never share it and no lock
-    // is held across the sink call; a concurrent present simply renders into a new buffer.
-    private SoftwareCompositionBuffer? _renderBuffer;
-    private MediaPresentationSurfaceDescriptor? _surface;
-    private IMediaPresentationFrameSink? _sink;
+    // Attached managed frame-sink surfaces by id: the primary plus any secondary/projector
+    // windows (ENG-016). Each composition is rendered once per target at the target's size.
+    private readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public event EventHandler? FramePresented;
@@ -43,7 +40,7 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
     {
         lock (_sync)
         {
-            return !_disposed && _surface?.Id == surface.Id;
+            return !_disposed && _targets.ContainsKey(surface.Id);
         }
     }
 
@@ -51,12 +48,7 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
     {
         lock (_sync)
         {
-            if (_disposed || _surface?.Id != surface.Id)
-                return false;
-
-            _surface = null;
-            _sink = null;
-            return true;
+            return !_disposed && _targets.Remove(surface.Id);
         }
     }
 
@@ -76,58 +68,67 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
 
     public bool PresentComposition(MediaCompositionFrame frame)
     {
-        IMediaPresentationFrameSink? sink;
-        int width;
-        int height;
+        Target[] targets;
         lock (_sync)
         {
-            if (_disposed || !IsInitialized || _surface == null || _sink == null)
+            if (_disposed || !IsInitialized || _targets.Count == 0)
                 return false;
 
-            sink = _sink;
-            width = _surface.PixelWidth;
-            height = _surface.PixelHeight;
+            targets = [.. _targets.Values];
         }
 
-        SoftwareCompositionBuffer? buffer = Interlocked.Exchange(ref _renderBuffer, null);
-        SoftwareRenderOutput output = _renderer.Render(frame, width, height, ref buffer);
+        // As Direct3D11 does: with a primary attached, success is the primary's present, so a
+        // secondary that presented never hides a failed primary frame.
+        var primaryExpected = false;
+        var primaryPresented = false;
+        var anyPresented = false;
+        foreach (Target target in targets)
+        {
+            var isPrimary = target.Surface.Role == MediaPresentationSurfaceRole.Primary;
+            var presented = Present(frame, target);
+            primaryExpected |= isPrimary;
+            primaryPresented |= isPrimary && presented;
+            anyPresented |= presented;
+        }
+
+        var succeeded = primaryExpected ? primaryPresented : anyPresented;
+        if (succeeded)
+            FramePresented?.Invoke(this, EventArgs.Empty);
+        return succeeded;
+    }
+
+    private bool Present(MediaCompositionFrame frame, Target target)
+    {
+        // One reusable composition buffer per target (Stage 022A slice 2). A present takes it
+        // out and puts it back, so concurrent presents (video and CDG/subtitle threads) never
+        // share it and no lock is held across the sink call; a concurrent present simply renders
+        // into a new buffer.
+        SoftwareCompositionBuffer? buffer = Interlocked.Exchange(ref target.Buffer, null);
+        SoftwareRenderOutput output = _renderer.Render(frame, target.Surface.PixelWidth, target.Surface.PixelHeight, ref buffer);
         if (output.IsRendered)
         {
             // The sink copies the span before returning, so the buffer can be reused next frame.
-            sink.PresentFrame(output.Pixels.Span, output.Width, output.Height, output.Stride);
+            target.Sink.PresentFrame(output.Pixels.Span, output.Width, output.Height, output.Stride);
         }
 
-        ReturnRenderBuffer(buffer);
-        if (!output.IsRendered)
-            return false;
+        bool keep;
+        lock (_sync)
+            keep = !_disposed && IsInitialized && _targets.TryGetValue(target.Surface.Id, out Target? current) && ReferenceEquals(current, target);
 
-        FramePresented?.Invoke(this, EventArgs.Empty);
-        return true;
+        // A detached, resized (replaced), cleaned-up or disposed target drops its buffer.
+        if (keep && buffer != null)
+            _ = Interlocked.CompareExchange(ref target.Buffer, buffer, null);
+
+        return output.IsRendered;
     }
 
     public void CleanupResources()
     {
         lock (_sync)
         {
-            _surface = null;
-            _sink = null;
+            _targets.Clear();
             IsInitialized = false;
         }
-
-        ReleaseRenderBuffer();
-    }
-
-    private void ReleaseRenderBuffer() => _ = Interlocked.Exchange(ref _renderBuffer, null);
-
-    private void ReturnRenderBuffer(SoftwareCompositionBuffer? buffer)
-    {
-        bool keep;
-        lock (_sync)
-            keep = !_disposed && IsInitialized;
-
-        // After cleanup or dispose the buffer is dropped, so teardown frees it.
-        if (keep && buffer != null)
-            _ = Interlocked.CompareExchange(ref _renderBuffer, buffer, null);
     }
 
     public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
@@ -144,12 +145,9 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
                 return;
 
             _disposed = true;
-            _surface = null;
-            _sink = null;
+            _targets.Clear();
             IsInitialized = false;
         }
-
-        ReleaseRenderBuffer();
     }
 
     private bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)
@@ -159,12 +157,11 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
 
         lock (_sync)
         {
-            if (_disposed || (requireExisting && _surface?.Id != surface.Id))
+            if (_disposed || (requireExisting && !_targets.ContainsKey(surface.Id)))
                 return false;
 
             IsInitialized = true;
-            _surface = surface;
-            _sink = sink;
+            _targets[surface.Id] = new Target(surface, sink!);
             return true;
         }
     }
@@ -174,10 +171,18 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
         out IMediaPresentationFrameSink? sink)
     {
         sink = null;
-        return surface is { IsValid: true, Role: MediaPresentationSurfaceRole.Primary }
+        return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
             && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
             && MediaPresentationFrameSinkHandle.TryResolve(handle, out sink)
             && sink != null;
+    }
+
+    private sealed class Target(MediaPresentationSurfaceDescriptor surface, IMediaPresentationFrameSink sink)
+    {
+        public SoftwareCompositionBuffer? Buffer;
+
+        public MediaPresentationSurfaceDescriptor Surface { get; } = surface;
+        public IMediaPresentationFrameSink Sink { get; } = sink;
     }
 }

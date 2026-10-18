@@ -8,8 +8,9 @@ backgrounds, deterministic nearest-neighbor stretch modes, wash colors, CDG over
 and pre-rasterized subtitles.
 
 The package also supplies `SoftwarePresentationCoordinatorFactory` for explicit host
-selection through the same renderer seam as Direct3D11. Its backend accepts one
-`ManagedBgraFrameSink` presentation surface. Native video resources and retained GPU
+selection through the same renderer seam as Direct3D11. Its backend accepts
+`ManagedBgraFrameSink` presentation surfaces, one per surface id (primary and secondary
+windows), and renders each composition at every target's size. Native video resources and retained GPU
 backgrounds are intentionally unsupported.
 
 Composition behavior is deterministic:

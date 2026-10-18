@@ -88,16 +88,18 @@ frame and size always produce byte-identical pixels. Deterministic rules:
   (`BackgroundNativeResource`, `UseRetainedBackground`) return `UnsupportedFrame`;
   invalid frames (non-positive output size, bad background/subtitle buffers or stride,
   malformed CDG snapshot, oversized buffer) return `InvalidFrame`; neither throws.
-- **Backend** — the internal `SoftwareRendererBackend` accepts exactly one primary
-  `ManagedBgraFrameSink` presentation surface, uses the surface's pixel size, and
-  publishes the rendered frame through `IMediaPresentationFrameSink`. Native-frame and
+- **Backend** — the internal `SoftwareRendererBackend` accepts one
+  `ManagedBgraFrameSink` presentation surface per surface id (the primary plus any
+  secondary/projector windows, ENG-016), renders each composition once per target at
+  that target's pixel size, and publishes it through `IMediaPresentationFrameSink`. With
+  a primary attached, a present succeeds only when the primary presented. Native-frame and
   device methods report unsupported without throwing. It retains no presentation
   stretch or background-frame state: effective stretch travels on each composition
   frame, and every render uses only the frame supplied by Core.
 
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its single managed frame-sink target.
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its managed frame-sink targets.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 

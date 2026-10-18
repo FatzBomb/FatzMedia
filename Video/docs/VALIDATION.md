@@ -607,7 +607,8 @@ Procedure and expected:
 20. Fullscreen WPF UI chrome overlay appears above the native HWND without becoming a media layer.
 21. Secondary/projector output receives the same final Core-composed frame, including plain
     hardware-decoded video with no subtitles or picture adjustments: open the secondary on the
-    same and on another monitor, then play, seek, and pause (ENG-015).
+    same and on another monitor, then play, seek, and pause (ENG-015). Repeat with
+    `--software`, for video and for CD+G, and resize the secondary (ENG-016).
 22. Closing secondary output while playing does not disturb primary output.
 23. Re-opening secondary output while playing resumes presentation correctly.
 24. Repeated media-type switches leave no stale layer artifacts.

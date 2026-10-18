@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-17
+Updated: 2026-10-18
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -29,6 +29,44 @@ review:
   the Windows Player yet.
 
 ## Completed
+
+### ENG-016 - Secondary window always blank in software mode
+
+Fixed: 2026-10-18, pending owner smoke.
+
+Reported: 2026-10-18 (owner smoke). With `--software`, the secondary/projector window stayed
+blank for video and for CD+G.
+
+Cause: two halves. `SecondaryPresentationWindow` always attached a native HWND payload, which
+the software renderer cannot draw into; and `SoftwareRendererBackend` accepted only a
+`Primary` managed frame sink and held a single surface. Present since the software renderer
+was introduced (7f0eaf3, 2026-08-07; stage 024A).
+
+Fix: the secondary window takes the primary surface's `WpfPresentationMode`; in
+`WpfComposited` it hosts a `WpfCompositedSurfaceHost` and attaches its managed frame-sink
+payload, at its pixel size (also refreshed on a DPI change between monitors). The software
+backend keeps one target per attached surface id, each with its own reusable composition
+buffer, and renders every composition once per target at the target's size. A presentation
+mode change (only allowed with no media open) reopens an open secondary window in the new
+mode, in the same place. Cost: one extra software composition per frame while a secondary
+window is open. Test: `SoftwareRendererBackendTests.SecondaryWindow_ReceivesEachCompositionAtItsOwnSize`
+(moved to the portable test project, so it runs on Linux CI too).
+`scripts/check-presentation-parity.ps1` now accepts either neutral payload for the secondary
+window.
+
+Not covered (unchanged behaviour): Direct3D11 in `WpfComposited` mode with a secondary window.
+The D3D11 backend set's no-mixed-target policy makes the managed sink the only target, and the
+bridge accepts a managed frame sink only for the primary, so the secondary stays blank there,
+as it did with the HWND payload. Use `NativeHwndOverlay` for a secondary window with Direct3D11.
+
+Review (local) decisions: with a primary attached, a software present succeeds only when the
+primary presented (as `D3D11PresentationBackendSet.NotifyTargetsPresented` does), so a
+secondary never hides a failed primary frame; a reopened secondary is placed before it shows.
+Not changed: two targets of the same size are still rendered separately (rare: the windows
+differ in size in practice); the Vulkan backend still accepts only a primary frame sink, but
+no Avalonia/WinForms adapter opens a secondary window yet, so fold multi-target support into
+ENG-014 when one does; `SecondaryPresentationWindow` gained an optional constructor parameter
+(source-compatible; no package has shipped yet).
 
 ### ENG-015 - Secondary window blank or frozen with plain hardware video
 
