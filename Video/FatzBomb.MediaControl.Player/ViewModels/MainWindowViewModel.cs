@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Wpf;
 using FatzBomb.MediaControl.Player.Configuration;
 using System.Collections.ObjectModel;
@@ -85,14 +84,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         VideoDisplayMode.ZoomToFill
     ];
 
-    public IReadOnlyList<WpfPresentationMode> PresentationModes { get; } =
-        App.UseSoftwareRenderer
-            ? [WpfPresentationMode.WpfComposited]
-            :
-            [
-                WpfPresentationMode.NativeHwndOverlay,
-                WpfPresentationMode.WpfComposited
-            ];
+    private static readonly WpfPresentationMode[] SoftwarePresentationModes = [WpfPresentationMode.WpfComposited];
+    private static readonly WpfPresentationMode[] AllPresentationModes =
+    [
+        WpfPresentationMode.NativeHwndOverlay,
+        WpfPresentationMode.WpfComposited
+    ];
+
+    // Stage 036A: what startup expects until App.RendererSelection resolves (ApplyRenderer).
+    private bool _usesSoftwareRenderer = App.ExpectsSoftwareRenderer;
+
+    public IReadOnlyList<WpfPresentationMode> PresentationModes =>
+        _usesSoftwareRenderer ? SoftwarePresentationModes : AllPresentationModes;
 
     public AsyncRelayCommand<string?> LoadMediaCommand { get; }
 
@@ -127,7 +130,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool CanUseSync => Player?.IsOpen == true;
 
-    public bool CanChangePresentationMode => !App.UseSoftwareRenderer && !IsBusy && Player?.IsOpen != true;
+    public bool CanChangePresentationMode => !_usesSoftwareRenderer && !IsBusy && Player?.IsOpen != true;
 
     [ObservableProperty]
     public partial string AudioVideoSyncText { get; private set; } = "+0.0s";
@@ -271,7 +274,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
             _ = SetProperty(ref field, value);
         }
-    } = App.UseSoftwareRenderer
+    } = App.ExpectsSoftwareRenderer
         ? WpfPresentationMode.WpfComposited
         : WpfPresentationMode.NativeHwndOverlay;
 
@@ -370,8 +373,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            var rendererName = App.UseSoftwareRenderer ? "Software" : "Direct3D11";
-            var decodingMethod = App.UseSoftwareRenderer
+            PlayerRendererSelection renderer = await App.RendererSelection;
+            if (_disposed)
+                return;
+
+            ApplyRenderer(renderer);
+            var rendererName = renderer.Summary;
+            var decodingMethod = renderer.UsesSoftwareDecoding
                 ? VideoDecodingMethod.Software
                 : VideoDecodingMethod.Hardware;
             var diagnosticsConfig = new MediaPlayerConfiguration(decodingMethod)
@@ -385,9 +393,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries }
             };
 
-            platformFactory = App.UseSoftwareRenderer
-                ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
-                : new WindowsDirect3D11MediaControlPlatformFactory();
+            // Logged before the engine starts, so they are there even when native loading fails.
+            foreach ((MediaDiagnosticLevel level, string message) in renderer.LogLines)
+                HandleDiagnosticOnUiThread(level, "Renderer", message);
+
+            platformFactory = new WindowsMediaControlPlatformFactory(renderer.Factory);
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
                 diagnosticsConfig,
                 NativeLibraryPaths,
@@ -409,10 +419,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Equalizer = BuildEqualizerSettings();
             player.CdgVisuals.BackgroundOpacity = (byte)CdgBackgroundOpacity;
             ApplyValidationControls(player);
-            Player = player;
-            RefreshSyncOffsets();
+            // Subscribed before the surface binds to the player: attaching it creates the
+            // renderer device, whose diagnostic (which GPU or WARP) was lost when subscribed after.
             player.MediaDiagnostic += OnPlayerDiagnostic;
             player.MediaError += OnPlayerError;
+            StartSubtitleTracking(player);
+            Player = player;
+            RefreshSyncOffsets();
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
             StartPreparedNextValidation(player);
@@ -435,6 +448,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = false;
             RefreshCommandStates();
         }
+    }
+
+    /// <summary>
+    /// Stage 036A: the auto chain lands on the software renderer only when Direct3D11 has no
+    /// device at all; then the surface switches to WPF-composited before any media is loaded.
+    /// </summary>
+    private void ApplyRenderer(PlayerRendererSelection renderer)
+    {
+        if (renderer.UsesSoftwareRenderer == _usesSoftwareRenderer)
+            return;
+
+        _usesSoftwareRenderer = renderer.UsesSoftwareRenderer;
+        // The mode first, so the combo box never holds a value missing from its new list.
+        if (_usesSoftwareRenderer)
+            PresentationMode = WpfPresentationMode.WpfComposited;
+        OnPropertyChanged(nameof(PresentationModes));
+        OnPropertyChanged(nameof(CanChangePresentationMode));
     }
 
     private bool CanLoadMedia(string? filePath) => !IsBusy && Player is not null && !string.IsNullOrWhiteSpace(filePath);

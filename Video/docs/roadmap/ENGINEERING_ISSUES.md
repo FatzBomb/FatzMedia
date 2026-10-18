@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-17
+Updated: 2026-10-18
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -29,6 +29,117 @@ review:
   the Windows Player yet.
 
 ## Completed
+
+### ENG-018 - Cadence report sometimes names the 60 Hz fallback instead of the monitor
+
+Fixed: 2026-10-18, pending owner smoke.
+
+Reported: 2026-10-18 (owner logs, 036A smoke). The once-per-open `VideoCadence` line said
+`60 Hz ... reported by the platform` in some runs and `59.973 Hz ... of the monitor showing
+the video` in others, with the same file, monitor and renderer.
+
+Cause: the report is decided once, on the first presentation pass after playback starts,
+from whatever rate is resolved at that instant. Two things can leave only the platform rate
+there for a moment: the renderer's rate source attaching just after playback starts, and the
+refresh-rate cache (017A slice 3) answering the first read after an idle spell with the value
+cached when the window was attached, refreshing in the background (empty if that first query
+failed). Presentation timing re-resolves the rate every 100 ms, so only the report was wrong.
+
+Fix: `VideoPipeline` checks the pending report on every presentation pass and, while the rate
+comes from the platform and a renderer rate source exists, waits up to 1 s for the renderer's
+rate before reporting the platform one (`ShouldWaitForRendererRefreshRate`, tested in
+`VideoCadenceReportTimingTests`). Host-render mode, with no presentation loop, reports at once
+as before.
+
+### ENG-017 - Software renderer drops frames at large output sizes
+
+Fixed: 2026-10-18. Owner smoke passed the same day (`--software` fullscreen on an ultrawide,
+with the secondary window maximized, for video and CD+G).
+
+Reported: 2026-10-18 (owner smoke, `video-sw-4` capture). With `--software`, fullscreen
+video on an ultrawide monitor dropped frames visibly, and more with the secondary window
+open (ENG-016 renders each composition once per window).
+
+Cause: `SoftwareCompositionRenderer` mapped and blended every output pixel generically: two
+double divisions and a floor for the source pixel, checked offsets, and a divide-by-255
+blend per channel, even for opaque video. The capture shows the presentation thread 78.5%
+busy, 89% of it in `SoftwareCompositionRenderer.Render`. Measured in the sandbox (4 cores),
+3440x1440 output from 1920x1080 video: 69 ms per frame (about 14 fps at most); with a
+partial wash and CD+G, 120 ms.
+
+Fix, with output byte-identical to before (checked during the change with a 400-scene
+golden hash over random sizes, stretch modes, alpha values, wash, CD+G, subtitles and
+transforms; not kept as a test):
+- each layer maps its source columns once (`SoftwareStretch.MapColumns`) and each row once,
+  instead of both per pixel;
+- opaque source pixels are copied and transparent ones skipped, which is what the blend
+  formulas give for alpha 255 and 0 (premultiplied: only when the colour is zero too); CD+G
+  palette entries are always opaque, so they are written directly;
+- the wash blends whole vectors with an exact integer divide by 255 (the same arithmetic
+  for the remainder); clear and opaque wash are fills;
+- outputs over 512K pixels are drawn in parallel row bands (each band writes only its own
+  rows, so the result does not depend on scheduling), at most 8 bands of at least 128K
+  pixels.
+
+Result: 3440x1440 video 69 -> about 6 ms per frame; with wash and CD+G 120 -> about 9 ms.
+Owner capture `video-sw-5` (same steps as `video-sw-4`: fullscreen ultrawide plus the
+maximized secondary window): presentation thread 78.5% -> 11.9% busy; the drawing moved to
+thread-pool bands (about 0.4 of a core in total). That capture also showed one band per
+core (21 pool threads, each about 2% busy, about 1000 work items/s) costing about a fifth
+of the drawing time in fork/join and wakeups, so bands are now capped at 8; owner smoke
+after the cap: noticeably less stutter, only occasional. What remains with both windows full
+size is accepted as the known limit of `--software` (a test/fallback mode); the trace points at WPF itself (the UI thread spends
+about 2 s per minute in `WriteableBitmap.WritePixels`, and WPF's native render thread, which
+the trace cannot sample, uploads two ultrawide bitmaps per frame).
+Test: `SoftwareCompositionRendererTests.Render_LargeFrame_MatchesThePerPixelBlendFormulas`
+checks every pixel of a banded 1200x864 render of background, wash, CD+G and premultiplied
+subtitles against the per-pixel formulas. Pixels are processed as little-endian BGRA words;
+a big-endian platform gets `UnsupportedFrame` instead of wrong colours.
+
+Not changed: the base-visual transform paths still blend per pixel (only while a picture
+adjustment is active); the WPF sink still copies each frame once and uploads it with
+`WritePixels`; the whole output is cleared even under an opaque background (opacity is per
+pixel, so it is not known up front); and presents that overlap (video and CD+G threads,
+several windows) each fan out to up to one band per core on the thread pool.
+
+### ENG-016 - Secondary window always blank in software mode
+
+Fixed: 2026-10-18. Owner smoke passed the same day (with ENG-017: video and CD+G in the
+secondary window under `--software`).
+
+Reported: 2026-10-18 (owner smoke). With `--software`, the secondary/projector window stayed
+blank for video and for CD+G.
+
+Cause: two halves. `SecondaryPresentationWindow` always attached a native HWND payload, which
+the software renderer cannot draw into; and `SoftwareRendererBackend` accepted only a
+`Primary` managed frame sink and held a single surface. Present since the software renderer
+was introduced (7f0eaf3, 2026-08-07; stage 024A).
+
+Fix: the secondary window takes the primary surface's `WpfPresentationMode`; in
+`WpfComposited` it hosts a `WpfCompositedSurfaceHost` and attaches its managed frame-sink
+payload, at its pixel size (also refreshed on a DPI change between monitors). The software
+backend keeps one target per attached surface id, each with its own reusable composition
+buffer, and renders every composition once per target at the target's size. A presentation
+mode change (only allowed with no media open) reopens an open secondary window in the new
+mode, in the same place. Cost: one extra software composition per frame while a secondary
+window is open. Test: `SoftwareRendererBackendTests.SecondaryWindow_ReceivesEachCompositionAtItsOwnSize`
+(runs in both test projects; the portable project links the Windows-free test files).
+`scripts/check-presentation-parity.ps1` now accepts either neutral payload for the secondary
+window.
+
+Not covered (unchanged behaviour): Direct3D11 in `WpfComposited` mode with a secondary window.
+The D3D11 backend set's no-mixed-target policy makes the managed sink the only target, and the
+bridge accepts a managed frame sink only for the primary, so the secondary stays blank there,
+as it did with the HWND payload. Use `NativeHwndOverlay` for a secondary window with Direct3D11.
+
+Review (local) decisions: with a primary attached, a software present succeeds only when the
+primary presented (as `D3D11PresentationBackendSet.NotifyTargetsPresented` does), so a
+secondary never hides a failed primary frame; a reopened secondary is placed before it shows.
+Not changed: two targets of the same size are still rendered separately (rare: the windows
+differ in size in practice); the Vulkan backend still accepts only a primary frame sink, but
+no Avalonia/WinForms adapter opens a secondary window yet, so fold multi-target support into
+ENG-014 when one does; `SecondaryPresentationWindow` gained an optional constructor parameter
+(source-compatible; no package has shipped yet).
 
 ### ENG-015 - Secondary window blank or frozen with plain hardware video
 

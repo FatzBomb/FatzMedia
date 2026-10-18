@@ -35,15 +35,9 @@ public sealed class SoftwareRendererBackendTests
     }
 
     [Fact]
-    public void AttachSurface_RejectsSecondaryAndInvalidSink()
+    public void AttachSurface_RejectsInvalidSink()
     {
         var backend = new SoftwareRendererBackend();
-        var sink = new RecordingFrameSink();
-        using var sinkHandle = new MediaPresentationFrameSinkHandle(sink);
-        MediaPresentationSurfaceDescriptor secondary = CreateSurface(sinkHandle, 1, 1) with
-        {
-            Role = MediaPresentationSurfaceRole.Projector
-        };
         var invalidNativeSurface = new MediaNativeSurfaceDescriptor(
             MediaNativeSurfaceTypeIds.ManagedBgraFrameSink,
             [new MediaNativeHandle(MediaNativeHandleIds.FrameSink, (nint)123456)]);
@@ -54,8 +48,79 @@ public sealed class SoftwareRendererBackendTests
             1,
             1);
 
-        Assert.False(backend.AttachSurface(secondary));
         Assert.False(backend.AttachSurface(invalid));
+        backend.Dispose();
+    }
+
+    [Fact]
+    public void SecondaryWindow_ReceivesEachCompositionAtItsOwnSize()
+    {
+        // ENG-016: in software mode the secondary/projector window is a managed frame sink too,
+        // and the backend renders every composition for each attached target.
+        var backend = new SoftwareRendererBackend();
+        var primarySink = new RecordingFrameSink();
+        var projectorSink = new RecordingFrameSink();
+        using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
+        using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
+        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 3, 2) with
+        {
+            Id = "secondary",
+            Role = MediaPresentationSurfaceRole.Projector
+        };
+        var presentedCount = 0;
+        backend.FramePresented += (_, _) => presentedCount++;
+
+        Assert.True(backend.AttachSurface(CreateSurface(primaryHandle, 2, 1)));
+        Assert.True(backend.AttachSurface(projector));
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty()));
+
+        Assert.Equal(1, presentedCount);
+        Assert.Equal((2, 1), (primarySink.Width, primarySink.Height));
+        Assert.Equal((3, 2), (projectorSink.Width, projectorSink.Height));
+        Assert.Equal(Enumerable.Repeat(new byte[] { 0, 0, 0, 255 }, 6).SelectMany(static pixel => pixel), projectorSink.Pixels);
+
+        Assert.True(backend.ResizeSurface(projector.WithSize(4, 1)));
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty()));
+        Assert.Equal((4, 1), (projectorSink.Width, projectorSink.Height));
+
+        Assert.True(backend.DetachSurface(projector));
+        projectorSink.Width = 0;
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty()));
+        Assert.Equal(0, projectorSink.Width);
+        Assert.Equal((2, 1), (primarySink.Width, primarySink.Height));
+        backend.Dispose();
+    }
+
+    [Fact]
+    public void PresentComposition_ReportsThePrimaryResult_WhenAPrimaryIsAttached()
+    {
+        var backend = new SoftwareRendererBackend();
+        var primarySink = new RecordingFrameSink();
+        var projectorSink = new RecordingFrameSink();
+        using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
+        using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
+        MediaPresentationSurfaceDescriptor primary = CreateSurface(primaryHandle, 2, 1);
+        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 2, 1) with
+        {
+            Id = "secondary",
+            Role = MediaPresentationSurfaceRole.Projector
+        };
+        var presentedCount = 0;
+        backend.FramePresented += (_, _) => presentedCount++;
+
+        Assert.True(backend.AttachSurface(primary));
+        Assert.True(backend.AttachSurface(projector));
+        // A primary too large to render fails even though the projector presents.
+        Assert.True(backend.ResizeSurface(primary.WithSize(int.MaxValue, int.MaxValue)));
+
+        Assert.False(backend.PresentComposition(MediaCompositionFrame.Empty()));
+        Assert.Equal(0, presentedCount);
+        Assert.Equal(2, projectorSink.Width);
+
+        // With only secondaries attached, any presented target is a presented frame.
+        Assert.True(backend.DetachSurface(primary));
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty()));
+        Assert.Equal(1, presentedCount);
         backend.Dispose();
     }
 
@@ -88,7 +153,7 @@ public sealed class SoftwareRendererBackendTests
     private sealed class RecordingFrameSink : IMediaPresentationFrameSink
     {
         public byte[] Pixels { get; private set; } = [];
-        public int Width { get; private set; }
+        public int Width { get; set; }
         public int Height { get; private set; }
         public int Stride { get; private set; }
 

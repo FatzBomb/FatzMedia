@@ -88,16 +88,26 @@ frame and size always produce byte-identical pixels. Deterministic rules:
   (`BackgroundNativeResource`, `UseRetainedBackground`) return `UnsupportedFrame`;
   invalid frames (non-positive output size, bad background/subtitle buffers or stride,
   malformed CDG snapshot, oversized buffer) return `InvalidFrame`; neither throws.
-- **Backend** — the internal `SoftwareRendererBackend` accepts exactly one primary
-  `ManagedBgraFrameSink` presentation surface, uses the surface's pixel size, and
-  publishes the rendered frame through `IMediaPresentationFrameSink`. Native-frame and
+- **Backend** — the internal `SoftwareRendererBackend` accepts one
+  `ManagedBgraFrameSink` presentation surface per surface id (the primary plus any
+  secondary/projector windows, ENG-016), renders each composition once per target at
+  that target's pixel size, and publishes it through `IMediaPresentationFrameSink`. With
+  a primary attached, a present succeeds only when the primary presented. Native-frame and
   device methods report unsupported without throwing. It retains no presentation
   stretch or background-frame state: effective stretch travels on each composition
   frame, and every render uses only the frame supplied by Core.
 
 ## Ownership
 
-Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its single managed frame-sink target.
+Renderer fallback (Stage 036A): Direct3D11 tries the GPU, then WARP, inside its own device
+creation. Across renderers, Core's `FallbackPresentationCoordinatorFactory` uses the first
+candidate whose `IMediaPresentationAvailabilityProbe` reports it available (for example
+Direct3D11, then the software renderer), once, at first use; the probe result says what the
+host must pair with it (`RequiresFrameSinkSurface`, `RequiresSoftwareDecoding`). The host
+composes the chain and builds surfaces and decoding to match; Core does not switch renderers
+mid-session.
+
+Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its managed frame-sink targets.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.
 

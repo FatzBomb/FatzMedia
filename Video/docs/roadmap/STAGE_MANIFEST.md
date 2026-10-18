@@ -19,7 +19,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
   validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
-  implemented (`updates/027A_1`, `updates/027A_3`); WinUI 3 deferred.
+  implemented (`updates/027A_1`, `updates/027A_3`); slice 2 re-planned 2026-10-18 as an
+  Avalonia GPU-shared surface (compositor import, no CPU copy or overlay window), not
+  started; WinUI 3 deferred.
 - `active/020A_ACTIVE_AudioFilterFramework.md` - filter contract + equalizer implemented;
   owner smoke passed 2026-10-17 (`updates/020A_1`).
 - `active/017A_ACTIVE_DisplayRateCompositorRewrite.md` - cadence model/spec implemented
@@ -39,7 +41,8 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
   capture script (`updates/022A_1`); Windows baseline captured 2026-10-17; slice 2 removes
   the per-frame software and WPF buffers, the per-frame audio lock, and per-frame display-rate
-  queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`).
+  queries; owner smoke passed 2026-10-18, software video 109 -> 0.5 MB/s (`updates/022A_2`); slice 3
+  reuses each scheduler's worker thread across seeks, owner smoke passed 2026-10-18 (`updates/022A_3`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
@@ -47,6 +50,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   `updates/033A_2`).
 - `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
   wrong-version native files, implemented; owner smoke passed 2026-10-17 (`updates/034A_1`).
+- `active/036A_ACTIVE_RendererFallbackChain.md` - Direct3D11 falls back from the GPU to WARP
+  (Windows' software rasterizer) on its own; Core `FallbackPresentationCoordinatorFactory`
+  then the software renderer; Player `--renderer=auto|gpu|warp|software`; implemented;
+  owner smoke passed 2026-10-18 (`updates/036A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;

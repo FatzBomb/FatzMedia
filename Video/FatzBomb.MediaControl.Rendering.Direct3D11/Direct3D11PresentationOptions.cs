@@ -10,9 +10,29 @@ public enum NativeSwapChainPresentMode
     Immediate
 }
 
+/// <summary>Which Direct3D11 device the renderer creates (Stage 036A).</summary>
+public enum Direct3D11DeviceSelection
+{
+    /// <summary>The GPU, then WARP (Windows' software Direct3D driver) when no GPU device can be created.</summary>
+    Auto,
+
+    /// <summary>The GPU only.</summary>
+    Hardware,
+
+    /// <summary>
+    /// WARP only: for testing, or for a machine whose GPU driver is known to be broken. Pair it
+    /// with software decoding; hardware-decoded frames bring their GPU device, which the renderer
+    /// adopts for direct presentation.
+    /// </summary>
+    Warp
+}
+
 /// <summary>Immutable creation-time options for the Direct3D11 presentation backend.</summary>
 public sealed record Direct3D11PresentationOptions
 {
     /// <summary>Gets the DXGI swap-chain presentation mode. VSync is the normal playback default.</summary>
     public NativeSwapChainPresentMode NativeSwapChainPresentMode { get; init; } = NativeSwapChainPresentMode.VSync;
+
+    /// <summary>Gets which device to create. <see cref="Direct3D11DeviceSelection.Auto"/> is the default.</summary>
+    public Direct3D11DeviceSelection DeviceSelection { get; init; } = Direct3D11DeviceSelection.Auto;
 }

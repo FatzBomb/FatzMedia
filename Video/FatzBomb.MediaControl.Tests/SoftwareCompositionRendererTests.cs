@@ -511,6 +511,101 @@ public sealed class SoftwareCompositionRendererTests
         Assert.Equal(SoftwareRenderStatus.InvalidFrame, output.Status);
     }
 
+    [Theory]
+    [InlineData(0x60204080u)]
+    [InlineData(0xFF204080u)]
+    public void Render_LargeFrame_MatchesThePerPixelBlendFormulas(uint washArgb)
+    {
+        // ENG-017: large outputs render in parallel row bands with exact shortcuts (opaque and
+        // transparent source pixels, direct CD+G writes, vectorized wash); every pixel must still
+        // equal the per-pixel nearest-neighbour blends of background, wash, CD+G and subtitles.
+        // 1200x864 is an exact 4x of the CD+G screen and 2x of the subtitle bitmap.
+        const int width = 1200;
+        const int height = 864;
+        const int backgroundWidth = 37;
+        const int backgroundHeight = 23;
+        const int subtitleWidth = 600;
+        const int subtitleHeight = 432;
+        var random = new Random(17);
+        var background = new byte[backgroundWidth * backgroundHeight * 4];
+        random.NextBytes(background);
+        for (var offset = 3; offset < background.Length; offset += 4)
+            background[offset] = random.Next(3) switch { 0 => 0, 1 => 255, _ => background[offset] };
+
+        var cdgIndices = new byte[300 * 216];
+        for (var index = 0; index < cdgIndices.Length; index++)
+            cdgIndices[index] = (byte)(random.Next(4) == 0 ? random.Next(20) : 2); // 2 = background, >= 16 = outside the palette
+        var palette = new int[16];
+        for (var index = 0; index < palette.Length; index++)
+            palette[index] = random.Next();
+
+        // Premultiplied: alpha 0 with a non-zero colour still adds its colour.
+        var subtitle = new byte[subtitleWidth * subtitleHeight * 4];
+        for (var offset = 0; offset < subtitle.Length; offset += 4)
+        {
+            var alpha = random.Next(4) switch { 0 => 255, 1 => random.Next(256), _ => 0 };
+            var colourLimit = random.Next(8) == 0 ? 40 : alpha + 1;
+            subtitle[offset] = (byte)random.Next(Math.Max(1, colourLimit));
+            subtitle[offset + 1] = (byte)random.Next(Math.Max(1, colourLimit));
+            subtitle[offset + 2] = (byte)random.Next(Math.Max(1, colourLimit));
+            subtitle[offset + 3] = (byte)alpha;
+        }
+
+        MediaCompositionFrame frame = CreateBackgroundFrame(background, backgroundWidth, backgroundHeight, MediaCompositionStretchMode.Fill) with
+        {
+            WashArgb = washArgb,
+            CdgOverlay = new CdgRenderSnapshot(1, 1, cdgIndices, palette, 0, 2, []),
+            SubtitleBgra = subtitle,
+            SubtitleWidth = subtitleWidth,
+            SubtitleHeight = subtitleHeight,
+            SubtitleStride = subtitleWidth * 4
+        };
+
+        SoftwareRenderOutput output = _renderer.Render(frame, width, height);
+
+        Assert.Equal(SoftwareRenderStatus.Rendered, output.Status);
+        ReadOnlySpan<byte> pixels = output.Pixels.Span;
+        var washAlpha = (int)(washArgb >> 24);
+        Span<int> expected = stackalloc int[4];
+        for (var y = 0; y < height; y++)
+        {
+            var backgroundY = Math.Clamp((int)Math.Floor((y + 0.5) / height * backgroundHeight), 0, backgroundHeight - 1);
+            for (var x = 0; x < width; x++)
+            {
+                var backgroundX = Math.Clamp((int)Math.Floor((x + 0.5) / width * backgroundWidth), 0, backgroundWidth - 1);
+                var backgroundOffset = ((backgroundY * backgroundWidth) + backgroundX) * 4;
+                var backgroundAlpha = background[backgroundOffset + 3];
+                for (var channel = 0; channel < 4; channel++)
+                {
+                    // Opaque black clear, then straight-alpha background and wash; the alpha
+                    // lane blends source 255.
+                    var value = channel == 3 ? 255 : 0;
+                    value = BlendStraight(channel == 3 ? 255 : background[backgroundOffset + channel], backgroundAlpha, value);
+                    expected[channel] = BlendStraight(channel == 3 ? 255 : (int)((washArgb >> (8 * channel)) & 0xFF), washAlpha, value);
+                }
+
+                var cdgIndex = cdgIndices[((y / 4) * 300) + (x / 4)];
+                if (cdgIndex != 2 && cdgIndex < palette.Length)
+                {
+                    for (var channel = 0; channel < 3; channel++)
+                        expected[channel] = (palette[cdgIndex] >> (8 * channel)) & 0xFF;
+                    expected[3] = 255;
+                }
+
+                var subtitleOffset = (((y / 2) * subtitleWidth) + (x / 2)) * 4;
+                var subtitleAlpha = subtitle[subtitleOffset + 3];
+                for (var channel = 0; channel < 4; channel++)
+                {
+                    expected[channel] = Math.Min(255, subtitle[subtitleOffset + channel] + (((expected[channel] * (255 - subtitleAlpha)) + 127) / 255));
+                    Assert.Equal(expected[channel], pixels[(((y * width) + x) * 4) + channel]);
+                }
+            }
+        }
+
+        static int BlendStraight(int source, int alpha, int destination) =>
+            Math.Min(255, ((source * alpha) + (destination * (255 - alpha)) + 127) / 255);
+    }
+
     private static MediaCompositionFrame CreateBackgroundFrame(
         byte[] pixels,
         int width,

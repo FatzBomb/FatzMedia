@@ -46,7 +46,8 @@ pool. Renderers already had to finish with `BackgroundBgra` inside `PresentCompo
 1. Remove copy 3 when the decoder can hand over pool ownership (frame lease from
    `VideoDecoder` to the coordinator instead of copy + return).
 2. Direct3D11: map-discard dynamic texture upload from the retained buffer (measure).
-3. Software renderer: skip the background blend for opaque full-coverage frames.
+3. ~~Software renderer: skip the background blend for opaque full-coverage frames.~~ Done
+   by ENG-017 (2026-10-18): opaque source pixels are copied, not blended.
 
 ## Explicit Non-Goals
 

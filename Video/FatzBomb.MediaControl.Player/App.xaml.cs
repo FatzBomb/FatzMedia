@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using FatzBomb.MediaControl.Player.Configuration;
 
 namespace FatzBomb.MediaControl.Player;
 
@@ -19,7 +20,18 @@ public partial class App : Application
 
     public static string? StartupMediaPath { get; private set; }
 
-    public static bool UseSoftwareRenderer { get; private set; }
+    /// <summary>
+    /// Gets whether the software renderer is expected before <see cref="RendererSelection"/>
+    /// resolves: only an explicit <c>--software</c> / <c>--renderer=software</c> is known up front.
+    /// </summary>
+    public static bool ExpectsSoftwareRenderer { get; private set; }
+
+    /// <summary>
+    /// Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software). The auto
+    /// chain creates a probe device, so it resolves off the UI thread and the window shows at once;
+    /// the main view model waits for it before creating the engine.
+    /// </summary>
+    internal static Task<PlayerRendererSelection> RendererSelection { get; private set; } = null!;
 
     public static bool ResetPitchOnMediaLoad { get; private set; }
 
@@ -47,8 +59,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        UseSoftwareRenderer = e.Args.Any(static argument =>
-            string.Equals(argument, "--software", StringComparison.OrdinalIgnoreCase));
+        const string rendererPrefix = "--renderer=";
+        var rendererArgument = e.Args
+            .Where(static argument => argument.StartsWith(rendererPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[rendererPrefix.Length..].Trim('"'))
+            .LastOrDefault();
+        PlayerRendererChoice rendererChoice = e.Args.Any(static argument =>
+            string.Equals(argument, "--software", StringComparison.OrdinalIgnoreCase))
+                ? PlayerRendererChoice.Software
+                : PlayerRendererChoice.Auto;
+        var invalidRendererArgument = false;
+        if (rendererArgument is not null)
+        {
+            if (PlayerRendererSelection.TryParse(rendererArgument, out PlayerRendererChoice parsed))
+                rendererChoice = parsed;
+            else
+                invalidRendererArgument = true;
+        }
         ResetPitchOnMediaLoad = e.Args.Any(static argument =>
             string.Equals(argument, "--reset-pitch-on-load", StringComparison.OrdinalIgnoreCase));
         ResetTempoOnMediaLoad = e.Args.Any(static argument =>
@@ -99,6 +126,29 @@ public partial class App : Application
             !argument.StartsWith("--", StringComparison.Ordinal));
 
         TryAttachDebugLog();
+
+        ExpectsSoftwareRenderer = rendererChoice == PlayerRendererChoice.Software;
+        var invalidRendererValue = invalidRendererArgument ? rendererArgument : null;
+        RendererSelection = Task.Run(() => ResolveRenderer(rendererChoice, invalidRendererValue));
+    }
+
+    private static PlayerRendererSelection ResolveRenderer(PlayerRendererChoice choice, string? invalidValue)
+    {
+        PlayerRendererSelection selection;
+        try
+        {
+            selection = PlayerRendererSelection.Resolve(choice);
+        }
+        catch (Exception ex)
+        {
+            selection = PlayerRendererSelection.SoftwareAfterFailure(ex);
+        }
+
+        if (invalidValue is not null)
+            selection.AddLogLine(MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{invalidValue}' (use auto, gpu, warp or software); using {choice.ToString().ToLowerInvariant()}.");
+
+        Trace.WriteLine($"[Player] Renderer: {selection.Summary}");
+        return selection;
     }
 
     private void TryAttachDebugLog()

@@ -143,15 +143,38 @@ public sealed partial class MediaSurface : Grid
             return true;
         }
 
-        _secondaryWindow = new SecondaryPresentationWindow(Player, DefaultSecondarySurfaceId)
+        OpenSecondaryWindow(Player, Rect.Empty, WindowState.Normal);
+        return true;
+    }
+
+    private void OpenSecondaryWindow(IMediaControlSession session, Rect bounds, WindowState state)
+    {
+        // The secondary window presents the same way as this surface, so software mode, which
+        // draws only into frame sinks, reaches it too (ENG-016).
+        _secondaryWindow = new SecondaryPresentationWindow(
+            session,
+            DefaultSecondarySurfaceId,
+            MediaPresentationSurfaceRole.Projector,
+            _appliedPresentationMode)
         {
             Owner = Window.GetWindow(this),
             Title = "FatzBombMedia Secondary Output"
         };
+        if (!bounds.IsEmpty)
+        {
+            // Placed before it shows, so a reopened window neither jumps nor attaches at the
+            // default size first.
+            _secondaryWindow.WindowStartupLocation = WindowStartupLocation.Manual;
+            _secondaryWindow.Left = bounds.Left;
+            _secondaryWindow.Top = bounds.Top;
+            _secondaryWindow.Width = bounds.Width;
+            _secondaryWindow.Height = bounds.Height;
+            _secondaryWindow.WindowState = state;
+        }
+
         _secondaryWindow.Closed += OnSecondaryWindowClosed;
         _secondaryWindow.Show();
         SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
-        return true;
     }
 
     public bool CloseSecondaryOutput()
@@ -236,6 +259,22 @@ public sealed partial class MediaSurface : Grid
         surface.ConfigurePresentationHost();
         surface.UpdateOverlayWindow();
         surface.AttachOrResizePrimarySurface();
+        surface.ReopenSecondaryOutputInAppliedMode();
+    }
+
+    /// <summary>
+    /// The secondary window's surface payload follows the presentation mode (ENG-016), so an
+    /// open secondary is reopened in the new mode, in the same place.
+    /// </summary>
+    private void ReopenSecondaryOutputInAppliedMode()
+    {
+        if (Player is not { } session || _secondaryWindow is not { IsVisible: true } previous)
+            return;
+
+        Rect bounds = previous.RestoreBounds;
+        WindowState state = previous.WindowState;
+        _ = CloseSecondaryOutput();
+        OpenSecondaryWindow(session, bounds, state);
     }
 
     private static void OnOverlayContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
