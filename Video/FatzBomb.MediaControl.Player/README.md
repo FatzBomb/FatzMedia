@@ -112,6 +112,12 @@ decodes in software); `software` (or the older `--software`) forces the software
 with the WPF-composited surface and software decoding. The status line names the renderer
 and device, and the Log panel's `Renderer` entries say what was tried and why.
 
+## HDR video
+
+HDR10 video is tone mapped to SDR (Stage 038A): the Log's `Decoding ...` line says
+`HDR10/PQ, tone mapped to SDR`, and an Info line names the peak brightness used.
+`--no-hdr-tonemap` shows HDR as before (washed out), for comparison.
+
 ## Subtitles
 
 The **Sync** flyout has a **SUBTITLES** picker: Off plus the loaded media's embedded tracks

@@ -43,6 +43,9 @@ public partial class App : Application
 
     public static bool EnableSilenceTrim { get; private set; }
 
+    /// <summary>Shows HDR video without tone mapping (<c>--no-hdr-tonemap</c>), for comparison.</summary>
+    public static bool DisableHdrToneMapping { get; private set; }
+
     public static string? PrepareNextPath { get; private set; }
 
     public static bool AutoTransitionToPreparedNext { get; private set; }
@@ -86,6 +89,8 @@ public partial class App : Application
             string.Equals(argument, "--visual-transform-demo", StringComparison.OrdinalIgnoreCase));
         EnableSilenceTrim = e.Args.Any(static argument =>
             string.Equals(argument, "--trim-silence", StringComparison.OrdinalIgnoreCase));
+        DisableHdrToneMapping = e.Args.Any(static argument =>
+            string.Equals(argument, "--no-hdr-tonemap", StringComparison.OrdinalIgnoreCase));
         const string prepareNextPrefix = "--prepare-next=";
         PrepareNextPath = e.Args
             .Where(static argument => argument.StartsWith(prepareNextPrefix, StringComparison.OrdinalIgnoreCase))

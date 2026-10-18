@@ -788,8 +788,9 @@ Video color (ENG-019):
 - With brightness and contrast at their defaults, an SDR video matches another player
   (Windows Media Player, mpv or VLC): blacks are black, not dark gray, and whites are not gray.
 - The same file with `--software` looks the same as with the GPU (Direct3D11) path.
-- An HDR file (the line says "HDR10/PQ") still looks washed out: tone mapping is not
-  implemented.
+- An HDR10 file (the line says "HDR10/PQ, tone mapped to SDR") has normal contrast and color
+  (Stage 038A; steps in `docs/roadmap/updates/038A_1`). With `--no-hdr-tonemap` it looks
+  washed out, as before. HLG files are not tone mapped yet.
 
 ---
 
