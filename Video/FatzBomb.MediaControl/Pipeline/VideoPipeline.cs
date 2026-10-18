@@ -88,14 +88,6 @@ internal sealed partial class VideoPipeline(
     ];
     private static readonly TimeSpan HardwareDecodeReprobeInterval = TimeSpan.FromSeconds(5);
     private const int PresentationDiagnosticsFrameInterval = 120;
-    private const int PostSeekRecoveryMilliseconds = 450;
-    private const int PostSeekUnderfilledRecoveryMilliseconds = 700;
-    private const int PostSeekEmptyQueueRecoveryMilliseconds = 900;
-    private const int PostSeekWarmupDecodeBudgetMilliseconds = 260;
-    private const int PostSeekWarmupRetryBudgetMilliseconds = 220;
-    private const int SharedDemuxerPostSeekPrerollBudgetMilliseconds = 2500;
-    private const int PostSeekMinimumBufferedFrames = 3;
-    private const int PostSeekAdaptiveSuppressionWindows = 2;
     private readonly AdaptiveSeekPumpTiming _seekPumpTiming = new();
     private const double MaxPresentLatenessSeconds = 0.18;
     private const double DisplayLockedPtsToleranceSeconds = 0.0005;
@@ -112,8 +104,7 @@ internal sealed partial class VideoPipeline(
     private double _presentationDiagnosticLeadMs;
     private int _presentationDiagnosticClockLateSamples;
     private double _activePresentationLeadRefreshIntervals = double.NaN;
-    private long _postSeekRecoveryUntilTimestamp;
-    private int _postSeekAdaptiveSuppressionWindowsRemaining;
+    private readonly PostSeekRecovery _postSeekRecovery = new();
 
     public IAudioEngine? Audio => _audioEngine;
     public bool HasAudio => _audioEngine?.IsOpen == true;
@@ -1469,37 +1460,24 @@ internal sealed partial class VideoPipeline(
     {
         RequestDisplayLockedReset();
         _activePresentationLeadRefreshIntervals = GetInitialPresentationLeadRefreshIntervals();
-        _postSeekRecoveryUntilTimestamp = 0;
-        _postSeekAdaptiveSuppressionWindowsRemaining = 0;
+        _postSeekRecovery.Reset();
         ResetPresentationDiagnostics();
     }
 
-    private bool IsPostSeekRecoveryActive()
-    {
-        var recoveryUntil = Interlocked.Read(ref _postSeekRecoveryUntilTimestamp);
-        return recoveryUntil > 0 && Stopwatch.GetTimestamp() < recoveryUntil;
-    }
+    private bool IsPostSeekRecoveryActive() => _postSeekRecovery.IsActive(Stopwatch.GetTimestamp());
 
     private void BeginPostSeekPresentationRecovery()
     {
         RequestDisplayLockedReset();
         var bufferedFrames = _videoDecoder?.FrameCount ?? 0;
-        var recoveryMilliseconds = bufferedFrames <= 0
-            ? PostSeekEmptyQueueRecoveryMilliseconds
-            : bufferedFrames < PostSeekMinimumBufferedFrames
-                ? PostSeekUnderfilledRecoveryMilliseconds
-                : PostSeekRecoveryMilliseconds;
-
-        var until = Stopwatch.GetTimestamp() + (long)(recoveryMilliseconds / 1000.0 * Stopwatch.Frequency);
-        _ = Interlocked.Exchange(ref _postSeekRecoveryUntilTimestamp, until);
-        _ = Interlocked.Exchange(ref _postSeekAdaptiveSuppressionWindowsRemaining, PostSeekAdaptiveSuppressionWindows);
+        var recoveryMilliseconds = _postSeekRecovery.Begin(bufferedFrames, Stopwatch.GetTimestamp(), Stopwatch.Frequency);
         ResetPresentationDiagnostics();
         if (_configuration.EnableLogging)
         {
             Debug.WriteLine(
                 $"[VideoPipeline:SeekRecovery] Started {recoveryMilliseconds}ms recovery window; " +
                 $"buffered={bufferedFrames}/{GetTargetBufferedVideoFrames()}, lead={GetActivePresentationLeadRefreshIntervals():F3} refreshes, " +
-                $"adaptiveSuppress={PostSeekAdaptiveSuppressionWindows} windows.");
+                $"adaptiveSuppress={PostSeekRecovery.AdaptiveSuppressionWindows} windows.");
         }
     }
 
@@ -1509,7 +1487,7 @@ internal sealed partial class VideoPipeline(
         if (decoder == null)
             return;
 
-        var targetBufferedFrames = Math.Min(GetTargetBufferedVideoFrames(), Math.Max(PostSeekMinimumBufferedFrames, MinBufferedVideoFrames));
+        var targetBufferedFrames = PostSeekRecovery.WarmupTargetFrames(GetTargetBufferedVideoFrames(), MinBufferedVideoFrames);
         var decodedFrames = 0;
         int firstPassDecodedFrames;
 
@@ -1518,7 +1496,7 @@ internal sealed partial class VideoPipeline(
             firstPassDecodedFrames = DecodePostSeekWarmupFrames(
                 decoder,
                 targetBufferedFrames,
-                PostSeekWarmupDecodeBudgetMilliseconds);
+                PostSeekRecovery.WarmupDecodeBudgetMilliseconds);
 
             decodedFrames += firstPassDecodedFrames;
 
@@ -1531,7 +1509,7 @@ internal sealed partial class VideoPipeline(
                 decodedFrames += DecodePostSeekWarmupFrames(
                     decoder,
                     targetBufferedFrames,
-                    PostSeekWarmupRetryBudgetMilliseconds);
+                    PostSeekRecovery.WarmupRetryBudgetMilliseconds);
             }
 
             // A shared seek starts at the preceding video keyframe. Long-GOP
@@ -1544,7 +1522,7 @@ internal sealed partial class VideoPipeline(
                 decodedFrames += DecodePostSeekWarmupFrames(
                     decoder,
                     targetBufferedFrames,
-                    SharedDemuxerPostSeekPrerollBudgetMilliseconds);
+                    PostSeekRecovery.SharedDemuxerPrerollBudgetMilliseconds);
             }
         }
 
@@ -1553,7 +1531,7 @@ internal sealed partial class VideoPipeline(
             Debug.WriteLine(
                 $"[VideoPipeline:SeekRecovery] Warmed video queue after seek to {target:F3}s: " +
                 $"decoded={decodedFrames} (firstPass={firstPassDecodedFrames}), queued={decoder.FrameCount}/{targetBufferedFrames}, " +
-                $"budget={PostSeekWarmupDecodeBudgetMilliseconds}+{PostSeekWarmupRetryBudgetMilliseconds}ms.");
+                $"budget={PostSeekRecovery.WarmupDecodeBudgetMilliseconds}+{PostSeekRecovery.WarmupRetryBudgetMilliseconds}ms.");
         }
     }
 
@@ -1945,7 +1923,7 @@ internal sealed partial class VideoPipeline(
             if (_configuration.EnableVerboseLogging) Debug.WriteLine($"[VideoPipeline:SmartSeek] Dropped {droppedFrames} stale post-seek video frame(s) before {minimumPresentationTime:F3}s.");
     }
 
-    private bool ShouldSuppressLateFrameDrop() => IsPostSeekRecoveryActive() || Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining) > 0;
+    private bool ShouldSuppressLateFrameDrop() => _postSeekRecovery.ShouldSuppressLateFrameDrop(Stopwatch.GetTimestamp());
 
     private void PresentFrameForPosition(double targetPosition, double clockPosition, bool forceReissue = false, bool displayLocked = false)
     {
@@ -2082,18 +2060,12 @@ internal sealed partial class VideoPipeline(
 
         var frameIntervalMs = FramesPerSecond > 0 ? 1000.0 / FramesPerSecond : 0.0;
         var activeLeadRefreshes = GetActivePresentationLeadRefreshIntervals();
-        var inSeekRecovery = IsPostSeekRecoveryActive();
-        var suppressedWindows = Volatile.Read(ref _postSeekAdaptiveSuppressionWindowsRemaining);
-        string adaptiveAction;
-        if (inSeekRecovery)
-            adaptiveAction = "seek-recovery";
-        else if (suppressedWindows > 0)
+        var adaptiveAction = _postSeekRecovery.NextWindow(Stopwatch.GetTimestamp(), out var remaining) switch
         {
-            var remaining = Math.Max(0, Interlocked.Decrement(ref _postSeekAdaptiveSuppressionWindowsRemaining));
-            adaptiveAction = $"post-seek-suppress remaining={remaining}";
-        }
-        else
-            adaptiveAction = UpdateAdaptivePresentationLead(refreshIntervalMs);
+            PostSeekRecovery.WindowAction.Recovering => "seek-recovery",
+            PostSeekRecovery.WindowAction.Suppressed => $"post-seek-suppress remaining={remaining}",
+            _ => UpdateAdaptivePresentationLead(refreshIntervalMs),
+        };
 
         if (_configuration.EnablePerformanceLogging)
         {

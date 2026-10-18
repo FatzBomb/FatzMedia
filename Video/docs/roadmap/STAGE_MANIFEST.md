@@ -29,8 +29,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
   (`VideoLoopBoundary`), slice 2 the adaptive presentation-lead rules
-  (`PresentationLeadController`); implemented, pending manual smoke (`updates/041A_1`,
-  `updates/041A_2`).
+  (`PresentationLeadController`), slice 3 the post-seek recovery state machine
+  (`PostSeekRecovery`); implemented, pending manual smoke (`updates/041A_1` to `updates/041A_3`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

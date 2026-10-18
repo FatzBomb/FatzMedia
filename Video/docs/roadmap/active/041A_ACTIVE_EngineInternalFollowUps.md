@@ -1,8 +1,9 @@
 # Active Stage 041A - Engine-Internal Follow-Ups
 
 Prepared: 2026-10-18 (idea), activated 2026-10-18 (owner: "do 041a").
-Status: slices 1 and 2 (loop-boundary rules, presentation-lead rules) implemented, pending
-manual smoke (`updates/041A_1`, `updates/041A_2`).
+Status: slices 1-3 (the three 015A seams: loop-boundary rules, presentation-lead rules,
+post-seek recovery) implemented, pending manual smoke (`updates/041A_1` to `updates/041A_3`).
+The 010A/019A, 017A and 022A items are not started.
 
 Small optional follow-ups left by stages completed on 2026-10-18, collected here
 so the stages could close. Each item is its own bounded slice. Pick one at a time, measure
@@ -18,6 +19,7 @@ Next seams, in order:
 Each is an extraction with focused tests and no behavior change.
 - Slice 1 (seam 1) implemented: `Pipeline/VideoLoopBoundary.cs` (`updates/041A_1`).
 - Slice 2 (seam 2) implemented: `Pipeline/PresentationLeadController.cs` (`updates/041A_2`).
+- Slice 3 (seam 3) implemented: `Pipeline/PostSeekRecovery.cs` (`updates/041A_3`).
 
 ## From 010A and 019A (software video copy path, frame ownership)
 
