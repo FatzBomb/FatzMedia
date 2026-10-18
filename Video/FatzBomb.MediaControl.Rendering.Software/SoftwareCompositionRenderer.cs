@@ -10,6 +10,18 @@ public sealed class SoftwareCompositionRenderer
 {
     public SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height)
     {
+        SoftwareCompositionBuffer? buffer = null;
+        return Render(frame, width, height, ref buffer);
+    }
+
+    /// <summary>
+    /// Renders into <paramref name="reusableBuffer"/> when it has the output size, otherwise into
+    /// a new buffer stored back into it (Stage 022A slice 2: the backend presented a new
+    /// full-surface array per frame, about 109 MB/s for 1080p software video). The output's
+    /// pixels are then only valid until the next render into the same buffer.
+    /// </summary>
+    internal SoftwareRenderOutput Render(MediaCompositionFrame frame, int width, int height, ref SoftwareCompositionBuffer? reusableBuffer)
+    {
         if (width <= 0 || height <= 0)
         {
             return SoftwareRenderOutput.Failure(
@@ -41,7 +53,10 @@ public sealed class SoftwareCompositionRenderer
         SoftwareCompositionBuffer buffer;
         try
         {
-            buffer = new SoftwareCompositionBuffer(width, height);
+            buffer = reusableBuffer is { } reusable && reusable.Width == width && reusable.Height == height
+                ? reusable
+                : new SoftwareCompositionBuffer(width, height);
+            reusableBuffer = buffer;
         }
         catch (OverflowException)
         {

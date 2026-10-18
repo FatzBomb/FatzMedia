@@ -18,6 +18,35 @@ public sealed class SoftwareCompositionRendererTests
     }
 
     [Fact]
+    public void Render_PublicOverload_ReturnsIndependentOutputs()
+    {
+        SoftwareRenderOutput first = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1);
+        SoftwareRenderOutput second = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1);
+
+        Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, first.Pixels.ToArray());
+        Assert.Equal(new byte[8], second.Pixels.ToArray());
+    }
+
+    [Fact]
+    public void Render_ReusableBuffer_IsReusedAtTheSameSizeAndFullyRedrawn()
+    {
+        // Stage 022A slice 2: the backend reuses one buffer instead of allocating per frame.
+        SoftwareCompositionBuffer? buffer = null;
+        SoftwareRenderOutput black = _renderer.Render(MediaCompositionFrame.Empty(), 2, 1, ref buffer);
+        SoftwareCompositionBuffer firstBuffer = Assert.IsType<SoftwareCompositionBuffer>(buffer);
+        Assert.Equal(new byte[] { 0, 0, 0, 255, 0, 0, 0, 255 }, black.Pixels.ToArray());
+
+        SoftwareRenderOutput transparent = _renderer.Render(MediaCompositionFrame.Empty(MediaCompositionClearMode.Transparent), 2, 1, ref buffer);
+
+        Assert.Same(firstBuffer, buffer);
+        Assert.Equal(new byte[8], transparent.Pixels.ToArray());
+
+        _ = _renderer.Render(MediaCompositionFrame.Empty(), 3, 1, ref buffer);
+        Assert.NotSame(firstBuffer, buffer);
+        Assert.Equal(3, buffer!.Width);
+    }
+
+    [Fact]
     public void Render_ConfiguredColor_PremultipliesOutput()
     {
         var frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0x80804020);

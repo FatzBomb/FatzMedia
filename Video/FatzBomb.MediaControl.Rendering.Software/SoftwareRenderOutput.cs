@@ -1,6 +1,11 @@
 namespace FatzBomb.MediaControl.Rendering.Software;
 
-/// <summary>Immutable result of one software composition attempt.</summary>
+/// <summary>
+/// Result of one software composition attempt. Outputs of the public
+/// <see cref="SoftwareCompositionRenderer.Render(Core.Graphics.Composition.MediaCompositionFrame, int, int)"/>
+/// own their pixels; the backend's internal reusable-buffer overload returns pixels that the
+/// next render into the same buffer overwrites.
+/// </summary>
 public sealed class SoftwareRenderOutput
 {
     private readonly byte[] _pixels;

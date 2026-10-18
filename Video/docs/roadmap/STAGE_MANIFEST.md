@@ -37,7 +37,9 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/019A_ACTIVE_VideoFrameEventArgsReuseApiRedesign.md` - lifetime matrix, written
   ephemeral contract, conformance tests; no behaviour change (`updates/019A_1`).
 - `active/022A_ACTIVE_ThreadModelProfilingAndSimplification.md` - thread-ownership map and
-  capture script; Windows baseline capture pending (`updates/022A_1`).
+  capture script (`updates/022A_1`); Windows baseline captured 2026-10-17; slice 2 removes
+  the per-frame software buffer, the per-frame audio lock, and per-frame display-rate queries, pending
+  manual smoke (`updates/022A_2`).
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,

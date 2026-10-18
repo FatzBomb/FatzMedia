@@ -1008,6 +1008,27 @@ internal sealed partial class VideoPipeline(
 
     private double GetDisplayRefreshIntervalSeconds() => ResolveDisplayRefresh().IntervalSeconds;
 
+    // The presentation loop reads the display interval several times per frame (interval,
+    // lead, cadence checks). Resolving it at most every 100 ms keeps the renderer and DWM
+    // queries off the per-frame path (Stage 022A slice 2) and gives one frame one rate.
+    private static readonly long DisplayRefreshMemoTicks = Stopwatch.Frequency / 10;
+    private ResolvedDisplayRefresh? _resolvedDisplayRefresh;
+
+    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz, long Timestamp);
+
+    private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefresh()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var overrideHz = _overrideRefreshHz;
+        ResolvedDisplayRefresh? cached = Volatile.Read(ref _resolvedDisplayRefresh);
+        if (cached is not null && cached.OverrideHz == overrideHz && now - cached.Timestamp < DisplayRefreshMemoTicks)
+            return (cached.IntervalSeconds, cached.Source);
+
+        (var interval, DisplayRefreshSource source) = ResolveDisplayRefreshUncached(overrideHz);
+        Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz, now));
+        return (interval, source);
+    }
+
     /// <summary>
     /// Resolves the presentation tick interval: prefers an explicitly supplied monitor refresh
     /// rate (see SetDisplayRefreshRate), then the rate the renderer reports for the monitor
@@ -1015,10 +1036,10 @@ internal sealed partial class VideoPipeline(
     /// does not reliably reflect any one monitor on mixed-refresh-rate setups. Falls back to the
     /// platform's detection (DWM on Windows), then to 60Hz.
     /// </summary>
-    private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefresh()
+    private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefreshUncached(double? overrideHz)
     {
-        if (_overrideRefreshHz is { } overrideHz && double.IsFinite(overrideHz) && overrideHz > 0)
-            return (1.0 / overrideHz, DisplayRefreshSource.Host);
+        if (overrideHz is { } hostHz && double.IsFinite(hostHz) && hostHz > 0)
+            return (1.0 / hostHz, DisplayRefreshSource.Host);
 
         if (Volatile.Read(ref _rendererRefreshRateSource)?.Invoke() is { } rendererHz && double.IsFinite(rendererHz) && rendererHz > 0)
             return (1.0 / rendererHz, DisplayRefreshSource.Renderer);

@@ -2,8 +2,9 @@
 
 Prepared: 2026-10-16
 Status: Slice 1 (thread-ownership map from code, repeatable capture tooling) implemented.
-The measured baseline needs Windows with native DLLs and is the owner's next step; no
-thread behaviour was changed.
+The owner captured the Windows baseline on 2026-10-17 (below). Slice 2 removes the three
+costs it measured that are cheapest to remove (`updates/022A_2`); no thread was added,
+removed, or re-owned.
 
 ## Thread Ownership Map (pinned, from code)
 
@@ -61,11 +62,51 @@ when missing and fails loudly if either tool fails. Validated on Linux against a
 | `video-sw` | same with `--software` |
 | `idle` | Player open, nothing loaded, 60 s |
 
-## Simplification Candidates (only after the baseline)
+## Measured Baseline (Windows, 2026-10-17, Player Release, 60 s each)
 
-- None proven yet. The presentation loop already starts only for CDG or audio+subtitle
-  content; seek threads park on a signal when idle. Candidates will be chosen from the
-  captured wakeup/contention data, one ownership boundary per slice.
+| Workflow | CPU avg | Allocation | Gen-0 GCs | Lock contentions |
+|---|---|---|---|---|
+| idle | 0.3% | 0.04 MB/s | 0 | 0 |
+| audio | 0.9% | 1.1 MB/s | 5 | 2 (open only) |
+| cdg | 1.3% | 4.8 MB/s | 22 | 230 (622 ms) |
+| video-hw | 1.0% | 1.1 MB/s | 5 | 291 (106 ms) |
+| video-sw | 3.6% | 109 MB/s while playing | ~60 | 279 (153 ms) |
+
+Sources, from the sampled stacks and contention events:
+- video-sw allocation: `SoftwareCompositionRenderer.Render` allocated a new surface-sized
+  BGRA buffer for every presented frame (Render samples track the allocation counter,
+  r = 0.95).
+- Video contention: the presentation loop read `VideoPipeline.HasAudio` ->
+  `VideoAudioEngine.IsOpen`, which took the audio engine's `_sync` every frame while the
+  decode thread held it in `DecodeAndPushAudio` (video-sw 221, video-hw 158 events; cheap).
+- `DwmCompositionTiming.GetRefreshIntervalSeconds` ran on the presentation thread several
+  times per frame (145 samples in video-hw).
+- cdg contention: `CdgEngine._renderLock` between the presentation loop and the CDG seek
+  replay (101 events, up to 15.5 ms, during seeks only).
+- cdg allocation: `CdgStateMachine.CreateSnapshot` copies the 64.8 KB index array per
+  presented CDG frame (75 Hz = 4.9 MB/s).
+- Thread churn: each `VideoPipeline.SeekCore` restarts the decode and presentation loops on
+  new LongRunning threads (about 55 + 55 OS threads per minute of scrubbing).
+- The Player's seek-bar drag calls `MediaControls.Seek` on the UI thread (BASS seek work).
+
+## Slice 2 (implemented)
+
+- The software backend renders into one reused buffer, taken and returned atomically per
+  present (the sink copies the span before returning); the public `Render` overload still
+  returns independent outputs.
+- `VideoAudioEngine.IsOpen` reads a published flag (set at the end of a successful open,
+  cleared at the start of close) plus the demuxer's lock-free state, instead of `_sync`.
+- `VideoPipeline` resolves the display interval at most every 100 ms instead of several times
+  per frame (DWM is also only the fallback since 017A slice 3).
+
+## Simplification Candidates (remaining, one per slice)
+
+- Keep the decode/presentation threads across a seek instead of a new LongRunning thread per
+  `SeekCore` (largest structural item; needs its own design).
+- CDG: shorten `_renderLock` hold time during seek replay, or render the seek replay into a
+  separate state machine and swap it in.
+- CDG: pool or diff snapshot index arrays (018A owns snapshot lifetime).
+- Player: route seek-bar drags through the async operation queue.
 
 ## Acceptance Criteria (slice 1)
 
