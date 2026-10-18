@@ -39,9 +39,19 @@ public sealed partial class MainWindowViewModel
 
     private void StartSubtitleTracking(FatzMediaPlayer player)
     {
-        player.MediaLoaded += (_, _) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
-        player.MediaClosed += (_, _) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
+        player.MediaLoaded += OnSubtitleMediaLoaded;
+        player.MediaClosed += OnSubtitleMediaClosed;
     }
+
+    private void StopSubtitleTracking(FatzMediaPlayer player)
+    {
+        player.MediaLoaded -= OnSubtitleMediaLoaded;
+        player.MediaClosed -= OnSubtitleMediaClosed;
+    }
+
+    private void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
+
+    private void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
 
     private void RefreshSubtitleChoices()
     {

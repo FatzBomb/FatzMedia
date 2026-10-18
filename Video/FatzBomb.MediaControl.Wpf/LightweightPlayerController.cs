@@ -40,8 +40,14 @@ internal sealed class LightweightPlayerController(
         }
 
         var startedWhileLoaded = owner.IsLoaded;
-        _playerCreationTask ??= CreatePlayerAsync(platformFactory);
-        Player? player = await _playerCreationTask;
+        Task<Player?> creation = _playerCreationTask ??= CreatePlayerAsync(platformFactory);
+        Player? player = await creation;
+
+        // Concurrent callers await the same creation; continuations run on the dispatcher one at
+        // a time, so the first to resume takes the result and the others return what it decided.
+        if (!ReferenceEquals(_playerCreationTask, creation))
+            return _player;
+
         _playerCreationTask = null;
         if (_disposed || (startedWhileLoaded && !owner.IsLoaded) || player == null)
         {

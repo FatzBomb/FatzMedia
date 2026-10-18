@@ -70,6 +70,9 @@ internal sealed class PreparedNextSlot : IDisposable
     public PreparedNextTicket Begin(MediaInputSource source, CancellationToken cancellationToken, out PreparedNextChange change)
     {
         ArgumentNullException.ThrowIfNull(source);
+        // The identity is a file stat, which can block on a slow share: it is taken outside the
+        // lock that UI-thread getters take.
+        var identity = _identityProvider(source);
         CancellationTokenSource? previous;
         PreparedNextTicket ticket;
         lock (_gate)
@@ -78,7 +81,7 @@ internal sealed class PreparedNextSlot : IDisposable
             previous = _cts;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _generation++;
-            _identity = _identityProvider(source);
+            _identity = identity;
             change = SetInfo(new PreparedNextInfo(PreparedNextState.Analyzing, source, null));
             ticket = new PreparedNextTicket(_generation, source, _cts.Token);
         }
@@ -170,10 +173,12 @@ internal sealed class PreparedNextSlot : IDisposable
         out PreparedNextTransition? transition,
         out PreparedNextChange? change)
     {
+        transition = null;
+        change = null;
+        MediaInputSource source;
+        long generation;
         lock (_gate)
         {
-            transition = null;
-            change = null;
             if (_disposed
                 || _info.State != PreparedNextState.Ready
                 || _info.Source is null
@@ -182,7 +187,18 @@ internal sealed class PreparedNextSlot : IDisposable
                 return false;
             }
 
-            if (!string.Equals(_identity, _identityProvider(_info.Source), StringComparison.Ordinal))
+            source = _info.Source;
+            generation = _generation;
+        }
+
+        // Stat outside the lock (see Begin), then claim only if the slot did not move meanwhile.
+        var currentIdentity = _identityProvider(source);
+        lock (_gate)
+        {
+            if (_disposed || generation != _generation || _info.State != PreparedNextState.Ready)
+                return false;
+
+            if (!string.Equals(_identity, currentIdentity, StringComparison.Ordinal))
             {
                 change = SetInfo(new PreparedNextInfo(PreparedNextState.Stale, _info.Source, _info.Analysis));
                 return false;
