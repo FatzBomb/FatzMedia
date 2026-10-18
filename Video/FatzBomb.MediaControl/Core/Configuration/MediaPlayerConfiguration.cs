@@ -144,6 +144,11 @@ public readonly record struct MediaPlayerConfiguration
     public NetworkRetryPolicy? NetworkRetry { get; init; }
 
     /// <summary>
+    /// How HDR video is shown on SDR output. The default tone maps HDR10 (PQ) video to SDR.
+    /// </summary>
+    public HdrToneMappingOptions HdrToneMapping { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding.
     /// </summary>

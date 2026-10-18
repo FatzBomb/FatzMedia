@@ -1298,7 +1298,8 @@ internal sealed partial class VideoPipeline(
                     _configuration.EnablePerformanceLogging,
                     _configuration.EnableVerboseLogging,
                     sharedDemuxer: _sharedDemuxer,
-                    hardwareAccelerationServices: _hardwareAccelerationServices);
+                    hardwareAccelerationServices: _hardwareAccelerationServices,
+                    hdrToneMapping: _configuration.HdrToneMapping);
 
                 if (!_videoDecoder.Open(path))
                 {
@@ -1386,7 +1387,8 @@ internal sealed partial class VideoPipeline(
             _configuration.EnablePerformanceLogging,
             _configuration.EnableVerboseLogging,
             sharedDemuxer: _sharedDemuxer,
-            hardwareAccelerationServices: _hardwareAccelerationServices);
+            hardwareAccelerationServices: _hardwareAccelerationServices,
+            hdrToneMapping: _configuration.HdrToneMapping);
         if (!_videoDecoder.Open(path))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);

@@ -205,6 +205,7 @@ internal sealed class D3D11RendererPresentationServices
         int height,
         double framesPerSecond,
         VideoColorSpace colorSpace,
+        HdrToneMapRequest? toneMap,
         Func<int, int, bool> notifyPresented) => FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
@@ -214,6 +215,7 @@ internal sealed class D3D11RendererPresentationServices
             height,
             framesPerSecond,
             colorSpace,
+            toneMap,
             notifyPresented);
 
     public bool NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(

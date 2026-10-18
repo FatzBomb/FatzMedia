@@ -6,6 +6,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using FFmpeg.AutoGen;
 
 namespace FatzBomb.MediaControl.Core.Video;
@@ -21,8 +22,10 @@ internal sealed unsafe class VideoDecoder(
     bool enableVerboseLogging = false,
     bool scaleMaxFramesByResolution = false,
     SharedDemuxer? sharedDemuxer = null,
-    IVideoHardwareAccelerationServices? hardwareAccelerationServices = null) : IDisposable
+    IVideoHardwareAccelerationServices? hardwareAccelerationServices = null,
+    HdrToneMappingOptions hdrToneMapping = default) : IDisposable
 {
+    private readonly HdrToneMappingOptions _hdrToneMapping = hdrToneMapping;
     private readonly VideoDecodingMethod _decodingMethod = decodingMethod;
     private readonly bool _enableHardwareFrameOutput = enableHardwareFrameOutput;
     private readonly bool _enableDiagnostics = enableDiagnostics;
@@ -44,6 +47,12 @@ internal sealed unsafe class VideoDecoder(
     private string? _hardwareDeviceTypeName;
     private AVPixelFormat _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private VideoColorSpace _scalerColorSpace;
+    private AVPixelFormat _scalerTargetPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    private HdrToneMapper? _toneMapper;
+    private byte[]? _toneMapScratch;
+    private bool _toneMapReported;
+    private HdrToneMapFallback _toneMapFallback = new();
+    private bool _toneMapFallbackReported;
     private AVCodecContext_get_format? _getFormatCallback;
 
     private int _videoLinesize;
@@ -112,7 +121,8 @@ internal sealed unsafe class VideoDecoder(
             configuration.EnablePerformanceLogging,
             configuration.EnableVerboseLogging,
             scaleMaxFramesByResolution,
-            hardwareAccelerationServices: hardwareAccelerationServices);
+            hardwareAccelerationServices: hardwareAccelerationServices,
+            hdrToneMapping: configuration.HdrToneMapping);
 
     public static VideoDecoder FromConfiguration(
         MediaPlayerConfiguration configuration,
@@ -127,7 +137,8 @@ internal sealed unsafe class VideoDecoder(
             configuration.EnableVerboseLogging,
             scaleMaxFramesByResolution,
             sharedDemuxer,
-            hardwareAccelerationServices);
+            hardwareAccelerationServices,
+            configuration.HdrToneMapping);
 
     public bool Open(string path)
     {
@@ -733,7 +744,10 @@ internal sealed unsafe class VideoDecoder(
         try
         {
             var sourceFormat = (AVPixelFormat)sourceFrame->format;
-            if (!EnsureScaler(sourceFormat, GetFrameColorSpace(sourceFormat)))
+            HdrToneMapper? toneMapper = IsToneMappedFrame() ? GetToneMapper() : null;
+            AVPixelFormat targetFormat = toneMapper != null ? AVPixelFormat.AV_PIX_FMT_RGB48LE : AVPixelFormat.AV_PIX_FMT_BGRA;
+            VideoColorSpace colorSpace = GetFrameColorSpace(sourceFormat, toneMapped: toneMapper != null);
+            if (!EnsureScaler(sourceFormat, colorSpace, targetFormat))
             {
                 return;
             }
@@ -746,15 +760,38 @@ internal sealed unsafe class VideoDecoder(
 
             byte_ptrArray8 dstData = new();
             int_array8 dstLinesize = new();
-            fixed (byte* framePointer = frameData)
+            if (toneMapper != null)
             {
-                dstData[0] = framePointer;
-                dstLinesize[0] = _videoLinesize;
-
+                // HDR10: swscale converts to full-range 16-bit RGB (still PQ, BT.2020), then
+                // the tone mapper writes SDR BGRA (Stage 038A).
+                var scratchStride = Width * 6;
+                var scratch = _toneMapScratch is { } existing && existing.Length >= scratchStride * Height
+                    ? existing
+                    : _toneMapScratch = new byte[scratchStride * Height];
                 var scaleStart = Stopwatch.GetTimestamp();
-                _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
-                    0, Height, dstData, dstLinesize);
+                fixed (byte* scratchPointer = scratch)
+                {
+                    dstData[0] = scratchPointer;
+                    dstLinesize[0] = scratchStride;
+                    _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
+                        0, Height, dstData, dstLinesize);
+                }
+
+                toneMapper.Convert(scratch, scratchStride, frameData, _videoLinesize, Width, Height);
                 scaleMs = GetElapsedMilliseconds(scaleStart);
+            }
+            else
+            {
+                fixed (byte* framePointer = frameData)
+                {
+                    dstData[0] = framePointer;
+                    dstLinesize[0] = _videoLinesize;
+
+                    var scaleStart = Stopwatch.GetTimestamp();
+                    _ = ffmpeg.sws_scale(_swsVideo, sourceFrame->data, sourceFrame->linesize,
+                        0, Height, dstData, dstLinesize);
+                    scaleMs = GetElapsedMilliseconds(scaleStart);
+                }
             }
 
             _frameQueue.Enqueue(new VideoFrameData
@@ -790,7 +827,20 @@ internal sealed unsafe class VideoDecoder(
 
     private bool TryQueueNativeHardwareFrame(double pts, long totalStart)
     {
+        // HDR10 frames go to the renderer with a tone-map request (Stage 038A slice 2), unless
+        // the host asks for the CPU tone mapper; then they are copied back like software frames.
+        var toneMapped = IsToneMappedFrame();
+        if (toneMapped && _toneMapFallback.IsRequested && !_toneMapFallbackReported)
+        {
+            _toneMapFallbackReported = true;
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "VideoDecoder",
+                $"The renderer cannot tone map HDR10 ({_toneMapFallback.Reason}); the engine tone maps it on the CPU instead.");
+        }
+
         if (!_enableHardwareFrameOutput
+            || (toneMapped && (_hdrToneMapping.PreferCpu || _toneMapFallback.IsRequested))
             || _hardwareDeviceContext == null
             || _hardwareDeviceTypeName == null
             || HardwareDevice == null)
@@ -814,7 +864,11 @@ internal sealed unsafe class VideoDecoder(
             return false;
         }
 
-        nativeResource = nativeResource with { ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE) };
+        nativeResource = nativeResource with
+        {
+            ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE, toneMapped),
+            HdrToneMap = toneMapped ? GetToneMapRequest() : null
+        };
 
         _frameQueue.Enqueue(new VideoFrameData
         {
@@ -891,7 +945,8 @@ internal sealed unsafe class VideoDecoder(
             FFmpegVideoColor.FromTags(parameters->color_space, parameters->color_range, (AVPixelFormat)parameters->format),
             parameters->width,
             parameters->height,
-            parameters->color_trc);
+            parameters->color_trc,
+            toneMapsHdr10: !_hdrToneMapping.Disabled);
         return $"{codec.ToUpperInvariant()}{(string.IsNullOrEmpty(profile) ? string.Empty : $" {profile}")}{bitDepth} " +
             $"{parameters->width}x{parameters->height} ({pixelFormat}, {color}), decoder {DecoderName ?? "unknown"} {path}{filtered}";
     }
@@ -968,14 +1023,73 @@ internal sealed unsafe class VideoDecoder(
         return _softwareFrame;
     }
 
-    /// <summary>The decoded frame's color tags, unspecified parts resolved by frame size.</summary>
-    private VideoColorSpace GetFrameColorSpace(AVPixelFormat softwareFormat) =>
-        FFmpegVideoColor.FromTags(_videoFrame->colorspace, _videoFrame->color_range, softwareFormat)
-            .Resolve(Width, Height);
-
-    private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace)
+    /// <summary>
+    /// The decoded frame's color tags, unspecified parts resolved by frame size; for HDR10 that
+    /// is tone mapped, an untagged matrix is BT.2020 (HDR10's), not the size-based guess.
+    /// </summary>
+    private VideoColorSpace GetFrameColorSpace(AVPixelFormat softwareFormat, bool toneMapped = false)
     {
-        if (_swsVideo != null && sourceFormat == _scalerSourcePixelFormat && colorSpace == _scalerColorSpace)
+        VideoColorSpace tagged = FFmpegVideoColor.FromTags(_videoFrame->colorspace, _videoFrame->color_range, softwareFormat);
+        if (toneMapped && tagged.Matrix == VideoColorMatrix.Unspecified)
+            tagged = tagged with { Matrix = VideoColorMatrix.Bt2020 };
+        return tagged.Resolve(Width, Height);
+    }
+
+    /// <summary>Whether the current frame is HDR10 (PQ) video the engine tone maps to SDR.</summary>
+    private bool IsToneMappedFrame()
+    {
+        if (_hdrToneMapping.Disabled)
+            return false;
+
+        AVColorTransferCharacteristic transfer = _videoFrame->color_trc;
+        if (transfer == AVColorTransferCharacteristic.AVCOL_TRC_UNSPECIFIED && _videoStream != null)
+            transfer = _videoStream->codecpar->color_trc;
+        return transfer == AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084;
+    }
+
+    /// <summary>
+    /// The tone mapper for the stream's peak luminance (its HDR10 metadata), created again only
+    /// when that peak changes.
+    /// </summary>
+    private HdrToneMapper GetToneMapper()
+    {
+        HdrToneMapRequest request = GetToneMapRequest(onCpu: true);
+        if (_toneMapper is { } current
+            && Math.Abs(current.SourcePeakNits - request.SourcePeakNits) < 1
+            && current.ReferenceWhiteNits == request.TargetPeakNits)
+        {
+            return current;
+        }
+
+        return _toneMapper = new HdrToneMapper(request.SourcePeakNits, request.TargetPeakNits);
+    }
+
+    /// <summary>
+    /// The current frame's tone-map parameters: its peak luminance from the HDR10 metadata and the
+    /// configured SDR white. The first call per open logs them and where the mapping runs.
+    /// </summary>
+    private HdrToneMapRequest GetToneMapRequest(bool onCpu = false)
+    {
+        var referenceWhite = _hdrToneMapping.EffectiveReferenceWhiteNits;
+        var peak = FFmpegVideoColor.GetHdrPeakNits(_videoFrame, _videoStream, referenceWhite);
+        if (!_toneMapReported)
+        {
+            _toneMapReported = true;
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "VideoDecoder",
+                $"HDR10 video is tone mapped to SDR {(onCpu ? "on the CPU" : "by the renderer")}: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
+        }
+
+        return new HdrToneMapRequest(peak.Nits, referenceWhite) { Fallback = _toneMapFallback };
+    }
+
+    private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace, AVPixelFormat targetFormat)
+    {
+        if (_swsVideo != null
+            && sourceFormat == _scalerSourcePixelFormat
+            && colorSpace == _scalerColorSpace
+            && targetFormat == _scalerTargetPixelFormat)
         {
             return true;
         }
@@ -987,9 +1101,10 @@ internal sealed unsafe class VideoDecoder(
         }
 
         _scalerSourcePixelFormat = sourceFormat;
+        _scalerTargetPixelFormat = targetFormat;
         _swsVideo = ffmpeg.sws_getContext(
             Width, Height, sourceFormat,
-            Width, Height, AVPixelFormat.AV_PIX_FMT_BGRA,
+            Width, Height, targetFormat,
             (int)SwsFlags.SWS_BILINEAR, null, null, null);
 
         if (_swsVideo == null)
@@ -1091,6 +1206,12 @@ internal sealed unsafe class VideoDecoder(
         EndOfStream = false;
         MaxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+        _scalerTargetPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+        _toneMapper = null;
+        _toneMapScratch = null;
+        _toneMapReported = false;
+        _toneMapFallback = new HdrToneMapFallback();
+        _toneMapFallbackReported = false;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;

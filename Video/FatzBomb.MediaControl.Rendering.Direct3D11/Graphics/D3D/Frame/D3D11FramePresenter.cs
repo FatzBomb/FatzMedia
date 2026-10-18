@@ -32,6 +32,7 @@ internal sealed class D3D11FramePresenter(
         int height,
         double framesPerSecond,
         VideoColorSpace colorSpace,
+        HdrToneMapRequest? toneMap,
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode presentationStretch,
@@ -64,6 +65,7 @@ internal sealed class D3D11FramePresenter(
                 height,
                 framesPerSecond,
                 colorSpace,
+                toneMap,
                 presentationWidth,
                 presentationHeight,
                 presentationStretch);

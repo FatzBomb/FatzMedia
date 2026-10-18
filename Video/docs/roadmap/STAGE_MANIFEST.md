@@ -68,6 +68,12 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   while the drag moves, audible when it rests (120 ms) or ends; implemented; owner smoke
   passed 2026-10-18 (`updates/035A_2`).
 
+- `active/038A_ACTIVE_HdrVideoToneMapping.md` - slice 1 tone maps HDR10 (PQ) video to SDR on
+  the CPU path for every renderer (BT.2390 curve, SDR white 203 nits; Player `--no-hdr-tonemap`
+  to compare); owner confirmed 2026-10-18 (`updates/038A_1`). Slice 2 tone maps
+  hardware-decoded HDR10 in a Direct3D11 shader with the same curve (no copy back to the CPU;
+  `--hdr-tonemap-cpu` to compare); implemented, pending manual smoke (`updates/038A_2`).
+
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Reverted
@@ -112,8 +118,6 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
-- `future/038A_IDEA_HdrVideoToneMapping.md` - HDR (PQ/HLG) video tone mapping to SDR, then HDR
-  output on HDR displays; follows ENG-019's explicit color spaces (owner decision, 2026-10-18).
 
 Next stage: 032A (needs CD drive measurements first).
 

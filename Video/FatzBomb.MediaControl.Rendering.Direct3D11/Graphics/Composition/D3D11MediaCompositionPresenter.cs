@@ -135,6 +135,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int height,
         double framesPerSecond,
         VideoColorSpace colorSpace,
+        HdrToneMapRequest? toneMap,
         MediaCompositionStretchMode stretchMode,
         long backgroundRevision)
     {
@@ -178,6 +179,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     height,
                     normalizedFps,
                     colorSpace,
+                    toneMap,
                     width,
                     height,
                     MediaCompositionStretchMode.Fill))
@@ -405,6 +407,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 frame.BackgroundNativeHeight,
                 frame.BackgroundNativeFramesPerSecond,
                 resource.ColorSpace,
+                resource.HdrToneMap,
                 frame.EffectiveBackgroundStretchMode,
                 frame.BackgroundRevision);
         }
