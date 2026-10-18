@@ -652,6 +652,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
 
         // 6. Reinitialize with new configuration
+        MediaControlOperationQueue oldOperations = _controlOperations;
         try
         {
             CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
@@ -663,7 +664,8 @@ public partial class MediaControlPlayer : IMediaControlSession
             // Until then control calls fail with ObjectDisposedException.
             foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
                 _presentationSurfaces[kvp.Key] = kvp.Value;
-            _controlOperations = new MediaControlOperationQueue("MediaControl");
+            if (ReferenceEquals(_controlOperations, oldOperations))
+                _controlOperations = new MediaControlOperationQueue("MediaControl");
             throw;
         }
 

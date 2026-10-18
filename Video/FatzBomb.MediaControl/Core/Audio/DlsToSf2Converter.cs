@@ -211,7 +211,7 @@ internal static class DlsToSf2Converter
 
         // Written beside the cache file and moved into place, so a crash mid-write never leaves
         // a truncated SF2 that later runs would load as the cache.
-        var partialPath = cachePath + ".partial";
+        var partialPath = $"{cachePath}.{Guid.NewGuid():N}.partial"; // one per writer: two processes may convert at once
         try
         {
             WriteSf2(partialPath, samples, instruments, Path.GetFileNameWithoutExtension(dlsPath));

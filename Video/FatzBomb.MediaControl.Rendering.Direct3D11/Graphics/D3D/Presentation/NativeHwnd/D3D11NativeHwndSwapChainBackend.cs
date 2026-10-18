@@ -26,6 +26,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     private int _pendingWidth;
     private int _pendingHeight;
     private bool _resizePending;
+    // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
+    private long _resizeRetryNotBefore;
     private bool _deviceLostReported;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
@@ -91,7 +93,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
 
     public bool ApplyPendingResizeIfNeeded()
     {
-        if (!IsActive || !_resizePending)
+        if (!IsActive || !_resizePending || Stopwatch.GetTimestamp() < _resizeRetryNotBefore)
         {
             return true;
         }
@@ -163,8 +165,9 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
                 }
 
                 // The buffers keep their old size: present at that size and leave the resize
-                // pending, so the next frame retries it instead of drawing a new-size viewport
+                // pending, retried after a short wait, instead of drawing a new-size viewport
                 // into an old-size buffer.
+                _resizeRetryNotBefore = Stopwatch.GetTimestamp() + (Stopwatch.Frequency / 2);
                 TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
                 return true;
             }

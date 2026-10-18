@@ -102,7 +102,7 @@ items below; each was verified in the code before it was fixed. Deferred items a
 ENG-027. Commits:
 - **Video:** a decoder swap kept the old timeline origin and left the loops stopped on failure;
   post-seek warm-up spun at end of stream; the audio engine's own demuxer read every stream;
-  archive videos were copied twice in memory; the loop snapshot was cached when not looping.
+  archive videos were copied twice in memory.
 - **Audio:** only the first loop wrap was reported (MediaLooped); a throwing event handler in the
   BASS end sync could end the process; the normalizer gain FX was unsynchronised; a failed video
   audio seek left playback paused and flushed; network streams could get the loop flag; stale
@@ -120,6 +120,11 @@ ENG-027. Commits:
 - **Renderers:** a failed `ResizeBuffers` was treated as success; failed draws left the swap-chain
   buffer bound; the Vulkan factory had no availability probe.
 - **Dead code and duplicates:** see the refactor commit.
+
+A review of the fix commits found no regression of note; its follow-ups are in the last fix
+commit: a decoder swap retried after a failed attempt kept the timeline origin, a swap that
+throws leaves the loops stopped, a failing `ResizeBuffers` is retried every half second
+rather than every frame, and a failed Reset no longer leaks an operation queue.
 
 ### ENG-014 - Vulkan duplicates software-renderer placement and CDG validation
 

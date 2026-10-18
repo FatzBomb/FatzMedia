@@ -782,6 +782,7 @@ internal sealed partial class VideoPipeline(
                 ReleaseCurrentFrame();
                 _videoDecoder?.Dispose();
                 _videoDecoder = null;
+                _swapTimelineOrigin = null;
             }
 
             _sharedDemuxer?.Dispose();
@@ -1258,6 +1259,10 @@ internal sealed partial class VideoPipeline(
     /// deliberately left running — only the video decoder is swapped. Bumping the generation drops any
     /// in-flight frames that referenced the old (lost) device.
     /// </summary>
+    // The timeline origin of the media's first decoder, carried across decoder swaps (and
+    // across failed swap attempts) until the media closes.
+    private double? _swapTimelineOrigin;
+
     private bool SwapVideoDecoder(VideoDecodingMethod method, string path)
     {
         lock (_transportGate)
@@ -1273,15 +1278,23 @@ internal sealed partial class VideoPipeline(
                 StopPresentationLoopAndWait();
             WaitForPresentationIdle();
 
+            var restartLoops = wasPlaying;
             try
             {
                 return SwapVideoDecoderCore(method, path, position, wasPlaying);
+            }
+            catch
+            {
+                // Thrown mid-swap, the decoder may be disposed or half built: leave the loops
+                // stopped and let the exception surface.
+                restartLoops = false;
+                throw;
             }
             finally
             {
                 // Restarted even when the swap failed: the decode loop also pushes the audio, so
                 // audio keeps playing between recovery attempts (and frozen video beats silence).
-                if (wasPlaying)
+                if (restartLoops)
                 {
                     StartDecodeLoop();
                     if (!_hostRenderEventDrivenPresentation)
@@ -1298,7 +1311,10 @@ internal sealed partial class VideoPipeline(
         lock (_presentationLock)
             lock (_decodeLock)
             {
-                var timelineOrigin = _videoDecoder?.TimelineOriginSeconds;
+                // Kept in a field: a failed attempt leaves no decoder, and a retry must still
+                // adopt the original origin.
+                _swapTimelineOrigin = _videoDecoder?.TimelineOriginSeconds ?? _swapTimelineOrigin;
+                var timelineOrigin = _swapTimelineOrigin;
                 ReleaseCurrentFrame();
                 _videoDecoder?.Dispose();
                 _videoDecoder = new VideoDecoder(
@@ -2217,9 +2233,9 @@ internal sealed partial class VideoPipeline(
 
     private void CacheLoopStartFrameSnapshot(VideoFrameData frame)
     {
-        // Only kept for looping (a full-frame copy: 8 MB at 1080p, 33 MB at 4K). Loop turned on
-        // later still gets it from the next lap's first frame.
-        if (!LoopPlayback || _loopStartFrameSnapshot != null || frame.Data == null || frame.Length <= 0 || frame.PresentationTime > GetEndToleranceSeconds())
+        // Kept even when not looping (a CPU-frame copy, up to 33 MB at 4K): loop is often turned
+        // on after playback starts, and the first wrap needs the snapshot to stay gapless.
+        if (_loopStartFrameSnapshot != null || frame.Data == null || frame.Length <= 0 || frame.PresentationTime > GetEndToleranceSeconds())
             return;
 
         var length = Math.Min(frame.Length, frame.Data.Length);

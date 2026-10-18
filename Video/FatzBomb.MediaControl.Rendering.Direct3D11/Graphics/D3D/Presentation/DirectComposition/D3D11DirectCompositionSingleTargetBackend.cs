@@ -41,6 +41,9 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public IntPtr Hwnd { get; private set; }
     public bool HasPendingResize { get; private set; }
 
+    // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
+    private long _resizeRetryNotBefore;
+
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
     public bool Create(D3D11DeviceResources deviceResources, IntPtr hwnd, int width, int height)
@@ -106,7 +109,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
     public bool ApplyPendingResizeIfNeeded()
     {
-        if (!IsActive || !HasPendingResize)
+        if (!IsActive || !HasPendingResize || Stopwatch.GetTimestamp() < _resizeRetryNotBefore)
             return true;
 
         var width = Math.Max(1, _pendingWidth);
@@ -159,7 +162,9 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             if (baseResizeResult.Failure || overlayResizeResult.Failure)
             {
                 // Both layers must stay one size: put a chain that did resize back to the old
-                // size, present at that size, and leave the resize pending for the next frame.
+                // size, present at that size, and leave the resize pending, retried after a
+                // short wait.
+                _resizeRetryNotBefore = Stopwatch.GetTimestamp() + (Stopwatch.Frequency / 2);
                 if (baseResizeResult.Success)
                     _ = _baseSwapChain.ResizeBuffers(0, (uint)Width, (uint)Height, Format.Unknown, SwapChainFlags.None);
                 if (overlayResizeResult.Success)
