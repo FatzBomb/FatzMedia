@@ -1,12 +1,13 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
-public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory
+public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly Direct3D11PresentationOptions _options;
@@ -25,6 +26,12 @@ public sealed class Direct3D11PresentationCoordinatorFactory : IMediaPresentatio
     }
 
     public string BackendName => "Direct3D11";
+
+    /// <summary>
+    /// Creates and releases a device with the configured <see cref="Direct3D11PresentationOptions.DeviceSelection"/>
+    /// (Stage 036A), so a host can fall back to another renderer when none can be created.
+    /// </summary>
+    public MediaPresentationAvailability ProbeAvailability() => D3D11DeviceResources.Probe(_options.DeviceSelection);
 
     public IMediaPresentationCoordinator Create(
         IMediaEngine mediaEngine,

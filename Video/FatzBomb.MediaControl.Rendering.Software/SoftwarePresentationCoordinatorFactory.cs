@@ -6,7 +6,7 @@ using FatzBomb.MediaControl.Core.Threading;
 namespace FatzBomb.MediaControl.Rendering.Software;
 
 /// <summary>Creates a portable Core presentation coordinator backed by software composition.</summary>
-public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory
+public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
 
@@ -22,6 +22,17 @@ public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationC
     }
 
     public string BackendName => "Software";
+
+    /// <summary>
+    /// Always available (Stage 036A). It draws only into managed frame-sink surfaces and presents
+    /// only CPU frames, so hosts pair it with such a surface and software decoding.
+    /// </summary>
+    public MediaPresentationAvailability ProbeAvailability() =>
+        MediaPresentationAvailability.Available("CPU composition") with
+        {
+            RequiresSoftwareDecoding = true,
+            RequiresFrameSinkSurface = true
+        };
 
     public IMediaPresentationCoordinator Create(
         IMediaEngine mediaEngine,

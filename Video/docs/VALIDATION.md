@@ -610,6 +610,10 @@ Procedure and expected:
     same and on another monitor, then play, seek, and pause (ENG-015). Repeat with
     `--software`, for video and for CD+G, and resize the secondary (ENG-016).
 22. Closing secondary output while playing does not disturb primary output.
+22a. Renderer choice (Stage 036A): the default reports `Direct3D11 (auto): GPU, <adapter>`;
+    `--renderer=warp` plays video and CD+G on WARP through the native window (status and Log
+    say WARP); `--renderer=software` behaves as `--software`; an unknown value logs a
+    warning and plays as `auto`.
 23. Re-opening secondary output while playing resumes presentation correctly.
 24. Repeated media-type switches leave no stale layer artifacts.
 25. Stop clears or hides the native HWND correctly, with no stale frame/layer.

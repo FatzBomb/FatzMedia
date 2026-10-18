@@ -99,6 +99,14 @@ frame and size always produce byte-identical pixels. Deterministic rules:
 
 ## Ownership
 
+Renderer fallback (Stage 036A): Direct3D11 tries the GPU, then WARP, inside its own device
+creation. Across renderers, Core's `FallbackPresentationCoordinatorFactory` uses the first
+candidate whose `IMediaPresentationAvailabilityProbe` reports it available (for example
+Direct3D11, then the software renderer), once, at first use; the probe result says what the
+host must pair with it (`RequiresFrameSinkSurface`, `RequiresSoftwareDecoding`). The host
+composes the chain and builds surfaces and decoding to match; Core does not switch renderers
+mid-session.
+
 Core owns playback, commands, media state, sidecar detection, background image/video lifecycle, Cdg state, wash, `MediaPresentationCoordinator`, retained composition planning, target lifecycle policy, renderer-neutral configuration, and platform/renderer contracts. The Direct3D11 renderer owns its native device, GPU resources, renderer-specific options, swap chains, DirectComposition implementation, subtitle rasterization, and final GPU execution. The Software renderer owns deterministic in-memory composition of software-backed layers and its managed frame-sink targets.
 
 Adapters own only framework interop: control lifecycle, native surface creation, DPI/size, visibility, focus/input bridge, and framework-specific source conversion helpers.

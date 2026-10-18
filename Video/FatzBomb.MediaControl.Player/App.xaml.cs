@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using FatzBomb.MediaControl.Player.Configuration;
 
 namespace FatzBomb.MediaControl.Player;
 
@@ -20,6 +21,9 @@ public partial class App : Application
     public static string? StartupMediaPath { get; private set; }
 
     public static bool UseSoftwareRenderer { get; private set; }
+
+    /// <summary>Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software).</summary>
+    internal static PlayerRendererSelection Renderer { get; private set; } = null!;
 
     public static bool ResetPitchOnMediaLoad { get; private set; }
 
@@ -47,8 +51,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        UseSoftwareRenderer = e.Args.Any(static argument =>
-            string.Equals(argument, "--software", StringComparison.OrdinalIgnoreCase));
+        const string rendererPrefix = "--renderer=";
+        var rendererArgument = e.Args
+            .Where(static argument => argument.StartsWith(rendererPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[rendererPrefix.Length..].Trim('"'))
+            .LastOrDefault();
+        PlayerRendererChoice rendererChoice = e.Args.Any(static argument =>
+            string.Equals(argument, "--software", StringComparison.OrdinalIgnoreCase))
+                ? PlayerRendererChoice.Software
+                : PlayerRendererChoice.Auto;
+        var invalidRendererArgument = false;
+        if (rendererArgument is not null)
+        {
+            if (PlayerRendererSelection.TryParse(rendererArgument, out PlayerRendererChoice parsed))
+                rendererChoice = parsed;
+            else
+                invalidRendererArgument = true;
+        }
         ResetPitchOnMediaLoad = e.Args.Any(static argument =>
             string.Equals(argument, "--reset-pitch-on-load", StringComparison.OrdinalIgnoreCase));
         ResetTempoOnMediaLoad = e.Args.Any(static argument =>
@@ -99,6 +118,22 @@ public partial class App : Application
             !argument.StartsWith("--", StringComparison.Ordinal));
 
         TryAttachDebugLog();
+
+        // Resolved before the main window exists: the presentation mode and decoding follow it.
+        try
+        {
+            Renderer = PlayerRendererSelection.Resolve(rendererChoice);
+        }
+        catch (Exception ex)
+        {
+            Renderer = PlayerRendererSelection.SoftwareAfterFailure(ex);
+        }
+
+        if (invalidRendererArgument)
+            Renderer.AddLogLine(MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{rendererArgument}' (use auto, gpu, warp or software); using {rendererChoice.ToString().ToLowerInvariant()}.");
+
+        UseSoftwareRenderer = Renderer.UsesSoftwareRenderer;
+        Trace.WriteLine($"[Player] Renderer: {Renderer.Summary}");
     }
 
     private void TryAttachDebugLog()

@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Wpf;
 using FatzBomb.MediaControl.Player.Configuration;
 using System.Collections.ObjectModel;
@@ -370,8 +369,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusText = "Initializing native media engine...";
 
-            var rendererName = App.UseSoftwareRenderer ? "Software" : "Direct3D11";
-            var decodingMethod = App.UseSoftwareRenderer
+            var rendererName = App.Renderer.Summary;
+            var decodingMethod = App.Renderer.UsesSoftwareDecoding
                 ? VideoDecodingMethod.Software
                 : VideoDecodingMethod.Hardware;
             var diagnosticsConfig = new MediaPlayerConfiguration(decodingMethod)
@@ -385,9 +384,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries }
             };
 
-            platformFactory = App.UseSoftwareRenderer
-                ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
-                : new WindowsDirect3D11MediaControlPlatformFactory();
+            // Logged before the engine starts, so they are there even when native loading fails.
+            foreach ((MediaDiagnosticLevel level, string message) in App.Renderer.LogLines)
+                HandleDiagnosticOnUiThread(level, "Renderer", message);
+
+            platformFactory = new WindowsMediaControlPlatformFactory(App.Renderer.Factory);
             FatzMediaPlayer player = await FatzMediaPlayer.CreateAsync(
                 diagnosticsConfig,
                 NativeLibraryPaths,

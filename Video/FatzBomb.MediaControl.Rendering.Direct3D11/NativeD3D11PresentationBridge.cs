@@ -10,7 +10,7 @@ namespace FatzBomb.MediaControl.Rendering.Direct3D11;
 
 internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 {
-    private readonly D3D11DeviceResources _deviceResources = new();
+    private readonly D3D11DeviceResources _deviceResources;
     private readonly D3D11RendererPresentationServices _presentation;
     private readonly Lock _lock = new();
     private readonly MediaPlayerConfiguration _configuration;
@@ -22,6 +22,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         Direct3D11PresentationOptions options)
     {
         _configuration = configuration;
+        _deviceResources = new D3D11DeviceResources(options.DeviceSelection);
         _presentation = new D3D11RendererPresentationServices(
             configuration,
             options,

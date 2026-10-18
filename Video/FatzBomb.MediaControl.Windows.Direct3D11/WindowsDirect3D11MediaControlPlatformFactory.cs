@@ -15,7 +15,14 @@ public sealed class WindowsDirect3D11MediaControlPlatformFactory : WindowsMediaC
     }
 
     public WindowsDirect3D11MediaControlPlatformFactory(Direct3D11PresentationOptions options)
-        : base(new Direct3D11PresentationCoordinatorFactory(new WindowsPrecisionWaiterFactory(), options))
+        : base(CreatePresentationFactory(options))
     {
     }
+
+    /// <summary>
+    /// Creates the Direct3D11 presentation factory this composition uses, for hosts that combine it
+    /// with other renderers (Stage 036A: a <c>FallbackPresentationCoordinatorFactory</c>).
+    /// </summary>
+    public static Direct3D11PresentationCoordinatorFactory CreatePresentationFactory(Direct3D11PresentationOptions options) =>
+        new(new WindowsPrecisionWaiterFactory(), options);
 }

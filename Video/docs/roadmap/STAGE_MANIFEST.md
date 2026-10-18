@@ -50,6 +50,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   `updates/033A_2`).
 - `active/034A_ACTIVE_NativeDependencyReport.md` - startup report of missing or
   wrong-version native files, implemented; owner smoke passed 2026-10-17 (`updates/034A_1`).
+- `active/036A_ACTIVE_RendererFallbackChain.md` - Direct3D11 falls back from the GPU to WARP
+  (Windows' software rasterizer) on its own; Core `FallbackPresentationCoordinatorFactory`
+  then the software renderer; Player `--renderer=auto|gpu|warp|software`; implemented,
+  pending manual smoke (`updates/036A_1`).
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;
