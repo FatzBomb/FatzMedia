@@ -30,6 +30,27 @@ review:
 
 ## Completed
 
+### ENG-018 - Cadence report sometimes names the 60 Hz fallback instead of the monitor
+
+Fixed: 2026-10-18, pending owner smoke.
+
+Reported: 2026-10-18 (owner logs, 036A smoke). The once-per-open `VideoCadence` line said
+`60 Hz ... reported by the platform` in some runs and `59.973 Hz ... of the monitor showing
+the video` in others, with the same file, monitor and renderer.
+
+Cause: the report is decided once, on the first presentation pass after playback starts,
+from whatever rate is resolved at that instant. Two things can leave only the platform rate
+there for a moment: the renderer's rate source attaching just after playback starts, and the
+refresh-rate cache (017A slice 3) answering the first read after an idle spell with the value
+cached when the window was attached, refreshing in the background (empty if that first query
+failed). Presentation timing re-resolves the rate every 100 ms, so only the report was wrong.
+
+Fix: `VideoPipeline` checks the pending report on every presentation pass and, while the rate
+comes from the platform and a renderer rate source exists, waits up to 1 s for the renderer's
+rate before reporting the platform one (`ShouldWaitForRendererRefreshRate`, tested in
+`VideoCadenceReportTimingTests`). Host-render mode, with no presentation loop, reports at once
+as before.
+
 ### ENG-017 - Software renderer drops frames at large output sizes
 
 Fixed: 2026-10-18. Owner smoke passed the same day (`--software` fullscreen on an ultrawide,

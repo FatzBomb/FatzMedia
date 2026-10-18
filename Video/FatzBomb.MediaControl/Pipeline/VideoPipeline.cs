@@ -55,6 +55,7 @@ internal sealed partial class VideoPipeline(
     // Set on open; the first presentation-loop start reports the cadence, by which time the
     // presentation coordinator has handed over the primary display's refresh rate.
     private int _cadenceReportPending;
+    private long _cadenceReportFirstAttempt;
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
     private volatile bool _isPlaying;
@@ -153,15 +154,44 @@ internal sealed partial class VideoPipeline(
     /// smooth, judder, or skipped frames, and which refresh rates would be smooth. Raised once
     /// per open, when playback first starts. Diagnostic only; presentation timing is unchanged.
     /// </summary>
-    private void ReportPendingDisplayCadence()
+    /// <remarks>
+    /// The presentation loop calls this every pass. Until the renderer reports the monitor's
+    /// rate the report waits, up to <see cref="CadenceReportRendererWait"/>: the renderer's
+    /// rate source can attach just after playback starts, and its first answer after an idle
+    /// spell can be the value cached when the window was attached (empty if that query failed).
+    /// Without the wait the once-per-open report could name the platform's 60 Hz fallback
+    /// while timing moved to the monitor's rate a moment later.
+    /// </remarks>
+    private void ReportPendingDisplayCadence(bool canWait = true)
     {
+        if (Volatile.Read(ref _cadenceReportPending) == 0)
+            return;
+
+        (var refreshIntervalSeconds, DisplayRefreshSource source) = ResolveDisplayRefresh();
+        var now = Stopwatch.GetTimestamp();
+        var firstAttempt = Interlocked.CompareExchange(ref _cadenceReportFirstAttempt, now, 0);
+        var waited = firstAttempt == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(firstAttempt, now);
+        if (canWait && ShouldWaitForRendererRefreshRate(source, Volatile.Read(ref _rendererRefreshRateSource) is not null, waited))
+            return;
+
         if (Interlocked.Exchange(ref _cadenceReportPending, 0) == 1)
-            ReportDisplayCadence(_currentVideoPath);
+            ReportDisplayCadence(_currentVideoPath, refreshIntervalSeconds, source);
     }
 
-    private void ReportDisplayCadence(string? path)
+    /// <summary>How long the cadence report waits for the renderer's monitor rate.</summary>
+    internal static readonly TimeSpan CadenceReportRendererWait = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Whether the cadence report should wait for the renderer's rate: only while the rate came
+    /// from the platform, a renderer could still supply one, and the wait has not run out.
+    /// </summary>
+    internal static bool ShouldWaitForRendererRefreshRate(DisplayRefreshSource source, bool rendererSourceKnown, TimeSpan waited) =>
+        source == DisplayRefreshSource.Platform
+        && rendererSourceKnown
+        && waited < CadenceReportRendererWait;
+
+    private void ReportDisplayCadence(string? path, double refreshIntervalSeconds, DisplayRefreshSource source)
     {
-        (var refreshIntervalSeconds, DisplayRefreshSource source) = ResolveDisplayRefresh();
         if (!double.IsFinite(refreshIntervalSeconds) || refreshIntervalSeconds <= 0)
             return;
 
@@ -273,6 +303,7 @@ internal sealed partial class VideoPipeline(
         _presentationClock.Reset(0);
         ResetPresentationTimingController();
         _currentVideoPath = path;
+        _ = Interlocked.Exchange(ref _cadenceReportFirstAttempt, 0);
         _ = Interlocked.Exchange(ref _cadenceReportPending, 1);
         _isOpen = true;
         _isPlaying = false;
@@ -355,7 +386,7 @@ internal sealed partial class VideoPipeline(
             if (!_hostRenderEventDrivenPresentation)
                 StartPresentationLoop();
             else
-                ReportPendingDisplayCadence(); // no presentation loop to report from
+                ReportPendingDisplayCadence(canWait: false); // no presentation loop to report from
             _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
             _state.SetPlaybackState(MediaPlayerState.Playing);
@@ -875,10 +906,9 @@ internal sealed partial class VideoPipeline(
         if (_configuration.EnableLogging && !pacer.IsHighResolution)
             Trace.WriteLine("[VideoPipeline] High-resolution presentation timer unavailable; using coarse wait fallback.");
 
-        ReportPendingDisplayCadence();
-
         while (!cancellationToken.IsCancellationRequested && generation == _generation)
         {
+            ReportPendingDisplayCadence();
             var targetIntervalSeconds = GetPrimaryPresentationIntervalSeconds();
             if (Math.Abs(targetIntervalSeconds - lastTargetIntervalSeconds) > 0.0001)
             {
@@ -1047,7 +1077,7 @@ internal sealed partial class VideoPipeline(
         return (_platformServices.GetPresentationRefreshIntervalSeconds(), DisplayRefreshSource.Platform);
     }
 
-    private enum DisplayRefreshSource
+    internal enum DisplayRefreshSource
     {
         Host,
         Renderer,
