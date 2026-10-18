@@ -32,7 +32,7 @@ review:
 
 ### ENG-015 - Secondary window blank or frozen with plain hardware video
 
-Resolved: 2026-10-18, pending the owner's Player smoke (VALIDATION item 21).
+Resolved: 2026-10-18. Owner smoke passed the same day (secondary on the same and on another monitor, through seeks).
 
 Reported: 2026-10-18 (owner smoke). With hardware-decoded video and the secondary/projector
 window open, the secondary stayed blank on another monitor, or played until the first seek

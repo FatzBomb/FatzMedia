@@ -3,7 +3,7 @@
 Stage: 022A.2 - Remove the measured per-frame costs
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18
 
 Baseline: captured by the owner on Windows on 2026-10-17 with
 `scripts/capture-thread-baseline.ps1` (idle, audio, cdg, video-hw, video-sw); results and
@@ -68,4 +68,11 @@ more than twice the needed size (left over from a maximize) is dropped
 (~1 MB/s). Re-record `video-sw-3` to confirm.
 
 The same capture round found ENG-015 (secondary window with hardware video), fixed separately.
+
+## Third capture (owner, 2026-10-18)
+
+`video-sw-3` (software mode, seeks, one maximize): steady playback about 0.5 MB/s (from about
+109 MB/s in the baseline and 55 MB/s after the first fix), gen-0 collections essentially gone.
+Remaining spikes match the workflow: open (107 MB), seeks (9-17 MB/s for a second or two),
+the maximize (41 MB).
 

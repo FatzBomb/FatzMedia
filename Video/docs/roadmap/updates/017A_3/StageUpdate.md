@@ -3,7 +3,7 @@
 Stage: 017A.3 - Per-monitor refresh rate from the renderer
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - manual Player smoke pending
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 (59.973 Hz reported for the monitor showing the video)
 
 Delivered:
 
