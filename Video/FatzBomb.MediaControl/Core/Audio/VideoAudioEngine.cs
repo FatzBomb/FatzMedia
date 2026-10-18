@@ -305,6 +305,17 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
             _demuxer.RegisterAudioStream(AudioStreamIndex);
 
+            // With its own demuxer (the video pipeline gives audio a separate cursor), every
+            // other stream is read and dropped: discard them so the file is not demuxed twice.
+            if (_ownsDemuxer)
+            {
+                for (uint i = 0; i < _demuxer.StreamCount; i++)
+                {
+                    if ((int)i != AudioStreamIndex)
+                        _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
+                }
+            }
+
             _audioStream = _demuxer.GetStream(AudioStreamIndex);
             _streamStartSeconds = GetStreamStartSeconds(_audioStream);
             if (!InitializeDecoder() || !CreateBassStreams())

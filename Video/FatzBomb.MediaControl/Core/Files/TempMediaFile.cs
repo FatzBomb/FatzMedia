@@ -9,7 +9,8 @@ namespace FatzBomb.MediaControl.Core.Files;
 internal static class TempMediaFile
 {
     private const string TempSubfolderName = "FatzBombMediaControl";
-    private const string MediaExtension = ".media";
+    /// <summary>The extension of media scratch files.</summary>
+    public const string MediaExtension = ".media";
 
     /// <summary>
     /// Writes <paramref name="data"/> to a uniquely named scratch file under the

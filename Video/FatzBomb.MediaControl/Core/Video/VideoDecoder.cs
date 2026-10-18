@@ -59,6 +59,20 @@ internal sealed unsafe class VideoDecoder(
 
     private double _streamStartSeconds;
     private bool _streamStartInitialized;
+
+    /// <summary>The stream time of the first decoded frame (the timeline's 0), or null before any frame.</summary>
+    public double? TimelineOriginSeconds => _streamStartInitialized ? _streamStartSeconds : null;
+
+    /// <summary>
+    /// Uses another decoder's timeline origin for this stream. A decoder replacing a running one
+    /// seeks before its first frame, so its own first frame is a keyframe mid-file, not the start:
+    /// without this every frame would be timed from that keyframe and land near 0.
+    /// </summary>
+    public void AdoptTimelineOrigin(double streamStartSeconds)
+    {
+        _streamStartSeconds = streamStartSeconds;
+        _streamStartInitialized = true;
+    }
     private double? _discardFramesBeforeSeconds;
 
     public int Width { get; private set; }
@@ -246,8 +260,6 @@ internal sealed unsafe class VideoDecoder(
     public VideoFrameData? GetNextFrame() => _frameQueue.TryDequeue(out VideoFrameData? frame) ? frame : null;
 
     public VideoFrameData? PeekNextFrame() => _frameQueue.TryPeek(out VideoFrameData? frame) ? frame : null;
-
-    public VideoFrameData[] GetQueuedFramesSnapshot() => [.. _frameQueue];
 
     public IEnumerable<VideoFrameData> EnumerateQueuedFrames() => _frameQueue;
 
@@ -843,8 +855,10 @@ internal sealed unsafe class VideoDecoder(
             || (toneMapped && (_hdrToneMapping.PreferCpu || _toneMapFallback.IsRequested))
             || _hardwareDeviceContext == null
             || _hardwareDeviceTypeName == null
-            || HardwareDevice == null)
+            || HardwareDevice == null
+            || (AVPixelFormat)_videoFrame->format != _hardwarePixelFormat)
         {
+            // The last check skips cloning frames FFmpeg decoded in software after all.
             return false;
         }
 
