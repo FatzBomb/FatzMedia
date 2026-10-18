@@ -3,8 +3,12 @@
 Stage: 035A.2 - Silent drag
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - owner smoke 2026-10-18 (250 ms build): "looks (and sounds) good";
-quiet period then shortened to 120 ms, pending a re-check
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18
+
+- 250 ms build: "looks (and sounds) good", but feedback felt late; shortened to 120 ms.
+- 120 ms build: "I like that better." A slow drag lets audio through between moves, which the
+  owner expects ("I am dragging slow enough to actually hear where I am"); fast drags are
+  silent. Accepted; the option can be turned off.
 
 Owner request: "option for silent drag if possible (still resumes at a drag pause, but not
 garbage while dragging)".
@@ -41,8 +45,8 @@ first facade test.
 
 - **Quiet period 120 ms** (first build 250 ms; owner smoke: "I don't 'feel' feedback as
   quickly as I think I should"). A drag sends a seek per mouse move, every 8-16 ms while it
-  moves; 120 ms of none means the hand has stopped. Much shorter brings back short bursts
-  of noise on a slow drag (moves a pixel at a time); longer feels late. It is one constant
+  moves; 120 ms of none means the hand has stopped. A slow drag (pauses between moves longer
+  than that) is heard in short bursts, which the owner wants; longer feels late. It is one constant
   (`ScrubAudioMuter.DefaultQuietPeriod`) if it needs tuning.
 - **Audio returns where playback is, not where the drag stopped.** Playback carries on
   muted during the rest (slice 1: a drag never pauses playback), so it is heard from about

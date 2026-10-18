@@ -63,7 +63,7 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
   owner smoke passed 2026-10-17 for video drags (`updates/035A_1`). Slice 2: optional silent
   drag (`MediaScrubAudio.SilentWhileMoving`; Player **Silent Drag**, on by default), muted
   while the drag moves, audible when it rests (120 ms) or ends; implemented; owner smoke
-  passed 2026-10-18, shorter delay pending a re-check (`updates/035A_2`).
+  passed 2026-10-18 (`updates/035A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

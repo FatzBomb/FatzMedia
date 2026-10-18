@@ -2,7 +2,7 @@
 
 Prepared: 2026-10-17
 Status: Slice 1 owner smoke passed 2026-10-17 (`updates/035A_1`). Slice 2 (silent drag)
-implemented 2026-10-18, pending manual smoke (`updates/035A_2`).
+owner smoke passed 2026-10-18 (`updates/035A_2`).
 
 Slice 1 history: owner report
 (2026-10-17 smoke): "Seeking still jumps at seek end", worst on video, also noticeable on
