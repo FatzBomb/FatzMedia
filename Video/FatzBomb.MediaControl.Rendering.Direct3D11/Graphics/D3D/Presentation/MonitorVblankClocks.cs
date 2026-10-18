@@ -77,6 +77,7 @@ internal sealed partial class MonitorVblankClocks : IDisposable
         private static readonly long IdleTicks = Stopwatch.Frequency * 3;
         private static readonly long RetryAfterFailureTicks = Stopwatch.Frequency * 5;
         private const int MaxConsecutiveWaitFailures = 10;
+        private const int MaxReportedRestarts = 3;
 
         private readonly Lock _gate = new();
         private readonly VblankGrid _grid = new(Stopwatch.Frequency);
@@ -86,6 +87,7 @@ internal sealed partial class MonitorVblankClocks : IDisposable
         private long _lastQuery;
         private long _failedAt;
         private bool _failureReported;
+        private int _reportedRestarts;
         private bool _disposed;
 
         public bool TryGet(double? nominalRefreshHz, out PresentationVsyncTiming timing)
@@ -183,12 +185,29 @@ internal sealed partial class MonitorVblankClocks : IDisposable
                     var timestamp = Stopwatch.GetTimestamp();
 
                     failures = 0;
+                    string? restartReason = null;
                     lock (_gate)
                     {
+                        var restartsBefore = _grid.Restarts;
                         _grid.Observe(timestamp);
-                        _timing = _grid.IsValid
-                            ? new PresentationVsyncTiming(monitor, _grid.LastVsyncTimestamp, _grid.PeriodTicks)
-                            : default;
+                        if (_grid.Restarts != restartsBefore && _reportedRestarts++ < MaxReportedRestarts)
+                            restartReason = _grid.LastRestartReason;
+
+                        // While the grid measures the rhythm again, the last good timing stays
+                        // published: predictions from it hold for seconds, and dropping it would
+                        // switch the video to the other timing path for a few refreshes.
+                        if (_grid.IsValid)
+                            _timing = new PresentationVsyncTiming(monitor, _grid.LastVsyncTimestamp, _grid.PeriodTicks, _grid.Restarts);
+                        else if (_timing.IsValid)
+                            _timing = _timing with { Resyncs = _grid.Restarts };
+                    }
+
+                    if (restartReason is not null)
+                    {
+                        DiagnosticRouter.Raise(
+                            MediaDiagnosticLevel.Info,
+                            "D3D11.Vblank",
+                            $"A monitor's vertical-blank rhythm was measured again: {restartReason}.");
                     }
                 }
             }

@@ -260,7 +260,20 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             ? workSeconds
             : (display.WorkSeconds * 0.9) + (workSeconds * 0.1);
 
-        display.Statistics.Record(slot, newFrame, late: workEnd > slot.VsyncTimestamp, clock.Restarts, phaseLock.Wraps);
+        // The frame on screen is more than a frame and a half behind what this refresh asked for:
+        // the next frame was not decoded in time (or was dropped as too late).
+        var starved = FramesPerSecond > 0
+            && _currentFrame is { } onScreen
+            && selection - onScreen.PresentationTime > 1.5 / FramesPerSecond;
+        display.Statistics.Record(
+            slot,
+            newFrame,
+            late: workEnd > slot.VsyncTimestamp,
+            workSeconds,
+            starved,
+            clock.Restarts,
+            phaseLock.Wraps,
+            display.Group.Timing.Resyncs);
         ReportDisplayLockedStatisticsIfDue(display, force: false);
         return clockPosition;
     }
@@ -277,6 +290,15 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
     private bool NoDisplayLockedSlot(string state)
     {
+        // A pass on the source-cadence path while display-locked timing is on: counted on the
+        // primary display's report (switching paths shows as uneven motion).
+        if (_frameTiming == VideoFrameTiming.DisplayLocked)
+        {
+            foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+                if (display.IncludesPrimary)
+                    display.Statistics.RecordFallbackPass();
+        }
+
         var now = Stopwatch.GetTimestamp();
         if (_displayLockedUnavailableSince == 0)
             _displayLockedUnavailableSince = now;
@@ -387,12 +409,31 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         private long _restarts;
         private long _wrapsAtStart;
         private long _wraps;
+        private long _resyncsAtStart;
+        private long _resyncs;
+        private long _missedRefreshes;
+        private long _gaps;
+        private double _longestGapMs;
+        private long _slowPasses;
+        private double _longestWorkMs;
+        private long _starvedRefreshes;
+        private long _fallbackPasses;
 
         public bool HasData => _refreshes > 0;
 
         public long StartTimestamp { get; private set; }
 
-        public void Record(DisplayLockedSlot slot, bool newFrame, bool late, long clockRestarts, long phaseWraps)
+        public void RecordFallbackPass() => _fallbackPasses++;
+
+        public void Record(
+            DisplayLockedSlot slot,
+            bool newFrame,
+            bool late,
+            double workSeconds,
+            bool starved,
+            long clockRestarts,
+            long phaseWraps,
+            long timingResyncs)
         {
             if (_refreshes == 0)
             {
@@ -401,8 +442,30 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
                 _frameStartVsync = slot.VsyncTimestamp;
                 _restartsAtStart = clockRestarts;
                 _wrapsAtStart = phaseWraps;
+                _resyncsAtStart = timingResyncs;
+            }
+            else
+            {
+                // Refreshes between the last one handled and this one were missed: the loop woke
+                // or finished too late, or passes ran on the source-cadence path.
+                var missed = (long)Math.Round((slot.VsyncTimestamp - _lastVsync) / (double)slot.PeriodTicks) - 1;
+                if (missed > 0)
+                {
+                    _missedRefreshes += missed;
+                    _gaps++;
+                    _longestGapMs = Math.Max(_longestGapMs, (slot.VsyncTimestamp - _lastVsync) * 1000.0 / Stopwatch.Frequency);
+                }
             }
 
+            var workMs = workSeconds * 1000;
+            if (workMs > slot.PeriodTicks * 500.0 / Stopwatch.Frequency)
+                _slowPasses++;
+
+            _longestWorkMs = Math.Max(_longestWorkMs, workMs);
+            if (starved)
+                _starvedRefreshes++;
+
+            _resyncs = timingResyncs - _resyncsAtStart;
             _refreshes++;
             _lastVsync = slot.VsyncTimestamp;
             _periodTicks = slot.PeriodTicks;
@@ -434,6 +497,14 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             _late = 0;
             _restarts = 0;
             _wraps = 0;
+            _resyncs = 0;
+            _missedRefreshes = 0;
+            _gaps = 0;
+            _longestGapMs = 0;
+            _slowPasses = 0;
+            _longestWorkMs = 0;
+            _starvedRefreshes = 0;
+            _fallbackPasses = 0;
         }
 
         public string Describe(string label)
@@ -449,7 +520,11 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
                 CultureInfo.InvariantCulture,
                 $"Display-locked timing over {seconds:0.0} s at {hertz:0.###} Hz{label}: {_frames} frames on {_refreshes} refreshes; "
                 + $"refreshes per frame {(holds.Length > 0 ? holds : "n/a")}; {_late} presents finished after their refresh; "
-                + $"{_wraps} cadence steps for clock drift; {_restarts} clock restarts (seeks, loops, jumps).");
+                + $"{_wraps} cadence steps for clock drift; {_restarts} clock restarts (seeks, loops, jumps). "
+                + $"Missed refreshes {_missedRefreshes} in {_gaps} gaps (longest {_longestGapMs:0} ms); "
+                + $"passes over half a refresh {_slowPasses} (longest {_longestWorkMs:0.0} ms); "
+                + $"refreshes waiting for an undecoded frame {_starvedRefreshes}; "
+                + $"source-cadence passes {_fallbackPasses}; vertical-blank re-measurements {_resyncs}.");
         }
     }
 }

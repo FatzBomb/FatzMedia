@@ -60,6 +60,35 @@ Fixed:
   monitor's nominal rate when that matches; the nominal rate is passed on every query, so a
   mode change is seen within a second.
 
+## Owner smoke 1 (2026-10-18): synced, seeks fine, but regular stutters
+
+The owner saw regular, noticeable stutters of about a second with display-locked timing on;
+fewer and milder with it off. Log, single display at 59.979 Hz, one minute:
+- 1269 frames on 3195 refreshes. 60 s needs about 3600 refreshes and 1438 frames: about 400
+  refreshes were not handled and about 170 frames were not shown through this path.
+- 11 holds of 5 or more refreshes, about 15 lost frames each.
+- 0 clock restarts, so every gap between display-locked passes was under 0.25 s.
+- With two displays the secondary's measured rate moved between 59.88 and 60.00 Hz, and the
+  two-display state was reported again several times: displays dropped out and came back.
+
+Most likely cause: whenever a monitor's vblank grid started over, the clock published no timing
+until three new blanks, and timing older than 250 ms was rejected.
+- Those passes ran on the source-cadence path. It sleeps until the next frame time (up to a
+  frame), so display-locked passes were missed, frames were skipped, and the two paths' phases
+  differ.
+- Secondary windows also had no nominal rate (the refresh-rate cache was primed for the
+  primary only), so their grids measured the period from single noisy intervals.
+
+Changed:
+- The vblank clock keeps publishing the last good timing while its grid measures again, and
+  predictions are used up to 1 s old (they hold for far longer).
+- Every window's monitor rate is primed, so secondaries get a nominal period.
+- The first three grid restarts per monitor are logged with the reason
+  (`D3D11.Vblank`: "...measured again: ...").
+- The minute report adds: missed refreshes in gaps (longest gap), passes over half a refresh
+  (longest), refreshes waiting for an undecoded frame, source-cadence passes, and vertical-blank
+  re-measurements. The next log names the cause instead of leaving it to inference.
+
 ## Decisions made without the owner
 
 - **Opt-in, off by default.** It changes when every video frame is presented, and that needs

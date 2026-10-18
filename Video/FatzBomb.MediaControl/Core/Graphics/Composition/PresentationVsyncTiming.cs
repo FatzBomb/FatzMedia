@@ -4,9 +4,10 @@ namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 /// Vertical-blank timing of the display showing a presentation surface (Stage 017A slice 4):
 /// the <see cref="System.Diagnostics.Stopwatch"/> timestamp of a recent vertical blank and the
 /// refresh period in Stopwatch ticks. <see cref="DisplayKey"/> identifies the display, so surfaces
-/// on the same monitor share one timing.
+/// on the same monitor share one timing. <see cref="Resyncs"/> counts how often the source lost the
+/// display's rhythm and measured it again (diagnostics).
 /// </summary>
-public readonly record struct PresentationVsyncTiming(long DisplayKey, long LastVsyncTimestamp, long PeriodTicks)
+public readonly record struct PresentationVsyncTiming(long DisplayKey, long LastVsyncTimestamp, long PeriodTicks, long Resyncs = 0)
 {
     /// <summary>Gets whether the timing holds a vertical blank and a positive period.</summary>
     public bool IsValid => LastVsyncTimestamp > 0 && PeriodTicks > 0;

@@ -78,6 +78,8 @@ public sealed class D3D11VblankGridTests
         Assert.True(grid.IsValid);
         Assert.InRange(grid.PeriodTicks, newPeriod - 100, newPeriod + 100);
         Assert.InRange(grid.LastVsyncTimestamp, switchAt + (39 * newPeriod) - 200, switchAt + (39 * newPeriod) + 200);
+        Assert.Equal(1, grid.Restarts);
+        Assert.Contains("off the refresh period", grid.LastRestartReason, StringComparison.Ordinal);
     }
 
     [Fact]

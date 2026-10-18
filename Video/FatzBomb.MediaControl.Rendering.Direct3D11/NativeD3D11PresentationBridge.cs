@@ -184,9 +184,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             ? CreateDirectCompositionSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
                 || CreateNativeHwndSurface(hwnd, surface.PixelWidth, surface.PixelHeight)
             : CreateSecondaryNativeHwndSurface(surface.Id, hwnd, surface.PixelWidth, surface.PixelHeight);
-        // Only the primary drives video timing. Attach also runs from the presentation thread
-        // when surfaces are recreated, so this queries Windows only for a new window.
-        if (attached && surface.Role == MediaPresentationSurfaceRole.Primary)
+        // Every window's monitor rate is needed: the primary's for video timing, and each one's
+        // as the nominal rate of its vertical-blank clock (display-locked timing on several
+        // monitors). Attach also runs from the presentation thread when surfaces are recreated,
+        // so this queries Windows only for a new window.
+        if (attached)
             _refreshRates.PrimeIfMissing(hwnd);
 
         return attached;

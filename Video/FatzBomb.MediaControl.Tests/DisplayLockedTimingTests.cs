@@ -169,7 +169,9 @@ public sealed class DisplayLockedTimingTests
     {
         var period = Ticks(1 / 60.0);
         Assert.False(DisplayLockedTiming.TryGetNextSlot(default, Start, Ticks(0.004), 0, out _));
-        Assert.False(DisplayLockedTiming.TryGetNextSlot(new PresentationVsyncTiming(1, Start, period), Start + Ticks(1), Ticks(0.004), 0, out _));
+        Assert.False(DisplayLockedTiming.TryGetNextSlot(new PresentationVsyncTiming(1, Start, period), Start + Ticks(2), Ticks(0.004), 0, out _));
+        // Half a second old (the source measuring the rhythm again) still predicts.
+        Assert.True(DisplayLockedTiming.TryGetNextSlot(new PresentationVsyncTiming(1, Start, period), Start + Ticks(0.5), Ticks(0.004), 0, out _));
     }
 
     [Fact]

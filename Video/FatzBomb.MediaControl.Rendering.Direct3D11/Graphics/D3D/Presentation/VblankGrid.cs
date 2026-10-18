@@ -35,6 +35,12 @@ internal sealed class VblankGrid(long stopwatchFrequency)
     /// <summary>Gets the refresh period in Stopwatch ticks.</summary>
     public long PeriodTicks => (long)Math.Round(_periodTicks);
 
+    /// <summary>Gets how many times the grid lost the blanks' rhythm and started over.</summary>
+    public long Restarts { get; private set; }
+
+    /// <summary>Gets why the grid last started over, for diagnostics.</summary>
+    public string? LastRestartReason { get; private set; }
+
     /// <summary>
     /// Sets the monitor's nominal rate (QueryDisplayConfig). It seeds the period until blanks
     /// measure it, and again after the grid starts over when it matches the blanks.
@@ -87,6 +93,7 @@ internal sealed class VblankGrid(long stopwatchFrequency)
         {
             if (++_mismatchedIntervals >= MismatchedIntervalsBeforeRestart)
             {
+                NoteRestart($"{MismatchedIntervalsBeforeRestart} blank intervals in a row off the refresh period (last {Milliseconds(sinceLast):0.00} ms against {Milliseconds(_periodTicks):0.00} ms)");
                 _periodTicks = 0;
                 Restart(timestamp);
                 return;
@@ -108,6 +115,7 @@ internal sealed class VblankGrid(long stopwatchFrequency)
         {
             if (++_outliers >= OutliersBeforeRestart)
             {
+                NoteRestart($"{OutliersBeforeRestart} blanks in a row off the predicted grid (last {Milliseconds(error):0.00} ms off, refresh {Milliseconds(_periodTicks):0.00} ms)");
                 _periodTicks = 0;
                 Restart(timestamp);
             }
@@ -120,6 +128,14 @@ internal sealed class VblankGrid(long stopwatchFrequency)
         _periodTicks += PeriodGain * error / periods;
         _samples++;
     }
+
+    private void NoteRestart(string reason)
+    {
+        Restarts++;
+        LastRestartReason = reason;
+    }
+
+    private double Milliseconds(double ticks) => ticks * 1000.0 / _frequency;
 
     private void Restart(long timestamp)
     {

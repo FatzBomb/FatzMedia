@@ -11,8 +11,12 @@ internal readonly record struct DisplayLockedSlot(long VsyncTimestamp, long Wake
 /// </summary>
 internal static class DisplayLockedTiming
 {
-    /// <summary>A vertical-blank timestamp older than this is not used to predict refreshes.</summary>
-    public static readonly TimeSpan MaxVsyncAge = TimeSpan.FromMilliseconds(250);
+    /// <summary>
+    /// A vertical-blank timestamp older than this is not used to predict refreshes. Predictions
+    /// from a measured period hold for far longer; a second rides out the timing source measuring
+    /// the rhythm again, so playback does not switch timing paths for a few refreshes.
+    /// </summary>
+    public static readonly TimeSpan MaxVsyncAge = TimeSpan.FromSeconds(1);
 
     /// <summary>Lead the loop starts with before a refresh, before measuring its own work.</summary>
     public static readonly TimeSpan InitialBudget = TimeSpan.FromMilliseconds(4);
