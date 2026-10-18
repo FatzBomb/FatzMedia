@@ -323,6 +323,19 @@ public sealed class VulkanConformanceTests
             maxChannelDelta: WashTolerance);
 
     [Fact]
+    public void Factory_ProbeMatchesSupportAndAsksForFrameSinkAndSoftwareDecoding()
+    {
+        var supported = VulkanPresentationCoordinatorFactory.IsSupported(out _);
+
+        Controllers.MediaPresentationAvailability availability = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
+
+        Assert.Equal(supported, availability.IsAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(availability.Detail));
+        Assert.True(availability.RequiresFrameSinkSurface);
+        Assert.True(availability.RequiresSoftwareDecoding);
+    }
+
+    [Fact]
     public void Backend_PresentsThroughManagedFrameSinkAndResizes()
     {
         if (!VulkanPresentationCoordinatorFactory.IsSupported(out _))

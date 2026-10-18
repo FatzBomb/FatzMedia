@@ -30,7 +30,6 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
     public bool HadRetainedResourcesWhenDeactivated { get; private set; }
     public bool WasDeactivated => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.Deactivated);
     public bool RequiresResourceAllocation => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.ResourceAllocationChanged);
-    public bool RequiresResourceRelease => DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.Deactivated) && HadRetainedResourcesWhenDeactivated;
     public bool NeedsUpload => Descriptor != null
         && (DirtyFlags.HasFlag(MediaCompositionLayerDirtyFlags.UploadRequired)
             || (Descriptor.Revision >= 0 && Descriptor.Revision != UploadedRevision));

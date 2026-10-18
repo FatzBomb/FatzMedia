@@ -161,6 +161,12 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
                 {
                     Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain ResizeBuffers failed: {resizeResult}");
                 }
+
+                // The buffers keep their old size: present at that size and leave the resize
+                // pending, so the next frame retries it instead of drawing a new-size viewport
+                // into an old-size buffer.
+                TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+                return true;
             }
             else if (_deviceLostReported)
             {

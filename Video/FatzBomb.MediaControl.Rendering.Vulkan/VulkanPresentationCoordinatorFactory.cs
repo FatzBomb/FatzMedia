@@ -10,7 +10,7 @@ namespace FatzBomb.MediaControl.Rendering.Vulkan;
 /// Creates a Core presentation coordinator backed by the preview Vulkan renderer. Hosts pass it
 /// to any platform factory exactly like the software or Direct3D11 factories.
 /// </summary>
-public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory
+public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoordinatorFactory, IMediaPresentationAvailabilityProbe
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
 
@@ -34,6 +34,27 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     {
         using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out reason);
         return compositor is not null;
+    }
+
+    /// <summary>
+    /// Available when <see cref="IsSupported"/> finds a usable device, so a fallback chain moves
+    /// past Vulkan on machines without a loader or driver. Like the software renderer it draws
+    /// only into managed frame-sink surfaces and presents only CPU frames.
+    /// </summary>
+    public MediaPresentationAvailability ProbeAvailability()
+    {
+        try
+        {
+            using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out var reason);
+            MediaPresentationAvailability availability = compositor is null
+                ? MediaPresentationAvailability.Unavailable(reason ?? "Vulkan initialization failed.")
+                : MediaPresentationAvailability.Available($"{compositor.DeviceName} ({compositor.DeviceType})");
+            return availability with { RequiresSoftwareDecoding = true, RequiresFrameSinkSurface = true };
+        }
+        catch (Exception ex)
+        {
+            return MediaPresentationAvailability.Unavailable(ex.Message);
+        }
     }
 
     public IMediaPresentationCoordinator Create(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) =>

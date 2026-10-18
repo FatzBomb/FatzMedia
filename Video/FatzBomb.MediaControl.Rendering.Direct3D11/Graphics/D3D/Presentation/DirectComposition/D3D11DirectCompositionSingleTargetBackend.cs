@@ -104,7 +104,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         HasPendingResize = width != Width || height != Height;
     }
 
-    public bool ApplyPendingResizeIfNeeded(D3D11DeviceResources deviceResources)
+    public bool ApplyPendingResizeIfNeeded()
     {
         if (!IsActive || !HasPendingResize)
             return true;
@@ -117,10 +117,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             return true;
         }
 
-        return ResizeCore(deviceResources, width, height);
+        return ResizeCore(width, height);
     }
 
-    private bool ResizeCore(D3D11DeviceResources _, int width, int height)
+    private bool ResizeCore(int width, int height)
     {
         if (!IsActive || _baseSwapChain == null || _target.OverlaySwapChain == null)
             return false;
@@ -155,6 +155,20 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 Format.Unknown,
                 SwapChainFlags.None);
             ReportResizeIfDeviceLost(overlayResizeResult, _target.OverlaySwapChain, "overlay", ref _overlayDeviceLostReported);
+
+            if (baseResizeResult.Failure || overlayResizeResult.Failure)
+            {
+                // Both layers must stay one size: put a chain that did resize back to the old
+                // size, present at that size, and leave the resize pending for the next frame.
+                if (baseResizeResult.Success)
+                    _ = _baseSwapChain.ResizeBuffers(0, (uint)Width, (uint)Height, Format.Unknown, SwapChainFlags.None);
+                if (overlayResizeResult.Success)
+                    _ = _target.OverlaySwapChain.ResizeBuffers(0, (uint)Width, (uint)Height, Format.Unknown, SwapChainFlags.None);
+
+                TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+                _target.ReacquireOverlayBackBuffer();
+                return true;
+            }
 
             TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
             _target.ReacquireOverlayBackBuffer();
@@ -227,8 +241,6 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
     }
 
-    public bool Commit() => _target.Commit();
-
     public bool PresentOverlayAndCommit(uint syncInterval = 1)
     {
         if (_target.OverlaySwapChain == null)
@@ -276,7 +288,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         if (_baseSwapChain == null)
             return;
 
+        // Nulled first: if GetBuffer throws (device removed), no disposed wrapper is left
+        // looking like a live target.
         TargetTexture?.Dispose();
+        TargetTexture = null;
         TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
