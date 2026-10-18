@@ -77,7 +77,9 @@ internal static class Bt2390ToneCurve
 /// stay in cache, so a pixel costs a few table reads, a 3x3 matrix and three square roots. The
 /// PQ tables take the top 12 bits of the 16-bit signal (the source is 10-bit); the encode table
 /// is indexed by the square root of linear light, which keeps shadow steps far below one 8-bit
-/// level. The reference white maps to SDR white.
+/// level. The curve compresses the source's range into [0, reference white], so the source peak
+/// is SDR white and the reference white itself lands a little below it (about 230 of 255 for a
+/// 1000-nit source at the default 203 nits), as with mpv's default SDR output.
 /// </remarks>
 internal sealed unsafe class HdrToneMapper
 {

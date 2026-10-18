@@ -9,8 +9,9 @@ namespace FatzBomb.MediaControl.Core.Configuration;
 /// and diagnosis.
 /// </param>
 /// <param name="ReferenceWhiteNits">
-/// The HDR luminance shown as SDR white, in nits; 0 uses <see cref="DefaultReferenceWhiteNits"/>.
-/// Lower values make HDR video brighter, higher values darker.
+/// The SDR target in nits: the source's range is compressed into [0, this], so the source peak
+/// becomes SDR white; 0 uses <see cref="DefaultReferenceWhiteNits"/>. Lower values make HDR video
+/// brighter, higher values darker.
 /// </param>
 public readonly record struct HdrToneMappingOptions(bool Disabled = false, double ReferenceWhiteNits = 0)
 {

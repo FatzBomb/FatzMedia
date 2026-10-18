@@ -17,7 +17,8 @@ Delivered:
 - `HdrToneMappingOptions` on `MediaPlayerConfiguration.HdrToneMapping`, on by default:
   - `Disabled` shows HDR as before, for comparison.
   - `ReferenceWhiteNits` (default 203, BT.2408's HDR reference white, also mpv's SDR target)
-    is the HDR level shown as SDR white.
+    is the SDR target. The source's range is compressed into it, so the source peak becomes SDR
+    white and 203 nits itself lands at about 230 of 255 for a 1000-nit source.
 - `Core/Video/Hdr/HdrToneMapper.cs`:
   - `PqCurve`: SMPTE ST 2084.
   - `Bt2390ToneCurve`: the BT.2390 EETF, a Hermite knee in PQ space with no black lift.
@@ -57,6 +58,15 @@ Delivered:
   BT.2020 red stays pure red, strides.
 - The peak policy and option defaults.
 
+## Review (Sonnet) follow-ups
+
+- The pipeline's decoder re-creation (device-lost swap, software fallback) now carries the HDR
+  options; it used the defaults, so `--no-hdr-tonemap` was lost after a fallback.
+- An untagged matrix on tone-mapped HDR10 resolves to BT.2020, not the size-based BT.709.
+- A frame's unusable MaxCLL or mastering peak (0 or a placeholder) falls back to the stream's
+  value instead of straight to the assumed 1000 nits.
+- Wording: the source peak, not 203 nits, becomes SDR white.
+
 ## Measured (Linux sandbox, 4 cores)
 
 - The real decoder with FFmpeg 9.0.2, on a tagged 3840x2160 10-bit PQ clip (FFV1, software
@@ -80,6 +90,8 @@ Delivered:
   saturated rather than desaturating toward white.
 - **HDR always takes the CPU path in slice 1.** Every renderer shows the same picture, and
   Direct3D11 gets the GPU path in slice 2.
+- **Primaries are taken as BT.2020** (HDR10's). The rare PQ file tagged with P3 primaries
+  comes out slightly oversaturated. An untagged YCbCr matrix on HDR10 is taken as BT.2020 too.
 - **HLG is not tone mapped yet.** It needs a luminance-dependent OOTF. It is rare outside
   broadcast and still shows as before, and the log line says so.
 

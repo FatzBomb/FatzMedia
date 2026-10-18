@@ -50,8 +50,8 @@ mapper in Core gives the same picture on every renderer and is testable without 
 
 Acceptance criteria:
 - `MediaPlayerConfiguration.HdrToneMapping` (`HdrToneMappingOptions`): on by default;
-  `Disabled` shows HDR as before; `ReferenceWhiteNits` (default 203, BT.2408) is the HDR level
-  shown as SDR white. Player: `--no-hdr-tonemap`.
+  `Disabled` shows HDR as before; `ReferenceWhiteNits` (default 203, BT.2408) is the SDR target
+  the source's range is compressed into (the source peak becomes SDR white). Player: `--no-hdr-tonemap`.
 - A frame whose transfer (frame tag, else stream tag) is PQ is tone mapped:
   - swscale converts it to full-range RGB48 with the BT.2020 matrix;
   - `HdrToneMapper` writes SDR BGRA: BT.2390 curve on the brightest channel (hue kept),

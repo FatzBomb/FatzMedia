@@ -68,48 +68,49 @@ internal static unsafe class FFmpegVideoColor
     /// </summary>
     public static (double Nits, string Source) GetHdrPeakNits(AVFrame* frame, AVStream* stream, double referenceWhiteNits)
     {
-        AVContentLightMetadata* light = null;
-        AVMasteringDisplayMetadata* mastering = null;
+        double frameMaxCll = 0, frameMastering = 0, streamMaxCll = 0, streamMastering = 0;
         if (frame != null)
         {
-            AVFrameSideData* lightData = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
-            AVFrameSideData* masteringData = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
-            light = lightData != null ? (AVContentLightMetadata*)lightData->data : null;
-            mastering = masteringData != null ? (AVMasteringDisplayMetadata*)masteringData->data : null;
+            AVFrameSideData* light = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+            AVFrameSideData* mastering = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+            frameMaxCll = light != null ? ReadMaxCll((AVContentLightMetadata*)light->data) : 0;
+            frameMastering = mastering != null ? ReadMasteringPeak((AVMasteringDisplayMetadata*)mastering->data) : 0;
         }
 
         if (stream != null && stream->codecpar != null)
         {
             AVCodecParameters* parameters = stream->codecpar;
-            if (light == null)
-            {
-                AVPacketSideData* data = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_CONTENT_LIGHT_LEVEL);
-                light = data != null ? (AVContentLightMetadata*)data->data : null;
-            }
-
-            if (mastering == null)
-            {
-                AVPacketSideData* data = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_MASTERING_DISPLAY_METADATA);
-                mastering = data != null ? (AVMasteringDisplayMetadata*)data->data : null;
-            }
+            AVPacketSideData* light = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_CONTENT_LIGHT_LEVEL);
+            AVPacketSideData* mastering = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_MASTERING_DISPLAY_METADATA);
+            streamMaxCll = light != null ? ReadMaxCll((AVContentLightMetadata*)light->data) : 0;
+            streamMastering = mastering != null ? ReadMasteringPeak((AVMasteringDisplayMetadata*)mastering->data) : 0;
         }
 
-        var maxCll = light != null ? light->MaxCLL : 0;
-        var masteringPeak = mastering != null && mastering->has_luminance != 0 && mastering->max_luminance.den != 0
-            ? ffmpeg.av_q2d(mastering->max_luminance)
-            : 0;
+        // A frame value an encoder left at 0 or a placeholder falls back to the stream's.
+        var maxCll = IsUsablePeak(frameMaxCll, referenceWhiteNits) ? frameMaxCll : streamMaxCll;
+        var masteringPeak = IsUsablePeak(frameMastering, referenceWhiteNits) ? frameMastering : streamMastering;
         return ChoosePeak(maxCll, masteringPeak, referenceWhiteNits);
+
+        static double ReadMaxCll(AVContentLightMetadata* light) => light != null ? light->MaxCLL : 0;
+
+        static double ReadMasteringPeak(AVMasteringDisplayMetadata* mastering) =>
+            mastering != null && mastering->has_luminance != 0 && mastering->max_luminance.den != 0
+                ? ffmpeg.av_q2d(mastering->max_luminance)
+                : 0;
     }
 
     /// <summary>The peak policy of <see cref="GetHdrPeakNits"/> on plain values.</summary>
     public static (double Nits, string Source) ChoosePeak(double maxCll, double masteringPeak, double referenceWhiteNits)
     {
-        if (maxCll >= referenceWhiteNits && maxCll <= 10000)
+        if (IsUsablePeak(maxCll, referenceWhiteNits))
             return (maxCll, "MaxCLL");
-        if (masteringPeak >= referenceWhiteNits && masteringPeak <= 10000)
+        if (IsUsablePeak(masteringPeak, referenceWhiteNits))
             return (masteringPeak, "mastering display");
         return (DefaultHdrPeakNits, "assumed, no usable metadata");
     }
+
+    private static bool IsUsablePeak(double nits, double referenceWhiteNits) =>
+        nits >= referenceWhiteNits && nits <= 10000;
 
     /// <summary>swscale's <c>SWS_CS_*</c> table for a resolved matrix.</summary>
     public static int ToSwsColorspace(VideoColorMatrix matrix) => matrix switch

@@ -744,7 +744,8 @@ internal sealed unsafe class VideoDecoder(
             var sourceFormat = (AVPixelFormat)sourceFrame->format;
             HdrToneMapper? toneMapper = IsToneMappedFrame() ? GetToneMapper() : null;
             AVPixelFormat targetFormat = toneMapper != null ? AVPixelFormat.AV_PIX_FMT_RGB48LE : AVPixelFormat.AV_PIX_FMT_BGRA;
-            if (!EnsureScaler(sourceFormat, GetFrameColorSpace(sourceFormat), targetFormat))
+            VideoColorSpace colorSpace = GetFrameColorSpace(sourceFormat, toneMapped: toneMapper != null);
+            if (!EnsureScaler(sourceFormat, colorSpace, targetFormat))
             {
                 return;
             }
@@ -1005,10 +1006,17 @@ internal sealed unsafe class VideoDecoder(
         return _softwareFrame;
     }
 
-    /// <summary>The decoded frame's color tags, unspecified parts resolved by frame size.</summary>
-    private VideoColorSpace GetFrameColorSpace(AVPixelFormat softwareFormat) =>
-        FFmpegVideoColor.FromTags(_videoFrame->colorspace, _videoFrame->color_range, softwareFormat)
-            .Resolve(Width, Height);
+    /// <summary>
+    /// The decoded frame's color tags, unspecified parts resolved by frame size; for HDR10 that
+    /// is tone mapped, an untagged matrix is BT.2020 (HDR10's), not the size-based guess.
+    /// </summary>
+    private VideoColorSpace GetFrameColorSpace(AVPixelFormat softwareFormat, bool toneMapped = false)
+    {
+        VideoColorSpace tagged = FFmpegVideoColor.FromTags(_videoFrame->colorspace, _videoFrame->color_range, softwareFormat);
+        if (toneMapped && tagged.Matrix == VideoColorMatrix.Unspecified)
+            tagged = tagged with { Matrix = VideoColorMatrix.Bt2020 };
+        return tagged.Resolve(Width, Height);
+    }
 
     /// <summary>Whether the current frame is HDR10 (PQ) video the engine tone maps to SDR.</summary>
     private bool IsToneMappedFrame()
