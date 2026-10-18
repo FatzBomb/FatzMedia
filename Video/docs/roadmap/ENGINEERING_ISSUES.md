@@ -32,8 +32,8 @@ review:
 
 ### ENG-013 - CdgPipeline duplicates the latest-wins seek worker
 
-Resolved: 2026-10-17. Needs a CD+G scrub in the next Player smoke (drag the seek bar over
-a CD+G track: lyrics follow the drag and settle where it stops).
+Resolved: 2026-10-17. Owner smoke passed 2026-10-18 (CD+G seek-bar drag: lyrics follow
+the drag and settle where it stops).
 
 Reported: 2026-10-17 (review of 015A slice 2). `CdgPipeline` had its own copy of the seek
 worker, about 120 lines, without the pump's lingering-worker guard.
