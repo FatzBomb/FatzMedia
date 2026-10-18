@@ -1,7 +1,7 @@
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Rendering.Software;
 
-namespace FatzBomb.MediaControl.Portable.Tests;
+namespace FatzBomb.MediaControl.Tests;
 
 public sealed class SoftwareRendererBackendTests
 {

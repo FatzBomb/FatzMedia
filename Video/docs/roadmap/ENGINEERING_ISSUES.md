@@ -50,7 +50,7 @@ buffer, and renders every composition once per target at the target's size. A pr
 mode change (only allowed with no media open) reopens an open secondary window in the new
 mode, in the same place. Cost: one extra software composition per frame while a secondary
 window is open. Test: `SoftwareRendererBackendTests.SecondaryWindow_ReceivesEachCompositionAtItsOwnSize`
-(moved to the portable test project, so it runs on Linux CI too).
+(runs in both test projects; the portable project links the Windows-free test files).
 `scripts/check-presentation-parity.ps1` now accepts either neutral payload for the secondary
 window.
 
