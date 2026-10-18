@@ -56,15 +56,26 @@ internal static class DisplayLockedTiming
         mediaTimeAtVsync + (periodSeconds / 2);
 
     /// <summary>
-    /// The lead to wake with before a refresh: one and a half times the measured selection and
-    /// present work plus a millisecond, between 2 and 12 ms and under 60 % of a refresh.
+    /// The lead to wake with before a refresh: at least half a refresh, or one and a half times
+    /// the measured selection and present work plus a millisecond when that is longer; between
+    /// 2 and 12 ms and under 60 % of a refresh.
     /// </summary>
+    /// <remarks>
+    /// Windows' compositor takes a window's frame for a refresh a little before the refresh. A
+    /// present 2 to 3 ms ahead (what the measured work alone asks for) misses that cut-off now
+    /// and then, and the frame shows a refresh later: a small jump on a slow pan (owner smoke 3,
+    /// 52 a minute). Half a refresh ahead is what the source-cadence path's presents get
+    /// (about 10 ms at 60 Hz). Which frame is chosen does not depend on the lead: selection uses
+    /// the refresh's own media time, and decoded frames are queued well ahead.
+    /// </remarks>
     public static long GetBudgetTicks(double averageWorkSeconds, long periodTicks)
     {
         var frequency = System.Diagnostics.Stopwatch.Frequency;
-        var seconds = double.IsFinite(averageWorkSeconds) && averageWorkSeconds > 0
+        var measured = double.IsFinite(averageWorkSeconds) && averageWorkSeconds > 0
             ? (averageWorkSeconds * 1.5) + 0.001
             : InitialBudget.TotalSeconds;
+        var halfRefresh = periodTicks > 0 ? periodTicks * 0.5 / frequency : 0;
+        var seconds = Math.Max(measured, halfRefresh);
         var clamped = Math.Clamp(seconds, MinBudget.TotalSeconds, MaxBudget.TotalSeconds);
         var ticks = (long)(clamped * frequency);
         return periodTicks > 0 ? Math.Min(ticks, (long)(periodTicks * 0.6)) : ticks;

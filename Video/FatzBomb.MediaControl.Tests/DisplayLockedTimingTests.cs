@@ -175,16 +175,19 @@ public sealed class DisplayLockedTimingTests
     }
 
     [Fact]
-    public void TheBudget_FollowsTheMeasuredWork_WithinItsLimits()
+    public void TheBudget_IsAtLeastHalfARefresh_AndFollowsLongerWork_WithinItsLimits()
     {
+        // Owner smoke 3: a lead of 2 to 3 ms missed the compositor's cut-off now and then.
         var period = Ticks(1 / 60.0);
-        Assert.Equal(Ticks(0.004), DisplayLockedTiming.GetBudgetTicks(double.NaN, period), Ticks(0.0001));
-        Assert.Equal(Ticks(0.002), DisplayLockedTiming.GetBudgetTicks(0.0001, period), Ticks(0.0001));
-        Assert.Equal(Ticks(0.0055), DisplayLockedTiming.GetBudgetTicks(0.003, period), Ticks(0.0001));
+        Assert.Equal(period / 2, DisplayLockedTiming.GetBudgetTicks(double.NaN, period), Ticks(0.0001));
+        Assert.Equal(period / 2, DisplayLockedTiming.GetBudgetTicks(0.001, period), Ticks(0.0001));
+        // Longer work wins, up to 60 % of a refresh (10 ms at 60 Hz).
+        Assert.Equal((long)(period * 0.6), DisplayLockedTiming.GetBudgetTicks(0.006, period));
+        // Within 2 to 12 ms: a 30 Hz display with long work stops at 12 ms.
         Assert.Equal(Ticks(0.012), DisplayLockedTiming.GetBudgetTicks(0.05, Ticks(1 / 30.0)), Ticks(0.0001));
-        // Never more than 60 % of a refresh: 10 ms at 60 Hz.
-        Assert.Equal((long)(period * 0.6), DisplayLockedTiming.GetBudgetTicks(0.05, period));
-        Assert.Equal((long)(Ticks(1 / 240.0) * 0.6), DisplayLockedTiming.GetBudgetTicks(0.05, Ticks(1 / 240.0)));
+        Assert.Equal(Ticks(0.012), DisplayLockedTiming.GetBudgetTicks(double.NaN, Ticks(1 / 30.0)), Ticks(0.0001)); // half a refresh, capped
+        // 240 Hz: half a refresh is about 2.1 ms, under 60 % of it.
+        Assert.Equal(Ticks(1 / 480.0), DisplayLockedTiming.GetBudgetTicks(0.0005, Ticks(1 / 240.0)), Ticks(0.0001));
     }
 
     [Fact]

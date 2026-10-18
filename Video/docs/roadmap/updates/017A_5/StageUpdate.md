@@ -56,6 +56,28 @@ Fixed: a pass serves every display whose own wake-up falls before the pass would
 Test: a 60 s schedule simulation at 59.96 and 60.00 Hz with 3 ms passes misses more than 100
 refreshes serving one display per pass, and none with the fix.
 
+## Owner smoke 3 (2026-10-18): close; small jumps on slow pans with display-locked on
+
+Owner: single window with it on showed small jitters, "not nearly as bad as previously", a
+little more noticeable than off. Two windows were the same or better. Off: no noticeable issues.
+
+Log, single window, one minute:
+- 1434 frames on 3592 refreshes; about 1438 and 3598 is perfect.
+- Refreshes per frame 2: 714, 3: 715.
+- 8 missed refreshes; no fallbacks, re-measurements or decode waits.
+- 52 presents finished after their refresh.
+
+The Perf lines show the difference between the paths:
+- Source cadence presents about 10 ms ahead of a frame's time (`maxEarly` 10.3 ms).
+- Display-locked woke only its measured budget ahead, 2 to 3 ms (work is about 1 ms).
+
+Windows' compositor takes a window's frame a little before the refresh, so presents that late
+missed the cut-off about once a second and showed a refresh later: the small jumps.
+
+Fixed: the wake-up lead is at least half a refresh (8.3 ms at 60 Hz), within the existing 2 to
+12 ms and 60 % caps. Selection still uses the refresh's own media time, and frames are decoded
+well ahead, so only the present moves earlier.
+
 ## Decisions made without the owner
 
 - **Frames stay shared and only move forward.** Each display picks when it shows a frame, not a
