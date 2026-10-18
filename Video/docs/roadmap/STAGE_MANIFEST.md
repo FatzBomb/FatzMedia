@@ -20,11 +20,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
-- `active/038A_ACTIVE_HdrVideoToneMapping.md` - slice 1 tone maps HDR10 (PQ) video to SDR on
-  the CPU path for every renderer (BT.2390 curve, SDR white 203 nits; Player `--no-hdr-tonemap`
-  to compare); owner confirmed 2026-10-18 (`updates/038A_1`). Slice 2 tone maps
-  hardware-decoded HDR10 in a Direct3D11 shader with the same curve (no copy back to the CPU;
-  `--hdr-tonemap-cpu` to compare); implemented, pending manual smoke (`updates/038A_2`).
 
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
@@ -41,6 +36,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
 - `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
 - `complete/014A_COMPLETED_StreamingNetworkPlayback.md` — source capability matrix and HTTP/HTTPS audio with retries; owner smoke passed 2026-10-17; network video deferred to 039A (completed 2026-10-18)
 - `complete/015A_COMPLETED_BroadVideoPipelineSplit.md` — responsibility map, seek policy and the shared seek pump extracted; owner smoke passed 2026-10-17; remaining seams in 041A (completed 2026-10-18)
@@ -90,6 +86,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/039A_IDEA_NetworkVideoPlayback.md` - HTTP/HTTPS video, deferred from 014A.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
+- `future/042A_IDEA_HdrFollowUps.md` - HLG tone mapping and real HDR output on HDR displays,
+  deferred from 038A.
 
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
