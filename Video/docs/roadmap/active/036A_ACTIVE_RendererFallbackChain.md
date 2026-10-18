@@ -38,7 +38,8 @@ software Direct3D driver (WARP) that keeps the native swap-chain path.
 3. `Direct3D11PresentationCoordinatorFactory` implements the probe: it creates and releases
    a device with its configured selection and reports what it got.
 4. Player: `--renderer=auto|gpu|warp|software` (`--software` stays as an alias). `auto`
-   (default) is Direct3D11 `Auto` then software. The chain is resolved at startup; the
+   (default) is Direct3D11 `Auto` then software. The chain is resolved at startup, off the
+   UI thread; the
    selected renderer's requirements pick `WpfComposited` and software decoding (the software
    renderer; Direct3D11 on a software rasterizer, since hardware-decoded frames carry their
    GPU device, which the renderer would adopt). Forced WARP uses software decoding. The

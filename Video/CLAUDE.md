@@ -41,7 +41,11 @@ per stage/slice. Release builds treat warnings as errors — write warning-clean
   with `EnableWindowsTargeting=true` (env var or `-p:`), the whole solution. The `net10.0`
   test projects run here: `Portable.Tests`, `Linux.Tests`, `Rendering.Vulkan.Tests`
   (needs Mesa lavapipe: `apt-get install mesa-vulkan-drivers`), `Avalonia.Tests`
-  (headless). `dotnet format FatzBomb.MediaControl.sln --verify-no-changes` works with
+  (headless). `Portable.Tests` compiles every file in `FatzBomb.MediaControl.Tests` by link,
+  except the Windows-only files named in its csproj `Exclude`: keep portable tests in
+  `FatzBomb.MediaControl.Tests` (they run in both projects, Windows and Linux CI) and do not
+  move them; a new Windows-only test file needs a `D3D11*`/`Direct3D11*` name or an entry
+  in that `Exclude` list. `dotnet format FatzBomb.MediaControl.sln --verify-no-changes` works with
   `EnableWindowsTargeting=true`. Boundary scripts run with the PowerShell .NET tool
   (`dotnet tool install --global PowerShell`, then `DOTNET_ROOT=<sdk root> pwsh -File
   scripts/check-*.ps1`). The Windows test project, WPF, D3D11, and BASS playback cannot

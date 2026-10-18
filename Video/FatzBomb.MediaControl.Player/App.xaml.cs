@@ -20,10 +20,18 @@ public partial class App : Application
 
     public static string? StartupMediaPath { get; private set; }
 
-    public static bool UseSoftwareRenderer { get; private set; }
+    /// <summary>
+    /// Gets whether the software renderer is expected before <see cref="RendererSelection"/>
+    /// resolves: only an explicit <c>--software</c> / <c>--renderer=software</c> is known up front.
+    /// </summary>
+    public static bool ExpectsSoftwareRenderer { get; private set; }
 
-    /// <summary>Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software).</summary>
-    internal static PlayerRendererSelection Renderer { get; private set; } = null!;
+    /// <summary>
+    /// Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software). The auto
+    /// chain creates a probe device, so it resolves off the UI thread and the window shows at once;
+    /// the main view model waits for it before creating the engine.
+    /// </summary>
+    internal static Task<PlayerRendererSelection> RendererSelection { get; private set; } = null!;
 
     public static bool ResetPitchOnMediaLoad { get; private set; }
 
@@ -119,21 +127,28 @@ public partial class App : Application
 
         TryAttachDebugLog();
 
-        // Resolved before the main window exists: the presentation mode and decoding follow it.
+        ExpectsSoftwareRenderer = rendererChoice == PlayerRendererChoice.Software;
+        var invalidRendererValue = invalidRendererArgument ? rendererArgument : null;
+        RendererSelection = Task.Run(() => ResolveRenderer(rendererChoice, invalidRendererValue));
+    }
+
+    private static PlayerRendererSelection ResolveRenderer(PlayerRendererChoice choice, string? invalidValue)
+    {
+        PlayerRendererSelection selection;
         try
         {
-            Renderer = PlayerRendererSelection.Resolve(rendererChoice);
+            selection = PlayerRendererSelection.Resolve(choice);
         }
         catch (Exception ex)
         {
-            Renderer = PlayerRendererSelection.SoftwareAfterFailure(ex);
+            selection = PlayerRendererSelection.SoftwareAfterFailure(ex);
         }
 
-        if (invalidRendererArgument)
-            Renderer.AddLogLine(MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{rendererArgument}' (use auto, gpu, warp or software); using {rendererChoice.ToString().ToLowerInvariant()}.");
+        if (invalidValue is not null)
+            selection.AddLogLine(MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{invalidValue}' (use auto, gpu, warp or software); using {choice.ToString().ToLowerInvariant()}.");
 
-        UseSoftwareRenderer = Renderer.UsesSoftwareRenderer;
-        Trace.WriteLine($"[Player] Renderer: {Renderer.Summary}");
+        Trace.WriteLine($"[Player] Renderer: {selection.Summary}");
+        return selection;
     }
 
     private void TryAttachDebugLog()

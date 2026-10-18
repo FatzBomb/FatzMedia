@@ -35,8 +35,9 @@ Delivered:
   chain.
 - Player: `--renderer=auto|gpu|warp|software` (`--software` still works). `auto` (default)
   is Direct3D11 `Auto`, then the software renderer, resolved at startup because the surface
-  mode and decoding follow the choice: the selected renderer's `RequiresFrameSinkSurface`
-  picks `WpfComposited`, `RequiresSoftwareDecoding` picks software decoding. Forced `warp`
+  mode and decoding follow the choice (off the UI thread; see Decisions): the selected
+  renderer's `RequiresFrameSinkSurface` picks `WpfComposited`, `RequiresSoftwareDecoding`
+  picks software decoding. Forced `warp`
   uses software decoding; forced tiers skip the startup probe. The status line names the
   renderer and device; the Log panel's `Renderer` entries show each probed candidate and
   why, written before the engine starts so they are there even if native loading fails.
@@ -51,8 +52,12 @@ Delivered:
   default; the software renderer is only reached when no Direct3D11 device exists at all.
 - The chain is resolved once, at startup; no switching renderers mid-session (a lost device
   recovers inside Direct3D11 as before).
-- Auto costs one extra device creation at startup (the probe), about the time the window
-  takes to appear; forced tiers skip it.
+- Auto costs one extra device creation at startup (the probe). It runs on a background
+  thread started first thing in `App.OnStartup`, so the window appears without waiting; the
+  view model awaits it just before creating the engine (which loads the native DLLs anyway).
+  Until then the Player assumes the GPU path (or the software renderer for an explicit
+  `--software`); if the chain lands on the software renderer, the view model switches the
+  surface to `WpfComposited` before any media is loaded. Forced tiers skip the probe.
 - A forced `Warp` with hardware decoding still adopts the decoder's GPU device for
   hardware frames (video keeps working) and logs that it left the software rasterizer.
 
