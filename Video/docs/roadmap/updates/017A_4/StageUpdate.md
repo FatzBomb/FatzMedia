@@ -38,6 +38,28 @@ Delivered: see the stage file, slice 4.
     model and 198 straight from the raw clock;
   - 25 on 60 keeps the model's 2/3 mix.
 
+## Review follow-up (same day, local review of the slice 4 commit)
+
+Fixed:
+- **The phase lock was cleared on every refresh.** The measured refresh period moves by a few
+  ticks with every blank, and `CadencePhaseLock.Configure` compared it exactly, so its
+  hysteresis never acted on real displays. It now ignores changes under 0.1 %. Test: a jittering
+  period keeps the offset.
+- **The same refresh could be handled twice.** When the vblank grid moved its prediction of a
+  refresh a fraction of a millisecond later, the loop presented for it again.
+  - `VsyncMediaClock` then divided clock jitter by a 0.1 ms gap. Right after a seek that pushed
+    the rate to its clamp (8). The rate survived restarts, so the filter could restart on every
+    refresh.
+  - Now the next slot is at least half a period after the last one handled, refreshes closer
+    than 2 ms count as the same refresh, `Reset` clears the rate, and a restart straight after a
+    restart starts the rate over at 1. Tests for each.
+- **Statistics came in bursts.** A short timing gap (a vblank grid restarting) flushed and
+  reported the statistics each time. Gaps under a second now keep each display's clock and
+  statistics.
+- **After a rate change the grid took its period from one noisy interval.** It now uses the
+  monitor's nominal rate when that matches; the nominal rate is passed on every query, so a
+  mode change is seen within a second.
+
 ## Decisions made without the owner
 
 - **Opt-in, off by default.** It changes when every video frame is presented, and that needs

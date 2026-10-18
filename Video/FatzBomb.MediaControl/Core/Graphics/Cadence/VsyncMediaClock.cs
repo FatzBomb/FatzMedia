@@ -27,6 +27,12 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
     /// <summary>Refreshes further apart than this (paused, stalled) restart the filter.</summary>
     internal const double MaxRefreshGapSeconds = 0.25;
 
+    /// <summary>
+    /// Refreshes closer than this (above 500 Hz) are the same refresh predicted twice: dividing
+    /// clock jitter by such a short gap would wreck the rate estimate.
+    /// </summary>
+    internal const double MinRefreshGapSeconds = 0.002;
+
     private const double PositionGain = 0.1;
     private const double RateGain = 0.004;
     private const double MinRate = 0.05;
@@ -48,8 +54,12 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
     /// <summary>Gets how many times the filter restarted (seek, loop, pause or a large jump).</summary>
     public long Restarts { get; private set; }
 
-    /// <summary>Forgets the state; the next update starts the filter at its observation.</summary>
-    public void Reset() => _hasState = false;
+    /// <summary>Forgets the state, rate included; the next update starts the filter at its observation.</summary>
+    public void Reset()
+    {
+        _hasState = false;
+        _rate = 1.0;
+    }
 
     /// <summary>
     /// Takes the raw media position projected to the refresh at <paramref name="vsyncTimestamp"/>
@@ -68,6 +78,9 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
             return Restart(vsyncTimestamp, observedPosition);
 
         var elapsed = (vsyncTimestamp - _vsync) / _frequency;
+        if (elapsed > 0 && elapsed < MinRefreshGapSeconds)
+            return _position;
+
         if (elapsed <= 0 || elapsed > MaxRefreshGapSeconds)
             return Restart(vsyncTimestamp, observedPosition);
 
@@ -96,7 +109,11 @@ internal sealed class VsyncMediaClock(long stopwatchFrequency)
             Restarts++;
 
         // The previous rate is the best guess (seek, loop, resume); a new tempo is measured by
-        // the warm-up gains.
+        // the warm-up gains. A restart straight after a restart means that guess was wrong (a
+        // rate far off would otherwise restart the filter on every refresh): start from 1.
+        if (_hasState && _samples <= 1)
+            _rate = 1.0;
+
         _hasState = true;
         _samples = 1;
         _vsync = vsyncTimestamp;

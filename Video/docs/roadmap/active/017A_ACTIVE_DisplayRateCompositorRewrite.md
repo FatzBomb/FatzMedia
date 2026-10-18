@@ -4,7 +4,8 @@ Prepared: 2026-10-16
 Status: Slice 1 (deterministic cadence model and specification), slice 2 (cadence report in
 the host log, `updates/017A_2`), and slice 3 (per-monitor refresh rate from the renderer,
 `updates/017A_3`) implemented and smoke-passed. Slice 4 (display-locked frame selection,
-opt-in, `updates/017A_4`) implemented 2026-10-18, pending manual smoke.
+opt-in, `updates/017A_4`) and slice 5 (each display its own cadence, `updates/017A_5`)
+implemented 2026-10-18, pending manual smoke.
 
 ## Cadence Model (pinned)
 
@@ -76,10 +77,29 @@ Vulkan/software return null until they present to windows.
   steps and clock restarts.
 - Player: **Display-Locked** check box in the A/V flyout, off by default.
 
+## Slice 5 - Each display its own cadence (2026-10-18)
+
+With display-locked timing and surfaces on monitors with different refresh rates:
+- The coordinator groups the attached surfaces by display (`PresentationTimingGroup`). A
+  surface the renderer has no timing for follows the primary's display.
+- The loop serves whichever display's refresh comes next, with that display's own filtered
+  clock, phase lock, work budget and statistics.
+- Decoded frames stay shared and only move forward on the one media clock. A display whose
+  refresh reaches the current frame later shows it then (the frame is raised again for that
+  display).
+- A frame raised for some displays carries their targets (`VideoFrameEventArgs.Targets`,
+  internal). The coordinator composes for those targets only (`MediaCompositionFrame.Targets`,
+  a `MediaCompositionTargetFilter`). Direct3D11 and the software renderer honour it; Vulkan
+  presents to every target, as before.
+- CD+G, subtitle, background and retained refreshes are not filtered: they go to every target
+  as before.
+- With one display (or all surfaces on one monitor) nothing is filtered; slice 4's behaviour.
+
 ## Next Slices
 
-1. Slice 5 - Multi-target: each display runs its own cadence from the same composition
-   plan; CDG and subtitle layers keep updating independently.
+None planned. Possible later work, once the owner's smoke settles the defaults:
+- display-locked as the default for Direct3D11 native windows;
+- vertical-blank timing for WPF-composited and Vulkan surfaces.
 
 ## Explicit Non-Goals
 

@@ -81,6 +81,26 @@ public sealed class D3D11VblankGridTests
     }
 
     [Fact]
+    public void AfterARateChange_TheNominalPeriodIsUsed_WhenItMatches()
+    {
+        var grid = new VblankGrid(Frequency);
+        grid.SeedRefreshRate(60);
+        for (var blank = 0; blank < 20; blank++)
+            grid.Observe((long)(Start + (blank * Period)));
+
+        // Windows switches to 144 Hz; the cache reports it, and the first interval is noisy.
+        var newPeriod = Frequency / 144.0;
+        grid.SeedRefreshRate(144);
+        var switchAt = Start + (20 * Period);
+        var random = new Random(3);
+        for (var blank = 0; blank < 12; blank++)
+            grid.Observe((long)(switchAt + (blank * newPeriod) + (random.NextDouble() * 5_000)));
+
+        Assert.True(grid.IsValid);
+        Assert.InRange(grid.PeriodTicks, newPeriod - 300, newPeriod + 300); // one noisy interval: up to 5000 off
+    }
+
+    [Fact]
     public void ALowerRefreshRate_IsMeasuredAgain()
     {
         var grid = new VblankGrid(Frequency);

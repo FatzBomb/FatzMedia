@@ -48,12 +48,17 @@ internal sealed class CadencePhaseLock
     public void Reset() => Offset = 0;
 
     /// <summary>
-    /// Sets the refresh period and frame rate; a change clears the offset. Rates whose ratio is not
-    /// near a fraction with a denominator up to 4 turn the lock off.
+    /// Sets the refresh period and frame rate; a real change clears the offset. Rates whose ratio
+    /// is not near a fraction with a denominator up to 4 turn the lock off.
     /// </summary>
+    /// <remarks>
+    /// The measured refresh period moves by a few parts per million on every blank; only a change
+    /// above 0.1 % (another refresh rate, another video) counts, or the offset would be cleared on
+    /// every refresh and the hysteresis would never act.
+    /// </remarks>
     public void Configure(double periodSeconds, double framesPerSecond)
     {
-        if (periodSeconds == _periodSeconds && framesPerSecond == _framesPerSecond)
+        if (IsClose(periodSeconds, _periodSeconds) && IsClose(framesPerSecond, _framesPerSecond))
             return;
 
         _periodSeconds = periodSeconds;
@@ -76,6 +81,9 @@ internal sealed class CadencePhaseLock
             }
         }
     }
+
+    private static bool IsClose(double value, double reference) =>
+        reference > 0 && Math.Abs(value - reference) <= reference * 0.001;
 
     /// <summary>
     /// A new frame started showing at a refresh whose selection time (offset included) was

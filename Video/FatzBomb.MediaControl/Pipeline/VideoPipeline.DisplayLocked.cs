@@ -24,6 +24,9 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     private const string FrameTimingDiagnosticCategory = "VideoFrameTiming";
     private static readonly long DisplayLockedReportIntervalTicks = Stopwatch.Frequency * 60;
     private static readonly long DisplayLockedStateSettleTicks = Stopwatch.Frequency / 2;
+    // Timing gaps this short (a vblank grid restarting, a monitor change) keep each display's
+    // clock and statistics, so they cause neither a cadence restart nor a burst of reports.
+    private static readonly long DisplayLockedGapToleranceTicks = Stopwatch.Frequency;
 
     // The targets of the frame being raised on this thread (null: every target).
     [ThreadStatic]
@@ -39,6 +42,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     private long _displayLockedPendingSince;
     private string? _displayLockedOnState;
     private string _displayLockedOnStateKey = string.Empty;
+    private long _displayLockedUnavailableSince;
 
     /// <inheritdoc cref="IVideoFrameTimingControl.FrameTiming"/>
     public VideoFrameTiming FrameTiming
@@ -95,13 +99,14 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             }
         }
 
-        ForgetDisplaysNotShowingTheVideo();
+        ForgetDisplaysNotShowingTheVideo(now);
         if (target is null || !primaryCurrent)
         {
             target = null;
             return NoDisplayLockedSlot("unavailable: the display's vertical-blank timing is not current");
         }
 
+        _displayLockedUnavailableSince = 0;
         NoteDisplayLockedState(GetDisplayLockedOnState());
         return true;
     }
@@ -141,22 +146,20 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         }
 
         display.Group = group;
-        display.Seen = true;
+        display.LastSeen = Stopwatch.GetTimestamp();
         return display;
     }
 
-    private void ForgetDisplaysNotShowingTheVideo()
+    private void ForgetDisplaysNotShowingTheVideo(long now)
     {
         List<long>? gone = null;
         foreach ((var key, DisplayLockedTarget display) in _displayLockedTargets)
         {
-            if (!display.Seen)
+            if (now - display.LastSeen > DisplayLockedGapToleranceTicks)
             {
                 ReportDisplayLockedStatisticsIfDue(display, force: true);
                 (gone ??= []).Add(key);
             }
-
-            display.Seen = false;
         }
 
         if (gone is not null)
@@ -274,7 +277,12 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
     private bool NoDisplayLockedSlot(string state)
     {
-        if (_displayLockedTargets.Count > 0)
+        var now = Stopwatch.GetTimestamp();
+        if (_displayLockedUnavailableSince == 0)
+            _displayLockedUnavailableSince = now;
+
+        if (_displayLockedTargets.Count > 0
+            && (_frameTiming != VideoFrameTiming.DisplayLocked || now - _displayLockedUnavailableSince > DisplayLockedGapToleranceTicks))
         {
             foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
                 ReportDisplayLockedStatisticsIfDue(display, force: true);
@@ -348,7 +356,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
 
         public bool IncludesPrimary => Group.IncludesPrimary;
 
-        public bool Seen { get; set; }
+        public long LastSeen { get; set; }
 
         public long LastVsync { get; set; }
 

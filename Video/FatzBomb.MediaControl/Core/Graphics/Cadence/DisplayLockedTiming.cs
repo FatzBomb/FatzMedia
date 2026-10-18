@@ -33,8 +33,10 @@ internal static class DisplayLockedTiming
         if (!timing.IsCurrent(now, maxAge))
             return false;
 
+        // Half a period past the refresh already handled: the grid's prediction of that same
+        // refresh moves a little with each blank observed and must not count as the next one.
         var budget = Math.Clamp(budgetTicks, 0, timing.PeriodTicks - 1);
-        var earliest = Math.Max(now + budget, lastVsync + 1);
+        var earliest = Math.Max(now + budget, lastVsync + (timing.PeriodTicks / 2));
         var vsync = timing.NextVsyncAtOrAfter(earliest);
         slot = new DisplayLockedSlot(vsync, vsync - budget, timing.PeriodTicks);
         return true;

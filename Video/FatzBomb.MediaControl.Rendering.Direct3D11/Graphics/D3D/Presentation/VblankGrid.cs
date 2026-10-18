@@ -20,6 +20,7 @@ internal sealed class VblankGrid(long stopwatchFrequency)
 
     private double _gridTimestamp;
     private double _periodTicks;
+    private double _nominalPeriodTicks;
     private long _lastObserved;
     private int _samples;
     private int _outliers;
@@ -35,13 +36,17 @@ internal sealed class VblankGrid(long stopwatchFrequency)
     public long PeriodTicks => (long)Math.Round(_periodTicks);
 
     /// <summary>
-    /// Seeds the period from the monitor's nominal rate (QueryDisplayConfig), used until blanks
-    /// measure it.
+    /// Sets the monitor's nominal rate (QueryDisplayConfig). It seeds the period until blanks
+    /// measure it, and again after the grid starts over when it matches the blanks.
     /// </summary>
     public void SeedRefreshRate(double? hertz)
     {
-        if (_samples == 0 && hertz is > 1 and < 1000)
-            _periodTicks = _frequency / hertz.Value;
+        if (hertz is not (> 1 and < 1000))
+            return;
+
+        _nominalPeriodTicks = _frequency / hertz.Value;
+        if (_samples == 0)
+            _periodTicks = _nominalPeriodTicks;
     }
 
     /// <summary>Forgets the blanks (the clock stopped for a while); the nominal period is kept.</summary>
@@ -65,8 +70,11 @@ internal sealed class VblankGrid(long stopwatchFrequency)
         _lastObserved = timestamp;
         if (_periodTicks <= 0)
         {
-            // No nominal rate: the first interval is the first period estimate.
-            _periodTicks = sinceLast;
+            // The grid started over: the nominal period when the first interval agrees with it
+            // (one interval carries the wake-up jitter), else that interval.
+            _periodTicks = _nominalPeriodTicks > 0 && Math.Abs(sinceLast - _nominalPeriodTicks) < _nominalPeriodTicks * 0.1
+                ? _nominalPeriodTicks
+                : sinceLast;
             _gridTimestamp = timestamp;
             _samples++;
             return;

@@ -99,6 +99,8 @@ internal sealed partial class MonitorVblankClocks : IDisposable
 
                 _lastQuery = now;
                 _nominalRefreshHz = nominalRefreshHz;
+                // A mode change shows up here within a second (QueryDisplayConfig cache).
+                _grid.SeedRefreshRate(nominalRefreshHz);
                 if (_thread is null && (_failedAt == 0 || now - _failedAt > RetryAfterFailureTicks))
                     Start();
 

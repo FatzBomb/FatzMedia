@@ -231,6 +231,75 @@ public sealed class DisplayLockedTimingTests
     }
 
     [Fact]
+    public void ThePhaseLock_KeepsItsOffset_ThroughAMeasuredPeriodThatJitters()
+    {
+        // Review of slice 4: the measured period changes by a few ticks every refresh; that must
+        // not clear the offset, or the hysteresis never acts on real displays.
+        var phaseLock = new CadencePhaseLock();
+        phaseLock.Configure(1 / 60.0, 24);
+        phaseLock.OnFrameStarted(1.0005, 1.0);
+        var offset = phaseLock.Offset;
+        Assert.True(offset > 0);
+
+        phaseLock.Configure((1 / 60.0) * 1.000002, 24);
+        phaseLock.Configure((1 / 60.0) * 0.999997, 23.9999);
+        Assert.Equal(offset, phaseLock.Offset);
+
+        phaseLock.Configure(1 / 50.0, 24); // another refresh rate
+        Assert.Equal(0, phaseLock.Offset);
+    }
+
+    [Fact]
+    public void TheSameRefreshPredictedTwice_LeavesTheRateAlone()
+    {
+        // Review of slice 4: a grid prediction a fraction of a millisecond later is the same refresh;
+        // dividing clock jitter by that gap pushed the rate to its clamp.
+        var clock = new VsyncMediaClock(Frequency);
+        var period = Ticks(1 / 60.0);
+        _ = clock.Update(Start, 10.0);
+        _ = clock.Update(Start + period, 10.0 + (1 / 60.0));
+        var position = clock.Update(Start + period + Ticks(0.0001), 10.0 + (1 / 60.0) + 0.002);
+
+        Assert.Equal(10.0 + (1 / 60.0), position, 6);
+        Assert.Equal(1.0, clock.Rate, 3);
+    }
+
+    [Fact]
+    public void RestartsInARow_StartTheRateOver()
+    {
+        var clock = new VsyncMediaClock(Frequency);
+        var period = Ticks(1 / 60.0);
+        // Two updates 3 ms apart with clock jitter: the warm-up takes a wild rate (clamped at 8).
+        _ = clock.Update(Start, 0);
+        _ = clock.Update(Start + Ticks(0.003), 0.033);
+        Assert.True(clock.Rate > 5);
+
+        // Seek: the first restart keeps that rate, the second (it predicted far off) starts over at 1.
+        var t = Start + Ticks(0.003);
+        _ = clock.Update(t + period, 30.0);
+        _ = clock.Update(t + (2 * period), 30.0 + (1 / 60.0));
+        Assert.Equal(2, clock.Restarts);
+        Assert.Equal(1.0, clock.Rate, 3);
+
+        for (var vsync = 3; vsync < 60; vsync++)
+            Assert.Equal(30.0 + ((vsync - 1) / 60.0), clock.Update(t + (vsync * period), 30.0 + ((vsync - 1) / 60.0)), 4);
+
+        Assert.Equal(2, clock.Restarts);
+    }
+
+    [Fact]
+    public void AGridThatMovesLater_DoesNotGiveTheSameRefreshAgain()
+    {
+        var period = Ticks(1 / 60.0);
+        var handled = Start + period;
+        // The next blank moved the grid's prediction of that refresh 0.4 ms later.
+        var moved = new PresentationVsyncTiming(1, handled + Ticks(0.0004), period);
+
+        Assert.True(DisplayLockedTiming.TryGetNextSlot(moved, handled - Ticks(0.0035), Ticks(0.004), handled, out DisplayLockedSlot slot));
+        Assert.Equal(handled + Ticks(0.0004) + period, slot.VsyncTimestamp);
+    }
+
+    [Fact]
     public void TwentyFiveOnSixty_KeepsItsModelCadence()
     {
         // No phase families: the lock stays out of the way and the 2/3 mix is the model's.
