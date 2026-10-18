@@ -1,7 +1,10 @@
 # Active Stage 035A - Control-Owned Seek Scrubbing
 
 Prepared: 2026-10-17
-Status: Slice 1 implemented, pending manual smoke (`updates/035A_1`). Owner report
+Status: Slice 1 owner smoke passed 2026-10-17 (`updates/035A_1`). Slice 2 (silent drag)
+implemented 2026-10-18, pending manual smoke (`updates/035A_2`).
+
+Slice 1 history: owner report
 (2026-10-17 smoke): "Seeking still jumps at seek end", worst on video, also noticeable on
 audio. The owner asked for the fix in the control, not the host.
 
@@ -47,9 +50,32 @@ before, and it still jumped on release.
   `EndScrub` on release.
 - Focused tests for the scrub rules and the facade (Portable).
 
+## Slice 2 Acceptance Criteria - Silent Drag
+
+Owner request (2026-10-18): an option for a silent drag, audible again when the drag pauses,
+"but not garbage while dragging".
+
+- Public `MediaScrubAudio` (`Audible` default, `SilentWhileMoving`);
+  `MediaControlPlayer.ScrubAudio`, and `IMediaControlSession.ScrubAudio` with a default that
+  stays `Audible`.
+- `SilentWhileMoving`: every seek during a scrub mutes before it moves the media, so nothing
+  of the new position is heard while the drag moves. Audio comes back with a 40 ms ramp
+  once no scrub seek has arrived for 250 ms (the drag rests), or at once when the scrub ends
+  or the media loads or closes.
+- The mute is its own attenuation in `MediaEffects`: `Volume`, `VolumeChanged`, fades and
+  normalization are untouched, and a volume change during the mute is applied on unmute.
+  It works on the channel volume attribute, which BASS applies after the playback buffer, so
+  it is heard at once (an FX stage would only act on audio not yet buffered).
+- Both BASS paths: plain audio (`AudioEngine`, including CD+G songs) and video soundtracks
+  (`VideoAudioEngine`).
+- Player: **Silent Drag** check box in the Audio flyout, on by default.
+- Focused tests: the quiet-period timer with a manual clock, and the facade (mute before the
+  drag seek, restore on release, default `Audible`, load mid-drag).
+
 ## Explicit Non-Goals
 
 - Exact positions for drags. A drag resumes from the previewed frame, up to 2 s from the
   mouse position (keyframe-style seeking, as in most players). Clicks stay exact.
-- Audio scrubbing sound (playing short snippets while dragging).
+- Audio scrubbing sound (playing short snippets while dragging). Slice 2 makes it silent
+  instead, as an option.
 - Changing the seek pump's adaptive timing (015A).

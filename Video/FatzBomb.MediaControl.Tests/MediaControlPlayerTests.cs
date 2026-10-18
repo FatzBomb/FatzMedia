@@ -163,6 +163,73 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task SilentScrub_MutesBeforeTheDragSeek_AndRestoresTheVolumeWhenTheScrubEnds()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
+        player.ScrubAudioMuter.QuietPeriod = TimeSpan.FromHours(1); // the drag never rests here
+        var volumeAtSeek = double.NaN;
+        engine.OnSeek = _ => volumeAtSeek = engine.TestAudio.Volume;
+
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+        Assert.Equal(0, volumeAtSeek);
+        Assert.Equal(0, engine.TestAudio.Volume);
+
+        // A volume change mid-drag is kept for later, not applied over the mute.
+        player.Effects.Volume = 0.8;
+        Assert.Equal(0, engine.TestAudio.Volume);
+        Assert.Equal(0.8, player.Effects.Volume);
+
+        Assert.True(player.Seek(30)); // the release seek
+        Assert.True(player.EndScrub());
+        Assert.Equal(0.8, engine.TestAudio.Volume);
+
+        // Outside a scrub, seeks never mute.
+        Assert.True(player.Seek(10));
+        Assert.Equal(0.8, volumeAtSeek);
+    }
+
+    [Fact]
+    public async Task AudibleScrub_IsTheDefault_AndNeverMutes()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        var volumeAtSeek = double.NaN;
+        engine.OnSeek = _ => volumeAtSeek = engine.TestAudio.Volume;
+
+        Assert.Equal(MediaScrubAudio.Audible, player.ScrubAudio);
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.Equal(0.6, volumeAtSeek);
+        Assert.True(player.EndScrub());
+    }
+
+    [Fact]
+    public async Task SilentScrub_LoadingMidDrag_LeavesTheNewMediaAudible()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        player.Effects.Volume = 0.6;
+        player.ScrubAudio = MediaScrubAudio.SilentWhileMoving;
+        player.ScrubAudioMuter.QuietPeriod = TimeSpan.FromHours(1); // the drag never rests here
+        Assert.True(player.BeginScrub());
+        Assert.True(await player.SeekAsync(30).WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.True(player.Load("next.mp3"));
+
+        Assert.Equal(0.6, engine.TestAudio.Volume);
+        Assert.False(player.Controls.IsScrubbing);
+    }
+
+    [Fact]
     public async Task SeekAsync_RequestsWaitingToRun_CollapseToTheNewest()
     {
         var engine = new TestMediaEngine();

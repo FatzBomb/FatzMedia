@@ -192,6 +192,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     } = true;
 
+    /// <summary>
+    /// Mutes audio while the seek bar is being dragged; it plays again when the drag rests briefly
+    /// or is released.
+    /// </summary>
+    public bool SilentDrag
+    {
+        get;
+        set
+        {
+            if (!SetProperty(ref field, value)) return;
+            if (Player is { } player)
+                player.ScrubAudio = ToScrubAudio(field);
+        }
+    } = true;
+
+    private static MediaScrubAudio ToScrubAudio(bool silentDrag) =>
+        silentDrag ? MediaScrubAudio.SilentWhileMoving : MediaScrubAudio.Audible;
+
     public bool AutoPlay
     {
         get;
@@ -438,6 +456,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.Effects.Pitch = Pitch;
             player.Effects.Tempo = Tempo;
             player.PlayOnLoad = AutoPlay;
+            player.ScrubAudio = ToScrubAudio(SilentDrag);
             player.LoopMedia = LoopPlayback;
             player.ShowMidiLyrics = true;
             player.Equalizer = BuildEqualizerSettings();

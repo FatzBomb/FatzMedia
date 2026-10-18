@@ -33,6 +33,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private readonly Lock _seekCompletionGate = new();
     private readonly Lock _queuedSeekGate = new();
     private QueuedSeek? _queuedSeek;
+    private readonly ScrubAudioMuter _scrubAudio;
     private IAudioDeviceMonitor? _audioDeviceMonitor;
     private IVideoEngine? _seekVideoEngine;
     private ICdgEngine? _seekCdgEngine;
@@ -55,6 +56,8 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
+        // Reads Effects on every call: Reset replaces it.
+        _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
         CdgVisuals = new CdgVisuals(_mediaEngine);
         _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
@@ -130,6 +133,14 @@ public partial class MediaControlPlayer : IMediaControlSession
         get => Controls.LoopMedia;
         set => Controls.LoopMedia = value;
     }
+
+    public MediaScrubAudio ScrubAudio
+    {
+        get => _scrubAudio.Mode;
+        set => _scrubAudio.Mode = value;
+    }
+
+    internal ScrubAudioMuter ScrubAudioMuter => _scrubAudio;
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -262,7 +273,12 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public bool BeginScrub() => ExecuteControlOperation(() => Controls.BeginScrub());
 
-    public bool EndScrub() => ExecuteControlOperation(() => Controls.EndScrub());
+    public bool EndScrub() => ExecuteControlOperation(() =>
+    {
+        var ended = Controls.EndScrub();
+        _scrubAudio.OnScrubEnded();
+        return ended;
+    });
 
     public bool Seek(TimeSpan position) => Seek(position.TotalSeconds);
 
@@ -404,6 +420,11 @@ public partial class MediaControlPlayer : IMediaControlSession
                 Volatile.Write(ref _hasPendingSeek, 1);
             }
         }
+
+        // Silent scrubbing mutes before the seek moves the audio, so nothing of the new position
+        // is heard while the drag keeps moving.
+        if (Controls.IsScrubbing)
+            _scrubAudio.OnScrubSeek();
 
         var success = Controls.Seek(seconds);
         if (!success)
@@ -587,6 +608,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         //    and close media
         try { ClearPreparedNextForLifecycle(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
+        try { _scrubAudio.OnScrubEnded(); } catch { }
         try { File.Close(); } catch { }
 
         // 2. Unsubscribe internal events
@@ -730,6 +752,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         catch { }
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
+        try { _scrubAudio.Dispose(); } catch { }
         try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }

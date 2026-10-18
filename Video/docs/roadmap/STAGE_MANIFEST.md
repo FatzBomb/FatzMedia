@@ -60,7 +60,10 @@ Stages implemented in the unattended 2026-10-16 session stay here, each
 - `active/035A_ACTIVE_ControlOwnedSeekScrubbing.md` - seek-bar drags
   (`BeginScrub`/`EndScrub`): playback carries on, a drag resumes from the previewed frame,
   and the release seek at the last drag position is ignored, so nothing jumps; implemented;
-  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`).
+  owner smoke passed 2026-10-17 for video drags (`updates/035A_1`). Slice 2: optional silent
+  drag (`MediaScrubAudio.SilentWhileMoving`; Player **Silent Drag**, on by default), muted
+  while the drag moves, audible when it rests or ends; implemented, pending manual smoke
+  (`updates/035A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

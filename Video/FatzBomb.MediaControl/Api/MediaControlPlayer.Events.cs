@@ -90,6 +90,7 @@ public partial class MediaControlPlayer
     private void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
     {
         Controls.CancelScrub();
+        _scrubAudio.OnScrubEnded();
         SubscribeSeekCompletionSources();
         HostEventDispatcher.Raise(this, MediaLoaded, e, nameof(MediaLoaded));
         if (!Controls.ReportCurrentState())
@@ -99,6 +100,7 @@ public partial class MediaControlPlayer
     private void OnFileMediaClosed(object? sender, MediaClosedEventArgs e)
     {
         Controls.CancelScrub();
+        _scrubAudio.OnScrubEnded();
         _positionNotifier.Stop();
         ClearPendingSeek();
         UnsubscribeSeekCompletionSources();

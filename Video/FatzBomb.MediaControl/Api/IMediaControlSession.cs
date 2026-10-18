@@ -165,6 +165,18 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Ends a scrub. Send the release seek first.</summary>
     bool EndScrub() => false;
 
+    /// <summary>
+    /// Gets or sets what audio does during a scrub: <see cref="MediaScrubAudio.Audible"/> (the
+    /// default) plays from every drag position; <see cref="MediaScrubAudio.SilentWhileMoving"/>
+    /// mutes while the drag moves and plays again once it rests briefly or ends. User volume is
+    /// unchanged. Sessions without scrub support keep <see cref="MediaScrubAudio.Audible"/>.
+    /// </summary>
+    MediaScrubAudio ScrubAudio
+    {
+        get => MediaScrubAudio.Audible;
+        set { }
+    }
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 

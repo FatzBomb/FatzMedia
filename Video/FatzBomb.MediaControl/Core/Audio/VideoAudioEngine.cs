@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost
+internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
@@ -638,6 +638,16 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
+    void IAudioVolumeSlide.SlideVolume(double volume01, TimeSpan duration)
+    {
+        lock (_sync)
+        {
+            _volume = Math.Clamp(volume01, 0.0, 1.0);
+            if (PlayHandle != 0)
+                _ = BassChannelVolume.Slide(PlayHandle, _volume, duration);
+        }
+    }
+
     public void SetPitch(int semitones)
     {
         lock (_sync)
@@ -936,7 +946,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return false;
 
         // Normalization is its own FX stage (it can amplify); the attribute carries user volume only.
-        return Bass.ChannelSetAttribute(PlayHandle, ChannelAttribute.Volume, _volume);
+        return BassChannelVolume.Set(PlayHandle, _volume);
     }
 
     private void StartNormalizationAnalysis(string filePath, string? cacheKey)
