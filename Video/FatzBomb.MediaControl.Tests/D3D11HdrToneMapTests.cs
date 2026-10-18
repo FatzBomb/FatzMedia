@@ -48,6 +48,8 @@ public sealed class D3D11HdrToneMapTests
         Assert.Equal(0f, constants.TextureRect.X);
         Assert.Equal(1f, constants.TextureRect.Z);
         Assert.Equal(2160f / 2176f, constants.TextureRect.W, 6);
+        Assert.Equal(2159f / 2176f, constants.SampleClamp.W, 6);
+        Assert.Equal(1f / 3840f, constants.SampleClamp.X, 6);
     }
 
     [Fact]

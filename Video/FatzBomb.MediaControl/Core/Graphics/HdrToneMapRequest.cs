@@ -12,6 +12,13 @@ namespace FatzBomb.MediaControl.Core.Graphics;
 /// <param name="TargetPeakNits">The luminance shown as SDR white.</param>
 public readonly record struct HdrToneMapRequest(double SourcePeakNits, double TargetPeakNits)
 {
+    /// <summary>
+    /// Set by the producer: a renderer that cannot tone map the frame calls
+    /// <see cref="HdrToneMapFallback.RequestCpuToneMapping"/>, and later frames arrive tone mapped
+    /// on the CPU instead.
+    /// </summary>
+    public HdrToneMapFallback? Fallback { get; init; }
+
     /// <summary>The PQ signal of <see cref="SourcePeakNits"/>, in [0, 1].</summary>
     public double SourcePeakSignal => PqCurve.FromNits(SourcePeakNits);
 
@@ -20,4 +27,26 @@ public readonly record struct HdrToneMapRequest(double SourcePeakNits, double Ta
 
     /// <summary>The SDR gamma the tone-mapped output is encoded with (BT.1886).</summary>
     public const double SdrGamma = 2.4;
+}
+
+/// <summary>
+/// Lets a renderer hand HDR10 tone mapping back to the producer (Stage 038A): once requested,
+/// the producer sends HDR10 frames already tone mapped on the CPU. Thread-safe.
+/// </summary>
+public sealed class HdrToneMapFallback
+{
+    private int _requested;
+
+    /// <summary>Gets whether a renderer asked for CPU tone mapping.</summary>
+    public bool IsRequested => Volatile.Read(ref _requested) != 0;
+
+    /// <summary>Why the renderer asked, or null.</summary>
+    public string? Reason { get; private set; }
+
+    /// <summary>Asks for CPU tone mapping from now on; the first reason is kept.</summary>
+    public void RequestCpuToneMapping(string reason)
+    {
+        if (Interlocked.Exchange(ref _requested, 1) == 0)
+            Reason = reason;
+    }
 }

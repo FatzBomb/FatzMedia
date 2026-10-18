@@ -31,6 +31,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
     private ID3D11RenderTargetView? _targetView;
     private nint _targetViewTexture;
     private bool _failed;
+    private nint _failedDevice;
 
     /// <summary>Why the last <see cref="TryPresent"/> failed, or null.</summary>
     public string? LastFailure { get; private set; }
@@ -53,8 +54,18 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         Vortice.RawRect sourceRect,
         Vortice.RawRect destinationRect)
     {
-        if (_failed || deviceResources.Device is not { } device || deviceResources.Context is not { } context)
+        if (deviceResources.Device is not { } device || deviceResources.Context is not { } context)
             return false;
+
+        // A failure is remembered for its device only: a new device (recovery, a new
+        // decoder device) gets another try.
+        if (_failed)
+        {
+            if (device.NativePointer == _failedDevice)
+                return false;
+
+            _failed = false;
+        }
 
         Texture2DDescription sourceDescription = sourceTexture.Description;
         if (sourceDescription.Format != Format.P010)
@@ -102,13 +113,14 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
             LastFailure = null;
             return true;
         }
-        catch (Exception exception) when (exception is InvalidOperationException or SharpGen.Runtime.SharpGenException)
+        catch (Exception exception)
         {
-            // Shader compile or resource creation failed: not retried until the device changes.
-            _failed = true;
+            // Shader compile (including a missing d3dcompiler_47.dll) or resource creation
+            // failed: not retried on this device.
             LastFailure = $"{exception.GetType().Name}: {exception.Message}";
             Reset();
             _failed = true;
+            _failedDevice = device.NativePointer;
             return false;
         }
     }
@@ -143,6 +155,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         _vertexShader = null;
         _device = null;
         _failed = false;
+        _failedDevice = 0;
     }
 
     public void Dispose() => Reset();
@@ -304,6 +317,13 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
                 (float)(1 / HdrToneMapRequest.SdrGamma),
                 (float)toneMap.TargetPeakNits,
                 0f),
+            // Half a chroma texel (one luma texel) inside the crop, so bilinear taps never
+            // reach the decoder's padding rows and columns.
+            SampleClamp = new Vector4(
+                (float)((sourceRect.Left + 1) / (double)textureWidth),
+                (float)((sourceRect.Top + 1) / (double)textureHeight),
+                (float)((sourceRect.Right - 1) / (double)textureWidth),
+                (float)((sourceRect.Bottom - 1) / (double)textureHeight)),
         };
     }
 
@@ -316,6 +336,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         public Vector4 Matrix;
         public Vector4 Curve;
         public Vector4 Output;
+        public Vector4 SampleClamp;
     }
 
     internal const string ShaderSource = @"
@@ -327,6 +348,7 @@ cbuffer ToneMapConstants : register(b0)
     float4 YuvMatrix;         // rCr, gCb, gCr, bCb
     float4 Curve;             // source peak (PQ), target peak / source peak (PQ), knee start, compress
     float4 Output;            // 1 / target nits, 1 / SDR gamma, target nits
+    float4 SampleClamp;       // normalized sampling bounds inside the crop: left, top, right, bottom
 };
 
 Texture2D<float> LumaPlane : register(t0);
@@ -411,8 +433,9 @@ float ToneCurve(float nits)
 
 float4 PSToneMap(VertexOut input) : SV_TARGET
 {
-    float y = LumaPlane.Sample(LinearSampler, input.TexCoord) * YuvScaleOffset.x + YuvScaleOffset.y;
-    float2 c = ChromaPlane.Sample(LinearSampler, input.TexCoord) * YuvScaleOffset.z + YuvScaleOffset.w;
+    float2 uv = clamp(input.TexCoord, SampleClamp.xy, SampleClamp.zw);
+    float y = LumaPlane.Sample(LinearSampler, uv) * YuvScaleOffset.x + YuvScaleOffset.y;
+    float2 c = ChromaPlane.Sample(LinearSampler, uv) * YuvScaleOffset.z + YuvScaleOffset.w;
     float3 signal = float3(
         y + YuvMatrix.x * c.y,
         y - YuvMatrix.y * c.x - YuvMatrix.z * c.y,

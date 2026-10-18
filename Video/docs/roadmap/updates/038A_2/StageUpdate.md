@@ -53,6 +53,30 @@ Delivered:
 - The HLSL was compiled here with glslang's HLSL front end (both entry points). Windows
   compiles it with D3DCompile at first use.
 
+## Review (Sonnet) follow-ups
+
+- **Fallback to the CPU mapper.**
+  - Before: when the shader path cannot run (not P010, shader or resource failure, missing
+    `d3dcompiler_47.dll`), HDR10 went to the video processor and looked washed out unless the
+    driver tone maps.
+  - Now each request carries an `HdrToneMapFallback` from the decoder. The renderer trips it,
+    and the decoder sends the rest of that file tone mapped on the CPU, with a warning from
+    each side.
+- **Failures are per device.** A shader-path failure is remembered only for the device it
+  happened on. A device change (recovery, a new decoder device) gets another try.
+- **Device cleanup releases everything.** `CleanupResources` now fully resets the shader path
+  (`ResetDeviceResources`), freeing the P010 copy (about 25 MB at 4K) and the old device.
+  Swap-chain resizes still release only the render-target view.
+- **Every exception** in the shader path falls back. Before, only Direct3D and compile errors
+  did.
+- **Edge sampling** stays one luma texel inside the crop, so bilinear taps never reach the
+  decoder's padding rows (1080 of 1088) and tint the last line.
+- Left as is:
+  - Downscaling uses one bilinear tap per pixel (4K into a small window can alias slightly
+    on fine detail; the video processor filters more).
+  - No chroma siting offset.
+  - The `D3D11.Hdr` line is reported once per device.
+
 ## Decisions made without the owner
 
 - **Only P010 frames take the shader.** HDR10 is 10-bit, and decoders output P010 for it. An
@@ -85,4 +109,5 @@ Delivered:
    correct framing, no garbage at the edges, and the same tone mapping in both windows.
 5. Resize and go fullscreen during HDR playback: no black frames that stay, and no errors.
 6. If the Log shows the `D3D11.Hdr` warning instead, send it. It names why the shader path
-   was unavailable.
+   was unavailable. The picture should still be tone mapped: the CPU mapper takes over, and
+   a `VideoDecoder` warning says so.

@@ -51,6 +51,8 @@ internal sealed unsafe class VideoDecoder(
     private HdrToneMapper? _toneMapper;
     private byte[]? _toneMapScratch;
     private bool _toneMapReported;
+    private HdrToneMapFallback _toneMapFallback = new();
+    private bool _toneMapFallbackReported;
     private AVCodecContext_get_format? _getFormatCallback;
 
     private int _videoLinesize;
@@ -828,8 +830,17 @@ internal sealed unsafe class VideoDecoder(
         // HDR10 frames go to the renderer with a tone-map request (Stage 038A slice 2), unless
         // the host asks for the CPU tone mapper; then they are copied back like software frames.
         var toneMapped = IsToneMappedFrame();
+        if (toneMapped && _toneMapFallback.IsRequested && !_toneMapFallbackReported)
+        {
+            _toneMapFallbackReported = true;
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "VideoDecoder",
+                $"The renderer cannot tone map HDR10 ({_toneMapFallback.Reason}); the engine tone maps it on the CPU instead.");
+        }
+
         if (!_enableHardwareFrameOutput
-            || (toneMapped && _hdrToneMapping.PreferCpu)
+            || (toneMapped && (_hdrToneMapping.PreferCpu || _toneMapFallback.IsRequested))
             || _hardwareDeviceContext == null
             || _hardwareDeviceTypeName == null
             || HardwareDevice == null)
@@ -1070,7 +1081,7 @@ internal sealed unsafe class VideoDecoder(
                 $"HDR10 video is tone mapped to SDR {(onCpu ? "on the CPU" : "by the renderer")}: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
         }
 
-        return new HdrToneMapRequest(peak.Nits, referenceWhite);
+        return new HdrToneMapRequest(peak.Nits, referenceWhite) { Fallback = _toneMapFallback };
     }
 
     private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace, AVPixelFormat targetFormat)
@@ -1199,6 +1210,8 @@ internal sealed unsafe class VideoDecoder(
         _toneMapper = null;
         _toneMapScratch = null;
         _toneMapReported = false;
+        _toneMapFallback = new HdrToneMapFallback();
+        _toneMapFallbackReported = false;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;

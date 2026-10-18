@@ -53,7 +53,7 @@ internal sealed class D3D11PresentationResourceCleaner(
     public void CleanupResources()
     {
         CleanupSurfaces();
-        videoProcessorPresenter.Reset();
+        videoProcessorPresenter.ResetDeviceResources();
         deviceResources.Cleanup();
     }
 }

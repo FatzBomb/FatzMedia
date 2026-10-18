@@ -131,9 +131,13 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                 return true;
             }
 
+            // Hand tone mapping back to the decoder (its CPU mapper); frames already queued
+            // go through the video processor, which tone maps only where the driver does.
+            var reason = _hdrToneMapPresenter.LastFailure ?? "the GPU path is unavailable";
+            request.Fallback?.RequestCpuToneMapping(reason);
             ReportHdrPath(
                 MediaDiagnosticLevel.Warning,
-                $"HDR10 tone mapping on the GPU is unavailable ({_hdrToneMapPresenter.LastFailure}); the video processor converts HDR10 instead, which tone maps only where the driver supports it. --hdr-tonemap-cpu uses the engine's CPU tone mapper.");
+                $"HDR10 tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
         }
 
         if (!EnsureVideoProcessor(deviceResources, presentationTexture, width, height, framesPerSecond, presentationWidth, presentationHeight))
@@ -195,11 +199,18 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         _hdrToneMapPresenter.ReleaseTargetView();
     }
 
-    public void Dispose()
+    /// <summary>
+    /// <see cref="Reset"/> plus the HDR shader's resources, for a device change: nothing of the
+    /// old device stays alive, and a failure on it is forgotten.
+    /// </summary>
+    public void ResetDeviceResources()
     {
         Reset();
-        _hdrToneMapPresenter.Dispose();
+        _hdrToneMapPresenter.Reset();
+        _hdrPathReported = false;
     }
+
+    public void Dispose() => ResetDeviceResources();
 
     private void ReportHdrPath(MediaDiagnosticLevel level, string message)
     {

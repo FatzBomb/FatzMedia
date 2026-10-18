@@ -139,6 +139,19 @@ public sealed class HdrToneMapperTests
         Assert.False(new MediaPlayerConfiguration().HdrToneMapping.Disabled);
     }
 
+    [Fact]
+    public void TheFallback_IsRequestedOnceAndKeepsTheFirstReason()
+    {
+        var fallback = new FatzBomb.MediaControl.Core.Graphics.HdrToneMapFallback();
+        Assert.False(fallback.IsRequested);
+
+        fallback.RequestCpuToneMapping("not P010");
+        fallback.RequestCpuToneMapping("later");
+
+        Assert.True(fallback.IsRequested);
+        Assert.Equal("not P010", fallback.Reason);
+    }
+
     private static ushort Code(double nits) => (ushort)Math.Round(PqCurve.FromNits(nits) * 65535);
 
     private static byte[] Convert(HdrToneMapper mapper, ushort r, ushort g, ushort b)
