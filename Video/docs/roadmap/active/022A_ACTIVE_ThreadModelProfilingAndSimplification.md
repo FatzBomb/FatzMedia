@@ -3,8 +3,8 @@
 Prepared: 2026-10-16
 Status: Slice 1 (thread-ownership map from code, repeatable capture tooling) implemented.
 The owner captured the Windows baseline on 2026-10-17 (below). Slice 2 removes the three
-costs it measured that are cheapest to remove (`updates/022A_2`); no thread was added,
-removed, or re-owned.
+costs it measured that are cheapest to remove (`updates/022A_2`). Slice 3 keeps each
+scheduler's worker thread across restarts (`updates/022A_3`).
 
 ## Thread Ownership Map (pinned, from code)
 
@@ -18,22 +18,26 @@ Host UI thread
           ┌────────────────────────────────────┼─────────────────────────────────────┐
           v                                    v                                     v
   Audio (BASS)                          Video (VideoPipeline)                 Presentation
-  - BASS mixer/output threads (native)  - "VideoDecode" LongRunning thread    - "CoreNativePresentation" LongRunning
-  - SYNC callbacks: End/Position        - "VideoPresentation" LongRunning       thread, AboveNormal; runs only for
+  - BASS mixer/output threads (native)  - "VideoDecode" dedicated thread    - "CoreNativePresentation" dedicated
+  - SYNC callbacks: End/Position        - "VideoPresentation" dedicated       thread, AboveNormal; runs only for
     (mixtime) -> MediaEnded on a BASS     thread, AboveNormal; MediaLoopPacer    CDG or audio+subtitles (60 Hz-class
     thread; MetadataReceived/OggChange    + IPrecisionWaiter                     CdgPresentationInterval, MediaLoopPacer)
-  - network monitor System.Threading.   - "VideoSeek" dedicated thread,       - "DeviceLostRecovery" LongRunning
+  - network monitor System.Threading.   - "VideoSeek" dedicated thread,       - "DeviceLostRecovery" dedicated
     Timer (250 ms, network sources)       latest-wins pump                      (only while recovering)
   - analysis: Task.Run (peak, silence,  - "DecoderDeviceLostRecovery"         - renderer calls are synchronous on
-    prepared-next standalone decode)      LongRunning (only while recovering)   the calling thread (no renderer threads)
+    prepared-next standalone decode)      dedicated (only while recovering)   the calling thread (no renderer threads)
                                         - "BackgroundVideoPresentation"
-  CDG (CdgPipeline)                       LongRunning (sidecar video)
+  CDG (CdgPipeline)                       dedicated (sidecar video)
   - "CdgSeek" thread (shared SeekPump)  Platform
   - packet decode on the presentation   - Windows "PollingAudioDeviceMonitor" (1 s poll)
     loop / seek thread                  - Linux "LinuxAudioDeviceMonitor" (poll)
   PlaybackPositionNotifier: PeriodicTimer on the pool (250 ms) while playing
   MediaFile play-on-load and faded prepared-next transitions: Task.Run hops off the queue
 ```
+
+Every `PlaybackScheduler` ("VideoDecode", "VideoPresentation", "CoreNativePresentation",
+"BackgroundVideoPresentation", the device-lost recovery schedulers) owns one reused worker
+thread since slice 3: restarts run on it, and it exits after 30 s idle.
 
 Synchronization: 26 source files in Core, Windows, and Direct3D11 own a `System.Threading.Lock`; the central ones are the
 operation queue, `MediaPresentationCoordinator._lock` (composition state) and
@@ -99,10 +103,17 @@ Sources, from the sampled stacks and contention events:
 - `VideoPipeline` resolves the display interval at most every 100 ms instead of several times
   per frame (DWM is also only the fallback since 017A slice 3).
 
+## Slice 3 (implemented)
+
+`PlaybackScheduler` runs its loops on one reused worker thread instead of a new LongRunning
+thread per `Start`. Starting a loop cancels the current one; the new loop runs on the same
+thread once the old one returns, so loops on one scheduler no longer overlap during a
+restart. The worker parks between runs, exits after 30 s idle or on dispose, and is
+recreated on the next start. The public surface (`Start`, `Stop`, `StopAndWait`, `Dispose`)
+is unchanged, so no caller changed (`updates/022A_3`).
+
 ## Simplification Candidates (remaining, one per slice)
 
-- Keep the decode/presentation threads across a seek instead of a new LongRunning thread per
-  `SeekCore` (largest structural item; needs its own design).
 - CDG: shorten `_renderLock` hold time during seek replay, or render the seek replay into a
   separate state machine and swap it in.
 - CDG: pool or diff snapshot index arrays (018A owns snapshot lifetime).
