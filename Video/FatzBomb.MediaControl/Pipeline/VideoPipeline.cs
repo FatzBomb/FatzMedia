@@ -1464,8 +1464,6 @@ internal sealed partial class VideoPipeline(
         ResetPresentationDiagnostics();
     }
 
-    private bool IsPostSeekRecoveryActive() => _postSeekRecovery.IsActive(Stopwatch.GetTimestamp());
-
     private void BeginPostSeekPresentationRecovery()
     {
         RequestDisplayLockedReset();
