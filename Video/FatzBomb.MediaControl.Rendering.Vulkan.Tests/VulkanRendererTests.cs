@@ -295,6 +295,11 @@ public sealed class VulkanConformanceTests
         Assert.Equal(1, compositor.CdgUploadCount);
         Assert.Equal(first, again);
 
+        // Same buffers, new dirty list: what Core hands over when only the dirty regions changed.
+        var sameBuffers = new CdgRenderSnapshot(2, 1, snapshot.ColorIndices, snapshot.PaletteArgb, 0, snapshot.BackgroundColorIndex, []);
+        Assert.Equal(first, compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = sameBuffers }, 320, 240)).ToArray());
+        Assert.Equal(1, compositor.CdgUploadCount);
+
         CdgRenderSnapshot changed = CdgFixtures.Snapshot(backgroundIndex: 1);
         var changedPixels = compositor.Render(VulkanCompositionPlanner.Plan(MediaCompositionFrame.Empty() with { CdgOverlay = changed }, 320, 240)).ToArray();
 

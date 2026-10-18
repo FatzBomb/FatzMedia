@@ -132,14 +132,19 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 Upload(upload, background.Bgra.Span, background.Width, background.Height, background.Stride);
             }
 
-            // Snapshots are immutable and Core hands over the same object while the CDG frame is
-            // unchanged, so the texture from the last upload is still current for it (ENG-014:
-            // about 260 KB expanded and copied per frame otherwise).
+            // Snapshots are immutable and Core hands over the same pixel buffers while the CDG
+            // frame is unchanged, so the texture from the last upload is still current for it
+            // (ENG-014: about 260 KB expanded and copied per frame otherwise).
             var uploadCdg = false;
             if (plan.Cdg is { } cdg)
             {
+                // A texture about to be re-created (or one whose re-creation fails) never
+                // counts as holding the last upload, even if the new handle reuses the old value.
+                if (_cdgImage is not { } current || current.Width != (uint)cdg.Snapshot.Width || current.Height != (uint)cdg.Snapshot.Height)
+                    _cdgUploadedSnapshot = null;
+
                 ImageResource cdgTexture = EnsureImage(ref _cdgImage, (uint)cdg.Snapshot.Width, (uint)cdg.Snapshot.Height, ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit);
-                uploadCdg = !ReferenceEquals(cdg.Snapshot, _cdgUploadedSnapshot) || cdgTexture.Image.Handle != _cdgUploadedImage.Handle;
+                uploadCdg = !HasSamePixels(cdg.Snapshot, _cdgUploadedSnapshot) || cdgTexture.Image.Handle != _cdgUploadedImage.Handle;
             }
 
             if (uploadCdg && plan.Cdg is { } cdgPlan)
@@ -286,6 +291,18 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             return _output;
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="snapshot"/> draws exactly what <paramref name="uploaded"/> drew:
+    /// the same object, or one sharing its (immutable) index and palette buffers and background
+    /// index, which Core creates when only the dirty-region list changed.
+    /// </summary>
+    private static bool HasSamePixels(CdgRenderSnapshot snapshot, CdgRenderSnapshot? uploaded) =>
+        uploaded is not null
+        && (ReferenceEquals(snapshot, uploaded)
+            || (snapshot.ColorIndices.Equals(uploaded.ColorIndices)
+                && snapshot.PaletteArgb.Equals(uploaded.PaletteArgb)
+                && snapshot.BackgroundColorIndex == uploaded.BackgroundColorIndex));
 
     public void Dispose()
     {
