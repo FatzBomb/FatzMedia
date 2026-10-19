@@ -71,7 +71,7 @@ public sealed class MediaSurfacePresentationModeTests
 
     private sealed class TestPlatformFactory(TestMediaEngine engine) : IMediaControlPlatformFactory
     {
-        private readonly TestPresentationCoordinator _coordinator = new();
+        private readonly NullPresentationCoordinator _coordinator = new();
 
         public string LastNativeLoadMessage => string.Empty;
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);
@@ -83,38 +83,5 @@ public sealed class MediaSurfacePresentationModeTests
         public IServiceProvider CreateServiceProvider(
             MediaPlayerConfiguration configuration,
             IReadOnlyList<string> nativeLibraryPaths) => new TestServiceProvider(engine);
-    }
-
-    private sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
-    {
-        private readonly IArchiveService _archiveService = new TestArchiveService();
-
-        public object? GetService(Type serviceType) => serviceType == typeof(IMediaEngine)
-            ? engine
-            : serviceType == typeof(IArchiveService)
-                ? _archiveService
-                : null;
-    }
-
-    private sealed class TestArchiveService : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
-    }
-
-    private sealed class TestPresentationCoordinator : IMediaPresentationCoordinator
-    {
-        public event EventHandler? FramePresented { add { } remove { } }
-        public VideoDisplayMode VideoDisplayMode { get; set; }
-        public BaseVisualTransform BaseVisualTransform { get; set; }
-        public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface) => false;
-        public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;
-        public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
-        public bool DetachPresentationSurface(string surfaceId) => false;
-        public void RefreshCurrentPosition() { }
-        public void RunOnRenderThread(Action action) => action();
-        public void StartRendering() { }
-        public void StopRendering() { }
-        public void RefreshAttachments() { }
-        public void Dispose() { }
     }
 }

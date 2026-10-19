@@ -227,8 +227,13 @@ public partial class MainWindow : Window
 
     private async Task LoadStartupMediaAsync()
     {
+        // Native loading can fail, leaving no player: stop waiting then.
         while (_viewModel.Player is null)
+        {
+            if (_viewModel.StartupError is not null)
+                return;
             await Task.Delay(200);
+        }
 
         await Task.Delay(500);
 

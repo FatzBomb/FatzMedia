@@ -135,9 +135,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             // go through the video processor, which tone maps only where the driver does.
             var reason = _hdrToneMapPresenter.LastFailure ?? "the GPU path is unavailable";
             request.Fallback?.RequestCpuToneMapping(reason);
-            ReportHdrPath(
-                MediaDiagnosticLevel.Warning,
-                $"HDR10 tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
+            if (!_hdrPathReported) // the message is built only for the one report
+            {
+                ReportHdrPath(
+                    MediaDiagnosticLevel.Warning,
+                    $"HDR10 tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
+            }
         }
 
         if (!EnsureVideoProcessor(deviceResources, presentationTexture, width, height, framesPerSecond, presentationWidth, presentationHeight))

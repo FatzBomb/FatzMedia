@@ -147,7 +147,6 @@ public sealed class LinuxPlatformCompositionTests
             .AddPlatformServices(services, MediaPlayerConfiguration.Auto);
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        Assert.IsType<LinuxBassMidiLyricProvider>(provider.GetRequiredService<IMidiLyricProvider>());
         Assert.IsType<LinuxPrecisionWaiterFactory>(provider.GetRequiredService<IPrecisionWaiterFactory>());
         Assert.IsType<LinuxVideoPipelinePlatformServices>(provider.GetRequiredService<IVideoPipelinePlatformServices>());
         Assert.Same(SoftwareOnlyVideoHardwareAccelerationServices.Instance, provider.GetRequiredService<IVideoHardwareAccelerationServices>());

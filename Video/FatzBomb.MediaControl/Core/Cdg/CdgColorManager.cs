@@ -28,16 +28,6 @@ internal sealed class CdgColorManager
     /// </summary>
     public ReadOnlySpan<int> ColorLut => _colorArgbLut.AsSpan();
 
-    public int CurrentBackgroundArgb
-    {
-        get
-        {
-            _ = UpdateLutIfNeeded();
-            var backgroundIndex = BackgroundColorIndex >= 0 ? BackgroundColorIndex : 0;
-            return _colorArgbLut[backgroundIndex];
-        }
-    }
-
     public int BackgroundColorIndex { get; private set; } = -1;
 
     /// <summary>
@@ -75,7 +65,8 @@ internal sealed class CdgColorManager
     /// </summary>
     public byte BackgroundOpacity
     {
-        get => (byte)(_backgroundOpacity / 2.55);
+        // Rounds like the setter, so every 0-100 value reads back as set.
+        get => (byte)Math.Round(_backgroundOpacity * 100.0 / 255.0);
         set
         {
             var v = (byte)Math.Clamp((int)value, 0, 100);

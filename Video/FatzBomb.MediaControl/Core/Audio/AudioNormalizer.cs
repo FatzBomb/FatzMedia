@@ -27,6 +27,9 @@ internal sealed class AudioNormalizer
     // Thread-safe normalization gain using Volatile operations
     private double _normalizationGain = 1.0;
 
+    // Guards the FX handle and the reused parameter object: the gain is applied from the
+    // analysis thread and from the Normalize setter, and the handle is replaced on open.
+    private readonly Lock _gainFxLock = new();
     private int _gainFxHandle = 0;
 
     #endregion
@@ -84,7 +87,10 @@ internal sealed class AudioNormalizer
     {
         Volatile.Write(ref _normalizationGain, 1.0);
         if (clearFxHandle)
-            _gainFxHandle = 0;
+        {
+            lock (_gainFxLock)
+                _gainFxHandle = 0;
+        }
         else
             ApplyGainToFx(normalize: true);
     }
@@ -121,11 +127,13 @@ internal sealed class AudioNormalizer
 
         try
         {
-            _gainFxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
+            int fxHandle = MBass.ChannelSetFX(audioHandle, EffectType.Volume, 0);
+            lock (_gainFxLock)
+                _gainFxHandle = fxHandle;
 
-            if (_gainFxHandle != 0)
+            if (fxHandle != 0)
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioNormalizer", $"Gain FX created: handle={_gainFxHandle}");
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioNormalizer", $"Gain FX created: handle={fxHandle}");
                 return true;
             }
             else
@@ -155,6 +163,12 @@ internal sealed class AudioNormalizer
     /// This is called when normalization is enabled/disabled or gain changes.
     /// </summary>
     private void ApplyGainToFx(bool normalize)
+    {
+        lock (_gainFxLock)
+            ApplyGainToFxCore(normalize);
+    }
+
+    private void ApplyGainToFxCore(bool normalize)
     {
         if (_gainFxHandle == 0)
             return;

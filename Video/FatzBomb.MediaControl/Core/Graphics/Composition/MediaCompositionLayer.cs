@@ -28,9 +28,7 @@ public sealed record MediaCompositionLayer
     public BaseVisualTransform BaseVisualTransform { get; init; }
 
     /// <summary>
-    /// Optional BGRA source payload for the transitional software/background path.
-    /// Kept here so the layer descriptor contains enough intent for Stage 10B to
-    /// move the upload into a retained Layer 0 target.
+    /// Optional BGRA source payload for software-sourced layers (background and subtitle).
     /// </summary>
     public ReadOnlyMemory<byte> BgraPixels { get; init; }
 

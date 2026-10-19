@@ -10,8 +10,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 /// bookkeeping that says which backend target texture is active and how large it is.
 /// </summary>
 internal sealed class D3D11PresentationSurfaceController(
-    D3D11PresentationBackendSet backends,
-    D3D11DeviceResources deviceResources) : ID3D11PresentationSurfaceProvider
+    D3D11PresentationBackendSet backends) : ID3D11PresentationSurfaceProvider
 {
     private static readonly long DirectCompositionResizeOverlaySplitSuppressionTicks = Math.Max(1, Stopwatch.Frequency / 4);
 
@@ -24,9 +23,7 @@ internal sealed class D3D11PresentationSurfaceController(
     private long _directCompositionOverlaySplitSuppressedUntil;
     public bool LastActivationCreated { get; private set; }
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
-    public bool IsNativeHwndActive => backends.NativeHwnd.IsActive;
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
-    public bool IsManagedFrameSinkActive => backends.ManagedFrameSink.IsActive;
     public bool ShouldSuppressDirectCompositionOverlaySplit =>
         backends.DirectComposition.IsActive
         && (backends.DirectComposition.HasPendingResize
@@ -521,7 +518,7 @@ internal sealed class D3D11PresentationSurfaceController(
         }
 
         var hadPendingResize = backends.DirectComposition.HasPendingResize;
-        var resized = backends.DirectComposition.ApplyPendingResizeIfNeeded(deviceResources);
+        var resized = backends.DirectComposition.ApplyPendingResizeIfNeeded();
         if (resized && hadPendingResize)
         {
             SuppressDirectCompositionOverlaySplitForResize();

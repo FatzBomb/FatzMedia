@@ -73,7 +73,7 @@ internal sealed class D3D11RendererPresentationServices
             directCompositionBackend,
             managedFrameSinkBackend,
             CreateNativeHwndBackend);
-        Surfaces = new D3D11PresentationSurfaceController(Backends, deviceResources);
+        Surfaces = new D3D11PresentationSurfaceController(Backends);
         UploadResources = new D3D11FrameUploadResources(Diagnostics);
         ResourceCleaner = new D3D11PresentationResourceCleaner(
             deviceResources,
@@ -92,11 +92,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public bool IsReady => _deviceResources.HasDevice && Surfaces.IsReady;
 
-    public bool IsNativeHwndActive => Surfaces.IsNativeHwndActive;
-
     public bool IsDirectCompositionActive => Surfaces.IsDirectCompositionActive;
-
-    public bool IsManagedFrameSinkActive => Surfaces.IsManagedFrameSinkActive;
 
     public string PresentationBackend => Surfaces.PresentationBackend;
 
@@ -218,34 +214,26 @@ internal sealed class D3D11RendererPresentationServices
             toneMap,
             notifyPresented);
 
-    public bool NotifyFramePresented(bool isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
+    // isDisposed is read live: the owner can be disposed while a present is in flight.
+    public bool NotifyFramePresented(Func<bool> isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
             IsNativeLiveResizeInProgress,
             syncImmediate,
-            () => isDisposed,
+            isDisposed,
             raiseFramePresented);
-
-    public void SetCompositionBackgroundFrame(bool isDisposed, ReadOnlySpan<byte> bgraPixels, int width, int height, int stride, bool forceZoomToFill)
-    {
-        if (isDisposed || !_deviceResources.HasDevice)
-        {
-            return;
-        }
-
-        MediaCompositor.SetBackgroundFrame(_deviceResources, bgraPixels, width, height, stride, forceZoomToFill);
-    }
 
     public void ClearCompositionBackgroundFrame() => MediaCompositor.ClearBackgroundFrame();
 
     /// <summary>Why the last visible composition present returned false, or null.</summary>
     public string? LastCompositionFailureReason { get; private set; }
 
+    /// <param name="isDisposed">Read live: the owner can be disposed while a present is in flight.</param>
     public bool PresentMediaCompositionVisible(
-        bool isDisposed,
+        Func<bool> isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented)
     {
         LastCompositionFailureReason = null;
-        if (isDisposed || !_deviceResources.HasDevice)
+        if (isDisposed() || !_deviceResources.HasDevice)
         {
             LastCompositionFailureReason = "renderer disposed or D3D11 device unavailable";
             if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: renderer disposed or D3D11 device unavailable.");
@@ -296,12 +284,12 @@ internal sealed class D3D11RendererPresentationServices
                 overlaySkipped: false);
         }
 
-        ClearDirectCompositionOverlaySplitIfNeeded(isDisposed);
+        ClearDirectCompositionOverlaySplitIfNeeded(isDisposed());
         return PresentMediaCompositionToFinalTargets(isDisposed, frame, framePresented);
     }
 
     private bool PresentMediaCompositionToFinalTargets(
-        bool isDisposed,
+        Func<bool> isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented)
     {
@@ -331,7 +319,7 @@ internal sealed class D3D11RendererPresentationServices
             presentedTargets,
             State.IsNativeLiveResizeInProgress,
             syncImmediate: true,
-            () => isDisposed,
+            isDisposed,
             target => framePresented(target.Width, target.Height));
         if (!presented)
             LastCompositionFailureReason = "swap chain present was not completed";
@@ -340,7 +328,7 @@ internal sealed class D3D11RendererPresentationServices
     }
 
     private bool PresentMediaCompositionWithDirectCompositionOverlaySplit(
-        bool isDisposed,
+        Func<bool> isDisposed,
         MediaCompositionFrame frame,
         Action<int, int> framePresented,
         out bool basePresented,
@@ -381,7 +369,7 @@ internal sealed class D3D11RendererPresentationServices
         if (!MediaCompositor.DrawCdgOverlayToTarget(_deviceResources, snapshot, overlayTarget))
             return false;
 
-        if (!Surfaces.PresentDirectCompositionOverlay(isDisposed, State.IsNativeLiveResizeInProgress))
+        if (!Surfaces.PresentDirectCompositionOverlay(isDisposed(), State.IsNativeLiveResizeInProgress))
         {
             overlayPresentFailure = true;
             return false;

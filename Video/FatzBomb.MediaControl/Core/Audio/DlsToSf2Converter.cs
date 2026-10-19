@@ -5,7 +5,8 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// <summary>
 /// Converts a DLS soundfont file to SF2 format so BASS MIDI can use it.
 /// BASS MIDI only supports SF2/SFZ; DLS (including Windows gm.dls) must be converted.
-/// The output is cached as {original_name}.sf2 in LocalAppData.
+/// The output is cached in LocalAppData under the DLS file's name, size and write time, so a
+/// changed or replaced DLS is converted again.
 ///
 /// This is a self-contained binary reader/writer — no external DLS2/SF2 library needed.
 /// It reads only the DLS chunks required for GM conversion and writes a minimal valid SF2.
@@ -44,10 +45,6 @@ internal static class DlsToSf2Converter
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASSMIDI", $"DLS to SF2 conversion failed: {ex.Message}");
-            if (File.Exists(cachePath))
-            {
-                try { File.Delete(cachePath); } catch { }
-            }
             return null;
         }
         finally
@@ -61,7 +58,8 @@ internal static class DlsToSf2Converter
 
     private static string GetCachePath(string dlsPath)
     {
-        var fileName = Path.GetFileName(dlsPath) + ".sf2";
+        var file = new FileInfo(dlsPath);
+        var fileName = $"{file.Name}.{file.Length:x}-{file.LastWriteTimeUtc.Ticks:x}.sf2";
         var cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FatzBombMedia", "soundfonts");
@@ -97,16 +95,14 @@ internal static class DlsToSf2Converter
             return sb.ToString();
         }
 
-        public void SkipPadding(uint size)
-        {
-            if (size % 2 != 0)
-                _reader.BaseStream.Position++;
-        }
+        /// <summary>Moves past a chunk's data and its pad byte (RIFF chunks are word aligned).</summary>
+        public void SkipToChunkEnd(long chunkStart, uint chunkSize) =>
+            Seek(chunkStart + chunkSize + (chunkSize & 1));
     }
 
     private sealed record DlsSample(short[] Pcm16, uint SampleRate, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
 
-    private sealed record DlsRegion(byte KeyLow, byte KeyHigh, byte VelLow, byte VelHigh, uint TableIndex, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
+    private sealed record DlsRegion(byte KeyLow, byte KeyHigh, byte VelLow, byte VelHigh, int SampleIndex, ushort UnityNote, short FineTune, uint LoopStart, uint LoopLength);
 
     private sealed record DlsInstrument(ushort Bank, ushort Preset, List<DlsRegion> Regions);
 
@@ -143,11 +139,7 @@ internal static class DlsToSf2Converter
             }
 
             // Skip to end of chunk (with padding)
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
         if (instrumentListInfo == null || wavePoolInfo == null)
@@ -185,11 +177,7 @@ internal static class DlsToSf2Converter
             }
 
             waveIndex++;
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
         // Parse instruments
@@ -213,11 +201,7 @@ internal static class DlsToSf2Converter
                 }
             }
 
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
         // Write SF2
@@ -225,7 +209,19 @@ internal static class DlsToSf2Converter
         if (cacheDir != null)
             _ = Directory.CreateDirectory(cacheDir);
 
-        WriteSf2(cachePath, samples, instruments, Path.GetFileNameWithoutExtension(dlsPath));
+        // Written beside the cache file and moved into place, so a crash mid-write never leaves
+        // a truncated SF2 that later runs would load as the cache.
+        var partialPath = $"{cachePath}.{Guid.NewGuid():N}.partial"; // one per writer: two processes may convert at once
+        try
+        {
+            WriteSf2(partialPath, samples, instruments, Path.GetFileNameWithoutExtension(dlsPath));
+            File.Move(partialPath, cachePath, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(partialPath); } catch { }
+            throw;
+        }
 
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASSMIDI", $"DLS to SF2 conversion complete: {cachePath}");
         return cachePath;
@@ -282,11 +278,7 @@ internal static class DlsToSf2Converter
                 }
             }
 
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
         return pcm16 == null || pcm16.Length == 0 ? null : new DlsSample(pcm16, sampleRate, unityNote, fineTune, loopStart, loopLength);
@@ -335,20 +327,12 @@ internal static class DlsToSf2Converter
                             }
                         }
 
-                        var rgnSkipTo = rgnStart + rgnSize;
-                        dls.SkipPadding(rgnSize);
-                        if (dls.Position < rgnSkipTo)
-                            dls.Seek(rgnSkipTo);
-                        dls.SkipPadding(rgnSize);
+                        dls.SkipToChunkEnd(rgnStart, rgnSize);
                     }
                 }
             }
 
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
         return regions.Count == 0 ? null : new DlsInstrument(bank, preset, regions);
@@ -403,16 +387,13 @@ internal static class DlsToSf2Converter
                 }
             }
 
-            var skipTo = chunkStart + chunkSize;
-            dls.SkipPadding(chunkSize);
-            if (dls.Position < skipTo)
-                dls.Seek(skipTo);
-            dls.SkipPadding(chunkSize);
+            dls.SkipToChunkEnd(chunkStart, chunkSize);
         }
 
-        return !sampleIndexMap.ContainsKey(tableIndex)
+        // The region names a wave by its pool position; samples holds it at the mapped index.
+        return !sampleIndexMap.TryGetValue(tableIndex, out var sampleIndex)
             ? null
-            : new DlsRegion(keyLow, keyHigh, velLow, velHigh, tableIndex, unityNote, fineTune, loopStart, loopLength);
+            : new DlsRegion(keyLow, keyHigh, velLow, velHigh, sampleIndex, unityNote, fineTune, loopStart, loopLength);
     }
 
     // ─── SF2 writing ─────────────────────────────────────────────
@@ -431,24 +412,28 @@ internal static class DlsToSf2Converter
         var igenEntries = new List<(ushort Gen, short Amount)>();
         var imodEntries = new List<(ushort Src, ushort Dest, short Amount, ushort SrcAmt, ushort Transform)>();
 
-        // Add samples
+        // Add samples. Unconvertible waves (null) get no shdr entry, so each sample's SF2 index
+        // is recorded for the instruments' SampleID generators.
+        var shdrIndexBySample = new int[samples.Count];
         for (var i = 0; i < samples.Count; i++)
         {
             if (samples[i] is not DlsSample sample)
                 continue;
 
+            shdrIndexBySample[i] = shdrEntries.Count;
+
             var start = (uint)smplData.Count;
             smplData.AddRange(sample.Pcm16);
 
             uint end, loopStart, loopEnd;
-            if (sample.LoopLength > 0)
+            if (sample.LoopLength > 0 && (ulong)sample.LoopStart + sample.LoopLength <= (ulong)sample.Pcm16.Length)
             {
                 // SF2 requires 8 samples from loop start appended after the sample
                 for (var j = 0; j < 8; j++)
                     smplData.Add(sample.Pcm16[(int)(sample.LoopStart + (j % sample.LoopLength))]);
                 end = (uint)smplData.Count + 46; // 46 zero samples at end
                 loopStart = start + sample.LoopStart;
-                loopEnd = start + (uint)sample.Pcm16.Length;
+                loopEnd = start + sample.LoopStart + sample.LoopLength;
             }
             else
             {
@@ -473,7 +458,7 @@ internal static class DlsToSf2Converter
 
             foreach (DlsRegion region in inst.Regions)
             {
-                if (samples[(int)region.TableIndex] is not DlsSample sample)
+                if (samples[region.SampleIndex] is null)
                     continue;
 
                 var genIndex = (ushort)igenEntries.Count;
@@ -484,7 +469,7 @@ internal static class DlsToSf2Converter
                 igenEntries.Add((58, (short)region.UnityNote)); // OverridingRootKey
                 if (region.FineTune != 0)
                     igenEntries.Add((52, region.FineTune)); // FineTune
-                igenEntries.Add((53, (short)samples.IndexOf(sample))); // SampleID
+                igenEntries.Add((53, (short)shdrIndexBySample[region.SampleIndex])); // SampleID
                 imodEntries.Add((0, 0, 0, 0, 0)); // terminal modulator
 
                 ibagEntries.Add((genIndex, modIndex));

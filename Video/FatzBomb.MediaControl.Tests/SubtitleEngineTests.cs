@@ -57,4 +57,20 @@ public class SubtitleEngineTests
         Assert.Equal("Later", Assert.Single(engine.GetActiveCues(55)).Text);
         Assert.Equal("Earlier", Assert.Single(engine.GetActiveCues(7)).Text);
     }
+
+    [Fact]
+    public void GetActiveCues_FindsLongCuesUnderShorterLaterOnes()
+    {
+        using var engine = new SubtitleEngine();
+        engine.LoadCues(
+        [
+            new SubtitleCue(0, TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(10), "Long"),
+            new SubtitleCue(1, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), "Short"),
+            new SubtitleCue(2, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(5), "Overlap"),
+        ]);
+
+        Assert.Equal(["Long", "Overlap"], engine.GetActiveCues(4.5).Select(static cue => cue.Text));
+        Assert.Equal("Long", Assert.Single(engine.GetActiveCues(3.5)).Text);
+        Assert.Empty(engine.GetActiveCues(10));
+    }
 }

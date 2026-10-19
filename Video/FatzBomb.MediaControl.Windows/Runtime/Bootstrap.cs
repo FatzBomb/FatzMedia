@@ -1,11 +1,12 @@
-//#pragma warning disable IDE0130
 using System.Diagnostics;
 
 namespace FatzBomb.MediaControl;
 
 internal static partial class Bootstrap
 {
-    private static int _initOnce;
+    // Serializes loading: a concurrent caller waits for the load in progress and gets its result
+    // instead of failing with an empty message. A failed load is retried by the next caller.
+    private static readonly Lock InitGate = new();
     private static volatile bool _isInitialized;
 
     internal static bool IsBassLoaded { get; private set; } = false;
@@ -14,9 +15,6 @@ internal static partial class Bootstrap
     public static string Message { get; set; } = string.Empty;
     public static IReadOnlyList<string> NativeLoadMessages => [.. _nativeLoadMessages];
     public static NativeDependencyReport NativeDependencies { get; private set; } = NativeDependencyReport.Empty;
-    internal static string? RootPath { get; private set; }
-    public static string? FfmpegPath => FFmpeg.AutoGen.ffmpeg.RootPath;
-    internal static string? BassPath { get; private set; }
     public static bool EnsureInitialized(string? userLibraryPath = null) =>
         EnsureInitialized(ToNativeLibraryPathArray(userLibraryPath));
 
@@ -29,11 +27,14 @@ internal static partial class Bootstrap
     {
         if (_isInitialized) return true;
 
-        if (Interlocked.CompareExchange(ref _initOnce, 1, 0) == 0)
+        lock (InitGate)
         {
+            if (_isInitialized) return true;
+
             try
             {
                 _nativeLoadMessages.Clear();
+                _nativeChecks.Clear();
                 List<string> candidatePaths = [];
                 foreach (var nativeLibraryPath in nativeLibraryPaths)
                 {
@@ -48,7 +49,6 @@ internal static partial class Bootstrap
                         candidatePaths.Add(defaultPath);
                 }
 
-                RootPath = candidatePaths.FirstOrDefault();
                 searchPaths = candidatePaths;
 
 
@@ -57,17 +57,13 @@ internal static partial class Bootstrap
 
                 _isInitialized = IsBassLoaded && IsFfmpegLoaded;
                 if (!_isInitialized)
-                {
                     Message = BuildFailureMessage();
-                    _ = Interlocked.Exchange(ref _initOnce, 0);
-                }
             }
             catch (Exception ex)
             {
                 Message = $"[Bootstrap] ❌ Exception during initialization: {ex.Message}";
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Exception during initialization: {ex.Message}", innerException: ex);
                 _isInitialized = false;
-                _ = Interlocked.Exchange(ref _initOnce, 0);
                 return IsInitialized;
             }
             finally
@@ -78,8 +74,6 @@ internal static partial class Bootstrap
 
             return IsInitialized;
         }
-
-        return IsInitialized;
     }
 
     private static string BuildFailureMessage()

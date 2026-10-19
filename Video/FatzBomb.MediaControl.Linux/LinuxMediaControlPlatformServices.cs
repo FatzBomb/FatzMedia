@@ -23,7 +23,6 @@ internal sealed class LinuxMediaControlPlatformServices(LinuxNativeLibraryBootst
 
     public void AddPlatformServices(IServiceCollection services, MediaPlayerConfiguration configuration)
     {
-        _ = services.AddSingleton<IMidiLyricProvider>(_ => new LinuxBassMidiLyricProvider());
         _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new LinuxPrecisionWaiterFactory());
         _ = services.AddSingleton<IVideoPipelinePlatformServices>(_ => new LinuxVideoPipelinePlatformServices(options));
         _ = services.AddSingleton<IVideoHardwareAccelerationServices>(_ => SoftwareOnlyVideoHardwareAccelerationServices.Instance);

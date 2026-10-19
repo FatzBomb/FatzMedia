@@ -7,6 +7,7 @@ using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 #pragma warning disable IDE0130
 namespace FatzBomb.MediaControl;
@@ -51,41 +52,21 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         _platformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-        _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
+        try
+        {
+            CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
+        }
+        catch
+        {
+            // Nothing else owns the half-built graph: release the native resources and the worker,
+            // and the static diagnostic subscription that would keep this instance alive.
+            DisposeCore();
+            try { _controlOperations?.Dispose(); } catch { }
+            throw;
+        }
 
-        _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
-        IArchiveService archiveService = _serviceProvider.GetRequiredService<IArchiveService>();
-
-        _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
-        Effects = new MediaEffects(_mediaEngine);
         // Reads Effects on every call: Reset replaces it.
         _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
-        CdgVisuals = new CdgVisuals(_mediaEngine);
-        _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
-        Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
-        File = new MediaFile(
-            _mediaEngine,
-            _presentationCoordinator,
-            Controls,
-            Effects,
-            CdgVisuals,
-            archiveService,
-            configuration.ResetPitchOnMediaLoad,
-            configuration.ResetTempoOnMediaLoad);
-        _controlOperations = new MediaControlOperationQueue("MediaControl");
-        _positionNotifier = CreatePositionNotifier();
-
-        Controls.MediaEnded += OnControlsMediaEnded;
-        Controls.MediaStarted += OnControlsMediaStarted;
-        Controls.MediaStopped += OnControlsMediaStopped;
-        SubscribeNewSessionEvents();
-        SubscribeNetworkEvents();
-        _presentationCoordinator.FramePresented += OnPresentationFramePresented;
-
-        if (_mediaEngine is IMediaErrorSource errorSource)
-            errorSource.ErrorOccurred += OnEngineErrorOccurred;
-
-        DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
         try
         {
@@ -671,6 +652,52 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
 
         // 6. Reinitialize with new configuration
+        MediaControlOperationQueue oldOperations = _controlOperations;
+        try
+        {
+            CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
+        }
+        catch
+        {
+            // The old graph is gone. Keep the player resettable: a fresh operation queue (the old
+            // one is disposed when Reset returns) and the surfaces, which a retried Reset reattaches.
+            // Until then control calls fail with ObjectDisposedException.
+            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
+                _presentationSurfaces[kvp.Key] = kvp.Value;
+            if (ReferenceEquals(_controlOperations, oldOperations))
+                _controlOperations = new MediaControlOperationQueue("MediaControl");
+            throw;
+        }
+
+        ApplyVideoFrameTiming();
+
+        // 8. Reattach preserved presentation surfaces
+        foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
+            try { _ = AttachPresentationSurface(kvp.Value); } catch { }
+
+        // 9. Reconnect audio device monitor
+        try
+        {
+            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            if (_audioDeviceMonitor != null)
+            {
+                _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
+                _audioDeviceMonitor.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
+        }
+
+        return true;
+    }
+
+    /// <summary>Creates the engine, presentation and control objects and subscribes to them.</summary>
+    [MemberNotNull(nameof(_serviceProvider), nameof(_mediaEngine), nameof(_acceptedTypes), nameof(Effects), nameof(CdgVisuals),
+        nameof(_presentationCoordinator), nameof(Controls), nameof(File), nameof(_controlOperations), nameof(_positionNotifier))]
+    private void CreateSessionGraph(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
+    {
         _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
@@ -704,28 +731,6 @@ public partial class MediaControlPlayer : IMediaControlSession
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
-        ApplyVideoFrameTiming();
-
-        // 8. Reattach preserved presentation surfaces
-        foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
-            try { _ = AttachPresentationSurface(kvp.Value); } catch { }
-
-        // 9. Reconnect audio device monitor
-        try
-        {
-            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
-            if (_audioDeviceMonitor != null)
-            {
-                _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
-                _audioDeviceMonitor.Start();
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
-        }
-
-        return true;
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset

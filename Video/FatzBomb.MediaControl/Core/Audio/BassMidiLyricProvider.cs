@@ -1,11 +1,10 @@
 using FatzBomb.MediaControl.Core.Abstractions;
-using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Subtitle;
 
-namespace FatzBomb.MediaControl.Windows.Audio;
+namespace FatzBomb.MediaControl.Core.Audio;
 
 /// <summary>
-/// Windows MIDI lyric provider backed by BASS marker APIs.
+/// Default MIDI lyric provider backed by BASS marker APIs through <see cref="MidiLyricExtractor"/>.
 /// </summary>
 internal sealed class BassMidiLyricProvider : IMidiLyricProvider
 {

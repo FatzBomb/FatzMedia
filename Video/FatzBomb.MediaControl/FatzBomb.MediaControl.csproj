@@ -9,7 +9,7 @@
 		<PackageId>FatzBomb.MediaControl</PackageId>
 		<AssemblyName>FatzBomb.MediaControl</AssemblyName>
 		<RootNamespace>FatzBomb.MediaControl</RootNamespace>
-		<Description>Host-agnostic FatzBomb media engine core for audio/video/image/CD+G input, Cdg rendering, Direct3D composition primitives, BASS/FFmpeg integration, normalization, and effects.</Description>
+		<Description>UI-agnostic FatzBomb media engine core: playback, timing, composition policy, state, CD+G, and renderer/platform contracts for audio/video/image/CD+G input, with BASS/FFmpeg integration, normalization, and effects.</Description>
 		<PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

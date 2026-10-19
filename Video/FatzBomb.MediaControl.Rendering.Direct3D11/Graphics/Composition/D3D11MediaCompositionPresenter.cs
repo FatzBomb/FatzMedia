@@ -85,45 +85,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         ReleaseResources();
     }
 
-    public void SetBackgroundFrame(
-        D3D11DeviceResources deviceResources,
-        ReadOnlySpan<byte> bgraPixels,
-        int width,
-        int height,
-        int stride,
-        bool forceZoomToFill)
-    {
-        if (deviceResources.Device == null
-            || deviceResources.Context == null
-            || bgraPixels.IsEmpty
-            || width <= 0
-            || height <= 0
-            || stride < width * 4)
-        {
-            ClearBackgroundFrame();
-            return;
-        }
-
-        MediaCompositionStretchMode stretchMode = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : MediaCompositionStretchMode.UniformFit;
-        D3D11CompositionLayerState backgroundLayer = _layerCache.GetOrCreate(MediaCompositionLayerId.Background);
-        backgroundLayer.Update(new MediaCompositionLayer
-        {
-            Id = MediaCompositionLayerId.Background,
-            Kind = MediaCompositionLayerKind.Background,
-            SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
-            Order = 0,
-            Revision = -1,
-            Width = width,
-            Height = height,
-            Stride = stride,
-            StretchMode = stretchMode,
-            Opacity = 1.0d
-        });
-
-        if (!backgroundLayer.UploadBgraPixels(deviceResources.Device, deviceResources.Context, bgraPixels, width, height, stride, stretchMode, -1))
-            ClearBackgroundFrame();
-    }
-
     public void ClearBackgroundFrame() => _layerCache.GetOrCreate(MediaCompositionLayerId.Background).Clear();
 
     public bool SetHardwareBackgroundFrame(
@@ -635,74 +596,75 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             : renderTargetView;
         context.OMSetRenderTargets(compositionRenderTargetView);
 
-        if (clearTarget || transformWholeComposition)
-            context.ClearRenderTargetView(
-                compositionRenderTargetView,
-                clearTarget ? ResolveClearColor(frame) : new Color4(0f, 0f, 0f, 0f));
-
-        if (frame.HasShaderVisibleLayer)
+        try
         {
-            context.VSSetShader(_vertexShader);
-            context.RSSetState(_rasterizerState);
-            context.OMSetBlendState(_blendState);
-            context.PSSetSampler(0, _samplerState);
-        }
+            if (clearTarget || transformWholeComposition)
+                context.ClearRenderTargetView(
+                    compositionRenderTargetView,
+                    clearTarget ? ResolveClearColor(frame) : new Color4(0f, 0f, 0f, 0f));
 
-        D3D11CompositionLayerState? backgroundLayer = _layerCache.TryGet(MediaCompositionLayerId.Background);
-        if (frame.HasAnyBackground
-            && backgroundLayer?.HasTexture == true
-            && _backgroundPixelShader != null)
-            if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer, applyTransform: !transformWholeComposition))
+            if (frame.HasShaderVisibleLayer)
+            {
+                context.VSSetShader(_vertexShader);
+                context.RSSetState(_rasterizerState);
+                context.OMSetBlendState(_blendState);
+                context.PSSetSampler(0, _samplerState);
+            }
+
+            D3D11CompositionLayerState? backgroundLayer = _layerCache.TryGet(MediaCompositionLayerId.Background);
+            if (frame.HasAnyBackground
+                && backgroundLayer?.HasTexture == true
+                && _backgroundPixelShader != null)
+                if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer, applyTransform: !transformWholeComposition))
+                    return false;
+
+            D3D11CompositionLayerState? washLayer = _layerCache.TryGet(MediaCompositionLayerId.Wash);
+            if (frame.HasWash)
+            {
+                if (washLayer?.HasSolidColor != true)
+                    return false;
+
+                DrawWashLayer(context, outputWidth, outputHeight, washLayer);
+            }
+
+            D3D11CompositionLayerState? overlayLayer = _layerCache.TryGet(MediaCompositionLayerId.Overlay);
+            CdgRenderSnapshot? snapshot = frame.CdgOverlay;
+            if (frame.HasCdgOverlay && snapshot != null && !frame.SuppressCdgOverlayDraw)
+            {
+                if (overlayLayer == null || !DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
+                    return false;
+                _lastDrawnRevision = snapshot.Revision;
+            }
+            else
+                _lastDrawnRevision = -1;
+
+            D3D11CompositionLayerState? subtitleLayer = _layerCache.TryGet(MediaCompositionLayerId.Subtitle);
+            if (frame.HasSubtitleOverlay)
+            {
+                if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer))
+                    return false;
+            }
+
+            if (transformWholeComposition
+                && !DrawPostProcessToRenderTarget(
+                    context,
+                    frame.BaseVisualTransform,
+                    outputWidth,
+                    outputHeight,
+                    renderTargetView,
+                    postProcessTarget!.ShaderResourceView))
+            {
                 return false;
+            }
 
-        D3D11CompositionLayerState? washLayer = _layerCache.TryGet(MediaCompositionLayerId.Wash);
-        if (frame.HasWash)
-        {
-            if (washLayer?.HasSolidColor != true)
-                return false;
-
-            DrawWashLayer(context, outputWidth, outputHeight, washLayer);
+            return true;
         }
-
-        D3D11CompositionLayerState? overlayLayer = _layerCache.TryGet(MediaCompositionLayerId.Overlay);
-        CdgRenderSnapshot? snapshot = frame.CdgOverlay;
-        if (frame.HasCdgOverlay && snapshot != null && !frame.SuppressCdgOverlayDraw)
+        finally
         {
-            if (overlayLayer == null || !DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
-                return false;
-            _lastDrawnRevision = snapshot.Revision;
+            // Success or not, the context must not keep the swap-chain buffer bound:
+            // ResizeBuffers and swap-chain release fail while it is.
+            UnbindPipeline(context);
         }
-        else
-            _lastDrawnRevision = -1;
-
-        D3D11CompositionLayerState? subtitleLayer = _layerCache.TryGet(MediaCompositionLayerId.Subtitle);
-        if (frame.HasSubtitleOverlay)
-        {
-            if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer))
-                return false;
-        }
-
-        if (transformWholeComposition
-            && !DrawPostProcessToRenderTarget(
-                context,
-                frame.BaseVisualTransform,
-                outputWidth,
-                outputHeight,
-                renderTargetView,
-                postProcessTarget!.ShaderResourceView))
-        {
-            return false;
-        }
-
-        context.PSSetShaderResource(0, null!);
-        context.PSSetShaderResource(1, null!);
-        context.PSSetSampler(0, null!);
-        context.PSSetConstantBuffer(0, null!);
-        context.VSSetConstantBuffer(0, null!);
-        context.RSSetState(null);
-        context.OMSetRenderTargets((ID3D11RenderTargetView?)null!);
-        context.Flush();
-        return true;
     }
 
     private bool DrawCdgOverlayOnlyToRenderTarget(
@@ -729,17 +691,32 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.IASetInputLayout(null);
         context.RSSetViewport(new Viewport(0, 0, outputWidth, outputHeight));
         context.OMSetRenderTargets(renderTargetView);
-        context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));
-        context.VSSetShader(_vertexShader);
-        context.RSSetState(_rasterizerState);
-        context.OMSetBlendState(_premultipliedBlendState);
-        context.PSSetSampler(0, _samplerState);
 
-        if (!DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
-            return false;
+        try
+        {
+            context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 0f));
+            context.VSSetShader(_vertexShader);
+            context.RSSetState(_rasterizerState);
+            context.OMSetBlendState(_premultipliedBlendState);
+            context.PSSetSampler(0, _samplerState);
 
-        overlayLayer.MarkRendered(snapshot.Revision);
-        _lastDrawnRevision = snapshot.Revision;
+            if (!DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
+                return false;
+
+            overlayLayer.MarkRendered(snapshot.Revision);
+            _lastDrawnRevision = snapshot.Revision;
+            return true;
+        }
+        finally
+        {
+            // Success or not, the context must not keep the swap-chain buffer bound:
+            // ResizeBuffers and swap-chain release fail while it is.
+            UnbindPipeline(context);
+        }
+    }
+
+    private static void UnbindPipeline(ID3D11DeviceContext context)
+    {
         context.PSSetShaderResource(0, null!);
         context.PSSetShaderResource(1, null!);
         context.PSSetSampler(0, null!);
@@ -748,7 +725,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.RSSetState(null);
         context.OMSetRenderTargets((ID3D11RenderTargetView?)null!);
         context.Flush();
-        return true;
     }
 
     private static Color4 ResolveClearColor(MediaCompositionFrame frame) => frame.ClearMode switch

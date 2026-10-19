@@ -21,7 +21,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         var audio = CreateFile("song.mp3");
         var sidecar = CreateFile("song.PNG");
 
-        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audio, new NoArchives(), MediaContent.Audio);
+        MediaBackgroundCandidate? result = MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio);
 
         // Linux lists the directory and returns the real name. Case-insensitive file systems
         // (Windows, macOS) keep the original exact-name probe, whose path differs only in case
@@ -39,7 +39,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         var audio = CreateFile("song.mp3");
         _ = CreateFile("Song.png");
 
-        Assert.Null(MediaBackgroundResolver.Resolve(audio, new NoArchives(), MediaContent.Audio));
+        Assert.Null(MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         _ = CreateFile("whatX.png");
         var sidecar = CreateFile("what?.png");
 
-        Assert.Equal(sidecar, MediaBackgroundResolver.Resolve(audio, new NoArchives(), MediaContent.Audio)!.Path);
+        Assert.Equal(sidecar, MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio)!.Path);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         var audio = CreateFile("song.mp3");
         _ = CreateFile("song.tar.gz");
 
-        Assert.Null(MediaBackgroundResolver.Resolve(audio, new NoArchives(), MediaContent.Audio));
+        Assert.Null(MediaBackgroundResolver.Resolve(audio, new NotSupportedArchiveService(), MediaContent.Audio));
     }
 
     private string CreateFile(string name)
@@ -69,10 +69,5 @@ public sealed class SidecarCaseSensitivityTests : IDisposable
         var path = Path.Combine(_directory, name);
         File.WriteAllBytes(path, []);
         return path;
-    }
-
-    private sealed class NoArchives : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
     }
 }

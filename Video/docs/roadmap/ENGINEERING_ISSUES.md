@@ -12,9 +12,130 @@ None.
 
 ## Open
 
-None.
+These came out of the 2026-10-18 code audit (ENG-020). Each was verified by reading the code
+but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
+needs Windows to verify.
+
+### ENG-021 - BASS output latency and device recovery are largely inert
+
+Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which replaces this path.
+- BASS is initialised without `DeviceInitFlags.Latency`, so `BASS_INFO.latency` is 0 and
+  output-latency compensation (and the USB/Bluetooth heuristic) does nothing.
+- The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
+  `Bass.Free` is never called, so it cannot recover a lost device. Real recovery is the
+  player-level Reset on a device change.
+- `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
+
+### ENG-022 - Subtitle content flag is never revoked
+
+Reported: 2026-10-18 (audit). `SubtitlePipeline` only ever adds `MediaContent.Subtitle`: turning
+subtitles off, or loading embedded tracks without selecting one (MIDI with lyrics hidden),
+leaves it set. The coordinator then runs its 75 Hz render loop for audio-only media and
+presents empty compositions on seeks, and `HasSubtitle`/`HasVisualContent` read true.
+Not fixed in the audit because the flag also means "tracks available" to the picker, and the
+render loop is decided at play: tying the coordinator to the selected track needs the
+coordinator to follow `ISubtitleEngine.CuesChanged` (start or stop the loop), or the flag
+split into "available" and "showing".
+
+### ENG-023 - Software-path compositions are built and presented unordered
+
+Reported: 2026-10-18 (audit; Likely, not reproduced). On the software path the coordinator builds
+a composition under its lock and presents it outside it; the video-frame thread and the render
+loop can overlap, so an older composition can be presented after a newer one and stay up while
+paused. Not a simple fix: per-target cadence (017A) presents compositions to target subsets,
+so "drop older" would wrongly skip one target's frame, and a separate build-and-present lock
+needs its order against the coordinator lock proven for every caller.
+
+### ENG-024 - Player API threading contract gaps
+
+Reported: 2026-10-18 (audit).
+- `Reset` silently reverts runtime settings (volume, pitch, tempo, EQ, loop...) to defaults and
+  raises no change events.
+- `Dispose`, `Reset` and the sync API block the calling (UI) thread with no bound; some
+  "Async" methods block too.
+- `Reset` is not serialized against surface attach/detach calls and some property reads.
+- The worker-context flag is an `AsyncLocal` and flows into child tasks, so a task started
+  from an event handler can bypass serialization or make `Dispose`/`Reset` throw wrongly.
+- Event delivery is inconsistent: some events swallow handler exceptions, others let them
+  escape onto engine threads.
+
+### ENG-025 - Process-global state shared across players
+
+Reported: 2026-10-18 (audit).
+- `DiagnosticRouter` is a static event; every player (and coordinator) subscribes, so one
+  player's device-lost diagnostic makes every coordinator start recovery.
+- `FfmpegAudioFallback` keeps one process-wide prepared conversion shared by all players.
+- `FileTypes.Audio`/`Video`/`FfmpegAudio` are public mutable static `HashSet`s written during
+  native bootstrap and read from any thread.
+
+### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
+
+Reported: 2026-10-18 (audit; perf items not measured).
+- Most D3D11 failure logs are `Debug.WriteLine`, compiled out of Release: route the ones a
+  user would need through `DiagnosticRouter` (latched, since some repeat per frame).
+- A secondary (projector) window resize recreates its swap chain instead of queuing
+  `ResizeBuffers` like the primary.
+- Per-frame allocations: a render-target view per target per frame, target snapshot lists and
+  LINQ in the backend set, the DirectComposition back buffer re-wrapped after every present.
+- The managed frame sink reallocates on resize churn; Vulkan readback memory may be uncached
+  and the background is re-uploaded every frame.
+- Post-process targets are never pruned for removed secondary windows.
+
+### ENG-027 - Hardware decoding does not reserve extra pool surfaces
+
+Reported: 2026-10-18 (audit; Suspected, needs Windows). The pipeline holds up to 12 cloned
+hardware frames plus the current one, each pinning a surface of FFmpeg's d3d11va pool, but
+`extra_hw_frames` is never set. If the pool (sized from the codec's reference needs) runs out,
+decoding fails with a surface-pool error that counts as a hardware failure. Fix to try: set
+`extra_hw_frames` to the pipeline's queue depth plus 2 before `avcodec_open2` on the hardware
+path, and check VRAM use at 4K.
+
+### ENG-028 - MIDI silent after the audit's DLS converter changes
+
+Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
+plays with no audio. Not reproduced on Linux (no `gm.dls`). Likely cause: the cache key now
+includes the DLS's size and write time, so Windows' `gm.dls` was converted again by the
+current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
+failed (`No soundfont found`) or its SF2 plays silently. Needed: the Log's `BASSMIDI` lines and
+the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
+`gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
+this MIDI path.
 
 ## Completed
+
+### ENG-020 - October 2026 code audit
+
+Fixed: 2026-10-18. Needs the owner's general smoke (see the PR's smoke steps); no single
+behaviour change is user-visible except where noted.
+
+Six read-only audits (video, audio, presentation, API/adapters, renderers, dead code) found the
+items below; each was verified in the code before it was fixed. Deferred items are ENG-021 to
+ENG-027. Commits:
+- **Video:** a decoder swap kept the old timeline origin and left the loops stopped on failure;
+  post-seek warm-up spun at end of stream; the audio engine's own demuxer read every stream;
+  archive videos were copied twice in memory.
+- **Audio:** only the first loop wrap was reported (MediaLooped); a throwing event handler in the
+  BASS end sync could end the process; the normalizer gain FX was unsynchronised; a failed video
+  audio seek left playback paused and flushed; network streams could get the loop flag; stale
+  `.media` scratch files were never swept; the DLS converter mis-numbered samples after a skipped
+  wave, ignored loop ends, and could cache a truncated SF2 forever.
+- **Presentation:** SRT cues merged on whitespace-only separator lines and timing lines with
+  position hints were dropped; cue lookup was a scan per frame; the D3D11 renderer could upload
+  only a CD+G snapshot's dirty regions into a texture that had missed earlier ones (stale lyrics
+  pixels); the pooled CPU frame stayed rented on the hardware path; a seek presented video twice;
+  the CD+G opacity getter did not round-trip.
+- **API/adapters:** a failed `Reset` left the player permanently unusable; a failed constructor
+  leaked the engine; two players starting together could fail native loading with an empty
+  message; prepared-next stat'ed files under a lock the UI takes; WPF lightweight surfaces could
+  subscribe twice and land a slow load over a later one; Player host startup and disposal gaps.
+- **Renderers:** a failed `ResizeBuffers` was treated as success; failed draws left the swap-chain
+  buffer bound; the Vulkan factory had no availability probe.
+- **Dead code and duplicates:** see the refactor commit.
+
+A review of the fix commits found no regression of note; its follow-ups are in the last fix
+commit: a decoder swap retried after a failed attempt kept the timeline origin, a swap that
+throws leaves the loops stopped, a failing `ResizeBuffers` is retried every half second
+rather than every frame, and a failed Reset no longer leaks an operation queue.
 
 ### ENG-014 - Vulkan duplicates software-renderer placement and CDG validation
 

@@ -229,7 +229,12 @@ internal sealed partial class VideoPipeline(
 
     public double Position
     {
-        get => HasAudio ? _audioEngine!.Position : _clock.PositionSeconds;
+        get
+        {
+            // One read of the field: Close nulls it from another thread.
+            VideoAudioEngine? audio = _audioEngine;
+            return audio?.IsOpen == true ? audio.Position : _clock.PositionSeconds;
+        }
         set => Seek(value);
     }
 
@@ -308,9 +313,8 @@ internal sealed partial class VideoPipeline(
         return true;
     }
 
-    private bool OpenBytes(byte[] data)
+    private bool OpenTempFile(string tempPath)
     {
-        var tempPath = TempMediaFile.Create(data);
         var success = Open(tempPath);
         if (success)
             _tempPath = tempPath;
@@ -323,9 +327,9 @@ internal sealed partial class VideoPipeline(
     public bool Open(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        using var ms = new MemoryStream((int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue));
-        archiveEntry.WriteTo(ms);
-        return OpenBytes(ms.ToArray());
+
+        // Streamed straight to the scratch file: no in-memory copies of the whole video.
+        return OpenTempFile(TempMediaFile.CreateFromArchiveEntry(archiveEntry));
     }
 
     public bool Play()
@@ -778,6 +782,7 @@ internal sealed partial class VideoPipeline(
                 ReleaseCurrentFrame();
                 _videoDecoder?.Dispose();
                 _videoDecoder = null;
+                _swapTimelineOrigin = null;
             }
 
             _sharedDemuxer?.Dispose();
@@ -1254,6 +1259,10 @@ internal sealed partial class VideoPipeline(
     /// deliberately left running — only the video decoder is swapped. Bumping the generation drops any
     /// in-flight frames that referenced the old (lost) device.
     /// </summary>
+    // The timeline origin of the media's first decoder, carried across decoder swaps (and
+    // across failed swap attempts) until the media closes.
+    private double? _swapTimelineOrigin;
+
     private bool SwapVideoDecoder(VideoDecodingMethod method, string path)
     {
         lock (_transportGate)
@@ -1269,8 +1278,43 @@ internal sealed partial class VideoPipeline(
                 StopPresentationLoopAndWait();
             WaitForPresentationIdle();
 
+            var restartLoops = wasPlaying;
+            try
+            {
+                return SwapVideoDecoderCore(method, path, position, wasPlaying);
+            }
+            catch
+            {
+                // Thrown mid-swap, the decoder may be disposed or half built: leave the loops
+                // stopped and let the exception surface.
+                restartLoops = false;
+                throw;
+            }
+            finally
+            {
+                // Restarted even when the swap failed: the decode loop also pushes the audio, so
+                // audio keeps playing between recovery attempts (and frozen video beats silence).
+                if (restartLoops)
+                {
+                    StartDecodeLoop();
+                    if (!_hostRenderEventDrivenPresentation)
+                        StartPresentationLoop();
+                }
+            }
+        }
+    }
+
+    private bool SwapVideoDecoderCore(VideoDecodingMethod method, string path, double position, bool wasPlaying)
+    {
+        // The presentation lock (taken before the decode lock, as in Stop and SeekCore): a host
+        // render thread may be presenting, and both sides replace and pool-return the current frame.
+        lock (_presentationLock)
             lock (_decodeLock)
             {
+                // Kept in a field: a failed attempt leaves no decoder, and a retry must still
+                // adopt the original origin.
+                _swapTimelineOrigin = _videoDecoder?.TimelineOriginSeconds ?? _swapTimelineOrigin;
+                var timelineOrigin = _swapTimelineOrigin;
                 ReleaseCurrentFrame();
                 _videoDecoder?.Dispose();
                 _videoDecoder = new VideoDecoder(
@@ -1290,25 +1334,21 @@ internal sealed partial class VideoPipeline(
                     return false;
                 }
 
+                if (timelineOrigin is { } origin)
+                    _videoDecoder.AdoptTimelineOrigin(origin);
+
                 Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
                 _clock.DurationSeconds = Duration;
                 _ = _videoDecoder.SeekSharedDemuxer(position);
                 _ = _videoDecoder.Seek(position, exact: false);
-                _presentationClock.Reset(position);
+                if (wasPlaying && HasAudio && _audioEngine != null)
+                    _presentationClock.Start(_audioEngine.Position);
+                else
+                    _presentationClock.Reset(position);
                 _ = DecodeUntilFrameAvailable();
+                _ = PresentFrameForCurrentPosition();
+                return true;
             }
-
-            _ = PresentFrameForCurrentPosition();
-
-            if (wasPlaying)
-            {
-                StartDecodeLoop();
-                if (!_hostRenderEventDrivenPresentation)
-                    StartPresentationLoop();
-            }
-
-            return true;
-        }
     }
 
     private bool DecodeVideoBatch()
@@ -1540,7 +1580,9 @@ internal sealed partial class VideoPipeline(
 
         while (decoder.FrameCount < targetBufferedFrames && stopwatch.ElapsedMilliseconds < budgetMilliseconds)
         {
-            if (HasSupersedingSeekRequest())
+            // A seek at or near the end leaves nothing to decode: stop instead of spinning out the
+            // budget (up to about 3 s with the transport gate held).
+            if (HasSupersedingSeekRequest() || decoder.EndOfStream)
                 break;
 
             if (decoder.DecodeNextFrame())
@@ -2191,6 +2233,8 @@ internal sealed partial class VideoPipeline(
 
     private void CacheLoopStartFrameSnapshot(VideoFrameData frame)
     {
+        // Kept even when not looping (a CPU-frame copy, up to 33 MB at 4K): loop is often turned
+        // on after playback starts, and the first wrap needs the snapshot to stay gapless.
         if (_loopStartFrameSnapshot != null || frame.Data == null || frame.Length <= 0 || frame.PresentationTime > GetEndToleranceSeconds())
             return;
 

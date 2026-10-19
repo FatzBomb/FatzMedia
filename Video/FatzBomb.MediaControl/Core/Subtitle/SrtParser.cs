@@ -36,7 +36,8 @@ internal static class SrtParser
 
             var lines = new List<string>();
             string? textLine;
-            while (!string.IsNullOrEmpty(textLine = reader.ReadLine()))
+            // A blank or whitespace-only line ends the cue (as SkipCueBody treats it).
+            while (!string.IsNullOrWhiteSpace(textLine = reader.ReadLine()))
                 lines.Add(textLine);
 
             if (lines.Count == 0)
@@ -75,8 +76,14 @@ internal static class SrtParser
         start = default;
         end = default;
         var separator = line.IndexOf("-->", StringComparison.Ordinal);
-        return separator >= 0 && TryParseTimestamp(line[..separator], out start)
-            && TryParseTimestamp(line[(separator + 3)..], out end);
+        if (separator < 0)
+            return false;
+
+        // The end time may be followed by position hints ("X1:40 X2:600 Y1:20 Y2:50").
+        var endText = line[(separator + 3)..].TrimStart();
+        var endLength = endText.IndexOfAny([' ', '\t']);
+        return TryParseTimestamp(line[..separator], out start)
+            && TryParseTimestamp(endLength < 0 ? endText : endText[..endLength], out end);
     }
 
     private static bool TryParseTimestamp(string value, out TimeSpan timestamp)

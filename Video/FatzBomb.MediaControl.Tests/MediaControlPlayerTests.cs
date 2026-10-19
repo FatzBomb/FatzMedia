@@ -672,6 +672,26 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public void Reset_CanBeRetriedAfterTheNewEngineFailsToStart()
+    {
+        var firstEngine = new TestMediaEngine();
+        var retryEngine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(firstEngine, retryEngine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        factory.BeforeCreateServiceProvider = callCount =>
+        {
+            if (callCount == 2)
+                throw new InvalidOperationException("Audio device unavailable.");
+        };
+
+        _ = Assert.Throws<InvalidOperationException>(() => player.Reset(MediaPlayerConfiguration.Auto, []));
+
+        Assert.True(player.Reset(MediaPlayerConfiguration.Auto, []));
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(retryEngine.IsOpen);
+    }
+
+    [Fact]
     public async Task Reset_WaitsForAdmittedLoadBeforeDisposingItsEngine()
     {
         using var releaseLoad = new ManualResetEventSlim();
@@ -893,22 +913,6 @@ public sealed class MediaControlPlayerTests
             BeforeCreateServiceProvider?.Invoke(callCount);
             return new TestServiceProvider(_engines.Dequeue());
         }
-    }
-
-    private sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProvider
-    {
-        private readonly IArchiveService _archiveService = new TestArchiveService();
-
-        public object? GetService(Type serviceType) => serviceType == typeof(IMediaEngine)
-            ? engine
-            : serviceType == typeof(IArchiveService)
-                ? _archiveService
-                : null;
-    }
-
-    private sealed class TestArchiveService : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
     }
 
     internal sealed class TestPresentationCoordinator : IMediaPresentationCoordinator

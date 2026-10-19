@@ -123,17 +123,12 @@ public sealed class NetworkPipelineTests
             audio,
             new TestCdgEngine(),
             new SubtitleEngine(),
-            new NullArchiveService(),
+            new NotSupportedArchiveService(),
             new ClosedVideoFactory(),
             new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
             SoftwareOnlyVideoHardwareAccelerationServices.Instance,
             MediaPlayerConfiguration.Auto);
-
-    private sealed class NullArchiveService : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
-    }
 
     private sealed class ClosedVideoFactory : IVideoEngineFactory
     {
@@ -271,7 +266,7 @@ public sealed class PlayerNetworkEventTests
         public VideoDecodeCapabilities GetVideoDecodeCapabilities() => VideoDecodeCapabilities.Create([], []);
 
         public IMediaPresentationCoordinator CreatePresentationCoordinator(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) =>
-            new NullCoordinator();
+            new NullPresentationCoordinator();
 
         public IServiceProvider CreateServiceProvider(MediaPlayerConfiguration configuration, IReadOnlyList<string> nativeLibraryPaths) =>
             new Provider(engine);
@@ -279,36 +274,12 @@ public sealed class PlayerNetworkEventTests
 
     private sealed class Provider(TestMediaEngine engine) : IServiceProvider
     {
-        private readonly IArchiveService _archives = new NullArchives();
+        private readonly IArchiveService _archives = new NotSupportedArchiveService();
 
         public object? GetService(Type serviceType) =>
             serviceType == typeof(IMediaEngine) ? engine
             : serviceType == typeof(IAudioEngine) ? engine.TestAudio
             : serviceType == typeof(IArchiveService) ? _archives
             : null;
-    }
-
-    private sealed class NullArchives : IArchiveService
-    {
-        public IArchiveHandle Open(string path) => throw new NotSupportedException();
-    }
-
-    private sealed class NullCoordinator : IMediaPresentationCoordinator
-    {
-        public event EventHandler? FramePresented { add { } remove { } }
-
-        public VideoDisplayMode VideoDisplayMode { get; set; }
-        public BaseVisualTransform BaseVisualTransform { get; set; }
-
-        public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface) => false;
-        public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight) => false;
-        public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
-        public bool DetachPresentationSurface(string surfaceId) => false;
-        public void RefreshCurrentPosition() { }
-        public void RunOnRenderThread(Action action) => action();
-        public void StartRendering() { }
-        public void StopRendering() { }
-        public void RefreshAttachments() { }
-        public void Dispose() { }
     }
 }

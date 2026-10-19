@@ -96,7 +96,6 @@ public sealed class SoftwareCompositionRenderer
                 buffer,
                 frame.BackgroundBgra,
                 frame.BackgroundWidth,
-                frame.BackgroundHeight,
                 frame.BackgroundStride,
                 NearestSampledPlacement.Create(
                     frame.BackgroundWidth,
@@ -285,7 +284,6 @@ public sealed class SoftwareCompositionRenderer
             buffer,
             frame.SubtitleBgra,
             frame.SubtitleWidth,
-            frame.SubtitleHeight,
             frame.SubtitleStride,
             mapping,
             premultiplied: true,
@@ -296,7 +294,6 @@ public sealed class SoftwareCompositionRenderer
         SoftwareCompositionBuffer buffer,
         ReadOnlyMemory<byte> source,
         int sourceWidth,
-        int sourceHeight,
         int sourceStride,
         NearestSampledPlacement mapping,
         bool premultiplied,

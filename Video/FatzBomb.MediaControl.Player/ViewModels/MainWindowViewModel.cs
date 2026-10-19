@@ -428,6 +428,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task InitializePlayerAsync()
     {
         IMediaControlPlatformFactory? platformFactory = null;
+        FatzMediaPlayer? createdPlayer = null;
         try
         {
             IsBusy = true;
@@ -465,6 +466,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 diagnosticsConfig,
                 NativeLibraryPaths,
                 platformFactory);
+            createdPlayer = player;
             if (_disposed)
             {
                 player.Dispose();
@@ -503,6 +505,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            // Setup failed before the view model took the player: nothing else would dispose it.
+            if (createdPlayer is not null && !ReferenceEquals(Player, createdPlayer))
+                createdPlayer.Dispose();
             StartupError = ex;
             if (platformFactory is not null)
                 ReportNativeDependencies(platformFactory.NativeDependencies);
@@ -798,6 +803,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             player.MediaError -= OnPlayerError;
             player.PitchChanged -= OnPlayerPitchChanged;
             player.TempoChanged -= OnPlayerTempoChanged;
+            StopSubtitleTracking(player);
             StopPreparedNextValidation(player);
             StopNetworkValidation(player);
             player.Dispose();

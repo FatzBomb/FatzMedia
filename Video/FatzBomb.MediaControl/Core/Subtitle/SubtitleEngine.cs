@@ -5,7 +5,10 @@ namespace FatzBomb.MediaControl.Core.Subtitle;
 internal sealed class SubtitleEngine : ISubtitleEngine
 {
     private readonly Lock _gate = new();
-    private IReadOnlyList<SubtitleCue> _cues = [];
+    // Sorted by start; _latestEndThrough[i] is the latest end among cues 0..i, which bounds the
+    // backward scan for cues still active at a position.
+    private SubtitleCue[] _cues = [];
+    private TimeSpan[] _latestEndThrough = [];
 
     public bool IsOpen { get; private set; }
 
@@ -23,7 +26,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
 
         lock (_gate)
         {
-            _cues = cues;
+            SetCues(cues);
             IsOpen = true;
         }
 
@@ -41,7 +44,18 @@ internal sealed class SubtitleEngine : ISubtitleEngine
                 return [];
 
             var position = TimeSpan.FromSeconds(positionSeconds);
-            return [.. _cues.Where(cue => cue.Start <= position && position < cue.End)];
+            List<SubtitleCue>? active = null;
+            for (var index = LastStartingAtOrBefore(position); index >= 0 && _latestEndThrough[index] > position; index--)
+            {
+                if (_cues[index].End > position)
+                    (active ??= []).Add(_cues[index]);
+            }
+
+            if (active is null)
+                return [];
+
+            active.Reverse();
+            return active;
         }
     }
 
@@ -51,8 +65,8 @@ internal sealed class SubtitleEngine : ISubtitleEngine
 
         lock (_gate)
         {
-            _cues = [.. cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence)];
-            IsOpen = _cues.Count > 0;
+            SetCues(cues);
+            IsOpen = _cues.Length > 0;
         }
 
         CuesChanged?.Invoke(this, EventArgs.Empty);
@@ -62,7 +76,7 @@ internal sealed class SubtitleEngine : ISubtitleEngine
     {
         lock (_gate)
         {
-            _cues = [];
+            SetCues([]);
             IsOpen = false;
         }
 
@@ -70,4 +84,33 @@ internal sealed class SubtitleEngine : ISubtitleEngine
     }
 
     public void Dispose() => Close();
+
+    private void SetCues(IReadOnlyList<SubtitleCue> cues)
+    {
+        _cues = [.. cues.OrderBy(static cue => cue.Start).ThenBy(static cue => cue.Sequence)];
+        _latestEndThrough = new TimeSpan[_cues.Length];
+        var latestEnd = TimeSpan.MinValue;
+        for (var index = 0; index < _cues.Length; index++)
+        {
+            if (_cues[index].End > latestEnd)
+                latestEnd = _cues[index].End;
+            _latestEndThrough[index] = latestEnd;
+        }
+    }
+
+    /// <summary>The index of the last cue starting at or before <paramref name="position"/>, or -1.</summary>
+    private int LastStartingAtOrBefore(TimeSpan position)
+    {
+        int low = 0, high = _cues.Length;
+        while (low < high)
+        {
+            var middle = low + ((high - low) / 2);
+            if (_cues[middle].Start <= position)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low - 1;
+    }
 }

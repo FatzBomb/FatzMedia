@@ -1,10 +1,15 @@
 namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 
-internal static class BaseVisualTransformMath
+/// <summary>
+/// Reference scalar math for <see cref="BaseVisualTransform"/>, shared by Core and the CPU renderers so their
+/// output stays bit-identical.
+/// </summary>
+public static class BaseVisualTransformMath
 {
     private const float DegreesToRadians = MathF.PI / 180f;
 
-    internal static (float Red, float Green, float Blue) ApplyStraight(
+    /// <summary>Applies the transform to straight (non-premultiplied) channels in the 0..1 range.</summary>
+    public static (float Red, float Green, float Blue) ApplyStraight(
         float red,
         float green,
         float blue,
@@ -52,7 +57,8 @@ internal static class BaseVisualTransformMath
             | Quantize(blue * alpha);
     }
 
-    internal static byte Quantize(float channel)
+    /// <summary>Clamps a 0..1 channel and rounds it to a byte (midpoint away from zero).</summary>
+    public static byte Quantize(float channel)
         => (byte)Math.Round(Clamp(channel) * 255d, MidpointRounding.AwayFromZero);
 
     private static void ApplyHue(ref float red, ref float green, ref float blue, float degrees)

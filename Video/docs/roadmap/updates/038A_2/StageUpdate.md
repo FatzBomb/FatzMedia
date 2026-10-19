@@ -3,7 +3,7 @@
 Stage: 038A.2 - HDR10 tone mapping in a Direct3D11 shader
 Date: 2026-10-18
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-18 ("everything looked good")
 
 Owner request: "continue, we are good" (after slice 1).
 

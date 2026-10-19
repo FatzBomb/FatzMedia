@@ -18,6 +18,7 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private readonly MediaSurface _surface;
     private readonly LightweightPlayerController _playerController;
     private int _sourceReloadQueued;
+    private int _sourceReloadVersion;
     private bool _restoringPlatformFactory;
     private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
@@ -248,12 +249,17 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private async Task<bool> LoadKaraokeAsync(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        // A newer Source can arrive while this load awaits: it is abandoned if so (see BackgroundSurface).
+        var reload = ++_sourceReloadVersion;
         Player? player = await _playerController.EnsurePlayerAsync(PlatformFactory, AutoPlay, PresentationMode);
-        if (player == null)
+        if (player == null || _disposed || reload != _sourceReloadVersion)
             return false;
 
         player.PlayOnLoad = false;
         var loaded = await player.LoadAsync(path, ignoreSidecar: true);
+        if (_disposed || reload != _sourceReloadVersion)
+            return false;
+
         var isMidiKaraoke = MidiKaraokeExtensions.Contains(System.IO.Path.GetExtension(path));
         var valid = loaded
             && !player.Content.HasFlag(MediaContent.Video)

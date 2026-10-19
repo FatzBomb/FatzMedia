@@ -1,9 +1,8 @@
 namespace FatzBomb.MediaControl.Core.Cdg;
 
 /// <summary>
-/// Optional side-by-side CDG snapshot source. This does not affect the legacy
-/// bitmap CDG output; adapters/renderers can use it to feed experimental CDG
-/// presenters while the existing CDG path remains authoritative.
+/// Optional CDG snapshot source. Renderers use the indexed/palette snapshot it
+/// produces to draw the CDG overlay layer.
 /// </summary>
 public interface ICdgSnapshotSource
 {

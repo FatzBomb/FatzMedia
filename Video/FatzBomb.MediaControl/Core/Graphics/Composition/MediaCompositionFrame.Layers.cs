@@ -11,60 +11,8 @@ public readonly partial record struct MediaCompositionFrame
     /// </summary>
     public IEnumerable<MediaCompositionLayer> EnumerateLayers()
     {
-        if (HasBackground)
-        {
-            yield return new MediaCompositionLayer
-            {
-                Id = MediaCompositionLayerId.Background,
-                Kind = MediaCompositionLayerKind.Background,
-                SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
-                Order = 0,
-                Revision = BackgroundRevision,
-                Width = BackgroundWidth,
-                Height = BackgroundHeight,
-                Stride = BackgroundStride,
-                StretchMode = EffectiveBackgroundStretchMode,
-                Opacity = 1.0d,
-                BaseVisualTransform = BaseVisualTransform,
-                BgraPixels = BackgroundBgra
-            };
-        }
-        else if (HasNativeBackground)
-        {
-            yield return new MediaCompositionLayer
-            {
-                Id = MediaCompositionLayerId.Background,
-                Kind = MediaCompositionLayerKind.Background,
-                SourceKind = MediaCompositionLayerSourceKind.NativeTexture,
-                Order = 0,
-                Revision = BackgroundRevision,
-                Width = BackgroundNativeWidth,
-                Height = BackgroundNativeHeight,
-                Stride = BackgroundNativeWidth > 0 ? BackgroundNativeWidth * 4 : 0,
-                StretchMode = EffectiveBackgroundStretchMode,
-                Opacity = 1.0d,
-                BaseVisualTransform = BaseVisualTransform,
-                NativeResource = BackgroundNativeResource,
-                FramesPerSecond = BackgroundNativeFramesPerSecond
-            };
-        }
-        else if (HasRetainedBackground)
-        {
-            yield return new MediaCompositionLayer
-            {
-                Id = MediaCompositionLayerId.Background,
-                Kind = MediaCompositionLayerKind.Background,
-                SourceKind = MediaCompositionLayerSourceKind.RetainedNativeTexture,
-                Order = 0,
-                Revision = BackgroundRevision,
-                Width = BackgroundWidth,
-                Height = BackgroundHeight,
-                Stride = BackgroundStride,
-                StretchMode = EffectiveBackgroundStretchMode,
-                Opacity = 1.0d,
-                BaseVisualTransform = BaseVisualTransform
-            };
-        }
+        if (TryGetBackgroundLayer() is { } background)
+            yield return background;
 
         if (HasWash)
         {
@@ -84,46 +32,11 @@ public readonly partial record struct MediaCompositionFrame
             };
         }
 
-        CdgRenderSnapshot? overlay = CdgOverlay;
-        if (HasCdgOverlay && overlay != null)
-        {
-            yield return new MediaCompositionLayer
-            {
-                Id = MediaCompositionLayerId.Overlay,
-                Kind = MediaCompositionLayerKind.Overlay,
-                SourceKind = MediaCompositionLayerSourceKind.CdgSnapshot,
-                Order = 2,
-                Revision = overlay.Revision,
-                Width = overlay.Width,
-                Height = overlay.Height,
-                Stride = overlay.Width,
-                StretchMode = MediaCompositionStretchMode.UniformFit,
-                Opacity = 1.0d,
-                CdgSnapshot = overlay
-            };
-        }
+        if (TryGetOverlayLayer() is { } overlay)
+            yield return overlay;
 
-        if (HasSubtitleOverlay)
-        {
-            yield return new MediaCompositionLayer
-            {
-                Id = MediaCompositionLayerId.Subtitle,
-                Kind = MediaCompositionLayerKind.Overlay,
-                SourceKind = MediaCompositionLayerSourceKind.BgraPixels,
-                Order = 3,
-                Revision = SubtitleRevision,
-                Width = SubtitleWidth,
-                Height = SubtitleHeight,
-                Stride = SubtitleStride,
-                CanvasLeft = SubtitleCanvasLeft,
-                CanvasTop = SubtitleCanvasTop,
-                CanvasWidth = SubtitleCanvasWidth,
-                CanvasHeight = SubtitleCanvasHeight,
-                StretchMode = MediaCompositionStretchMode.UniformFit,
-                Opacity = 1.0d,
-                BgraPixels = SubtitleBgra
-            };
-        }
+        if (TryGetSubtitleLayer() is { } subtitle)
+            yield return subtitle;
     }
 
     private static long StableColorRevision(uint argb)

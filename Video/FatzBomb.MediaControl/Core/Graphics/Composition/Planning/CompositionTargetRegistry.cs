@@ -9,7 +9,6 @@ public sealed class CompositionTargetRegistry
     public long CaptureSequence { get; private set; }
     public bool HasMultipleActiveTargets => _targets.Values.Count(static target => target.IsActive) > 1;
     public int ActiveTargetCount => _targets.Values.Count(static target => target.IsActive);
-    public int PendingDeactivationCount => _targets.Values.Count(static target => target.WasDeactivated);
 
     public string LifecycleSummary
         => _targets.Count == 0

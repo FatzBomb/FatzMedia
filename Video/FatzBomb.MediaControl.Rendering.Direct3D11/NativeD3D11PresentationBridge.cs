@@ -378,7 +378,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     {
         lock (_lock)
         {
-            return _presentation.PresentMediaCompositionVisible(_disposed, frame, RaisePresentedEvent);
+            return _presentation.PresentMediaCompositionVisible(() => _disposed, frame, RaisePresentedEvent);
         }
     }
 
@@ -405,7 +405,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     private void NotifyPresentedWithSync(int _width, int _height, bool syncImmediate) => _ = NotifyPresentedCore(syncImmediate);
 
-    private bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(_disposed, syncImmediate, RaiseFramePresented);
+    private bool NotifyPresentedCore(bool syncImmediate = false) => _presentation.NotifyFramePresented(() => _disposed, syncImmediate, RaiseFramePresented);
 
     private void RaiseFramePresented() => FramePresented?.Invoke(this, EventArgs.Empty);
 

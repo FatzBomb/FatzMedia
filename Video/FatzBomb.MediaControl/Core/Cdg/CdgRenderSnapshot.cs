@@ -36,6 +36,13 @@ public sealed class CdgRenderSnapshot(
     public bool HasDirtyRegions => DirtyRects.Count > 0;
 
     /// <summary>
+    /// The revision <see cref="DirtyRects"/> are relative to: they cover every change since the
+    /// snapshot of that revision. A renderer holding another revision (it skipped a snapshot, or
+    /// its texture is new) must upload the whole frame; -1 when unknown.
+    /// </summary>
+    public long DirtyBaseRevision { get; init; } = -1;
+
+    /// <summary>
     /// Gets whether a renderer can draw the snapshot as it is: it carries no pixel data at all
     /// (nothing to draw), or a full frame of color indices and a palette. The software and
     /// Vulkan renderers refuse a frame whose snapshot is not well formed.

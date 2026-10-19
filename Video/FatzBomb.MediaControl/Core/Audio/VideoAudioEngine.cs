@@ -153,7 +153,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         if (Volatile.Read(ref _positionSnapshotPlaying) != 0)
         {
             var timestamp = Interlocked.Read(ref _positionSnapshotTimestamp);
-            var elapsedSeconds = (Stopwatch.GetTimestamp() - timestamp) / (double)Stopwatch.Frequency;
+            var elapsedSeconds = Stopwatch.GetElapsedTime(timestamp).TotalSeconds;
             if (double.IsFinite(elapsedSeconds) && elapsedSeconds > 0)
             {
                 var tempoPercent = Volatile.Read(ref _positionSnapshotTempoPercent);
@@ -305,6 +305,17 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
             _demuxer.RegisterAudioStream(AudioStreamIndex);
 
+            // With its own demuxer (the video pipeline gives audio a separate cursor), every
+            // other stream is read and dropped: discard them so the file is not demuxed twice.
+            if (_ownsDemuxer)
+            {
+                for (uint i = 0; i < _demuxer.StreamCount; i++)
+                {
+                    if ((int)i != AudioStreamIndex)
+                        _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
+                }
+            }
+
             _audioStream = _demuxer.GetStream(AudioStreamIndex);
             _streamStartSeconds = GetStreamStartSeconds(_audioStream);
             if (!InitializeDecoder() || !CreateBassStreams())
@@ -328,14 +339,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     public bool Open(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        using var ms = new MemoryStream((int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue));
-        archiveEntry.WriteTo(ms);
-        return OpenBytes(ms.ToArray(), $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}");
-    }
 
-    private bool OpenBytes(byte[] data, string normalizationCacheKey)
-    {
-        var tempPath = TempMediaFile.Create(data);
+        // Streamed straight to the scratch file: no in-memory copies of the whole entry.
+        var tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
+        var normalizationCacheKey = $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
         var success = OpenFile(tempPath, normalizationCacheKey);
         if (success)
             lock (_sync)
@@ -499,6 +506,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
         var target = Duration > 0 ? Math.Clamp(seconds, 0, Duration) : Math.Max(0, seconds);
         var wasPlaying = State == AudioEngineState.Playing;
+
+        // The decoder seeks first: if it fails, playback carries on untouched instead of being
+        // left paused with its buffered audio flushed. _sync keeps the push loop out meanwhile.
+        if (!SeekDecoder(target))
+            return false;
+
         if (PlayHandle != 0)
         {
             _ = Bass.ChannelPause(PlayHandle);
@@ -507,9 +520,6 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
         if (SourceHandle != 0)
             _ = Bass.ChannelSetPosition(SourceHandle, 0);
-
-        if (!SeekDecoder(target))
-            return false;
 
         _positionBaseSeconds = target;
         ResetAudioBufferTracking();
@@ -764,7 +774,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return false;
         }
 
-        PlayHandle = BassFx.TempoCreate(SourceHandle, BassFlags.Default);
+        PlayHandle = BassFx.TempoCreate(SourceHandle, BassFlags.Float);
         if (PlayHandle == 0)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", $"Failed to create tempo stream: {Bass.LastError}");

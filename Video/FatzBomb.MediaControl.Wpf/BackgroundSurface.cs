@@ -16,6 +16,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
     private readonly ContentPresenter _solidOverlay;
     private bool _showingSolidColor = true;
     private int _sourceReloadQueued;
+    private int _sourceReloadVersion;
     private bool _restoringPlatformFactory;
     private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
@@ -167,9 +168,9 @@ public sealed class BackgroundSurface : Grid, IDisposable
         SetCurrentValue(SourceProperty, color);
     }
 
-    public Task<bool> LoadAsync(string path) => LoadMediaAsync(path);
+    public Task<bool> LoadAsync(string path) => LoadMediaAsync(path, ++_sourceReloadVersion);
 
-    public Task<bool> LoadAsync(ImageSource image) => LoadMediaAsync(image);
+    public Task<bool> LoadAsync(ImageSource image) => LoadMediaAsync(image, ++_sourceReloadVersion);
 
     public Task<bool> PlayAsync() => _playerController.PlayAsync();
     public Task<bool> PauseAsync() => _playerController.PauseAsync();
@@ -278,13 +279,16 @@ public sealed class BackgroundSurface : Grid, IDisposable
 
     private async Task<bool> ReloadSourceAsync()
     {
+        // A newer Source can arrive while a load awaits: each reload checks it is still the
+        // latest after every await, so a slow load never lands over a later one.
+        var reload = ++_sourceReloadVersion;
         return Source switch
         {
             null => ShowSolidColor(BackgroundColor),
             Color color => ShowSolidColor(color),
             SolidColorBrush brush => ShowSolidColor(brush.Color),
-            string path => await LoadMediaAsync(path),
-            ImageSource image => await LoadMediaAsync(image),
+            string path => await LoadMediaAsync(path, reload),
+            ImageSource image => await LoadMediaAsync(image, reload),
             _ => throw new NotSupportedException($"Background source type {Source.GetType().Name} is not supported.")
         };
     }
@@ -301,16 +305,21 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return true;
     }
 
-    private async Task<bool> LoadMediaAsync(string path)
+    private bool IsCurrentReload(int reload) => !_disposed && reload == _sourceReloadVersion;
+
+    private async Task<bool> LoadMediaAsync(string path, int reload)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         Player? player = await _playerController.EnsurePlayerAsync(PlatformFactory, AutoPlay, PresentationMode);
-        if (player == null)
+        if (player == null || !IsCurrentReload(reload))
             return false;
 
         PrepareMediaLayerForLoad();
         player.PlayOnLoad = false;
         var loaded = await player.LoadAsync(path, ignoreSidecar: true);
+        if (!IsCurrentReload(reload))
+            return false;
+
         var valid = FinalizeMediaLoad(player, loaded);
         if (valid && AutoPlay && player.Content.HasFlag(MediaContent.Video))
             _ = await player.PlayAsync();
@@ -318,16 +327,19 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return valid;
     }
 
-    private async Task<bool> LoadMediaAsync(ImageSource image)
+    private async Task<bool> LoadMediaAsync(ImageSource image, int reload)
     {
         ArgumentNullException.ThrowIfNull(image);
         Player? player = await _playerController.EnsurePlayerAsync(PlatformFactory, AutoPlay, PresentationMode);
-        if (player == null)
+        if (player == null || !IsCurrentReload(reload))
             return false;
 
         PrepareMediaLayerForLoad();
         player.PlayOnLoad = false;
         var loaded = await player.LoadAsync(image, ignoreSidecar: true);
+        if (!IsCurrentReload(reload))
+            return false;
+
         var valid = FinalizeMediaLoad(player, loaded);
         player.PlayOnLoad = AutoPlay;
         return valid;
