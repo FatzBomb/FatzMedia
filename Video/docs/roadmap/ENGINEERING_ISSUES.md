@@ -90,6 +90,17 @@ decoding fails with a surface-pool error that counts as a hardware failure. Fix 
 `extra_hw_frames` to the pipeline's queue depth plus 2 before `avcodec_open2` on the hardware
 path, and check VRAM use at 4K.
 
+### ENG-028 - MIDI silent after the audit's DLS converter changes
+
+Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
+plays with no audio. Not reproduced on Linux (no `gm.dls`). Likely cause: the cache key now
+includes the DLS's size and write time, so Windows' `gm.dls` was converted again by the
+current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
+failed (`No soundfont found`) or its SF2 plays silently. Needed: the Log's `BASSMIDI` lines and
+the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
+`gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
+this MIDI path.
+
 ## Completed
 
 ### ENG-020 - October 2026 code audit
