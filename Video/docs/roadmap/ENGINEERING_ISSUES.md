@@ -99,7 +99,15 @@ current converter instead of reusing the older cached `gm.dls.sf2`; either that 
 failed (`No soundfont found`) or its SF2 plays silently. The cache name is back to
 `{name}.sf2`, so an older cached SF2 is used again; the converter's other changes (sample IDs,
 loop ends, chunk padding) are untested against a real `gm.dls` and remain the suspect if MIDI
-stays silent after the old cache is gone. Needed: the Log's `BASSMIDI` lines and
+stays silent after the old cache is gone.
+
+Checked 2026-10-20 with the owner's real `gm.dls` (3.3 MB): the current converter and the
+pre-audit one both convert it without error, to the same size; the sample data and every
+instrument, region and bag record are identical, and only 439 sample headers differ, by a loop
+end one sample earlier (the file's authored loop end). So the SF2 is not the cause. The other
+MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
+flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
+but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
 the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.

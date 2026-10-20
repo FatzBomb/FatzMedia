@@ -17,10 +17,11 @@ internal sealed class AudioStreamManager : IDisposable
     // ManagedBass omits BASS_POS_FLUSH from PositionFlags; bass.h defines it as 0x1000000.
     private const PositionFlags FlushPositionFlag = (PositionFlags)0x1000000;
 
-    // The source is wrapped by a tempo stream, so it decodes. (BASS_FX_FREESOURCE is a
-    // TempoCreate flag; Close frees the source itself.)
+    // FxFreeSource (0x10000) does nothing for most streams (it is a TempoCreate flag), but it is
+    // also BASS_MIDI_NOTEOFF1, which MIDI streams have always been created with: kept as it was
+    // (ENG-028) until MIDI can be checked against a change.
     private const BassFlags CreateStreamFlags =
-        BassFlags.Decode | BassFlags.Float;
+        BassFlags.FxFreeSource | BassFlags.Decode | BassFlags.Float | BassFlags.Default;
 
     internal const BassFlags DecodeFlags =
         BassFlags.Decode | BassFlags.Float | BassFlags.Prescan;
