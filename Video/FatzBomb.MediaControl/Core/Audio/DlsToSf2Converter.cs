@@ -5,8 +5,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// <summary>
 /// Converts a DLS soundfont file to SF2 format so BASS MIDI can use it.
 /// BASS MIDI only supports SF2/SFZ; DLS (including Windows gm.dls) must be converted.
-/// The output is cached in LocalAppData under the DLS file's name, size and write time, so a
-/// changed or replaced DLS is converted again.
+/// The output is cached as {original_name}.sf2 in LocalAppData.
 ///
 /// This is a self-contained binary reader/writer — no external DLS2/SF2 library needed.
 /// It reads only the DLS chunks required for GM conversion and writes a minimal valid SF2.
@@ -58,8 +57,9 @@ internal static class DlsToSf2Converter
 
     private static string GetCachePath(string dlsPath)
     {
-        var file = new FileInfo(dlsPath);
-        var fileName = $"{file.Name}.{file.Length:x}-{file.LastWriteTimeUtc.Ticks:x}.sf2";
+        // Keyed on the name alone, as before: an SF2 converted by an earlier version keeps being
+        // used. (Keying on size and write time would convert Windows' gm.dls again.)
+        var fileName = Path.GetFileName(dlsPath) + ".sf2";
         var cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FatzBombMedia", "soundfonts");

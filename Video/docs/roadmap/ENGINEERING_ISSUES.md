@@ -93,10 +93,13 @@ path, and check VRAM use at 4K.
 ### ENG-028 - MIDI silent after the audit's DLS converter changes
 
 Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
-plays with no audio. Not reproduced on Linux (no `gm.dls`). Likely cause: the cache key now
-includes the DLS's size and write time, so Windows' `gm.dls` was converted again by the
+plays with no audio. Not reproduced on Linux (no `gm.dls`). Suspected cause: the cache key
+included the DLS's size and write time, so Windows' `gm.dls` was converted again by the
 current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
-failed (`No soundfont found`) or its SF2 plays silently. Needed: the Log's `BASSMIDI` lines and
+failed (`No soundfont found`) or its SF2 plays silently. The cache name is back to
+`{name}.sf2`, so an older cached SF2 is used again; the converter's other changes (sample IDs,
+loop ends, chunk padding) are untested against a real `gm.dls` and remain the suspect if MIDI
+stays silent after the old cache is gone. Needed: the Log's `BASSMIDI` lines and
 the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.
