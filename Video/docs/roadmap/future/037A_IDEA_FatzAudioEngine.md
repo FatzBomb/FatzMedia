@@ -52,17 +52,31 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
 5. **Decision (separate from the build).** Whether FatzAudio becomes the default, and whether
    BASS is then removed.
 
-## Karaoke presentation features (requested from FatzAudio 2026-10-20)
+## Karaoke presentation (agreed with the owner 2026-10-20)
 
-See `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. Whoever renders them,
-the Player and the public API should expose: CD+G smoothness (0 = original to 10 = HD), edge
-blend on/off, output scale (1x-10x, forced 1x at smoothness 0), safety zone (Show, Remove, Auto,
-Super), padding and margin (FatzAudio's, in the returned size); shared effects for CD+G and
-lyrics (outline, shadow, bevel, each with size, distance and fade 0.0-1.0); MIDI lyrics in our
-karaoke style (FatzAudio builds the surface) with design presets, a background panel, lines
-shown and a subtitle mode; and the background always filled by us from the reported
-background colour and its change notifications, with the surfaces transparent. Hardware
-acceleration stays in our renderers (caller-owned upload buffers, dirty rectangles, INDEXED8).
+FatzAudio draws CD+G and MIDI lyrics; we place, scale, fill the background and composite. The
+request is `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. Our side:
+
+- **Public API and Player options:** CD+G PresentationScale (off = classic native indices, the
+  default and today's path), smoothness 0-10, edge blend, safety zone (Show, Remove, Auto,
+  Super), padding; shared effects (outline, shadow, bevel; size, distance, fade 0.0-1.0); MIDI
+  lyric design preset, colours, font, panel, lines shown, subtitle mode, wipe style; a karaoke
+  render quality setting (100%, 75%, 50%).
+- **Presentation size:** per surface, in physical pixels (DPI-aware), in the window's exact
+  shape; the largest window's size, or a reduced same-shape size (render quality, governor);
+  passed only when a resize has finished. One render feeds every window; our GPU scales to each.
+- **Fit:** uniform fit of the returned bitmap, centred, background fill around it. Exact 1:1
+  fits use nearest sampling; other fits shrink with smooth interpolation. Classic native indices
+  stay nearest-sampled with the palette lookup on the GPU, as today.
+- **Transparent edge sampling:** texture addressing treats anything outside a bitmap as
+  transparent (not edge-repeat), so a bitmap's outermost pixels never blend with garbage.
+- **Governor:** if FatzAudio's reported update time stays over a budget (about 8 ms) for a few
+  seconds, lower the CD+G presentation size first (half, then a quarter), lyrics only if they are
+  the slow part; log it, and show render cost in the Player diagnostics.
+- **Layout revisions:** reallocate from our buffer pool when a frame reports a new
+  `layout_revision`; draw into our pooled or mapped upload buffers.
+- **Background:** drawn by us from the reported background colour and its change revision; the
+  border made transparent and drawn by us when shown.
 
 ## Known gaps to decide on (from FatzAudio's own list)
 
