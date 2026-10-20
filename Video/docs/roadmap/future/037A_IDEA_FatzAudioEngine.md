@@ -55,10 +55,12 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
 ## Karaoke presentation features (requested from FatzAudio 2026-10-20)
 
 See `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. Whoever renders them,
-the Player and the public API should expose: CD+G smoothness (0 = original to max = HD), depth
-(shadow and bevel), export scale (1x-5x, forced 1x at smoothness 0), safety zone (Show, Remove,
-Auto, Super), padding (ours, in the compositor); MIDI lyrics in our karaoke style with lines
-shown (1-4) and a subtitle mode; and the background always filled by us from the reported
+the Player and the public API should expose: CD+G smoothness (0 = original to 10 = HD), edge
+blend on/off, output scale (1x-10x, forced 1x at smoothness 0), safety zone (Show, Remove, Auto,
+Super), padding and margin (FatzAudio's, in the returned size); shared effects for CD+G and
+lyrics (outline, shadow, bevel, each with size, distance and fade 0.0-1.0); MIDI lyrics in our
+karaoke style (FatzAudio builds the surface) with design presets, a background panel, lines
+shown and a subtitle mode; and the background always filled by us from the reported
 background colour and its change notifications, with the surfaces transparent. Hardware
 acceleration stays in our renderers (caller-owned upload buffers, dirty rectangles, INDEXED8).
 
