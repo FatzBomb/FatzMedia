@@ -112,6 +112,48 @@ the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the o
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.
 
+### ENG-029 - CD+G: smooth scroll, memory-preset repeats and pack timing
+
+Reported: 2026-10-20 (comparison with FatzAudio's `cdg.c`, differential test over 9,500 fuzzed
+packs; see `docs/fatzaudio/2026-10-20_MediaControl_Review_MidiAndCdg.md`). Both decoders agree
+on every pixel and palette entry except:
+- **Smooth scroll ignored.** `CdgStateMachine.ScrollUnsafe` never reads the horizontal (0-5) and
+  vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
+  glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
+  288x192 picture area when rendering (the border stays). Verified by test.
+- **Memory preset with repeat != 0 never clears pixels** (`CdgStateMachine.cs:286`, pinned by a
+  test). A clear that survives only in its repeat packets leaves stale pixels. Act on a repeat
+  unless the previous pack was the same preset. Verified by test.
+- **Pack timing truncates a double.** `CdgEngine.cs:181` uses `(long)(seconds * 300)`; for about
+  5% of exact boundaries that lands one pack (3.3 ms) early-or-late depending on rounding. Use an
+  integer rule (FatzAudio uses packs [0, ceil(g x 300)) in integer nanoseconds). Verified by
+  arithmetic.
+- Smaller: the transparent-colour pack is a no-op and index 0 always takes the background
+  opacity; each seek marks the whole frame dirty; `CdgPacket` allocates a small array per pack
+  (about 14 MB for a 4-minute file) and every changed snapshot copies 64.8 KB. FatzAudio's seeks
+  measured about 15x cheaper on the same input.
+
+### ENG-030 - DLS-to-SF2 converter drops loops and articulation
+
+Reported: 2026-10-20 (comparison with FatzAudio's `dls.c`; Windows `gm.dls` scanned). Our
+converter writes loop points but never sampleModes (generator 54), so nothing loops (1,114 of
+1,498 `gm.dls` regions should); applies region fine tune twice (shdr correction and generator 52;
+1,025 regions); drops all art1 articulation (envelopes, vibrato, tremolo), region gain and pan
+(432 regions), and key groups (120 regions); ignores ptbl (safe for `gm.dls`); writes `ifil` as
+the wrong bytes. These degrade the sound but do not silence it (ENG-028). Likely superseded by
+037A slice 3 (FatzAudio loads DLS directly); fix only the cheap items (sampleModes, double fine
+tune) if MIDI stays on BASS for long.
+
+### ENG-031 - MIDI lyrics: encoding and text-event fallback
+
+Reported: 2026-10-20 (same comparison). `MidiLyricExtractor` gets text from BASS marks, which
+ManagedBass decodes with the system ANSI code page: Shift-JIS is right only on a Japanese-locale
+PC and UTF-8 is garbled elsewhere. The text-event fallback takes every track's meta-1 text with
+no karaoke check, so ordinary MIDI files can show instrument names as lyrics. The 42-character
+line break only triggers when the previous syllable ends in a space. `MidiMetadataExtractor`
+label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio has the same
+encoding gap, so this stays ours under 037A.
+
 ## Completed
 
 ### ENG-020 - October 2026 code audit
