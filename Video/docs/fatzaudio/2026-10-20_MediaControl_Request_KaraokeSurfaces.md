@@ -16,6 +16,10 @@ flag and a dirty rectangle, any size and format, several surfaces per stream), b
 would like MIDI lyrics drawn the same way, so an app shows both kinds of karaoke through one
 path: create a surface, call update each frame, upload when changed.
 
+We see this as a plus for both sides: every FatzAudio app gets karaoke lyrics that look
+finished, and our renderers get them on every platform. Our implementation is attached as the
+starting point (the design reference at the end of this note, with the source files).
+
 For us this would also fix a real gap: our own karaoke text renderer uses DirectWrite, so MIDI
 lyrics only appear with our Direct3D11 renderer on Windows. Our software and Vulkan renderers
 (Linux, and the fallback chain) show no MIDI lyrics at all.
@@ -92,7 +96,15 @@ in a fragment, not only at the start.
 | Lines shown (1 to 4) | 2 |
 | Layout mode: karaoke (centred block) or subtitle (bottom, smaller, no intro pages) | karaoke |
 | Vertical position of the lyric block (centre, or a fraction of the height) | centre |
-| Background | always transparent (we fill it, see Part 3) |
+| Background panel: colour, opacity, corner radius, padding around the lines, on/off (a band behind the lyric block that keeps them readable over busy video; transparent around it) | off |
+| Design preset (see below), which every option above overrides | Classic |
+
+**Design presets.** A few complete looks the app can pick by name, each setting every option
+above, with individual options overriding the preset: for example **Classic** (ours: white,
+yellow wipe, black outline and shadow), **Modern** (a slimmer font, a soft panel, a gradient
+wipe), **Neon** (glow instead of outline), **Minimal** (no outline, a light shadow) and
+**Subtitle** (bottom placement, two lines, smaller). These are suggestions; the presets should
+all look designed, not like defaults.
 
 Text quality: antialiased glyphs with subpixel positioning (ours is DirectWrite), proper shaping
 (HarfBuzz or similar) and kerning. Nice to have: font fallback for glyphs the chosen font lacks (CJK), and right-to-left text.
@@ -116,104 +128,140 @@ line scroll animation faster).
 
 Your decoder is exact (it matched ours on every pixel and palette entry; see our review note).
 These ask for presentation quality on top of it. All are surface options, so each surface (a
-preview window, the TV output) can differ.
+preview window, the TV output) can differ, and all can change while playing.
 
-## Smoothness: one range, you choose the method
+## Units: CD+G pixels
 
-`smoothness` from 0 to 100 (or 0 to 10), replacing `FA_CDG_SMOOTH`:
+Every size below (shadow offset, blur, bevel width, margin, padding) is given in CD+G pixels
+(source units, fractions allowed) and scaled by the render scale, so a setting looks the same
+at every scale. A one-pixel shadow offset is 1 CD+G pixel: 4 output pixels at 4x.
 
-- **0 = original.** Sharp pixels, native size (see export scale below). Nothing is invented.
-- **Low:** gentle smoothing (bilinear or similar), for those who like the soft TV look.
-- **Middle:** edge-directed pixel-art upscaling (xBR / xBRZ / ScaleFX family), which keeps the
-  lyrics' strokes sharp while rounding their staircase edges.
-- **Maximum: as close to true HD as there is a method for.** CD+G lyrics are flat-colour shapes
-  on a tile grid, which suits vectorization (tracing the colour regions to curves, as in
-  "Depixelizing Pixel Art" or potrace) and rendering them at the output size with antialiasing.
-  If that is too slow per change, the best edge-directed upscaler with a final antialias pass.
+## Render scale: where the work is done
 
-The method behind each step is yours to choose and may change between versions. What we ask is
-that the range is monotonic (higher is never rougher), there are no colour fringes (smooth in
-premultiplied alpha against a transparent background, see Part 3), and the cost per changed
-frame is published.
+`render_scale` is the resolution at which you draw: smoothing, shapes, shadow and bevel are all
+computed on an internal bitmap of 300x216 x scale (before cropping), and that bitmap is what you
+return. It is not an upscale of a finished 1x picture: a letter "I" is one or two CD+G pixels
+wide, and a bevel or shadow computed at 1x would cover it; computed at 8x it has room to be a
+fine edge. Range 1x up to about 10x (3000x2160, 4K height). Smoothness 0 always renders at 1x
+(sharp pixels gain nothing from being bigger, and our GPU scales them for free). We scale your
+bitmap the rest of the way to the screen, which is a small factor when the scale is chosen
+from the screen size.
+
+## Smoothness: 0 to 10
+
+One quality number; you choose the method behind each step and may change it between versions.
+It must be monotonic (a higher number is never rougher), free of colour fringes, and its cost
+per changed frame published.
+
+- **0: original.** Sharp pixels, nothing invented.
+- **1: blend at 1x.** No resizing: each edge pixel takes a colour and alpha computed from its
+  neighbours, so the staircase edges of the lyrics are anti-aliased at the original size. For
+  example, a pixel whose top, left and top-left neighbours are orange and whose others are
+  background becomes part-orange with matching coverage. Known methods that do this well are
+  morphological anti-aliasing (MLAA, SMAA: find stair-step edges, compute the coverage of the
+  line they approximate) or supersampling (upscale with an edge-directed filter, then average
+  back down to 1x). A plain blur is not it: it softens strokes instead of shaping edges.
+- **2-4: soft.** Bilinear or similar at the render scale, for the soft TV look.
+- **5-8: sharp and smooth.** Edge-directed pixel-art upscaling (xBR, xBRZ, ScaleFX family):
+  strokes stay crisp while their stair-steps round off.
+- **9-10: true HD, as far as there is a method.** CD+G lyrics are flat-colour shapes on a tile
+  grid, which suits vectorization: trace each colour region to curves (as in "Depixelizing Pixel
+  Art", or potrace) and render the curves at the render scale with anti-aliasing. If that is too
+  slow per change, the best edge-directed upscaler with a final anti-alias pass.
 
 ## Lighting and depth
 
-`depth` from 0 (flat, today) to 100: a soft drop shadow under the lyric shapes, offset down and
-right, and optionally a slight bevel (a light top-left edge, a darker bottom-right edge) so the
-lyrics read as raised. Options: shadow colour and opacity, offset, blur radius, bevel strength
-and light angle. The shadow needs room outside the shapes: grow the output by the shadow's
-reach rather than clipping it (and report that margin).
+`depth` 0 (flat, today) to 10: a soft drop shadow under the lyric shapes and an optional bevel
+(light top-left edge, darker bottom-right edge) so lyrics read as raised. Options: shadow colour
+and opacity, offset x/y, blur radius, bevel strength and light angle (sizes in CD+G pixels,
+computed at the render scale). Shapes are what is not background (and, in transparent mode, not
+transparent).
 
-## Export scale
+## Margin, padding and the safety zone
 
-`scale` 1x to 5x (5x is 1500x1080, full HD height): the size of the bitmap you return, before
-any border or safety-zone crop. Smoothness 0 always returns 1x whatever `scale` says: there is
-nothing to gain from bigger sharp pixels, and our GPU scales sharp pixels for free. Above 1x we
-scale the rest of the way to the screen ourselves with bilinear filtering, which is invisible
-after your upscale. This replaces asking for an exact width and height for us (our layout code
-decides the final size; see Part 3). Larger scales are where smoothness and depth pay off.
+The returned bitmap is laid out, from the outside in:
 
-## Safety zone
+1. **Padding** (`padding`, CD+G pixels, default 0): empty transparent space around everything,
+   so the bitmap is exactly the size we lay out, and the padding scales with the picture. It is
+   arithmetic, not drawing, so it costs you nothing.
+2. **Built-in margin**, always at least 1 CD+G pixel and never 0, separate from padding: room
+   for smoothing to anti-alias the outermost edge and for the shadow and blur to spread (grown
+   automatically to the shadow's reach). Transparent.
+3. **The graphics**, cropped by the safety zone mode:
+   - **Show:** the whole 300x216 screen, border included (today's default).
+   - **Remove:** only the 288x192 picture area (today's `FA_CDG_NO_BORDER`).
+   - **Auto:** a pre-pass over the whole file decides: if nothing other than the background is
+     ever drawn in the border area, Remove; otherwise Show. Border presets (a solid border
+     colour) do not count, only tiles and scrolls. Option: ignore border drawing in the first
+     few seconds (title cards).
+   - **Super:** a pre-pass finds the bounding box of everything ever drawn other than the
+     background, over the whole song, and returns only that box. Fixed for the whole song, so
+     the picture never jumps; snapped to the 6x12 tile grid so shapes are never cut; option to
+     keep it centred (the same crop on both sides), since an asymmetric crop moves the lyrics
+     off-centre.
 
-The CD+G screen is 300x216 with a 6-pixel border left and right and 12 pixels top and bottom;
-most discs keep their graphics inside the 288x192 picture area, some draw into the border. One
-option with four values, each of which changes the returned size:
+   The pre-pass is the same walk you already do to build checkpoints. Report the chosen mode
+   and box in `fa_cdg_info`. Discs cannot be pre-passed: there Auto and Super fall back to Show.
 
-- **Show:** the whole 300x216 screen, border included (today's default).
-- **Remove:** only the 288x192 picture area (today's `FA_CDG_NO_BORDER`).
-- **Auto:** a pre-pass over the whole file decides: if no pixel other than the background is
-  ever drawn in the border area, Remove; otherwise Show. Border presets (a solid border colour)
-  do not count; only tiles and scrolls do. A tolerance would help: ignore drawing in the border
-  that only happens in the first few seconds (title cards), as an option.
-- **Super:** a pre-pass finds the bounding box of everything ever drawn other than the
-  background, over the whole song, and returns only that box (scaled as above). Fixed for the
-  whole song so the picture never jumps; snapped to the tile grid (6x12) so shapes are never
-  cut; with an option to keep it centred (crop the same on both sides) because asymmetric crops
-  shift the lyrics off-centre. The shadow margin is added outside the box.
-
-The pre-pass is the same walk you already do to build checkpoints, so it should cost little.
-Report the chosen mode and box in `fa_cdg_info` (for Auto and Super), and recompute it when
-new graphics are loaded. Discs cannot be pre-passed; there Auto and Super can fall back to Show.
-
-## Padding: ours
-
-Space around the graphics is layout, so we add it in our compositor (it only shrinks the
-rectangle we draw into). No option needed.
+The final size is therefore known before drawing: (crop size + 2 x margin + 2 x padding) x
+render scale. See Part 3 for how we learn it and how changes are signalled.
 
 # Part 3: how surfaces hand pixels to us (both kinds)
 
 ## Background: always transparent, we fill it
 
-We keep the background transparent in the surface (`FA_CDG_TRANSPARENT_BACKGROUND_ONLY`, and the
-lyric surface's background) and draw the background colour ourselves across the whole screen:
-filling around a picture scaled to any window shape, under video, and with the user's own
-opacity, is presentation and belongs to us. What we need:
+Both surfaces keep their background transparent (`FA_CDG_TRANSPARENT_BACKGROUND_ONLY` for CD+G,
+and for lyrics unless a design asks for a panel, see Part 1), and we draw the background colour
+across the whole screen ourselves. Filling around a picture scaled to any window shape, under
+video, and with the user's opacity, is presentation. What we need:
 
-- the background colour and changes to it: `fa_cdg_frame.background` and `background_index`,
-  bumping `palette_revision`, and `FA_CDG_CHANGE_PALETTE` on the push event. That exists today:
+- the background colour and its changes: `fa_cdg_frame.background` and `background_index`,
+  bumping `palette_revision`, and `FA_CDG_CHANGE_PALETTE` on the push event. That exists today;
   please keep it exactly.
 - the **border** made transparent too (a flag), with its colour still reported (`border_index`),
-  so in Show mode we decide whether the border is drawn, in its colour or ours.
+  so in Show mode we decide whether and how the border is drawn.
 - smoothing and depth computed in premultiplied alpha against transparent, so edges blend
   correctly over whatever we fill underneath (no dark or coloured halos).
 
-## Hardware acceleration: in our renderer, not in FatzAudio
+## Drawing into our buffer, with sizes that can change
 
-We do not think FatzAudio should take on a GPU dependency (Direct3D, Vulkan and Metal per
-platform). Our renderers already own the GPU, and today our Direct3D11 renderer draws CD+G from
-an index texture and a 16-colour palette with a shader. What makes your CPU surfaces fast enough
-for us:
+Today `pixels` belongs to the surface and is overwritten by the next update, so we must copy
+every changed frame before handing it to our compositor thread. We ask for:
 
-1. **Caller-owned destination.** `update_into(surface, time, dst, stride, &frame)`: you draw into
-   our buffer. We pass a mapped GPU staging texture or one of our pooled frame buffers, so there
-   is no copy between your buffer and our upload, and the frame we hand to our compositor thread
-   is never written again (today `pixels` is overwritten by the next update, which forces us to
-   copy every changed frame).
-2. **Dirty rectangles** (as today), so a wipe uploads a few tiles, not 2 MB.
-3. **INDEXED8 at smoothness 0**, which you have: we keep scaling and colouring on the GPU.
-4. **Reference shaders, optional.** If smoothness or depth is too heavy on the CPU at 5x, publish
-   the method (GLSL or HLSL source, or exact math) so a renderer may run the same effect on the
-   GPU with the same look. We would measure your CPU cost first.
+- `fa_cdg_surface_get_layout(surface, &layout)`: the output width and height (as above), the
+  offset of the 300x216 screen inside it, and a `layout_revision`. Valid once the pre-pass is
+  done (before the first update for files).
+- `fa_cdg_surface_update_into(surface, time, dst, dst_stride, dst_width, dst_height, &frame)`:
+  draw into our buffer. If our buffer is not the current layout size it returns
+  `FA_ERROR_BUFFER_TOO_SMALL` (or a size-mismatch result) without drawing, and we reallocate.
+- Live adjustment: changing smoothness, depth, scale, safety mode, margin or padding on a
+  surface bumps `layout_revision` when the size changes and makes the next update a full
+  redraw. Each frame reports `layout_revision`, so our render thread notices on the next frame,
+  reallocates from the pool, and carries on; no extra callbacks needed. Same for the lyric
+  surface (font size, lines shown or mode can change its size).
+- Dirty rectangles as today, in output pixels, so a wipe uploads a few tiles.
+- With our own buffers, a frame we hand to the compositor is never written again, and when our
+  buffer is a mapped GPU upload texture there is no copy at all.
 
-Please publish the CPU cost of an update at each scale with smoothness and depth at maximum (a
-full-screen change and a typical lyric wipe).
+## Hardware acceleration
+
+FatzAudio already has per-platform code for audio output, but a GPU path is a different kind of
+dependency: the result must end up on our device (our Direct3D11 device on Windows, our Vulkan
+device on Linux, Metal on Apple), so either you render on a device we hand you, or you render on
+your own and share the texture across devices with synchronization and device-loss handling on
+both sides. And our software renderer, and any app without a GPU, still needs the CPU path.
+
+So we suggest, in order:
+
+1. **CPU path first, with numbers.** Implement smoothness, depth and scale on the CPU and
+   publish the cost of a full-screen change and of a typical lyric wipe at each smoothness level
+   and at 4x, 8x and 10x. Dirty rectangles keep most updates small; a full repaint happens only
+   on clears and scrolls. Multithread the full repaint (rows or tiles) if needed.
+2. **If the numbers show the CPU cannot keep up** at high smoothness and scale, a GPU path that
+   runs on a device the app passes in (Direct3D11 device and context, Vulkan device and queue,
+   Metal device), drawing into a texture the app owns. Same look as the CPU path (shared math,
+   compared in tests). This is how FFmpeg's hardware frames and Skia work with an app's device,
+   and it avoids cross-device sharing.
+3. Either way, the method stays documented, so a renderer could run it as its own shader.
+
+Please publish the CPU numbers before deciding on 2.
