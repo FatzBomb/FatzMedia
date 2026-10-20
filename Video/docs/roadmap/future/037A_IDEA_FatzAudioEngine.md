@@ -52,6 +52,16 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
 5. **Decision (separate from the build).** Whether FatzAudio becomes the default, and whether
    BASS is then removed.
 
+## Karaoke presentation features (requested from FatzAudio 2026-10-20)
+
+See `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. Whoever renders them,
+the Player and the public API should expose: CD+G smoothness (0 = original to max = HD), depth
+(shadow and bevel), export scale (1x-5x, forced 1x at smoothness 0), safety zone (Show, Remove,
+Auto, Super), padding (ours, in the compositor); MIDI lyrics in our karaoke style with lines
+shown (1-4) and a subtitle mode; and the background always filled by us from the reported
+background colour and its change notifications, with the surfaces transparent. Hardware
+acceleration stays in our renderers (caller-owned upload buffers, dirty rectangles, INDEXED8).
+
 ## Known gaps to decide on (from FatzAudio's own list)
 
 - **MIDI lyrics in Shift-JIS come out garbled** (only UTF-8 and Windows-1252 are recognized).
