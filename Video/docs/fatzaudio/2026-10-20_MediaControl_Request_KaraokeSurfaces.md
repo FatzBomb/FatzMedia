@@ -44,33 +44,42 @@ The override list at the end is needed either way.
 
 ## Our design (for reference)
 
-**Layout.** Lines are centred, in fixed slots around the middle of the canvas: the line being
-sung, and the next line below it at reduced opacity (`next_line_opacity`, default 0.65). When a
-line is finished it moves up out of its slot and the next one moves in, eased over
-`line_transition_ms` (default 1000). The text block is 85% of the canvas width; a line that is
-too wide wraps at a word.
+The exact design, with every number and its source line, is in
+`2026-10-20_MediaControl_KaraokeDesignReference.md` (next to this note). The sources are in the
+FatzBomb.MediaControl repository: `Rendering.Direct3D11/Subtitle/SubtitleTextRenderer.cs`
+(drawing), `Core/Subtitle/SubtitleCue.cs` (timing model), `Core/Audio/MidiLyricExtractor.cs`
+and `MidiMetadataExtractor.cs` (text to lines, pages and metadata),
+`Core/Configuration/KaraokeTextStyle.cs` (options). In short:
 
-**Wipe.** Each syllable changes from the unsung colours to the sung ("wipe") colours as it is
-sung, sweeping left to right across the syllable over its duration, so long held notes fill
-slowly. `wipe_transition_ms` (default 600) caps how long a single syllable's sweep may take, so
-short syllables do not flicker and long ones do not crawl.
+**Layout.** A fixed 1920x1080 canvas; lines centred in an 85%-wide box, in slots 1.55 x the
+font size apart around the middle: the line being sung at full size, the next line below it at
+reduced opacity and scale, and the lines just sung above it fading and shrinking (scales 1.0,
+0.8, 0.6; opacities 1, 0.65, 0.5, 0.25). Lines scroll up a slot as each is finished, eased.
 
-**Pages.** A paragraph mark (`\` in `.kar`, `FA_MIDI_NEW_PARAGRAPH`) clears the page: the old
-lines fade and shrink slightly while the new page fades in.
+**Wipe.** As each syllable is reached it changes from the unsung colours to the sung colours,
+eased over the shorter of 600 ms and 80% of the gap to the next syllable (gaps under 150 ms cut
+instantly). Ours is a colour cross-fade per syllable, not a sweep: please offer both, a
+left-to-right sweep across the syllable over its duration (true karaoke) and the cross-fade.
 
-**Countdown.** Before the first syllable of a song or of a page that follows a long gap, four
-arrows (▶ ▶ ▶ ▶) appear above the first line and go out one per beat, so the singer knows
-when to start.
+**Pages.** A paragraph mark or a long pause (2 s) clears the page: the old page fades out
+shrinking to 75%, the new one fades in from 150%.
 
-**Intro and ending pages.** Before the first lyric and after the last, the song's metadata is
-shown: title, artist, then credits (`@I` lines: writer, lyricist, year), the length, and the
-copyright, fading in and out. When there is room this uses two bands (title and artist at the
-top, credits at the bottom).
+**Countdown.** Before a line that follows a gap of more than 6 s, four arrows above it count
+down the last 5 seconds, one turning green per second, then fade.
 
-**Lines shown.** `lines_shown` sets how many lyric lines are on screen at once (1 to about 4;
-ours is 2: the line being sung and the next). A **subtitle mode** puts the lines at the bottom of
-the canvas, smaller, without the intro pages and countdown, for lyrics over a video or a
-music-video background.
+**Intro and ending.** Before the first lyric and after the last, the song's metadata is shown
+(title, artist, credits from `@I` lines, length, key, tempo, copyright) on bands or a card.
+
+**What not to copy** (section 8 of the reference lists twelve quirks): many values are
+hard-coded and should be options; `LineTransitionMilliseconds` does not drive the line scroll
+(1500 ms fixed); the wipe clip creeps into the next letter and flickers mid-word; wrapped lines
+are wiped wrongly; outlines and shadows do not scale with smaller lines; the countdown is
+clock-based, not beat-based (beat-based would be better: the MIDI tempo map is known).
+
+**Lines shown.** How many lines are on screen: sung lines kept above the current one and
+upcoming lines below it (ours: up to two above, one below). A **subtitle mode** puts one or two
+lines at the bottom of the canvas, smaller, without the intro pages and countdown, for lyrics
+over a video or a music-video background.
 
 **Text cleanup** (worth having in `fa_midi_text` whatever you decide): chord lines (Tune1000
 `%...`, Solton `<...>`) are not lyrics; `/` and `\` are line and page marks wherever they appear
@@ -88,12 +97,12 @@ in a fragment, not only at the start.
 | Outline colour and width, unsung and sung separately | `E0000000`, 1.75 px |
 | Shadow colour, unsung and sung separately; shadow offset x, y | `A0000000`, (2, 2) |
 | Next-line opacity | 0.65 |
-| Line transition time | 1000 ms |
-| Wipe time cap per syllable | 600 ms |
-| Show countdown arrows | on |
+| Line scroll time; page transition time (separate options) | 1500 ms; 1000 ms |
+| Wipe style: sweep or cross-fade; time cap per syllable | (new); 600 ms |
+| Countdown: on/off, count, colours, clock or beat based | on, 4, red to green, clock |
 | Show intro/ending metadata pages | on |
 | Lyric lead (show a line before it is sung) | about 400 ms |
-| Lines shown (1 to 4) | 2 |
+| Lines shown: sung lines kept above and upcoming lines below (0 to 2 each) | 2 above, 1 below |
 | Layout mode: karaoke (centred block) or subtitle (bottom, smaller, no intro pages) | karaoke |
 | Vertical position of the lyric block (centre, or a fraction of the height) | centre |
 | Background panel: colour, opacity, corner radius, padding around the lines, on/off (a band behind the lyric block that keeps them readable over busy video; transparent around it) | off |
