@@ -38,7 +38,9 @@ per stage/slice. Release builds treat warnings as errors — write warning-clean
 Usage (owner rule): run helper agents (searches, code exploration, reviews, other
 subagent tasks) on Sonnet whenever Sonnet can do the task, to save usage. Only when it
 actually saves: keep the main model for work that needs it (hard debugging, timing or
-rendering design) and for forked copies of the main agent, which always use it.
+rendering design) and for forked copies of the main agent, which always use it. Never use
+Fable (the most expensive and usage-limited model) unless the owner asks for it: Opus 5.5 is
+the main model for hard work and forks, Sonnet or Haiku for helpers.
 
 ## Validation split
 
