@@ -1,5 +1,6 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Subtitle;
 
@@ -25,21 +26,47 @@ internal sealed class PlaybackCoordinator : IDisposable
         _midiLyricProvider = midiLyricProvider ?? throw new ArgumentNullException(nameof(midiLyricProvider));
         _session = new MediaSession();
         _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
-        var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
-        var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
-        var subtitle = new SubtitlePipeline(subtitleEngine, _session.State);
-        var video = videoEngineFactory.Create(_session.Clock, _session.State, audioEngine, configuration, _session.Sync);
 
-        audio.PlaybackEnded += OnPlaybackEnded;
-        cdg.PlaybackEnded += OnPlaybackEnded;
-        video.PlaybackEnded += OnPlaybackEnded;
-        if (video is IMediaLoopEventSource loopEventSource)
-            loopEventSource.MediaLooped += OnPlaybackLooped;
+        // Stage 043A: each mode attaches only the pipelines it plays. Background is video and
+        // images on the clock (no audio, CD+G or subtitles); Audio is audio files plus video
+        // soundtracks (no video, CD+G or subtitles).
+        MediaPlayerMode mode = configuration.Mode;
+        if (mode != MediaPlayerMode.Background)
+        {
+            var audio = new AudioPipeline(audioEngine, _session.State, ownsAudioEngine);
+            audio.PlaybackEnded += OnPlaybackEnded;
+            _session.AttachAudio(audio);
+        }
 
-        _session.AttachAudio(audio);
-        _session.AttachCdg(cdg);
-        _session.AttachSubtitle(subtitle);
-        _session.AttachVideo(video);
+        if (mode == MediaPlayerMode.Audio)
+        {
+            var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
+                ? deviceProvider.BassDeviceIndex
+                : configuration.AudioOutputDeviceIndex;
+            var soundtrack = new AudioPipeline(
+                new SoundtrackAudioEngine(new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic), bassDeviceIndex),
+                _session.State,
+                ownsAudioEngine: true);
+            soundtrack.PlaybackEnded += OnPlaybackEnded;
+            _session.AttachSoundtrack(soundtrack);
+        }
+
+        if (mode == MediaPlayerMode.Full)
+        {
+            var cdg = new CdgPipeline(cdgEngine, _session.Clock, _session.State);
+            cdg.PlaybackEnded += OnPlaybackEnded;
+            _session.AttachCdg(cdg);
+            _session.AttachSubtitle(new SubtitlePipeline(subtitleEngine, _session.State));
+        }
+
+        if (mode != MediaPlayerMode.Audio)
+        {
+            var video = videoEngineFactory.Create(_session.Clock, _session.State, audioEngine, configuration, _session.Sync);
+            video.PlaybackEnded += OnPlaybackEnded;
+            if (video is IMediaLoopEventSource loopEventSource)
+                loopEventSource.MediaLooped += OnPlaybackLooped;
+            _session.AttachVideo(video);
+        }
     }
 
     public MediaState State => _session.State;
@@ -82,8 +109,10 @@ internal sealed class PlaybackCoordinator : IDisposable
         set
         {
             field = value;
-            if (_session.Audio?.Engine is IAudioLoopControl audioLoopControl)
+            if (_session.FileAudio?.Engine is IAudioLoopControl audioLoopControl)
                 audioLoopControl.LoopPlayback = value;
+            if (_session.Soundtrack?.Engine is IAudioLoopControl soundtrackLoopControl)
+                soundtrackLoopControl.LoopPlayback = value;
             if (_session.Video != null)
                 _session.Video.LoopPlayback = value;
         }
@@ -147,6 +176,28 @@ internal sealed class PlaybackCoordinator : IDisposable
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
         _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key);
 
+    /// <summary>
+    /// Audio mode (043A): plays the soundtrack of a video file as plain audio, with no video
+    /// decoder. Fails when the file has no audio stream.
+    /// </summary>
+    public bool OpenSoundtrack(string videoPath) => OpenSoundtrack(pipeline => pipeline.Open(videoPath, ownState: true, analyzeSilence: false));
+
+    /// <inheritdoc cref="OpenSoundtrack(string)"/>
+    public bool OpenSoundtrack(IArchiveEntryInfo videoEntry) => OpenSoundtrack(pipeline => pipeline.Open(videoEntry));
+
+    private bool OpenSoundtrack(Func<AudioPipeline, bool> open)
+    {
+        if (_session.Soundtrack is not { } soundtrack)
+            return false;
+
+        _session.UseSoundtrack(true);
+        if (open(soundtrack))
+            return true;
+
+        _session.UseSoundtrack(false);
+        return false;
+    }
+
     public bool OpenNetworkAudio(Uri uri) => _session.Audio?.OpenUrl(uri.AbsoluteUri) == true;
 
     /// <summary>Gets the network capabilities of the open audio source, or <see langword="null"/>.</summary>
@@ -199,7 +250,8 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Video?.Open(videoPath) != true)
             return false;
 
-        TryLoadEmbeddedSubtitles(videoPath);
+        if (_session.Subtitle != null)
+            TryLoadEmbeddedSubtitles(videoPath);
         return true;
     }
 
@@ -288,7 +340,8 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     public void Dispose()
     {
-        _session.Audio?.PlaybackEnded -= OnPlaybackEnded;
+        _session.FileAudio?.PlaybackEnded -= OnPlaybackEnded;
+        _session.Soundtrack?.PlaybackEnded -= OnPlaybackEnded;
         _session.Cdg?.PlaybackEnded -= OnPlaybackEnded;
         _session.Video?.PlaybackEnded -= OnPlaybackEnded;
         if (_session.Video is IMediaLoopEventSource loopEventSource)
@@ -317,7 +370,7 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     private bool TryLoadMidiLyrics(string audioPath)
     {
-        if (!_midiLyricProvider.IsMidiFile(audioPath))
+        if (_session.Subtitle == null || !_midiLyricProvider.IsMidiFile(audioPath))
             return true;
 
         try

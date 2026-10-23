@@ -125,6 +125,20 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     public string PresentationBackend => _rendererBackend.BackendName;
 
+    /// <summary>
+    /// Stage 043A: where no layer draws, the primary composition clears to transparent instead of
+    /// black, so an app layer below shows through on hosts that composite. Off by default.
+    /// </summary>
+    internal bool TransparentBackground
+    {
+        get => Volatile.Read(ref field);
+        set => Volatile.Write(ref field, value);
+    }
+
+    /// <summary>The clear of a composition frame where no layer draws: black, or transparent with <paramref name="transparentBackground"/>.</summary>
+    internal static (MediaCompositionClearMode Mode, uint Argb) ResolveContentClear(bool transparentBackground) =>
+        transparentBackground ? (MediaCompositionClearMode.Transparent, 0x00000000u) : (MediaCompositionClearMode.Black, 0xFF000000u);
+
     public VideoDisplayMode VideoDisplayMode
     {
         get;
@@ -1030,10 +1044,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             var backgroundRevision = SetRetainedGpuBackgroundNoLock(frame, stretch);
             SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
+            (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
             compositionFrame = new MediaCompositionFrame
             {
-                ClearMode = MediaCompositionClearMode.Black,
-                ClearArgb = 0xFF000000,
+                ClearMode = clearMode,
+                ClearArgb = clearArgb,
                 BackgroundNativeResource = frame.NativeResource,
                 BackgroundNativeWidth = frame.Width,
                 BackgroundNativeHeight = frame.Height,
@@ -1335,10 +1350,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
+        (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
         {
-            ClearMode = MediaCompositionClearMode.Black,
-            ClearArgb = 0xFF000000,
+            ClearMode = clearMode,
+            ClearArgb = clearArgb,
             BackgroundBgra = hasBackground ? ownedBackgroundBgra : ReadOnlyMemory<byte>.Empty,
             BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
             BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,

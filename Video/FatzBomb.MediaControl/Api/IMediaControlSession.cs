@@ -189,6 +189,34 @@ public interface IMediaControlSession : IDisposable
         set { }
     }
 
+    /// <summary>
+    /// Gets the mode the session was created in (Stage 043A). Sessions without modes are
+    /// <see cref="MediaPlayerMode.Full"/>.
+    /// </summary>
+    MediaPlayerMode Mode => MediaPlayerMode.Full;
+
+    /// <summary>
+    /// Gets or sets whether loads search for sidecar and archive backgrounds (Stage 043A, default
+    /// <see langword="true"/>). An explicit background passed to a load still applies. Sessions
+    /// without the choice always search.
+    /// </summary>
+    bool AutoBackground
+    {
+        get => true;
+        set { }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the output is transparent where nothing is drawn, including the CD+G
+    /// background colour (Stage 043A, default <see langword="false"/>: black). Sessions without the
+    /// choice stay black.
+    /// </summary>
+    bool TransparentBackground
+    {
+        get => false;
+        set { }
+    }
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 

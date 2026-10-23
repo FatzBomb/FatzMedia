@@ -271,8 +271,15 @@ internal sealed partial class VideoPipeline(
         // Keep audio on its own FFmpeg cursor. Routing codec priming/preroll packets through the
         // video cursor can offset startup until the first seek (reproduced with AV1 + E-AC-3).
         // SeekCore still repositions both cursors to the same target.
-        _audioEngine = new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
-        if (!_audioEngine.Open(path))
+        // Background mode (043A) decodes the picture only and runs on the playback clock.
+        _audioEngine = _configuration.Mode == MediaPlayerMode.Background
+            ? null
+            : new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
+        if (_audioEngine is null)
+        {
+            if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Background mode: picture only; using playback clock.");
+        }
+        else if (!_audioEngine.Open(path))
         {
             _audioEngine.Dispose();
             _audioEngine = null;

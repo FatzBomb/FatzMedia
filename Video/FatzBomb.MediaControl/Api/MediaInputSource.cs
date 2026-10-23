@@ -100,6 +100,39 @@ public sealed class MediaInputSource
             stride);
     }
 
+    /// <summary>Width and height, in pixels, of the image <see cref="FromColor"/> creates.</summary>
+    internal const int SolidColorSize = 8;
+
+    /// <summary>
+    /// Creates a solid-colour source (Stage 043A): a small BGRA image that the image path scales to
+    /// the output, for a Background-mode player or any image slot.
+    /// </summary>
+    /// <param name="argb">The colour as 0xAARRGGBB, with straight (not premultiplied) alpha.</param>
+    /// <param name="displayName">Optional name; defaults to the colour in hex.</param>
+    public static MediaInputSource FromColor(uint argb, string? displayName = null)
+    {
+        const int stride = SolidColorSize * 4;
+        var pixels = new byte[stride * SolidColorSize];
+        var b = (byte)argb;
+        var g = (byte)(argb >> 8);
+        var r = (byte)(argb >> 16);
+        var a = (byte)(argb >> 24);
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = b;
+            pixels[i + 1] = g;
+            pixels[i + 2] = r;
+            pixels[i + 3] = a;
+        }
+
+        return FromOwnedBgra32Image(
+            pixels,
+            SolidColorSize,
+            SolidColorSize,
+            stride,
+            string.IsNullOrWhiteSpace(displayName) ? $"Solid colour #{argb:X8}" : displayName);
+    }
+
     private static int ValidateBgra32Image(int bufferLength, int width, int height, int stride, string bufferParameterName)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);

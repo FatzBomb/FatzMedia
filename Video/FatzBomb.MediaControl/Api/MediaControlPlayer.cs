@@ -74,7 +74,7 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         try
         {
-            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            _audioDeviceMonitor = ResolveAudioDeviceMonitor();
             if (_audioDeviceMonitor != null)
             {
                 _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
@@ -694,7 +694,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         // 9. Reconnect audio device monitor
         try
         {
-            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            _audioDeviceMonitor = ResolveAudioDeviceMonitor();
             if (_audioDeviceMonitor != null)
             {
                 _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
@@ -714,6 +714,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         nameof(_presentationCoordinator), nameof(Controls), nameof(File), nameof(_controlOperations), nameof(_positionNotifier))]
     private void CreateSessionGraph(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
     {
+        _configuration = configuration;
         _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
@@ -722,7 +723,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
-        _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
+        _presentationCoordinator = CreatePresentationCoordinator(configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
         File = new MediaFile(
             _mediaEngine,
@@ -747,6 +748,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
         BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
+        ApplyModeToSessionGraph();
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset

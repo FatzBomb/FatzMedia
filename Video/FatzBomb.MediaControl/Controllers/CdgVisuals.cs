@@ -25,11 +25,28 @@ public sealed class CdgVisuals
         }
     } = 100;
 
+    /// <summary>
+    /// Stage 043A <c>TransparentBackground</c>: the CD+G background colour is drawn fully
+    /// transparent, whatever <see cref="BackgroundOpacity"/> is set to.
+    /// </summary>
+    internal bool ForceTransparentBackground
+    {
+        get;
+        set
+        {
+            field = value;
+            Apply();
+        }
+    }
+
+    /// <summary>The opacity applied to the CD+G engine.</summary>
+    internal byte EffectiveBackgroundOpacity => ForceTransparentBackground ? (byte)0 : BackgroundOpacity;
+
     internal void Apply()
     {
         ICdgEngine? cdg = _mediaEngine.Cdg;
         if (cdg == null) return;
 
-        cdg.BackgroundOpacity = BackgroundOpacity;
+        cdg.BackgroundOpacity = EffectiveBackgroundOpacity;
     }
 }

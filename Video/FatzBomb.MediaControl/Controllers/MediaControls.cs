@@ -47,6 +47,15 @@ public sealed class MediaControls
             if (field == value)
                 return;
 
+            if (!value && ForcesLoop)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    MediaPlayerModePolicy.DiagnosticCategory,
+                    "Background mode always loops; LoopMedia = false was ignored.");
+                return;
+            }
+
             var previous = field;
             field = value;
             if (_mediaEngine is ILoopPlaybackControl loopPlaybackControl)
@@ -60,6 +69,21 @@ public sealed class MediaControls
         }
     }
 
+
+    /// <summary>
+    /// Stage 043A Background mode: turns <see cref="LoopMedia"/> on and keeps it on (turning it
+    /// off is ignored with a diagnostic).
+    /// </summary>
+    internal bool ForcesLoop
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value)
+                LoopMedia = true;
+        }
+    }
 
     /// <summary>
     /// Event raised when media reaches the end.

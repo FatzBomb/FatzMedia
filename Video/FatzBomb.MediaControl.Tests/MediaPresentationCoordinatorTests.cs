@@ -70,6 +70,28 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void TransparentBackground_ClearsWhereNothingIsDrawnToTransparent()
+    {
+        // Stage 043A: the default stays black; TransparentBackground switches the content clear.
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame black = backend.PresentedFrames.Last();
+        Assert.Equal(MediaCompositionClearMode.Black, black.ClearMode);
+        Assert.Equal(0xFF000000u, black.ClearArgb);
+
+        coordinator.TransparentBackground = true;
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame transparent = backend.PresentedFrames.Last();
+        Assert.Equal(MediaCompositionClearMode.Transparent, transparent.ClearMode);
+        Assert.Equal(0u, transparent.ClearArgb);
+        Assert.Equal((MediaCompositionClearMode.Black, 0xFF000000u), MediaPresentationCoordinator.ResolveContentClear(false));
+    }
+
+    [Fact]
     public void AudioOnlyRefresh_PresentsNothing()
     {
         // ENG-012: an audio file with nothing on screen re-presented an empty frame on every seek,
