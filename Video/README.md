@@ -17,6 +17,8 @@ FatzBomb.MediaControl is a media-control solution with a UI-agnostic Core engine
 | `FatzBomb.MediaControl.Avalonia` | Avalonia adapter: composited `MediaSurface` over the frame-sink contract and bitmap conversions. |
 | `FatzBomb.MediaControl.WinForms` | WinForms adapter: HWND `MediaSurface` attached as the primary presentation surface. |
 | `FatzBomb.MediaControl.Player` | WPF validation host used to exercise the Core engine through the WPF adapter. |
+| `FatzBomb.MediaControl.Player.Avalonia` | Cross-platform (Windows + Linux) Avalonia test player: software or Vulkan renderer, 1-4 players side by side with CPU/memory/fps status lines. |
+| `FatzBomb.MediaControl.Player.WinForms` | Minimal WinForms test player: HWND `MediaSurface` with Direct3D11. |
 
 Future UI integrations should be separate adapter projects using the same package style, for example `FatzBomb.MediaControl.WinUI`, `FatzBomb.MediaControl.Avalonia`, and `FatzBomb.MediaControl.WinForms`.
 

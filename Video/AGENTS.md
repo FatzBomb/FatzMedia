@@ -35,6 +35,8 @@ warnings-as-errors) are centralized in the repo-root `Directory.Build.props`.
 | `FatzBomb.MediaControl.Avalonia` (Adapter) | Avalonia composited `MediaSurface` + bitmap conversions | References Core only; same adapter rules as WPF (`scripts/check-adapter-boundary.ps1`) |
 | `FatzBomb.MediaControl.WinForms` (Adapter) | WinForms HWND `MediaSurface` | References Core only; same adapter rules (`scripts/check-adapter-boundary.ps1`) |
 | `FatzBomb.MediaControl.Player` (Host) | WPF validation host — exercises Core through WPF adapter | CommunityToolkit.Mvvm, no production use |
+| `FatzBomb.MediaControl.Player.Avalonia` (Host) | Avalonia test player for Windows and Linux (multi-targets `net10.0` + `net10.0-windows7.0`; one platform package per TFM) | Plain code-behind; public API, adapter, platform and renderer packages only; no production use |
+| `FatzBomb.MediaControl.Player.WinForms` (Host) | WinForms test player — Windows + Direct3D11 | Plain code; public API only; no production use |
 
 ## LangVersion & Runtime Features
 

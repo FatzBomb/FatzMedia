@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>FatzBomb.MediaControl.Player.WinForms</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Player.WinForms</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- BASS/FFmpeg DLLs dropped into native/ (not tracked) are copied next to the app. -->
+    <None Update="native\**\*.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="native\**\*.sf2" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

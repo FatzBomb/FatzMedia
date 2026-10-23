@@ -66,6 +66,23 @@ $projectReferences = @{
     'FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
+    # Test players (hosts): public API, adapters, platform and renderer packages only.
+    # The Avalonia player multi-targets and references Windows (net10.0-windows7.0 only) and
+    # Linux (net10.0 only) conditionally; both appear here because the script reads every item group.
+    'FatzBomb.MediaControl.Player.Avalonia\FatzBomb.MediaControl.Player.Avalonia.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
+        '..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj'
+    )
+    'FatzBomb.MediaControl.Player.WinForms\FatzBomb.MediaControl.Player.WinForms.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj',
+        '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
+        '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
+    )
 }
 
 if (-not (Test-Path $coreProject)) {
