@@ -70,10 +70,10 @@ See "Slice 1 decisions" in `active/043A_ACTIVE_PlayerModes.md`. In short:
 
 ## Not in this slice
 
-- The Avalonia test player's `--mode=full|background|audio` option. This worktree was based on
-  a commit before `FatzBomb.MediaControl.Player.Avalonia` existed, so the option is added on the
-  session branch after merge. The smoke steps below assume it.
 - `SetModeAsync` (slice 2).
+
+The Avalonia test player's `--mode=full|background|audio` option was added on the session branch
+after merging this slice; the smoke steps below use it.
 
 ## Verification (Linux sandbox)
 

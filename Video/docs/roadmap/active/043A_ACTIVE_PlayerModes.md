@@ -105,8 +105,7 @@ return false with a diagnostic.
 - **`FromColor`** creates an 8x8 straight-alpha BGRA image (`MediaInputSource.SolidColorSize`).
 - **`IMediaControlSession`** gets `Mode`, `AutoBackground` and `TransparentBackground` with default
   implementations (Full, true and false, setters ignored).
-- **Not in this slice:** the Avalonia test player's `--mode` option (added on the session branch
-  after merge, see `updates/043A_1`).
+- **Avalonia test player:** `--mode=full|background|audio` sets the mode of every player.
 
 ## Explicit non-goals
 

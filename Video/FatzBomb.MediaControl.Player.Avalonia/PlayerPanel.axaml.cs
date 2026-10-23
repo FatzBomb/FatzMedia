@@ -62,7 +62,7 @@ public partial class PlayerPanel : UserControl
     /// <summary>Creates the engine (off the UI thread: it loads the native libraries) and binds the surface.</summary>
     internal async Task InitializeAsync(string? startupPath)
     {
-        AddLog(MediaDiagnosticLevel.Info, "Player", $"{PlatformComposition.Name} platform, renderer {_renderer.Kind}: {_renderer.Detail}");
+        AddLog(MediaDiagnosticLevel.Info, "Player", $"{PlatformComposition.Name} platform, {StartupOptions.Current.Mode} mode, renderer {_renderer.Kind}: {_renderer.Detail}");
         AddLog(MediaDiagnosticLevel.Info, "Player", $"Native search paths: {(_nativePaths.Count == 0 ? "(none exist)" : string.Join("; ", _nativePaths))}");
         try
         {
@@ -70,6 +70,7 @@ public partial class PlayerPanel : UserControl
             // Both frame-sink renderers decode in software.
             var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
             {
+                Mode = StartupOptions.Current.Mode,
                 EnableLogging = true,
                 EnablePerformanceLogging = true
             };
