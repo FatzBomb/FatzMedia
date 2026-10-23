@@ -24,8 +24,12 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
     private const int WaitTimeout = 0x102;
     private const int WaitAbandoned = 0x80;
 
-    /// <summary>How long a frame waits for the compositor to give a texture back before it is dropped.</summary>
-    internal static readonly TimeSpan ReleaseWaitTimeout = TimeSpan.FromMilliseconds(50);
+    /// <summary>
+    /// How long a frame waits for the compositor to give a texture back before it is dropped. Kept
+    /// short (half a 60 Hz frame): the wait holds the presentation lock that UI attach, resize and
+    /// detach also take.
+    /// </summary>
+    internal static readonly TimeSpan ReleaseWaitTimeout = TimeSpan.FromMilliseconds(8);
 
     private const uint AcquireTimeoutMilliseconds = 100;
 
@@ -178,12 +182,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         _set = null;
         _ring?.Dispose();
         _ring = null;
-        for (var i = 0; i < _textures.Length; i++)
-        {
-            _textures[i]?.Dispose();
-            _textures[i] = null;
-        }
-
+        DisposeSharedTextures();
         _targetTexture?.Dispose();
         _targetTexture = null;
         _deviceResources = null;
@@ -288,16 +287,46 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         return true;
     }
 
-    /// <summary>Replaces the exported textures at the same size (after an abandoned or stuck mutex).</summary>
+    /// <summary>
+    /// Replaces the exported textures at the same size (after an abandoned or stuck mutex). The
+    /// private target keeps the frame already composed into it (and stays the texture the
+    /// presentation controller adopted), so only the shared textures and their set are new.
+    /// </summary>
     private bool Republish()
     {
-        D3D11DeviceResources deviceResources = _deviceResources!;
         IMediaSharedGpuImageConsumer consumer = _consumer!;
-        if (Create(deviceResources, consumer, Width, Height, out var reason))
-            return true;
+        ID3D11Device device = _deviceResources!.Device!;
+        _recreate = false;
+        _set?.Retire();
+        _set = null;
+        _ring?.Dispose();
+        _ring = null;
+        DisposeSharedTextures();
+        try
+        {
+            ResourceOptionFlags sharing = ResourceOptionFlags.SharedKeyedMutex
+                | (_selection.HandleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle ? ResourceOptionFlags.SharedNTHandle : ResourceOptionFlags.None);
+            for (var i = 0; i < BufferCount; i++)
+                _textures[i] = CreateSharedTexture(device, Width, Height, sharing, _selection.HandleKind);
+        }
+        catch (Exception exception) when (exception is SharpGenException or InvalidOperationException)
+        {
+            Cleanup();
+            consumer.OnUnavailable($"re-exporting the shared textures failed: {exception.Message}");
+            return false;
+        }
 
-        consumer.OnUnavailable(reason ?? "re-exporting the shared textures failed");
-        return false;
+        Publish();
+        return true;
+    }
+
+    private void DisposeSharedTextures()
+    {
+        for (var i = 0; i < _textures.Length; i++)
+        {
+            _textures[i]?.Dispose();
+            _textures[i] = null;
+        }
     }
 
     private void Publish()

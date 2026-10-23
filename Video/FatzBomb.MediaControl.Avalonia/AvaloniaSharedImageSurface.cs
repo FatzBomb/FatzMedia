@@ -180,6 +180,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         }
 
         var imported = new ImportedSet(set);
+        var handlesPassed = false;
         try
         {
             var imageType = AvaloniaGpuInterop.ToAvaloniaImageHandleType(set.HandleKind);
@@ -188,6 +189,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
                 : null;
             foreach (MediaSharedGpuImageBuffer buffer in set.Buffers)
             {
+                handlesPassed = true;
                 imported.Images.Add(interop.ImportImage(
                     new PlatformHandle(buffer.ImageHandle, imageType),
                     AvaloniaGpuInterop.ToImageProperties(set, buffer)));
@@ -200,7 +202,8 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         }
         catch (Exception exception)
         {
-            set.CompleteImport(handlesConsumed: true);
+            // Handles never given to an importer stay with the producer, which closes them.
+            set.CompleteImport(handlesConsumed: handlesPassed);
             Retire(imported);
             ReportUnavailable($"importing the shared images failed: {exception.Message}");
             return;

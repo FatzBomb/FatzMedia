@@ -189,6 +189,13 @@ public class MediaSurface : Control
         base.OnPropertyChanged(change);
         if (change.Property == PlayerProperty)
         {
+            // The rejection memo is per session; drop it so it does not keep an old session alive.
+            if (!ReferenceEquals(change.NewValue, _gpuRejectedSession))
+            {
+                _gpuRejectedSession = null;
+                _gpuRejectedReason = null;
+            }
+
             Detach();
             if (change.NewValue is IMediaControlSession session)
                 session.VideoDisplayMode = VideoDisplayMode;
@@ -412,8 +419,14 @@ public class MediaSurface : Control
 
         gpuSurface.Dispose();
         fallbackReason = unavailable ?? "the session did not accept the shared GPU image surface";
-        _gpuRejectedSession = session;
-        _gpuRejectedReason = fallbackReason;
+        // Only a renderer that declined with a reason rules the path out for this session; a
+        // refusal without one (renderer not initialized yet, session busy) is retried next attach.
+        if (unavailable is not null)
+        {
+            _gpuRejectedSession = session;
+            _gpuRejectedReason = fallbackReason;
+        }
+
         return false;
     }
 

@@ -130,7 +130,7 @@ Tests (new or extended):
 - **Host-synchronized (Vulkan on lavapipe, or wherever the compositor reports
   `Automatic`).** The fence completes the GPU work before the frame is announced, and the
   update task's completion releases the image.
-- **Back-pressure.** With both images held by the compositor, a frame waits up to 50 ms for
+- **Back-pressure.** With both images held by the compositor, a frame waits up to 8 ms (code review: the wait holds the lock UI resize/detach take) for
   one, then is dropped. It is not reported as a present failure, and a diagnostic is
   raised once per set. This is latest-wins under bursts (conformance item 6): the producer
   can never get more than two frames ahead.

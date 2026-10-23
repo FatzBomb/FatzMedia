@@ -65,8 +65,12 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
-    /// <summary>How long a frame waits for the compositor to give an image back before it is dropped.</summary>
-    internal static TimeSpan SharedImageWaitTimeout { get; } = TimeSpan.FromMilliseconds(50);
+    /// <summary>
+    /// How long a frame waits for the compositor to give an image back before it is dropped. Kept
+    /// short (half a 60 Hz frame): the wait holds the render gate that UI attach, resize and detach
+    /// also take.
+    /// </summary>
+    internal static TimeSpan SharedImageWaitTimeout { get; } = TimeSpan.FromMilliseconds(8);
 
     public bool AttachSurface(MediaPresentationSurfaceDescriptor surface) => SetSurface(surface, requireExisting: false);
 
@@ -363,10 +367,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 image.ConsumerReleaseFd)),
             (frame, consumed) =>
             {
-                _ = ring.Release(frame, consumed);
                 // A render-complete signal nobody waited on would make the next signal invalid:
-                // start a fresh set instead.
-                if (!consumed && semaphoreSync)
+                // start a fresh set instead. Releases of a retired set change nothing.
+                if (ring.Release(frame, consumed) && !consumed && semaphoreSync)
                     Volatile.Write(ref _recreateShared, 1);
             },
             consumed =>
@@ -401,8 +404,12 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             IMediaSharedGpuImageConsumer? consumer;
             lock (_sync)
             {
-                if (_disposed || !ReferenceEquals(_compositor, compositor) || _consumer is null)
+                if (_disposed || !ReferenceEquals(_compositor, compositor) || _consumer is null || _surface is null)
                     return false;
+
+                // A resize may have landed since the caller read the size: export at the current one.
+                width = _surface.PixelWidth;
+                height = _surface.PixelHeight;
 
                 if (Volatile.Read(ref _recreateShared) != 0 || _shared is null || _shared.Images.Width != width || _shared.Images.Height != height)
                 {
