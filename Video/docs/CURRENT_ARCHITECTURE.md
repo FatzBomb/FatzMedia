@@ -317,6 +317,7 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 - `AudioDeviceChanged` event on `IMediaControlSession` with `AudioDeviceChangedEventArgs`.
 - `BASS_CONFIG_DEV_NONSTOP` enabled at BASS init to keep the device buffer alive during transient loss.
 - Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by device-change notifications. BASS/Windows handle active-stream migration; Core only raises diagnostics and the public event.
+- Lost BASS output (ENG-032): `BassOutputWatchdog` (Core, BASS only, platform neutral) is one process-wide 1-second timer that runs while any `AudioEngine`/`VideoAudioEngine` is playing. When BASS stops the output or parks a playing channel as `BASS_ACTIVE_PAUSED_DEVICE` (another application holding the device exclusively, a USB device unplugged), it raises one unowned `AudioOutput` warning and `AudioDeviceChanged` (`DeviceRemoved`) on every player, retries `BASS_Start` / `BASS_Init(BASS_DEVICE_REINIT)` once a second per device, resumes only the channels whose engine is still `Playing`, then raises an Info and `AudioDeviceChanged` (`DeviceAdded`). The decisions live in the pure `AudioOutputRecoveryTracker`. A `Play` whose `BASS_ChannelPlay` fails restarts the output once (same rate limit) and reports an Error naming the unavailable output if it still fails.
 
 ## Audio Output Device Selection (Stage 006C)
 
@@ -746,6 +747,23 @@ final frames the host-selected renderer produces; plus `AvaloniaMediaInputSource
 It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
+
+Shared GPU image surfaces (Stage 027A slice 2):
+
+- Besides the HWND and frame-sink payloads, Core defines a `shared-gpu-image` surface. Its
+  token resolves to an adapter-implemented `IMediaSharedGpuImageConsumer`.
+- The renderer negotiates against the consumer's `MediaSharedGpuImageRequest` (handle kinds,
+  sync kinds, GPU identity). It then exports a double-buffered `MediaSharedGpuImageSet` of
+  plain OS handles: Direct3D11 keyed-mutex shared textures, or Vulkan opaque-fd images with
+  optional exported semaphores.
+- It announces each frame, and the consumer releases it once its compositor has read it.
+  The shared `MediaSharedGpuImageRing` keeps the producer side, so a frame is never written
+  while the compositor may sample it.
+- A renderer that cannot serve the consumer, or rejects the surface, tells it why
+  (`OnUnavailable`). The Avalonia `MediaSurface` then attaches its frame sink instead and
+  logs the reason.
+- Renderers own every GPU object. Adapters see only handles and Avalonia's
+  `ICompositionGpuInterop`.
 
 ## Audio Filter Framework (Stage 020A, slice 1)
 

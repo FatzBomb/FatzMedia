@@ -149,6 +149,13 @@ public readonly record struct MediaPlayerConfiguration
     public HdrToneMappingOptions HdrToneMapping { get; init; }
 
     /// <summary>
+    /// What the player loads and accepts (Stage 043A). The default, <see cref="MediaPlayerMode.Full"/>,
+    /// is the complete player; <see cref="MediaPlayerMode.Background"/> and
+    /// <see cref="MediaPlayerMode.Audio"/> build only what they need.
+    /// </summary>
+    public MediaPlayerMode Mode { get; init; }
+
+    /// <summary>
     /// Creates a default configuration with optimal settings for best quality.
     /// Uses automatic detection for video decoding.
     /// </summary>
@@ -167,6 +174,7 @@ public readonly record struct MediaPlayerConfiguration
         ResetPitchOnMediaLoad = false;
         ResetTempoOnMediaLoad = false;
         SilenceTrim = default;
+        Mode = MediaPlayerMode.Full;
     }
 
     /// <summary>

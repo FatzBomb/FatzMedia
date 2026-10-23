@@ -126,6 +126,36 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
     }
 
+    private bool CreateSharedTextureSurface(IMediaSharedGpuImageConsumer consumer, int width, int height)
+    {
+        if (_disposed)
+            return false;
+
+        bool created;
+        string? reason;
+        lock (_lock)
+        {
+            // The device must exist to export; Core initializes it before attaching.
+            if (!_deviceResources.HasDevice)
+            {
+                created = false;
+                reason = "no usable Direct3D11 device";
+            }
+            else
+            {
+                created = _presentation.CreateSharedTextureSurface(_disposed, consumer, width, height, NotifyPresentedWithSync, out reason);
+            }
+        }
+
+        if (!created)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Shared textures unavailable: {reason}");
+            consumer.OnUnavailable(reason ?? "the Direct3D11 renderer could not export shared textures");
+        }
+
+        return created;
+    }
+
     private bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
@@ -177,6 +207,12 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
         }
 
+        if (surface.Role == MediaPresentationSurfaceRole.Primary
+            && MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        {
+            return CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight);
+        }
+
         if (!TryGetWin32Hwnd(surface, out nint hwnd))
             return false;
 
@@ -225,6 +261,12 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
         }
 
+        if (surface.Role == MediaPresentationSurfaceRole.Primary
+            && MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        {
+            return CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight);
+        }
+
         if (!TryGetWin32Hwnd(surface, out nint hwnd))
             return false;
 
@@ -254,7 +296,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (_disposed)
             return false;
 
-        if (TryGetManagedFrameSink(surface, out _))
+        if (TryGetManagedFrameSink(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
             return surface.Role == MediaPresentationSurfaceRole.Primary;
 
         if (!TryGetWin32Hwnd(surface, out _))

@@ -103,6 +103,49 @@ public sealed class CdgEngineCheckpointTests : IDisposable
         AssertSameState(Reference(2, backgroundOpacity: 100), engine, 2);
     }
 
+    [Fact]
+    public void ARepeatPresetStraddlingACheckpoint_SeeksLikeAReplay()
+    {
+        // Preset (colour 4, repeat 0) ends the packet before the checkpoint; its repeat is the
+        // first packet after it. A lone repeat later clears too.
+        var interval = CdgEngine.CheckpointIntervalPackets;
+        var bytes = CreateRandomStream(interval * 2, seed: 3);
+        void Put(int index, byte color, byte repeat)
+        {
+            Span<byte> packet = bytes.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize);
+            packet.Clear();
+            packet[0] = (byte)CdgConstants.Command.Graphic;
+            packet[1] = (byte)CdgConstants.Instruction.MemoryPreset;
+            packet[4] = color;
+            packet[5] = repeat;
+        }
+
+        Put(interval - 1, 4, 0);
+        Put(interval, 4, 1);
+        Put(interval + 500, 9, 2);
+        var path = Path.Combine(Path.GetTempPath(), $"cdg-repeat-{Guid.NewGuid():N}.cdg");
+        File.WriteAllBytes(path, bytes);
+        try
+        {
+            using var engine = new CdgEngine { BackgroundOpacity = 40 };
+            engine.Load(path);
+            engine.RenderAtSeconds(engine.TotalDurationSeconds);
+            foreach (var seconds in new[] { 40.0, 35.0, interval / 300.0, (interval + 1) / 300.0, (interval + 501) / 300.0, 3.0, 55.0 })
+            {
+                engine.RenderAtSeconds(seconds);
+                AssertSameState(Reference(seconds, path: path), engine, seconds);
+            }
+
+            engine.RenderAtSeconds((interval + 501) / 300.0);
+            Assert.True(engine.TryCreateCdgSnapshot(consumeDirtyRegions: true, out CdgRenderSnapshot cleared));
+            Assert.All(cleared.ColorIndices.ToArray(), b => Assert.Equal(9, b));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private CdgEngine Open(byte backgroundOpacity)
     {
         var engine = new CdgEngine();
@@ -119,7 +162,7 @@ public sealed class CdgEngineCheckpointTests : IDisposable
     {
         var bytes = File.ReadAllBytes(path ?? _path);
         var packetCount = bytes.Length / CdgConstants.PacketSize;
-        var endIndex = (int)Math.Clamp((long)(seconds * CdgConstants.PacketsPerSecond), 0, packetCount);
+        var endIndex = (int)Math.Min(CdgEngine.PacketCountAt(seconds), packetCount);
         var replay = new CdgStateMachine { BackgroundOpacity = backgroundOpacity, BackgroundOverrideArgb = backgroundOverride };
         for (var index = 0; index < endIndex; index++)
             _ = replay.ProcessPacket(bytes.AsSpan(index * CdgConstants.PacketSize, CdgConstants.PacketSize));

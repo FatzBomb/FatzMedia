@@ -15,6 +15,7 @@ public sealed class MediaFile
     private readonly CdgVisuals? _cdgVisuals;
     private readonly IArchiveService? _archiveService;
     private MediaSourceInfo? _currentSource;
+    private LoadRequest? _currentLoad;
     private int _loadGeneration;
 
     internal MediaFile(
@@ -118,6 +119,22 @@ public sealed class MediaFile
     {
         _ = BeginLoadOperation();
         return LoadCore(source, backgroundSource: null, ignoreSidecar: false);
+    }
+
+    /// <summary>
+    /// Gets how the open media was loaded (source, explicit background, sidecar choice), or
+    /// <see langword="null"/> when nothing is open. A mode switch (043A) reopens it in the new graph.
+    /// </summary>
+    internal LoadRequest? CurrentLoad => _currentLoad;
+
+    /// <summary>
+    /// Loads <paramref name="request"/> again as the same item: without honoring
+    /// <see cref="PlayOnLoad"/>, <see cref="ResetPitchOnMediaLoad"/> or <see cref="ResetTempoOnMediaLoad"/>.
+    /// </summary>
+    internal bool Reopen(LoadRequest request)
+    {
+        _ = BeginLoadOperation();
+        return LoadCore(request.Source, request.BackgroundSource, request.IgnoreSidecar, applyLoadReset: false);
     }
 
     /// <summary>
@@ -249,6 +266,7 @@ public sealed class MediaFile
         InvalidatePendingPlayOnLoad();
         MediaSourceInfo? closedSource = _currentSource;
         _currentSource = null;
+        _currentLoad = null;
         _mediaRenderer?.StopRendering();
         _mediaEngine.Close();
         _mediaEngine.ClearBackground();
@@ -272,7 +290,7 @@ public sealed class MediaFile
     private bool IsCurrentLoadOperation(int loadGeneration) =>
         Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
 
-    private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar)
+    private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, bool applyLoadReset = true)
     {
         ArgumentNullException.ThrowIfNull(source);
         System.Diagnostics.Debug.WriteLine($"[MediaFile] Loading: {source.DisplayName}");
@@ -299,8 +317,10 @@ public sealed class MediaFile
         ApplyCoreBackground(source, backgroundSource, ignoreSidecar);
 
         _mediaEffects?.RefreshActiveEngine();
-        _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
+        if (applyLoadReset)
+            _mediaEffects?.ApplyLoadReset(ResetPitchOnMediaLoad, ResetTempoOnMediaLoad);
         _cdgVisuals?.Apply();
+        _currentLoad = new LoadRequest(source, backgroundSource, ignoreSidecar);
         _currentSource = new MediaSourceInfo(
             source,
             _mediaEngine.Content,
@@ -320,6 +340,7 @@ public sealed class MediaFile
             return;
 
         _currentSource = null;
+        _currentLoad = null;
         HostEventDispatcher.Raise(
             this,
             MediaClosed,
@@ -419,4 +440,7 @@ public sealed class MediaFile
             ? null
             : MediaInputSource.FromFile(candidates[Random.Shared.Next(candidates.Count)]);
     }
+
+    /// <summary>The arguments of a successful load, kept so the media can be opened again.</summary>
+    internal sealed record LoadRequest(MediaInputSource Source, MediaInputSource? BackgroundSource, bool IgnoreSidecar);
 }

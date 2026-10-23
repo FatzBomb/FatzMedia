@@ -8,7 +8,19 @@ internal sealed class MediaSession : IDisposable
     public PlaybackSyncState Sync { get; } = new();
     public IClockSource Clock { get; } = new PlaybackClock();
     public ClockAudioEngine ClockAudio { get; }
+
+    /// <summary>The pipeline for audio files (the player's audio engine), if any.</summary>
+    public AudioPipeline? FileAudio { get; private set; }
+
+    /// <summary>
+    /// The audio pipeline in use: the file audio pipeline, or in Audio mode (043A) the soundtrack
+    /// pipeline while a video file's soundtrack is open.
+    /// </summary>
     public AudioPipeline? Audio { get; private set; }
+
+    /// <summary>The Audio-mode pipeline that plays the soundtrack of video files (043A), if any.</summary>
+    public AudioPipeline? Soundtrack { get; private set; }
+
     public CdgPipeline? Cdg { get; private set; }
     public SubtitlePipeline? Subtitle { get; private set; }
     public IVideoEngine? Video { get; private set; }
@@ -19,7 +31,19 @@ internal sealed class MediaSession : IDisposable
         ClockAudio = new ClockAudioEngine(Clock);
     }
 
-    public void AttachAudio(AudioPipeline audio) => Audio = audio ?? throw new ArgumentNullException(nameof(audio));
+    public void AttachAudio(AudioPipeline audio)
+    {
+        FileAudio = audio ?? throw new ArgumentNullException(nameof(audio));
+        Audio = audio;
+    }
+
+    public void AttachSoundtrack(AudioPipeline soundtrack) => Soundtrack = soundtrack ?? throw new ArgumentNullException(nameof(soundtrack));
+
+    /// <summary>
+    /// Selects the soundtrack pipeline (true) or the file audio pipeline (false) as
+    /// <see cref="Audio"/>. Callers close the open media first.
+    /// </summary>
+    public void UseSoundtrack(bool soundtrack) => Audio = soundtrack ? Soundtrack : FileAudio;
 
     public void AttachCdg(CdgPipeline cdg) => Cdg = cdg ?? throw new ArgumentNullException(nameof(cdg));
 
@@ -31,6 +55,7 @@ internal sealed class MediaSession : IDisposable
     {
         Video?.Close();
         Audio?.Close();
+        Audio = FileAudio;
         Cdg?.Close();
         Subtitle?.Close();
         Sync.Reset();
@@ -41,7 +66,8 @@ internal sealed class MediaSession : IDisposable
     public void Dispose()
     {
         Video?.Dispose();
-        Audio?.Dispose();
+        FileAudio?.Dispose();
+        Soundtrack?.Dispose();
         Cdg?.Close();
         Subtitle?.Dispose();
         ClockAudio.Dispose();

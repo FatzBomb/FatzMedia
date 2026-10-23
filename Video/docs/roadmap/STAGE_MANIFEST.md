@@ -12,9 +12,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
   validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
-  implemented (`updates/027A_1`, `updates/027A_3`); slice 2 re-planned 2026-10-18 as an
-  Avalonia GPU-shared surface (compositor import, no CPU copy or overlay window), not
-  started; WinUI 3 deferred.
+  implemented (`updates/027A_1`, `updates/027A_3`). Slice 2, the Avalonia GPU-shared
+  surface, is implemented and pending manual smoke (`updates/027A_2`): Direct3D11 keyed-mutex
+  shared textures and Vulkan opaque-fd images go into Avalonia's compositor, with a frame-sink
+  fallback. WinUI 3 is deferred.
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
@@ -26,6 +27,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`PresentationLeadController`), slice 3 the post-seek recovery state machine
   (`PostSeekRecovery`); owner smoke passed 2026-10-18 (`updates/041A_1` to `updates/041A_3`).
   The 010A/019A, 017A and 022A items are not started.
+- `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
+  creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
+  (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
+  (`updates/043A_1`, `updates/043A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -88,6 +93,9 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/042A_IDEA_HdrFollowUps.md` - HLG tone mapping and real HDR output on HDR displays,
   deferred from 038A.
 
+- `future/037A_IDEA_FatzAudioEngine.md` - FatzAudio as an opt-in second audio engine behind
+  `IAudioEngine`, BASS kept as default and fallback; starts with a verification spike (owner
+  decision, 2026-10-20).
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).

@@ -1,0 +1,98 @@
+using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Files;
+
+#pragma warning disable IDE0130
+namespace FatzBomb.MediaControl;
+
+/// <summary>How a player in a given mode opens a kind of media (Stage 043A).</summary>
+internal enum MediaModeRoute
+{
+    /// <summary>Opened the normal way. Kinds no mode knows still fail through the normal error path.</summary>
+    Normal,
+
+    /// <summary>
+    /// Audio mode: only the audio is opened. A video file plays its soundtrack (no video decoder)
+    /// and MP3+G plays its audio (the CD+G graphics are ignored).
+    /// </summary>
+    AudioOnly,
+
+    /// <summary>The mode does not accept this kind: the load returns false with a diagnostic.</summary>
+    Reject,
+}
+
+/// <summary>
+/// What each <see cref="MediaPlayerMode"/> accepts (Stage 043A spec table). Pure decisions, so the
+/// engine and the tests share one source of truth.
+/// </summary>
+internal static class MediaPlayerModePolicy
+{
+    /// <summary>Diagnostic category for mode decisions (rejected loads, ignored settings).</summary>
+    public const string DiagnosticCategory = "PlayerMode";
+
+    /// <summary>Decides how <paramref name="mode"/> opens a local file or archive of <paramref name="type"/>.</summary>
+    public static MediaModeRoute RouteFile(MediaPlayerMode mode, FileType type) => mode switch
+    {
+        MediaPlayerMode.Background => type switch
+        {
+            FileType.Audio or FileType.AudioArchive
+                or FileType.AudioCdg or FileType.AudioCdgArchive
+                or FileType.Cdg or FileType.CdgArchive => MediaModeRoute.Reject,
+            _ => MediaModeRoute.Normal,
+        },
+        MediaPlayerMode.Audio => type switch
+        {
+            FileType.Video or FileType.VideoSubtitle or FileType.VideoArchive
+                or FileType.AudioCdg or FileType.AudioCdgArchive => MediaModeRoute.AudioOnly,
+            FileType.Image or FileType.Cdg or FileType.CdgArchive => MediaModeRoute.Reject,
+            _ => MediaModeRoute.Normal,
+        },
+        _ => MediaModeRoute.Normal,
+    };
+
+    /// <summary>
+    /// Decides whether <paramref name="mode"/> accepts a source of <paramref name="kind"/>. File
+    /// sources are decided later by <see cref="RouteFile"/>; <paramref name="networkIsVideo"/> is the
+    /// resolved content of a network source.
+    /// </summary>
+    public static bool AcceptsSource(MediaPlayerMode mode, MediaInputSourceKind kind, bool networkIsVideo = false) => mode switch
+    {
+        MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image,
+        MediaPlayerMode.Audio => kind == MediaInputSourceKind.FilePath || (kind == MediaInputSourceKind.NetworkUri && !networkIsVideo),
+        _ => true,
+    };
+
+    /// <summary>Whether <paramref name="mode"/> loads sidecar, archive or explicit backgrounds behind its main media.</summary>
+    public static bool UsesBackgrounds(MediaPlayerMode mode) => mode != MediaPlayerMode.Audio;
+
+    /// <summary>Whether <paramref name="mode"/> creates a presentation coordinator (renderer, GPU device, surfaces).</summary>
+    public static bool UsesPresentation(MediaPlayerMode mode) => mode != MediaPlayerMode.Audio;
+
+    /// <summary>Whether <paramref name="mode"/> initializes audio output and runs the audio device monitor.</summary>
+    public static bool UsesAudioOutput(MediaPlayerMode mode) => mode != MediaPlayerMode.Background;
+
+    /// <summary>Whether <paramref name="mode"/> always loops (Background: <c>LoopMedia</c> cannot be turned off).</summary>
+    public static bool ForcesLoop(MediaPlayerMode mode) => mode == MediaPlayerMode.Background;
+
+    /// <summary>Describes a file kind for a rejection diagnostic.</summary>
+    public static string Describe(FileType type) => type switch
+    {
+        FileType.Audio or FileType.AudioArchive => "audio files",
+        FileType.AudioCdg or FileType.AudioCdgArchive => "CD+G karaoke (MP3+G)",
+        FileType.Cdg or FileType.CdgArchive => "CD+G graphics",
+        FileType.Image => "images",
+        FileType.Video or FileType.VideoSubtitle or FileType.VideoArchive => "video files",
+        _ => type.ToString(),
+    };
+
+    /// <summary>Describes a source kind for a rejection diagnostic.</summary>
+    public static string Describe(MediaInputSourceKind kind, bool networkIsVideo = false) => kind switch
+    {
+        MediaInputSourceKind.Bgra32Image => "BGRA image sources",
+        MediaInputSourceKind.NetworkUri => networkIsVideo ? "network video" : "network audio",
+        _ => "files",
+    };
+
+    /// <summary>The diagnostic message for a load the mode rejects.</summary>
+    public static string RejectionMessage(MediaPlayerMode mode, string what, string displayName) =>
+        $"{mode} mode does not accept {what}; {displayName} was not loaded.";
+}

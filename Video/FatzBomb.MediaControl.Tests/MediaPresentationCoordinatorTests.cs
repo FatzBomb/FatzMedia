@@ -47,6 +47,35 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void RejectedSharedGpuImageSurface_TellsTheConsumerWhy()
+    {
+        // Stage 027A slice 2: the adapter falls back to its frame sink when told.
+        var backend = new RecordingRendererBackend { AcceptsSurfaces = false };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine());
+        var consumer = new RecordingSharedImageConsumer();
+        using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
+        var surface = new MediaPresentationSurfaceDescriptor(
+            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+            MediaPresentationSurfaceRole.Primary,
+            handle.CreateSurfaceDescriptor(),
+            320,
+            180);
+
+        Assert.False(coordinator.AttachPresentationSurface(surface));
+        var reason = Assert.Single(consumer.UnavailableReasons);
+        Assert.Contains("Test renderer", reason);
+    }
+
+    [Fact]
+    public void RejectedWindowSurface_NotifiesNoConsumer()
+    {
+        var backend = new RecordingRendererBackend { AcceptsSurfaces = false };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine());
+
+        Assert.False(coordinator.AttachPresentationSurface(CreatePrimarySurface(320, 180)));
+    }
+
+    [Fact]
     public void SubtitleRefresh_PreservesRetainedIntentAndForwardsFramePresented()
     {
         var backend = new RecordingRendererBackend();
@@ -67,6 +96,28 @@ public sealed class MediaPresentationCoordinatorTests
 
         backend.RaiseFramePresented();
         Assert.Equal(1, forwardedFrames);
+    }
+
+    [Fact]
+    public void TransparentBackground_ClearsWhereNothingIsDrawnToTransparent()
+    {
+        // Stage 043A: the default stays black; TransparentBackground switches the content clear.
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame black = backend.PresentedFrames.Last();
+        Assert.Equal(MediaCompositionClearMode.Black, black.ClearMode);
+        Assert.Equal(0xFF000000u, black.ClearArgb);
+
+        coordinator.TransparentBackground = true;
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame transparent = backend.PresentedFrames.Last();
+        Assert.Equal(MediaCompositionClearMode.Transparent, transparent.ClearMode);
+        Assert.Equal(0u, transparent.ClearArgb);
+        Assert.Equal((MediaCompositionClearMode.Black, 0xFF000000u), MediaPresentationCoordinator.ResolveContentClear(false));
     }
 
     [Fact]
@@ -135,6 +186,33 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.True(backend.InitializeCount >= 2);
         Assert.True(backend.AttachedSurfaces.Count >= 2);
         Assert.True(backend.IsInitialized);
+    }
+
+    [Fact]
+    public void DeviceLostDiagnostic_FromAnotherOwner_IsIgnored()
+    {
+        // ENG-025: another player's renderer has its own device; its loss is not this one's.
+        var owner = new object();
+        var backend = new RecordingRendererBackend();
+        MediaPresentationCoordinator coordinator;
+        using (DiagnosticRouter.EnterOwner(owner))
+            coordinator = CreateCoordinator(backend, new TestMediaEngine());
+        using (coordinator)
+        {
+            Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+
+            using (DiagnosticRouter.EnterOwner(new object()))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, backend.DeviceLostDiagnosticCategory, "other player's device loss");
+
+            Assert.False(SpinWait.SpinUntil(() => backend.CleanupCount > 0, TimeSpan.FromMilliseconds(250)));
+
+            using (DiagnosticRouter.EnterOwner(owner))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, backend.DeviceLostDiagnosticCategory, "own device loss");
+
+            Assert.True(SpinWait.SpinUntil(
+                () => backend.PresentedFrames.Any(static frame => frame.Reason == "device-lost recovery completed"),
+                TimeSpan.FromSeconds(5)));
+        }
     }
 
     [Fact]
@@ -347,6 +425,20 @@ public sealed class MediaPresentationCoordinatorTests
         width,
         height);
 
+    private sealed class RecordingSharedImageConsumer : IMediaSharedGpuImageConsumer
+    {
+        public ConcurrentQueue<string> UnavailableReasons { get; } = [];
+
+        public MediaSharedGpuImageRequest Request { get; } = new(
+            [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex)]);
+
+        public void OnImagesCreated(MediaSharedGpuImageSet images) => images.CompleteImport(handlesConsumed: false);
+
+        public void OnFrameReady(MediaSharedGpuImageFrame frame) { }
+
+        public void OnUnavailable(string reason) => UnavailableReasons.Enqueue(reason);
+    }
+
     private sealed class StubSubtitleRasterizer : ISubtitleRasterizer
     {
         public SubtitleRasterResult Render(string text, int width, int height) => default;
@@ -378,10 +470,12 @@ public sealed class MediaPresentationCoordinatorTests
             return true;
         }
 
+        public bool AcceptsSurfaces { get; set; } = true;
+
         public bool AttachSurface(MediaPresentationSurfaceDescriptor surface)
         {
             AttachedSurfaces.Enqueue(surface);
-            return true;
+            return AcceptsSurfaces;
         }
 
         public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)

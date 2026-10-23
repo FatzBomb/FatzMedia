@@ -19,6 +19,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private readonly IArchiveService _archiveService;
     private readonly PlaybackCoordinator _coordinator;
     private readonly MediaPlayerConfiguration _configuration;
+    private readonly MediaPlayerMode _mode;
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
     private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
@@ -58,6 +59,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _audioEngine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
         _archiveService = archiveService ?? throw new ArgumentNullException(nameof(archiveService));
         _configuration = configuration;
+        _mode = configuration.Mode;
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
         ArgumentNullException.ThrowIfNull(cdgEngine);
@@ -91,7 +93,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         set => _coordinator.VideoFrameTiming = value;
     }
     public string? ImagePath { get; private set; }
-    public bool BackgroundAutoDetect { get; set; } = true;
+    /// <summary>Whether sidecar/archive backgrounds are searched. Always false in Audio mode (043A).</summary>
+    public bool BackgroundAutoDetect
+    {
+        get => field && MediaPlayerModePolicy.UsesBackgrounds(_mode);
+        set;
+    } = true;
     public MediaBackgroundCandidate? Background { get; private set; }
 
     public MediaContent Content => _coordinator.State.Content;
@@ -145,6 +152,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         }
 
         using FileTree fileTree = FileTreeBuilder.GetFileTree(path, _archiveService);
+        MediaModeRoute route = MediaPlayerModePolicy.RouteFile(_mode, fileTree.Type);
+        if (route == MediaModeRoute.Reject)
+            return RejectForMode(MediaPlayerModePolicy.Describe(fileTree.Type), Path.GetFileName(path), path);
+
+        if (route == MediaModeRoute.AudioOnly)
+            return OpenAudioOnly(fileTree, path);
+
         var opened = fileTree.Type switch
         {
             FileType.Audio when !string.IsNullOrWhiteSpace(fileTree.AudioPath) =>
@@ -195,6 +209,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(source);
+
+        if (!MediaPlayerModePolicy.AcceptsSource(_mode, source.Kind))
+            return RejectForMode(MediaPlayerModePolicy.Describe(source.Kind), source.DisplayName, source.FilePath ?? source.Uri?.AbsoluteUri);
 
         return source.Kind switch
         {
@@ -249,6 +266,51 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
+    /// <summary>
+    /// Audio mode (043A): opens only the audio of a video file (its soundtrack, no video decoder)
+    /// or of MP3+G (the CD+G graphics are ignored).
+    /// </summary>
+    private bool OpenAudioOnly(FileTree fileTree, string path)
+    {
+        var isVideo = fileTree.Type is FileType.Video or FileType.VideoSubtitle or FileType.VideoArchive;
+        var opened = fileTree.Type switch
+        {
+            FileType.Video or FileType.VideoSubtitle when !string.IsNullOrWhiteSpace(fileTree.VideoPath) =>
+                _coordinator.OpenSoundtrack(fileTree.VideoPath),
+            FileType.VideoArchive when fileTree.VideoEntry != null =>
+                _coordinator.OpenSoundtrack(fileTree.VideoEntry),
+            FileType.AudioCdg when !string.IsNullOrWhiteSpace(fileTree.AudioPath) =>
+                _coordinator.OpenAudio(fileTree.AudioPath),
+            FileType.AudioCdgArchive when fileTree.AudioEntry != null =>
+                _coordinator.OpenAudio(fileTree.AudioEntry),
+            _ => false,
+        };
+
+        if (!opened)
+        {
+            var message = isVideo
+                ? $"Audio mode found no playable audio stream in {Path.GetFileName(path)}; video files without audio are not accepted."
+                : $"Audio mode could not open the audio of {Path.GetFileName(path)}.";
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, MediaPlayerModePolicy.DiagnosticCategory, message, sourcePath: path);
+            RaiseError(isVideo ? MediaErrorCode.UnsupportedFormat : MediaErrorCode.OpenFailed, message, path);
+            return false;
+        }
+
+        Volatile.Write(ref _currentCapabilities, fileTree.IsArchive
+            ? MediaSourceCapabilityMatrix.Archive
+            : MediaSourceCapabilityMatrix.LocalFile);
+        return true;
+    }
+
+    /// <summary>Rejects a load the player's mode does not accept (043A): a Warning diagnostic and an error event.</summary>
+    private bool RejectForMode(string what, string displayName, string? sourcePath)
+    {
+        var message = MediaPlayerModePolicy.RejectionMessage(_mode, what, displayName);
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, MediaPlayerModePolicy.DiagnosticCategory, message, sourcePath: sourcePath);
+        RaiseError(MediaErrorCode.UnsupportedFormat, message, sourcePath);
+        return false;
+    }
+
     private bool RejectUnknownSource(MediaInputSource source)
     {
         RaiseError(MediaErrorCode.UnsupportedFormat, $"Unsupported media source kind: {source.Kind}", source.DisplayName);
@@ -260,6 +322,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ThrowIfDisposed();
 
         ClearBackgroundCore(raiseEvent: false);
+        if (background != null && background.Kind != MediaBackgroundKind.None && !MediaPlayerModePolicy.UsesBackgrounds(_mode))
+        {
+            // Audio mode has no presentation: an explicit background is ignored, and the load stands.
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, MediaPlayerModePolicy.DiagnosticCategory, $"{_mode} mode ignores backgrounds; {background.DisplayName} was not loaded.");
+            background = null;
+        }
+
         Background = background;
 
         if (background == null || background.Kind == MediaBackgroundKind.None)

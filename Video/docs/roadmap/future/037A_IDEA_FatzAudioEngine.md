@@ -1,0 +1,130 @@
+# Idea Stage 037A - FatzAudio As A Second Audio Engine
+
+Status: Idea. Written 2026-10-20 from FatzAudio's answer to our two notes ("answer to
+FatzBomb.MediaControl", checked by FatzAudio against its `main` @ c6e4446, PR 78). That note is
+FatzAudio's own claim: nothing here is verified against the package until slice 0 runs. The
+local checkout at `/home/user/fatzbomb75/fatzaudio` is older (8849f04, PR 65).
+
+Goal: an opt-in `FatzAudioEngine` next to the BASS engines, selected by configuration (and a
+Player flag), with BASS kept as the default and the fallback until the owner decides otherwise.
+It is a library swap behind `IAudioEngine`, not a rewrite of playback, timing or composition.
+
+## What FatzAudio says it now covers
+
+Blockers 1-5 (EQ and user DSP, loop on/off with a `Looped` event, tempo/rate/pitch on push and
+packet streams, tracker modules with exact seek and order/row position, MIDI with reverb/chorus,
+SysEx, tempo/time/key marks, SF3 and direct DLS loading); parity 6-11 (default-device following
+with `DeviceChanged`, levels and spectrum, tags and stream info, async seek, a lock-free clock);
+all six CD+G surface asks; a GitHub Packages NuGet feed (`FatzAudio` 0.2.0-ci.N, win-x64 and
+linux-x64, net10.0). Raw CD+G packs were deliberately not built.
+
+## Fit with this repo
+
+- `IAudioEngine` leaks BASS integer handles (`PlayHandle`, `SourceHandle`). Consumers use them
+  for MIDI lyrics (`MidiLyricExtractor`), the fade gain stage, the EQ filter, normalization and
+  silence analysis. A FatzAudio engine has no such handles, so those consumers need a seam first.
+- `VideoAudioEngine` (1,107 lines) pushes decoded FFmpeg audio into a BASS push stream and reads
+  the position back for A/V sync. FatzAudio's push/packet streams with tempo and a clock replace
+  it, but this is the timing-critical path: last, and gated by owner smoke.
+- Core must not reference FatzAudio. The engine lives in a new package
+  (`FatzBomb.MediaControl.Audio.FatzAudio`); `scripts/check-core-boundary.ps1` pins the
+  reference DAG and is updated deliberately.
+
+## Slices
+
+0. **Verify (spike).** Pull `FatzAudio` 0.2.0-ci.N; a test project opens a file, plays it to a
+   null/dummy device, seeks, loops and reads the clock on Linux. Decide how CI authenticates to
+   GitHub Packages (a `read:packages` secret). Check FatzAudio's header version check against
+   the pinned package. Nothing else starts until this passes.
+1. **Seam, no behaviour change.** Remove BASS handles from the engine contract: lyrics from the
+   file (or a FatzAudio-neutral reader) instead of a source handle; fade, EQ, normalization and
+   silence analysis behind small interfaces that the BASS engines implement as today. BASS output
+   must stay bit-for-bit as before; existing audio tests pass unchanged.
+2. **FatzAudioEngine for files and archives.** Open (path, archive entry), play/pause/stop/seek,
+   volume, pitch, tempo, loop with a per-wrap `PlaybackEnded`/`MediaLooped`, position from
+   `fa_stream_get_clock`, EQ from the built-in 16 bands, fades from volume ramps, device
+   following. Opt-in: `MediaPlayerConfiguration` audio engine choice and Player `--audio=fatz`.
+3. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
+   MIDI texts/marks for lyrics, `GetTrackerTime` for the tracker timeline, network playback.
+4. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
+   push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
+   0.75-1.5, seeks, loop wraps and pause/resume.
+5. **Decision (separate from the build).** Whether FatzAudio becomes the default, and whether
+   BASS is then removed.
+
+## Karaoke presentation (agreed with the owner 2026-10-20)
+
+FatzAudio draws CD+G and MIDI lyrics; we place, scale, fill the background and composite. The
+request is `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. Our side:
+
+- **Public API and Player options:** CD+G PresentationScale (off = classic native indices, the
+  default and today's path), smoothness 0-10, edge blend, safety zone (Show, Remove, Auto,
+  Super), padding; shared effects (outline, shadow, bevel; size, distance, fade 0.0-1.0); MIDI
+  lyric design preset, colours, font, panel, lines shown, subtitle mode, wipe style; a karaoke
+  render quality setting (100%, 75%, 50%).
+- **Presentation size:** per surface, in physical pixels (DPI-aware), in the window's exact
+  shape; the largest window's size, or a reduced same-shape size (render quality, governor);
+  passed only when a resize has finished. One render feeds every window; our GPU scales to each.
+- **Fit:** uniform fit of the returned bitmap, centred, background fill around it. Exact 1:1
+  fits use nearest sampling; other fits shrink with smooth interpolation. Classic native indices
+  stay nearest-sampled with the palette lookup on the GPU, as today.
+- **Transparent edge sampling:** texture addressing treats anything outside a bitmap as
+  transparent (not edge-repeat), so a bitmap's outermost pixels never blend with garbage.
+- **Governor:** if FatzAudio's reported update time stays over a budget (about 8 ms) for a few
+  seconds, lower the CD+G presentation size first (half, then a quarter), lyrics only if they are
+  the slow part; log it, and show render cost in the Player diagnostics.
+- **Layout revisions:** reallocate from our buffer pool when a frame reports a new
+  `layout_revision`; draw into our pooled or mapped upload buffers.
+- **Background:** drawn by us from the reported background colour and its change revision; the
+  border made transparent and drawn by us when shown.
+
+## DJ mixer and microphones (agreed with the owner 2026-10-23)
+
+FatzAudio planned a deck mixer, beat-matching and mic input
+(`docs/fatzaudio/2026-10-23_FatzAudio_Plan_DjMixer.md`); our reply cuts the scope
+(`docs/fatzaudio/2026-10-23_MediaControl_Reply_DjMixerPlan.md`): everything karaoke needs plus common DJ
+items (2 decks, isolator EQ, crossfader, headphone cue, BPM/key, sync, loops, simple auto-mix, 2 mics with
+effects and ducking, recording); the rest is pinned for later. Mic latency is measured first.
+
+Our side, after the karaoke surfaces are integrated: a thin mixer layer in MediaControl where a player's
+audio attaches to a deck and its video, CD+G and lyrics follow that deck (fits the player Modes stage).
+Requirement passed to FatzAudio: a deck's heard position includes any delay added to the master output.
+The app keeps the playlist, singer rotation, controller mapping and song database.
+
+## Known gaps to decide on (from FatzAudio's own list)
+
+- **MIDI lyrics in Shift-JIS come out garbled** (only UTF-8 and Windows-1252 are recognized).
+  Karaoke MIDI is a core use case; keep our own `MidiLyricExtractor`/`MidiMetadataExtractor`
+  reading the file rather than relying on FatzAudio's text decoding until this is fixed.
+- MIDI: SysEx effect parameters ignored (one fixed reverb and chorus); a seek clears reverb
+  tails; no SFZ; no real-time MIDI input.
+- Trackers: no live tempo/speed or channel/instrument volume attributes; MO3 with compressed
+  samples unsupported.
+- Not supported at all: ALAC in `.caf`, DTS, TrueHD, WMA off Windows, xHE-AAC without an OS
+  decoder. Our FFmpeg fallback (033A) covers these by pushing decoded audio.
+- Reverse playback and BPM detection are not built.
+- Decode-only streams are not equalized and report no levels, so silence analysis and
+  normalization keep measuring decoded samples themselves.
+- Not yet run on real hardware by FatzAudio: WASAPI rerun, WMA, real CD drive, mobile. We run
+  the Windows smoke.
+
+## What we do not need to change yet
+
+FatzAudio's "five changes" mostly concern adopting its CD+G surface: we keep our own CDG engine
+(`fa_cdg_surface_update_at` uses ceil, not floor, and a CD+G offset of 0 if we apply our own).
+We never called `FFmpeg.Load`. Rebuilding against the 0.2 header and the NuGet feed token are
+slice 0.
+
+## Risks
+
+- FatzAudio is pre-1.0: a minor bump may break the API (`CHANGELOG.md`), and its binding throws
+  at the first call on a native major.minor mismatch. Pin an exact version.
+- Linux natives need glibc 2.35 or later; a new native dependency is documented in
+  `docs/NATIVE_DEPENDENCIES.md`.
+- A/V sync, loop gaplessness and latency are only judged on the owner's machine.
+
+## Must Preserve
+
+- BASS remains the default and a working fallback; the existing audio, loop, fade, EQ,
+  normalization, tracker and MIDI behaviour on BASS is unchanged by slices 0-1.
+- Core stays free of platform and FatzAudio references.

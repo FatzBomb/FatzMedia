@@ -37,8 +37,10 @@ public static class MediaControlServiceProvider
     private static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration)
     {
         _ = services.AddSingleton(MediaAnalysisCache.Shared);
-        _ = services.AddSingleton<IAudioEngine>(provider =>
-            CreateAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>()));
+        // Background mode (043A) never initializes audio output.
+        _ = services.AddSingleton<IAudioEngine>(provider => MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
+            ? CreateAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>())
+            : new SilentAudioEngine());
         _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
             provider.GetRequiredService<IAudioEngine>() as IMediaFileAnalyzer ?? UnavailableMediaFileAnalyzer.Instance);
         _ = services.AddSingleton<ICdgEngine, CdgEngine>();

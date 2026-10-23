@@ -44,8 +44,18 @@ public sealed class MediaControls
         get;
         set
         {
+            HostLoopMedia = value;
             if (field == value)
                 return;
+
+            if (!value && ForcesLoop)
+            {
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    MediaPlayerModePolicy.DiagnosticCategory,
+                    "Background mode always loops; LoopMedia = false was ignored.");
+                return;
+            }
 
             var previous = field;
             field = value;
@@ -60,6 +70,33 @@ public sealed class MediaControls
         }
     }
 
+
+    /// <summary>
+    /// Stage 043A Background mode: turns <see cref="LoopMedia"/> on and keeps it on (turning it
+    /// off is ignored with a diagnostic).
+    /// </summary>
+    internal bool ForcesLoop
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value && !LoopMedia)
+            {
+                // Forced, not asked for: the host's own value stays what it was.
+                var hostLoopMedia = HostLoopMedia;
+                LoopMedia = true;
+                HostLoopMedia = hostLoopMedia;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the <see cref="LoopMedia"/> value the host last asked for (Stage 043A). It differs from
+    /// <see cref="LoopMedia"/> only while <see cref="ForcesLoop"/> keeps looping on, and a mode
+    /// switch carries it to the next mode.
+    /// </summary>
+    internal bool HostLoopMedia { get; private set; }
 
     /// <summary>
     /// Event raised when media reaches the end.

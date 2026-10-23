@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-18
+Updated: 2026-10-23
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -21,9 +21,10 @@ needs Windows to verify.
 Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which replaces this path.
 - BASS is initialised without `DeviceInitFlags.Latency`, so `BASS_INFO.latency` is 0 and
   output-latency compensation (and the USB/Bluetooth heuristic) does nothing.
-- The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
-  `Bass.Free` is never called, so it cannot recover a lost device. Real recovery is the
-  player-level Reset on a device change.
+- ~~The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
+  `Bass.Free` is never called, so it cannot recover a lost device.~~ Replaced by ENG-032's
+  output watchdog (`BASS_Start`, then `BASS_DEVICE_REINIT`); switching to a different device
+  still needs the player-level Reset.
 - `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
 
 ### ENG-022 - Subtitle content flag is never revoked
@@ -59,15 +60,6 @@ Reported: 2026-10-18 (audit).
 - Event delivery is inconsistent: some events swallow handler exceptions, others let them
   escape onto engine threads.
 
-### ENG-025 - Process-global state shared across players
-
-Reported: 2026-10-18 (audit).
-- `DiagnosticRouter` is a static event; every player (and coordinator) subscribes, so one
-  player's device-lost diagnostic makes every coordinator start recovery.
-- `FfmpegAudioFallback` keeps one process-wide prepared conversion shared by all players.
-- `FileTypes.Audio`/`Video`/`FfmpegAudio` are public mutable static `HashSet`s written during
-  native bootstrap and read from any thread.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
 Reported: 2026-10-18 (audit; perf items not measured).
@@ -93,15 +85,183 @@ path, and check VRAM use at 4K.
 ### ENG-028 - MIDI silent after the audit's DLS converter changes
 
 Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
-plays with no audio. Not reproduced on Linux (no `gm.dls`). Likely cause: the cache key now
-includes the DLS's size and write time, so Windows' `gm.dls` was converted again by the
+plays with no audio. Not reproduced on Linux (no `gm.dls`). Suspected cause: the cache key
+included the DLS's size and write time, so Windows' `gm.dls` was converted again by the
 current converter instead of reusing the older cached `gm.dls.sf2`; either that conversion
-failed (`No soundfont found`) or its SF2 plays silently. Needed: the Log's `BASSMIDI` lines and
+failed (`No soundfont found`) or its SF2 plays silently. The cache name is back to
+`{name}.sf2`, so an older cached SF2 is used again; the converter's other changes (sample IDs,
+loop ends, chunk padding) are untested against a real `gm.dls` and remain the suspect if MIDI
+stays silent after the old cache is gone.
+
+Checked 2026-10-20 with the owner's real `gm.dls` (3.3 MB): the current converter and the
+pre-audit one both convert it without error, to the same size; the sample data and every
+instrument, region and bag record are identical, and only 439 sample headers differ, by a loop
+end one sample earlier (the file's authored loop end). So the SF2 is not the cause. The other
+MIDI-specific change, dropping `FxFreeSource` (= `BASS_MIDI_NOTEOFF1`) from the source-stream
+flags, is restored as it was. The audio engine, normalizer and end-sync changes are unlikely
+but not excluded; the `BASSMIDI` log lines would settle it. Needed: the Log's `BASSMIDI` lines and
 the sizes in `%LOCALAPPDATA%\FatzBombMedia\soundfonts`. Workaround: rename the old
 `gm.dls.sf2` to the new cache name. Owner is waiting on FatzAudio (037A), which may replace
 this MIDI path.
 
+### ENG-029 - CD+G: smooth scroll, memory-preset repeats and pack timing
+
+Reported: 2026-10-20 (comparison with FatzAudio's `cdg.c`, differential test over 9,500 fuzzed
+packs; see `docs/fatzaudio/2026-10-20_MediaControl_Review_MidiAndCdg.md`). Both decoders agree
+on every pixel and palette entry except:
+- **Smooth scroll ignored.** `CdgStateMachine.ScrollUnsafe` never reads the horizontal (0-5) and
+  vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
+  glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
+  288x192 picture area when rendering (the border stays). Verified by test.
+- **Memory preset with repeat != 0 never clears pixels** - **Fixed 2026-10-23, pending manual
+  smoke with a CD+G that clears with repeat packs.** A repeat pack now clears unless the previous
+  pack was a Memory Preset of the same colour (then it is skipped and reports unchanged). The
+  previous-preset colour is part of the replay checkpoint, restored on seek, and cleared on
+  reset/load. Verified by tests.
+- **Pack timing truncates a double** - **Fixed 2026-10-23, pending manual smoke.**
+  `CdgEngine.PacketCountAt` counts floor(position x 300) packs in integer nanoseconds (same
+  meaning of position as before: pack n applies at (n + 1) / 300 s), so exact boundaries no
+  longer land one pack off. `RenderPipeline` uses the same helper. FatzAudio's ceil rule would
+  shift every position by one pack and was not adopted. Verified by tests.
+- Smaller: the transparent-colour pack is a no-op and index 0 always takes the background
+  opacity; each seek marks the whole frame dirty; `CdgPacket` allocates a small array per pack
+  (about 14 MB for a 4-minute file) and every changed snapshot copies 64.8 KB. FatzAudio's seeks
+  measured about 15x cheaper on the same input.
+
+### ENG-030 - DLS-to-SF2 converter drops loops and articulation
+
+Reported: 2026-10-20 (comparison with FatzAudio's `dls.c`; Windows `gm.dls` scanned). Our
+converter writes loop points but never sampleModes (generator 54), so nothing loops (1,114 of
+1,498 `gm.dls` regions should); applies region fine tune twice (shdr correction and generator 52;
+1,025 regions); drops all art1 articulation (envelopes, vibrato, tremolo), region gain and pan
+(432 regions), and key groups (120 regions); ignores ptbl (safe for `gm.dls`); writes `ifil` as
+the wrong bytes. These degrade the sound but do not silence it (ENG-028). Likely superseded by
+037A slice 3 (FatzAudio loads DLS directly); fix only the cheap items (sampleModes, double fine
+tune) if MIDI stays on BASS for long.
+
+### ENG-031 - MIDI lyrics: encoding and text-event fallback
+
+Reported: 2026-10-20 (same comparison). `MidiLyricExtractor` gets text from BASS marks, which
+ManagedBass decodes with the system ANSI code page: Shift-JIS is right only on a Japanese-locale
+PC and UTF-8 is garbled elsewhere. The text-event fallback takes every track's meta-1 text with
+no karaoke check, so ordinary MIDI files can show instrument names as lyrics. The 42-character
+line break only triggers when the previous syllable ends in a space. `MidiMetadataExtractor`
+label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio has the same
+encoding gap, so this stays ours under 037A.
+
 ## Completed
+
+### ENG-025 - Process-global state shared across players
+
+Resolved: 2026-10-23, pending manual smoke (two players open, device loss on one).
+
+Reported: 2026-10-18 (audit).
+- `DiagnosticRouter` is a static event; every player (and coordinator) subscribes, so one
+  player's device-lost diagnostic makes every coordinator start recovery.
+- `FfmpegAudioFallback` keeps one process-wide prepared conversion shared by all players.
+- `FileTypes.Audio`/`Video`/`FfmpegAudio` are public mutable static `HashSet`s written during
+  native bootstrap and read from any thread.
+
+Fix:
+- `DiagnosticRouter` keeps an `AsyncLocal` owner. A player enters itself as owner in its
+  constructor and around surface attach/resize/detach/live-resize, so the threads and tasks
+  it starts inherit it; `MediaDiagnosticInfo.Owner` carries it and `IsFor(owner)` is true for
+  the owner and for unowned (process-wide) diagnostics. `MediaControlPlayer.MediaDiagnostic`
+  and the coordinator's device-lost recovery ignore other owners' diagnostics.
+- Paths that drop the execution context re-enter the owner: `AudioEngine`'s BASS end-sync
+  callback (native thread) and the faded prepared-next transition (`SuppressFlow`).
+  `MonitorRefreshRateCache`'s refresh work stays unowned (process-wide, goes to every player).
+- `FfmpegAudioFallback` keeps up to four prepared conversions keyed by source
+  (`PreparedConversionCache`), so one player preparing no longer evicts another's.
+- `FileTypes`: not changed. The sets are written once, under the bootstrap lock, before any
+  player loads media, and re-adding an existing extension does not mutate a `HashSet`, so
+  concurrent readers never see a write in progress.
+
+Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
+`MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
+
+Known limits (code review 2026-10-23, not fixed):
+- Synchronous public setters (`LoopMedia`, `Effects.*`, `TransparentBackground`) do not enter the
+  player's owner, so a diagnostic they raise while called from another player's event handler is
+  attributed to that other player. Fix if it shows up: enter the owner on every public entry point.
+- Prepared conversions are keyed by file, not by player: two players preparing the same file share
+  one entry, and one player's clear disposes it, so the other converts again at transition time.
+  Fix if it shows up: reference-count entries per player.
+
+### ENG-032 - Playback never resumes after another application takes the audio device
+
+Resolved: 2026-10-23, pending manual smoke.
+
+Reported: 2026-10-23 (owner). Two players in the Avalonia test player (Windows, BASS audio).
+Another application on the PC (an audio engine running speaker tests, probably opening the
+device in WASAPI exclusive mode) took the output device. Both players stopped, audio and video
+(video follows the audio clock); the UI stayed responsive and nothing was logged. Playback
+never resumed after the other application finished, and loading a new file did not play either.
+
+Cause: nothing in our code noticed BASS losing the output. BASS pauses the device's output and
+parks its playing channels as `BASS_ACTIVE_PAUSED_DEVICE` (state 4, not in ManagedBass 4.0.2's
+`PlaybackState`), and only `BASS_Start` (or a reinit) brings them back. The device monitors
+(`PollingAudioDeviceMonitor` on Windows, `BassDeviceAudioMonitor` on Linux) only detect
+default-device and sample-rate changes. The "device recovery" in `AudioEngine.Play()` re-ran
+`BASS_Init` on a device that was still initialized (`BASS_ERROR_ALREADY`, so a no-op) and failed
+quietly with a generic warning; `VideoAudioEngine.Play()` did not report the failure at all.
+
+Fix (Core only, BASS only, so Windows and Linux share it):
+- **Decision unit:** `Core/Audio/AudioOutputRecoveryTracker` is pure. Given a device sample
+  (output status from `BASS_IsStarted`, how many channels intend to play, how many BASS reports
+  as paused by the device) and the time, it returns the next action: none, report lost, start,
+  reinit, resume channels, report recovered. It reports a loss once per outage, retries once a
+  second, follows a failed `BASS_Start` with a reinit and a failed reinit with a plain start,
+  resumes parked channels once the output is back (escalating to a reinit if they stay
+  parked), and reports the recovery once. Channels whose engine is not `Playing` never count.
+- **Watchdog:** `Core/Audio/BassOutputWatchdog` is the thin BASS layer. `AudioEngine` and
+  `VideoAudioEngine` register while their state is `Playing` and unregister on pause, stop,
+  close and dispose. One process-wide timer runs only while something is registered: every
+  second it groups the playing channels by `BASS_ChannelGetDevice`, samples each device, and
+  carries out the tracker's action, so a device is restarted once per process however many
+  players share it. Restarts are `BASS_Start`, then `BASS_Init(device, rate,
+  BASS_DEVICE_REINIT)` on the same device and last known sample rate. Each engine resumes only
+  its own channel (`BASS_ChannelPlay` without restart, so at its position), under its transport
+  lock and only if it is still `Playing`, so a channel the host paused or stopped is never
+  touched. When the last engine unregisters the timer stops and the outage is forgotten.
+  `BASS_IsStarted` is not wrapped by ManagedBass 4.0.2: it is called through a function pointer
+  resolved from the BASS module ManagedBass itself loads (the same `DllImport` resolution,
+  including the Linux resolver); if the export is missing, detection falls back to channel
+  state alone.
+- **Reporting:** one unowned `DiagnosticRouter` Warning per outage (category `AudioOutput`):
+  "Audio output unavailable (another application may be using the device exclusively);
+  retrying (output: ...)", and an Info "Audio output available again; playback resumed" on
+  recovery. Every player also raises the existing public `AudioDeviceChanged` event (no new
+  API): `DeviceRemoved` with that failure message on the loss, `DeviceAdded` on the recovery.
+- **Play while unavailable:** when `BASS_ChannelPlay` fails with an output error (`BASS_ERROR_START`,
+  `BASS_ERROR_REINIT`, busy, device, driver, unknown), both engines restart the output once
+  (sharing the watchdog's per-device rate limit) and retry. If it still fails they raise an
+  Error: "Audio output unavailable (another application may be using the device exclusively);
+  playback could not start (...)". This replaces the inert re-init in `AudioEngine.Play()`
+  (the ENG-021 bullet). If the play succeeds but BASS parks the channel, the watchdog resumes
+  it like any other.
+
+Tests: `AudioOutputRecoveryTrackerTests` (21) covers detection (stopped output, parked channel,
+unknown output status, nothing playing), one report per outage, the one-second retry, the
+start/reinit alternation, resume and its escalation, recovery, a second outage, the shared
+rate limit with Play, and a full outage scenario. The BASS layer cannot run in tests.
+
+Manual smoke (Windows):
+1. Play a file in each player of the Avalonia test player (audio and a video).
+2. In Windows Sound settings, open the output device's properties > Advanced and enable "Allow
+   applications to take exclusive control of this device".
+3. Start an application that holds the device exclusively (an ASIO/WASAPI-exclusive player or
+   a speaker test), or unplug a USB audio device.
+4. Expect one Warning in each player's log, "Audio output unavailable (another application
+   may be using the device exclusively); retrying", and `AudioDeviceChanged` if the host shows it.
+5. Close the other application (or plug the USB device back in). Within about a second both
+   players resume from where they stopped, video with them, and the log shows "Audio output
+   available again; playback resumed".
+6. Pause one player during an outage, then end the outage: the paused player stays paused.
+7. During an outage, load a new file and press Play: expect either an Error naming the
+   unavailable output (Play failed; press Play again after the outage) or playback that starts
+   by itself when the outage ends, never silent failure.
+8. Linux (when BASS player smoke runs): unplug and replug a USB audio device while playing.
 
 ### ENG-020 - October 2026 code audit
 

@@ -107,21 +107,85 @@ public class CdgStateMachineTests
         Assert.All(indices, b => Assert.Equal(5, b));
     }
 
+    private static byte[] Preset(byte color, byte repeat) =>
+        MakePacket((byte)CdgConstants.Instruction.MemoryPreset, color, repeat);
+
+    private static byte[] Tile(byte color0, byte color1, byte row, byte col) =>
+        MakePacket((byte)CdgConstants.Instruction.TileBlockNormal, color0, color1, row, col, 0xFF);
+
     [Fact]
-    public void MemoryPreset_WithNonZeroRepeatDoesNotFillButStillReportsChanged()
+    public void MemoryPreset_LoneRepeatPackStillClears()
     {
         var sm = new CdgStateMachine();
-        _ = sm.ProcessPacket(MakePacket(
-            (byte)CdgConstants.Instruction.MemoryPreset,
-            0x07, 0x00)); // fill with 7 first
+        _ = sm.ProcessPacket(Preset(7, 0));
+        _ = sm.ProcessPacket(Tile(1, 1, 0, 0)); // the previous pack is not a preset
 
-        var changed = sm.ProcessPacket(MakePacket(
-            (byte)CdgConstants.Instruction.MemoryPreset,
-            0x03, 0x01)); // color 3, repeat != 0 → no fill
+        var changed = sm.ProcessPacket(Preset(3, 1)); // the original clear was lost; only repeat 1 arrives
 
-        Assert.True(changed); // current behavior: always true
-        var indices = GetColorIndices(sm);
-        Assert.All(indices, b => Assert.Equal(7, b)); // unchanged pixels
+        Assert.True(changed);
+        Assert.All(GetColorIndices(sm), b => Assert.Equal(3, b));
+    }
+
+    [Fact]
+    public void MemoryPreset_RepeatDirectlyAfterTheSamePresetClearsOnce()
+    {
+        var sm = new CdgStateMachine();
+        _ = sm.ProcessPacket(Preset(3, 0));
+        CdgRenderSnapshot first = sm.CreateSnapshot();
+        var revision = sm.Revision;
+
+        Assert.False(sm.ProcessPacket(Preset(3, 1)));
+        Assert.False(sm.ProcessPacket(Preset(3, 2)));
+
+        CdgRenderSnapshot after = sm.CreateSnapshot();
+        Assert.Equal(revision, sm.Revision);
+        Assert.False(after.HasDirtyRegions);
+        Assert.True(first.ColorIndices.Span.SequenceEqual(after.ColorIndices.Span));
+    }
+
+    [Fact]
+    public void MemoryPreset_ADifferentPresetBetweenRepeatsClearsAgain()
+    {
+        var sm = new CdgStateMachine();
+        _ = sm.ProcessPacket(Preset(3, 0));
+        _ = sm.ProcessPacket(Preset(5, 0)); // a different preset between
+
+        Assert.True(sm.ProcessPacket(Preset(3, 1)));
+        Assert.All(GetColorIndices(sm), b => Assert.Equal(3, b));
+    }
+
+    [Fact]
+    public void MemoryPreset_RepeatAfterAnotherPackClearsAgain()
+    {
+        var sm = new CdgStateMachine();
+        _ = sm.ProcessPacket(Preset(3, 0));
+        _ = sm.ProcessPacket(Tile(1, 1, 0, 0));
+        Assert.NotEqual(3, GetColorIndices(sm)[0]);
+
+        Assert.True(sm.ProcessPacket(Preset(3, 1)));
+        Assert.All(GetColorIndices(sm), b => Assert.Equal(3, b));
+    }
+
+    [Fact]
+    public void MemoryPreset_PreviousPackSurvivesACheckpointAndIsClearedByReset()
+    {
+        var sm = new CdgStateMachine();
+        _ = sm.ProcessPacket(Preset(3, 0));
+        CdgReplayCheckpoint checkpoint = sm.CaptureReplayCheckpoint();
+
+        // Playing through: the repeat after the preset is skipped.
+        Assert.False(sm.ProcessPacket(Preset(3, 1)));
+
+        // Seeking to the checkpoint and replaying gives the same answer.
+        var other = new CdgStateMachine();
+        other.RestoreReplayCheckpoint(checkpoint);
+        Assert.False(other.ProcessPacket(Preset(3, 1)));
+        Assert.True(GetColorIndices(sm).AsSpan().SequenceEqual(GetColorIndices(other)));
+
+        // A reset forgets it: the repeat is a lone repeat again and clears.
+        other.Reset();
+        Assert.True(other.ProcessPacket(Preset(3, 1)));
+        Assert.All(GetColorIndices(other), b => Assert.Equal(3, b));
     }
 
     [Fact]

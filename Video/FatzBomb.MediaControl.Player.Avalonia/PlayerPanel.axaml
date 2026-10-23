@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Avalonia;assembly=FatzBomb.MediaControl.Avalonia"
+             x:Class="FatzBomb.MediaControl.Player.Avalonia.PlayerPanel">
+  <Border Margin="2" BorderThickness="1" BorderBrush="#40808080" Padding="6">
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
+
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+        <Button x:Name="OpenButton" Content="Open..." Click="OnOpenClick" />
+        <TextBlock x:Name="FileText" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Text="(no file)" />
+      </Grid>
+
+      <Border Grid.Row="1" Background="Black" MinHeight="80">
+        <fbm:MediaSurface x:Name="Surface" VideoDisplayMode="Zoom" />
+      </Border>
+
+      <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <TextBlock x:Name="PositionText" VerticalAlignment="Center" Text="0:00" />
+        <Slider x:Name="SeekSlider" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="OnSeekValueChanged" />
+        <TextBlock x:Name="DurationText" Grid.Column="2" VerticalAlignment="Center" Text="0:00" />
+      </Grid>
+
+      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+        <Button x:Name="PlayPauseButton" Content="Play" MinWidth="70" Click="OnPlayPauseClick" />
+        <Button x:Name="StopButton" Content="Stop" Click="OnStopClick" />
+        <CheckBox x:Name="LoopBox" Content="Loop" IsCheckedChanged="OnLoopChanged" />
+        <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
+      </StackPanel>
+
+      <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">
+        <TextBlock Grid.Row="0" Text="Volume" VerticalAlignment="Center" />
+        <Slider x:Name="VolumeSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="80" ValueChanged="OnVolumeChanged" />
+        <TextBlock x:Name="VolumeText" Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="1" Text="Pitch" VerticalAlignment="Center" />
+        <Slider x:Name="PitchSlider" Grid.Row="1" Grid.Column="1" Minimum="-12" Maximum="12" Value="0"
+                TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="OnPitchChanged" />
+        <TextBlock x:Name="PitchText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="2" Text="Tempo" VerticalAlignment="Center" />
+        <Slider x:Name="TempoSlider" Grid.Row="2" Grid.Column="1" Minimum="50" Maximum="200" Value="100"
+                TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="OnTempoChanged" />
+        <TextBlock x:Name="TempoText" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" />
+      </Grid>
+
+      <TextBlock x:Name="StatusText" Grid.Row="5" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="12"
+                 TextWrapping="Wrap" Text="starting..." />
+
+      <Expander Grid.Row="6" Header="Log (newest first)" IsExpanded="True">
+        <ListBox x:Name="LogList" Height="100" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="11" />
+      </Expander>
+    </Grid>
+  </Border>
+</UserControl>

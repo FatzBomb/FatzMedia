@@ -93,6 +93,7 @@ jobs:
           dotnet build FatzBomb.MediaControl.Linux.Tests/FatzBomb.MediaControl.Linux.Tests.csproj -c Release
           dotnet build FatzBomb.MediaControl.Rendering.Vulkan.Tests/FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj -c Release
           dotnet build FatzBomb.MediaControl.Avalonia.Tests/FatzBomb.MediaControl.Avalonia.Tests.csproj -c Release
+          dotnet build FatzBomb.MediaControl.Player.Avalonia/FatzBomb.MediaControl.Player.Avalonia.csproj -c Release -f net10.0
 
       - name: Portable tests
         run: dotnet test FatzBomb.MediaControl.Portable.Tests/FatzBomb.MediaControl.Portable.Tests.csproj -c Release --no-build

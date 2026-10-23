@@ -167,6 +167,23 @@ internal sealed class D3D11RendererPresentationServices
             _configuration.EnableLogging,
             notifyPresented);
 
+    public bool CreateSharedTextureSurface(
+        bool isDisposed,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        Action<int, int, bool> notifyPresented,
+        out string? failureReason) => Surfaces.CreateSharedTextureSurface(
+            isDisposed,
+            _deviceResources,
+            consumer,
+            width,
+            height,
+            ResourceCleaner.CleanupPrimarySurfaces,
+            _configuration.EnableLogging,
+            notifyPresented,
+            out failureReason);
+
     /// <summary>
     /// Disposes only the primary presentation surface/backends, retaining secondary native HWND
     /// targets so they survive a primary detach and resume when a native primary returns.

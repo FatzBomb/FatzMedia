@@ -40,8 +40,8 @@ internal sealed class ConvertedAudio(string sourceIdentity, byte[]? data, long l
 /// Plays audio formats no BASS plugin claims (Stage 033A slice 2): FFmpeg decodes the file to a
 /// float WAV, which opens through <see cref="AudioEngine"/>'s normal stream path, so the file
 /// gets every plain-audio feature (seek, loop, tempo, equalizer, fades, normalization,
-/// trimming, prepared-next). One conversion made for the prepared-next item is kept so the
-/// transition does not convert again.
+/// trimming, prepared-next). The conversion made for a prepared-next item is kept so the
+/// transition does not convert again (one per player, up to <see cref="MaxPreparedConversions"/>).
 /// </summary>
 internal static class FfmpegAudioFallback
 {
@@ -50,8 +50,11 @@ internal static class FfmpegAudioFallback
     // RIFF sizes are 32-bit; the header below is 58 bytes.
     private const long MaxWavDataBytes = uint.MaxValue - FloatWav.HeaderBytes;
 
-    private static readonly Lock Gate = new();
-    private static ConvertedAudio? _prepared;
+    /// <summary>Prepared conversions kept at once: one per player's next item, for a few players.</summary>
+    internal const int MaxPreparedConversions = 4;
+
+    private static readonly PreparedConversionCache<ConvertedAudio> Prepared =
+        new(MaxPreparedConversions, static converted => converted.SourceIdentity);
 
     /// <summary>Converted WAVs larger than this go to a temp file instead of memory.</summary>
     internal static long MaxInMemoryBytes { get; set; } = DefaultMaxInMemoryBytes;
@@ -68,52 +71,25 @@ internal static class FfmpegAudioFallback
 
     /// <summary>
     /// Converts <paramref name="path"/> ahead of time and keeps the result for
-    /// <see cref="Take"/>, replacing any earlier prepared conversion. The returned object stays
-    /// owned by the fallback; callers must not dispose it.
+    /// <see cref="Take"/>, next to other players' prepared conversions (the oldest is dropped past
+    /// <see cref="MaxPreparedConversions"/>). The returned object stays owned by the fallback;
+    /// callers must not dispose it.
     /// </summary>
     public static ConvertedAudio? Prepare(string path, CancellationToken cancellationToken)
     {
         var identity = CreateIdentity(path);
-        lock (Gate)
-        {
-            if (_prepared?.SourceIdentity == identity)
-                return _prepared;
-        }
+        if (Prepared.Find(identity) is { } kept)
+            return kept;
 
         ConvertedAudio? converted = Convert(path, identity, cancellationToken);
-        if (converted is null)
-            return null;
-
-        ConvertedAudio? replaced;
-        lock (Gate)
-        {
-            replaced = _prepared;
-            _prepared = converted;
-        }
-
-        replaced?.Dispose();
-        return converted;
+        return converted is null ? null : Prepared.Add(converted);
     }
 
     /// <summary>
     /// Frees the prepared conversion of <paramref name="path"/>, if it is the one kept, when its
     /// prepared-next item is cleared or replaced or its player is disposed.
     /// </summary>
-    public static void Release(string path)
-    {
-        var identity = CreateIdentity(path);
-        ConvertedAudio? released = null;
-        lock (Gate)
-        {
-            if (_prepared?.SourceIdentity == identity)
-            {
-                released = _prepared;
-                _prepared = null;
-            }
-        }
-
-        released?.Dispose();
-    }
+    public static void Release(string path) => Prepared.Release(CreateIdentity(path));
 
     /// <summary>
     /// Returns the prepared conversion of <paramref name="path"/> when it is still current,
@@ -122,17 +98,7 @@ internal static class FfmpegAudioFallback
     public static ConvertedAudio? Take(string path, CancellationToken cancellationToken)
     {
         var identity = CreateIdentity(path);
-        lock (Gate)
-        {
-            if (_prepared?.SourceIdentity == identity)
-            {
-                ConvertedAudio prepared = _prepared;
-                _prepared = null;
-                return prepared;
-            }
-        }
-
-        return Convert(path, identity, cancellationToken);
+        return Prepared.Take(identity) ?? Convert(path, identity, cancellationToken);
     }
 
     private static ConvertedAudio? Convert(string path, string identity, CancellationToken cancellationToken)

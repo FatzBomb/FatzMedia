@@ -189,6 +189,53 @@ public interface IMediaControlSession : IDisposable
         set { }
     }
 
+    /// <summary>
+    /// Gets the session's mode (Stage 043A): the one it was created in until
+    /// <see cref="SetModeAsync"/> switches it. Sessions without modes are
+    /// <see cref="MediaPlayerMode.Full"/>.
+    /// </summary>
+    MediaPlayerMode Mode => MediaPlayerMode.Full;
+
+    /// <summary>
+    /// Switches the session to another mode on the fly (Stage 043A slice 2), reopening the open
+    /// media at its position and in its transport state. Returns <see langword="true"/> when the
+    /// session is in <paramref name="mode"/> afterwards. Sessions without modes return
+    /// <see langword="true"/> only for their current mode.
+    /// </summary>
+    Task<bool> SetModeAsync(MediaPlayerMode mode) => Task.FromResult(mode == Mode);
+
+    /// <summary>
+    /// Raised after <see cref="SetModeAsync"/> switched to another mode. Sessions without modes
+    /// never raise it.
+    /// </summary>
+    event EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? ModeChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
+    /// Gets or sets whether loads search for sidecar and archive backgrounds (Stage 043A, default
+    /// <see langword="true"/>). An explicit background passed to a load still applies. Sessions
+    /// without the choice always search.
+    /// </summary>
+    bool AutoBackground
+    {
+        get => true;
+        set { }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the output is transparent where nothing is drawn, including the CD+G
+    /// background colour (Stage 043A, default <see langword="false"/>: black). Sessions without the
+    /// choice stay black.
+    /// </summary>
+    bool TransparentBackground
+    {
+        get => false;
+        set { }
+    }
+
     /// <summary>Selects an available subtitle track. Pass <see langword="null"/> to disable subtitles.</summary>
     bool SelectSubtitleTrack(string? trackId);
 
@@ -388,7 +435,11 @@ public interface IMediaControlSession : IDisposable
     /// Raised when the active audio output device is lost, the system default device changes,
     /// or the audio device state otherwise changes. Core does not change playback state from
     /// this notification; BASS/Windows remain responsible for active stream migration. Hosts
-    /// should surface a user-visible diagnostic when needed. May fire from background threads;
+    /// should surface a user-visible diagnostic when needed. When BASS loses the output (another
+    /// application takes the device exclusively, or it is unplugged), every player raises it with
+    /// <see cref="AudioDeviceChangeKind.DeviceRemoved"/> and a failure message while Core retries
+    /// once a second, then with <see cref="AudioDeviceChangeKind.DeviceAdded"/> once the output is
+    /// back and playing channels resumed. May fire from background threads;
     /// hosts must marshal to the UI thread before touching view state.
     /// </summary>
     event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;

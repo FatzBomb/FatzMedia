@@ -201,12 +201,17 @@ public partial class MediaControlPlayer
                 // faded path waits off the queue and re-validates before its load step.
                 using (ExecutionContext.SuppressFlow())
                 {
-                    _ = Task.Run(() => RunFadedPreparedNextTransitionAsync(
-                        slotGeneration,
-                        isAutomatic: true,
-                        fade,
-                        fadeOutgoing: false,
-                        StillValid));
+                    _ = Task.Run(() =>
+                    {
+                        // Suppressing the flow also dropped the diagnostic owner: restore it.
+                        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+                        return RunFadedPreparedNextTransitionAsync(
+                            slotGeneration,
+                            isAutomatic: true,
+                            fade,
+                            fadeOutgoing: false,
+                            StillValid);
+                    });
                 }
 
                 return Task.FromResult(true);

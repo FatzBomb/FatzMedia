@@ -882,6 +882,40 @@ public sealed class MediaControlPlayerTests
         Assert.Equal(100, player.Effects.Tempo);
     }
 
+    [Fact]
+    public async Task MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll()
+    {
+        using var playerA = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        var seenByA = new ConcurrentQueue<string>();
+        var seenByB = new ConcurrentQueue<string>();
+        using var bothSawUnowned = new CountdownEvent(2);
+        void Record(ConcurrentQueue<string> seen, MediaDiagnosticEventArgs e)
+        {
+            if (e.Category != "OwnershipTest.Player")
+                return;
+            seen.Enqueue(e.Message);
+            if (e.Message == "unowned")
+                bothSawUnowned.Signal();
+        }
+
+        playerA.MediaDiagnostic += (_, e) => Record(seenByA, e);
+        playerB.MediaDiagnostic += (_, e) => Record(seenByB, e);
+
+        using (DiagnosticRouter.EnterOwner(playerA))
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Player", "for A");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Player", "unowned");
+
+        // Each player delivers in order on its control queue, so "unowned" arriving means "for A"
+        // was already delivered (or dropped).
+        Assert.True(bothSawUnowned.Wait(TestEnvironment.EventuallyTimeout));
+        await playerA.FlushControlOperationsAsync();
+        await playerB.FlushControlOperationsAsync();
+
+        Assert.Equal(["for A", "unowned"], seenByA);
+        Assert.Equal(["unowned"], seenByB);
+    }
+
     private sealed class TestPlatformFactory : IMediaControlPlatformFactory
     {
         private readonly Queue<TestMediaEngine> _engines;

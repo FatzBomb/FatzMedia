@@ -30,7 +30,11 @@ public partial class MediaControlPlayer : IMediaControlSession
     private IMediaPresentationCoordinator _presentationCoordinator;
     private MediaControlOperationQueue _controlOperations;
     private PlaybackPositionNotifier _positionNotifier;
+    // The host's surfaces. Guarded by _surfaceGate: host calls arrive on the UI thread while a
+    // rebuild (Reset, SetModeAsync) holds and reattaches them on the control queue.
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _surfaceGate = new();
+    private bool _surfacesHeld;
     private readonly Lock _operationAdmissionGate = new();
     private readonly Lock _seekCompletionGate = new();
     private readonly Lock _queuedSeekGate = new();
@@ -52,6 +56,10 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         _platformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+
+        // Diagnostics from this player's engine (its threads and tasks inherit the owner) reach
+        // only this player's MediaDiagnostic event, not every player's in the process.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
             CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
@@ -67,20 +75,7 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         // Reads Effects on every call: Reset replaces it.
         _scrubAudio = new ScrubAudioMuter((muted, ramp) => Effects.SetScrubMuted(muted, ramp));
-
-        try
-        {
-            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
-            if (_audioDeviceMonitor != null)
-            {
-                _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
-                _audioDeviceMonitor.Start();
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start: {ex.Message}");
-        }
+        StartAudioDeviceMonitor();
     }
 
     public MediaControls Controls { get; private set; }
@@ -525,11 +520,24 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_disposed || surface is null || !surface.IsValid)
             return false;
 
-        var attached = _presentationCoordinator.AttachPresentationSurface(surface);
-        if (attached)
-            _presentationSurfaces[surface.Id] = surface;
+        // Surface calls arrive on the host's UI thread and can create the device or start the
+        // render loop: attribute what they raise (and start) to this player.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        lock (_surfaceGate)
+        {
+            if (_surfacesHeld)
+            {
+                // The graph is being rebuilt: kept, and attached to the new graph when it is ready.
+                _presentationSurfaces[surface.Id] = surface;
+                return true;
+            }
 
-        return attached;
+            var attached = _presentationCoordinator.AttachPresentationSurface(surface);
+            if (attached)
+                _presentationSurfaces[surface.Id] = surface;
+
+            return attached;
+        }
     }
 
     public bool ResizePresentationSurface(string surfaceId, int pixelWidth, int pixelHeight)
@@ -537,33 +545,97 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId) || pixelWidth <= 0 || pixelHeight <= 0)
             return false;
 
-        if (!_presentationSurfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
-            return false;
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        lock (_surfaceGate)
+        {
+            if (!_presentationSurfaces.TryGetValue(surfaceId, out MediaPresentationSurfaceDescriptor? surface))
+                return false;
 
-        if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
-            return true;
+            if (surface.PixelWidth == pixelWidth && surface.PixelHeight == pixelHeight)
+                return true;
 
-        surface = surface.WithSize(pixelWidth, pixelHeight);
-        var resized = _presentationCoordinator.ResizePresentationSurface(surface.Id, pixelWidth, pixelHeight);
-        if (resized)
-            _presentationSurfaces[surface.Id] = surface;
+            surface = surface.WithSize(pixelWidth, pixelHeight);
+            if (_surfacesHeld)
+            {
+                // A held surface keeps its newest size for the reattach.
+                _presentationSurfaces[surface.Id] = surface;
+                return true;
+            }
 
-        return resized;
+            var resized = _presentationCoordinator.ResizePresentationSurface(surface.Id, pixelWidth, pixelHeight);
+            if (resized)
+                _presentationSurfaces[surface.Id] = surface;
+
+            return resized;
+        }
     }
 
-    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) =>
-        !_disposed && !string.IsNullOrWhiteSpace(surfaceId) && _presentationSurfaces.ContainsKey(surfaceId) && _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
+    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
+            return false;
+
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        lock (_surfaceGate)
+        {
+            return _presentationSurfaces.ContainsKey(surfaceId)
+                && (_surfacesHeld || _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing));
+        }
+    }
 
     public bool DetachPresentationSurface(string surfaceId)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
             return false;
 
-        var detached = _presentationCoordinator.DetachPresentationSurface(surfaceId);
-        if (detached)
-            _ = _presentationSurfaces.Remove(surfaceId);
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        lock (_surfaceGate)
+        {
+            if (_surfacesHeld)
+                return _presentationSurfaces.Remove(surfaceId);
 
-        return detached;
+            var detached = _presentationCoordinator.DetachPresentationSurface(surfaceId);
+            if (detached)
+                _ = _presentationSurfaces.Remove(surfaceId);
+
+            return detached;
+        }
+    }
+
+    /// <summary>
+    /// Before the graph is freed: the surfaces stay registered with the player but no longer reach
+    /// a coordinator, so host calls during the rebuild only update them.
+    /// </summary>
+    private void HoldPresentationSurfaces()
+    {
+        lock (_surfaceGate)
+            _surfacesHeld = true;
+    }
+
+    /// <summary>
+    /// Attaches the held surfaces, at their latest size, to the new graph's coordinator. A surface
+    /// the new coordinator refuses is dropped, as a refused attach is.
+    /// </summary>
+    private void ReattachHeldPresentationSurfaces()
+    {
+        lock (_surfaceGate)
+        {
+            KeyValuePair<string, MediaPresentationSurfaceDescriptor>[] held = [.. _presentationSurfaces];
+            _presentationSurfaces.Clear();
+            _surfacesHeld = false;
+            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in held)
+            {
+                try
+                {
+                    if (_presentationCoordinator.AttachPresentationSurface(kvp.Value))
+                        _presentationSurfaces[kvp.Key] = kvp.Value;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MediaControlPlayer] Reattaching surface {kvp.Key} failed: {ex.Message}");
+                }
+            }
+        }
     }
 
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
@@ -606,14 +678,62 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private bool ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
     {
-        // 1. Discard the prepared-next item (its analysis ran on the old engine), stop playback,
-        //    and close media
+        // Discard the prepared-next item (its analysis ran on the old engine).
         try { ClearPreparedNextForLifecycle(); } catch { }
+        RebuildSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue: false, restoreSettings: null);
+        return true;
+    }
+
+    /// <summary>
+    /// Closes the media, frees the session graph and builds a new one from
+    /// <paramref name="configuration"/> (Reset, and SetModeAsync with another mode). The host's
+    /// surfaces are held meanwhile and reattached to the new graph.
+    /// </summary>
+    /// <param name="keepOperationQueue">
+    /// Keeps the control queue: a mode switch runs on it, and the calls queued behind the switch
+    /// must run after it. Reset replaces it.
+    /// </param>
+    /// <param name="restoreSettings">
+    /// Applied to the new graph before its events are forwarded to the host.
+    /// </param>
+    private void RebuildSessionGraph(
+        MediaPlayerConfiguration configuration,
+        IReadOnlyList<string> resolvedNativeLibraryPaths,
+        bool keepOperationQueue,
+        Action? restoreSettings)
+    {
+        // ENG-025: the new graph's threads and tasks (and the control queue a Reset creates)
+        // inherit this player as their diagnostic owner.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        TearDownSessionGraph();
+
+        MediaControlOperationQueue oldOperations = _controlOperations;
+        try
+        {
+            CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
+        }
+        catch
+        {
+            // The old graph is gone. Keep the player rebuildable: the surfaces stay held (a retried
+            // Reset reattaches them) and Reset gets a fresh operation queue (the old one is disposed
+            // when Reset returns). Until then control calls fail with ObjectDisposedException.
+            if (!keepOperationQueue && ReferenceEquals(_controlOperations, oldOperations))
+                _controlOperations = new MediaControlOperationQueue("MediaControl");
+            throw;
+        }
+
+        ApplyVideoFrameTiming();
+        ReattachHeldPresentationSurfaces();
+        StartAudioDeviceMonitor();
+    }
+
+    /// <summary>Stops and closes the media, unsubscribes, and disposes the session graph.</summary>
+    private void TearDownSessionGraph()
+    {
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.OnScrubEnded(); } catch { }
         try { File.Close(); } catch { }
 
-        // 2. Unsubscribe internal events
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
         try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
         try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
@@ -625,6 +745,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)
@@ -632,53 +753,20 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
         catch { }
 
-        // 3. Disconnect audio device monitor
-        if (_audioDeviceMonitor != null)
-        {
-            try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
-            try { _audioDeviceMonitor.Stop(); } catch { }
-            try { _audioDeviceMonitor.Dispose(); } catch { }
-            _audioDeviceMonitor = null;
-        }
+        StopAudioDeviceMonitor();
+        HoldPresentationSurfaces();
 
-        // 4. Preserve presentation surfaces for reattachment
-        var surfaces = new Dictionary<string, MediaPresentationSurfaceDescriptor>(_presentationSurfaces, StringComparer.OrdinalIgnoreCase);
-        _presentationSurfaces.Clear();
-
-        // 5. Dispose old dependencies
         try { Controls.Dispose(); } catch { }
         try { _presentationCoordinator.Dispose(); } catch { }
         try { _mediaEngine.Dispose(); } catch { }
         try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+    }
 
-        // 6. Reinitialize with new configuration
-        MediaControlOperationQueue oldOperations = _controlOperations;
+    private void StartAudioDeviceMonitor()
+    {
         try
         {
-            CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
-        }
-        catch
-        {
-            // The old graph is gone. Keep the player resettable: a fresh operation queue (the old
-            // one is disposed when Reset returns) and the surfaces, which a retried Reset reattaches.
-            // Until then control calls fail with ObjectDisposedException.
-            foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
-                _presentationSurfaces[kvp.Key] = kvp.Value;
-            if (ReferenceEquals(_controlOperations, oldOperations))
-                _controlOperations = new MediaControlOperationQueue("MediaControl");
-            throw;
-        }
-
-        ApplyVideoFrameTiming();
-
-        // 8. Reattach preserved presentation surfaces
-        foreach (KeyValuePair<string, MediaPresentationSurfaceDescriptor> kvp in surfaces)
-            try { _ = AttachPresentationSurface(kvp.Value); } catch { }
-
-        // 9. Reconnect audio device monitor
-        try
-        {
-            _audioDeviceMonitor = _serviceProvider.GetService<IAudioDeviceMonitor>();
+            _audioDeviceMonitor = ResolveAudioDeviceMonitor();
             if (_audioDeviceMonitor != null)
             {
                 _audioDeviceMonitor.DeviceChanged += OnAudioDeviceMonitorChanged;
@@ -687,17 +775,34 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start during reset: {ex.Message}");
+            Debug.WriteLine($"[MediaControlPlayer] Audio device monitor failed to start: {ex.Message}");
         }
+    }
 
-        return true;
+    private void StopAudioDeviceMonitor()
+    {
+        if (_audioDeviceMonitor == null)
+            return;
+
+        try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
+        try { _audioDeviceMonitor.Stop(); } catch { }
+        try { _audioDeviceMonitor.Dispose(); } catch { }
+        _audioDeviceMonitor = null;
     }
 
     /// <summary>Creates the engine, presentation and control objects and subscribes to them.</summary>
     [MemberNotNull(nameof(_serviceProvider), nameof(_mediaEngine), nameof(_acceptedTypes), nameof(Effects), nameof(CdgVisuals),
         nameof(_presentationCoordinator), nameof(Controls), nameof(File), nameof(_controlOperations), nameof(_positionNotifier))]
-    private void CreateSessionGraph(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
+    /// <param name="operations">The control queue to keep (a mode switch), or <see langword="null"/> for a new one.</param>
+    /// <param name="restoreSettings">Settings carried from the previous graph, applied before the host events are forwarded.</param>
+    private void CreateSessionGraph(
+        MediaPlayerConfiguration configuration,
+        IReadOnlyList<string> resolvedNativeLibraryPaths,
+        MediaControlOperationQueue? operations = null,
+        Action? restoreSettings = null)
     {
+        _configuration = configuration;
+        _nativeLibraryPaths = resolvedNativeLibraryPaths;
         _serviceProvider = _platformFactory.CreateServiceProvider(configuration, resolvedNativeLibraryPaths);
 
         _mediaEngine = _serviceProvider.GetRequiredService<IMediaEngine>();
@@ -706,7 +811,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         _acceptedTypes = AcceptedMediaTypes.FromCurrentRuntime();
         Effects = new MediaEffects(_mediaEngine);
         CdgVisuals = new CdgVisuals(_mediaEngine);
-        _presentationCoordinator = _platformFactory.CreatePresentationCoordinator(_mediaEngine, configuration);
+        _presentationCoordinator = CreatePresentationCoordinator(configuration);
         Controls = new MediaControls(_mediaEngine, _presentationCoordinator, DispatchControlOperation);
         File = new MediaFile(
             _mediaEngine,
@@ -717,10 +822,15 @@ public partial class MediaControlPlayer : IMediaControlSession
             archiveService,
             configuration.ResetPitchOnMediaLoad,
             configuration.ResetTempoOnMediaLoad);
-        _controlOperations = new MediaControlOperationQueue("MediaControl");
+        _controlOperations = operations ?? new MediaControlOperationQueue("MediaControl");
         _positionNotifier = CreatePositionNotifier();
 
-        // 7. Re-subscribe internal events
+        // The carried settings, then the mode and the host's options, before the events below are
+        // forwarded: building a graph raises no host events.
+        restoreSettings?.Invoke();
+        ApplyModeToSessionGraph();
+
+        // Subscribe internal events
         Controls.MediaEnded += OnControlsMediaEnded;
         Controls.MediaStarted += OnControlsMediaStarted;
         Controls.MediaStopped += OnControlsMediaStopped;
@@ -730,7 +840,9 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-
+        // Background mode has no audio output, so the output watchdog's reports are not its own.
+        if (MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode))
+            BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset
@@ -802,6 +914,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)
@@ -809,13 +922,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
         catch { }
 
-        if (_audioDeviceMonitor != null)
-        {
-            try { _audioDeviceMonitor.DeviceChanged -= OnAudioDeviceMonitorChanged; } catch { }
-            try { _audioDeviceMonitor.Stop(); } catch { }
-            try { _audioDeviceMonitor.Dispose(); } catch { }
-            _audioDeviceMonitor = null;
-        }
+        StopAudioDeviceMonitor();
 
         try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
         try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }

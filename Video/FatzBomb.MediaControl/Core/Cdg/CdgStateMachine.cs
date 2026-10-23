@@ -22,6 +22,12 @@ public sealed class CdgStateMachine
     private long _dirtyBaseRevision = -1;
     private long _paletteRevision;
     private uint _backgroundWashArgb;
+    // Colour of the previous pack if it was a Memory Preset, else NoPreviousPreset. A repeat
+    // pack (repeat != 0) only re-sends a clear, so it is skipped when it directly follows the
+    // same preset; on its own it still clears (the original may have been lost). Part of the
+    // checkpointed state so a seek replays identically.
+    private const int NoPreviousPreset = -1;
+    private int _previousMemoryPresetColor = NoPreviousPreset;
     private CdgRenderSnapshot? _lastSnapshot;
     private CdgSnapshotStatistics _snapshotStatistics;
 
@@ -88,6 +94,7 @@ public sealed class CdgStateMachine
         {
             Array.Clear(_colorIndices);
             Array.Clear(_scratchColorIndices);
+            _previousMemoryPresetColor = NoPreviousPreset;
             _dirtyRects.Clear();
             _colorManager.Reset();
             _paletteRevision++;
@@ -108,14 +115,18 @@ public sealed class CdgStateMachine
     {
         if (packet.Command != CdgConstants.Command.Graphic)
         {
+            lock (_lock)
+                _previousMemoryPresetColor = NoPreviousPreset;
             return false;
         }
 
         lock (_lock)
         {
+            var previousPreset = _previousMemoryPresetColor;
+            _previousMemoryPresetColor = NoPreviousPreset;
             var changed = packet.Instruction switch
             {
-                CdgConstants.Instruction.MemoryPreset => ProcessMemoryPresetUnsafe(packet),
+                CdgConstants.Instruction.MemoryPreset => ProcessMemoryPresetUnsafe(packet, previousPreset),
                 CdgConstants.Instruction.BorderPreset => ProcessBorderPresetUnsafe(packet),
                 CdgConstants.Instruction.TileBlockNormal => ProcessTileBlockUnsafe(packet, xor: false),
                 CdgConstants.Instruction.TileBlockXor => ProcessTileBlockUnsafe(packet, xor: true),
@@ -143,7 +154,7 @@ public sealed class CdgStateMachine
     internal CdgReplayCheckpoint CaptureReplayCheckpoint()
     {
         lock (_lock)
-            return new CdgReplayCheckpoint(_colorIndices.ToArray(), _colorManager.CaptureReplayState());
+            return new CdgReplayCheckpoint(_colorIndices.ToArray(), _colorManager.CaptureReplayState(), _previousMemoryPresetColor);
     }
 
     /// <summary>
@@ -156,6 +167,7 @@ public sealed class CdgStateMachine
         lock (_lock)
         {
             checkpoint.ColorIndices.CopyTo(_colorIndices, 0);
+            _previousMemoryPresetColor = checkpoint.PreviousMemoryPresetColor;
             _colorManager.RestoreReplayState(checkpoint.ColorState);
             _paletteRevision++;
             RefreshColorStateUnsafe(addDirtyRect: false);
@@ -276,14 +288,20 @@ public sealed class CdgStateMachine
         }
     }
 
-    private bool ProcessMemoryPresetUnsafe(CdgPacket packet)
+    private bool ProcessMemoryPresetUnsafe(CdgPacket packet, int previousPresetColor)
     {
         ReadOnlySpan<byte> dataSpan = packet.DataSpan;
         var color = (byte)(dataSpan[0] & CdgConstants.ColorMask);
+        _previousMemoryPresetColor = color;
+        var isRepeat = (dataSpan[1] & CdgConstants.ColorMask) != 0;
+        if (isRepeat && previousPresetColor == color)
+        {
+            return false; // a repeat of the clear that was just applied
+        }
+
         _colorManager.SetBackgroundColor(color);
         RefreshColorStateUnsafe(addDirtyRect: false);
         var changed = true;
-        if ((dataSpan[1] & CdgConstants.ColorMask) == 0)
         {
             Span<byte> span = _colorIndices.AsSpan();
             for (var i = 0; i < span.Length; i++)
@@ -575,4 +593,4 @@ public sealed class CdgStateMachine
 }
 
 /// <summary>A copy of the packet-driven CDG state at one packet index (Stage 022A slice 4).</summary>
-internal sealed record CdgReplayCheckpoint(byte[] ColorIndices, CdgColorReplayState ColorState);
+internal sealed record CdgReplayCheckpoint(byte[] ColorIndices, CdgColorReplayState ColorState, int PreviousMemoryPresetColor);

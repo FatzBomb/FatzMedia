@@ -39,7 +39,8 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     /// <summary>
     /// Available when <see cref="IsSupported"/> finds a usable device, so a fallback chain moves
     /// past Vulkan on machines without a loader or driver. Like the software renderer it draws
-    /// only into managed frame-sink surfaces and presents only CPU frames.
+    /// only into managed frame-sink surfaces (or, Stage 027A slice 2, into exported shared GPU
+    /// images an adapter's compositor imports; never native windows) and presents only CPU frames.
     /// </summary>
     public MediaPresentationAvailability ProbeAvailability()
     {

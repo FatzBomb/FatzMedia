@@ -89,6 +89,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private int _subtitleProgressRevision = int.MinValue;
     private long _subtitleRevision;
     private double _lastSubtitleOffsetSeconds = double.NaN;
+    // The player that built this coordinator (DiagnosticRouter.Owner at construction).
+    private readonly object? _diagnosticOwner;
 
     public MediaPresentationCoordinator(
         IMediaRendererBackend rendererBackend,
@@ -107,6 +109,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _presentationTimingSource = FillPresentationTimingGroups;
         _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _rendererBackend.FramePresented += OnFramePresented;
+        _diagnosticOwner = DiagnosticRouter.Owner;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
         _mediaEngine.ImageFrameReady += OnCoreImageFrameReady;
@@ -121,6 +124,20 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     public event EventHandler? FramePresented;
 
     public string PresentationBackend => _rendererBackend.BackendName;
+
+    /// <summary>
+    /// Stage 043A: where no layer draws, the primary composition clears to transparent instead of
+    /// black, so an app layer below shows through on hosts that composite. Off by default.
+    /// </summary>
+    internal bool TransparentBackground
+    {
+        get => Volatile.Read(ref field);
+        set => Volatile.Write(ref field, value);
+    }
+
+    /// <summary>The clear of a composition frame where no layer draws: black, or transparent with <paramref name="transparentBackground"/>.</summary>
+    internal static (MediaCompositionClearMode Mode, uint Argb) ResolveContentClear(bool transparentBackground) =>
+        transparentBackground ? (MediaCompositionClearMode.Transparent, 0x00000000u) : (MediaCompositionClearMode.Black, 0xFF000000u);
 
     public VideoDisplayMode VideoDisplayMode
     {
@@ -393,8 +410,23 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         }
     }
 
-    private bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface) =>
-        _rendererBackend.AttachSurface(surface);
+    private bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (_rendererBackend.AttachSurface(surface))
+            return true;
+
+        // A shared-GPU-image consumer (Stage 027A slice 2) learns that this renderer will not feed
+        // it, also when the attach is a deferred one (device re-creation, a graph rebuilt by a
+        // mode switch) that its adapter never sees fail. Renderers that understand the surface
+        // kind report a specific reason first; consumers keep the first one.
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        {
+            consumer!.OnUnavailable(
+                $"the {_rendererBackend.BackendName} renderer did not accept the shared GPU image surface '{surface.Id}'");
+        }
+
+        return false;
+    }
 
     private bool EnsureBackendInitialized()
     {
@@ -431,9 +463,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
+        // Only this coordinator's own device loss (another player's renderer has its own device).
         if (_disposed
             || info.Level != MediaDiagnosticLevel.Error
-            || !string.Equals(info.Category, _rendererBackend.DeviceLostDiagnosticCategory, StringComparison.Ordinal))
+            || !string.Equals(info.Category, _rendererBackend.DeviceLostDiagnosticCategory, StringComparison.Ordinal)
+            || !info.IsFor(_diagnosticOwner))
             return;
 
         if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)
@@ -1025,10 +1059,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             var backgroundRevision = SetRetainedGpuBackgroundNoLock(frame, stretch);
             SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
+            (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
             compositionFrame = new MediaCompositionFrame
             {
-                ClearMode = MediaCompositionClearMode.Black,
-                ClearArgb = 0xFF000000,
+                ClearMode = clearMode,
+                ClearArgb = clearArgb,
                 BackgroundNativeResource = frame.NativeResource,
                 BackgroundNativeWidth = frame.Width,
                 BackgroundNativeHeight = frame.Height,
@@ -1330,10 +1365,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
 
+        (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
         {
-            ClearMode = MediaCompositionClearMode.Black,
-            ClearArgb = 0xFF000000,
+            ClearMode = clearMode,
+            ClearArgb = clearArgb,
             BackgroundBgra = hasBackground ? ownedBackgroundBgra : ReadOnlyMemory<byte>.Empty,
             BackgroundWidth = hasBackground || hasRetainedGpuBackground ? backgroundWidth : 0,
             BackgroundHeight = hasBackground || hasRetainedGpuBackground ? backgroundHeight : 0,

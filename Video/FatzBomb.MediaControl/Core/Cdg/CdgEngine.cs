@@ -178,8 +178,7 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
 
         lock (_renderLock)
         {
-            var endIndex = (long)(seconds * CdgConstants.PacketsPerSecond);
-            endIndex = Math.Clamp(endIndex, 0, _packets.Length);
+            var endIndex = Math.Min(PacketCountAt(seconds), _packets.Length);
 
             // Going back, or forward past a checkpoint: start from the nearest checkpoint at or before
             // the target. Otherwise the current state is already exact and replay just continues,
@@ -216,6 +215,28 @@ public sealed class CdgEngine : ICdgEngine, ICdgSnapshotSource, IDisposable
             InvalidateFrame();
         }
     }
+
+    /// <summary>
+    /// Number of packs applied at a playback position: pack n (0-based) is applied once the
+    /// position reaches the end of its sector, (n + 1) / 300 s, so the count is
+    /// floor(position x 300). This keeps the engine's existing meaning of position; only the
+    /// arithmetic changed. It runs in integer nanoseconds with half a nanosecond of rounding
+    /// slack, so a position that is an exact multiple of 1/300 s (1.0 s, 59.99 s) counts the
+    /// same pack on every platform instead of depending on how a double product truncates.
+    /// Negative, NaN and zero positions give 0.
+    /// </summary>
+    internal static long PacketCountAt(double seconds)
+    {
+        if (double.IsNaN(seconds) || seconds <= 0)
+            return 0;
+        if (seconds >= MaxPositionSeconds)
+            return long.MaxValue / 2;
+
+        var nanoseconds = (long)Math.Round(seconds * 1_000_000_000d);
+        return ((nanoseconds * CdgConstants.PacketsPerSecond) + (CdgConstants.PacketsPerSecond / 2)) / 1_000_000_000L;
+    }
+
+    private const double MaxPositionSeconds = 1e7; // keeps nanoseconds x 300 inside long
 
     private void ResetInternal()
     {

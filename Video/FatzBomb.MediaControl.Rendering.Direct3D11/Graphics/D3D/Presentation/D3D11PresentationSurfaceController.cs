@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Shared;
 using Vortice.Direct3D11;
 using System.Diagnostics;
 
@@ -33,6 +34,7 @@ internal sealed class D3D11PresentationSurfaceController(
         D3D11PresentationBackendKind.DirectCompositionSingleTarget => "DirectCompositionNativeLayers",
         D3D11PresentationBackendKind.NativeHwndSwapChain => "NativeHwndSwapChain",
         D3D11PresentationBackendKind.ManagedFrameSink => "WpfCompositedD3D11",
+        D3D11PresentationBackendKind.SharedTexture => "SharedTextureD3D11",
         _ => "None"
     };
 
@@ -310,6 +312,60 @@ internal sealed class D3D11PresentationSurfaceController(
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Stage 027A slice 2: activates the shared-texture primary for a UI compositor consumer, or
+    /// re-exports it at a new size. <paramref name="failureReason"/> says why it was declined.
+    /// </summary>
+    public bool CreateSharedTextureSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        Action cleanupBeforeCreate,
+        bool enableLogging,
+        Action<int, int, bool> notifyPresented,
+        out string? failureReason)
+    {
+        string? reason = null;
+        var activated = ActivatePresentationSurface(
+            isDisposed,
+            true,
+            deviceResources,
+            width,
+            height,
+            onCreated =>
+            {
+                D3D11SharedTextureBackend backend = backends.SharedTexture;
+                if (!backend.Matches(consumer, width, height))
+                {
+                    cleanupBeforeCreate();
+                    LastActivationCreated = backend.Create(deviceResources, consumer, width, height, out reason);
+                }
+                else
+                {
+                    LastActivationCreated = false;
+                }
+
+                if (!backend.IsActive)
+                    return false;
+
+                if (LastActivationCreated)
+                {
+                    _ = backends.ClearActiveTargetToBlack(deviceResources);
+                    onCreated();
+                }
+
+                return true;
+            },
+            "shared-texture presentation surface",
+            "SharedTextureD3D11",
+            enableLogging,
+            notifyPresented);
+        failureReason = activated ? null : reason ?? (isDisposed ? "the renderer is disposed" : "the Direct3D11 device is not ready");
+        return activated;
     }
 
     public bool CreateDirectCompositionSurface(

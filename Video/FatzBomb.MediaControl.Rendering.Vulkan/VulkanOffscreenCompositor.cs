@@ -3,6 +3,7 @@ using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkImage = Silk.NET.Vulkan.Image;
+using VkSemaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
@@ -23,7 +24,7 @@ internal readonly record struct VulkanBlit(PixelRect Source, PixelRect Destinati
 /// (<see cref="VulkanOverlayPipelines"/>), and reads the result back. Swapchain presentation
 /// is a later slice.
 /// </summary>
-internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
+internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 {
     private const Format TargetFormat = Format.B8G8R8A8Unorm;
 
@@ -113,7 +114,9 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
     /// returned span is backed by a buffer the compositor reuses; it is valid until the next
     /// <see cref="Render"/> or <see cref="Dispose"/>, so callers copy it before rendering again.
     /// </summary>
-    public ReadOnlySpan<byte> Render(in VulkanFramePlan plan)
+    public ReadOnlySpan<byte> Render(in VulkanFramePlan plan) => RenderCore(plan, export: null);
+
+    private ReadOnlySpan<byte> RenderCore(in VulkanFramePlan plan, ExportTarget? export)
     {
         var outputWidth = plan.OutputWidth;
         var outputHeight = plan.OutputHeight;
@@ -124,7 +127,12 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             ImageResource targetImage = EnsureTarget((uint)outputWidth, (uint)outputHeight);
-            BufferResource readbackBuffer = EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit);
+            if (export is { } exportTarget)
+                ValidateExportTarget(exportTarget);
+
+            BufferResource? readbackBuffer = export is null
+                ? EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit)
+                : null;
             if (plan.Background is { } background)
             {
                 _ = EnsureImage(ref _sourceImage, (uint)background.Width, (uint)background.Height, TransferUsage);
@@ -247,28 +255,60 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 Transition(target, ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal, AccessFlags.TransferWriteBit, AccessFlags.TransferReadBit);
             }
 
-            var readback = new BufferImageCopy
+            if (export is { } exportTo)
             {
-                ImageSubresource = ColorLayers(),
-                ImageExtent = new Extent3D((uint)outputWidth, (uint)outputHeight, 1),
-            };
-            _vk.CmdCopyImageToBuffer(_commandBuffer, target, ImageLayout.TransferSrcOptimal, readbackBuffer.Buffer, 1, &readback);
-            var hostBarrier = new BufferMemoryBarrier
+                RecordExportBlit(target, (uint)outputWidth, (uint)outputHeight, exportTo);
+            }
+            else
             {
-                SType = StructureType.BufferMemoryBarrier,
-                SrcAccessMask = AccessFlags.TransferWriteBit,
-                DstAccessMask = AccessFlags.HostReadBit,
-                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-                Buffer = readbackBuffer.Buffer,
-                Offset = 0,
-                Size = Vk.WholeSize,
-            };
-            _vk.CmdPipelineBarrier(_commandBuffer, PipelineStageFlags.TransferBit, PipelineStageFlags.HostBit, 0, 0, null, 1, &hostBarrier, 0, null);
+                var readback = new BufferImageCopy
+                {
+                    ImageSubresource = ColorLayers(),
+                    ImageExtent = new Extent3D((uint)outputWidth, (uint)outputHeight, 1),
+                };
+                _vk.CmdCopyImageToBuffer(_commandBuffer, target, ImageLayout.TransferSrcOptimal, readbackBuffer!.Value.Buffer, 1, &readback);
+                var hostBarrier = new BufferMemoryBarrier
+                {
+                    SType = StructureType.BufferMemoryBarrier,
+                    SrcAccessMask = AccessFlags.TransferWriteBit,
+                    DstAccessMask = AccessFlags.HostReadBit,
+                    SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                    Buffer = readbackBuffer.Value.Buffer,
+                    Offset = 0,
+                    Size = Vk.WholeSize,
+                };
+                _vk.CmdPipelineBarrier(_commandBuffer, PipelineStageFlags.TransferBit, PipelineStageFlags.HostBit, 0, 0, null, 1, &hostBarrier, 0, null);
+            }
+
             Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
 
             CommandBuffer commandBuffer = _commandBuffer;
             var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
+            VkSemaphore waitSemaphore = default;
+            VkSemaphore signalSemaphore = default;
+            var waitStage = PipelineStageFlags.TransferBit;
+            if (export is { } synchronized)
+            {
+                // Semaphore sync: wait for the compositor's release of this image before the blit
+                // writes it, and tell the compositor when the write is done. The fence below still
+                // completes the frame before it is announced (host synchronization).
+                if (synchronized.WaitForConsumerRelease && synchronized.Image.ConsumerRelease.Handle != 0)
+                {
+                    waitSemaphore = synchronized.Image.ConsumerRelease;
+                    submit.WaitSemaphoreCount = 1;
+                    submit.PWaitSemaphores = &waitSemaphore;
+                    submit.PWaitDstStageMask = &waitStage;
+                }
+
+                if (synchronized.Image.RenderComplete.Handle != 0)
+                {
+                    signalSemaphore = synchronized.Image.RenderComplete;
+                    submit.SignalSemaphoreCount = 1;
+                    submit.PSignalSemaphores = &signalSemaphore;
+                }
+            }
+
             Fence fence = _fence;
             Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
             Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
@@ -280,14 +320,17 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
                 CdgUploadCount++;
             }
 
+            if (export is not null)
+                return [];
+
             var outputLength = checked(outputWidth * outputHeight * 4);
             if (_output.Length != outputLength)
                 _output = new byte[outputLength];
 
             void* mappedOutput;
-            Check(_vk.MapMemory(_device, readbackBuffer.Memory, 0, (ulong)outputLength, 0, &mappedOutput), "vkMapMemory");
+            Check(_vk.MapMemory(_device, readbackBuffer!.Value.Memory, 0, (ulong)outputLength, 0, &mappedOutput), "vkMapMemory");
             new ReadOnlySpan<byte>(mappedOutput, outputLength).CopyTo(_output);
-            _vk.UnmapMemory(_device, readbackBuffer.Memory);
+            _vk.UnmapMemory(_device, readbackBuffer.Value.Memory);
             return _output;
         }
     }
@@ -315,6 +358,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             if (_device.Handle != 0)
             {
                 _ = _vk.DeviceWaitIdle(_device);
+                DestroyExportedSets();
                 DestroyTargetFramebuffer();
                 _overlay?.Dispose();
                 _overlay = null;
@@ -380,9 +424,27 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
             QueueCount = 1,
             PQueuePriorities = &priority,
         };
-        var deviceInfo = new DeviceCreateInfo { SType = StructureType.DeviceCreateInfo, QueueCreateInfoCount = 1, PQueueCreateInfos = &queueInfo };
+        string[] extensions = ProbeExportSupport();
+        var extensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions);
+        Result deviceResult;
         Device device;
-        Result deviceResult = _vk.CreateDevice(_physicalDevice, &deviceInfo, null, &device);
+        try
+        {
+            var deviceInfo = new DeviceCreateInfo
+            {
+                SType = StructureType.DeviceCreateInfo,
+                QueueCreateInfoCount = 1,
+                PQueueCreateInfos = &queueInfo,
+                EnabledExtensionCount = (uint)extensions.Length,
+                PpEnabledExtensionNames = extensions.Length == 0 ? null : extensionNames,
+            };
+            deviceResult = _vk.CreateDevice(_physicalDevice, &deviceInfo, null, &device);
+        }
+        finally
+        {
+            _ = SilkMarshal.Free((nint)extensionNames);
+        }
+
         if (deviceResult != Result.Success)
         {
             failure = $"vkCreateDevice failed: {deviceResult}";
@@ -390,6 +452,7 @@ internal sealed unsafe class VulkanOffscreenCompositor : IDisposable
         }
 
         _device = device;
+        LoadExportFunctions();
         Queue queue;
         _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
         _queue = queue;
