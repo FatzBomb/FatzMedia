@@ -35,12 +35,51 @@ acceptance criteria, focused xUnit tests for pure logic, write
 decisions made), mark the manifest "implemented, pending manual smoke". One commit
 per stage/slice. Release builds treat warnings as errors — write warning-clean code.
 
-Usage (owner rule): run helper agents (searches, code exploration, reviews, other
-subagent tasks) on Sonnet whenever Sonnet can do the task, to save usage. Only when it
-actually saves: keep the main model for work that needs it (hard debugging, timing or
-rendering design) and for forked copies of the main agent, which always use it. Never use
-Fable (the most expensive and usage-limited model) unless the owner asks for it: Opus 5.5 is
-the main model for hard work and forks, Sonnet or Haiku for helpers.
+## Working rules
+
+Plan usage is the limiting resource. Keep the main session for design, debugging, decisions and
+review; hand cheaper work to subagents.
+
+### Models
+
+- Haiku: Explore and other searches, reading, summarizing logs. Use the stronger model only when a
+  search needs real judgment (tracing a bug's cause, tricky logic).
+- Sonnet: routine, well-specified work (docs, small fixes, tests, renames, straightforward changes).
+- Opus: DSP, SIMD, codecs, threading, cross-platform bugs, design decisions, or anything a cheaper
+  attempt already failed.
+- Never Fable unless the owner asks for it.
+- Effort: medium by default; high only for the Opus category; never max unless the owner asks.
+- When unsure between two models, start with the cheaper one and step up if the result isn't good
+  enough.
+
+### Subagents
+
+- Any lookup needing more than one search or read goes to Explore in one request.
+- Independent tasks go to separate subagents in the same response.
+- Don't delegate what needs this conversation's context or is quicker to do directly (one known
+  file, a one-line change). Never use general-purpose for small jobs.
+- On Sonnet and stuck (hard design, debugging going in circles): give an Opus subagent a short
+  brief instead of switching the whole session.
+
+### Delegating (projects)
+
+- Choose each thread's model and effort with the rules above.
+- Answer questions and status checks yourself instead of starting a thread.
+- For small follow-ups, reuse a related thread if it was active in the last hour; otherwise start a
+  fresh thread.
+- Run only a few threads at a time.
+- If the next task doesn't depend on a PR still in CI, start it instead of waiting.
+
+### Pull requests
+
+- Batch small related steps into one PR instead of several.
+- Before pushing, run the build and the tests you can run in your environment. In VS Code, check
+  `getDiagnostics` before a full build.
+- Before opening a PR, run `/code-review medium --fix` and fix what it finds. Skip it for
+  docs-only or trivial changes.
+- Push work in progress to the branch before opening the PR. Once a PR is open, avoid extra
+  pushes, because each one reruns the full CI.
+- While CI runs, wait for the result instead of polling.
 
 ## Validation split
 
