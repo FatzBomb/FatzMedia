@@ -51,6 +51,9 @@ public partial class MediaControlPlayer
                 return;
 
             _transparentBackground = value;
+            if (_disposed)
+                return;
+
             ApplyTransparentBackground();
             _presentationCoordinator.RefreshCurrentPosition();
         }

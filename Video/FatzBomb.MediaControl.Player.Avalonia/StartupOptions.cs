@@ -39,7 +39,8 @@ internal sealed class StartupOptions
                 renderer = value.ToLowerInvariant();
             else if (TryValue(argument, "--players=", out value) && int.TryParse(value, out var count))
                 players = Math.Clamp(count, 1, MaxPlayers);
-            else if (TryValue(argument, "--mode=", out value) && Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode parsed))
+            else if (TryValue(argument, "--mode=", out value) && Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode parsed)
+                && Enum.IsDefined(parsed))
                 mode = parsed;
             else if (TryValue(argument, "--native=", out value) && value.Length > 0)
                 native.Add(value);

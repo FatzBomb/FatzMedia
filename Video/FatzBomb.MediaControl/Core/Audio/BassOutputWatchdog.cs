@@ -82,7 +82,10 @@ internal static class BassOutputWatchdog
             if (!Clients.Add(client) || _timer is not null)
                 return;
 
-            _timer = new Timer(static _ => Tick(), null, AudioOutputRecoveryTracker.DefaultRetryInterval, AudioOutputRecoveryTracker.DefaultRetryInterval);
+            // The timer is process-wide: it must not capture the registering player's execution
+            // context (its diagnostic owner), or every report would reach only that player.
+            using (ExecutionContext.SuppressFlow())
+                _timer = new Timer(static _ => Tick(), null, AudioOutputRecoveryTracker.DefaultRetryInterval, AudioOutputRecoveryTracker.DefaultRetryInterval);
         }
     }
 

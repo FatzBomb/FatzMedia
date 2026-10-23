@@ -747,7 +747,9 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-        BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
+        // Background mode has no audio output, so the output watchdog's reports are not its own.
+        if (MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode))
+            BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
         ApplyModeToSessionGraph();
     }
 

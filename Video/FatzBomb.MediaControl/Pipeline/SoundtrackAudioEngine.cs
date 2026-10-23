@@ -225,8 +225,14 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
             }
             else if (!LoopPlayback && _audio.State == AudioEngineState.Playing)
             {
+                // Only a stall with nothing left to decode is the end: a stall while the decoder
+                // still delivers audio, or while BASS has parked the channel because the output
+                // device was lost (ENG-032), restarts the stall timer.
                 var position = _audio.Position;
-                if (double.IsNaN(lastPosition) || Math.Abs(position - lastPosition) > StallPositionEpsilonSeconds)
+                if (double.IsNaN(lastPosition)
+                    || Math.Abs(position - lastPosition) > StallPositionEpsilonSeconds
+                    || decoded
+                    || IsChannelPausedByDevice())
                 {
                     lastPosition = position;
                     stallStarted = Stopwatch.GetTimestamp();
@@ -250,6 +256,12 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     /// </summary>
     internal static bool HasReachedEnd(double position, double duration, double stalledSeconds) =>
         (duration > 0 && position >= duration - EndToleranceSeconds) || stalledSeconds >= EndStallSeconds;
+
+    private bool IsChannelPausedByDevice()
+    {
+        var playHandle = _audio.PlayHandle;
+        return playHandle != 0 && (int)ManagedBass.Bass.ChannelIsActive(playHandle) == BassOutputWatchdog.ActivePausedDevice;
+    }
 
     private bool IsCurrent(int generation)
     {

@@ -177,6 +177,14 @@ Fix:
 Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
 `MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
 
+Known limits (code review 2026-10-23, not fixed):
+- Synchronous public setters (`LoopMedia`, `Effects.*`, `TransparentBackground`) do not enter the
+  player's owner, so a diagnostic they raise while called from another player's event handler is
+  attributed to that other player. Fix if it shows up: enter the owner on every public entry point.
+- Prepared conversions are keyed by file, not by player: two players preparing the same file share
+  one entry, and one player's clear disposes it, so the other converts again at transition time.
+  Fix if it shows up: reference-count entries per player.
+
 ### ENG-032 - Playback never resumes after another application takes the audio device
 
 Resolved: 2026-10-23, pending manual smoke.
