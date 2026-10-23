@@ -748,6 +748,23 @@ It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
 
+Shared GPU image surfaces (Stage 027A slice 2):
+
+- Besides the HWND and frame-sink payloads, Core defines a `shared-gpu-image` surface. Its
+  token resolves to an adapter-implemented `IMediaSharedGpuImageConsumer`.
+- The renderer negotiates against the consumer's `MediaSharedGpuImageRequest` (handle kinds,
+  sync kinds, GPU identity). It then exports a double-buffered `MediaSharedGpuImageSet` of
+  plain OS handles: Direct3D11 keyed-mutex shared textures, or Vulkan opaque-fd images with
+  optional exported semaphores.
+- It announces each frame, and the consumer releases it once its compositor has read it.
+  The shared `MediaSharedGpuImageRing` keeps the producer side, so a frame is never written
+  while the compositor may sample it.
+- A renderer that cannot serve the consumer, or rejects the surface, tells it why
+  (`OnUnavailable`). The Avalonia `MediaSurface` then attaches its frame sink instead and
+  logs the reason.
+- Renderers own every GPU object. Adapters see only handles and Avalonia's
+  `ICompositionGpuInterop`.
+
 ## Audio Filter Framework (Stage 020A, slice 1)
 
 The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain

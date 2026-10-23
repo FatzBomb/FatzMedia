@@ -9,5 +9,6 @@ internal enum D3D11PresentationBackendKind
     None = 0,
     NativeHwndSwapChain = 2,
     DirectCompositionSingleTarget = 3,
-    ManagedFrameSink = 4
+    ManagedFrameSink = 4,
+    SharedTexture = 5
 }

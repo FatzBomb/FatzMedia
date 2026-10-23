@@ -38,6 +38,12 @@ public static class MediaNativeSurfaceTypeIds
 {
     public static MediaNativeSurfaceTypeId Win32Hwnd { get; } = new("win32-hwnd");
     public static MediaNativeSurfaceTypeId ManagedBgraFrameSink { get; } = new("managed-bgra-frame-sink");
+
+    /// <summary>
+    /// Renderer-exported, double-buffered GPU images shown by the adapter's own compositor
+    /// (Stage 027A slice 2); the handle is a <see cref="MediaSharedGpuImageConsumerHandle"/> token.
+    /// </summary>
+    public static MediaNativeSurfaceTypeId SharedGpuImage { get; } = new("shared-gpu-image");
     public static MediaNativeSurfaceTypeId X11Window { get; } = new("x11-window");
     public static MediaNativeSurfaceTypeId WaylandSurface { get; } = new("wayland-surface");
     public static MediaNativeSurfaceTypeId AppKitView { get; } = new("appkit-view");
@@ -49,6 +55,7 @@ public static class MediaNativeHandleIds
 {
     public static MediaNativeHandleId Window { get; } = new("window");
     public static MediaNativeHandleId FrameSink { get; } = new("frame-sink");
+    public static MediaNativeHandleId SharedImageConsumer { get; } = new("shared-image-consumer");
     public static MediaNativeHandleId Display { get; } = new("display");
     public static MediaNativeHandleId Surface { get; } = new("surface");
     public static MediaNativeHandleId View { get; } = new("view");

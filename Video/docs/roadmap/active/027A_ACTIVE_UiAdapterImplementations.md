@@ -2,8 +2,8 @@
 
 Prepared: 2026-10-16
 Status: Avalonia (slice 1) and WinForms (slice 3) implemented. Avalonia GPU-shared surface
-mode (slice 2, re-planned 2026-10-18) is not started; WinUI 3 (slice 4) is deferred. Order changed from the idea (Avalonia first) per the owner's
-session instructions.
+(slice 2) implemented 2026-10-23, pending manual smoke (`updates/027A_2`); WinUI 3 (slice 4) is
+deferred. Order changed from the idea (Avalonia first) per the owner's session instructions.
 
 ## Framework-Adapter Conformance Checklist (extracted from WPF, pinned)
 
@@ -27,28 +27,46 @@ session instructions.
   Avalonia 12.1.4, Core only): composited `MediaSurface` over the managed frame-sink
   contract and `AvaloniaMediaInputSources.FromBitmap`. Works with any platform factory
   (Windows, Linux) and any frame-sink renderer (software, Vulkan preview).
-- **Slice 2 - Avalonia GPU-shared surface mode (re-planned 2026-10-18):** hardware-rendered
-  frames shown in Avalonia's own compositor through its GPU interop
-  (`ICompositionGpuInterop` on a `CompositionDrawingSurface`, Avalonia 11+; the repo is on
-  12.1.4), with no CPU copy and no overlay window. Shape:
-  - Core: a new neutral surface payload type, "shared GPU image" (plain handles, size,
-    format, sync handle), alongside the HWND and managed frame-sink payloads; no GPU types.
-  - Renderers export the composed frame as a shared image with a sync primitive so the
-    compositor never samples a half-written frame: Direct3D11 a DXGI shared texture with a
-    keyed mutex (or shared fence); Vulkan exportable memory (opaque fd / NT handle) plus a
-    semaphore. Double-buffered, so rendering and composition overlap.
-  - The Avalonia adapter imports the handles and shows them; it still references no
-    renderer or GPU types (handles only, conformance item 3 holds). It checks the
-    compositor's supported handle types at attach and falls back to the existing frame-sink
-    mode when the active Avalonia backend cannot import them.
-  - Validation: Windows (Avalonia on its Direct3D11 backend) and Linux (Avalonia on Vulkan),
-    manual; parity checks against the frame-sink mode.
+- **Slice 2 - Avalonia GPU-shared surface (implemented 2026-10-23, pending manual smoke;
+  `updates/027A_2`):**
+  - Hardware-rendered frames are shown in Avalonia's own compositor through its GPU interop:
+    `ICompositionGpuInterop` imports into a `CompositionDrawingSurface` on a
+    `CompositionSurfaceVisual`, with `UpdateWithKeyedMutexAsync` /
+    `UpdateWithSemaphoresAsync` / `UpdateAsync`. There is no CPU copy and no overlay window.
+  - Core: the surface type `shared-gpu-image`. The adapter registers an
+    `IMediaSharedGpuImageConsumer` through `MediaSharedGpuImageConsumerHandle`, and its
+    `MediaSharedGpuImageRequest` lists the handle and sync kinds the compositor imports
+    and the compositor's GPU LUID/UUID.
+  - The renderer negotiates (`TrySelect`, `MatchesDevice`) and creates a double-buffered
+    `MediaSharedGpuImageSet` (plain handles, size, format, sync).
+  - It announces each finished frame with `OnFrameReady`, and the consumer gives every
+    frame back through `ReleaseFrame`. `MediaSharedGpuImageRing` keeps the producer side:
+    buffer rotation, keyed-mutex keys, and pending semaphore waits.
+  - A renderer that cannot serve the consumer calls `OnUnavailable(reason)`. Core also does
+    this for any renderer that rejects the surface, including deferred re-attaches.
+  - Direct3D11: a `SharedTexture` primary backend. Two BGRA textures with
+    `SharedKeyedMutex`, as NT or global handles; the composed target is copied in under
+    the mutex (producer key 0 to 1, compositor key 1 to 0). The adapter LUID must match.
+  - Vulkan: two RGBA8 dedicated images exported as opaque POSIX fds
+    (`VK_KHR_external_memory_fd`), plus exported binary semaphores when
+    `VK_KHR_external_semaphore_fd` is present. Host synchronization always works because
+    the fence completes each frame. The device UUID must match. On Windows it is not
+    implemented yet.
+  - The Avalonia adapter picks the path at attach (`PreferGpuSharedSurface`, default
+    true). Its conditions are: the compositor's interop, a supported handle kind, and the
+    renderer accepting.
+  - Otherwise, or after any later failure, the adapter falls back to the frame sink. It
+    logs the path and the reason (Info, `Avalonia.MediaSurface`) and exposes them
+    (`PresentationPath`, `PresentationPathReason`). It still references only Core and
+    handles, so conformance item 3 holds.
+  - Deferred: Vulkan export on Windows; choosing the renderer GPU from the compositor's
+    identity (a mismatch falls back today); shared images for secondary targets; D3D12
+    shared fences; desktop validation of the new paths (manual smoke).
 
-  Replaces the earlier plan (`NativeControlHost` HWND/X11 child windows for swapchain
-  renderers): a native child window inside Avalonia has the same airspace limitation as
-  WPF's `NativeHwndOverlay`, so overlays would need a separate window there too, which the
-  compositor import avoids. Depends on 026A for the Vulkan export; the Direct3D11 export is
-  independent of it.
+  This replaces the earlier plan of `NativeControlHost` HWND/X11 child windows for
+  swapchain renderers. A native child window inside Avalonia has the same airspace
+  limitation as WPF's `NativeHwndOverlay`, so overlays would need a separate window there
+  too. The compositor import avoids that.
 - **Slice 3 - WinForms (implemented):** `FatzBomb.MediaControl.WinForms` HWND
   `MediaSurface` (Core only; pairs with Windows + Direct3D11).
 - **Slice 4 - WinUI 3 (deferred):** `SwapChainPanel` or HWND interop surface. Deferred

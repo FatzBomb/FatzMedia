@@ -12,9 +12,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   pending manual smoke (`updates/026A_1`, `updates/026A_2`: SPIR-V wash + CDG overlay);
   validated on lavapipe; swapchains/subtitles/transforms/OpenGL/Metal later.
 - `active/027A_ACTIVE_UiAdapterImplementations.md` - Avalonia and WinForms slices
-  implemented (`updates/027A_1`, `updates/027A_3`); slice 2 re-planned 2026-10-18 as an
-  Avalonia GPU-shared surface (compositor import, no CPU copy or overlay window), not
-  started; WinUI 3 deferred.
+  implemented (`updates/027A_1`, `updates/027A_3`). Slice 2, the Avalonia GPU-shared
+  surface, is implemented and pending manual smoke (`updates/027A_2`): Direct3D11 keyed-mutex
+  shared textures and Vulkan opaque-fd images go into Avalonia's compositor, with a frame-sink
+  fallback. WinUI 3 is deferred.
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,

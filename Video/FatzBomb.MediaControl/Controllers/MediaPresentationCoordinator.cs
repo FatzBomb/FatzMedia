@@ -410,8 +410,23 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         }
     }
 
-    private bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface) =>
-        _rendererBackend.AttachSurface(surface);
+    private bool AttachSurfaceNoLock(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (_rendererBackend.AttachSurface(surface))
+            return true;
+
+        // A shared-GPU-image consumer (Stage 027A slice 2) learns that this renderer will not feed
+        // it, also when the attach is a deferred one (device re-creation, a graph rebuilt by a
+        // mode switch) that its adapter never sees fail. Renderers that understand the surface
+        // kind report a specific reason first; consumers keep the first one.
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        {
+            consumer!.OnUnavailable(
+                $"the {_rendererBackend.BackendName} renderer did not accept the shared GPU image surface '{surface.Id}'");
+        }
+
+        return false;
+    }
 
     private bool EnsureBackendInitialized()
     {

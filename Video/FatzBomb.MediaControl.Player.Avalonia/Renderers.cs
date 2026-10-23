@@ -1,13 +1,19 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Rendering.Vulkan;
+#if WINDOWS
+using FatzBomb.MediaControl.Rendering.Direct3D11;
+#endif
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 internal enum RendererKind
 {
     Software,
-    Vulkan
+    Vulkan,
+
+    /// <summary>Windows build only (Stage 027A slice 2: shared textures into Avalonia's compositor).</summary>
+    Direct3D11
 }
 
 /// <summary>A renderer the player can offer and whether it is usable on this machine.</summary>
@@ -17,27 +23,40 @@ internal sealed record RendererOption(RendererKind Kind, bool IsAvailable, strin
 }
 
 /// <summary>
-/// Frame-sink renderers for the composited Avalonia surface. Direct3D11 draws to native windows, so
-/// it is not offered here (use the WinForms or WPF player for it).
+/// Renderers for the composited Avalonia surface: software and Vulkan everywhere, Direct3D11 in the
+/// Windows build. Each presents through the surface's shared GPU image path when it and Avalonia's
+/// compositor support it, else through the frame sink (see the status line).
 /// </summary>
 internal static class Renderers
 {
     public static IReadOnlyList<RendererOption> Probe()
     {
         var vulkanUsable = VulkanPresentationCoordinatorFactory.IsSupported(out var reason);
-        return
+        List<RendererOption> options =
         [
             new RendererOption(RendererKind.Software, true, "CPU composition, software decoding"),
             new RendererOption(RendererKind.Vulkan, vulkanUsable, vulkanUsable ? "Vulkan composition, software decoding" : reason ?? "no usable Vulkan device")
         ];
+#if WINDOWS
+        MediaPresentationAvailability direct3D = WindowsDirect3D11MediaControlPlatformFactory
+            .CreatePresentationFactory(new Direct3D11PresentationOptions())
+            .ProbeAvailability();
+        options.Add(new RendererOption(
+            RendererKind.Direct3D11,
+            direct3D.IsAvailable,
+            direct3D.IsAvailable ? $"Direct3D11 composition ({direct3D.Detail}), software decoding" : direct3D.Detail));
+#endif
+        return options;
     }
 
     /// <summary>Resolves a <c>--renderer=</c> value against what the probe found.</summary>
     public static RendererKind Choose(string requested, IReadOnlyList<RendererOption> options)
     {
         var vulkanUsable = options.Any(static option => option is { Kind: RendererKind.Vulkan, IsAvailable: true });
+        var direct3DUsable = options.Any(static option => option is { Kind: RendererKind.Direct3D11, IsAvailable: true });
         return requested switch
         {
+            "direct3d11" or "d3d11" when direct3DUsable => RendererKind.Direct3D11,
             "vulkan" when vulkanUsable => RendererKind.Vulkan,
             "auto" when vulkanUsable => RendererKind.Vulkan,
             _ => RendererKind.Software
@@ -48,6 +67,9 @@ internal static class Renderers
     public static IMediaPresentationCoordinatorFactory Create(RendererKind kind) => kind switch
     {
         RendererKind.Vulkan => new VulkanPresentationCoordinatorFactory(),
+#if WINDOWS
+        RendererKind.Direct3D11 => WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions()),
+#endif
         _ => new SoftwarePresentationCoordinatorFactory()
     };
 }

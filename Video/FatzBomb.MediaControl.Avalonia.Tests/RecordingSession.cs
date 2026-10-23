@@ -13,6 +13,12 @@ public class RecordingSession : DispatchProxy
 
     public MediaPresentationSurfaceDescriptor? LastAttached { get; private set; }
 
+    /// <summary>Gets every attached descriptor, in order.</summary>
+    public ConcurrentQueue<MediaPresentationSurfaceDescriptor> Attached { get; } = new();
+
+    /// <summary>Decides what attach returns (default: accept).</summary>
+    public Func<MediaPresentationSurfaceDescriptor, bool>? AttachResult { get; set; }
+
     public (int Width, int Height)? LastResize { get; private set; }
 
     public VideoDisplayMode? LastDisplayMode { get; private set; }
@@ -30,7 +36,10 @@ public class RecordingSession : DispatchProxy
         {
             case nameof(IMediaControlSession.AttachPresentationSurface):
                 LastAttached = (MediaPresentationSurfaceDescriptor)args![0]!;
+                Attached.Enqueue(LastAttached);
                 Calls.Enqueue($"attach {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
+                if (AttachResult is { } attachResult)
+                    return attachResult(LastAttached);
                 break;
             case nameof(IMediaControlSession.ResizePresentationSurface):
                 LastResize = ((int)args![1]!, (int)args[2]!);

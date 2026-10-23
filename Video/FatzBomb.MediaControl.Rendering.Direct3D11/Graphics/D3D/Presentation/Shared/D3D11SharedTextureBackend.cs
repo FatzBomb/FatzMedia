@@ -1,0 +1,390 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using SharpGen.Runtime;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
+
+namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Shared;
+
+/// <summary>
+/// Stage 027A slice 2: presents the composed primary frame into DXGI shared textures with keyed
+/// mutexes that a UI compositor (Avalonia's <c>ICompositionGpuInterop</c>) imports, so no pixel is
+/// read back. The renderer composes into a private target as for every backend; <see cref="Present"/>
+/// copies it on the GPU into the next free exported texture (two, alternating) under that
+/// texture's keyed mutex and announces the frame. The compositor acquires the mutex with
+/// <see cref="MediaSharedGpuImageRing.ConsumerKey"/>, so it never samples a half-written frame,
+/// and the renderer never writes a texture the compositor has not released.
+/// </summary>
+internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBackend
+{
+    internal const int BufferCount = 2;
+
+    private const int WaitTimeout = 0x102;
+    private const int WaitAbandoned = 0x80;
+
+    /// <summary>How long a frame waits for the compositor to give a texture back before it is dropped.</summary>
+    internal static readonly TimeSpan ReleaseWaitTimeout = TimeSpan.FromMilliseconds(50);
+
+    private const uint AcquireTimeoutMilliseconds = 100;
+
+    private static long _nextGeneration;
+
+    private readonly SharedTexture?[] _textures = new SharedTexture?[BufferCount];
+    private D3D11DeviceResources? _deviceResources;
+    private ID3D11Texture2D? _targetTexture;
+    private IMediaSharedGpuImageConsumer? _consumer;
+    private MediaSharedGpuImageRing? _ring;
+    private MediaSharedGpuImageSet? _set;
+    private MediaSharedGpuImageSelection _selection;
+    private bool _recreate;
+    private bool _dropReported;
+    private bool _deviceLostReported;
+
+    public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.SharedTexture;
+    public bool IsActive => _targetTexture != null && _set != null && _consumer != null;
+    public int Width { get; private set; }
+    public int Height { get; private set; }
+    public ID3D11Texture2D? TargetTexture => _targetTexture;
+
+    /// <summary>What this backend exports: keyed-mutex textures as NT or legacy global handles.</summary>
+    internal static MediaSharedGpuImageCapability[] ProducerCapabilities { get; } =
+    [
+        new(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
+        new(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
+    ];
+
+    /// <summary>An adapter LUID as the 8 bytes compositors report (low part, then high part, little-endian).</summary>
+    internal static byte[] LuidBytes(uint lowPart, int highPart)
+    {
+        var bytes = new byte[8];
+        BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), lowPart);
+        BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), highPart);
+        return bytes;
+    }
+
+    public bool Matches(IMediaSharedGpuImageConsumer consumer, int width, int height) =>
+        IsActive && !_recreate && ReferenceEquals(_consumer, consumer) && Width == width && Height == height;
+
+    /// <summary>
+    /// Negotiates with the consumer, creates the private target and the exported textures, and
+    /// hands the set to the consumer. Returns <see langword="false"/> with a reason the consumer
+    /// should hear when this device cannot serve it.
+    /// </summary>
+    public bool Create(
+        D3D11DeviceResources deviceResources,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(deviceResources);
+        ArgumentNullException.ThrowIfNull(consumer);
+        Cleanup();
+        if (!deviceResources.HasDevice || width <= 0 || height <= 0)
+        {
+            reason = "the Direct3D11 device is not ready";
+            return false;
+        }
+
+        MediaSharedGpuImageRequest request = consumer.Request;
+        if (!request.TrySelect(ProducerCapabilities, [], out MediaSharedGpuImageSelection selection, out reason)
+            || !request.MatchesDevice(GetAdapterLuid(deviceResources.Device!), [], out reason))
+        {
+            return false;
+        }
+
+        try
+        {
+            ID3D11Device device = deviceResources.Device!;
+            _targetTexture = device.CreateTexture2D(Describe(width, height, ResourceOptionFlags.None));
+            ResourceOptionFlags sharing = ResourceOptionFlags.SharedKeyedMutex
+                | (selection.HandleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle ? ResourceOptionFlags.SharedNTHandle : ResourceOptionFlags.None);
+            for (var i = 0; i < BufferCount; i++)
+                _textures[i] = CreateSharedTexture(device, width, height, sharing, selection.HandleKind);
+        }
+        catch (Exception exception) when (exception is SharpGenException or InvalidOperationException)
+        {
+            reason = $"creating the shared textures failed: {exception.Message}";
+            Cleanup();
+            return false;
+        }
+
+        _deviceResources = deviceResources;
+        _consumer = consumer;
+        _selection = selection;
+        Width = width;
+        Height = height;
+        Publish();
+        reason = null;
+        return true;
+    }
+
+    /// <summary>Copies the composed target into the next free shared texture and announces it.</summary>
+    public bool Present(int liveResizeFlag, bool syncImmediate)
+    {
+        // The compositor paces presentation; swap-chain timing options do not apply.
+        _ = liveResizeFlag;
+        _ = syncImmediate;
+        if (!IsActive || _deviceResources?.Context is not { } context)
+            return false;
+
+        if (_recreate && !Republish())
+            return false;
+
+        MediaSharedGpuImageRing ring = _ring!;
+        if (!ring.TryBeginWrite(ReleaseWaitTimeout, out MediaSharedGpuImageWrite write))
+        {
+            // The compositor still holds both textures: it is behind, and a newer frame follows.
+            if (!_dropReported)
+            {
+                _dropReported = true;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", "Shared texture frame dropped: the compositor has not released a texture yet.");
+            }
+
+            return true;
+        }
+
+        SharedTexture shared = _textures[write.BufferIndex]!;
+        try
+        {
+            var acquired = AcquireSync(shared.Mutex, write.AcquireKey, AcquireTimeoutMilliseconds);
+            if (acquired != 0)
+            {
+                ring.AbortWrite(write.BufferIndex);
+                return HandleAcquireFailure(acquired);
+            }
+
+            context.CopyResource(shared.Texture, _targetTexture!);
+            // Releasing submits the copy; the compositor's acquire of the consumer key waits for it.
+            shared.Mutex.ReleaseSync(MediaSharedGpuImageRing.ConsumerKey);
+        }
+        catch (SharpGenException exception)
+        {
+            ring.AbortWrite(write.BufferIndex);
+            ReportPresentException(exception);
+            return false;
+        }
+
+        _deviceLostReported = false;
+        _consumer!.OnFrameReady(ring.CompleteWrite(write.BufferIndex));
+        return true;
+    }
+
+    public void Cleanup()
+    {
+        _set?.Retire();
+        _set = null;
+        _ring?.Dispose();
+        _ring = null;
+        for (var i = 0; i < _textures.Length; i++)
+        {
+            _textures[i]?.Dispose();
+            _textures[i] = null;
+        }
+
+        _targetTexture?.Dispose();
+        _targetTexture = null;
+        _deviceResources = null;
+        _consumer = null;
+        _recreate = false;
+        Width = 0;
+        Height = 0;
+        _deviceLostReported = false;
+    }
+
+    public void Dispose() => Cleanup();
+
+    private static Texture2DDescription Describe(int width, int height, ResourceOptionFlags options) => new(
+        Format.B8G8R8A8_UNorm,
+        (uint)width,
+        (uint)height,
+        arraySize: 1,
+        mipLevels: 1,
+        BindFlags.RenderTarget | BindFlags.ShaderResource,
+        ResourceUsage.Default,
+        CpuAccessFlags.None,
+        sampleCount: 1,
+        sampleQuality: 0,
+        options);
+
+    private static SharedTexture CreateSharedTexture(
+        ID3D11Device device,
+        int width,
+        int height,
+        ResourceOptionFlags sharing,
+        MediaSharedGpuImageHandleKind handleKind)
+    {
+        ID3D11Texture2D texture = device.CreateTexture2D(Describe(width, height, sharing));
+        IDXGIKeyedMutex? mutex = null;
+        try
+        {
+            mutex = texture.QueryInterface<IDXGIKeyedMutex>();
+            nint handle;
+            if (handleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle)
+            {
+                using IDXGIResource1 resource = texture.QueryInterface<IDXGIResource1>();
+                handle = resource.CreateSharedHandle(null, Vortice.DXGI.SharedResourceFlags.Read | Vortice.DXGI.SharedResourceFlags.Write, null);
+            }
+            else
+            {
+                using IDXGIResource resource = texture.QueryInterface<IDXGIResource>();
+                handle = resource.SharedHandle;
+            }
+
+            if (handle == 0)
+                throw new InvalidOperationException("DXGI returned no shared handle.");
+
+            return new SharedTexture(texture, mutex, handle, handleKind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle);
+        }
+        catch
+        {
+            mutex?.Dispose();
+            texture.Dispose();
+            throw;
+        }
+    }
+
+    private static byte[] GetAdapterLuid(ID3D11Device device)
+    {
+        try
+        {
+            using IDXGIDevice dxgiDevice = device.QueryInterface<IDXGIDevice>();
+            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
+            Vortice.Luid luid = adapter.Description.Luid;
+            return LuidBytes(luid.LowPart, luid.HighPart);
+        }
+        catch (SharpGenException)
+        {
+            // Unknown: the consumer's identity check is skipped and its import decides.
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// <c>IDXGIKeyedMutex::AcquireSync</c> through the vtable: Vortice's wrapper hides the
+    /// WAIT_TIMEOUT and WAIT_ABANDONED success codes, which mean the mutex was not acquired.
+    /// </summary>
+    private static unsafe int AcquireSync(IDXGIKeyedMutex mutex, ulong key, uint milliseconds)
+    {
+        nint native = mutex.NativePointer;
+        var acquire = (delegate* unmanaged[Stdcall]<nint, ulong, uint, int>)(*(nint**)native)[8];
+        return acquire(native, key, milliseconds);
+    }
+
+    private bool HandleAcquireFailure(int result)
+    {
+        if (result < 0)
+        {
+            ReportPresentFailure(new Result(result));
+            return false;
+        }
+
+        // Timed out or abandoned: the texture pair is out of step with the compositor. Export a
+        // fresh set; the compositor imports it and the next frame proceeds.
+        Debug.WriteLine($"[D3D11SharedTexture] AcquireSync returned 0x{result:X} ({(result == WaitTimeout ? "timeout" : result == WaitAbandoned ? "abandoned" : "unexpected")}); re-exporting.");
+        _recreate = true;
+        return true;
+    }
+
+    /// <summary>Replaces the exported textures at the same size (after an abandoned or stuck mutex).</summary>
+    private bool Republish()
+    {
+        D3D11DeviceResources deviceResources = _deviceResources!;
+        IMediaSharedGpuImageConsumer consumer = _consumer!;
+        if (Create(deviceResources, consumer, Width, Height, out var reason))
+            return true;
+
+        consumer.OnUnavailable(reason ?? "re-exporting the shared textures failed");
+        return false;
+    }
+
+    private void Publish()
+    {
+        var generation = Interlocked.Increment(ref _nextGeneration);
+        var ring = new MediaSharedGpuImageRing(BufferCount);
+        ring.Reset(generation);
+        SharedTexture[] textures = [.. _textures.Select(static texture => texture!)];
+        _ring = ring;
+        _dropReported = false;
+        _set = new MediaSharedGpuImageSet(
+            generation,
+            _selection,
+            Width,
+            Height,
+            MediaSharedGpuImageFormat.Bgra8Unorm,
+            textures.Select(static texture => new MediaSharedGpuImageBuffer(texture.Handle)),
+            (frame, consumed) => ring.Release(frame, consumed),
+            // NT handles stay open until both sides are done with the set; legacy handles are not closable.
+            _ =>
+            {
+                foreach (SharedTexture texture in textures)
+                    texture.CloseHandle();
+            });
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Shared textures exported: {_set}");
+        _consumer!.OnImagesCreated(_set);
+    }
+
+    private void ReportPresentFailure(Result result)
+    {
+        if (D3D11DeviceLostClassifier.IsDeviceLost(result))
+            RaiseDeviceLostOnce(D3D11DeviceLostClassifier.Describe(result, swapChain: null));
+        else
+            Debug.WriteLine($"[D3D11SharedTexture] Present failed: {result}");
+    }
+
+    private void ReportPresentException(SharpGenException exception)
+    {
+        Result removed = default;
+        try
+        {
+            removed = _deviceResources?.Device?.DeviceRemovedReason ?? default;
+        }
+        catch (SharpGenException)
+        {
+            // The device may already be gone.
+        }
+
+        if (removed.Failure && D3D11DeviceLostClassifier.IsDeviceLost(removed))
+            RaiseDeviceLostOnce($"Shared texture present detected GPU device lost: {D3D11DeviceLostClassifier.Describe(removed, swapChain: null)}");
+        else
+            Debug.WriteLine($"[D3D11SharedTexture] Present failed: {exception.Message}");
+    }
+
+    private void RaiseDeviceLostOnce(string message)
+    {
+        if (_deviceLostReported)
+            return;
+
+        _deviceLostReported = true;
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", message);
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint handle);
+
+    private sealed class SharedTexture(ID3D11Texture2D texture, IDXGIKeyedMutex mutex, nint handle, bool isNtHandle) : IDisposable
+    {
+        private nint _ntHandle = isNtHandle ? handle : 0;
+
+        public ID3D11Texture2D Texture { get; } = texture;
+        public IDXGIKeyedMutex Mutex { get; } = mutex;
+        public nint Handle { get; } = handle;
+
+        /// <summary>Closes the NT handle once (the texture itself lives on in importers' references).</summary>
+        public void CloseHandle()
+        {
+            nint ntHandle = Interlocked.Exchange(ref _ntHandle, 0);
+            if (ntHandle != 0)
+                _ = D3D11SharedTextureBackend.CloseHandle(ntHandle);
+        }
+
+        public void Dispose()
+        {
+            Mutex.Dispose();
+            Texture.Dispose();
+        }
+    }
+}

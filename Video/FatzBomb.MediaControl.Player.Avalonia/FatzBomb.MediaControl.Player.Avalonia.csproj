@@ -37,6 +37,8 @@
 
   <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' == 'windows'">
     <ProjectReference Include="..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj" />
+    <!-- Direct3D11 renderer for the shared GPU image path on Windows (Stage 027A slice 2). -->
+    <ProjectReference Include="..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">

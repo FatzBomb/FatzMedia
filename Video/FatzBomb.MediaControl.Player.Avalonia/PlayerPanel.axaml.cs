@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using FatzBomb.MediaControl.Avalonia;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 
@@ -60,6 +61,10 @@ public partial class PlayerPanel : UserControl
         SeekSlider.AddHandler(PointerReleasedEvent, OnSeekReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
         SeekSlider.PointerCaptureLost += OnSeekCaptureLost;
 
+        // --surface=framesink forces the readback path for comparison (Stage 027A slice 2).
+        Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
+        Surface.PresentationPathChanged += OnPresentationPathChanged;
+
         _uiTimer.Tick += OnUiTimerTick;
     }
 
@@ -73,7 +78,7 @@ public partial class PlayerPanel : UserControl
         try
         {
             IMediaControlPlatformFactory platform = PlatformComposition.Create(Renderers.Create(_renderer.Kind));
-            // Both frame-sink renderers decode in software.
+            // Every renderer here decodes in software, so CPU comparisons isolate the presentation path.
             var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software)
             {
                 Mode = StartupOptions.Current.Mode,
@@ -149,7 +154,8 @@ public partial class PlayerPanel : UserControl
         PixelSize size = Surface.AttachedPixelSize;
         StatusText.Text =
             $"{Label} {player.State} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
-            $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height}";
+            $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height} " +
+            $"via {DescribePath(Surface.PresentationPath)}";
     }
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -328,6 +334,25 @@ public partial class PlayerPanel : UserControl
         Dispatcher.UIThread.Post(() => AddLog(MediaDiagnosticLevel.Error, "MediaError", $"{e.Code}: {e.Message}"));
 
     private void OnFramePresented(object? sender, EventArgs e) => Interlocked.Increment(ref _frames);
+
+    // Raised on the UI thread. The surface also raises an Info diagnostic for every MediaSurface.
+    private void OnPresentationPathChanged(object? sender, EventArgs e)
+    {
+        if (Surface.PresentationPath != MediaSurfacePresentationPath.None)
+        {
+            AddLog(
+                MediaDiagnosticLevel.Info,
+                "Surface",
+                $"{Label} presents via {DescribePath(Surface.PresentationPath)}{(Surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
+        }
+    }
+
+    private static string DescribePath(MediaSurfacePresentationPath path) => path switch
+    {
+        MediaSurfacePresentationPath.SharedGpuImage => "shared GPU image",
+        MediaSurfacePresentationPath.FrameSink => "frame sink",
+        _ => "none"
+    };
 
     private void ReportNativeLibraries(MediaControlPlayer player)
     {

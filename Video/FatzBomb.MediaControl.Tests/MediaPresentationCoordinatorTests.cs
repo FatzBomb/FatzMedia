@@ -47,6 +47,35 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void RejectedSharedGpuImageSurface_TellsTheConsumerWhy()
+    {
+        // Stage 027A slice 2: the adapter falls back to its frame sink when told.
+        var backend = new RecordingRendererBackend { AcceptsSurfaces = false };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine());
+        var consumer = new RecordingSharedImageConsumer();
+        using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
+        var surface = new MediaPresentationSurfaceDescriptor(
+            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+            MediaPresentationSurfaceRole.Primary,
+            handle.CreateSurfaceDescriptor(),
+            320,
+            180);
+
+        Assert.False(coordinator.AttachPresentationSurface(surface));
+        var reason = Assert.Single(consumer.UnavailableReasons);
+        Assert.Contains("Test renderer", reason);
+    }
+
+    [Fact]
+    public void RejectedWindowSurface_NotifiesNoConsumer()
+    {
+        var backend = new RecordingRendererBackend { AcceptsSurfaces = false };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine());
+
+        Assert.False(coordinator.AttachPresentationSurface(CreatePrimarySurface(320, 180)));
+    }
+
+    [Fact]
     public void SubtitleRefresh_PreservesRetainedIntentAndForwardsFramePresented()
     {
         var backend = new RecordingRendererBackend();
@@ -396,6 +425,20 @@ public sealed class MediaPresentationCoordinatorTests
         width,
         height);
 
+    private sealed class RecordingSharedImageConsumer : IMediaSharedGpuImageConsumer
+    {
+        public ConcurrentQueue<string> UnavailableReasons { get; } = [];
+
+        public MediaSharedGpuImageRequest Request { get; } = new(
+            [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex)]);
+
+        public void OnImagesCreated(MediaSharedGpuImageSet images) => images.CompleteImport(handlesConsumed: false);
+
+        public void OnFrameReady(MediaSharedGpuImageFrame frame) { }
+
+        public void OnUnavailable(string reason) => UnavailableReasons.Enqueue(reason);
+    }
+
     private sealed class StubSubtitleRasterizer : ISubtitleRasterizer
     {
         public SubtitleRasterResult Render(string text, int width, int height) => default;
@@ -427,10 +470,12 @@ public sealed class MediaPresentationCoordinatorTests
             return true;
         }
 
+        public bool AcceptsSurfaces { get; set; } = true;
+
         public bool AttachSurface(MediaPresentationSurfaceDescriptor surface)
         {
             AttachedSurfaces.Enqueue(surface);
-            return true;
+            return AcceptsSurfaces;
         }
 
         public bool ResizeSurface(MediaPresentationSurfaceDescriptor surface)

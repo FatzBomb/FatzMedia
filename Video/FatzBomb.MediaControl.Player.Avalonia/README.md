@@ -7,7 +7,11 @@ measuring rig for several players in one process.
 ## What it tests
 
 - `FatzBomb.MediaControl.Avalonia.MediaSurface` bound to a `MediaControlPlayer` (composited frame sink).
-- Software and Vulkan renderers, switched at run time (Vulkan is greyed out when no loader/device is usable).
+- Software and Vulkan renderers, and Direct3D11 in the Windows build, switched at run time (an
+  unusable renderer is greyed out).
+- The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
+  (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
+  reason. `--surface=framesink` forces the frame sink, for comparison.
 - Open (file picker, filter from the engine), Play/Pause, Stop, seek bar, volume, pitch (-12..+12
   semitones), tempo (50..200 %), loop.
 - A log panel per player: every `MediaDiagnostic` and `MediaError` event, newest first (500 entries).
@@ -29,7 +33,8 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 -- [media-file] [options]
 ```
 
-Options: `--renderer=software|vulkan|auto` (auto = Vulkan if usable, else software; default software),
+Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
+software; `direct3d11` in the Windows build only), `--surface=auto|framesink` (default auto),
 `--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--native=<dir>` (repeatable),
 and an optional media file for the first player. Each player's Mode box switches its mode on the fly
 (`SetModeAsync`); `--mode` sets its initial value.
@@ -44,8 +49,8 @@ A `net10.0` project cannot reference a Windows-TFM project, so the player target
 references exactly one platform package. `PlatformComposition.cs` picks the factory with `#if WINDOWS`
 (`WindowsMediaControlPlatformFactory` or `LinuxMediaControlPlatformFactory`, each given the chosen renderer
 factory). Everything else is shared source. The `net10.0` build refuses to run on a non-Linux OS with a
-message pointing to the Windows build. Direct3D11 is not offered: it presents to native windows, which
-the composited Avalonia surface does not use (use the WPF or WinForms player for it).
+message pointing to the Windows build. The Windows build also references `FatzBomb.MediaControl.Windows.Direct3D11`
+for the Direct3D11 renderer, which feeds the surface's shared GPU image path (DXGI keyed-mutex textures).
 
 ## Native libraries
 

@@ -3,7 +3,8 @@ using FatzBomb.MediaControl.Core.Configuration;
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
-/// Command line: <c>[media-file] [--renderer=auto|software|vulkan] [--players=1..4] [--mode=full|background|audio] [--native=&lt;dir&gt;]...</c>
+/// Command line: <c>[media-file] [--renderer=auto|software|vulkan|direct3d11] [--surface=auto|framesink] [--players=1..4]
+/// [--mode=full|background|audio] [--native=&lt;dir&gt;]...</c>
 /// </summary>
 internal sealed class StartupOptions
 {
@@ -19,6 +20,12 @@ internal sealed class StartupOptions
 
     public int Players { get; private init; } = 1;
 
+    /// <summary>
+    /// Gets whether surfaces may use the shared GPU image path (<c>--surface=auto</c>, the default)
+    /// or always use the frame sink (<c>--surface=framesink</c>). Stage 027A slice 2.
+    /// </summary>
+    public bool PreferGpuSurface { get; private init; } = true;
+
     /// <summary>Gets the mode every player is created in (Stage 043A).</summary>
     public MediaPlayerMode Mode { get; private init; } = MediaPlayerMode.Full;
 
@@ -30,6 +37,7 @@ internal sealed class StartupOptions
         string? media = null;
         var renderer = "software";
         var players = 1;
+        var preferGpuSurface = true;
         var mode = MediaPlayerMode.Full;
         List<string> native = [];
 
@@ -37,6 +45,8 @@ internal sealed class StartupOptions
         {
             if (TryValue(argument, "--renderer=", out var value))
                 renderer = value.ToLowerInvariant();
+            else if (TryValue(argument, "--surface=", out value))
+                preferGpuSurface = !value.Equals("framesink", StringComparison.OrdinalIgnoreCase);
             else if (TryValue(argument, "--players=", out value) && int.TryParse(value, out var count))
                 players = Math.Clamp(count, 1, MaxPlayers);
             else if (TryValue(argument, "--mode=", out value) && Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode parsed)
@@ -48,7 +58,15 @@ internal sealed class StartupOptions
                 media ??= argument;
         }
 
-        return new StartupOptions { MediaPath = media, Renderer = renderer, Players = players, Mode = mode, NativeDirectories = native };
+        return new StartupOptions
+        {
+            MediaPath = media,
+            Renderer = renderer,
+            Players = players,
+            PreferGpuSurface = preferGpuSurface,
+            Mode = mode,
+            NativeDirectories = native
+        };
     }
 
     private static bool TryValue(string argument, string prefix, out string value)

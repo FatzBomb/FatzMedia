@@ -53,6 +53,13 @@ Linux CI). Swapchains, subtitles, transforms, OpenGL, and Metal are later slices
   at texel-edge scales (1.5x, 0.5x), where it stays within one source texel. See
   `updates/026A_2`.
 
+## Shared Image Export (Stage 027A slice 2)
+
+The Vulkan renderer also accepts the `shared-gpu-image` surface. It blits each composed frame
+into one of two exported RGBA8 images (opaque POSIX fds, plus exported semaphores when the
+device has them) for the Avalonia compositor to import, instead of reading it back. Validated
+on lavapipe: the export is re-imported on a second device. See `updates/027A_2`.
+
 ## Next Slices
 
 1. Window-system swapchains (Win32 HWND first, then Xlib/Wayland) and resize.
