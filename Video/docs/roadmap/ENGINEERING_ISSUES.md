@@ -113,13 +113,16 @@ on every pixel and palette entry except:
   vertical (0-11) offset fields; a scroll pack with only an offset change does nothing. Songs that
   glide a line at a time jump a whole tile. Keep the offsets in state and checkpoints and shift the
   288x192 picture area when rendering (the border stays). Verified by test.
-- **Memory preset with repeat != 0 never clears pixels** (`CdgStateMachine.cs:286`, pinned by a
-  test). A clear that survives only in its repeat packets leaves stale pixels. Act on a repeat
-  unless the previous pack was the same preset. Verified by test.
-- **Pack timing truncates a double.** `CdgEngine.cs:181` uses `(long)(seconds * 300)`; for about
-  5% of exact boundaries that lands one pack (3.3 ms) early-or-late depending on rounding. Use an
-  integer rule (FatzAudio uses packs [0, ceil(g x 300)) in integer nanoseconds). Verified by
-  arithmetic.
+- **Memory preset with repeat != 0 never clears pixels** - **Fixed 2026-10-23, pending manual
+  smoke with a CD+G that clears with repeat packs.** A repeat pack now clears unless the previous
+  pack was a Memory Preset of the same colour (then it is skipped and reports unchanged). The
+  previous-preset colour is part of the replay checkpoint, restored on seek, and cleared on
+  reset/load. Verified by tests.
+- **Pack timing truncates a double** - **Fixed 2026-10-23, pending manual smoke.**
+  `CdgEngine.PacketCountAt` counts floor(position x 300) packs in integer nanoseconds (same
+  meaning of position as before: pack n applies at (n + 1) / 300 s), so exact boundaries no
+  longer land one pack off. `RenderPipeline` uses the same helper. FatzAudio's ceil rule would
+  shift every position by one pack and was not adopted. Verified by tests.
 - Smaller: the transparent-colour pack is a no-op and index 0 always takes the background
   opacity; each seek marks the whole frame dirty; `CdgPacket` allocates a small array per pack
   (about 14 MB for a 4-minute file) and every changed snapshot copies 64.8 KB. FatzAudio's seeks

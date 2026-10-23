@@ -66,7 +66,7 @@ internal sealed class RenderPipeline(IMediaEngine mediaEngine)
             return false;
         }
 
-        var packetIndex = Math.Max(0, (long)Math.Floor(currentPosition * CdgConstants.PacketsPerSecond));
+        var packetIndex = CdgEngine.PacketCountAt(currentPosition);
         if (force || packetIndex < _lastRenderedCdgPacketIndex)
         {
             RememberCdgRender(currentPosition, packetIndex);
