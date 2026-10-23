@@ -30,6 +30,8 @@ public partial class PlayerPanel : UserControl
     private long _lastFrameTimestamp = Stopwatch.GetTimestamp();
     private bool _isSeeking;
     private bool _isUpdatingSeek;
+    private bool _isUpdatingMode;
+    private bool _isUpdatingLoop;
     private bool _disposed;
 
     // Designer/XAML loader constructor.
@@ -46,6 +48,10 @@ public partial class PlayerPanel : UserControl
         InitializeComponent();
 
         LogList.ItemsSource = _log;
+        _isUpdatingMode = true;
+        ModeBox.ItemsSource = Enum.GetValues<MediaPlayerMode>();
+        ModeBox.SelectedItem = StartupOptions.Current.Mode;
+        _isUpdatingMode = false;
         UpdateEffectLabels();
         SetControlsEnabled(false);
 
@@ -93,6 +99,7 @@ public partial class PlayerPanel : UserControl
             player.Effects.Tempo = (int)TempoSlider.Value;
             _player = player;
             Surface.Player = player;
+            ShowPlayerMode(player);
 
             ReportNativeLibraries(player);
             SetControlsEnabled(true);
@@ -196,8 +203,49 @@ public partial class PlayerPanel : UserControl
 
     private void OnLoopChanged(object? sender, RoutedEventArgs e)
     {
-        if (_player is { } player)
+        if (!_isUpdatingLoop && _player is { } player)
             player.LoopMedia = LoopBox.IsChecked == true;
+    }
+
+    /// <summary>Switches this player's mode on the fly (Stage 043A slice 2).</summary>
+    private async void OnModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingMode || _player is not { } player || ModeBox.SelectedItem is not MediaPlayerMode mode || mode == player.Mode)
+            return;
+
+        ModeBox.IsEnabled = false;
+        AddLog(MediaDiagnosticLevel.Info, "Player", $"Switching to {mode} mode");
+        try
+        {
+            if (!await player.SetModeAsync(mode))
+                AddLog(MediaDiagnosticLevel.Warning, "Player", $"Could not switch to {mode} mode");
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Error, "Player", $"Mode switch failed: {ex.Message}");
+        }
+        finally
+        {
+            ModeBox.IsEnabled = true;
+            ShowPlayerMode(player);
+        }
+    }
+
+    /// <summary>Shows the player's mode and its loop setting (Background mode forces loop on).</summary>
+    private void ShowPlayerMode(MediaControlPlayer player)
+    {
+        _isUpdatingMode = true;
+        _isUpdatingLoop = true;
+        try
+        {
+            ModeBox.SelectedItem = player.Mode;
+            LoopBox.IsChecked = player.LoopMedia;
+        }
+        finally
+        {
+            _isUpdatingMode = false;
+            _isUpdatingLoop = false;
+        }
     }
 
     private void OnVolumeChanged(object? sender, RangeBaseValueChangedEventArgs e)
@@ -306,6 +354,7 @@ public partial class PlayerPanel : UserControl
     private void SetControlsEnabled(bool enabled)
     {
         OpenButton.IsEnabled = enabled;
+        ModeBox.IsEnabled = enabled;
         PlayPauseButton.IsEnabled = enabled;
         StopButton.IsEnabled = enabled;
         SeekSlider.IsEnabled = enabled;

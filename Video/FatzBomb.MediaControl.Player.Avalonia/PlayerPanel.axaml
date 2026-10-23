@@ -25,6 +25,8 @@
         <Button x:Name="PlayPauseButton" Content="Play" MinWidth="70" Click="OnPlayPauseClick" />
         <Button x:Name="StopButton" Content="Stop" Click="OnStopClick" />
         <CheckBox x:Name="LoopBox" Content="Loop" IsCheckedChanged="OnLoopChanged" />
+        <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
       </StackPanel>
 
       <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">

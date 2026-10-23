@@ -31,7 +31,8 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 
 Options: `--renderer=software|vulkan|auto` (auto = Vulkan if usable, else software; default software),
 `--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--native=<dir>` (repeatable),
-and an optional media file for the first player.
+and an optional media file for the first player. Each player's Mode box switches its mode on the fly
+(`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.
 Vulkan on a machine without a GPU needs Mesa lavapipe (`apt-get install mesa-vulkan-drivers`).

@@ -190,10 +190,29 @@ public interface IMediaControlSession : IDisposable
     }
 
     /// <summary>
-    /// Gets the mode the session was created in (Stage 043A). Sessions without modes are
+    /// Gets the session's mode (Stage 043A): the one it was created in until
+    /// <see cref="SetModeAsync"/> switches it. Sessions without modes are
     /// <see cref="MediaPlayerMode.Full"/>.
     /// </summary>
     MediaPlayerMode Mode => MediaPlayerMode.Full;
+
+    /// <summary>
+    /// Switches the session to another mode on the fly (Stage 043A slice 2), reopening the open
+    /// media at its position and in its transport state. Returns <see langword="true"/> when the
+    /// session is in <paramref name="mode"/> afterwards. Sessions without modes return
+    /// <see langword="true"/> only for their current mode.
+    /// </summary>
+    Task<bool> SetModeAsync(MediaPlayerMode mode) => Task.FromResult(mode == Mode);
+
+    /// <summary>
+    /// Raised after <see cref="SetModeAsync"/> switched to another mode. Sessions without modes
+    /// never raise it.
+    /// </summary>
+    event EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? ModeChanged
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Gets or sets whether loads search for sidecar and archive backgrounds (Stage 043A, default

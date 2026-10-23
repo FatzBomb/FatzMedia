@@ -27,9 +27,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`PostSeekRecovery`); owner smoke passed 2026-10-18 (`updates/041A_1` to `updates/041A_3`).
   The 010A/019A, 017A and 022A items are not started.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
-  creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) implemented,
-  pending manual smoke (`updates/043A_1`); slice 2 (`SetModeAsync`, switching on the fly) not
-  started.
+  creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
+  (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
+  (`updates/043A_1`, `updates/043A_2`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

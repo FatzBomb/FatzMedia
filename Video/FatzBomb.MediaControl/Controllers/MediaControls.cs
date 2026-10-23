@@ -44,6 +44,7 @@ public sealed class MediaControls
         get;
         set
         {
+            HostLoopMedia = value;
             if (field == value)
                 return;
 
@@ -80,10 +81,22 @@ public sealed class MediaControls
         set
         {
             field = value;
-            if (value)
+            if (value && !LoopMedia)
+            {
+                // Forced, not asked for: the host's own value stays what it was.
+                var hostLoopMedia = HostLoopMedia;
                 LoopMedia = true;
+                HostLoopMedia = hostLoopMedia;
+            }
         }
     }
+
+    /// <summary>
+    /// Gets the <see cref="LoopMedia"/> value the host last asked for (Stage 043A). It differs from
+    /// <see cref="LoopMedia"/> only while <see cref="ForcesLoop"/> keeps looping on, and a mode
+    /// switch carries it to the next mode.
+    /// </summary>
+    internal bool HostLoopMedia { get; private set; }
 
     /// <summary>
     /// Event raised when media reaches the end.

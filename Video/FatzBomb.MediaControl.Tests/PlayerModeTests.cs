@@ -112,7 +112,7 @@ public sealed class PlayerModeTests
     }
 
     [Fact]
-    public void AudioMode_UsesNoPresentationCoordinatorAndRejectsSurfaces()
+    public void AudioMode_UsesNoPresentationCoordinatorAndKeepsSurfaces()
     {
         var factory = new ModeTestPlatformFactory(new TestMediaEngine());
         using var player = new MediaControlPlayer(factory, new MediaPlayerConfiguration { Mode = MediaPlayerMode.Audio }, []);
@@ -124,13 +124,17 @@ public sealed class PlayerModeTests
             640,
             360);
 
-        List<MediaDiagnosticInfo> diagnostics = CaptureModeDiagnostics(() => Assert.False(player.AttachPresentationSurface(surface)));
+        // Slice 2: the surface is kept (for a switch to Full or Background), not rendered to.
+        List<MediaDiagnosticInfo> diagnostics = CaptureModeDiagnostics(() => Assert.True(player.AttachPresentationSurface(surface)));
 
         Assert.Equal(MediaPlayerMode.Audio, player.Mode);
         Assert.Equal(0, factory.CreatePresentationCoordinatorCount);
         Assert.True(factory.Monitor.Started);
-        MediaDiagnosticInfo warning = Assert.Single(diagnostics, info => info.Message.Contains(surfaceId, StringComparison.Ordinal));
-        Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
+        MediaDiagnosticInfo notice = Assert.Single(diagnostics, info => info.Message.Contains(surfaceId, StringComparison.Ordinal));
+        Assert.Equal(MediaDiagnosticLevel.Info, notice.Level);
+        Assert.True(player.ResizePresentationSurface(surfaceId, 800, 450));
+        Assert.True(player.DetachPresentationSurface(surfaceId));
+        Assert.False(player.ResizePresentationSurface(surfaceId, 640, 360));
     }
 
     [Fact]
