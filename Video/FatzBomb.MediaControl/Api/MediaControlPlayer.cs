@@ -640,6 +640,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)
@@ -745,7 +746,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
-
+        BassOutputWatchdog.OutputAvailabilityChanged += OnAudioOutputAvailabilityChanged;
     }
 
     // The video pipeline lives as long as the engine, so the setting holds across media; Reset
@@ -817,6 +818,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
+        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
         {
             if (_mediaEngine is IMediaErrorSource errorSource)

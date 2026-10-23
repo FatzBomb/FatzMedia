@@ -317,6 +317,7 @@ Tests are deterministic via `TimeProvider` injection with a `ManualTimeProvider`
 - `AudioDeviceChanged` event on `IMediaControlSession` with `AudioDeviceChangedEventArgs`.
 - `BASS_CONFIG_DEV_NONSTOP` enabled at BASS init to keep the device buffer alive during transient loss.
 - Policy is **diagnostic-only**: no `Stop`, `Close`, `Load`, `Seek`, or `Play` is triggered by device-change notifications. BASS/Windows handle active-stream migration; Core only raises diagnostics and the public event.
+- Lost BASS output (ENG-032): `BassOutputWatchdog` (Core, BASS only, platform neutral) is one process-wide 1-second timer that runs while any `AudioEngine`/`VideoAudioEngine` is playing. When BASS stops the output or parks a playing channel as `BASS_ACTIVE_PAUSED_DEVICE` (another application holding the device exclusively, a USB device unplugged), it raises one unowned `AudioOutput` warning and `AudioDeviceChanged` (`DeviceRemoved`) on every player, retries `BASS_Start` / `BASS_Init(BASS_DEVICE_REINIT)` once a second per device, resumes only the channels whose engine is still `Playing`, then raises an Info and `AudioDeviceChanged` (`DeviceAdded`). The decisions live in the pure `AudioOutputRecoveryTracker`. A `Play` whose `BASS_ChannelPlay` fails restarts the output once (same rate limit) and reports an Error naming the unavailable output if it still fails.
 
 ## Audio Output Device Selection (Stage 006C)
 

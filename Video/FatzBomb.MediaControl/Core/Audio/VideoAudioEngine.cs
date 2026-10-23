@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide
+internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
@@ -434,6 +434,23 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return false;
 
         var success = Bass.ChannelPlay(PlayHandle);
+        if (!success)
+        {
+            // The output may be paused because the device became unavailable (another application
+            // holding it exclusively, or unplugged): restart it once and retry (ENG-032).
+            Errors error = Bass.LastError;
+            if (BassOutputWatchdog.IsOutputUnavailableError(error)
+                && BassOutputWatchdog.TryRestoreOutputForPlay(PlayHandle, _bassDeviceIndex, 0))
+            {
+                success = Bass.ChannelPlay(PlayHandle);
+                if (!success)
+                    error = Bass.LastError;
+            }
+
+            if (!success)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoAudioEngine", BassOutputWatchdog.DescribePlayFailure(error));
+        }
+
         if (success)
         {
             SetState(AudioEngineState.Playing);
@@ -441,6 +458,26 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
 
         return success;
+    }
+
+    int IBassOutputClient.PlayingHandle => State == AudioEngineState.Playing ? PlayHandle : 0;
+
+    bool IBassOutputClient.ResumeChannelPausedByDevice()
+    {
+        lock (_sync)
+        {
+            if (_disposed || State != AudioEngineState.Playing || PlayHandle == 0
+                || (int)Bass.ChannelIsActive(PlayHandle) != BassOutputWatchdog.ActivePausedDevice)
+            {
+                return true;
+            }
+
+            // Not restarted: the channel carries on from its position, and the snapshot the video
+            // clock reads restarts from the real position instead of the stalled one.
+            var resumed = Bass.ChannelPlay(PlayHandle);
+            PublishPositionSnapshot(GetPositionCore());
+            return resumed;
+        }
     }
 
     public bool Pause()
@@ -709,6 +746,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     public void Dispose()
     {
+        BassOutputWatchdog.Unregister(this);
         Close();
         if (_ownsDemuxer)
             _demuxer.Dispose();
@@ -1093,6 +1131,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             return;
 
         State = state;
+
+        // The output watchdog looks after the channel only while it should be playing.
+        if (state == AudioEngineState.Playing)
+            BassOutputWatchdog.Register(this);
+        else
+            BassOutputWatchdog.Unregister(this);
+
         StateChanged?.Invoke(this, state);
     }
 

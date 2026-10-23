@@ -15,7 +15,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient
 {
     private readonly BassEqualizerFilter _equalizer = new();
 
@@ -61,6 +61,10 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
 
     private volatile bool _disposed;
+
+    // Serializes Play/Pause/Stop with the output watchdog's resume, so a channel the host just
+    // paused or stopped is never resumed (ENG-032).
+    private readonly Lock _transportGate = new();
 
     #endregion
 
@@ -194,6 +198,13 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             if (field != value)
             {
                 field = value;
+
+                // The output watchdog looks after the channel only while it should be playing.
+                if (value == AudioEngineState.Playing)
+                    BassOutputWatchdog.Register(this);
+                else
+                    BassOutputWatchdog.Unregister(this);
+
                 StateChanged?.Invoke(this, field);
             }
         }
@@ -424,6 +435,12 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Play()
     {
+        lock (_transportGate)
+            return PlayCore();
+    }
+
+    private bool PlayCore()
+    {
         var playHandle = _streamManager.PlayHandle;
         if (playHandle == 0) return false;
 
@@ -454,22 +471,24 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
 
         // Ensure the BASS device context is current before playing.
-        // After extended idle time (e.g. media ended, user away for hours),
-        // Windows may release the audio device, causing ChannelPlay to fail.
         _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine", raiseDiagnostic: false);
 
         var result = MBass.ChannelPlay(playHandle);
-        if (!result && _bassInitialized)
+        if (!result)
         {
-            // Device may have been lost during idle — attempt reinitialization
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine",
-                $"ChannelPlay failed ({MBass.LastError}), attempting device recovery...");
-            _bassInitialized = false;
-            if (Init(_requestedDevice, _currentDeviceSampleRate))
+            // The output may be paused because the device became unavailable (another application
+            // holding it exclusively, or unplugged): restart it once and retry (ENG-032).
+            Errors error = MBass.LastError;
+            if (BassOutputWatchdog.IsOutputUnavailableError(error)
+                && BassOutputWatchdog.TryRestoreOutputForPlay(playHandle, _currentDevice, _currentDeviceSampleRate))
             {
-                _ = BassAudioOutputDevices.TrySetCurrentDevice(_currentDevice, "AudioEngine");
                 result = MBass.ChannelPlay(playHandle);
+                if (!result)
+                    error = MBass.LastError;
             }
+
+            if (!result)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", BassOutputWatchdog.DescribePlayFailure(error));
         }
 
         if (result)
@@ -483,32 +502,56 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Pause()
     {
-        var playHandle = _streamManager.PlayHandle;
-        if (playHandle == 0) return false;
-
-        var success = MBass.ChannelPause(playHandle);
-        if (success)
+        lock (_transportGate)
         {
-            State = AudioEngineState.Paused;
-        }
+            var playHandle = _streamManager.PlayHandle;
+            if (playHandle == 0) return false;
 
-        return success;
+            var success = MBass.ChannelPause(playHandle);
+            if (success)
+            {
+                State = AudioEngineState.Paused;
+            }
+
+            return success;
+        }
     }
 
     /// <inheritdoc/>
     public bool Stop()
     {
-        var playHandle = _streamManager.PlayHandle;
-        if (playHandle == 0) return false;
+        lock (_transportGate)
+        {
+            var playHandle = _streamManager.PlayHandle;
+            if (playHandle == 0) return false;
 
-        var success = MBass.ChannelStop(playHandle);
-        _fade.EndSession(releaseHandle: false);
+            var success = MBass.ChannelStop(playHandle);
+            _fade.EndSession(releaseHandle: false);
 
-        // Reset positions for all streams
-        _streamManager.ResetPosition();
+            // Reset positions for all streams
+            _streamManager.ResetPosition();
 
-        State = AudioEngineState.Stopped;
-        return success;
+            State = AudioEngineState.Stopped;
+            return success;
+        }
+    }
+
+    int IBassOutputClient.PlayingHandle => !_disposed && State == AudioEngineState.Playing ? _streamManager.PlayHandle : 0;
+
+    bool IBassOutputClient.ResumeChannelPausedByDevice()
+    {
+        lock (_transportGate)
+        {
+            var playHandle = _streamManager.PlayHandle;
+            if (_disposed || State != AudioEngineState.Playing || playHandle == 0
+                || (int)MBass.ChannelIsActive(playHandle) != BassOutputWatchdog.ActivePausedDevice)
+            {
+                return true;
+            }
+
+            // Not restarted: the channel carries on from its position.
+            return MBass.ChannelPlay(playHandle);
+        }
     }
 
     /// <inheritdoc/>
@@ -887,6 +930,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     {
         if (_disposed) return;
 
+        BassOutputWatchdog.Unregister(this);
         CancelNormalizationAnalysis();
         StopStandaloneAnalyses();
         StopNetworkMonitoring();

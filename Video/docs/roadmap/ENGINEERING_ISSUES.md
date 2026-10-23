@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-18
+Updated: 2026-10-23
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -21,9 +21,10 @@ needs Windows to verify.
 Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which replaces this path.
 - BASS is initialised without `DeviceInitFlags.Latency`, so `BASS_INFO.latency` is 0 and
   output-latency compensation (and the USB/Bluetooth heuristic) does nothing.
-- The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
-  `Bass.Free` is never called, so it cannot recover a lost device. Real recovery is the
-  player-level Reset on a device change.
+- ~~The "device recovery" in `AudioEngine.Play()` re-inits a device that is still initialised;
+  `Bass.Free` is never called, so it cannot recover a lost device.~~ Replaced by ENG-032's
+  output watchdog (`BASS_Start`, then `BASS_DEVICE_REINIT`); switching to a different device
+  still needs the player-level Reset.
 - `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
 
 ### ENG-022 - Subtitle content flag is never revoked
@@ -175,6 +176,81 @@ Fix:
 
 Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
 `MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
+
+### ENG-032 - Playback never resumes after another application takes the audio device
+
+Resolved: 2026-10-23, pending manual smoke.
+
+Reported: 2026-10-23 (owner). Two players in the Avalonia test player (Windows, BASS audio).
+Another application on the PC (an audio engine running speaker tests, probably opening the
+device in WASAPI exclusive mode) took the output device. Both players stopped, audio and video
+(video follows the audio clock); the UI stayed responsive and nothing was logged. Playback
+never resumed after the other application finished, and loading a new file did not play either.
+
+Cause: nothing in our code noticed BASS losing the output. BASS pauses the device's output and
+parks its playing channels as `BASS_ACTIVE_PAUSED_DEVICE` (state 4, not in ManagedBass 4.0.2's
+`PlaybackState`), and only `BASS_Start` (or a reinit) brings them back. The device monitors
+(`PollingAudioDeviceMonitor` on Windows, `BassDeviceAudioMonitor` on Linux) only detect
+default-device and sample-rate changes. The "device recovery" in `AudioEngine.Play()` re-ran
+`BASS_Init` on a device that was still initialized (`BASS_ERROR_ALREADY`, so a no-op) and failed
+quietly with a generic warning; `VideoAudioEngine.Play()` did not report the failure at all.
+
+Fix (Core only, BASS only, so Windows and Linux share it):
+- **Decision unit:** `Core/Audio/AudioOutputRecoveryTracker` is pure. Given a device sample
+  (output status from `BASS_IsStarted`, how many channels intend to play, how many BASS reports
+  as paused by the device) and the time, it returns the next action: none, report lost, start,
+  reinit, resume channels, report recovered. It reports a loss once per outage, retries once a
+  second, follows a failed `BASS_Start` with a reinit and a failed reinit with a plain start,
+  resumes parked channels once the output is back (escalating to a reinit if they stay
+  parked), and reports the recovery once. Channels whose engine is not `Playing` never count.
+- **Watchdog:** `Core/Audio/BassOutputWatchdog` is the thin BASS layer. `AudioEngine` and
+  `VideoAudioEngine` register while their state is `Playing` and unregister on pause, stop,
+  close and dispose. One process-wide timer runs only while something is registered: every
+  second it groups the playing channels by `BASS_ChannelGetDevice`, samples each device, and
+  carries out the tracker's action, so a device is restarted once per process however many
+  players share it. Restarts are `BASS_Start`, then `BASS_Init(device, rate,
+  BASS_DEVICE_REINIT)` on the same device and last known sample rate. Each engine resumes only
+  its own channel (`BASS_ChannelPlay` without restart, so at its position), under its transport
+  lock and only if it is still `Playing`, so a channel the host paused or stopped is never
+  touched. When the last engine unregisters the timer stops and the outage is forgotten.
+  `BASS_IsStarted` is not wrapped by ManagedBass 4.0.2: it is called through a function pointer
+  resolved from the BASS module ManagedBass itself loads (the same `DllImport` resolution,
+  including the Linux resolver); if the export is missing, detection falls back to channel
+  state alone.
+- **Reporting:** one unowned `DiagnosticRouter` Warning per outage (category `AudioOutput`):
+  "Audio output unavailable (another application may be using the device exclusively);
+  retrying (output: ...)", and an Info "Audio output available again; playback resumed" on
+  recovery. Every player also raises the existing public `AudioDeviceChanged` event (no new
+  API): `DeviceRemoved` with that failure message on the loss, `DeviceAdded` on the recovery.
+- **Play while unavailable:** when `BASS_ChannelPlay` fails with an output error (`BASS_ERROR_START`,
+  `BASS_ERROR_REINIT`, busy, device, driver, unknown), both engines restart the output once
+  (sharing the watchdog's per-device rate limit) and retry. If it still fails they raise an
+  Error: "Audio output unavailable (another application may be using the device exclusively);
+  playback could not start (...)". This replaces the inert re-init in `AudioEngine.Play()`
+  (the ENG-021 bullet). If the play succeeds but BASS parks the channel, the watchdog resumes
+  it like any other.
+
+Tests: `AudioOutputRecoveryTrackerTests` (21) covers detection (stopped output, parked channel,
+unknown output status, nothing playing), one report per outage, the one-second retry, the
+start/reinit alternation, resume and its escalation, recovery, a second outage, the shared
+rate limit with Play, and a full outage scenario. The BASS layer cannot run in tests.
+
+Manual smoke (Windows):
+1. Play a file in each player of the Avalonia test player (audio and a video).
+2. In Windows Sound settings, open the output device's properties > Advanced and enable "Allow
+   applications to take exclusive control of this device".
+3. Start an application that holds the device exclusively (an ASIO/WASAPI-exclusive player or
+   a speaker test), or unplug a USB audio device.
+4. Expect one Warning in each player's log, "Audio output unavailable (another application
+   may be using the device exclusively); retrying", and `AudioDeviceChanged` if the host shows it.
+5. Close the other application (or plug the USB device back in). Within about a second both
+   players resume from where they stopped, video with them, and the log shows "Audio output
+   available again; playback resumed".
+6. Pause one player during an outage, then end the outage: the paused player stays paused.
+7. During an outage, load a new file and press Play: expect either an Error naming the
+   unavailable output (Play failed; press Play again after the outage) or playback that starts
+   by itself when the outage ends, never silent failure.
+8. Linux (when BASS player smoke runs): unplug and replug a USB audio device while playing.
 
 ### ENG-020 - October 2026 code audit
 

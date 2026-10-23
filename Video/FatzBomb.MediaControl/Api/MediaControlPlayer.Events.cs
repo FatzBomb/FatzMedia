@@ -177,6 +177,11 @@ public partial class MediaControlPlayer
     private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
         _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChangeNotice(info));
 
+    // The BASS output watchdog is process-wide and raises its own diagnostic, so every player
+    // forwards the event without adding a second warning (ENG-032).
+    private void OnAudioOutputAvailabilityChanged(AudioDeviceChangeInfo info) =>
+        _ = _controlOperations.Enqueue(() => RaiseAudioDeviceChanged(info));
+
     private void RaiseAudioDeviceChangeNotice(AudioDeviceChangeInfo info)
     {
         if (_disposed)
@@ -189,6 +194,14 @@ public partial class MediaControlPlayer
                 ? info.FailureMessage
                 : $"Audio device change detected: kind={info.Kind}, name={info.DeviceName ?? "(unknown)"}; leaving playback under BASS/Windows control.",
             innerException: null);
+
+        RaiseAudioDeviceChanged(info);
+    }
+
+    private void RaiseAudioDeviceChanged(AudioDeviceChangeInfo info)
+    {
+        if (_disposed)
+            return;
 
         try
         {

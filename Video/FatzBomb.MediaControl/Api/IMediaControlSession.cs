@@ -388,7 +388,11 @@ public interface IMediaControlSession : IDisposable
     /// Raised when the active audio output device is lost, the system default device changes,
     /// or the audio device state otherwise changes. Core does not change playback state from
     /// this notification; BASS/Windows remain responsible for active stream migration. Hosts
-    /// should surface a user-visible diagnostic when needed. May fire from background threads;
+    /// should surface a user-visible diagnostic when needed. When BASS loses the output (another
+    /// application takes the device exclusively, or it is unplugged), every player raises it with
+    /// <see cref="AudioDeviceChangeKind.DeviceRemoved"/> and a failure message while Core retries
+    /// once a second, then with <see cref="AudioDeviceChangeKind.DeviceAdded"/> once the output is
+    /// back and playing channels resumed. May fire from background threads;
     /// hosts must marshal to the UI thread before touching view state.
     /// </summary>
     event EventHandler<AudioDeviceChangedEventArgs>? AudioDeviceChanged;
