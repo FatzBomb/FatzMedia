@@ -59,15 +59,6 @@ Reported: 2026-10-18 (audit).
 - Event delivery is inconsistent: some events swallow handler exceptions, others let them
   escape onto engine threads.
 
-### ENG-025 - Process-global state shared across players
-
-Reported: 2026-10-18 (audit).
-- `DiagnosticRouter` is a static event; every player (and coordinator) subscribes, so one
-  player's device-lost diagnostic makes every coordinator start recovery.
-- `FfmpegAudioFallback` keeps one process-wide prepared conversion shared by all players.
-- `FileTypes.Audio`/`Video`/`FfmpegAudio` are public mutable static `HashSet`s written during
-  native bootstrap and read from any thread.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
 Reported: 2026-10-18 (audit; perf items not measured).
@@ -155,6 +146,35 @@ label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio h
 encoding gap, so this stays ours under 037A.
 
 ## Completed
+
+### ENG-025 - Process-global state shared across players
+
+Resolved: 2026-10-23, pending manual smoke (two players open, device loss on one).
+
+Reported: 2026-10-18 (audit).
+- `DiagnosticRouter` is a static event; every player (and coordinator) subscribes, so one
+  player's device-lost diagnostic makes every coordinator start recovery.
+- `FfmpegAudioFallback` keeps one process-wide prepared conversion shared by all players.
+- `FileTypes.Audio`/`Video`/`FfmpegAudio` are public mutable static `HashSet`s written during
+  native bootstrap and read from any thread.
+
+Fix:
+- `DiagnosticRouter` keeps an `AsyncLocal` owner. A player enters itself as owner in its
+  constructor and around surface attach/resize/detach/live-resize, so the threads and tasks
+  it starts inherit it; `MediaDiagnosticInfo.Owner` carries it and `IsFor(owner)` is true for
+  the owner and for unowned (process-wide) diagnostics. `MediaControlPlayer.MediaDiagnostic`
+  and the coordinator's device-lost recovery ignore other owners' diagnostics.
+- Paths that drop the execution context re-enter the owner: `AudioEngine`'s BASS end-sync
+  callback (native thread) and the faded prepared-next transition (`SuppressFlow`).
+  `MonitorRefreshRateCache`'s refresh work stays unowned (process-wide, goes to every player).
+- `FfmpegAudioFallback` keeps up to four prepared conversions keyed by source
+  (`PreparedConversionCache`), so one player preparing no longer evicts another's.
+- `FileTypes`: not changed. The sets are written once, under the bootstrap lock, before any
+  player loads media, and re-adding an existing extension does not mutate a `HashSet`, so
+  concurrent readers never see a write in progress.
+
+Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_ReachesOnlyTheOwningPlayer_UnownedReachesAll`,
+`MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
 
 ### ENG-020 - October 2026 code audit
 

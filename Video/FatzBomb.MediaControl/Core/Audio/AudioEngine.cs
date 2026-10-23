@@ -25,6 +25,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
 
     // Composition: Delegate specialized responsibilities to focused components
     private readonly AudioNormalizer _normalizer;
+    // The player this engine was built for, for diagnostics raised on BASS's own threads.
+    private readonly object? _diagnosticOwner;
     private readonly AudioSilenceAnalyzer _silenceAnalyzer;
     private readonly MediaAnalysisCache _analysisCache;
     private readonly AudioStreamManager _streamManager;
@@ -104,6 +106,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _outputLatencyProvider = outputLatencyProvider ?? throw new ArgumentNullException(nameof(outputLatencyProvider));
         _silenceTrim = silenceTrim;
         _playbackEndedSyncProcedure = OnPlaybackEndedSync;
+        _diagnosticOwner = DiagnosticRouter.Owner;
 
         // Wire up normalizer events to forward to our event
         _normalizer.NormalizationGainChanged += (_, gain) =>
@@ -968,6 +971,8 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     // a failing event subscriber is reported instead.
     private void OnPlaybackEndedSync(int handle, int channel, int data, IntPtr user)
     {
+        // A native BASS thread carries no execution context: attribute to the engine's player.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         try
         {
             HandlePlaybackEnded(channel);

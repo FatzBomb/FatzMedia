@@ -52,6 +52,10 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         _platformFactory = platformFactory ?? throw new ArgumentNullException(nameof(platformFactory));
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
+
+        // Diagnostics from this player's engine (its threads and tasks inherit the owner) reach
+        // only this player's MediaDiagnostic event, not every player's in the process.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         try
         {
             CreateSessionGraph(configuration, resolvedNativeLibraryPaths);
@@ -525,6 +529,9 @@ public partial class MediaControlPlayer : IMediaControlSession
         if (_disposed || surface is null || !surface.IsValid)
             return false;
 
+        // Surface calls arrive on the host's UI thread and can create the device or start the
+        // render loop: attribute what they raise (and start) to this player.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         var attached = _presentationCoordinator.AttachPresentationSurface(surface);
         if (attached)
             _presentationSurfaces[surface.Id] = surface;
@@ -544,6 +551,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             return true;
 
         surface = surface.WithSize(pixelWidth, pixelHeight);
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         var resized = _presentationCoordinator.ResizePresentationSurface(surface.Id, pixelWidth, pixelHeight);
         if (resized)
             _presentationSurfaces[surface.Id] = surface;
@@ -551,14 +559,21 @@ public partial class MediaControlPlayer : IMediaControlSession
         return resized;
     }
 
-    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) =>
-        !_disposed && !string.IsNullOrWhiteSpace(surfaceId) && _presentationSurfaces.ContainsKey(surfaceId) && _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
+    public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(surfaceId) || !_presentationSurfaces.ContainsKey(surfaceId))
+            return false;
+
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
+        return _presentationCoordinator.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
+    }
 
     public bool DetachPresentationSurface(string surfaceId)
     {
         if (_disposed || string.IsNullOrWhiteSpace(surfaceId))
             return false;
 
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         var detached = _presentationCoordinator.DetachPresentationSurface(surfaceId);
         if (detached)
             _ = _presentationSurfaces.Remove(surfaceId);

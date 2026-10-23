@@ -89,6 +89,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private int _subtitleProgressRevision = int.MinValue;
     private long _subtitleRevision;
     private double _lastSubtitleOffsetSeconds = double.NaN;
+    // The player that built this coordinator (DiagnosticRouter.Owner at construction).
+    private readonly object? _diagnosticOwner;
 
     public MediaPresentationCoordinator(
         IMediaRendererBackend rendererBackend,
@@ -107,6 +109,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _presentationTimingSource = FillPresentationTimingGroups;
         _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _rendererBackend.FramePresented += OnFramePresented;
+        _diagnosticOwner = DiagnosticRouter.Owner;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
         _mediaEngine.ImageFrameReady += OnCoreImageFrameReady;
@@ -431,9 +434,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
     private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
+        // Only this coordinator's own device loss (another player's renderer has its own device).
         if (_disposed
             || info.Level != MediaDiagnosticLevel.Error
-            || !string.Equals(info.Category, _rendererBackend.DeviceLostDiagnosticCategory, StringComparison.Ordinal))
+            || !string.Equals(info.Category, _rendererBackend.DeviceLostDiagnosticCategory, StringComparison.Ordinal)
+            || !info.IsFor(_diagnosticOwner))
             return;
 
         if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) == 0)

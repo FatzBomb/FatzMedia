@@ -165,8 +165,9 @@ public partial class MediaControlPlayer
 
     private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
     {
+        // Another player's diagnostics are not this player's (process-wide ones are everyone's).
         EventHandler<MediaDiagnosticEventArgs>? handler = MediaDiagnostic;
-        if (handler == null)
+        if (handler == null || !info.IsFor(this))
             return;
 
         var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);

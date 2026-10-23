@@ -138,6 +138,33 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void DeviceLostDiagnostic_FromAnotherOwner_IsIgnored()
+    {
+        // ENG-025: another player's renderer has its own device; its loss is not this one's.
+        var owner = new object();
+        var backend = new RecordingRendererBackend();
+        MediaPresentationCoordinator coordinator;
+        using (DiagnosticRouter.EnterOwner(owner))
+            coordinator = CreateCoordinator(backend, new TestMediaEngine());
+        using (coordinator)
+        {
+            Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+
+            using (DiagnosticRouter.EnterOwner(new object()))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, backend.DeviceLostDiagnosticCategory, "other player's device loss");
+
+            Assert.False(SpinWait.SpinUntil(() => backend.CleanupCount > 0, TimeSpan.FromMilliseconds(250)));
+
+            using (DiagnosticRouter.EnterOwner(owner))
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, backend.DeviceLostDiagnosticCategory, "own device loss");
+
+            Assert.True(SpinWait.SpinUntil(
+                () => backend.PresentedFrames.Any(static frame => frame.Reason == "device-lost recovery completed"),
+                TimeSpan.FromSeconds(5)));
+        }
+    }
+
+    [Fact]
     public void PrimarySurfaceRefreshRate_ReachesTheVideoEngine()
     {
         // Stage 017A slice 3: video timing uses the rate of the monitor showing the primary surface.
