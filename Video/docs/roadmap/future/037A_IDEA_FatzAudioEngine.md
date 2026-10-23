@@ -78,6 +78,19 @@ request is `docs/fatzaudio/2026-10-20_MediaControl_Request_KaraokeSurfaces.md`. 
 - **Background:** drawn by us from the reported background colour and its change revision; the
   border made transparent and drawn by us when shown.
 
+## DJ mixer and microphones (agreed with the owner 2026-10-23)
+
+FatzAudio planned a deck mixer, beat-matching and mic input
+(`docs/fatzaudio/2026-10-23_FatzAudio_Plan_DjMixer.md`); our reply cuts the scope
+(`docs/fatzaudio/2026-10-23_MediaControl_Reply_DjMixerPlan.md`): everything karaoke needs plus common DJ
+items (2 decks, isolator EQ, crossfader, headphone cue, BPM/key, sync, loops, simple auto-mix, 2 mics with
+effects and ducking, recording); the rest is pinned for later. Mic latency is measured first.
+
+Our side, after the karaoke surfaces are integrated: a thin mixer layer in MediaControl where a player's
+audio attaches to a deck and its video, CD+G and lyrics follow that deck (fits the player Modes stage).
+Requirement passed to FatzAudio: a deck's heard position includes any delay added to the master output.
+The app keeps the playlist, singer rotation, controller mapping and song database.
+
 ## Known gaps to decide on (from FatzAudio's own list)
 
 - **MIDI lyrics in Shift-JIS come out garbled** (only UTF-8 and Windows-1252 are recognized).
