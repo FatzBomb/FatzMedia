@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
@@ -166,9 +167,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
         var succeeded = primaryExpected ? primaryPresented : anyPresented;
         if (succeeded)
+        {
+            _renderFailureLatch.Reset();
             FramePresented?.Invoke(this, EventArgs.Empty);
+        }
         return succeeded;
     }
+
+    private readonly RendererDiagnosticLatch _renderFailureLatch = new();
 
     private enum PresentResult
     {
@@ -213,12 +219,16 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     private PresentResult ReportRenderFailure(VulkanException exception)
     {
-        DiagnosticRouter.Raise(
-            MediaDiagnosticLevel.Error,
-            exception.IsDeviceLost ? DeviceLostDiagnosticCategory : "Vulkan",
-            exception.Message,
-            innerException: exception);
-        return exception.IsDeviceLost ? PresentResult.DeviceLost : PresentResult.Failed;
+        // Device loss is always reported: it drives recovery. Other failures repeat per frame, so
+        // they are reported once until a frame presents again (ENG-026).
+        if (exception.IsDeviceLost)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, exception.Message, innerException: exception);
+            return PresentResult.DeviceLost;
+        }
+
+        _ = _renderFailureLatch.Raise(MediaDiagnosticLevel.Error, "Vulkan", exception.Message, exception);
+        return PresentResult.Failed;
     }
 
     public void CleanupResources()
