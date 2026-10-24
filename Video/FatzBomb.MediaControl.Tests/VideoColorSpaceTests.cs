@@ -66,6 +66,23 @@ public sealed class VideoColorSpaceTests
             FFmpegVideoColor.Describe(default, 1920, 1080, AVColorTransferCharacteristic.AVCOL_TRC_UNSPECIFIED));
     }
 
+    [Fact]
+    public void TheLogDescription_SaysHlgIsToneMapped()
+    {
+        var tagged = FFmpegVideoColor.FromTags(AVColorSpace.AVCOL_SPC_BT2020_NCL, AVColorRange.AVCOL_RANGE_MPEG, AVPixelFormat.AV_PIX_FMT_YUV420P10LE);
+
+        // Stage 042A: HLG is tone mapped like HDR10; the line no longer says it is shown untone-mapped.
+        var toneMapped = FFmpegVideoColor.Describe(tagged, 1920, 1080, AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67, toneMapsHdr: true);
+        Assert.Equal("BT.2020 limited range; HLG HDR, tone mapped to SDR", toneMapped);
+        Assert.DoesNotContain("without tone mapping", toneMapped, StringComparison.Ordinal);
+        Assert.Equal(
+            "BT.2020 limited range; HDR10/PQ, tone mapped to SDR",
+            FFmpegVideoColor.Describe(tagged, 1920, 1080, AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084, toneMapsHdr: true));
+        Assert.Equal(
+            "BT.2020 limited range; HLG HDR, shown as SDR without tone mapping",
+            FFmpegVideoColor.Describe(tagged, 1920, 1080, AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67, toneMapsHdr: false));
+    }
+
     [Theory]
     [InlineData(VideoColorMatrix.Bt601, 5)]
     [InlineData(VideoColorMatrix.Bt709, 1)]

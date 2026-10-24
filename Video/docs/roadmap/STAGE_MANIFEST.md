@@ -33,6 +33,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   HTTP/HTTPS progressive (MP4/MKV, ranges for seek) and HLS (VOD seekable, live not), the 014A
   retry policy, buffering events and capability rows, cancellable connects, Background and Audio
   modes; slice 1 implemented, pending manual smoke (`updates/039A_1`). Follow-ups in ENG-034.
+- `active/042A_ACTIVE_HdrFollowUps.md` - HDR follow-ups from 038A. Slice 1 (HLG tone mapping:
+  inverse OETF, BT.2100 OOTF at 1000 nits, BT.2390 curve; CPU tables and the Direct3D11 shader)
+  is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
+  Direct3D11, opt-in) is planned.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
@@ -95,8 +99,6 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
-- `future/042A_IDEA_HdrFollowUps.md` - HLG tone mapping and real HDR output on HDR displays,
-  deferred from 038A.
 
 - `future/037A_IDEA_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine`, opt-in first, then
   replacing BASS once proven (no BASS DLLs or licence for end users); starts with a verification

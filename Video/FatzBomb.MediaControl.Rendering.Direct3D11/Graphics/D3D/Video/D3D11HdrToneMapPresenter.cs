@@ -10,12 +10,13 @@ using Vortice.Mathematics;
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 
 /// <summary>
-/// Tone maps hardware-decoded HDR10 frames (P010, PQ, BT.2020) to SDR on the GPU (Stage 038A
-/// slice 2), with the BT.2390 curve of Core's CPU tone mapper: the decoder's texture slice is
-/// copied into a shader-readable P010 texture, and a pixel shader converts YCbCr to RGB, PQ to
-/// linear light, applies the curve to the brightest channel, converts BT.2020 to BT.709
-/// primaries and encodes gamma 2.4, drawing into the target the video processor would have
-/// filled, at the same rectangles.
+/// Tone maps hardware-decoded HDR frames (P010, BT.2020; PQ, or HLG from Stage 042A) to SDR on
+/// the GPU (Stage 038A slice 2), with the BT.2390 curve of Core's CPU tone mapper: the decoder's
+/// texture slice is copied into a shader-readable P010 texture, and a pixel shader converts
+/// YCbCr to RGB, PQ (or HLG through its inverse OETF and the BT.2100 OOTF) to display light,
+/// applies the curve to the brightest channel, converts BT.2020 to BT.709 primaries and encodes
+/// gamma 2.4, drawing into the target the video processor would have filled, at the same
+/// rectangles.
 /// </summary>
 internal sealed class D3D11HdrToneMapPresenter : IDisposable
 {
@@ -284,6 +285,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         };
         var kg = 1 - kr - kb;
 
+        var hlg = toneMap.Transfer == HdrTransferFunction.Hlg;
         var sourcePeak = toneMap.SourcePeakSignal;
         var maxLum = sourcePeak > 0 ? toneMap.TargetPeakSignal / sourcePeak : 1;
         var compress = toneMap.SourcePeakNits > toneMap.TargetPeakNits;
@@ -317,6 +319,12 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
                 (float)(1 / HdrToneMapRequest.SdrGamma),
                 (float)toneMap.TargetPeakNits,
                 0f),
+            // HLG (Stage 042A): the OOTF's nominal peak and system gamma - 1.
+            Transfer = new Vector4(
+                hlg ? 1f : 0f,
+                (float)toneMap.SourcePeakNits,
+                (float)(toneMap.HlgSystemGamma - 1),
+                0f),
             // Half a chroma texel (one luma texel) inside the crop, so bilinear taps never
             // reach the decoder's padding rows and columns.
             SampleClamp = new Vector4(
@@ -337,6 +345,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         public Vector4 Curve;
         public Vector4 Output;
         public Vector4 SampleClamp;
+        public Vector4 Transfer;
     }
 
     internal const string ShaderSource = @"
@@ -349,6 +358,7 @@ cbuffer ToneMapConstants : register(b0)
     float4 Curve;             // source peak (PQ), target peak / source peak (PQ), knee start, compress
     float4 Output;            // 1 / target nits, 1 / SDR gamma, target nits
     float4 SampleClamp;       // normalized sampling bounds inside the crop: left, top, right, bottom
+    float4 Transfer;          // HLG (1) or PQ (0), HLG nominal peak nits, HLG system gamma - 1
 };
 
 Texture2D<float> LumaPlane : register(t0);
@@ -409,6 +419,26 @@ float NitsToPq(float nits)
     return pow((PqC1 + PqC2 * y) / (1.0 + PqC3 * y), PqM2);
 }
 
+// ARIB STD-B67 / BT.2100 HLG inverse OETF, as Core's HlgCurve: signal to normalized scene light.
+static const float HlgA = 0.17883277;
+static const float HlgB = 0.28466892;
+static const float HlgC = 0.55991073;
+
+float HlgToScene1(float signal)
+{
+    return signal <= 0.5 ? signal * signal / 3.0 : (exp((signal - HlgC) / HlgA) + HlgB) / 12.0;
+}
+
+// The BT.2100 OOTF: display nits Lw * Ys^(gamma - 1) * E, Ys with BT.2020 weights.
+float3 HlgToNits(float3 signal)
+{
+    float3 s = saturate(signal);
+    float3 scene = float3(HlgToScene1(s.r), HlgToScene1(s.g), HlgToScene1(s.b));
+    float luminance = dot(scene, float3(0.2627, 0.6780, 0.0593));
+    float ootf = luminance > 0.0 ? Transfer.y * pow(luminance, Transfer.z) : 0.0;
+    return scene * ootf;
+}
+
 // BT.2390 EETF, as Core's Bt2390ToneCurve.
 float ToneCurve(float nits)
 {
@@ -441,7 +471,7 @@ float4 PSToneMap(VertexOut input) : SV_TARGET
         y - YuvMatrix.y * c.x - YuvMatrix.z * c.y,
         y + YuvMatrix.w * c.x);
 
-    float3 nits = PqToNits(signal);
+    float3 nits = Transfer.x > 0.5 ? HlgToNits(signal) : PqToNits(signal);
     float brightest = max(nits.r, max(nits.g, nits.b));
     float gain = brightest > 0.0 ? ToneCurve(brightest) / brightest : 1.0;
     float3 linear2020 = nits * (gain * Output.x);

@@ -791,7 +791,10 @@ Video color (ENG-019):
 - An HDR10 file (the line says "HDR10/PQ, tone mapped to SDR") has normal contrast and color
   (Stage 038A; steps in `docs/roadmap/updates/038A_1` and `038A_2`). With hardware decoding
   on Direct3D11 a `D3D11.Hdr` line says the GPU shader is used; `--hdr-tonemap-cpu` looks the
-  same. With `--no-hdr-tonemap` it looks washed out, as before. HLG is not tone mapped yet.
+  same. With `--no-hdr-tonemap` it looks washed out, as before.
+- An HLG file (the line says "HLG HDR, tone mapped to SDR") looks like other players' HLG
+  output: normal contrast, highlights rolling off (Stage 042A; steps in
+  `docs/roadmap/updates/042A_1`). The same paths and flags apply as for HDR10.
 
 ---
 

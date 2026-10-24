@@ -1,8 +1,8 @@
 namespace FatzBomb.MediaControl.Core.Configuration;
 
 /// <summary>
-/// How HDR video is shown on SDR output (Stage 038A). The default tone maps HDR10 (PQ) video
-/// to SDR with the BT.2390 curve, so it is neither washed out nor clipped.
+/// How HDR video is shown on SDR output (Stages 038A, 042A). The default tone maps HDR10 (PQ) and
+/// HLG video to SDR with the BT.2390 curve, so it is neither washed out nor clipped.
 /// </summary>
 /// <param name="Disabled">
 /// Shows HDR video without tone mapping, as before Stage 038A (washed out). For comparison
