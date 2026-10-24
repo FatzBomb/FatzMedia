@@ -27,26 +27,6 @@ Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which re
   still needs the player-level Reset.
 - `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
 
-### ENG-022 - Subtitle content flag is never revoked
-
-Reported: 2026-10-18 (audit). `SubtitlePipeline` only ever adds `MediaContent.Subtitle`: turning
-subtitles off, or loading embedded tracks without selecting one (MIDI with lyrics hidden),
-leaves it set. The coordinator then runs its 75 Hz render loop for audio-only media and
-presents empty compositions on seeks, and `HasSubtitle`/`HasVisualContent` read true.
-Not fixed in the audit because the flag also means "tracks available" to the picker, and the
-render loop is decided at play: tying the coordinator to the selected track needs the
-coordinator to follow `ISubtitleEngine.CuesChanged` (start or stop the loop), or the flag
-split into "available" and "showing".
-
-### ENG-023 - Software-path compositions are built and presented unordered
-
-Reported: 2026-10-18 (audit; Likely, not reproduced). On the software path the coordinator builds
-a composition under its lock and presents it outside it; the video-frame thread and the render
-loop can overlap, so an older composition can be presented after a newer one and stay up while
-paused. Not a simple fix: per-target cadence (017A) presents compositions to target subsets,
-so "drop older" would wrongly skip one target's frame, and a separate build-and-present lock
-needs its order against the coordinator lock proven for every caller.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
 Reported: 2026-10-18 (audit; perf items not measured).
@@ -137,6 +117,45 @@ label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio h
 encoding gap, so this stays ours under 037A.
 
 ## Completed
+
+
+### ENG-022 - Subtitle content flag is never revoked
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-18 (audit). Still real: `SubtitlePipeline` only ever added
+`MediaContent.Subtitle`, so turning subtitles off, or loading embedded tracks without selecting
+one (MIDI lyrics hidden), left it set; the coordinator ran its 75 Hz loop for audio-only media,
+presented empty compositions on seeks, and `HasSubtitle`/`HasVisualContent` read true.
+
+Fix: the flag now means "a subtitle track is showing". `SubtitlePipeline` sets it when a track
+is selected and clears it on `SelectTrack(null)` and `Close()` (new `MediaState.RemoveContent`);
+loading tracks no longer sets it. The picker reads `SubtitleTracks`, not the flag, so "tracks
+available" is unaffected. `MediaPresentationCoordinator` decides the render loop through
+`SyncRenderLoop`, called from `StartRendering` and `RefreshCurrentPosition` (which
+`SelectSubtitleTrack` and `ShowMidiLyrics` already call), so selecting a track while playing
+starts the loop and deselecting stops it. Tests: `SubtitlePipelineTests.ContentFlag_FollowsTheSelectedTrack`,
+`MediaPresentationCoordinatorTests.SelectingASubtitle_WhilePlayingStartsAndStopsTheRenderLoop`.
+Manual smoke: play audio, select and deselect a sidecar subtitle (the overlay appears and goes,
+CPU idles after off); play a MIDI with lyrics hidden (no loop, `HasSubtitle` false).
+
+### ENG-023 - Software-path compositions are built and presented unordered
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-18 (audit; Likely). Still real: `BuildAndPresentSoftwareComposition` built
+under `_lock` and presented outside it, so the video-frame thread and the render loop could
+present an older composition after a newer one.
+
+Fix: no "drop older" (per-target cadence would lose a target's frame). Build and present now
+both run under a new `_softwarePresentGate`, taken before `_lock`, so compositions reach the
+renderer in build order and every target subset still gets its frame. No caller holds `_lock`
+when entering `BuildAndPresentSoftwareComposition` (checked), so the order cannot invert. The CDG
+and hardware paths are unchanged. Test:
+`MediaPresentationCoordinatorTests.SoftwareCompositions_ArePresentedInTheOrderTheyWereBuilt`
+(blocks the first present, starts a second; failed before). The Linux real-media sink receives
+bare pixels with no timestamp, so frame order is not observable there; the opt-in Linux tests
+were run to check the gate causes no stall.
 
 ### ENG-033 - BASS required at startup
 

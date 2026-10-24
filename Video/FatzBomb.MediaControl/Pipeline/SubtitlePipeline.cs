@@ -49,16 +49,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
                     null);
             }
 
-            if (shouldSelect)
-            {
-                var selected = SelectTrack("sidecar");
-                if (selected)
-                    _state.AddContent(MediaContent.Subtitle);
-                return selected;
-            }
-
-            _state.AddContent(MediaContent.Subtitle);
-            return true;
+            return !shouldSelect || SelectTrack("sidecar");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
         {
@@ -93,15 +84,8 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             }
 
             if (shouldSelect && firstTrackId != null)
-            {
-                var selected = SelectTrack(firstTrackId);
-                if (selected)
-                    _state.AddContent(MediaContent.Subtitle);
-                return selected;
-            }
+                return SelectTrack(firstTrackId);
 
-            if (firstTrackId != null)
-                _state.AddContent(MediaContent.Subtitle);
             return firstTrackId != null;
         }
         catch (Exception ex)
@@ -118,6 +102,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             lock (_gate)
                 SelectedTrackId = null;
             Engine.Close();
+            _state.RemoveContent(MediaContent.Subtitle);
             return true;
         }
 
@@ -142,6 +127,8 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
 
         lock (_gate)
             SelectedTrackId = trackId;
+        // The flag means "a subtitle track is showing", not "tracks are available" (ENG-022).
+        _state.AddContent(MediaContent.Subtitle);
         return true;
     }
 
@@ -153,6 +140,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
             SelectedTrackId = null;
         }
 
+        _state.RemoveContent(MediaContent.Subtitle);
         Engine.Close();
     }
 

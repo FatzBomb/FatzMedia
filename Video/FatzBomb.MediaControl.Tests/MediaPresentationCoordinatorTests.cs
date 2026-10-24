@@ -370,6 +370,64 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.Null(backend.PresentedFrames.Last().Targets);
     }
 
+    [Fact]
+    public void SelectingASubtitle_WhilePlayingStartsAndStopsTheRenderLoop()
+    {
+        // ENG-022: the subtitle flag follows the selected track, so the loop follows the flag.
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        coordinator.StartRendering();
+        Assert.False(coordinator.IsRenderLoopRunning);
+
+        engine.Content = MediaContent.Audio | MediaContent.Subtitle;
+        coordinator.RefreshCurrentPosition();
+        Assert.True(coordinator.IsRenderLoopRunning);
+
+        engine.Content = MediaContent.Audio;
+        coordinator.RefreshCurrentPosition();
+        Assert.False(coordinator.IsRenderLoopRunning);
+        coordinator.StopRendering();
+    }
+
+    [Fact]
+    public void SoftwareCompositions_ArePresentedInTheOrderTheyWereBuilt()
+    {
+        // ENG-023: a composition built first but slow to present could land after a newer one.
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var baseline = backend.PresentedFrames.Count;
+
+        using var firstEntered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        backend.BeforePresent = frame =>
+        {
+            if (frame.Reason != "current position refreshed")
+                return;
+
+            firstEntered.Set();
+            _ = release.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        var first = new Thread(coordinator.RefreshCurrentPosition);
+        first.Start();
+        Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(10)));
+        var second = new Thread(() => coordinator.BaseVisualTransform = new BaseVisualTransform { Brightness = 0.5f });
+        second.Start();
+
+        // Without ordering the second composition is built and presented while the first waits.
+        _ = second.Join(TimeSpan.FromMilliseconds(300));
+        release.Set();
+        first.Join();
+        second.Join();
+
+        Assert.Equal(
+            ["current position refreshed", "base visual transform changed"],
+            backend.PresentedFrames.Skip(baseline).Select(static frame => frame.Reason).ToArray());
+    }
+
     private static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
     {
         var groups = new List<PresentationTimingGroup>();
@@ -521,8 +579,11 @@ public sealed class MediaPresentationCoordinatorTests
             return RefreshRateHz;
         }
 
+        public Action<MediaCompositionFrame>? BeforePresent { get; set; }
+
         public bool PresentComposition(MediaCompositionFrame frame)
         {
+            BeforePresent?.Invoke(frame);
             PresentedFrames.Enqueue(frame);
             return PresentFailureReason is null;
         }
