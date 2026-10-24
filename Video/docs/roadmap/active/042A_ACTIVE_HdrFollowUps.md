@@ -2,7 +2,8 @@
 
 Prepared: 2026-10-18 (idea, deferred from 038A). Activated: 2026-10-24.
 Status: slice 1 (HLG tone mapping) implemented, pending manual smoke (`updates/042A_1`).
-Slice 2 (HDR output on HDR displays, Direct3D11) is planned.
+Slice 2 (HDR output on HDR displays, Direct3D11) is planned; its renderer-neutral policy and
+math are implemented and tested (`updates/042A_2`), the Direct3D11 wiring is not started.
 
 038A tone maps HDR10 (PQ) to SDR on the CPU for every renderer and in a Direct3D11 shader for
 hardware-decoded video. This stage adds HLG to the same paths, then prepares real HDR output.
@@ -44,7 +45,7 @@ Acceptance criteria:
 Not in slice 1: HLG tagged with BT.709 primaries (rare; treated as BT.2020, like HDR10), a
 configurable HLG nominal peak, Dolby Vision, dynamic metadata.
 
-## Slice 2 - HDR output on HDR displays (planned)
+## Slice 2 - HDR output on HDR displays (planned; policy and math implemented)
 
 When Windows HDR is on for the monitor, present HDR video as HDR instead of tone mapping it to
 SDR. Opt-in: a Direct3D11 renderer option, default off, so SDR output is untouched.
@@ -56,25 +57,32 @@ Acceptance criteria (for the slice when it is built):
   `MaxFullFrameLuminance`), and the SDR white level from `DisplayConfigGetDeviceInfo`
   (`DISPLAYCONFIG_SDR_WHITE_LEVEL`, value / 1000 * 80 nits). Checked again when the window
   moves to another monitor and on `DXGI_ERROR` / `IsCurrent() == false` of the factory.
-- The pure decision (`HdrOutputPolicy.Choose`): SDR output unless the option is
+- The pure decision (`HdrOutputPolicy.Choose`, implemented): SDR output unless the option is
   on, the frame is HDR (PQ or HLG) and the display is in HDR mode. HDR output is scRGB:
   `R16G16B16A16_FLOAT` swap chain, `SetColorSpace1(RGB_FULL_G10_NONE_P709)`, 1.0 = 80 nits.
 - Video in HDR output:
   - PQ: nits from PQ, the BT.2390 curve with the display's peak as target (only compresses
     when the content is brighter than the display), BT.2020 to BT.709 without clipping
-    (scRGB keeps out-of-gamut values), / 80.
-  - HLG: the OOTF with Lw = the display's peak (BT.2100's gamma formula adapts to it), no curve.
+    (scRGB keeps out-of-gamut values), / 80 (implemented: `HdrOutputPolicy.PqNitsToScRgb`).
+  - HLG: the OOTF with Lw = the display's peak (BT.2100's gamma formula adapts to it), no
+    curve (implemented: `HdrOutputPolicy.HlgToScRgb`).
 - SDR layers (CD+G, subtitles, backgrounds, SDR video) are composed at the system SDR white
-  level: sRGB EOTF, then * (SDR white / 80) (`HdrOutputPolicy.SdrScale`).
+  level: sRGB EOTF, then * (SDR white / 80) (implemented: `HdrOutputPolicy.SdrToScRgb`).
 - `SetHDRMetaData` with HDR10 metadata: BT.2020 primaries and D65 in 0.00002 units, MaxCLL /
-  mastering peak in nits, minimum in 0.0001 nits (`HdrOutputPolicy.CreateMetadata`).
+  mastering peak in nits, minimum in 0.0001 nits (implemented: `HdrOutputPolicy.CreateMetadata`).
 - Moving the window between an SDR and an HDR monitor switches format and color space
   (`HdrOutputPolicy.NeedsSwapChainChange`); a peak or SDR-white change only updates constants.
 - One `D3D11.HdrOutput` diagnostic per change names the decision and its reason.
-- Tests (portable): the decision table, SDR white scaling, metadata encoding,
-  switching. Shader formulas get a CPU mirror like `D3D11HdrToneMapTests`.
+- Tests (portable, implemented: `HdrOutputPolicyTests`): the decision table, SDR white
+  scaling, video mapping, metadata encoding, switching. Shader formulas get a CPU mirror like
+  `D3D11HdrToneMapTests`.
 
 Plan for the Direct3D11 wiring (not started):
+0. Detection: a `MonitorHdrCache` beside `MonitorRefreshRateCache` (017A slice 3), same
+   pattern: `MonitorFromWindow`, the `IDXGIOutput6` whose `Monitor` matches, `GetDesc1`, and
+   the SDR white level through `QueryDisplayConfig` + `DisplayConfigGetDeviceInfo`; primed on
+   attach, refreshed in the background, so the presentation thread never queries Windows.
+   Its result feeds `HdrOutputPolicy.Choose` per target and frame.
 1. Native HWND backend first (`D3D11NativeHwndSwapChainBackend`, the Player's main path):
    swap-chain format and color space chosen per decision; resize keeps the format.
 2. The composition presenter renders into an FP16 target when HDR output is on: video drawn
