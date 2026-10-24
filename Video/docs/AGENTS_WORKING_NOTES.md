@@ -1,5 +1,8 @@
 # FatzBombMedia Working Notes
 
+> Superseded by the repo-root `AGENTS.md` (2026-10-24). Kept because completed stage records
+> reference it; do not update it.
+
 Use this file plus the single stage file named in the command.
 
 Example intent:

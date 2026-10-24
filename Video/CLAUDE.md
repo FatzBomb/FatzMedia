@@ -7,8 +7,8 @@ repo's stack and style.
 ## Code
 - Smallest complete change; keep public APIs. Don't mix refactors with feature work.
 - Modern language features where clearer; don't modernise untouched code.
-- Reuse before writing new; extract on the third repeat. Propose splitting files over ~500 lines
-  or classes doing two jobs.
+- Reuse before writing new; extract on the third repeat. Propose a split when a file or class
+  does two jobs; ~500 lines is a prompt to look, not a gate.
 - Prove code is unused (incl. reflection, DI, XAML bindings) before deleting. Ask before adding
   dependencies.
 - Out-of-scope issues you notice: list them at the end (or in the repo's notes file), don't fix

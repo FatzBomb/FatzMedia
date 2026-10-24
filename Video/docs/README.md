@@ -2,7 +2,7 @@
 
 ## Active files
 
-- `AGENTS_WORKING_NOTES.md` — conventions, guardrails, validation shortcuts
+- `../AGENTS.md` (repo root) — repo rules for agents: build, architecture, tests, workflow
 - `roadmap/STAGE_MANIFEST.md` — completed milestones and future stage index
 
 ## Roadmap layout

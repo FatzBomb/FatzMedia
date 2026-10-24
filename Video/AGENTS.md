@@ -27,13 +27,15 @@ not up front.
 - The project reference DAG is pinned in `scripts/check-core-boundary.ps1`; update it on
   purpose when adding a project or reference. `check-adapter-boundary.ps1`,
   `check-wpf-boundary.ps1` and `check-presentation-parity.ps1` guard the rest.
-- Audio is BASS today. FatzAudio is planned as an opt-in second engine behind `IAudioEngine`,
-  with BASS kept as the default and fallback (`docs/roadmap/future/037A_IDEA_FatzAudioEngine.md`).
-  Keep BASS specifics behind that interface.
+- Audio is BASS today. Goal (037A): replace BASS with FatzAudio once it is proven, so end users
+  need no BASS DLLs or licence; until then FatzAudio is opt-in and BASS stays the default. Keep
+  BASS specifics behind `IAudioEngine` and don't add new public API that only BASS can serve.
 - Non-goals: plugin architecture, DVD/Blu-ray, playlist/library ownership. Audio CD and CD+G
   discs are in scope.
-- Large engine files (D3D11 composition, decoders, presentation, CDG) are expected; don't split
-  them on line count. Keep new UI and glue code small.
+- File size is a prompt to look, not a rule. Split along real seams (a part that can be named
+  and tested on its own; partial classes per concern, as `MediaControlPlayer.*.cs` does), in its
+  own commit, not mixed with feature work. Cohesive engine files (D3D11 composition, decoders,
+  presentation, CDG) may stay large.
 
 ## Code rules
 - Async engine code uses `.ConfigureAwait(false)`; locks use `System.Threading.Lock`.

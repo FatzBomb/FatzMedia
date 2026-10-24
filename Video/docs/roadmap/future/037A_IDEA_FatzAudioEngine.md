@@ -5,9 +5,12 @@ FatzBomb.MediaControl", checked by FatzAudio against its `main` @ c6e4446, PR 78
 FatzAudio's own claim: nothing here is verified against the package until slice 0 runs. The
 local checkout at `/home/user/fatzbomb75/fatzaudio` is older (8849f04, PR 65).
 
-Goal: an opt-in `FatzAudioEngine` next to the BASS engines, selected by configuration (and a
-Player flag), with BASS kept as the default and the fallback until the owner decides otherwise.
-It is a library swap behind `IAudioEngine`, not a rewrite of playback, timing or composition.
+Goal (owner decision, 2026-10-24): replace BASS with FatzAudio if it is proven to work, so end
+users need no BASS DLLs and no BASS licence. First an opt-in `FatzAudioEngine` next to the BASS
+engines, selected by configuration (and a Player flag), with BASS the default and fallback until
+FatzAudio passes the verification spike and owner smoke; then FatzAudio becomes the default and
+BASS is removed. It is a library swap behind `IAudioEngine`, not a rewrite of playback, timing or
+composition. FFmpeg (video) stays a host-supplied native dependency either way.
 
 ## What FatzAudio says it now covers
 
