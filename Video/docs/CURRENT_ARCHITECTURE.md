@@ -16,7 +16,7 @@ package pattern. Status as of 2026-10-16:
 - UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
   `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
 - Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
-  frame-sink surfaces only) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
+  frame-sink and shared-image surfaces, any number of them) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
 - Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
   `FatzBomb.MediaControl.MacOS` planned.
 
@@ -148,7 +148,9 @@ managed object handles. A token remains resolvable until its owner detaches the 
 and disposes the token handle. Managed readback failures participate in the same
 `D3D11.DeviceLost` recovery path as swap-chain failures. Primary backend recreation keeps
 secondary HWND resources alive; they are suspended while the no-mixed-target managed
-mode is active and resume when a native primary returns.
+mode is active and resume when a native primary returns. Offscreen secondaries (Stage 027A
+slice 5: a managed frame sink or shared textures per secondary surface, target ids
+`offscreen-secondary:<id>`) are presented beside any primary, or without one.
 
 ## Runtime Flow
 
@@ -741,9 +743,14 @@ See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 ## Avalonia Adapter (Stage 027A, slice 1)
 
 `FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
-`MediaSurface` that attaches one primary managed frame-sink surface to any
+`MediaSurface` that attaches one managed frame-sink surface to any
 `IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
 final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
+Since slice 5 its `Role` and `SurfaceId` let a second `MediaSurface` (or the
+`SecondaryPresentationWindow` helper, placed full screen on a chosen screen) show the same
+session on another screen; every renderer accepts secondary frame-sink and shared-image
+surfaces, each rendered at its own size. While the session is in Audio mode (no renderer)
+the surface shows only its background.
 It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
@@ -764,6 +771,7 @@ Shared GPU image surfaces (Stage 027A slice 2):
   logs the reason.
 - Renderers own every GPU object. Adapters see only handles and Avalonia's
   `ICompositionGpuInterop`.
+- Each surface, primary or secondary, has its own exported set and ring (slice 5).
 
 ## Audio Filter Framework (Stage 020A, slice 1)
 

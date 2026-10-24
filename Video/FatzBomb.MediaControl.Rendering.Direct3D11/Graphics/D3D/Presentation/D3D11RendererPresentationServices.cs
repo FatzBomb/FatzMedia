@@ -152,6 +152,18 @@ internal sealed class D3D11RendererPresentationServices
 
     public bool RemoveSecondaryPresentationTarget(string targetId) => Surfaces.RemoveSecondaryPresentationTarget(targetId);
 
+    public bool CreateSecondaryManagedFrameSinkSurface(bool isDisposed, string targetId, IMediaPresentationFrameSink sink, int width, int height) =>
+        Surfaces.CreateSecondaryManagedFrameSinkSurface(isDisposed, _deviceResources, targetId, sink, width, height, _configuration.EnableLogging);
+
+    public bool CreateSecondarySharedTextureSurface(
+        bool isDisposed,
+        string targetId,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        out string? failureReason) =>
+        Surfaces.CreateSecondarySharedTextureSurface(isDisposed, _deviceResources, targetId, consumer, width, height, _configuration.EnableLogging, out failureReason);
+
     public bool CreateManagedFrameSinkSurface(
         bool isDisposed,
         IMediaPresentationFrameSink sink,

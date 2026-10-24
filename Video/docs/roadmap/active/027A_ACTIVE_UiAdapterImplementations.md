@@ -3,14 +3,16 @@
 Prepared: 2026-10-16
 Status: Avalonia (slice 1) and WinForms (slice 3) implemented. Avalonia GPU-shared surface
 (slice 2) implemented 2026-10-23, pending manual smoke (`updates/027A_2`); WinUI 3 (slice 4) is
-deferred. Order changed from the idea (Avalonia first) per the owner's session instructions.
+deferred. Avalonia second-screen output (slice 5) implemented 2026-10-24, pending manual smoke
+(`updates/027A_5`). Order changed from the idea (Avalonia first) per the owner's session
+instructions.
 
 ## Framework-Adapter Conformance Checklist (extracted from WPF, pinned)
 
-1. Own the control lifecycle: attach the primary surface when the control is in the visual
-   tree, has positive size, and has a session; detach when removed or when the session
-   changes.
-2. Pass a `MediaPresentationSurfaceDescriptor` (Primary id/role, neutral native payload,
+1. Own the control lifecycle: attach the surface (primary, or a secondary role since slice 5)
+   when the control is in the visual tree, has positive size, and has a session; detach when
+   removed or when the session, role or surface id changes.
+2. Pass a `MediaPresentationSurfaceDescriptor` (id/role, neutral native payload,
    pixel size = layout size x DPI scaling) to `AttachPresentationSurface`; resize through
    `ResizePresentationSurface` only when the pixel size changes.
 3. Never reference renderer, pipeline, internal CDG, video-frame, or GPU types; never
@@ -60,8 +62,8 @@ deferred. Order changed from the idea (Avalonia first) per the owner's session i
     (`PresentationPath`, `PresentationPathReason`). It still references only Core and
     handles, so conformance item 3 holds.
   - Deferred: Vulkan export on Windows; choosing the renderer GPU from the compositor's
-    identity (a mismatch falls back today); shared images for secondary targets; D3D12
-    shared fences; desktop validation of the new paths (manual smoke).
+    identity (a mismatch falls back today); shared images for secondary targets (done in
+    slice 5); D3D12 shared fences; desktop validation of the new paths (manual smoke).
 
   This replaces the earlier plan of `NativeControlHost` HWND/X11 child windows for
   swapchain renderers. A native child window inside Avalonia has the same airspace
@@ -69,6 +71,28 @@ deferred. Order changed from the idea (Avalonia first) per the owner's session i
   too. The compositor import avoids that.
 - **Slice 3 - WinForms (implemented):** `FatzBomb.MediaControl.WinForms` HWND
   `MediaSurface` (Core only; pairs with Windows + Direct3D11).
+- **Slice 5 - Avalonia second-screen output (implemented 2026-10-24, pending manual smoke;
+  `updates/027A_5`):** one player on two screens (karaoke singer or projector screen).
+  - Renderers accept secondary surfaces of both offscreen kinds, each at its own size. Vulkan
+    keeps one target per surface (frame sink, or its own exported set and ring) and caches a
+    render target per size. Direct3D11 gives each secondary its own managed frame-sink or
+    shared-texture backend, enumerated beside any primary as `offscreen-secondary:<id>`. The
+    software renderer already did this (ENG-016). Core needed no change.
+  - Avalonia: `MediaSurface.Role` and `SurfaceId` (a second `MediaSurface` in any window),
+    `SecondaryPresentationWindow` (placed on a chosen `Screen`, full screen, F11/Escape, close
+    detaches). Each surface chooses and falls back on its own path, with the reason logged.
+  - Audio mode: the surface follows `ModeChanged` and shows only its background while the
+    session is in Audio mode (no renderer presents then), instead of the last frame
+    (`IsPresentationSuspended`). Closes the 043A slice 2 open item for Avalonia.
+  - Test player: a Second screen box per player and `--second-screen=<n>`; the status line
+    shows each surface's path.
+  - Decisions: Core's `Projector` role is reused; Direct3D11 offscreen secondaries also present
+    beside a native primary (they never wait on a swap chain); adapter mode handling is limited
+    to Audio mode. This also fixes the WPF composited secondary window on Direct3D11 (ENG-016's
+    uncovered case).
+  - Deferred: one render per target even for equal sizes; Vulkan re-uploads the background per
+    target; Direct3D11 post-process targets of removed secondaries are not pruned (ENG-026);
+    Vulkan export on Windows and compositor-GPU selection (slice 2 deferrals).
 - **Slice 4 - WinUI 3 (deferred):** `SwapChainPanel` or HWND interop surface. Deferred
   because the Windows App SDK XAML toolchain cannot be built or validated in the Linux
   session and would add an unvalidated Windows-only build dependency to CI.

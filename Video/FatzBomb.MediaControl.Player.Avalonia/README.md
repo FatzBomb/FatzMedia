@@ -14,6 +14,11 @@ measuring rig for several players in one process.
   reason. `--surface=framesink` forces the frame sink, for comparison.
 - Open (file picker, filter from the engine), Play/Pause, Stop, seek bar, volume, pitch (-12..+12
   semitones), tempo (50..200 %), loop.
+- **Second screen** (Stage 027A slice 5): a box per player opens the adapter's
+  `SecondaryPresentationWindow` for that player, full screen on the screen given by
+  `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
+  screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
+  its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
 - A log panel per player: every `MediaDiagnostic` and `MediaError` event, newest first (500 entries).
 - **Players: 1-4** in the toolbar: that many independent players in a grid, each with its own engine,
   surface, file, transport and log. Changing the count or renderer recreates the players (files are not kept).
@@ -35,8 +40,9 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 
 Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
 software; `direct3d11` in the Windows build only), `--surface=auto|framesink` (default auto),
-`--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--native=<dir>` (repeatable),
-and an optional media file for the first player. Each player's Mode box switches its mode on the fly
+`--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--second-screen=<n>`
+(1-based screen number; opens player 1's second screen there at startup, full screen),
+`--native=<dir>` (repeatable), and an optional media file for the first player. Each player's Mode box switches its mode on the fly
 (`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.

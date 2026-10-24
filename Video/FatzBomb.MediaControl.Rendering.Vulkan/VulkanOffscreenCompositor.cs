@@ -52,9 +52,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private VulkanOverlayPipelines? _overlay;
 
     private ImageResource? _sourceImage;
-    private ImageResource? _targetImage;
+    // Render targets by size, most recently used last: each attached surface (Stage 027A slice 5:
+    // a primary and secondary screens) renders at its own size every frame, so one target per size
+    // is kept instead of re-creating a single one on every alternation.
+    private readonly List<RenderTarget> _renderTargets = [];
     private ImageResource? _cdgImage;
-    private Framebuffer _targetFramebuffer;
     private BufferResource? _uploadBuffer;
     private BufferResource? _cdgUploadBuffer;
     private CdgRenderSnapshot? _cdgUploadedSnapshot;
@@ -126,7 +128,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            ImageResource targetImage = EnsureTarget((uint)outputWidth, (uint)outputHeight);
+            RenderTarget renderTarget = EnsureTarget((uint)outputWidth, (uint)outputHeight);
+            ImageResource targetImage = renderTarget.Image;
             if (export is { } exportTarget)
                 ValidateExportTarget(exportTarget);
 
@@ -240,7 +243,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
                     PipelineStageFlags.TransferBit,
                     PipelineStageFlags.ColorAttachmentOutputBit);
-                _overlay!.Record(_commandBuffer, _targetFramebuffer, plan, cdgView);
+                _overlay!.Record(_commandBuffer, renderTarget.Framebuffer, plan, cdgView);
                 Barrier(
                     target,
                     ImageLayout.ColorAttachmentOptimal,
@@ -323,15 +326,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             if (export is not null)
                 return [];
 
+            // Grown only, so targets of different sizes rendering in turn do not reallocate it.
             var outputLength = checked(outputWidth * outputHeight * 4);
-            if (_output.Length != outputLength)
+            if (_output.Length < outputLength)
                 _output = new byte[outputLength];
 
             void* mappedOutput;
             Check(_vk.MapMemory(_device, readbackBuffer!.Value.Memory, 0, (ulong)outputLength, 0, &mappedOutput), "vkMapMemory");
             new ReadOnlySpan<byte>(mappedOutput, outputLength).CopyTo(_output);
             _vk.UnmapMemory(_device, readbackBuffer.Value.Memory);
-            return _output;
+            return _output.AsSpan(0, outputLength);
         }
     }
 
@@ -359,11 +363,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             {
                 _ = _vk.DeviceWaitIdle(_device);
                 DestroyExportedSets();
-                DestroyTargetFramebuffer();
+                DestroyRenderTargets();
                 _overlay?.Dispose();
                 _overlay = null;
                 Destroy(ref _sourceImage);
-                Destroy(ref _targetImage);
                 Destroy(ref _cdgImage);
                 _cdgUploadedSnapshot = null;
                 Destroy(ref _uploadBuffer);
@@ -599,19 +602,56 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         _vk.CmdCopyBufferToImage(_commandBuffer, upload.Buffer, image, ImageLayout.TransferDstOptimal, 1, &copy);
     }
 
-    /// <summary>
-    /// Returns the render target and its framebuffer, re-creating both when the size changes. The
-    /// framebuffer is destroyed (and its field cleared) before the image view it references, and
-    /// a failed framebuffer creation is retried on the next frame.
-    /// </summary>
-    private ImageResource EnsureTarget(uint width, uint height)
-    {
-        if (_targetImage is { } current && current.Width == width && current.Height == height && _targetFramebuffer.Handle != 0)
-            return current;
+    /// <summary>The most render targets kept (one per attached surface size).</summary>
+    internal const int MaxRenderTargets = 4;
 
-        DestroyTargetFramebuffer();
-        ImageResource target = EnsureImage(ref _targetImage, width, height, TransferUsage | ImageUsageFlags.ColorAttachmentBit);
-        _targetFramebuffer = _overlay!.CreateFramebuffer(target.View, width, height);
+    /// <summary>Gets how many render targets exist (tests).</summary>
+    internal int RenderTargetCount => _renderTargets.Count;
+
+    /// <summary>
+    /// Returns the render target of this size with its framebuffer, creating it when none exists.
+    /// The least recently used target goes when <see cref="MaxRenderTargets"/> are kept. A failed
+    /// creation leaves no partial target, so the next frame retries.
+    /// </summary>
+    private RenderTarget EnsureTarget(uint width, uint height)
+    {
+        for (var i = 0; i < _renderTargets.Count; i++)
+        {
+            RenderTarget existing = _renderTargets[i];
+            if (existing.Image.Width != width || existing.Image.Height != height)
+                continue;
+
+            if (i != _renderTargets.Count - 1)
+            {
+                _renderTargets.RemoveAt(i);
+                _renderTargets.Add(existing);
+            }
+
+            return existing;
+        }
+
+        if (_renderTargets.Count >= MaxRenderTargets)
+        {
+            // Every earlier submission completed (fence wait), so nothing still uses it.
+            DestroyRenderTarget(_renderTargets[0]);
+            _renderTargets.RemoveAt(0);
+        }
+
+        ImageResource? image = null;
+        ImageResource created = EnsureImage(ref image, width, height, TransferUsage | ImageUsageFlags.ColorAttachmentBit);
+        Framebuffer framebuffer;
+        try
+        {
+            framebuffer = _overlay!.CreateFramebuffer(created.View, width, height);
+        }
+        catch
+        {
+            Destroy(ref image);
+            throw;
+        }
+
+        var target = new RenderTarget(created, framebuffer);
+        _renderTargets.Add(target);
         return target;
     }
 
@@ -769,13 +809,22 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         _vk.CmdPipelineBarrier(_commandBuffer, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
     }
 
-    private void DestroyTargetFramebuffer()
+    /// <summary>Destroys a render target: the framebuffer before the image view it references.</summary>
+    private void DestroyRenderTarget(RenderTarget target)
     {
-        if (_targetFramebuffer.Handle == 0)
-            return;
+        if (target.Framebuffer.Handle != 0)
+            _vk.DestroyFramebuffer(_device, target.Framebuffer, null);
 
-        _vk.DestroyFramebuffer(_device, _targetFramebuffer, null);
-        _targetFramebuffer = default;
+        ImageResource? image = target.Image;
+        Destroy(ref image);
+    }
+
+    private void DestroyRenderTargets()
+    {
+        foreach (RenderTarget target in _renderTargets)
+            DestroyRenderTarget(target);
+
+        _renderTargets.Clear();
     }
 
     private void Destroy(ref ImageResource? resource)
@@ -813,6 +862,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private readonly record struct ImageResource(VkImage Image, DeviceMemory Memory, ImageView View, uint Width, uint Height);
 
     private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size);
+
+    private readonly record struct RenderTarget(ImageResource Image, Framebuffer Framebuffer);
 }
 
 /// <summary>A failed Vulkan call. <see cref="IsDeviceLost"/> marks recoverable device loss.</summary>

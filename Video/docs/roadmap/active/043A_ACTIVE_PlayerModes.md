@@ -170,7 +170,10 @@ Full or Background (see "Slice 2 decisions").
   (returns `true`, with an Info diagnostic) and only remembers their ids, so in Audio mode the
   player's set stays current and adapters keep their normal attach/resize/detach lifecycle (with
   `false`, adapters never detach, and a stale handle would be attached on return). This changes the
-  slice 1 behaviour (attach returned `false` with a Warning). The host's surface calls hold
+  slice 1 behaviour (attach returned `false` with a Warning). Open item, closed for Avalonia by
+  027A slice 5: a surface kept in Audio mode showed its last video frame; the Avalonia
+  `MediaSurface` now shows only its background while the session is in Audio mode (the WPF and
+  WinForms adapters are not changed by it). The host's surface calls hold
   `_surfaceGate` only around their own coordinator call; the rebuild holds it only while it
   reattaches, never while the graph is torn down or built.
 - **ModeChanged** is queued on the control queue after the switch, so it arrives after the

@@ -95,7 +95,7 @@ internal sealed class D3D11PresentationSurfaceController(
                 candidate.NativeHwnd,
                 backend.Kind,
                 candidate.BackendName,
-                isPrimary ? TargetRevision : backend.GetHashCode(),
+                isPrimary ? TargetRevision : SecondaryRevision(backend, texture),
                 Composition.Planning.CompositionTargetKind.FinalPresentation));
         }
 
@@ -106,6 +106,16 @@ internal sealed class D3D11PresentationSurfaceController(
 
         return snapshots;
     }
+
+    /// <summary>
+    /// A secondary target's revision. An offscreen secondary re-creates its texture in the same
+    /// backend object (a resize, or a new sink of the same size), and a new texture must not be
+    /// taken for the one a retained refresh already drew into.
+    /// </summary>
+    private static long SecondaryRevision(ID3D11PresentationBackend backend, ID3D11Texture2D texture) =>
+        backend.Kind is D3D11PresentationBackendKind.ManagedFrameSink or D3D11PresentationBackendKind.SharedTexture
+            ? HashCode.Combine(backend, texture)
+            : backend.GetHashCode();
 
     public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot snapshot)
     {
@@ -253,6 +263,50 @@ internal sealed class D3D11PresentationSurfaceController(
     }
 
     public bool RemoveSecondaryPresentationTarget(string targetId) => backends.RemoveSecondaryTarget(targetId);
+
+    /// <summary>Stage 027A slice 5: attaches or resizes a secondary surface's managed frame sink.</summary>
+    public bool CreateSecondaryManagedFrameSinkSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        string targetId,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height,
+        bool enableLogging)
+    {
+        if (isDisposed || !deviceResources.HasDevice || width <= 0 || height <= 0)
+            return false;
+
+        var created = backends.CreateSecondaryManagedFrameSinkTarget(deviceResources, targetId, sink, width, height);
+        if (created && enableLogging)
+            Debug.WriteLine($"[VorticeD3D11] Secondary managed frame-sink target '{targetId}' at {width}x{height}");
+
+        return created;
+    }
+
+    /// <summary>Stage 027A slice 5: attaches or resizes a secondary surface's shared textures.</summary>
+    public bool CreateSecondarySharedTextureSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        string targetId,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        bool enableLogging,
+        out string? failureReason)
+    {
+        if (isDisposed || !deviceResources.HasDevice || width <= 0 || height <= 0)
+        {
+            failureReason = isDisposed ? "the renderer is disposed" : "the Direct3D11 device is not ready";
+            return false;
+        }
+
+        var created = backends.CreateSecondarySharedTextureTarget(deviceResources, targetId, consumer, width, height, out failureReason);
+        if (created && enableLogging)
+            Debug.WriteLine($"[VorticeD3D11] Secondary shared-texture target '{targetId}' at {width}x{height}");
+
+        return created;
+    }
 
     public bool CreateManagedFrameSinkSurface(
         bool isDisposed,

@@ -4,7 +4,7 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
 /// Command line: <c>[media-file] [--renderer=auto|software|vulkan|direct3d11] [--surface=auto|framesink] [--players=1..4]
-/// [--mode=full|background|audio] [--native=&lt;dir&gt;]...</c>
+/// [--mode=full|background|audio] [--second-screen=&lt;n&gt;] [--native=&lt;dir&gt;]...</c>
 /// </summary>
 internal sealed class StartupOptions
 {
@@ -29,6 +29,13 @@ internal sealed class StartupOptions
     /// <summary>Gets the mode every player is created in (Stage 043A).</summary>
     public MediaPlayerMode Mode { get; private init; } = MediaPlayerMode.Full;
 
+    /// <summary>
+    /// Gets the screen (1-based, in Avalonia's <c>Screens.All</c> order) that player 1's second
+    /// screen opens on, full screen, at startup (<c>--second-screen=&lt;n&gt;</c>, Stage 027A slice
+    /// 5); null when not given. The toggles use it too.
+    /// </summary>
+    public int? SecondScreen { get; private init; }
+
     /// <summary>Gets the directories given with <c>--native=</c>, highest priority first.</summary>
     public IReadOnlyList<string> NativeDirectories { get; private init; } = [];
 
@@ -39,6 +46,7 @@ internal sealed class StartupOptions
         var players = 1;
         var preferGpuSurface = true;
         var mode = MediaPlayerMode.Full;
+        int? secondScreen = null;
         List<string> native = [];
 
         foreach (var argument in args)
@@ -52,6 +60,8 @@ internal sealed class StartupOptions
             else if (TryValue(argument, "--mode=", out value) && Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode parsed)
                 && Enum.IsDefined(parsed))
                 mode = parsed;
+            else if (TryValue(argument, "--second-screen=", out value) && int.TryParse(value, out var screen) && screen > 0)
+                secondScreen = screen;
             else if (TryValue(argument, "--native=", out value) && value.Length > 0)
                 native.Add(value);
             else if (!argument.StartsWith("--", StringComparison.Ordinal))
@@ -65,6 +75,7 @@ internal sealed class StartupOptions
             Players = players,
             PreferGpuSurface = preferGpuSurface,
             Mode = mode,
+            SecondScreen = secondScreen,
             NativeDirectories = native
         };
     }

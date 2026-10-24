@@ -15,7 +15,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   implemented (`updates/027A_1`, `updates/027A_3`). Slice 2, the Avalonia GPU-shared
   surface, is implemented and pending manual smoke (`updates/027A_2`): Direct3D11 keyed-mutex
   shared textures and Vulkan opaque-fd images go into Avalonia's compositor, with a frame-sink
-  fallback. WinUI 3 is deferred.
+  fallback. Slice 5, Avalonia second-screen output (one player on two screens; renderers
+  accept secondary frame-sink and shared-image surfaces; Audio mode clears the surface), is
+  implemented and pending manual smoke (`updates/027A_5`). WinUI 3 is deferred.
 - `active/033A_ACTIVE_FfmpegAudioParityAndFallback.md` - slice 1 (equalizer, fades,
   normalization for video audio) implemented; owner smoke passed 2026-10-17 (quiet-opening
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,

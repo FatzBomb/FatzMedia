@@ -156,6 +156,34 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return created;
     }
 
+    private bool CreateSecondaryManagedFrameSinkSurface(string targetId, IMediaPresentationFrameSink sink, int width, int height)
+    {
+        if (_disposed)
+            return false;
+
+        lock (_lock)
+            return _presentation.CreateSecondaryManagedFrameSinkSurface(_disposed, targetId, sink, width, height);
+    }
+
+    private bool CreateSecondarySharedTextureSurface(string targetId, IMediaSharedGpuImageConsumer consumer, int width, int height)
+    {
+        if (_disposed)
+            return false;
+
+        bool created;
+        string? reason;
+        lock (_lock)
+            created = _presentation.CreateSecondarySharedTextureSurface(_disposed, targetId, consumer, width, height, out reason);
+
+        if (!created)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Shared textures unavailable for '{targetId}': {reason}");
+            consumer.OnUnavailable(reason ?? "the Direct3D11 renderer could not export shared textures");
+        }
+
+        return created;
+    }
+
     private bool RemoveSecondaryPresentationTarget(string targetId)
     {
         lock (_lock)
@@ -201,17 +229,8 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (_disposed)
             return false;
 
-        if (surface.Role == MediaPresentationSurfaceRole.Primary
-            && TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
-        {
-            return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
-        }
-
-        if (surface.Role == MediaPresentationSurfaceRole.Primary
-            && MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
-        {
-            return CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight);
-        }
+        if (TryAttachOffscreenSurface(surface, out var offscreenAttached))
+            return offscreenAttached;
 
         if (!TryGetWin32Hwnd(surface, out nint hwnd))
             return false;
@@ -255,17 +274,9 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (_disposed)
             return false;
 
-        if (surface.Role == MediaPresentationSurfaceRole.Primary
-            && TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
-        {
-            return CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight);
-        }
-
-        if (surface.Role == MediaPresentationSurfaceRole.Primary
-            && MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
-        {
-            return CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight);
-        }
+        // Offscreen targets are re-created at the new size (attach and resize are the same).
+        if (TryAttachOffscreenSurface(surface, out var offscreenResized))
+            return offscreenResized;
 
         if (!TryGetWin32Hwnd(surface, out nint hwnd))
             return false;
@@ -296,8 +307,9 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (_disposed)
             return false;
 
+        // Offscreen targets (any role) have no swap chain to hold back during a live resize.
         if (TryGetManagedFrameSink(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
-            return surface.Role == MediaPresentationSurfaceRole.Primary;
+            return true;
 
         if (!TryGetWin32Hwnd(surface, out _))
             return false;
@@ -308,6 +320,34 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Attaches or resizes a managed frame-sink or shared-texture surface: the primary as the
+    /// offscreen primary backend, any other role as its own secondary target (Stage 027A slice
+    /// 5). Returns false when the surface is of neither kind.
+    /// </summary>
+    private bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
+    {
+        var isPrimary = surface.Role == MediaPresentationSurfaceRole.Primary;
+        if (TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
+        {
+            attached = isPrimary
+                ? CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight)
+                : CreateSecondaryManagedFrameSinkSurface(surface.Id, sink, surface.PixelWidth, surface.PixelHeight);
+            return true;
+        }
+
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
+        {
+            attached = isPrimary
+                ? CreateSharedTextureSurface(consumer!, surface.PixelWidth, surface.PixelHeight)
+                : CreateSecondarySharedTextureSurface(surface.Id, consumer!, surface.PixelWidth, surface.PixelHeight);
+            return true;
+        }
+
+        attached = false;
+        return false;
     }
 
     private static bool TryGetWin32Hwnd(

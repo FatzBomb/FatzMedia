@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using FatzBomb.MediaControl.Core.Configuration;
 
 namespace FatzBomb.MediaControl.Avalonia.Tests;
 
@@ -23,6 +24,25 @@ public class RecordingSession : DispatchProxy
 
     public VideoDisplayMode? LastDisplayMode { get; private set; }
 
+    /// <summary>Gets every attach, resize and detach with its surface id ("attach secondary 640x360").</summary>
+    public ConcurrentQueue<string> SurfaceCalls { get; } = new();
+
+    /// <summary>Gets or sets what <see cref="IMediaControlSession.Mode"/> returns.</summary>
+    public MediaPlayerMode Mode { get; set; }
+
+    private EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? _modeChanged;
+
+    /// <summary>Gets how many <see cref="IMediaControlSession.ModeChanged"/> handlers are subscribed.</summary>
+    public int ModeChangedSubscribers => _modeChanged?.GetInvocationList().Length ?? 0;
+
+    /// <summary>Sets <see cref="Mode"/> and raises ModeChanged, as a session's control queue would.</summary>
+    public void SwitchMode(MediaPlayerMode mode)
+    {
+        MediaPlayerMode old = Mode;
+        Mode = mode;
+        _modeChanged?.Invoke(this, new MediaValueChangedEventArgs<MediaPlayerMode>(old, mode));
+    }
+
     public static (IMediaControlSession Session, RecordingSession Recorder) Create()
     {
         IMediaControlSession session = Create<IMediaControlSession, RecordingSession>();
@@ -38,16 +58,27 @@ public class RecordingSession : DispatchProxy
                 LastAttached = (MediaPresentationSurfaceDescriptor)args![0]!;
                 Attached.Enqueue(LastAttached);
                 Calls.Enqueue($"attach {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
+                SurfaceCalls.Enqueue($"attach {LastAttached.Id} {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
                 if (AttachResult is { } attachResult)
                     return attachResult(LastAttached);
                 break;
             case nameof(IMediaControlSession.ResizePresentationSurface):
                 LastResize = ((int)args![1]!, (int)args[2]!);
                 Calls.Enqueue($"resize {LastResize.Value.Width}x{LastResize.Value.Height}");
+                SurfaceCalls.Enqueue($"resize {args[0]} {LastResize.Value.Width}x{LastResize.Value.Height}");
                 break;
             case nameof(IMediaControlSession.DetachPresentationSurface):
                 Calls.Enqueue("detach");
+                SurfaceCalls.Enqueue($"detach {args![0]}");
                 break;
+            case "get_Mode":
+                return Mode;
+            case "add_ModeChanged":
+                _modeChanged += (EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>)args![0]!;
+                return null;
+            case "remove_ModeChanged":
+                _modeChanged -= (EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>)args![0]!;
+                return null;
             case "set_VideoDisplayMode":
                 LastDisplayMode = (VideoDisplayMode)args![0]!;
                 break;

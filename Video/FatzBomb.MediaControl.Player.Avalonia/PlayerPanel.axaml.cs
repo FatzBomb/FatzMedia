@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FatzBomb.MediaControl.Avalonia;
@@ -33,6 +34,8 @@ public partial class PlayerPanel : UserControl
     private bool _isUpdatingSeek;
     private bool _isUpdatingMode;
     private bool _isUpdatingLoop;
+    private bool _isUpdatingSecondScreen;
+    private SecondaryPresentationWindow? _secondScreen;
     private bool _disposed;
 
     // Designer/XAML loader constructor.
@@ -111,6 +114,10 @@ public partial class PlayerPanel : UserControl
             _lastFrameTimestamp = Stopwatch.GetTimestamp();
             _uiTimer.Start();
 
+            // --second-screen=<n> opens player 1's second screen at startup.
+            if (_index == 1 && StartupOptions.Current.SecondScreen is not null)
+                SecondScreenBox.IsChecked = true;
+
             if (!string.IsNullOrEmpty(startupPath))
                 await OpenAsync(startupPath);
         }
@@ -128,6 +135,7 @@ public partial class PlayerPanel : UserControl
 
         _disposed = true;
         _uiTimer.Stop();
+        CloseSecondScreen();
         Surface.Player = null;
         MediaControlPlayer? player = _player;
         _player = null;
@@ -155,7 +163,115 @@ public partial class PlayerPanel : UserControl
         StatusText.Text =
             $"{Label} {player.State} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
             $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height} " +
-            $"via {DescribePath(Surface.PresentationPath)}";
+            $"via {DescribePath(Surface.PresentationPath)}{DescribeSecondScreen()}";
+    }
+
+    private string DescribeSecondScreen()
+    {
+        if (_secondScreen?.Surface is not { } surface)
+            return string.Empty;
+
+        PixelSize size = surface.AttachedPixelSize;
+        return $" | 2nd screen {size.Width}x{size.Height} via {DescribePath(surface.PresentationPath)}{(surface.IsPresentationSuspended ? " (cleared: Audio mode)" : string.Empty)}";
+    }
+
+    /// <summary>Opens or closes this player's second screen (Stage 027A slice 5).</summary>
+    private void OnSecondScreenChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingSecondScreen)
+            return;
+
+        if (SecondScreenBox.IsChecked == true)
+            OpenSecondScreen();
+        else
+            CloseSecondScreen();
+    }
+
+    private void OpenSecondScreen()
+    {
+        if (_player is not { } player || _secondScreen is not null || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            SetSecondScreenBox(false);
+            return;
+        }
+
+        (Screen? screen, var fullScreen, var where) = ChooseSecondScreen(owner);
+        var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
+        window.Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
+        window.Surface.PresentationPathChanged += OnSecondScreenPathChanged;
+        window.Closed += OnSecondScreenClosed;
+        _secondScreen = window;
+        AddLog(MediaDiagnosticLevel.Info, "Surface", $"{Label} second screen opens {where}");
+        window.ShowOnScreen(screen, fullScreen, owner);
+    }
+
+    /// <summary>
+    /// <c>--second-screen=&lt;n&gt;</c> when that screen exists, else the first screen that is not the
+    /// main window's, full screen; with one screen, a window beside the player.
+    /// </summary>
+    private static (Screen? Screen, bool FullScreen, string Where) ChooseSecondScreen(Window owner)
+    {
+        IReadOnlyList<Screen> screens = owner.Screens.All;
+        if (StartupOptions.Current.SecondScreen is { } number && number <= screens.Count)
+            return (screens[number - 1], true, $"full screen on screen {number} of {screens.Count} ({screens[number - 1].DisplayName})");
+
+        Screen? current = owner.Screens.ScreenFromWindow(owner);
+        for (var i = 0; i < screens.Count; i++)
+        {
+            if (!Equals(screens[i], current))
+                return (screens[i], true, $"full screen on screen {i + 1} of {screens.Count} ({screens[i].DisplayName})");
+        }
+
+        return (current, false, $"in a window (one screen{(StartupOptions.Current.SecondScreen is { } missing ? $"; screen {missing} does not exist" : string.Empty)})");
+    }
+
+    private void CloseSecondScreen()
+    {
+        SecondaryPresentationWindow? window = _secondScreen;
+        if (window is null)
+            return;
+
+        _secondScreen = null;
+        window.Closed -= OnSecondScreenClosed;
+        window.Surface.PresentationPathChanged -= OnSecondScreenPathChanged;
+        window.Close();
+        SetSecondScreenBox(false);
+    }
+
+    // The user closed the window.
+    private void OnSecondScreenClosed(object? sender, EventArgs e)
+    {
+        if (_secondScreen is not { } window || !ReferenceEquals(sender, window))
+            return;
+
+        window.Surface.PresentationPathChanged -= OnSecondScreenPathChanged;
+        window.Closed -= OnSecondScreenClosed;
+        _secondScreen = null;
+        SetSecondScreenBox(false);
+    }
+
+    private void SetSecondScreenBox(bool isChecked)
+    {
+        _isUpdatingSecondScreen = true;
+        try
+        {
+            SecondScreenBox.IsChecked = isChecked;
+        }
+        finally
+        {
+            _isUpdatingSecondScreen = false;
+        }
+    }
+
+    private void OnSecondScreenPathChanged(object? sender, EventArgs e)
+    {
+        if (sender is MediaSurface { PresentationPath: not MediaSurfacePresentationPath.None } surface)
+        {
+            AddLog(
+                MediaDiagnosticLevel.Info,
+                "Surface",
+                $"{Label} second screen presents via {DescribePath(surface.PresentationPath)}{(surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
+        }
     }
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -380,6 +496,7 @@ public partial class PlayerPanel : UserControl
     {
         OpenButton.IsEnabled = enabled;
         ModeBox.IsEnabled = enabled;
+        SecondScreenBox.IsEnabled = enabled;
         PlayPauseButton.IsEnabled = enabled;
         StopButton.IsEnabled = enabled;
         SeekSlider.IsEnabled = enabled;

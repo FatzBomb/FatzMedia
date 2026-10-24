@@ -546,6 +546,8 @@ Not covered (unchanged behaviour): Direct3D11 in `WpfComposited` mode with a sec
 The D3D11 backend set's no-mixed-target policy makes the managed sink the only target, and the
 bridge accepts a managed frame sink only for the primary, so the secondary stays blank there,
 as it did with the HWND payload. Use `NativeHwndOverlay` for a secondary window with Direct3D11.
+Fixed by 027A slice 5 (2026-10-24, pending owner smoke): Direct3D11 now gives a secondary frame
+sink its own offscreen target beside the managed primary.
 
 Review (local) decisions: with a primary attached, a software present succeeds only when the
 primary presented (as `D3D11PresentationBackendSet.NotifyTargetsPresented` does), so a
@@ -553,7 +555,8 @@ secondary never hides a failed primary frame; a reopened secondary is placed bef
 Not changed: two targets of the same size are still rendered separately (rare: the windows
 differ in size in practice); the Vulkan backend still accepts only a primary frame sink, but
 no Avalonia/WinForms adapter opens a secondary window yet, so fold multi-target support into
-ENG-014 when one does; `SecondaryPresentationWindow` gained an optional constructor parameter
+ENG-014 when one does (done in 027A slice 5: Vulkan and Direct3D11 accept secondary frame-sink
+and shared-image surfaces); `SecondaryPresentationWindow` gained an optional constructor parameter
 (source-compatible; no package has shipped yet).
 
 ### ENG-015 - Secondary window blank or frozen with plain hardware video

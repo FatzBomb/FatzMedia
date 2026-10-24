@@ -419,12 +419,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         frame.Targets is null
         || (targetId == CompositionTargetDescriptor.PrimaryFinalTargetId
             ? frame.Targets.IncludesPrimary
-            : frame.Targets.Includes(isPrimary: false, ToSurfaceId(targetId)));
-
-    private static string ToSurfaceId(string targetId) =>
-        targetId.StartsWith(D3D11PresentationBackendSet.SecondaryNativeHwndTargetPrefix, StringComparison.Ordinal)
-            ? targetId[D3D11PresentationBackendSet.SecondaryNativeHwndTargetPrefix.Length..]
-            : targetId;
+            : frame.Targets.Includes(isPrimary: false, D3D11PresentationBackendSet.ToSecondarySurfaceId(targetId)));
 
     private static bool IsCdgOverlayOnlyCompositionCandidate(
         MediaCompositionFrame frame,

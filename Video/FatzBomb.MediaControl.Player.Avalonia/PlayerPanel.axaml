@@ -27,6 +27,7 @@
         <CheckBox x:Name="LoopBox" Content="Loop" IsCheckedChanged="OnLoopChanged" />
         <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
         <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
+        <CheckBox x:Name="SecondScreenBox" Content="Second screen" Margin="8,0,0,0" IsCheckedChanged="OnSecondScreenChanged" />
       </StackPanel>
 
       <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">

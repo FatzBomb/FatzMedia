@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Rendering.Composition;
+using Avalonia.Threading;
+using FatzBomb.MediaControl.Core.Configuration;
 
 namespace FatzBomb.MediaControl.Avalonia;
 
@@ -22,22 +24,32 @@ public enum MediaSurfacePresentationPath
 }
 
 /// <summary>
-/// Avalonia media surface. It attaches one primary surface to the bound
-/// <see cref="IMediaControlSession"/>, keeps its pixel size in sync with layout bounds and render
-/// scaling, and shows the final frames Core's selected renderer produces. It owns no media,
-/// timing, composition, or renderer logic.
+/// Avalonia media surface. It attaches one surface to the bound <see cref="IMediaControlSession"/>,
+/// keeps its pixel size in sync with layout bounds and render scaling, and shows the final frames
+/// Core's selected renderer produces. It owns no media, timing, composition, or renderer logic.
 /// </summary>
 /// <remarks>
+/// <para>
 /// At attach it chooses the shared GPU image path when <see cref="PreferGpuSharedSurface"/> is
 /// set, Avalonia's compositor offers GPU interop with a handle kind it can import, and the
 /// session's renderer accepts the surface; otherwise (and whenever that path later reports a
 /// failure) it uses the managed frame sink. The choice and its reason are raised as an Info
 /// diagnostic and exposed through <see cref="PresentationPath"/>.
+/// </para>
+/// <para>
+/// Several surfaces can show one session (Stage 027A slice 5): the operator view as the
+/// <see cref="MediaPresentationSurfaceRole.Primary"/> surface, and a singer or projector screen in
+/// another window as a <see cref="MediaPresentationSurfaceRole.Projector"/> surface. Core renders
+/// every frame once per surface at that surface's size; each surface picks its own path.
+/// </para>
 /// </remarks>
 public class MediaSurface : Control
 {
     /// <summary>The diagnostic category of the surface's path decisions.</summary>
     public const string DiagnosticCategory = "Avalonia.MediaSurface";
+
+    /// <summary>The surface id a non-primary surface uses when <see cref="SurfaceId"/> is not set.</summary>
+    public const string DefaultSecondarySurfaceId = "secondary";
 
     public static readonly StyledProperty<IMediaControlSession?> PlayerProperty =
         AvaloniaProperty.Register<MediaSurface, IMediaControlSession?>(nameof(Player));
@@ -50,6 +62,12 @@ public class MediaSurface : Control
 
     public static readonly StyledProperty<bool> PreferGpuSharedSurfaceProperty =
         AvaloniaProperty.Register<MediaSurface, bool>(nameof(PreferGpuSharedSurface), true);
+
+    public static readonly StyledProperty<MediaPresentationSurfaceRole> RoleProperty =
+        AvaloniaProperty.Register<MediaSurface, MediaPresentationSurfaceRole>(nameof(Role), MediaPresentationSurfaceRole.Primary);
+
+    public static readonly StyledProperty<string?> SurfaceIdProperty =
+        AvaloniaProperty.Register<MediaSurface, string?>(nameof(SurfaceId));
 
     private static int _nextSurfaceNumber;
 
@@ -66,6 +84,9 @@ public class MediaSurface : Control
     private int _gpuInteropQuery;
     private IMediaControlSession? _gpuRejectedSession;
     private string? _gpuRejectedReason;
+    private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
+    private IMediaControlSession? _modeSession;
+    private bool _isPresentationSuspended;
 
     static MediaSurface()
     {
@@ -108,8 +129,47 @@ public class MediaSurface : Control
         set => SetValue(PreferGpuSharedSurfaceProperty, value);
     }
 
-    /// <summary>Gets whether the primary surface is attached to a session.</summary>
-    public bool IsPrimarySurfaceAttached => _attachedSession is not null;
+    /// <summary>
+    /// Gets or sets the surface's role (default <see cref="MediaPresentationSurfaceRole.Primary"/>).
+    /// Use <see cref="MediaPresentationSurfaceRole.Projector"/> for a second screen of a session
+    /// that already has a primary surface. A change re-attaches the surface.
+    /// </summary>
+    public MediaPresentationSurfaceRole Role
+    {
+        get => GetValue(RoleProperty);
+        set => SetValue(RoleProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the surface id sent to the session. Unset, a primary surface uses
+    /// <see cref="MediaPresentationSurfaceDescriptor.PrimarySurfaceId"/> and any other role uses
+    /// <see cref="DefaultSecondarySurfaceId"/>. Surfaces of one session need distinct ids. A change
+    /// re-attaches the surface.
+    /// </summary>
+    public string? SurfaceId
+    {
+        get => GetValue(SurfaceIdProperty);
+        set => SetValue(SurfaceIdProperty, value);
+    }
+
+    /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
+    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
+        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
+        : SurfaceId.Trim();
+
+    /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
+    public bool IsSurfaceAttached => _attachedSession is not null;
+
+    /// <summary>Gets whether this surface is attached to a session as its primary surface.</summary>
+    public bool IsPrimarySurfaceAttached => _attachedSession is not null && Role == MediaPresentationSurfaceRole.Primary;
+
+    /// <summary>
+    /// Gets whether the surface shows only its <see cref="Background"/> because no renderer
+    /// presents to it: the session is in <see cref="MediaPlayerMode.Audio"/> mode (Stage 043A),
+    /// which keeps surfaces attached but has no presentation. The last video frame is not left on
+    /// screen; frames show again once the session leaves Audio mode.
+    /// </summary>
+    public bool IsPresentationSuspended => _isPresentationSuspended;
 
     /// <summary>Gets the pixel size last sent to the session.</summary>
     public PixelSize AttachedPixelSize => new(_attachedPixelSize.Width, _attachedPixelSize.Height);
@@ -131,7 +191,7 @@ public class MediaSurface : Control
         if (Background is { } background)
             context.FillRectangle(background, bounds);
 
-        if (_sink?.Bitmap is { } bitmap)
+        if (!_isPresentationSuspended && _sink?.Bitmap is { } bitmap)
         {
             // The renderer already composed for this pixel size (letterboxing included), so the
             // bitmap fills the surface. The shared-image path draws in a child composition visual.
@@ -152,6 +212,7 @@ public class MediaSurface : Control
             _topLevel.ScalingChanged += OnTopLevelScalingChanged;
 
         _compositor = ElementComposition.GetElementVisual(this)?.Compositor;
+        WatchMode(Player);
         QueryGpuInterop();
         AttachOrResize();
     }
@@ -166,6 +227,7 @@ public class MediaSurface : Control
         }
 
         Detach();
+        WatchMode(null);
         _sink?.Dispose();
         _sink = null;
         _compositor = null;
@@ -197,8 +259,15 @@ public class MediaSurface : Control
             }
 
             Detach();
+            if (_isAttachedToTree)
+                WatchMode(change.NewValue as IMediaControlSession);
             if (change.NewValue is IMediaControlSession session)
                 session.VideoDisplayMode = VideoDisplayMode;
+            AttachOrResize();
+        }
+        else if (change.Property == RoleProperty || change.Property == SurfaceIdProperty)
+        {
+            Detach();
             AttachOrResize();
         }
         else if (change.Property == VideoDisplayModeProperty && Player is { } session && change.NewValue is VideoDisplayMode mode)
@@ -295,7 +364,7 @@ public class MediaSurface : Control
         if (ReferenceEquals(session, _attachedSession))
         {
             if (pixelSize != _attachedPixelSize
-                && session.ResizePresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, pixelSize.Width, pixelSize.Height))
+                && session.ResizePresentationSurface(_attachedSurfaceId, pixelSize.Width, pixelSize.Height))
             {
                 _attachedPixelSize = pixelSize;
             }
@@ -318,6 +387,7 @@ public class MediaSurface : Control
         if (attached)
         {
             _attachedSession = session;
+            _attachedSurfaceId = EffectiveSurfaceId;
             _attachedPixelSize = pixelSize;
             SetPath(MediaSurfacePresentationPath.FrameSink, fallbackReason);
         }
@@ -391,6 +461,7 @@ public class MediaSurface : Control
     {
         var gpuSurface = new AvaloniaSharedImageSurface(this, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
         gpuSurface.SetSize(Bounds.Size);
+        gpuSurface.SetVisible(!_isPresentationSuspended);
         bool attached;
         try
         {
@@ -408,6 +479,7 @@ public class MediaSurface : Control
         {
             _gpuSurface = gpuSurface;
             _attachedSession = session;
+            _attachedSurfaceId = EffectiveSurfaceId;
             _attachedPixelSize = pixelSize;
             SetPath(MediaSurfacePresentationPath.SharedGpuImage, $"the compositor imports {request}");
             fallbackReason = string.Empty;
@@ -415,7 +487,7 @@ public class MediaSurface : Control
         }
 
         if (attached)
-            _ = session.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId);
+            _ = session.DetachPresentationSurface(EffectiveSurfaceId);
 
         gpuSurface.Dispose();
         fallbackReason = unavailable ?? "the session did not accept the shared GPU image surface";
@@ -442,12 +514,12 @@ public class MediaSurface : Control
         AttachOrResize();
     }
 
-    private static MediaPresentationSurfaceDescriptor CreateDescriptor(
+    private MediaPresentationSurfaceDescriptor CreateDescriptor(
         MediaNativeSurfaceDescriptor nativeSurface,
         (int Width, int Height) pixelSize,
         double scaling) => new(
-            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
-            MediaPresentationSurfaceRole.Primary,
+            EffectiveSurfaceId,
+            Role,
             nativeSurface,
             pixelSize.Width,
             pixelSize.Height,
@@ -464,13 +536,63 @@ public class MediaSurface : Control
         PresentationPathReason = reason;
         if (path != MediaSurfacePresentationPath.None)
         {
+            var surface = $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
             var message = path == MediaSurfacePresentationPath.SharedGpuImage
-                ? $"Surface #{_surfaceNumber}: shared GPU image path ({reason})"
-                : $"Surface #{_surfaceNumber}: frame-sink path{(reason is null ? string.Empty : $" ({reason})")}";
+                ? $"{surface}: shared GPU image path ({reason})"
+                : $"{surface}: frame-sink path{(reason is null ? string.Empty : $" ({reason})")}";
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DiagnosticCategory, message);
         }
 
         PresentationPathChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Follows the session's mode while the control is in the visual tree (Stage 027A slice 5,
+    /// 043A): Audio mode keeps surfaces attached but no renderer presents to them, so the last
+    /// video frame would stay on screen.
+    /// </summary>
+    private void WatchMode(IMediaControlSession? session)
+    {
+        if (ReferenceEquals(session, _modeSession))
+        {
+            UpdatePresentationSuspended();
+            return;
+        }
+
+        if (_modeSession is not null)
+            _modeSession.ModeChanged -= OnSessionModeChanged;
+
+        _modeSession = session;
+        if (session is not null)
+            session.ModeChanged += OnSessionModeChanged;
+
+        UpdatePresentationSuspended();
+    }
+
+    // Raised on the session's control queue: marshal, then read the session's current mode, so a
+    // quick Audio -> Full switch never leaves the surface cleared.
+    private void OnSessionModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e) =>
+        Dispatcher.UIThread.Post(UpdatePresentationSuspended);
+
+    private void UpdatePresentationSuspended()
+    {
+        var suspended = _modeSession is { } session && ReferenceEquals(session, Player) && session.Mode == MediaPlayerMode.Audio;
+        if (suspended == _isPresentationSuspended)
+            return;
+
+        _isPresentationSuspended = suspended;
+        if (suspended)
+        {
+            // The renderer that drew the last frame is gone: show the background, not that frame.
+            _sink?.Clear();
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                DiagnosticCategory,
+                $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}': cleared, the player is in Audio mode (nothing presents to it)");
+        }
+
+        _gpuSurface?.SetVisible(!suspended);
+        InvalidateVisual();
     }
 
     private void Detach()
@@ -479,7 +601,7 @@ public class MediaSurface : Control
         _attachedSession = null;
         _attachedPixelSize = default;
         if (session is not null)
-            _ = session.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId);
+            _ = session.DetachPresentationSurface(_attachedSurfaceId);
 
         _gpuSurface?.Dispose();
         _gpuSurface = null;
