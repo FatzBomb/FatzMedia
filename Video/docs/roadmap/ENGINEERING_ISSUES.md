@@ -29,16 +29,79 @@ Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which re
 
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
-Reported: 2026-10-18 (audit; perf items not measured).
-- Most D3D11 failure logs are `Debug.WriteLine`, compiled out of Release: route the ones a
-  user would need through `DiagnosticRouter` (latched, since some repeat per frame).
-- A secondary (projector) window resize recreates its swap chain instead of queuing
-  `ResizeBuffers` like the primary.
-- Per-frame allocations: a render-target view per target per frame, target snapshot lists and
-  LINQ in the backend set, the DirectComposition back buffer re-wrapped after every present.
-- The managed frame sink reallocates on resize churn; Vulkan readback memory may be uncached
-  and the background is re-uploaded every frame.
-- Post-process targets are never pruned for removed secondary windows.
+Reported: 2026-10-18 (audit; perf items not measured). Partly resolved: 2026-10-24, pending
+manual smoke; the items below "Still open" need a measurement on Windows first.
+
+Resolved (each re-checked against the code first):
+- **D3D11 failure logs.** Failures a user would need now go through `DiagnosticRouter` with a
+  per-site `RendererDiagnosticLatch` (Core, `Core/Graphics/Rendering`): one report per
+  episode, re-armed on the next success. Covered: `ResizeBuffers` and resize failures (native
+  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform and
+  overlay present/clear failures, frame-sink readback and creation failures, shared-texture
+  present failures and stuck-mutex re-exports (Info), composition layer upload/allocation
+  failures, per-target draw failures, the DirectComposition overlay draw, video processor blit
+  and hardware-frame failures, and the black clear of a new target. Raised once, unlatched:
+  the composition pipeline failure (it stops retrying), "video processor unavailable" (once per
+  device) and the legacy Discard swap-chain fallback (once per swap chain). The remaining
+  `Debug.WriteLine` calls are verbose traces (created/resized, periodic stats, skip reasons
+  already returned as `LastPresentFailureReason`).
+- **Secondary window resize** queues `ResizeBuffers` for the next frame boundary, as the primary
+  does (`D3D11PresentationBackendSet.ApplyPendingSecondaryResizes`, applied with the primary's
+  pending resize). Only when the resize throws is the swap chain re-created, as before.
+- **Per-frame allocations (D3D11).** Each backend owns a `D3D11TargetViewCache` for its target
+  texture, released before the texture is disposed or its swap chain resized; snapshots carry
+  it to the compositor, and the video processor's pre-blit clear has one too. The backend set
+  keeps secondaries in sorted lists and fills a caller's list (`CollectActiveTargetBackends`)
+  instead of `OrderBy`/iterators; the surface controller reuses its snapshot lists; the present
+  loop, `OwnsTexture`, `HasMultipleActiveTargets`, `CompositionTargetRegistry` and
+  `CompositionTargetPlan.ShouldPresentTarget` have no LINQ or capturing lambdas. DirectComposition
+  no longer calls `GetBuffer(0)` after every present: buffer 0 of a Direct3D 11 flip-model chain
+  always names the current back buffer (the native HWND backend already relied on this).
+- **Managed frame sink** keeps its readback buffer through re-creation (Core
+  `RetainedPixelBuffer`: grown as needed, replaced only below a quarter of its size); the
+  primary's is released when all surfaces are cleaned up, a secondary's when it is removed.
+- **Vulkan readback** prefers host-cached memory (cached+coherent, then cached with an
+  invalidate before the read, then coherent). lavapipe's only type is cached and coherent.
+- **Vulkan background** is uploaded once per change, keyed by the frame's `BackgroundRevision`,
+  its pixel buffer and the source image; other targets and repeated frames reuse it. Revision
+  -1 (unknown) always uploads.
+- **Post-process targets** of targets that are gone are released on the next composition
+  (`TargetResourcePruning.RetainOnly`).
+
+Tests: Portable `RendererResourcePolicyTests` (latch, pruning, buffer policy, registry);
+Vulkan `VulkanResourceReuseTests` (memory-type choice, cached readback on lavapipe, one upload
+for several targets, re-upload on new revision, buffer, size or unknown revision, two frame
+sinks sharing one upload); Windows CI `D3D11RendererCostTests` on WARP (view reuse until the
+target is re-created, readback buffer through resize churn, post-process target released after
+a secondary detaches). On the Linux Avalonia player (Vulkan on lavapipe, 1080p H.264, software
+decode) CPU and fps did not change measurably: 30 fps, 21-24 % of 4 cores with one screen,
+31-32 % with a second screen, before and after; lavapipe's upload is a memcpy beside software
+decoding and rasterisation.
+
+Still open (measure on Windows before changing):
+- The managed frame sink still re-creates its target and staging textures at every size of a
+  live resize. Measure: WPF composited mode, drag-resize a 1080p video window, watch
+  frame drops and the composition timings (`EnablePerformanceLogging`). A fix would render into a sub-rectangle of a
+  larger texture.
+- Two targets of the same size are composed separately (D3D11 and Vulkan). Measure GPU time per
+  frame with two same-size screens (PIX or the composition diagnostics) before sharing one
+  composition.
+- Smaller per-frame allocations remain: the compositor's drawn-target list, the target plan's
+  array, the registry capture's `Select`, and the services' present callback. Measure the gen0
+  rate with `dotnet-counters` during 60 fps playback before chasing them.
+- The non-coherent cached readback branch is unit-tested only. Measure readback time on a
+  discrete GPU (NVIDIA, AMD) with Vulkan frame sinks, before and after.
+
+Manual smoke (Windows, native DLLs in place):
+1. WPF player, native HWND mode, open the projector window and drag-resize it for a few
+   seconds: it keeps playing with no black flashes; the log shows no `D3D11` warnings.
+2. DirectComposition mode with a CD+G file (base and overlay layers): plays, resizes, pauses
+   and seeks as before; CPU no higher than before.
+3. WPF composited (frame-sink) mode: drag-resize the window; playback continues.
+4. Avalonia player, Direct3D11, `--second-screen`: both screens play, close and reopen the
+   second screen a few times with a whole-composition video effect on; memory does not grow.
+5. Avalonia player, `--renderer=vulkan` on a discrete GPU with `--surface=framesink`: plays;
+   note CPU against the previous build.
 
 ### ENG-028 - MIDI silent after the audit's DLS converter changes
 

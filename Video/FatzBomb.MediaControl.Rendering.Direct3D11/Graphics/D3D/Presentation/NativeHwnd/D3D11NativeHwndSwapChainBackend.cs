@@ -5,6 +5,7 @@ using Vortice.DXGI;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using SharpGen.Runtime;
 
@@ -29,6 +30,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
     private long _resizeRetryNotBefore;
     private bool _deviceLostReported;
+    // ResizeBuffers failures other than device loss repeat (retried every half second): one report.
+    private readonly RendererDiagnosticLatch _resizeFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
     public bool IsActive => _swapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -36,6 +39,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     public int Height { get; private set; }
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public IntPtr Hwnd { get; private set; }
+    public D3D11TargetViewCache TargetViews { get; } = new();
 
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
@@ -66,6 +70,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             Width = width;
             Height = height;
             _resizePending = false;
+            _resizeFailure.Reset();
             return true;
         }
         catch (Exception ex)
@@ -109,6 +114,23 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         return ResizeCore(width, height);
     }
 
+    /// <summary>
+    /// A secondary window's resize (ENG-026): applies the queued <c>ResizeBuffers</c> like the
+    /// primary does, and only when that throws (leaving no back buffer) re-creates the swap chain
+    /// at the queued size, which is what every secondary resize did before.
+    /// </summary>
+    public bool ApplyPendingResizeOrRecreate(D3D11DeviceResources deviceResources)
+    {
+        IntPtr hwnd = Hwnd;
+        var pending = _resizePending;
+        var width = Math.Max(1, _pendingWidth);
+        var height = Math.Max(1, _pendingHeight);
+        if (ApplyPendingResizeIfNeeded())
+            return true;
+
+        return pending && hwnd != IntPtr.Zero && Create(deviceResources, hwnd, width, height);
+    }
+
     public bool Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
             _swapChain,
             presentMode,
@@ -138,6 +160,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             // backbuffer to be released first. The video processor output view is released
             // through a callback before the buffer resize.
             resetVideoProcessorState();
+            TargetViews.Release();
             TargetTexture?.Dispose();
             TargetTexture = null;
 
@@ -161,7 +184,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
                 }
                 else
                 {
-                    Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain ResizeBuffers failed: {resizeResult}");
+                    _ = _resizeFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain ResizeBuffers to {width}x{height} failed: {resizeResult}; presenting at {Width}x{Height} and retrying.");
                 }
 
                 // The buffers keep their old size: present at that size and leave the resize
@@ -180,6 +203,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             Width = width;
             Height = height;
             _resizePending = false;
+            _resizeFailure.Reset();
             resetOverlayTransientFailure();
             diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
 
@@ -194,13 +218,14 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VorticeD3D11] Native HWND swap-chain resize failed: {ex.Message}");
+            _ = _resizeFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain resize to {width}x{height} failed: {ex.Message}", ex);
             return false;
         }
     }
 
     public void Cleanup()
     {
+        TargetViews.Release();
         TargetTexture?.Dispose();
         TargetTexture = null;
         _swapChain?.Dispose();

@@ -7,8 +7,20 @@ public sealed class CompositionTargetRegistry
     private readonly List<CompositionTargetUpdate> _scratchTargetUpdates = [];
 
     public long CaptureSequence { get; private set; }
-    public bool HasMultipleActiveTargets => _targets.Values.Count(static target => target.IsActive) > 1;
-    public int ActiveTargetCount => _targets.Values.Count(static target => target.IsActive);
+    public bool HasMultipleActiveTargets => ActiveTargetCount > 1;
+
+    public int ActiveTargetCount
+    {
+        get
+        {
+            var count = 0;
+            foreach (CompositionTargetState target in _targets.Values)
+                if (target.IsActive)
+                    count++;
+
+            return count;
+        }
+    }
 
     public string LifecycleSummary
         => _targets.Count == 0
@@ -32,9 +44,19 @@ public sealed class CompositionTargetRegistry
             GetOrCreate(target.Id).Update(target, CaptureSequence);
         }
 
-        foreach (var existingId in _targets.Keys.ToArray())
-            if (!_scratchActiveIds.Contains(existingId, StringComparer.Ordinal))
-                _targets[existingId].Deactivate(CaptureSequence);
+        // Per frame: no snapshot of the keys (ENG-026). Deactivate only changes the entry.
+        foreach (KeyValuePair<string, CompositionTargetState> pair in _targets)
+            if (!IsCapturedId(pair.Key))
+                pair.Value.Deactivate(CaptureSequence);
+    }
+
+    private bool IsCapturedId(string id)
+    {
+        foreach (var capturedId in _scratchActiveIds)
+            if (string.Equals(capturedId, id, StringComparison.Ordinal))
+                return true;
+
+        return false;
     }
 
     public CompositionTargetPlan CreatePlan()
@@ -58,14 +80,13 @@ public sealed class CompositionTargetRegistry
 
     public void MarkPlanConsumed()
     {
-        foreach (CompositionTargetState target in _targets.Values)
-            target.MarkPlanConsumed();
-
-        foreach (var inactiveId in _targets
-                     .Where(static pair => !pair.Value.IsActive && !pair.Value.WasDeactivated)
-                     .Select(static pair => pair.Key)
-                     .ToArray())
-            _ = _targets.Remove(inactiveId);
+        foreach (KeyValuePair<string, CompositionTargetState> pair in _targets)
+        {
+            pair.Value.MarkPlanConsumed();
+            // Removing the current entry while enumerating is supported by Dictionary.
+            if (!pair.Value.IsActive && !pair.Value.WasDeactivated)
+                _ = _targets.Remove(pair.Key);
+        }
     }
 
     public void Reset()

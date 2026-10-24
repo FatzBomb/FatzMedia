@@ -92,10 +92,11 @@ composited mode, secondary window blank) is fixed. Smoke step 9 below.
 ## Deferred
 
 - A Vulkan or Direct3D11 composition renders each target separately, even two of the same size
-  (as the software renderer does; rare in practice).
-- Vulkan re-uploads the background per target per frame (ENG-026 already notes the per-frame
-  upload).
-- Direct3D11 post-process targets of removed secondaries are not pruned (ENG-026).
+  (as the software renderer does; rare in practice). Still open in ENG-026, to be measured first.
+- ~~Vulkan re-uploads the background per target per frame.~~ Fixed by ENG-026 (2026-10-24): one
+  upload per background revision, shared by every target.
+- ~~Direct3D11 post-process targets of removed secondaries are not pruned.~~ Fixed by ENG-026
+  (2026-10-24): released on the next composition.
 - Vulkan export on Windows, so a Vulkan player on Windows still uses the frame sink on both
   screens (slice 2 deferral).
 - Picking the renderer GPU from the compositor's: a second screen on a monitor driven by another

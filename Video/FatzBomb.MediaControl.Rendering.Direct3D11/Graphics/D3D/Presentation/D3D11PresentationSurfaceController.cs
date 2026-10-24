@@ -22,6 +22,10 @@ internal sealed class D3D11PresentationSurfaceController(
     public IntPtr NativeHwnd { get; private set; }
     private D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
     private long _directCompositionOverlaySplitSuppressedUntil;
+    // Reused every frame (ENG-026). Every caller holds the presentation lock.
+    private readonly List<D3D11PresentationBackendTarget> _scratchBackends = [];
+    private readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
+    private readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
     public bool LastActivationCreated { get; private set; }
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
@@ -44,24 +48,42 @@ internal sealed class D3D11PresentationSurfaceController(
         string? reason,
         out D3D11PresentationTargetSnapshot snapshot)
     {
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = GetActiveTargetSnapshots(applyPendingNativeResize, reason);
-        snapshot = targets.Count > 0 ? targets[0] : default;
+        FillActiveTargetSnapshots(_probeSnapshots, applyPendingNativeResize, reason);
+        snapshot = _probeSnapshots.Count > 0 ? _probeSnapshots[0] : default;
+        _probeSnapshots.Clear();
         return snapshot.IsValid;
     }
 
+    /// <summary>
+    /// The active targets for this frame. The list is reused by the next call (ENG-026): callers
+    /// use it within the frame, under the presentation lock, and do not keep it.
+    /// </summary>
     public IReadOnlyList<D3D11PresentationTargetSnapshot> GetActiveTargetSnapshots(
         bool applyPendingNativeResize,
         string? reason)
     {
+        FillActiveTargetSnapshots(_frameSnapshots, applyPendingNativeResize, reason);
+        return _frameSnapshots;
+    }
+
+    private void FillActiveTargetSnapshots(
+        List<D3D11PresentationTargetSnapshot> snapshots,
+        bool applyPendingNativeResize,
+        string? reason)
+    {
+        snapshots.Clear();
         if (applyPendingNativeResize && !ApplyPendingPresentationResizeIfNeeded())
         {
             LogInvalidTarget(reason, "pending presentation resize failed");
-            return [];
+            return;
         }
 
-        var snapshots = new List<D3D11PresentationTargetSnapshot>();
+        if (applyPendingNativeResize)
+            backends.ApplyPendingSecondaryResizes();
+
         ID3D11PresentationBackend? primary = backends.Active;
-        foreach (D3D11PresentationBackendTarget candidate in backends.EnumerateActiveTargetBackends())
+        backends.CollectActiveTargetBackends(_scratchBackends);
+        foreach (D3D11PresentationBackendTarget candidate in _scratchBackends)
         {
             ID3D11PresentationBackend backend = candidate.Backend;
             ID3D11Texture2D? texture = backend.TargetTexture;
@@ -96,15 +118,15 @@ internal sealed class D3D11PresentationSurfaceController(
                 backend.Kind,
                 candidate.BackendName,
                 isPrimary ? TargetRevision : SecondaryRevision(backend, texture),
-                Composition.Planning.CompositionTargetKind.FinalPresentation));
+                Composition.Planning.CompositionTargetKind.FinalPresentation,
+                backend.TargetViews));
         }
 
+        _scratchBackends.Clear();
         if (snapshots.Count == 0)
         {
             LogInvalidTarget(reason, "no active backend targets");
         }
-
-        return snapshots;
     }
 
     /// <summary>
@@ -137,7 +159,8 @@ internal sealed class D3D11PresentationSurfaceController(
             backends.DirectComposition.Kind,
             "DirectCompositionOverlay",
             TargetRevision,
-            Composition.Planning.CompositionTargetKind.DirectCompositionOverlay);
+            Composition.Planning.CompositionTargetKind.DirectCompositionOverlay,
+            backends.DirectComposition.OverlayTargetViews);
 
         return snapshot.IsValid;
     }

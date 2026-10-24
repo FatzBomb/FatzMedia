@@ -14,8 +14,11 @@ internal enum VulkanFrameSupport
     InvalidCdgSnapshot,
 }
 
-/// <summary>Software BGRA background layer and its blit.</summary>
-internal readonly record struct VulkanBackgroundLayer(ReadOnlyMemory<byte> Bgra, int Width, int Height, int Stride, VulkanBlit Blit);
+/// <summary>
+/// Software BGRA background layer and its blit. <see cref="Revision"/> is the frame's background
+/// revision (Core bumps it whenever the pixels change); -1 is unknown, and always uploads.
+/// </summary>
+internal readonly record struct VulkanBackgroundLayer(ReadOnlyMemory<byte> Bgra, int Width, int Height, int Stride, VulkanBlit Blit, long Revision = -1);
 
 /// <summary>
 /// A nearest-sampled overlay drawn as a textured quad over <see cref="Destination"/>, with the
@@ -87,7 +90,7 @@ internal static class VulkanCompositionPlanner
         if (frame.HasBackground
             && PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, outputWidth, outputHeight, frame.EffectiveBackgroundStretchMode) is { } blit)
         {
-            background = new VulkanBackgroundLayer(frame.BackgroundBgra, frame.BackgroundWidth, frame.BackgroundHeight, frame.BackgroundStride, blit);
+            background = new VulkanBackgroundLayer(frame.BackgroundBgra, frame.BackgroundWidth, frame.BackgroundHeight, frame.BackgroundStride, blit, frame.BackgroundRevision);
         }
 
         VulkanCdgLayer? cdg = null;

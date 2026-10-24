@@ -32,6 +32,9 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
     public event EventHandler? FramePresented;
 
+    /// <summary>Gets the presentation services (tests).</summary>
+    internal D3D11RendererPresentationServices PresentationServices => _presentation;
+
     public nint NativeDeviceHandle => _deviceResources.NativeDevicePointer;
 
     public string BackendName => _presentation.PresentationBackend;

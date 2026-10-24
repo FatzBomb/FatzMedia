@@ -3,10 +3,12 @@ using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using SharpGen.Runtime;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
@@ -18,6 +20,11 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 /// </summary>
 internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration configuration) : IDisposable
 {
+    // Blit failures repeat every frame: one diagnostic until a blit succeeds (ENG-026).
+    private readonly RendererDiagnosticLatch _blitFailure = new();
+    // The view the output is cleared through before each blit, kept per output texture like the
+    // video processor output view (ENG-026), and released with it by Reset.
+    private readonly D3D11TargetViewCache _clearViews = new();
     private ID3D11VideoProcessorEnumerator? _videoProcessorEnumerator;
     private ID3D11VideoProcessor? _videoProcessor;
     private ID3D11VideoProcessorOutputView? _videoOutputView;
@@ -174,11 +181,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, _streams);
         if (result.Failure)
         {
-            Debug.WriteLine($"[VorticeD3D11] Video processor blit failed: {result}");
+            _ = _blitFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Video processor blit failed: {result}");
             return false;
         }
 
         deviceResources.Context.Flush();
+        _blitFailure.Reset();
         return true;
     }
 
@@ -195,6 +203,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         _videoProcessorOutputWidth = 0;
         _videoProcessorOutputHeight = 0;
         _videoProcessorOutputTexturePointer = IntPtr.Zero;
+        _clearViews.Release();
         _videoProcessorFps = 0;
         _appliedColorSpace = null;
         _streams[0].InputSurface = null;
@@ -402,14 +411,14 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         return new Rational(numerator, 1000);
     }
 
-    private static void ClearPresentationTextureToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D presentationTexture, bool flush)
+    private void ClearPresentationTextureToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D presentationTexture, bool flush)
     {
         if (deviceResources.Device == null || deviceResources.Context == null)
         {
             return;
         }
 
-        using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(presentationTexture);
+        ID3D11RenderTargetView renderTargetView = _clearViews.Get(deviceResources.Device, presentationTexture);
         deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 1f));
         if (flush)
         {

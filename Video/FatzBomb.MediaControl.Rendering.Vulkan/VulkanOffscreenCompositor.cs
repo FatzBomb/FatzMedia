@@ -62,6 +62,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private CdgRenderSnapshot? _cdgUploadedSnapshot;
     private VkImage _cdgUploadedImage;
     private BufferResource? _readbackBuffer;
+    // The background held by _sourceImage (ENG-026): uploaded only when the frame's revision or
+    // pixel buffer changes, not once per target per frame. Revision -1 means "not uploaded".
+    private long _backgroundUploadedRevision = -1;
+    private ReadOnlyMemory<byte> _backgroundUploadedPixels;
+    private VkImage _backgroundUploadedImage;
     private byte[] _output = [];
     private bool _disposed;
 
@@ -75,6 +80,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     /// <summary>Gets how many times a CDG snapshot was expanded and uploaded (tests).</summary>
     internal int CdgUploadCount { get; private set; }
+
+    /// <summary>Gets how many times a background was uploaded (tests).</summary>
+    internal int BackgroundUploadCount { get; private set; }
+
+    /// <summary>Gets whether the readback buffer lives in host-cached memory (tests and diagnostics).</summary>
+    internal bool ReadbackIsHostCached => _readbackBuffer is { } buffer && (buffer.Properties & MemoryPropertyFlags.HostCachedBit) != 0;
 
     /// <summary>
     /// Creates the compositor, or returns <see langword="null"/> with a reason when no usable
@@ -134,13 +145,25 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 ValidateExportTarget(exportTarget);
 
             BufferResource? readbackBuffer = export is null
-                ? EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit)
+                ? EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit, ReadbackMemoryPreferences)
                 : null;
+            var uploadBackground = false;
             if (plan.Background is { } background)
             {
-                _ = EnsureImage(ref _sourceImage, (uint)background.Width, (uint)background.Height, TransferUsage);
-                BufferResource upload = EnsureBuffer(ref _uploadBuffer, (ulong)background.Width * (ulong)background.Height * 4, BufferUsageFlags.TransferSrcBit);
-                Upload(upload, background.Bgra.Span, background.Width, background.Height, background.Stride);
+                // As for the CDG texture below: an image about to be re-created never counts as
+                // holding the last upload, even if the new handle reuses the old value.
+                if (_sourceImage is not { } currentSource || currentSource.Width != (uint)background.Width || currentSource.Height != (uint)background.Height)
+                    _backgroundUploadedRevision = -1;
+
+                ImageResource source = EnsureImage(ref _sourceImage, (uint)background.Width, (uint)background.Height, TransferUsage);
+                uploadBackground = !HoldsBackground(background, source.Image);
+                if (uploadBackground)
+                {
+                    // Forgotten until this frame's submission completes, so a failure re-uploads.
+                    _backgroundUploadedRevision = -1;
+                    BufferResource upload = EnsureBuffer(ref _uploadBuffer, (ulong)background.Width * (ulong)background.Height * 4, BufferUsageFlags.TransferSrcBit, UploadMemoryPreferences);
+                    Upload(upload, background.Bgra.Span, background.Width, background.Height, background.Stride);
+                }
             }
 
             // Snapshots are immutable and Core hands over the same pixel buffers while the CDG
@@ -163,7 +186,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 // Forgotten until this frame's submission completes, so a failure re-uploads.
                 _cdgUploadedSnapshot = null;
                 var length = (ulong)cdgPlan.Snapshot.Width * (ulong)cdgPlan.Snapshot.Height * 4;
-                BufferResource cdgUpload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit);
+                BufferResource cdgUpload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit, UploadMemoryPreferences);
                 void* mapped;
                 Check(_vk.MapMemory(_device, cdgUpload.Memory, 0, length, 0, &mapped), "vkMapMemory");
                 try
@@ -190,9 +213,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             if (plan.Background is { } layer)
             {
                 VkImage source = _sourceImage!.Value.Image;
-                Transition(source, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
-                CopyBufferToImage(_uploadBuffer!.Value, source, layer.Width, layer.Height);
-                Transition(source, ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal, AccessFlags.TransferWriteBit, AccessFlags.TransferReadBit);
+                // A background uploaded by an earlier frame (another target, or a repeat of the
+                // same video frame) is still in TransferSrcOptimal, and that submission has
+                // completed (fence wait); its barrier covers reads by later commands.
+                if (uploadBackground)
+                {
+                    Transition(source, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
+                    CopyBufferToImage(_uploadBuffer!.Value, source, layer.Width, layer.Height);
+                    Transition(source, ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal, AccessFlags.TransferWriteBit, AccessFlags.TransferReadBit);
+                }
+
                 // Order the blit's writes after the clear's writes on the same target.
                 Transition(target, ImageLayout.TransferDstOptimal, ImageLayout.TransferDstOptimal, AccessFlags.TransferWriteBit, AccessFlags.TransferWriteBit);
 
@@ -323,6 +353,14 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 CdgUploadCount++;
             }
 
+            if (uploadBackground && plan.Background is { } uploadedBackground)
+            {
+                _backgroundUploadedRevision = uploadedBackground.Revision;
+                _backgroundUploadedPixels = uploadedBackground.Bgra;
+                _backgroundUploadedImage = _sourceImage!.Value.Image;
+                BackgroundUploadCount++;
+            }
+
             if (export is not null)
                 return [];
 
@@ -331,11 +369,43 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             if (_output.Length < outputLength)
                 _output = new byte[outputLength];
 
-            void* mappedOutput;
-            Check(_vk.MapMemory(_device, readbackBuffer!.Value.Memory, 0, (ulong)outputLength, 0, &mappedOutput), "vkMapMemory");
-            new ReadOnlySpan<byte>(mappedOutput, outputLength).CopyTo(_output);
-            _vk.UnmapMemory(_device, readbackBuffer.Value.Memory);
+            ReadBack(readbackBuffer!.Value, _output.AsSpan(0, outputLength));
             return _output.AsSpan(0, outputLength);
+        }
+    }
+
+    /// <summary>
+    /// Whether <see cref="_sourceImage"/> already holds <paramref name="background"/>: the same
+    /// revision (Core bumps it whenever the background changes; a negative one is unknown and
+    /// always uploads) and the same pixel buffer, uploaded into this image.
+    /// </summary>
+    private bool HoldsBackground(in VulkanBackgroundLayer background, VkImage image) =>
+        background.Revision >= 0
+        && background.Revision == _backgroundUploadedRevision
+        && background.Bgra.Equals(_backgroundUploadedPixels)
+        && image.Handle == _backgroundUploadedImage.Handle;
+
+    /// <summary>
+    /// Copies a finished readback into <paramref name="destination"/>. Host-cached memory that is
+    /// not coherent is invalidated first, so the CPU sees the GPU's writes.
+    /// </summary>
+    private void ReadBack(BufferResource buffer, Span<byte> destination)
+    {
+        void* mapped;
+        Check(_vk.MapMemory(_device, buffer.Memory, 0, Vk.WholeSize, 0, &mapped), "vkMapMemory");
+        try
+        {
+            if ((buffer.Properties & MemoryPropertyFlags.HostCoherentBit) == 0)
+            {
+                var range = new MappedMemoryRange { SType = StructureType.MappedMemoryRange, Memory = buffer.Memory, Offset = 0, Size = Vk.WholeSize };
+                Check(_vk.InvalidateMappedMemoryRanges(_device, 1, &range), "vkInvalidateMappedMemoryRanges");
+            }
+
+            new ReadOnlySpan<byte>(mapped, destination.Length).CopyTo(destination);
+        }
+        finally
+        {
+            _vk.UnmapMemory(_device, buffer.Memory);
         }
     }
 
@@ -372,6 +442,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 Destroy(ref _uploadBuffer);
                 Destroy(ref _cdgUploadBuffer);
                 Destroy(ref _readbackBuffer);
+                _backgroundUploadedRevision = -1;
                 if (_fence.Handle != 0)
                     _vk.DestroyFence(_device, _fence, null);
                 if (_commandPool.Handle != 0)
@@ -720,8 +791,44 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         }
     }
 
+    /// <summary>Host-visible memory for buffers the CPU writes and the GPU reads once (uploads).</summary>
+    private static readonly MemoryPropertyFlags[] UploadMemoryPreferences =
+    [
+        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+    ];
+
+    /// <summary>
+    /// Host-visible memory for the readback buffer the CPU reads every frame (ENG-026): host-cached
+    /// first, since uncached (write-combined) memory is very slow to read on discrete GPUs; coherent
+    /// when possible, otherwise invalidated before each read; plain coherent memory as the fallback.
+    /// </summary>
+    internal static readonly MemoryPropertyFlags[] ReadbackMemoryPreferences =
+    [
+        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit | MemoryPropertyFlags.HostCachedBit,
+        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCachedBit,
+        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+    ];
+
+    /// <summary>
+    /// The first memory type allowed by <paramref name="typeBits"/> that has every flag of the
+    /// earliest satisfiable entry of <paramref name="preferences"/>, or -1.
+    /// </summary>
+    internal static int SelectMemoryType(ReadOnlySpan<MemoryPropertyFlags> typeFlags, uint typeBits, ReadOnlySpan<MemoryPropertyFlags> preferences)
+    {
+        foreach (MemoryPropertyFlags wanted in preferences)
+        {
+            for (var index = 0; index < typeFlags.Length && index < 32; index++)
+            {
+                if ((typeBits & (1u << index)) != 0 && (typeFlags[index] & wanted) == wanted)
+                    return index;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>Grows <paramref name="resource"/> when too small, with the same failure safety as <see cref="EnsureImage"/>.</summary>
-    private BufferResource EnsureBuffer(ref BufferResource? resource, ulong size, BufferUsageFlags usage)
+    private BufferResource EnsureBuffer(ref BufferResource? resource, ulong size, BufferUsageFlags usage, MemoryPropertyFlags[] memoryPreferences)
     {
         if (resource is { } buffer && buffer.Size >= size)
             return buffer;
@@ -735,9 +842,21 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             Check(_vk.CreateBuffer(_device, &info, null, &handle), "vkCreateBuffer");
             MemoryRequirements requirements;
             _vk.GetBufferMemoryRequirements(_device, handle, &requirements);
-            memory = Allocate(requirements, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, fallback: null);
+            Span<MemoryPropertyFlags> typeFlags = stackalloc MemoryPropertyFlags[32];
+            typeFlags = typeFlags[..GetMemoryTypeFlags(typeFlags)];
+            var typeIndex = SelectMemoryType(typeFlags, requirements.MemoryTypeBits, memoryPreferences);
+            if (typeIndex < 0)
+                throw new VulkanException($"No memory type satisfies {memoryPreferences[^1]}; vkAllocateMemory", Result.ErrorOutOfDeviceMemory);
+
+            var allocateInfo = new MemoryAllocateInfo
+            {
+                SType = StructureType.MemoryAllocateInfo,
+                AllocationSize = requirements.Size,
+                MemoryTypeIndex = (uint)typeIndex,
+            };
+            Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory");
             Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
-            BufferResource created = new(handle, memory, size);
+            BufferResource created = new(handle, memory, size, typeFlags[typeIndex]);
             resource = created;
             return created;
         }
@@ -772,13 +891,18 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     private int FindMemoryType(uint typeBits, MemoryPropertyFlags flags)
     {
-        for (var index = 0; index < _memoryProperties.MemoryTypeCount; index++)
-        {
-            if ((typeBits & (1u << index)) != 0 && (_memoryProperties.MemoryTypes[index].PropertyFlags & flags) == flags)
-                return index;
-        }
+        Span<MemoryPropertyFlags> typeFlags = stackalloc MemoryPropertyFlags[32];
+        return SelectMemoryType(typeFlags[..GetMemoryTypeFlags(typeFlags)], typeBits, [flags]);
+    }
 
-        return -1;
+    /// <summary>Writes the selected device's memory type flags into <paramref name="destination"/> (32 entries) and returns the count.</summary>
+    private int GetMemoryTypeFlags(Span<MemoryPropertyFlags> destination)
+    {
+        var count = (int)Math.Min(_memoryProperties.MemoryTypeCount, (uint)destination.Length);
+        for (var index = 0; index < count; index++)
+            destination[index] = _memoryProperties.MemoryTypes[index].PropertyFlags;
+
+        return count;
     }
 
     /// <summary>Transfer-to-transfer layout transition (or from nothing when <paramref name="srcAccess"/> is 0).</summary>
@@ -861,7 +985,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     private readonly record struct ImageResource(VkImage Image, DeviceMemory Memory, ImageView View, uint Width, uint Height);
 
-    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size);
+    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size, MemoryPropertyFlags Properties);
 
     private readonly record struct RenderTarget(ImageResource Image, Framebuffer Framebuffer);
 }

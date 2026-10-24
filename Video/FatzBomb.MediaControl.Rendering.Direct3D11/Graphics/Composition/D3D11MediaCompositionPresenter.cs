@@ -6,6 +6,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -38,6 +39,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private readonly CompositionTargetRegistry _targetRegistry = new();
     private readonly List<D3D11PresentationTargetSnapshot> _scratchValidTargets = [];
     private readonly List<D3D11PresentationTargetSnapshot> _scratchPresentationTargets = [];
+    // Failures that repeat every frame: one diagnostic per episode (ENG-026).
+    private readonly RendererDiagnosticLatch _targetDrawFailure = new();
+    private readonly RendererDiagnosticLatch _overlayDrawFailure = new();
 
     private ID3D11PixelShader? _backgroundPixelShader;
     private ID3D11PixelShader? _baseVisualPixelShader;
@@ -71,6 +75,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private string? _lastCompositionReason;
 
     public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasCdgResources == true;
+
+    /// <summary>Gets how many per-target post-process textures are kept (tests).</summary>
+    internal int PostProcessTargetCount => _postProcessTargets.Count;
 
     public void Reset()
     {
@@ -187,17 +194,27 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             if (!EnsureCdgOverlayLayer(deviceResources, snapshot) || !EnsureDrawPipeline(deviceResources.Device))
                 return false;
 
-            using ID3D11RenderTargetView targetRenderView = deviceResources.Device.CreateRenderTargetView(target.Texture);
-            return DrawCdgOverlayOnlyToRenderTarget(
-                deviceResources.Context,
-                snapshot,
-                target.Width,
-                target.Height,
-                targetRenderView);
+            ID3D11RenderTargetView? ownedView = target.TargetViews is null ? deviceResources.Device.CreateRenderTargetView(target.Texture) : null;
+            try
+            {
+                var drawn = DrawCdgOverlayOnlyToRenderTarget(
+                    deviceResources.Context,
+                    snapshot,
+                    target.Width,
+                    target.Height,
+                    ownedView ?? target.TargetViews!.Get(deviceResources.Device, target.Texture));
+                if (drawn)
+                    _overlayDrawFailure.Reset();
+                return drawn;
+            }
+            finally
+            {
+                ownedView?.Dispose();
+            }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] DirectComposition overlay target draw failed: {ex.GetType().Name}: {ex.Message}");
+            _ = _overlayDrawFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"DirectComposition overlay target draw failed: {ex.GetType().Name}: {ex.Message}", ex);
             return false;
         }
     }
@@ -233,6 +250,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 Fail("no valid presentation target", frame);
                 return false;
             }
+
+            // A secondary window that went away leaves its post-process texture behind (ENG-026).
+            _ = TargetResourcePruning.RetainOnly(_postProcessTargets, validTargets, static target => target.TargetId);
 
             _targetRegistry.Capture(validTargets.Select(static target => target.ToCompositionTargetDescriptor()));
             CompositionTargetPlan targetPlan = _targetRegistry.CreatePlan();
@@ -297,31 +317,52 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             }
 
             var drawnTargets = new List<D3D11PresentationTargetSnapshot>(presentationTargets.Count);
+            var primaryExpected = false;
+            var primaryDrew = false;
+            var anyTargetFailed = false;
             foreach (D3D11PresentationTargetSnapshot target in presentationTargets)
             {
-                using ID3D11RenderTargetView targetRenderView = deviceResources.Device.CreateRenderTargetView(target.Texture);
-                if (!DrawToRenderTarget(
+                var isPrimary = target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId;
+                primaryExpected |= isPrimary;
+                // The backend's cached view of its texture (ENG-026); a snapshot without one gets a
+                // view for this draw only.
+                ID3D11RenderTargetView? ownedView = target.TargetViews is null ? deviceResources.Device.CreateRenderTargetView(target.Texture) : null;
+                bool drew;
+                try
+                {
+                    drew = DrawToRenderTarget(
                         deviceResources.Device,
                         deviceResources.Context,
                         frame,
                         target.TargetId,
                         target.Width,
                         target.Height,
-                        targetRenderView,
-                        clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious))
+                        ownedView ?? target.TargetViews!.Get(deviceResources.Device, target.Texture),
+                        clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious);
+                }
+                finally
                 {
-                    Debug.WriteLine($"[COMPOSITION-D3D11] Target present failed target={target.TargetId} {target.Width}x{target.Height} backend={target.BackendName} reason={frame.Reason}.");
+                    ownedView?.Dispose();
+                }
+
+                if (!drew)
+                {
+                    anyTargetFailed = true;
+                    _ = _targetDrawFailure.Raise(
+                        MediaDiagnosticLevel.Warning,
+                        "Composition",
+                        $"Drawing to target {target.TargetId} ({target.Width}x{target.Height}, {target.BackendName}) failed; reason={frame.Reason}.");
                     continue;
                 }
 
+                primaryDrew |= isPrimary;
                 drawnTargets.Add(target);
             }
 
-            D3D11PresentationTargetSnapshot primaryTarget = presentationTargets.FirstOrDefault(
-                static target => target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId);
-            var requiredTargetDrew = primaryTarget.IsValid
-                ? drawnTargets.Any(target => target.TargetId == primaryTarget.TargetId)
-                : drawnTargets.Count > 0;
+            if (!anyTargetFailed)
+                _targetDrawFailure.Reset();
+
+            var requiredTargetDrew = primaryExpected ? primaryDrew : drawnTargets.Count > 0;
             if (requiredTargetDrew)
             {
                 MarkRenderedLayers(frame);
@@ -1161,8 +1202,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
         catch (Exception ex)
         {
+            // Reported once: _pipelineFailed stops further attempts until Reset.
             _pipelineFailed = true;
-            Debug.WriteLine($"[CDG-D3D11] Draw pipeline initialization failed: {ex.GetType().Name}: {ex.Message}");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Composition", $"Direct3D11 composition draw pipeline initialization failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
             return false;
         }
     }

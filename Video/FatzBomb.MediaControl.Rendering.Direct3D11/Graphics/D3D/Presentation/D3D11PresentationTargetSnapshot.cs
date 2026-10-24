@@ -18,7 +18,8 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     D3D11PresentationBackendKind backendKind,
     string backendName,
     long revision,
-    CompositionTargetKind compositionTargetKind)
+    CompositionTargetKind compositionTargetKind,
+    D3D11TargetViewCache? targetViews = null)
 {
     public string TargetId { get; } = targetId;
 
@@ -37,6 +38,12 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     public long Revision { get; } = revision;
 
     public CompositionTargetKind CompositionTargetKind { get; } = compositionTargetKind;
+
+    /// <summary>
+    /// The owning backend's cached render-target view of <see cref="Texture"/> (ENG-026), or null
+    /// when the view is created for the draw.
+    /// </summary>
+    public D3D11TargetViewCache? TargetViews { get; } = targetViews;
 
     public bool IsValid => !string.IsNullOrWhiteSpace(TargetId)
         && Texture != null
