@@ -396,7 +396,7 @@ internal sealed partial class VideoPipeline(
         if (audio?.NetworkReadStall is { } audioStall && audioStall > stall)
             stall = audioStall;
 
-        var target = Math.Max(1, MinBufferedVideoFrames);
+        var target = Math.Max(1, VideoFrameBufferPolicy.MinBufferedFrames);
         var fill = Math.Clamp(decoder.FrameCount / (double)target, 0, 1);
         return new NetworkBufferingSample(_isPlaying, stall, fill, decoder.EndOfStream || demuxer.NetworkEndOfStream);
     }
