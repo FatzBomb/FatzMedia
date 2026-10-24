@@ -47,19 +47,6 @@ paused. Not a simple fix: per-target cadence (017A) presents compositions to tar
 so "drop older" would wrongly skip one target's frame, and a separate build-and-present lock
 needs its order against the coordinator lock proven for every caller.
 
-### ENG-024 - Player API threading contract gaps
-
-Reported: 2026-10-18 (audit).
-- `Reset` silently reverts runtime settings (volume, pitch, tempo, EQ, loop...) to defaults and
-  raises no change events.
-- `Dispose`, `Reset` and the sync API block the calling (UI) thread with no bound; some
-  "Async" methods block too.
-- `Reset` is not serialized against surface attach/detach calls and some property reads.
-- The worker-context flag is an `AsyncLocal` and flows into child tasks, so a task started
-  from an event handler can bypass serialization or make `Dispose`/`Reset` throw wrongly.
-- Event delivery is inconsistent: some events swallow handler exceptions, others let them
-  escape onto engine threads.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
 Reported: 2026-10-18 (audit; perf items not measured).
@@ -215,6 +202,112 @@ Manual smoke (Windows):
    Error above.
 6. Restore the DLL names; start both players again: audio plays as before and no BASS Warning
    is logged.
+
+### ENG-024 - Player API threading contract gaps
+
+Resolved: 2026-10-24, pending manual smoke (steps below).
+
+Reported: 2026-10-18 (audit).
+- `Reset` silently reverts runtime settings (volume, pitch, tempo, EQ, loop...) to defaults and
+  raises no change events.
+- `Dispose`, `Reset` and the sync API block the calling (UI) thread with no bound; some
+  "Async" methods block too.
+- `Reset` is not serialized against surface attach/detach calls and some property reads.
+- The worker-context flag is an `AsyncLocal` and flows into child tasks, so a task started
+  from an event handler can bypass serialization or make `Dispose`/`Reset` throw wrongly.
+- Event delivery is inconsistent: some events swallow handler exceptions, others let them
+  escape onto engine threads.
+
+The earlier audit text also named: `Reset` and the sync API hold `_operationAdmissionGate` for
+the whole operation; `LoadAsync` has no `CancellationToken` (closing a window during a slow
+network load froze the UI for up to 15 s plus retries); a failed `Reset` leaves the player
+unusable; two players created together get an empty `Bootstrap` message (Windows).
+
+Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
+- **Admission (fixed).** `_operationAdmissionGate` is held only to check the lifecycle and take a
+  place in the queue. A sync call takes its exclusive turn under the gate
+  (`MediaControlOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
+  `Async` methods never wait for a long sync call. `Reset` and `Dispose` are serialized by a
+  separate `_lifecycleGate` and also hold the admission gate only to take their turn; calls made
+  meanwhile fail at once (`InvalidOperationException`, as before) instead of blocking.
+- **Bounded `Dispose`/`Reset` and load cancellation (fixed).** A player-lifetime
+  `CancellationTokenSource` is cancelled by `Reset` and `Dispose`; every load (sync, async,
+  prepared-next, the mode switch's reopen) runs with it, and `MediaOpenCancellation` (an
+  `AsyncLocal` set around the engine open) carries it to the BASS network open, whose retry
+  delays now end at once and whose next attempts are skipped. A connect attempt in progress
+  cannot be interrupted (BASS has no cancel for `BASS_StreamCreateURL`). Such a load returns
+  `false`. `Dispose` then waits at most 2 s for its turn; past that it marks the player disposed,
+  detaches the surfaces (the host may destroy their windows) and queues the teardown behind the
+  operation in progress. `Reset` waits at most 5 s; past that it raises a Warning and returns
+  `false` with nothing rebuilt (the player stays usable). New overloads:
+  `LoadAsync(string, CancellationToken)`, `LoadAsync(string, bool, CancellationToken)`,
+  `LoadAsync(string, string?, bool, CancellationToken)`, `LoadAsync(MediaInputSource,
+  CancellationToken)`, `LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)`;
+  the first and last are also on `IMediaControlSession` with default implementations. Cancelled
+  while queued: skipped, nothing changes. Cancelled during the open: the player ends closed.
+  Either way the task is cancelled. Cancelled after `MediaLoaded`: the load stands and only the
+  PlayOnLoad start is skipped.
+- **Worker-context flag (fixed).** The `AsyncLocal` bool is replaced by per-operation scopes. A
+  synchronous operation's scope applies on the worker thread only; an asynchronous one's follows
+  its flow; each ends when its operation returns. `HostEventDispatcher` runs each host handler in
+  a handler scope bound to its thread that ends when it returns. So a task, timer, engine thread
+  or UI-thread callback started from an operation or handler is outside it once it runs on
+  another thread or after it returned: its sync calls queue, and its `Dispose`/`Reset` work
+  instead of throwing. Queue workers no longer inherit another queue's scope.
+- **Event delivery (fixed).** Every public player event goes through `HostEventDispatcher`: one
+  throwing handler does not stop the others, nothing escapes onto engine, render or queue
+  threads, and the failure is a `HostEvent` Warning (for `MediaDiagnostic` itself only a debug
+  line, to avoid a loop). `MediaEnded`, `MediaStopped`, `MediaError`, `MediaDiagnostic`,
+  `AudioDeviceChanged`, `MediaStarted` and `PresentationFramePresented` (render thread) were the
+  inconsistent ones.
+- **Reset's settings (fixed, defaults kept).** `Reset` still starts from the defaults (the 043A
+  decision); now each of volume, pitch, tempo, normalization, equalizer, loop and base visual
+  transform that changed raises its change event once, on the new control queue after `Reset`
+  returns, with the new `MediaChangeReason.PlayerReset`.
+- **Failed `Reset` (already fixed by ENG-020; tidied).** The player stays rebuildable: control
+  calls throw `ObjectDisposedException`, surface calls keep the surfaces, and a later `Reset`
+  reattaches them. New: the parts a failed build created are freed at once, and neither a retry
+  nor `Dispose` frees the old graph a second time.
+- **Concurrent player creation (already fixed by ENG-020).** `Bootstrap` loads under a lock with
+  a double-checked flag, so the loser waits and reuses the result.
+
+Documented as the contract (XML docs on `IMediaControlSession`, `Reset`, `Dispose`, `LoadAsync`):
+- The sync methods block the caller until their turn and the operation finish, without a bound;
+  UI threads should use the `Async` methods (as AGENTS.md says).
+- `Reset` and `Dispose` still throw `InvalidOperationException` from inside a control operation
+  or a handler raised in one, since they would wait for themselves.
+- Surface calls during a `Reset` or mode switch: already safe since 043A slice 2 (`_surfaceGate`,
+  held and reattached). Property getters/setters and the sync-offset and subtitle methods are not
+  queued: they act on the current graph, also during a rebuild, so a value set during a rebuild
+  may be lost. Queuing every property was rejected (setters would become asynchronous).
+- An asynchronous operation's scope follows its flow, so engine threads it starts count as
+  inside it until it completes (in practice the end of a load, after any PlayOnLoad wait).
+
+Tests: `PlayerThreadingContractTests` (14): async calls during a slow sync load return at once;
+async calls during a slow Reset fail at once; Dispose during a cancellable open returns well
+within the bound and cancels the load; Dispose during an uncancellable open returns after the
+bound, refuses calls, releases the surfaces and tears down when the open ends; `LoadAsync`
+cancelled while queued, during the open, and with an already-cancelled token; Reset giving up
+after its bound; a failed Reset is clearly faulted, then rebuildable or disposable; Reset change
+events; surface calls racing mode switches and Resets; Dispose from a task a handler started;
+handler exceptions. `MediaControlOperationQueueTests` (+5): scope ends with the operation, other
+threads are outside, handler scopes, abandoned turns, cancellation. Two `MediaControlPlayerTests`
+now expect the load that Reset/Dispose waited for to report `false` (cancelled). The new
+concurrency tests passed 20 runs in a row.
+
+Manual smoke (Windows and Linux players):
+1. In the WPF Player, open a network stream that does not answer (for example
+   `http://10.255.255.1/stream.mp3`) with retries enabled, then close the window at once: it
+   closes within about 2 s (before: up to 15 s per attempt plus retries). The log may show
+   "Dispose did not get its turn within 2 s".
+2. Same with the Avalonia test player (`--mode=full`), closing one player's window or the app.
+3. Normal use in the WPF and Avalonia players: load, play, seek-drag, pause, stop, natural end
+   with loop on and off, load another file, prepared-next transition: no change in behaviour, and
+   no new `HostEvent` warnings in the log. (No test host calls `Reset`; it is covered by tests.)
+4. Start a slow load (a large archive or a network stream) and press Play/Seek meanwhile: the UI
+   stays responsive; the commands run after the load.
+5. Switch modes (Avalonia `--mode`, or the API) during playback and resize the window during the
+   switch: the picture comes back at the new size.
 
 ### ENG-025 - Process-global state shared across players
 

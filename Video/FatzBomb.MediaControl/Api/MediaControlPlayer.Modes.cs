@@ -126,7 +126,11 @@ public partial class MediaControlPlayer
             coordinator.TransparentBackground = _transparentBackground;
     }
 
-    /// <summary>Runs on the control queue: never through the admission gate, which a waiting Dispose holds.</summary>
+    /// <summary>
+    /// Runs on the control queue, so a Reset or Dispose that arrives meanwhile waits for it (bounded,
+    /// see <see cref="Dispose()"/>). Never calls through the admission gate: the caller is already in
+    /// the queue.
+    /// </summary>
     private bool SwitchMode(MediaPlayerMode mode)
     {
         MediaPlayerMode previousMode = Mode;
@@ -227,7 +231,18 @@ public partial class MediaControlPlayer
         if (state.Load is not { } load)
             return;
 
-        if (!File.Reopen(load))
+        // A Dispose or Reset during the switch cancels the reopen (ENG-024): the player ends closed.
+        bool reopened;
+        try
+        {
+            reopened = File.Reopen(load, _loadLifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (!reopened)
         {
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,

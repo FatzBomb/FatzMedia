@@ -373,6 +373,19 @@ old queue, and then publishes disposed state. Synchronous disposal from inside a
 serialized control callback is rejected because it cannot safely wait for its own
 active queue turn.
 
+ENG-024 (2026-10-24) narrowed the admission gate to taking a place in the queue: a
+synchronous call takes its exclusive turn under the gate and waits for it outside, so
+the `Async` methods never block behind a long synchronous call, `Reset` or `Dispose`.
+`Reset` and `Dispose` are serialized by their own lifecycle lock, cancel loads (a
+player-lifetime `CancellationTokenSource`, which `MediaOpenCancellation` carries to the
+engine's open so network retry delays end at once), and wait for their turn with a
+bound: `Dispose` 2 s, then it releases the surfaces and leaves the teardown to the
+queue; `Reset` 5 s, then it returns `false` with nothing changed. "Inside an operation"
+is a per-operation scope (bound to the worker thread for synchronous operations) that
+ends when the operation returns, and every host event is raised through
+`HostEventDispatcher` in a handler scope bound to its thread, so work a handler hands
+elsewhere is serialized like any other caller.
+
 Video/CDG seeks retain latest-wins settle signaling. After a successful seek, the
 player also checks the current engine position through near-exact equality; an
 already-settled/no-op seek therefore raises `SeekCompleted` without requiring a new

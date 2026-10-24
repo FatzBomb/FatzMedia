@@ -718,7 +718,8 @@ public sealed class MediaControlPlayerTests
         Assert.False(reset.IsCompleted);
 
         releaseLoad.Set();
-        Assert.True(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
+        // Reset cancelled the load (ENG-024): it reports false and leaves nothing open.
+        Assert.False(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.True(await reset.WaitAsync(TestEnvironment.EventuallyTimeout));
         Assert.Equal(1, firstEngine.DisposeCount);
         Assert.True(player.Load("replacement.mp3"));
@@ -747,7 +748,8 @@ public sealed class MediaControlPlayerTests
         Assert.False(dispose.IsCompleted);
 
         releaseLoad.Set();
-        Assert.True(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
+        // Dispose cancelled the load (ENG-024).
+        Assert.False(await load.WaitAsync(TestEnvironment.EventuallyTimeout));
         await dispose.WaitAsync(TestEnvironment.EventuallyTimeout);
         Assert.Equal(1, engine.DisposeCount);
         Assert.Throws<ObjectDisposedException>(() => player.Play());

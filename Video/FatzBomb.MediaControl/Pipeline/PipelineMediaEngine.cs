@@ -267,6 +267,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         if (!_coordinator.OpenNetworkAudio(uri))
         {
+            // A cancelled load (ENG-024) is not an open failure.
+            if (MediaOpenCancellation.Current.IsCancellationRequested)
+                return false;
+
             RaiseError(MediaErrorCode.OpenFailed, $"Failed to open network stream: {source.DisplayName}", uri.AbsoluteUri);
             return false;
         }

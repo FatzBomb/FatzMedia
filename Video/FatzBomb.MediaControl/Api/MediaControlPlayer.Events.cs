@@ -1,6 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Threading;
-using System.Diagnostics;
 
 #pragma warning disable IDE0130
 namespace FatzBomb.MediaControl;
@@ -55,26 +54,14 @@ public partial class MediaControlPlayer
 
         EventHandler? handler = MediaEnded;
         if (handler != null)
-            _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+            _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, nameof(MediaEnded)));
 
         ScheduleAutomaticPreparedNextTransition();
     }
 
     private void OnControlsMediaStarted(object? sender, EventArgs e)
     {
-        EventHandler? handler = MediaStarted;
-        if (handler != null)
-        {
-            try
-            {
-                handler.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaControlPlayer", $"MediaStarted handler failed: {ex.Message}", innerException: ex);
-            }
-        }
-
+        HostEventDispatcher.Raise(this, MediaStarted, nameof(MediaStarted));
         _positionNotifier.Start();
     }
 
@@ -84,7 +71,7 @@ public partial class MediaControlPlayer
         _positionNotifier.Stop();
         EventHandler? handler = MediaStopped;
         if (handler != null)
-            _ = _controlOperations.Enqueue(() => handler.Invoke(this, EventArgs.Empty));
+            _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, nameof(MediaStopped)));
     }
 
     private void OnFileMediaLoaded(object? sender, MediaLoadedEventArgs e)
@@ -151,7 +138,9 @@ public partial class MediaControlPlayer
     private void OnControlsLoopMediaChanged(object? sender, MediaValueChangedEventArgs<bool> e) =>
         HostEventDispatcher.Raise(this, LoopMediaChanged, e, nameof(LoopMediaChanged));
 
-    private void OnPresentationFramePresented(object? sender, EventArgs e) => PresentationFramePresented?.Invoke(this, EventArgs.Empty);
+    // Raised on the render thread: a throwing handler must not escape into the render loop.
+    private void OnPresentationFramePresented(object? sender, EventArgs e) =>
+        HostEventDispatcher.Raise(this, PresentationFramePresented, nameof(PresentationFramePresented));
 
     private void OnEngineErrorOccurred(MediaErrorInfo info)
     {
@@ -160,7 +149,7 @@ public partial class MediaControlPlayer
             return;
 
         var args = new MediaErrorEventArgs(info.Code, info.Message, info.SourcePath, info.InnerException);
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
+        _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaError)));
     }
 
     private void OnDiagnosticOccurred(MediaDiagnosticInfo info)
@@ -171,7 +160,8 @@ public partial class MediaControlPlayer
             return;
 
         var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);
-        _ = _controlOperations.Enqueue(() => handler.Invoke(this, args));
+        // A failing diagnostic handler is not reported as a diagnostic: that would raise it again.
+        _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaDiagnostic), reportFailures: false));
     }
 
     private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>
@@ -203,19 +193,9 @@ public partial class MediaControlPlayer
         if (_disposed)
             return;
 
-        try
-        {
-            EventHandler<AudioDeviceChangedEventArgs>? handler = AudioDeviceChanged;
-            if (handler != null)
-            {
-                var args = new AudioDeviceChangedEventArgs(info);
-                handler.Invoke(this, args);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[MediaControlPlayer] AudioDeviceChanged dispatch failed: {ex.Message}");
-        }
+        EventHandler<AudioDeviceChangedEventArgs>? handler = AudioDeviceChanged;
+        if (handler != null)
+            HostEventDispatcher.Raise(this, handler, new AudioDeviceChangedEventArgs(info), nameof(AudioDeviceChanged));
     }
 
     private PlaybackPositionNotifier CreatePositionNotifier()

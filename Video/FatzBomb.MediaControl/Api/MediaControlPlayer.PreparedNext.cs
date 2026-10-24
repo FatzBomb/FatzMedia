@@ -122,23 +122,29 @@ public partial class MediaControlPlayer
 
         PublishPreparedNextChange(claimed!.Value);
         var success = false;
+        // A Reset or Dispose meanwhile cancels the load (ENG-024).
+        CancellationToken lifetime = _loadLifetime.Token;
         try
         {
             if (fade is null)
             {
-                success = await File.LoadAsync(transition!.Source).ConfigureAwait(false);
+                success = await File.LoadAsync(transition!.Source, backgroundSource: null, ignoreSidecar: false, lifetime).ConfigureAwait(false);
                 if (success && !File.PlayOnLoad)
                     success = Controls.Play();
             }
             else
             {
-                success = File.LoadWithoutAutoPlay(transition!.Source);
+                success = File.LoadWithoutAutoPlay(transition!.Source, lifetime);
                 if (success)
                 {
                     PrimeIncomingFade(fade);
                     success = Controls.Play();
                 }
             }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // The player is resetting or disposing.
         }
         catch (Exception ex)
         {

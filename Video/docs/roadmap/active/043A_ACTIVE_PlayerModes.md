@@ -124,8 +124,9 @@ Full or Background (see "Slice 2 decisions").
 - **Control queue.** The switch is a control operation (`EnqueueControlOperation`), so it runs on
   the queue worker, off the caller's thread, and every call made during it queues behind it. The
   switch keeps the queue (a `Reset` replaces it), so those calls run on the new graph. The switch
-  never takes `_operationAdmissionGate`: a `Dispose` or `Reset` that arrives during a switch holds
-  that gate while it waits for its turn behind the switch, then runs normally. The same mode
+  never takes `_operationAdmissionGate`: a `Dispose` or `Reset` that arrives during a switch waits
+  for its turn behind the switch, then runs normally (since ENG-024 it holds the gate only to
+  take its turn, cancels the switch's reopen, and waits with a bound). The same mode
   returns `true` without rebuilding; this is decided when the switch runs, so a second queued
   switch to the same mode is a no-op.
 - **Settings carried over.** The switch captures the host's settings from the old graph and

@@ -101,12 +101,23 @@ public sealed class MediaFile
     /// <summary>
     /// Loads media from a neutral Core source with an optional explicit neutral background source.
     /// </summary>
-    public async Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
+    public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
+        LoadAsync(source, backgroundSource, ignoreSidecar, CancellationToken.None);
+
+    /// <summary>
+    /// Loads media and honors <see cref="PlayOnLoad"/>. <paramref name="cancellationToken"/> (ENG-024):
+    /// cancelled before the load starts, nothing changes; cancelled during the open, the open stops
+    /// where it can (network retry delays), the player ends closed and this throws
+    /// <see cref="OperationCanceledException"/>; cancelled after the media loaded, the load stands
+    /// and only the PlayOnLoad start is skipped.
+    /// </summary>
+    internal async Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var loadGeneration = BeginLoadOperation();
-        var success = LoadCore(source, backgroundSource, ignoreSidecar);
+        var success = LoadCore(source, backgroundSource, ignoreSidecar, cancellationToken);
         if (success && PlayOnLoad)
-            await HandlePlayOnLoadAsync(loadGeneration).ConfigureAwait(false);
+            await HandlePlayOnLoadAsync(loadGeneration, cancellationToken).ConfigureAwait(false);
 
         return success;
     }
@@ -115,10 +126,11 @@ public sealed class MediaFile
     /// Loads media without honoring <see cref="PlayOnLoad"/>, for callers that must prepare the new
     /// media (for example its fade gain) before starting playback themselves.
     /// </summary>
-    internal bool LoadWithoutAutoPlay(MediaInputSource source)
+    internal bool LoadWithoutAutoPlay(MediaInputSource source, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _ = BeginLoadOperation();
-        return LoadCore(source, backgroundSource: null, ignoreSidecar: false);
+        return LoadCore(source, backgroundSource: null, ignoreSidecar: false, cancellationToken);
     }
 
     /// <summary>
@@ -131,10 +143,11 @@ public sealed class MediaFile
     /// Loads <paramref name="request"/> again as the same item: without honoring
     /// <see cref="PlayOnLoad"/>, <see cref="ResetPitchOnMediaLoad"/> or <see cref="ResetTempoOnMediaLoad"/>.
     /// </summary>
-    internal bool Reopen(LoadRequest request)
+    internal bool Reopen(LoadRequest request, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _ = BeginLoadOperation();
-        return LoadCore(request.Source, request.BackgroundSource, request.IgnoreSidecar, applyLoadReset: false);
+        return LoadCore(request.Source, request.BackgroundSource, request.IgnoreSidecar, cancellationToken, applyLoadReset: false);
     }
 
     /// <summary>
@@ -177,12 +190,17 @@ public sealed class MediaFile
     /// <summary>
     /// Loads media from a neutral Core source with an optional explicit neutral background source.
     /// </summary>
-    public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false)
+    public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
+        Load(source, backgroundSource, ignoreSidecar, CancellationToken.None);
+
+    /// <summary>The synchronous load; <paramref name="cancellationToken"/> as for <see cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>.</summary>
+    internal bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var loadGeneration = BeginLoadOperation();
-        var success = LoadCore(source, backgroundSource, ignoreSidecar);
+        var success = LoadCore(source, backgroundSource, ignoreSidecar, cancellationToken);
         if (success && PlayOnLoad)
-            _ = Task.Run(() => HandlePlayOnLoadAsync(loadGeneration));
+            _ = Task.Run(() => HandlePlayOnLoadAsync(loadGeneration, cancellationToken));
 
         return success;
     }
@@ -191,16 +209,16 @@ public sealed class MediaFile
     /// Handles PlayOnLoad with proper normalization timing.
     /// Waits for quick normalization before starting playback to avoid audio jumps.
     /// </summary>
-    private async Task HandlePlayOnLoadAsync(int loadGeneration)
+    private async Task HandlePlayOnLoadAsync(int loadGeneration, CancellationToken cancellationToken)
     {
         try
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Waiting for quick normalization...");
 
             // Wait for quick normalization to complete (max 2 seconds)
-            await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            await WaitForQuickNormalizationAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
 
-            if (!IsCurrentLoadOperation(loadGeneration))
+            if (cancellationToken.IsCancellationRequested || !IsCurrentLoadOperation(loadGeneration))
             {
                 System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Skipped because media changed before playback could start");
                 return;
@@ -215,6 +233,10 @@ public sealed class MediaFile
             else
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "PlayOnLoad: Failed to start playback");
         }
+        catch (OperationCanceledException)
+        {
+            // The load was cancelled after it loaded: the media stays loaded, not started.
+        }
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaFile", $"PlayOnLoad error: {ex.Message}", innerException: ex);
@@ -225,7 +247,7 @@ public sealed class MediaFile
     /// Waits for quick normalization analysis to complete.
     /// This ensures we don't get sudden audio level changes when auto-playing.
     /// </summary>
-    private async Task WaitForQuickNormalizationAsync(TimeSpan timeout)
+    private async Task WaitForQuickNormalizationAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
         IAudioEngine audioEngine = _mediaEngine.Audio;
         if (audioEngine == null || !audioEngine.Normalize) return;
@@ -247,7 +269,7 @@ public sealed class MediaFile
         {
             // Wait for gain change or timeout
             while (!gainChanged && !audioEngine.IsNormalizationReady && DateTime.UtcNow - startTime < timeout)
-                await Task.Delay(50).ConfigureAwait(false); // Check every 50ms
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false); // Check every 50ms
 
             if (!gainChanged)
                 System.Diagnostics.Debug.WriteLine("[MediaFile] Quick normalization timeout - proceeding with playback");
@@ -290,9 +312,15 @@ public sealed class MediaFile
     private bool IsCurrentLoadOperation(int loadGeneration) =>
         Volatile.Read(ref _loadGeneration) == loadGeneration && _mediaEngine.IsOpen;
 
-    private bool LoadCore(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, bool applyLoadReset = true)
+    private bool LoadCore(
+        MediaInputSource source,
+        MediaInputSource? backgroundSource,
+        bool ignoreSidecar,
+        CancellationToken cancellationToken,
+        bool applyLoadReset = true)
     {
         ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
         System.Diagnostics.Debug.WriteLine($"[MediaFile] Loading: {source.DisplayName}");
 
         if (_mediaEngine.IsOpen)
@@ -305,7 +333,24 @@ public sealed class MediaFile
         }
 
         _mediaEngine.ClearBackground();
-        var success = _mediaEngine.Open(source);
+        bool success;
+        using (MediaOpenCancellation.Enter(cancellationToken))
+            success = _mediaEngine.Open(source);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            // Cancelled during the open (ENG-024): the previous media is already closed, so the
+            // player ends closed rather than with media the caller no longer wants.
+            if (success)
+            {
+                _mediaEngine.Close();
+                _mediaEngine.ClearBackground();
+                _mediaRenderer?.RefreshAttachments();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         if (!success)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "MediaFile", $"Failed to load: {source.DisplayName}", sourcePath: source.FilePath);
@@ -423,7 +468,7 @@ public sealed class MediaFile
             : null;
     }
 
-    private static MediaInputSource? SelectExplicitBackground(IReadOnlyList<string> backgroundPaths)
+    internal static MediaInputSource? SelectExplicitBackground(IReadOnlyList<string> backgroundPaths)
     {
         ArgumentNullException.ThrowIfNull(backgroundPaths);
         List<string> candidates = [];
