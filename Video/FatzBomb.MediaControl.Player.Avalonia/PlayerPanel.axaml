@@ -5,10 +5,12 @@
   <Border Margin="2" BorderThickness="1" BorderBrush="#40808080" Padding="6">
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
 
-      <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
         <Button x:Name="OpenButton" Content="Open..." Click="OnOpenClick" />
-        <TextBlock x:Name="FileText" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+        <TextBlock x:Name="FileText" Grid.Column="1" Margin="2,0,0,0" VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis" Text="(no file)" />
+        <TextBox x:Name="UrlBox" Grid.Column="2" Width="240" PlaceholderText="http(s)://... (MP4, MKV, HLS)" KeyDown="OnUrlKeyDown" />
+        <Button x:Name="OpenUrlButton" Grid.Column="3" Content="URL..." Click="OnOpenUrlClick" />
       </Grid>
 
       <Border Grid.Row="1" Background="Black" MinHeight="80">

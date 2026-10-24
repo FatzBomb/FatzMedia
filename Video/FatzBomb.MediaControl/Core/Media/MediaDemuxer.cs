@@ -1,3 +1,5 @@
+using FatzBomb.MediaControl.Core.Network;
+using FatzBomb.MediaControl.Core.Video;
 using FFmpeg.AutoGen;
 
 namespace FatzBomb.MediaControl.Core.Media;
@@ -14,10 +16,38 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// EOF / error handling at the call site is unchanged. A demuxer instance owns
 /// exactly one container and is single-threaded from the perspective of its
 /// owner (one decode thread), matching the previous inline usage.
+/// <para>
+/// Network sources (Stage 039A) open through FFmpeg's network protocols with an interrupt
+/// callback (<see cref="FfmpegInterrupt"/>): <see cref="Abort"/> makes every blocking call return
+/// at once from any thread, the open is bounded by the policy's connect timeout and cancellable,
+/// and each read is bounded by <c>rw_timeout</c>. A read error other than end of file on a
+/// network source (the stream dropped after FFmpeg's own reconnects) is reported once and then
+/// returned as end of file, so playback ends instead of retrying a dead connection forever.
+/// </para>
 /// </remarks>
 internal sealed unsafe class MediaDemuxer : IDisposable
 {
+    private const string NetworkDiagnosticCategory = "Network";
+    private const int MaxNetworkLogDiagnostics = 20;
     private AVFormatContext* _formatContext;
+    private FfmpegInterrupt? _interrupt;
+    private string? _networkUrl;
+    private bool _networkReadFailed;
+    private bool _networkEndOfStream;
+    private int _networkLogDiagnostics;
+    private Action<int, string>? _networkLogObserver;
+
+    /// <summary>True while a network source is open.</summary>
+    public bool IsNetwork => _networkUrl != null && _formatContext != null;
+
+    /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
+    public string? LastNetworkError { get; private set; }
+
+    /// <summary>How long the network read in progress has been blocked (zero when none is).</summary>
+    public TimeSpan NetworkReadStall => _interrupt?.CurrentOperationDuration ?? TimeSpan.Zero;
+
+    /// <summary>Whether a network read reached the end of the stream (or the stream dropped).</summary>
+    public bool NetworkEndOfStream => _networkEndOfStream;
 
     /// <summary>True once a container has been opened and stream info probed.</summary>
     public bool IsOpen => _formatContext != null;
@@ -38,7 +68,10 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// on failure. Mirrors the previous inline
     /// <c>avformat_open_input</c> + <c>avformat_find_stream_info</c> sequence.
     /// </summary>
-    public bool Open(string path)
+    public bool Open(string path) =>
+        FfmpegNetwork.IsNetworkUrl(path) ? Open(path, FfmpegNetworkOptions.Default) : OpenFile(path);
+
+    private bool OpenFile(string path)
     {
         Close();
 
@@ -55,6 +88,118 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Opens an http/https source (Stage 039A): one attempt bounded by the policy's connect
+    /// timeout and cancellable through <paramref name="options"/> or <see cref="Abort"/>. Retries
+    /// between attempts belong to the caller. Returns false and records
+    /// <see cref="LastNetworkError"/> on failure.
+    /// </summary>
+    public bool Open(string url, FfmpegNetworkOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(options);
+        Close();
+
+        FfmpegNetwork.EnsureInitialized();
+        FfmpegLogCapture.EnsureInstalled();
+        LastNetworkError = null;
+        _networkReadFailed = false;
+        _networkEndOfStream = false;
+        _networkLogDiagnostics = 0;
+        _networkUrl = url;
+        _interrupt ??= new FfmpegInterrupt();
+        _interrupt.Reset(options.Cancellation);
+        _networkLogObserver ??= OnNetworkLog;
+
+        AVDictionary* dictionary = null;
+        foreach (KeyValuePair<string, string> option in NetworkVideoPolicy.CreateFfmpegOptions(options.Retry))
+            _ = ffmpeg.av_dict_set(&dictionary, option.Key, option.Value, 0);
+
+        try
+        {
+            AVFormatContext* context = ffmpeg.avformat_alloc_context();
+            if (context == null)
+            {
+                LastNetworkError = "Could not allocate an FFmpeg format context.";
+                _networkUrl = null;
+                return false;
+            }
+
+            _interrupt.Install(context);
+            int result;
+            using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver))
+            {
+                // The connect timeout bounds the whole connect (DNS, TCP, TLS, request, headers);
+                // avformat_open_input frees the context when it fails.
+                _interrupt.BeginOperation(options.Retry.ConnectTimeout);
+                result = ffmpeg.avformat_open_input(&context, url, null, &dictionary);
+                _interrupt.EndOperation();
+                if (result >= 0)
+                {
+                    _formatContext = context;
+
+                    // Probing reads ahead (several HLS segments); each read is bounded by
+                    // rw_timeout and the probe by twice the connect timeout.
+                    _interrupt.BeginOperation(options.Retry.ConnectTimeout * 2);
+                    result = ffmpeg.avformat_find_stream_info(_formatContext, null);
+                    _interrupt.EndOperation();
+                }
+            }
+
+            if (result < 0)
+            {
+                LastNetworkError = _interrupt.IsAborted || options.Cancellation.IsCancellationRequested
+                    ? "cancelled"
+                    : FfmpegNetwork.DescribeError(result);
+                Close();
+                return false;
+            }
+
+            _interrupt.ReleaseCancellation();
+            return true;
+        }
+        finally
+        {
+            ffmpeg.av_dict_free(&dictionary);
+        }
+    }
+
+    /// <summary>
+    /// Makes every blocking network call on this demuxer return at once, from any thread and
+    /// without a lock (Close, Dispose, or a cancelled open). Local files are unaffected.
+    /// </summary>
+    public void Abort() => _interrupt?.Abort();
+
+    /// <summary>
+    /// What FFmpeg reported for the open network source: playlist or progressive, length, byte
+    /// seeking, and duration (Stage 039A capability row).
+    /// </summary>
+    public NetworkVideoProbe GetNetworkProbe()
+    {
+        if (_formatContext == null)
+            return default;
+
+        var demuxerName = _formatContext->iformat != null
+            ? System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)_formatContext->iformat->name)
+            : null;
+        var isSegmented = NetworkVideoPolicy.IsSegmentedDemuxer(demuxerName);
+        AVIOContext* io = _formatContext->pb;
+        long? length = null;
+        var byteSeeking = false;
+        if (!isSegmented && io != null)
+        {
+            var size = ffmpeg.avio_size(io);
+            length = size > 0 ? size : null;
+            byteSeeking = (io->seekable & ffmpeg.AVIO_SEEKABLE_NORMAL) != 0;
+        }
+
+        var durationTicks = _formatContext->duration;
+        var duration = durationTicks > 0 && durationTicks != ffmpeg.AV_NOPTS_VALUE
+            ? durationTicks / (double)ffmpeg.AV_TIME_BASE
+            : 0;
+        return new NetworkVideoProbe(isSegmented, length, byteSeeking, duration);
     }
 
     /// <summary>
@@ -95,16 +240,76 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// <see cref="ffmpeg.AVERROR_EOF"/> at end of stream, other negatives on
     /// error). Returns <see cref="ffmpeg.AVERROR_EOF"/> when closed.
     /// </summary>
-    public int ReadPacket(AVPacket* packet) =>
-        _formatContext == null ? ffmpeg.AVERROR_EOF : ffmpeg.av_read_frame(_formatContext, packet);
+    public int ReadPacket(AVPacket* packet)
+    {
+        if (_formatContext == null)
+            return ffmpeg.AVERROR_EOF;
+
+        if (_networkUrl == null)
+            return ffmpeg.av_read_frame(_formatContext, packet);
+
+        if (_networkReadFailed || _interrupt!.IsAborted)
+            return ffmpeg.AVERROR_EOF;
+
+        int result;
+        using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver!))
+        {
+            _interrupt.BeginOperation();
+            result = ffmpeg.av_read_frame(_formatContext, packet);
+            _interrupt.EndOperation();
+        }
+
+        if (result >= 0)
+            return result;
+
+        _networkEndOfStream = true;
+        if (result == ffmpeg.AVERROR_EOF || _interrupt.IsAborted)
+            return ffmpeg.AVERROR_EOF;
+
+        // The stream dropped (FFmpeg's reconnects, if enabled, are exhausted): report it once and
+        // end the stream instead of retrying a dead connection on every read.
+        _networkReadFailed = true;
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Error,
+            NetworkDiagnosticCategory,
+            $"Network read failed: {FfmpegNetwork.DescribeError(result)}; the stream ends here.",
+            sourcePath: _networkUrl);
+        return ffmpeg.AVERROR_EOF;
+    }
 
     /// <summary>
     /// Wraps <c>av_seek_frame</c> against <paramref name="streamIndex"/>.
     /// Returns the FFmpeg result code (&lt; 0 on failure). Returns a negative
     /// value when closed.
     /// </summary>
-    public int Seek(int streamIndex, long timestamp, int flags) =>
-        _formatContext == null ? ffmpeg.AVERROR_EOF : ffmpeg.av_seek_frame(_formatContext, streamIndex, timestamp, flags);
+    public int Seek(int streamIndex, long timestamp, int flags)
+    {
+        if (_formatContext == null)
+            return ffmpeg.AVERROR_EOF;
+
+        if (_networkUrl == null)
+            return ffmpeg.av_seek_frame(_formatContext, streamIndex, timestamp, flags);
+
+        if (_interrupt!.IsAborted)
+            return ffmpeg.AVERROR_EXIT;
+
+        // A network seek reconnects with a byte range (or reloads HLS segments): it is a read.
+        int result;
+        using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver!))
+        {
+            _interrupt.BeginOperation();
+            result = ffmpeg.av_seek_frame(_formatContext, streamIndex, timestamp, flags);
+            _interrupt.EndOperation();
+        }
+
+        if (result >= 0)
+        {
+            _networkReadFailed = false;
+            _networkEndOfStream = false;
+        }
+
+        return result;
+    }
 
     /// <summary>Closes the container and releases the format context.</summary>
     public void Close()
@@ -114,7 +319,34 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             fixed (AVFormatContext** pfmt = &_formatContext)
                 ffmpeg.avformat_close_input(pfmt);
         }
+
+        _networkUrl = null;
+        _networkReadFailed = false;
+        _networkEndOfStream = false;
     }
 
-    public void Dispose() => Close();
+    public void Dispose()
+    {
+        Close();
+        _interrupt?.Dispose();
+        _interrupt = null;
+    }
+
+    private void OnNetworkLog(int level, string line)
+    {
+        // FFmpeg's HTTP layer logs each reconnect ("Will reconnect at ... in N second(s)") on the
+        // reading thread; those are the mid-stream retries of the host's policy. Other lines (a
+        // short body, a skipped HLS segment) are warnings: whether the stream ends is reported
+        // once, by ReadPacket.
+        if (_networkLogDiagnostics >= MaxNetworkLogDiagnostics)
+            return;
+
+        _networkLogDiagnostics++;
+        var isRetry = line.Contains("reconnect", StringComparison.OrdinalIgnoreCase);
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            NetworkDiagnosticCategory,
+            isRetry ? $"Network retry: {line}" : $"FFmpeg ({(level <= ffmpeg.AV_LOG_ERROR ? "error" : "warning")}): {line}",
+            sourcePath: _networkUrl);
+    }
 }

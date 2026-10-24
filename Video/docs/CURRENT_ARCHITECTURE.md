@@ -727,8 +727,29 @@ normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffer
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
 `StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
-prepared-next analysis. Network video is deferred (file-path demuxer). See
-`roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
+prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
+
+### Network Video (Stage 039A, implemented — pending manual smoke)
+
+A network source is video when the hint says so or the URI path has a video extension or
+`.m3u8` (`NetworkVideoPolicy.IsVideo`). It opens through FFmpeg's network path, not BASS:
+`MediaDemuxer.Open(url, FfmpegNetworkOptions)` calls `avformat_network_init` once
+(`FfmpegNetwork`), installs an interrupt callback (`FfmpegInterrupt`: abort, open cancellation,
+deadlines, and the read-stall timer) and passes FFmpeg options derived from the
+`NetworkRetryPolicy` (`rw_timeout`, HTTP `reconnect*` only when retries are enabled,
+`seg_max_retry`). `VideoPipeline` implements internal `INetworkVideoEngine.OpenNetwork` (one
+attempt, no archive/temp file, no embedded-subtitle scan); its `VideoAudioEngine` opens the same
+URL on its own connection with no normalization pre-analysis. `PipelineMediaEngine` runs the
+attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
+`INetworkMediaControl`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
+before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
+from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
+whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
+non-EOF read error ends the stream once (`Network read failed`). `NetworkBufferingMonitor`
+(250 ms) turns read stalls plus queue fill into `BufferingChanged`, forwarded through the
+coordinator and engine to the player. Modes: Background plays network video (picture only),
+Audio plays its soundtrack (`SoundtrackAudioEngine.OpenNetwork`; network soundtracks never loop).
+See `roadmap/active/039A_ACTIVE_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 

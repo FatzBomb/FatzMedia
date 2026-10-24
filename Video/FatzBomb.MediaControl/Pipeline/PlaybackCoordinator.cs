@@ -2,6 +2,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Subtitle;
 
 namespace FatzBomb.MediaControl.Pipeline;
@@ -50,6 +51,8 @@ internal sealed class PlaybackCoordinator : IDisposable
                 _session.State,
                 ownsAudioEngine: true);
             soundtrack.PlaybackEnded += OnPlaybackEnded;
+            if (soundtrack.Engine is SoundtrackAudioEngine soundtrackEngine)
+                soundtrackEngine.NetworkBufferingChanged += OnNetworkBufferingChanged;
             _session.AttachSoundtrack(soundtrack);
         }
 
@@ -67,6 +70,8 @@ internal sealed class PlaybackCoordinator : IDisposable
             video.PlaybackEnded += OnPlaybackEnded;
             if (video is IMediaLoopEventSource loopEventSource)
                 loopEventSource.MediaLooped += OnPlaybackLooped;
+            if (video is INetworkVideoEngine networkVideo)
+                networkVideo.NetworkBufferingChanged += OnNetworkBufferingChanged;
             _session.AttachVideo(video);
         }
     }
@@ -75,6 +80,9 @@ internal sealed class PlaybackCoordinator : IDisposable
     public IClockSource ClockSource => _session.Clock;
     public event EventHandler? PlaybackEnded;
     public event EventHandler? PlaybackLooped;
+
+    /// <summary>Buffering changes of a network video or network soundtrack (Stage 039A), from a timer thread.</summary>
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 
 
     public ICdgEngine? Cdg => _session.Cdg?.IsOpen == true ? _session.Cdg.Engine : null;
@@ -207,6 +215,33 @@ internal sealed class PlaybackCoordinator : IDisposable
         _session.Audio?.IsOpen == true && _session.Audio.Engine is INetworkAudioSource network
             ? network.NetworkCapabilities
             : null;
+
+    /// <summary>
+    /// Makes one attempt to open a network video (Stage 039A). No embedded-subtitle scan: it
+    /// would read the whole stream a second time.
+    /// </summary>
+    public bool OpenNetworkVideo(Uri uri, FfmpegNetworkOptions options)
+    {
+        _session.Subtitle?.Close();
+        return _session.Video is INetworkVideoEngine video && video.OpenNetwork(uri.AbsoluteUri, options);
+    }
+
+    /// <summary>Audio mode (Stage 039A): makes one attempt to open a network video's soundtrack.</summary>
+    public bool OpenNetworkSoundtrack(Uri uri, FfmpegNetworkOptions options) =>
+        OpenSoundtrack(pipeline => pipeline.OpenNetworkSoundtrack(uri.AbsoluteUri, options));
+
+    /// <summary>Gets the capability row of the open network video or soundtrack, or <see langword="null"/>.</summary>
+    public MediaSourceCapabilities? NetworkVideoCapabilities =>
+        _session.Video is INetworkVideoEngine { NetworkCapabilities: { } video } && _session.Video.IsOpen
+            ? video
+            : _session.Audio?.IsOpen == true && _session.Audio.Engine is SoundtrackAudioEngine soundtrack
+                ? soundtrack.NetworkCapabilities
+                : null;
+
+    /// <summary>Gets FFmpeg's reason for the last failed network video or soundtrack open.</summary>
+    public string? LastNetworkVideoError =>
+        (_session.Soundtrack?.Engine as SoundtrackAudioEngine)?.LastNetworkError
+        ?? (_session.Video as INetworkVideoEngine)?.LastNetworkError;
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
@@ -348,6 +383,10 @@ internal sealed class PlaybackCoordinator : IDisposable
         _session.Video?.PlaybackEnded -= OnPlaybackEnded;
         if (_session.Video is IMediaLoopEventSource loopEventSource)
             loopEventSource.MediaLooped -= OnPlaybackLooped;
+        if (_session.Video is INetworkVideoEngine networkVideo)
+            networkVideo.NetworkBufferingChanged -= OnNetworkBufferingChanged;
+        if (_session.Soundtrack?.Engine is SoundtrackAudioEngine soundtrackEngine)
+            soundtrackEngine.NetworkBufferingChanged -= OnNetworkBufferingChanged;
 
         _session.Dispose();
     }
@@ -355,6 +394,8 @@ internal sealed class PlaybackCoordinator : IDisposable
     private void OnPlaybackEnded(object? sender, EventArgs e) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
 
     private void OnPlaybackLooped(object? sender, EventArgs e) => PlaybackLooped?.Invoke(this, EventArgs.Empty);
+
+    private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
     private void TryLoadEmbeddedSubtitles(string videoPath)
     {

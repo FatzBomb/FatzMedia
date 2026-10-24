@@ -2,6 +2,8 @@ using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
+using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Network;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
@@ -9,8 +11,10 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl
 {
+    private const string NetworkDiagnosticCategory = "Network";
+
     private MediaSourceCapabilities? _currentCapabilities;
 
     public MediaSourceCapabilities? CurrentCapabilities => Volatile.Read(ref _currentCapabilities);
@@ -30,6 +34,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private VideoFrameEventArgs? _currentImageFrame;
     private volatile int _backgroundGeneration;
     private bool _disposed;
+    // The cancellation of the network video open in progress (Stage 039A), or null.
+    private CancellationTokenSource? _pendingNetworkOpen;
 
     event Action<MediaErrorInfo>? IMediaErrorSource.ErrorOccurred
     {
@@ -70,7 +76,25 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine, audioAvailable);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
         _coordinator.PlaybackLooped += OnPlaybackLooped;
+        _coordinator.NetworkBufferingChanged += OnNetworkBufferingChanged;
     }
+
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    public void CancelPendingNetworkOpen()
+    {
+        CancellationTokenSource? pending = Volatile.Read(ref _pendingNetworkOpen);
+        try
+        {
+            pending?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The open completed meanwhile.
+        }
+    }
+
+    private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
     public IVideoEngine? Video => _coordinator.Video;
     public ICdgEngine? Cdg => _coordinator.Cdg;
@@ -216,8 +240,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(source);
 
-        if (!MediaPlayerModePolicy.AcceptsSource(_mode, source.Kind))
-            return RejectForMode(MediaPlayerModePolicy.Describe(source.Kind), source.DisplayName, source.FilePath ?? source.Uri?.AbsoluteUri);
+        var networkIsVideo = source.IsNetwork && NetworkVideoPolicy.IsVideo(source.Uri!, source.NetworkContent);
+        if (!MediaPlayerModePolicy.AcceptsSource(_mode, source.Kind, networkIsVideo))
+            return RejectForMode(MediaPlayerModePolicy.Describe(source.Kind, networkIsVideo), source.DisplayName, source.FilePath ?? source.Uri?.AbsoluteUri);
 
         return source.Kind switch
         {
@@ -237,9 +262,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     /// <summary>
-    /// Opens a direct HTTP/HTTPS source (Stage 014A). The host hint, or the URI path extension
-    /// through the same <see cref="FileTypes"/> sets as local files, selects audio or video;
-    /// network video is not supported yet and fails with a diagnostic.
+    /// Opens a direct HTTP/HTTPS source. The host hint, or the URI path extension through the same
+    /// <see cref="FileTypes"/> sets as local files (plus HLS <c>.m3u8</c>), selects audio or video.
+    /// Audio goes through the audio engine (Stage 014A); video through FFmpeg's network path
+    /// (Stage 039A), in Audio mode as its soundtrack only.
     /// </summary>
     private bool OpenNetwork(MediaInputSource source)
     {
@@ -249,21 +275,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _currentImageFrame = null;
 
         Uri uri = source.Uri!;
-        var isVideo = source.NetworkContent switch
-        {
-            MediaNetworkContent.Video => true,
-            MediaNetworkContent.Audio => false,
-            _ => FileTypes.IsVideo(uri.AbsolutePath),
-        };
+        var isVideo = NetworkVideoPolicy.IsVideo(uri, source.NetworkContent);
+        MediaModeRoute route = MediaPlayerModePolicy.RouteNetwork(_mode, isVideo);
+        if (route == MediaModeRoute.Reject)
+            return RejectForMode(MediaPlayerModePolicy.Describe(MediaInputSourceKind.NetworkUri, isVideo), source.DisplayName, uri.AbsoluteUri);
+
+        if (!_audioAvailable && MediaPlayerModePolicy.NetworkNeedsAudioEngine(route, isVideo))
+            return RejectAudioUnavailable(source.DisplayName, uri.AbsoluteUri);
 
         if (isVideo)
-        {
-            RaiseError(MediaErrorCode.UnsupportedFormat, "Network video is not supported yet; only HTTP/HTTPS audio streams can be opened.", uri.AbsoluteUri);
-            return false;
-        }
-
-        if (!_audioAvailable)
-            return RejectAudioUnavailable(source.DisplayName, uri.AbsoluteUri);
+            return OpenNetworkVideo(source, route == MediaModeRoute.AudioOnly);
 
         if (!_coordinator.OpenNetworkAudio(uri))
         {
@@ -277,6 +298,83 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
         Volatile.Write(ref _currentCapabilities, _coordinator.NetworkAudioCapabilities ?? MediaSourceCapabilityMatrix.NetworkUnprobed);
         return true;
+    }
+
+    /// <summary>
+    /// Opens a network video (Stage 039A) under the host's <see cref="NetworkRetryPolicy"/>: each
+    /// attempt is bounded by the connect timeout, and Close or Dispose cancel the attempt and any
+    /// retry delay through <see cref="CancelPendingNetworkOpen"/>.
+    /// </summary>
+    private bool OpenNetworkVideo(MediaInputSource source, bool soundtrackOnly)
+    {
+        Uri uri = source.Uri!;
+        var url = uri.AbsoluteUri;
+        NetworkRetryPolicy policy = _configuration.NetworkRetry ?? NetworkRetryPolicy.Default;
+        using var cancellation = new CancellationTokenSource();
+        Volatile.Write(ref _pendingNetworkOpen, cancellation);
+        NetworkOpenOutcome outcome;
+        int attempts;
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            var options = new FfmpegNetworkOptions(policy, cancellation.Token);
+            outcome = NetworkOpenRetry.Run(
+                policy,
+                cancellation.Token,
+                _ =>
+                {
+                    if (soundtrackOnly ? _coordinator.OpenNetworkSoundtrack(uri, options) : _coordinator.OpenNetworkVideo(uri, options))
+                        return NetworkAttemptResult.Opened;
+
+                    // No FFmpeg error means it connected but found no usable stream: not retried.
+                    return _coordinator.LastNetworkVideoError is null ? NetworkAttemptResult.Unusable : NetworkAttemptResult.Failed;
+                },
+                (retry, delay) => DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Warning,
+                    NetworkDiagnosticCategory,
+                    $"Network retry {retry}/{policy.MaxRetries} in {delay.TotalSeconds:F1}s ({_coordinator.LastNetworkVideoError ?? "no response"})",
+                    sourcePath: url),
+                out attempts);
+        }
+        finally
+        {
+            Volatile.Write(ref _pendingNetworkOpen, null);
+        }
+
+        switch (outcome)
+        {
+            case NetworkOpenOutcome.Opened:
+                MediaSourceCapabilities capabilities = _coordinator.NetworkVideoCapabilities ?? MediaSourceCapabilityMatrix.NetworkUnprobed;
+                Volatile.Write(ref _currentCapabilities, capabilities);
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Info,
+                    NetworkDiagnosticCategory,
+                    $"Network stream connected: {capabilities.SourceClass}, seekable={capabilities.IsSeekable}, duration={(capabilities.IsDurationKnown ? $"{Duration:F1}s" : "unknown")}, " +
+                    $"{(soundtrackOnly ? "soundtrack only" : "video")}, opened in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms",
+                    sourcePath: url);
+                return true;
+
+            case NetworkOpenOutcome.Cancelled:
+                _coordinator.Close();
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, NetworkDiagnosticCategory, $"Network open cancelled: {source.DisplayName}", sourcePath: url);
+                RaiseError(MediaErrorCode.OpenFailed, $"Network open cancelled: {source.DisplayName}", url);
+                return false;
+
+            default:
+                if (_coordinator.LastNetworkVideoError is not { } reason)
+                {
+                    var unusable = soundtrackOnly
+                        ? $"Audio mode found no playable audio stream in {source.DisplayName}; network video without audio is not accepted."
+                        : $"No playable video stream in {source.DisplayName}.";
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, soundtrackOnly ? MediaPlayerModePolicy.DiagnosticCategory : NetworkDiagnosticCategory, unusable, sourcePath: url);
+                    RaiseError(MediaErrorCode.UnsupportedFormat, unusable, url);
+                    return false;
+                }
+
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, NetworkDiagnosticCategory, $"Network stream unavailable after {attempts} attempt(s): {reason}", sourcePath: url);
+                RaiseError(MediaErrorCode.OpenFailed, $"Failed to open network stream: {source.DisplayName} ({reason})", url);
+                return false;
+        }
     }
 
     /// <summary>
@@ -455,6 +553,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _backgroundVideoScheduler.Dispose();
         _coordinator.PlaybackEnded -= OnPlaybackEnded;
         _coordinator.PlaybackLooped -= OnPlaybackLooped;
+        _coordinator.NetworkBufferingChanged -= OnNetworkBufferingChanged;
         _coordinator.Dispose();
         _disposed = true;
     }

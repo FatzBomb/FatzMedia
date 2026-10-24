@@ -3,7 +3,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
-/// Command line: <c>[media-file] [--renderer=auto|software|vulkan|direct3d11] [--surface=auto|framesink] [--players=1..4]
+/// Command line: <c>[media-file|http(s)-url] [--url=&lt;http(s)://...&gt;] [--renderer=auto|software|vulkan|direct3d11] [--surface=auto|framesink] [--players=1..4]
 /// [--mode=full|background|audio] [--second-screen=&lt;n&gt;] [--native=&lt;dir&gt;]...</c>
 /// </summary>
 internal sealed class StartupOptions
@@ -12,7 +12,10 @@ internal sealed class StartupOptions
 
     public static StartupOptions Current { get; set; } = new();
 
-    /// <summary>Gets the media file for the first player, when one was passed.</summary>
+    /// <summary>
+    /// Gets the media file or http/https URL (Stage 039A; also <c>--url=</c>) for the first player,
+    /// when one was passed.
+    /// </summary>
     public string? MediaPath { get; private init; }
 
     /// <summary>Gets the requested renderer (<c>auto</c> picks Vulkan when it is usable, else software).</summary>
@@ -64,6 +67,8 @@ internal sealed class StartupOptions
                 secondScreen = screen;
             else if (TryValue(argument, "--native=", out value) && value.Length > 0)
                 native.Add(value);
+            else if (TryValue(argument, "--url=", out value) && value.Length > 0)
+                media = value;
             else if (!argument.StartsWith("--", StringComparison.Ordinal))
                 media ??= argument;
         }

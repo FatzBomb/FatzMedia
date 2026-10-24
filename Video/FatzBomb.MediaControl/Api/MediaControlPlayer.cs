@@ -557,11 +557,15 @@ public partial class MediaControlPlayer : IMediaControlSession
         _presentationCoordinator.RefreshCurrentPosition();
     }
 
-    public void Close() => ExecuteControlOperation(() =>
+    public void Close()
     {
-        File.Close();
-        return true;
-    });
+        CancelPendingNetworkOpen();
+        _ = ExecuteControlOperation(() =>
+        {
+            File.Close();
+            return true;
+        });
+    }
 
     /// <summary>
     /// Runs a synchronous API call in its queue turn on the caller's thread. Only taking the turn is
@@ -1087,6 +1091,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         if (_controlOperations.IsExecutingOperation)
             throw new InvalidOperationException("Dispose cannot run from inside a media control operation or event handler.");
+
+        // A network open or read blocked inside FFmpeg is aborted first, so teardown does not wait
+        // for its timeout (039A).
+        CancelPendingNetworkOpen();
 
         lock (_lifecycleGate)
         {

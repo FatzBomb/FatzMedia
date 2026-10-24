@@ -170,6 +170,38 @@ line break only triggers when the previous syllable ends in a space. `MidiMetada
 label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio has the same
 encoding gap, so this stays ours under 037A.
 
+### ENG-034 - Network video follow-ups (039A)
+
+Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none blocks the slice.
+- **HTTPS certificates are not verified.** FFmpeg's TLS layer checks the peer only when its
+  `tls_verify` option is on (off by default; OpenSSL and GnuTLS builds), and the engine does not
+  set it. 014A audio goes through BASS, which has its own rules. Fix: a policy option (default
+  on) that sets `tls_verify=1` (and `ca_file` where the platform has no default store); needs a
+  Windows check with the shipped FFmpeg build.
+- **Two connections per network video with sound.** As for local video, `VideoAudioEngine`
+  reads on its own cursor, so a progressive file or an HLS VOD is downloaded twice, and a live
+  HLS playlist can start the two connections one segment apart (audio/video offset up to one
+  target duration). A shared cursor (`SharedDemuxer` fan-out) for network sources is the fix; it
+  needs BASS to verify, which the Linux sandbox lacks.
+- **Pause, Stop and Seek during a stall wait for the read.** Only Close/Dispose abort a blocked
+  network read; the transport commands join the decode thread, so during a stall they can take up
+  to the read timeout (`ConnectTimeout`, 15 s by default).
+- **Live progressive streams are not reconnected mid-stream.** FFmpeg reconnects a streamed (no
+  range) source from byte 0, so `reconnect_streamed` stays off; a dropped live MPEG-TS-over-HTTP
+  stream ends. HLS live recovers through its playlist reloads.
+- **A moov-at-end MP4 needs a range-capable server.** Without `Accept-Ranges` FFmpeg cannot seek
+  back from the index to the media data: the load succeeds (NetworkFile, not seekable) and the
+  first read ends the stream (`Network read failed`). Faststart MP4s, MKV and TS stream fine from
+  such servers. A clearer open-time failure is possible (probe a first packet before reporting
+  the open).
+- **Audio-only HLS does not play.** `.m3u8` classifies as video, and the video path needs a
+  video stream ("No playable video stream"); the Audio hint sends it to BASS, which has no HLS
+  support without its add-on. An FFmpeg audio path for network sources (or a fallback from the
+  video open) would cover it.
+- **Network soundtrack buffering (Audio mode) is coarse.** `SoundtrackAudioEngine` reports fill 0
+  while its read is stalled and 1 otherwise, since the BASS push buffer level is not readable
+  without the engine lock.
+
 ## Completed
 
 

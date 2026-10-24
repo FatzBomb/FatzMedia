@@ -1,17 +1,21 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 
 #pragma warning disable IDE0130
 namespace FatzBomb.MediaControl;
 
 /// <summary>
 /// Network source surface (Stage 014A): capabilities of the open source plus buffering and
-/// stream-metadata events published through the control queue.
+/// stream-metadata events published through the control queue. Network video (Stage 039A) adds
+/// buffering from the engine's FFmpeg readers, and Close and Dispose cancel a network video open
+/// in progress instead of queueing behind it.
 /// </summary>
 public partial class MediaControlPlayer
 {
     private INetworkAudioSource? _networkAudioSource;
+    private INetworkMediaControl? _networkMediaControl;
 
     public event EventHandler<MediaBufferingChangedEventArgs>? BufferingChanged;
 
@@ -22,6 +26,10 @@ public partial class MediaControlPlayer
 
     private void SubscribeNetworkEvents()
     {
+        _networkMediaControl = _mediaEngine as INetworkMediaControl;
+        if (_networkMediaControl is not null)
+            _networkMediaControl.NetworkBufferingChanged += OnNetworkBufferingChanged;
+
         _networkAudioSource = _serviceProvider.GetService<IAudioEngine>() as INetworkAudioSource;
         if (_networkAudioSource is null)
             return;
@@ -32,12 +40,34 @@ public partial class MediaControlPlayer
 
     private void UnsubscribeNetworkEvents()
     {
+        if (_networkMediaControl is not null)
+        {
+            _networkMediaControl.NetworkBufferingChanged -= OnNetworkBufferingChanged;
+            _networkMediaControl = null;
+        }
+
         if (_networkAudioSource is null)
             return;
 
         _networkAudioSource.BufferingChanged -= OnNetworkBufferingChanged;
         _networkAudioSource.StreamMetadataChanged -= OnNetworkStreamMetadataChanged;
         _networkAudioSource = null;
+    }
+
+    /// <summary>
+    /// Cancels a network video open in progress (Stage 039A) so a Close or Dispose issued while it
+    /// connects runs at once instead of waiting for the connect timeout and retries.
+    /// </summary>
+    private void CancelPendingNetworkOpen()
+    {
+        try
+        {
+            (_mediaEngine as INetworkMediaControl)?.CancelPendingNetworkOpen();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MediaControlPlayer] Cancelling the network open failed: {ex.Message}");
+        }
     }
 
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>

@@ -80,9 +80,16 @@ public readonly record struct NetworkStreamProbe(long? ContentLength, bool Suppo
 /// <c>BufferingChanged</c>, <c>StreamMetadataChanged</c>, retry diagnostics; <c>MediaEnded</c> when the stream drops.</description></item>
 /// </list>
 /// Cancellation: once a source is open, every row is stopped by Stop, Close, or a new Load. A
-/// network open in progress is not interruptible: it runs on the control queue for at most
-/// <see cref="NetworkRetryPolicy.ConnectTimeout"/> per attempt plus the retry delays, and
-/// commands issued meanwhile run after it.
+/// network audio open in progress (Stage 014A) is not interruptible: it runs on the control queue
+/// for at most <see cref="NetworkRetryPolicy.ConnectTimeout"/> per attempt plus the retry delays,
+/// and commands issued meanwhile run after it. A network video open (Stage 039A) has the same
+/// bounds, but Close and Dispose cancel it at once.
+/// <para>
+/// Network video (Stage 039A) uses the same rows: a progressive file follows the length and range
+/// rule above; an HLS playlist is a seekable NetworkFile when it is complete (VOD) and NetworkLive
+/// otherwise. Video reports duration as known only when FFmpeg found one, and carries no stream
+/// metadata. It loops only when seekable and not live.
+/// </para>
 /// </remarks>
 public static class MediaSourceCapabilityMatrix
 {

@@ -12,8 +12,9 @@ measuring rig for several players in one process.
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
   reason. `--surface=framesink` forces the frame sink, for comparison.
-- Open (file picker, filter from the engine), Play/Pause, Stop, seek bar, volume, pitch (-12..+12
-  semitones), tempo (50..200 %), loop.
+- Open (file picker, filter from the engine), a URL box with **URL...** for http/https sources (MP4/MKV
+  progressive or HLS `.m3u8`, Stage 039A; capabilities and buffering are logged), Play/Pause, Stop, seek bar,
+  volume, pitch (-12..+12 semitones), tempo (50..200 %), loop.
 - **Second screen** (Stage 027A slice 5): a box per player opens the adapter's
   `SecondaryPresentationWindow` for that player, full screen on the screen given by
   `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
@@ -42,7 +43,8 @@ Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, 
 software; `direct3d11` in the Windows build only), `--surface=auto|framesink` (default auto),
 `--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--second-screen=<n>`
 (1-based screen number; opens player 1's second screen there at startup, full screen),
-`--native=<dir>` (repeatable), and an optional media file for the first player. Each player's Mode box switches its mode on the fly
+`--native=<dir>` (repeatable), and an optional media file or http/https URL for the first player
+(`--url=<http(s)://...>` does the same). Each player's Mode box switches its mode on the fly
 (`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.

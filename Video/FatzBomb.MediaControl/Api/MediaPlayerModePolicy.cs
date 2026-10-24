@@ -52,14 +52,35 @@ internal static class MediaPlayerModePolicy
     /// <summary>
     /// Decides whether <paramref name="mode"/> accepts a source of <paramref name="kind"/>. File
     /// sources are decided later by <see cref="RouteFile"/>; <paramref name="networkIsVideo"/> is the
-    /// resolved content of a network source.
+    /// resolved content of a network source (see <see cref="RouteNetwork"/>).
     /// </summary>
     public static bool AcceptsSource(MediaPlayerMode mode, MediaInputSourceKind kind, bool networkIsVideo = false) => mode switch
     {
-        MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image,
-        MediaPlayerMode.Audio => kind == MediaInputSourceKind.FilePath || (kind == MediaInputSourceKind.NetworkUri && !networkIsVideo),
+        MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image
+            || (kind == MediaInputSourceKind.NetworkUri && networkIsVideo),
+        MediaPlayerMode.Audio => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.NetworkUri,
         _ => true,
     };
+
+    /// <summary>
+    /// Decides how <paramref name="mode"/> opens a network source (Stage 039A). Background plays
+    /// network video as a picture (looping where the source is seekable) and rejects network
+    /// audio; Audio plays network audio and the soundtrack of network video.
+    /// </summary>
+    public static MediaModeRoute RouteNetwork(MediaPlayerMode mode, bool isVideo) => mode switch
+    {
+        MediaPlayerMode.Background => isVideo ? MediaModeRoute.Normal : MediaModeRoute.Reject,
+        MediaPlayerMode.Audio => isVideo ? MediaModeRoute.AudioOnly : MediaModeRoute.Normal,
+        _ => MediaModeRoute.Normal,
+    };
+
+    /// <summary>
+    /// Whether opening a network source through <paramref name="route"/> needs the audio engine
+    /// (ENG-033): network audio (BASS) and a soundtrack do; network video plays its picture on the
+    /// playback clock without one.
+    /// </summary>
+    public static bool NetworkNeedsAudioEngine(MediaModeRoute route, bool isVideo) =>
+        route == MediaModeRoute.AudioOnly || (route == MediaModeRoute.Normal && !isVideo);
 
     /// <summary>Whether <paramref name="mode"/> loads sidecar, archive or explicit backgrounds behind its main media.</summary>
     public static bool UsesBackgrounds(MediaPlayerMode mode) => mode != MediaPlayerMode.Audio;

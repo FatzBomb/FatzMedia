@@ -109,7 +109,8 @@ FFmpeg is the only required native set. When the BASS core (`bass.dll` + `bass_f
   `IsRequired` false, and `Describe()` adds "Audio is unavailable: ...".
 - Background mode works fully (it never uses audio).
 - Full mode plays video pictures on the playback clock without sound, as Background mode
-  does; images and CD+G graphics without audio open normally.
+  does; images and CD+G graphics without audio open normally. This includes network video
+  (Stage 039A).
 - Media that needs audio (audio files, MP3+G, network audio, and video soundtracks in Audio
   mode) fails to load: `Load` returns false, with an Error diagnostic and a `MediaError`
   (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found; <file> was
@@ -143,6 +144,10 @@ the owner confirms the signed tarball).
   H.264/HEVC/VP9/AV1. As with any third-party build, review its configuration before
   redistributing it.
 - Hosts must use a shared-library build; static executables alone are insufficient.
+- Network video (Stage 039A) uses FFmpeg's own protocols: the build needs the `http`, `tcp`
+  and `hls` components (on by default) and a TLS backend for `https` (OpenSSL, GnuTLS,
+  mbedTLS or Schannel). FFmpeg's TLS layer verifies certificates only if its `tls_verify`
+  option is on, which the engine does not set yet (ENG-034).
 
 For a proprietary host, the default approved build policy is an LGPL-compatible
 shared build compiled without `--enable-gpl` and without `--enable-nonfree`, followed

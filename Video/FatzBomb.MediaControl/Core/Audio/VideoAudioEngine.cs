@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Audio.Fade;
 using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Network;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
@@ -284,7 +285,40 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return OpenFile(filePath, CreatePathNormalizationCacheKey(filePath));
     }
 
-    private bool OpenFile(string filePath, string? normalizationCacheKey)
+    /// <summary>
+    /// Opens the audio of an http/https source (Stage 039A): one attempt (retries belong to the
+    /// caller), no normalization pre-analysis (unity gain, as for 014A network audio).
+    /// </summary>
+    internal bool OpenNetwork(string url, FfmpegNetworkOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(options);
+        return OpenCore(url, () => _demuxer.IsOpen || _demuxer.Open(url, options), normalizationCacheKey: null, analyzeNormalization: false);
+    }
+
+    /// <summary>Aborts blocking network I/O at once, without the engine lock (Stage 039A).</summary>
+    internal void AbortNetwork()
+    {
+        if (_ownsDemuxer)
+            _demuxer.Abort();
+    }
+
+    /// <summary>How long this engine's network read has been blocked. Lock-free.</summary>
+    internal TimeSpan NetworkReadStall => _ownsDemuxer ? _demuxer.NetworkReadStall : TimeSpan.Zero;
+
+    /// <summary>Whether this engine's network reader reached the end of the stream. Lock-free.</summary>
+    internal bool NetworkEndOfStream => _ownsDemuxer && _demuxer.NetworkEndOfStream;
+
+    /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
+    internal string? LastNetworkError => _demuxer.LastNetworkError;
+
+    /// <summary>What FFmpeg reported for the open network source.</summary>
+    internal NetworkVideoProbe GetNetworkProbe() => _demuxer.GetNetworkProbe();
+
+    private bool OpenFile(string filePath, string? normalizationCacheKey) =>
+        OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true);
+
+    private bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization)
     {
         lock (_sync)
         {
@@ -293,7 +327,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
             CloseCore();
 
-            if (!_demuxer.IsOpen && !_demuxer.Open(filePath))
+            if (!openDemuxer())
                 return false;
 
             AudioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
@@ -328,7 +362,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             Duration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
             State = AudioEngineState.Stopped;
             PublishPositionSnapshot(_positionBaseSeconds);
-            StartNormalizationAnalysis(filePath, normalizationCacheKey);
+            if (analyzeNormalization)
+                StartNormalizationAnalysis(filePath, normalizationCacheKey);
             _openPublished = IsOpenCore;
             Opened?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");

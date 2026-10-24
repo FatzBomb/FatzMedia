@@ -100,6 +100,7 @@ public partial class PlayerPanel : UserControl
             player.MediaDiagnostic += OnDiagnostic;
             player.MediaError += OnError;
             player.PresentationFramePresented += OnFramePresented;
+            player.BufferingChanged += OnBufferingChanged;
             player.PlayOnLoad = true;
             player.LoopMedia = LoopBox.IsChecked == true;
             player.Effects.Volume = VolumeSlider.Value / 100;
@@ -145,6 +146,7 @@ public partial class PlayerPanel : UserControl
         player.MediaDiagnostic -= OnDiagnostic;
         player.MediaError -= OnError;
         player.PresentationFramePresented -= OnFramePresented;
+        player.BufferingChanged -= OnBufferingChanged;
         // Dispose waits for admitted media operations: never on the UI thread.
         await Task.Run(player.Dispose);
     }
@@ -297,17 +299,59 @@ public partial class PlayerPanel : UserControl
         }
     }
 
+    private async void OnOpenUrlClick(object? sender, RoutedEventArgs e) => await OpenUrlBoxAsync();
+
+    private async void OnUrlKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+            await OpenUrlBoxAsync();
+    }
+
+    private async Task OpenUrlBoxAsync()
+    {
+        var text = UrlBox.Text?.Trim() ?? string.Empty;
+        if (!TryParseNetworkUrl(text, out _))
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", "Enter an http:// or https:// URL.");
+            return;
+        }
+
+        try
+        {
+            await OpenAsync(text);
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Error, "Player", $"Open failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Opens a local file, or an http/https URL as a network source (Stage 039A).</summary>
     private async Task OpenAsync(string path)
     {
         if (_player is not { } player)
             return;
 
-        FileText.Text = Path.GetFileName(path);
+        var isUrl = TryParseNetworkUrl(path, out Uri? uri);
+        FileText.Text = isUrl ? path : Path.GetFileName(path);
+        if (isUrl)
+            UrlBox.Text = path;
         AddLog(MediaDiagnosticLevel.Info, "Player", $"Loading {path}");
         // PlayOnLoad starts playback after a successful load.
-        if (!await player.LoadAsync(path))
+        var loaded = isUrl ? await player.LoadAsync(MediaInputSource.FromUri(uri!)) : await player.LoadAsync(path);
+        if (!loaded)
+        {
             AddLog(MediaDiagnosticLevel.Warning, "Player", $"Could not load {path}");
+            return;
+        }
+
+        if (isUrl && player.CurrentSourceCapabilities is { } capabilities)
+            AddLog(MediaDiagnosticLevel.Info, "Network",
+                $"{capabilities.SourceClass}, seekable={capabilities.IsSeekable}, duration={(capabilities.IsDurationKnown ? FormatTime(player.Duration.TotalSeconds) : "unknown")}");
     }
+
+    private static bool TryParseNetworkUrl(string text, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
+        Uri.TryCreate(text, UriKind.Absolute, out uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private async void OnPlayPauseClick(object? sender, RoutedEventArgs e)
     {
@@ -443,6 +487,9 @@ public partial class PlayerPanel : UserControl
     }
 
     // The engine raises these on background threads.
+    private void OnBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => AddLog(MediaDiagnosticLevel.Info, "Network", $"Buffering={e.IsBuffering} fill={e.BufferFill:P0}"));
+
     private void OnDiagnostic(object? sender, MediaDiagnosticEventArgs e) =>
         Dispatcher.UIThread.Post(() => AddLog(e.Level, e.Category, e.Message));
 
@@ -495,6 +542,8 @@ public partial class PlayerPanel : UserControl
     private void SetControlsEnabled(bool enabled)
     {
         OpenButton.IsEnabled = enabled;
+        UrlBox.IsEnabled = enabled;
+        OpenUrlButton.IsEnabled = enabled;
         ModeBox.IsEnabled = enabled;
         SecondScreenBox.IsEnabled = enabled;
         PlayPauseButton.IsEnabled = enabled;

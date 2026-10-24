@@ -29,6 +29,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`PresentationLeadController`), slice 3 the post-seek recovery state machine
   (`PostSeekRecovery`); owner smoke passed 2026-10-18 (`updates/041A_1` to `updates/041A_3`).
   The 010A/019A, 017A and 022A items are not started.
+- `active/039A_ACTIVE_NetworkVideoPlayback.md` - network video through FFmpeg's network path:
+  HTTP/HTTPS progressive (MP4/MKV, ranges for seek) and HLS (VOD seekable, live not), the 014A
+  retry policy, buffering events and capability rows, cancellable connects, Background and Audio
+  modes; slice 1 implemented, pending manual smoke (`updates/039A_1`). Follow-ups in ENG-034.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
@@ -89,7 +93,6 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
-- `future/039A_IDEA_NetworkVideoPlayback.md` - HTTP/HTTPS video, deferred from 014A.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 - `future/042A_IDEA_HdrFollowUps.md` - HLG tone mapping and real HDR output on HDR displays,

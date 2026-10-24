@@ -1,6 +1,8 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Audio.Fade;
+using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Network;
 using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
@@ -17,6 +19,11 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// out before the container's duration, which includes the picture). A gapless loop wrap
 /// (<see cref="VideoAudioEngine.CompletedLoopCount"/>) is reported through
 /// <see cref="PlaybackEnded"/>, as the plain audio engine reports its loop wraps.
+/// <para>
+/// A network video's soundtrack (Stage 039A) opens through FFmpeg's network path with no
+/// normalization pre-analysis, never loops (as 014A network audio), and reports buffering from
+/// its reader.
+/// </para>
 /// </remarks>
 internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide
 {
@@ -32,6 +39,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     private bool _ended;
     private bool _loopPlayback;
     private bool _disposed;
+    private volatile bool _isNetwork;
+    private MediaSourceCapabilities? _networkCapabilities;
+    private NetworkBufferingMonitor? _bufferingMonitor;
 
     public SoundtrackAudioEngine(IOutputLatencyProvider outputLatencyProvider, int bassDeviceIndex)
     {
@@ -65,15 +75,25 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
         set => Seek(value);
     }
 
+    /// <summary>Gets or sets whether the soundtrack loops. A network soundtrack never loops.</summary>
     public bool LoopPlayback
     {
-        get => Volatile.Read(ref _loopPlayback);
+        get => Volatile.Read(ref _loopPlayback) && !_isNetwork;
         set
         {
             Volatile.Write(ref _loopPlayback, value);
-            _audio.LoopPlayback = value;
+            _audio.LoopPlayback = LoopPlayback;
         }
     }
+
+    /// <summary>Gets the capability row of an open network soundtrack, or <see langword="null"/>.</summary>
+    public MediaSourceCapabilities? NetworkCapabilities => _isNetwork && _audio.IsOpen ? Volatile.Read(ref _networkCapabilities) : null;
+
+    /// <summary>Gets FFmpeg's reason for the last failed network open, or <see langword="null"/>.</summary>
+    public string? LastNetworkError => _audio.LastNetworkError;
+
+    /// <summary>Raised from a timer thread when the network buffering state changes.</summary>
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 
     public event EventHandler<double>? NormalizationGainChanged;
     public event EventHandler<AudioEngineState>? StateChanged;
@@ -89,10 +109,38 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
     public bool Open(IArchiveEntryInfo archiveEntry) => OpenCore(() => _audio.Open(archiveEntry));
 
-    private bool OpenCore(Func<bool> open)
+    /// <summary>Makes one attempt to open the soundtrack of a network video (Stage 039A).</summary>
+    internal bool OpenNetwork(string url, FfmpegNetworkOptions options)
+    {
+        if (!OpenCore(() => _audio.OpenNetwork(url, options), network: true))
+            return false;
+
+        Volatile.Write(ref _networkCapabilities, NetworkVideoPolicy.Resolve(_audio.GetNetworkProbe()));
+        MediaSourceCapabilities? opened = _networkCapabilities;
+        _bufferingMonitor = new NetworkBufferingMonitor(
+            () =>
+            {
+                TimeSpan stall = _audio.NetworkReadStall;
+                return new NetworkBufferingSample(
+                    _audio.State == AudioEngineState.Playing,
+                    stall,
+                    stall >= NetworkStallBufferingTracker.DefaultStallThreshold ? 0 : 1,
+                    _audio.NetworkEndOfStream);
+            },
+            args =>
+            {
+                if (ReferenceEquals(Volatile.Read(ref _networkCapabilities), opened) && _audio.IsOpen)
+                    NetworkBufferingChanged?.Invoke(this, args);
+            });
+        return true;
+    }
+
+    private bool OpenCore(Func<bool> open, bool network = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        AbortNetworkRead();
         StopPump();
+        _isNetwork = network;
 
         // Open closes the previous file, which clears the inner loop flag and loop count.
         if (!open())
@@ -147,9 +195,30 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
     public void Close()
     {
+        AbortNetworkRead();
         StopPump();
         ResetEndTracking();
         _audio.Close();
+        _isNetwork = false;
+    }
+
+    /// <summary>
+    /// A network read can block for the read timeout: retire the pump's generation (so the aborted
+    /// read is not taken for the end), then abort the read before joining the pump.
+    /// </summary>
+    private void AbortNetworkRead()
+    {
+        lock (_gate)
+            _generation++;
+        _audio.AbortNetwork();
+        StopNetworkMonitoring();
+    }
+
+    private void StopNetworkMonitoring()
+    {
+        _bufferingMonitor?.Dispose();
+        _bufferingMonitor = null;
+        Volatile.Write(ref _networkCapabilities, null);
     }
 
     public void SetVolume(double volume01) => _audio.SetVolume(volume01);
@@ -178,6 +247,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
             return;
 
         _disposed = true;
+        AbortNetworkRead();
         _pump.Dispose();
         _audio.StateChanged -= OnAudioStateChanged;
         _audio.Opened -= OnAudioOpened;

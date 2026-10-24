@@ -11,8 +11,8 @@ Full mode instead. Prepares for 037A, where an Audio-mode player later attaches 
 | Mode | Loads | Accepts | Rejects (load returns false + diagnostic) |
 |---|---|---|---|
 | **Full** | today's player | everything | - |
-| **Background** | video decoding, renderer, surfaces; no BASS, no audio device monitor, no CD+G/subtitle/MIDI playback | video (picture only, no audio decoded), images, BGRA sources (including a solid colour) | audio-only files, CD+G, MIDI, network audio |
-| **Audio** | audio engine only; no presentation coordinator, no GPU device, no surfaces, no video decoder | anything with audio: audio files, MIDI, the soundtrack of a video file, the audio of MP3+G (graphics ignored) | images, BGRA sources, video files with no audio stream |
+| **Background** | video decoding, renderer, surfaces; no BASS, no audio device monitor, no CD+G/subtitle/MIDI playback | video (picture only, no audio decoded), network video (039A; loops where seekable), images, BGRA sources (including a solid colour) | audio-only files, CD+G, MIDI, network audio |
+| **Audio** | audio engine only; no presentation coordinator, no GPU device, no surfaces, no video decoder | anything with audio: audio files, MIDI, network audio, the soundtrack of a video file or network video (039A), the audio of MP3+G (graphics ignored) | images, BGRA sources, video files with no audio stream |
 
 Background mode always loops (`LoopMedia` reads true and cannot be turned off) and never has
 audio, so `Volume`/EQ/fades are accepted and ignored. Audio mode does not render to surfaces. In

@@ -5,6 +5,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Graphics.Cadence;
 using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Network;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
 using FFmpeg.AutoGen;
@@ -21,7 +22,7 @@ internal sealed partial class VideoPipeline(
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
     IVideoHardwareAccelerationServices hardwareAccelerationServices,
-    bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink
+    bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -108,15 +109,31 @@ internal sealed partial class VideoPipeline(
 
     public IAudioEngine? Audio => _audioEngine;
     public bool HasAudio => _audioEngine?.IsOpen == true;
+    /// <summary>
+    /// Gets or sets whether playback loops. A network source loops only when it is finite and
+    /// seekable (Stage 039A); the requested value is kept for the next source.
+    /// </summary>
     public bool LoopPlayback
     {
-        get;
+        get => field && _sourceCanLoop;
         set
         {
             field = value;
-            _ = (_audioEngine?.LoopPlayback = value);
+            _ = (_audioEngine?.LoopPlayback = LoopPlayback);
         }
     }
+
+    // Stage 039A network source state: the probed row, whether it can loop, the buffering
+    // monitor, and FFmpeg's reason for the last failed open.
+    private volatile bool _sourceCanLoop = true;
+    private MediaSourceCapabilities? _networkCapabilities;
+    private NetworkBufferingMonitor? _networkBufferingMonitor;
+
+    public MediaSourceCapabilities? NetworkCapabilities => _isOpen ? Volatile.Read(ref _networkCapabilities) : null;
+
+    public string? LastNetworkError { get; private set; }
+
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
     public bool IsOpen => _isOpen;
     public double Duration { get; private set; }
     public double FramesPerSecond => _videoDecoder?.FramesPerSecond ?? 0;
@@ -251,12 +268,31 @@ internal sealed partial class VideoPipeline(
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return false;
 
+        return OpenCore(path, network: null);
+    }
+
+    /// <summary>
+    /// Opens an http/https video (Stage 039A): one attempt through FFmpeg's network path for the
+    /// picture and, as for local video, a second connection for the audio (its own cursor). No
+    /// archive, temp file, normalization analysis or embedded-subtitle scan.
+    /// </summary>
+    public bool OpenNetwork(string url, FfmpegNetworkOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(options);
+        return OpenCore(url, options);
+    }
+
+    private bool OpenCore(string path, FfmpegNetworkOptions? network)
+    {
         Close();
+        LastNetworkError = null;
         _generation++;
         _loopStartFrameSnapshot = null;
         _sharedDemuxer = new SharedDemuxer();
-        if (!_sharedDemuxer.Open(path))
+        if (!(network is null ? _sharedDemuxer.Open(path) : _sharedDemuxer.Open(path, network)))
         {
+            LastNetworkError = _sharedDemuxer.LastNetworkError;
             Close();
             return false;
         }
@@ -280,16 +316,24 @@ internal sealed partial class VideoPipeline(
         {
             if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] No video audio (Background mode or no audio engine): picture only; using playback clock.");
         }
-        else if (!_audioEngine.Open(path))
+        else if (!(network is null ? _audioEngine.Open(path) : _audioEngine.OpenNetwork(path, network)))
         {
+            if (network is not null && _audioEngine.LastNetworkError is { } audioError)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Network", $"Network video audio did not open ({audioError}); playing the picture on the playback clock.", sourcePath: path);
             _audioEngine.Dispose();
             _audioEngine = null;
             if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Opened video without audio stream; using playback clock.");
         }
-        else
+
+        if (network is not null)
         {
-            _audioEngine.LoopPlayback = LoopPlayback;
+            MediaSourceCapabilities capabilities = NetworkVideoPolicy.Resolve(_sharedDemuxer.GetNetworkProbe());
+            Volatile.Write(ref _networkCapabilities, capabilities);
+            _sourceCanLoop = NetworkVideoPolicy.CanLoop(capabilities);
         }
+
+        if (_audioEngine is not null)
+            _audioEngine.LoopPlayback = LoopPlayback;
 
         _lastObservedAudioLoopCount = 0;
 
@@ -318,7 +362,43 @@ internal sealed partial class VideoPipeline(
 
         ResetAdaptiveVideoSeekTiming();
         StartSeekWorker();
+        if (network is not null)
+            StartNetworkBufferingMonitor();
         return true;
+    }
+
+    private void StartNetworkBufferingMonitor()
+    {
+        var generation = _generation;
+        _networkBufferingMonitor = new NetworkBufferingMonitor(
+            SampleNetworkBuffering,
+            args =>
+            {
+                if (generation == _generation && _isOpen)
+                    NetworkBufferingChanged?.Invoke(this, args);
+            });
+    }
+
+    /// <summary>
+    /// Samples the network readers for buffering: the longer of the picture and audio reads in
+    /// progress, and the decoded frames queued against the decode target. Lock-free reads only:
+    /// a stalled read holds the decode lock.
+    /// </summary>
+    private NetworkBufferingSample SampleNetworkBuffering()
+    {
+        SharedDemuxer? demuxer = _sharedDemuxer;
+        VideoDecoder? decoder = _videoDecoder;
+        VideoAudioEngine? audio = _audioEngine;
+        if (demuxer is null || decoder is null)
+            return default;
+
+        TimeSpan stall = demuxer.NetworkReadStall;
+        if (audio?.NetworkReadStall is { } audioStall && audioStall > stall)
+            stall = audioStall;
+
+        var target = Math.Max(1, MinBufferedVideoFrames);
+        var fill = Math.Clamp(decoder.FrameCount / (double)target, 0, 1);
+        return new NetworkBufferingSample(_isPlaying, stall, fill, decoder.EndOfStream || demuxer.NetworkEndOfStream);
     }
 
     private bool OpenTempFile(string tempPath)
@@ -757,6 +837,20 @@ internal sealed partial class VideoPipeline(
 
     public void Close()
     {
+        // A network read can block for the whole read timeout: abort it first, so the joins below
+        // do not wait for it (Stage 039A). Aborted reads return end of file, so playback stops
+        // first (under the presentation lock, so no pass is mid-way) and the presentation loop
+        // cannot take them for the natural end. Local files are unaffected.
+        _networkBufferingMonitor?.Dispose();
+        _networkBufferingMonitor = null;
+        if (_sharedDemuxer is { IsNetwork: true } networkDemuxer)
+        {
+            lock (_presentationLock)
+                _isPlaying = false;
+            networkDemuxer.Abort();
+            _audioEngine?.AbortNetwork();
+        }
+
         // Retire the seek worker first (without holding the gate) so no seek can be in flight when
         // we dispose the decoder below. StopSeekWorker joins the worker; the gate then guarantees
         // exclusivity for the teardown itself. Cancel any in-flight device-lost recovery the same way
@@ -795,6 +889,8 @@ internal sealed partial class VideoPipeline(
 
             _sharedDemuxer?.Dispose();
             _sharedDemuxer = null;
+            Volatile.Write(ref _networkCapabilities, null);
+            _sourceCanLoop = true;
 
             _clock.Stop();
             _presentationClock.Reset(0);
