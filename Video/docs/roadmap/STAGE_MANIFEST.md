@@ -93,9 +93,9 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/042A_IDEA_HdrFollowUps.md` - HLG tone mapping and real HDR output on HDR displays,
   deferred from 038A.
 
-- `future/037A_IDEA_FatzAudioEngine.md` - FatzAudio as an opt-in second audio engine behind
-  `IAudioEngine`, BASS kept as default and fallback; starts with a verification spike (owner
-  decision, 2026-10-20).
+- `future/037A_IDEA_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine`, opt-in first, then
+  replacing BASS once proven (no BASS DLLs or licence for end users); starts with a verification
+  spike (owner decisions, 2026-10-20 and 2026-10-24).
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
