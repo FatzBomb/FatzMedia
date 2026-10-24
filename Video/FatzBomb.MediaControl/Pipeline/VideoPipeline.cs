@@ -72,9 +72,6 @@ internal sealed partial class VideoPipeline(
     private readonly Lock _transportGate = new();
     private int _playbackEndSignaled;
     private string? _tempPath;
-    private const int MaxBufferedVideoFrames = 12;
-    private const int MinBufferedVideoFrames = 4;
-    private const long MaxBufferedVideoBytes = 96L * 1024 * 1024;
     private const int MaxVideoPacketsPerDecodePass = 3;
     // A queued frame whose PTS is this far behind the presentation clock while a loop
     // pre-seek is pending is a next-lap frame (PTS restarted near 0), not a late frame.
@@ -1536,7 +1533,7 @@ internal sealed partial class VideoPipeline(
         if (decoder == null)
             return;
 
-        var targetBufferedFrames = PostSeekRecovery.WarmupTargetFrames(GetTargetBufferedVideoFrames(), MinBufferedVideoFrames);
+        var targetBufferedFrames = PostSeekRecovery.WarmupTargetFrames(GetTargetBufferedVideoFrames(), VideoFrameBufferPolicy.MinBufferedFrames);
         var decodedFrames = 0;
         int firstPassDecodedFrames;
 
@@ -1846,11 +1843,32 @@ internal sealed partial class VideoPipeline(
 
             var decoded = decoder.DecodeNextFrame();
             if (!decoded && decoder.FrameCount > 0)
+            {
+                // A full queue with no acceptable frame yet (a preview seek far past a keyframe):
+                // drop a frame that a later one replaces, so decoding can go on under the cap.
+                if (decoder.FrameCount >= decoder.MaxFrames && TryDropSupersededSeekFrame(decoder, target))
+                    continue;
+
                 return;
+            }
 
             if (!decoded)
                 _ = Thread.Yield();
         }
+    }
+
+    private static bool TryDropSupersededSeekFrame(VideoDecoder decoder, double target)
+    {
+        using IEnumerator<VideoFrameData> queued = decoder.EnumerateQueuedFrames().GetEnumerator();
+        if (!queued.MoveNext())
+            return false;
+
+        VideoFrameData head = queued.Current;
+        if (!queued.MoveNext() || !VideoSeekPolicy.CanDropQueuedSeekFrame(head.PresentationTime, queued.Current.PresentationTime, target))
+            return false;
+
+        decoder.ReturnFrame(decoder.GetNextFrame());
+        return true;
     }
 
     private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
@@ -2068,17 +2086,8 @@ internal sealed partial class VideoPipeline(
         return clockPosition - selectedPresentationTime >= frameDuration && nextPresentationTime <= clockPosition;
     }
 
-    private int GetTargetBufferedVideoFrames()
-    {
-        var frameBytes = Math.Max(1L, (long)Width * Height * 4);
-        var memoryBoundFrames = (int)Math.Clamp(MaxBufferedVideoBytes / frameBytes, MinBufferedVideoFrames, MaxBufferedVideoFrames);
-        var fps = FramesPerSecond;
-        var timingBoundFrames = double.IsFinite(fps) && fps > 0
-            ? Math.Clamp((int)Math.Ceiling(fps * 0.25), MinBufferedVideoFrames, MaxBufferedVideoFrames)
-            : 10;
-
-        return Math.Min(memoryBoundFrames, timingBoundFrames);
-    }
+    private int GetTargetBufferedVideoFrames() =>
+        VideoFrameBufferPolicy.GetTargetBufferedFrames(Width, Height, FramesPerSecond);
 
     private void RecordPresentationDiagnostics(
         int dequeuedFrames,

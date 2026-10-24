@@ -92,6 +92,10 @@ internal sealed unsafe class VideoDecoder(
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
     private const int MaxFramesCap = 24;
+    // Queue cap while native hardware frames are output (0 otherwise); sized with the pool reserve.
+    private int _hardwareQueueCapacity;
+    // End of file was read and the decoder flushed; its last frames are drained as the queue frees up.
+    private bool _drainingAtEndOfStream;
     private const int MinFrames = 3;
     private const long SoftwareFrameMemoryBudget = 128L * 1024 * 1024;
     private const int DecodeDiagnosticsFrameInterval = 120;
@@ -210,15 +214,15 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen || _packet == null) return false;
         if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
+        if (_drainingAtEndOfStream) return DrainFramesAtEndOfStream();
 
         var readResult = _demuxer.ReadVideoPacket(_packet);
         if (readResult < 0)
         {
             if (readResult == ffmpeg.AVERROR_EOF)
             {
-                ProcessRemainingFrames();
-                EndOfStream = true;
-                return false; // No more frames
+                BeginDrainAtEndOfStream();
+                return DrainFramesAtEndOfStream();
             }
             return false; // Error
         }
@@ -240,12 +244,16 @@ internal sealed unsafe class VideoDecoder(
     /// the main video pipeline uses the fixed cap because it has its own buffer target
     /// (<c>MaxBufferedVideoFrames</c>) and byte limit (<c>MaxBufferedVideoBytes</c>) in
     /// VideoPipeline, and needs the full queue depth for slow software decoders (e.g. AV1).
-    /// Hardware frames are cheap (cloned AVFrame referencing an existing D3D11 texture), so
-    /// the cap is used. Software frames are full BGRA buffers, so the count is scaled down
-    /// for larger resolutions to stay within a memory budget.
+    /// Native hardware frames each pin a surface of FFmpeg's fixed pool, so their queue is capped
+    /// at <see cref="_hardwareQueueCapacity"/>, the size of the pool reserve (ENG-027). Software
+    /// frames are full BGRA buffers, so the count is scaled down for larger resolutions to stay
+    /// within a memory budget.
     /// </summary>
     private int ComputeMaxFrames()
     {
+        if (_hardwareQueueCapacity > 0)
+            return _hardwareQueueCapacity;
+
         if (!_scaleMaxFramesByResolution || IsHardwareAccelerated)
             return MaxFramesCap;
 
@@ -326,13 +334,18 @@ internal sealed unsafe class VideoDecoder(
 
         _videoLinesize = Width * 4;
 
-        AVRational avg = _videoStream->avg_frame_rate;
-        FramesPerSecond = avg.num > 0 && avg.den > 0 ? avg.num / (double)avg.den : 30.0;
+        FramesPerSecond = GetStreamFramesPerSecond();
 
         AVCodecDescriptor* codecDescr = ffmpeg.avcodec_descriptor_get(_videoStream->codecpar->codec_id);
         CodecName = codecDescr != null ? Marshal.PtrToStringAnsi((IntPtr)codecDescr->name) : "Unknown";
 
         return true;
+    }
+
+    private double GetStreamFramesPerSecond()
+    {
+        AVRational avg = _videoStream->avg_frame_rate;
+        return avg.num > 0 && avg.den > 0 ? avg.num / (double)avg.den : 30.0;
     }
 
     private AVCodec* FindHardwareCapableDecoder(AVCodecID codecId)
@@ -491,6 +504,14 @@ internal sealed unsafe class VideoDecoder(
             IsHardwareAccelerated = false;
             HardwareAccelerationMethod = null;
         }
+        else if (_videoCodecCtx->extra_hw_frames > 0)
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "VideoDecoder",
+                $"Hardware decoding ({HardwareAccelerationMethod}) reserves {_videoCodecCtx->extra_hw_frames} extra pool surfaces: " +
+                $"{_hardwareQueueCapacity} queued frames and {VideoFrameBufferPolicy.PresentationHeldHardwareFrames} held by presentation.");
+        }
 
         return true;
     }
@@ -580,6 +601,19 @@ internal sealed unsafe class VideoDecoder(
             CleanupHardwareDevice();
             return false;
         }
+
+        // Queued native frames are clones that keep their pool surface, so the queue is capped and
+        // FFmpeg reserves that many surfaces (ENG-027). Without native output, frames are copied to
+        // the CPU and released at once: no cap and no reserve.
+        AVCodecParameters* parameters = _videoStream->codecpar;
+        _hardwareQueueCapacity = _enableHardwareFrameOutput
+            ? VideoFrameBufferPolicy.GetHardwareQueueCapacity(
+                VideoFrameBufferPolicy.GetTargetBufferedFrames(parameters->width, parameters->height, GetStreamFramesPerSecond()),
+                MaxFramesCap)
+            : 0;
+        _videoCodecCtx->extra_hw_frames = _hardwareQueueCapacity > 0
+            ? VideoFrameBufferPolicy.GetHardwareSurfaceReserve(_hardwareQueueCapacity)
+            : 0;
 
         _getFormatCallback = SelectHardwarePixelFormat;
         _videoCodecCtx->get_format = new AVCodecContext_get_format_func
@@ -1145,8 +1179,9 @@ internal sealed unsafe class VideoDecoder(
         return true;
     }
 
-    private void ProcessRemainingFrames()
+    private void BeginDrainAtEndOfStream()
     {
+        _drainingAtEndOfStream = true;
         if (_videoCodecCtx == null) return;
 
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, null);
@@ -1156,7 +1191,22 @@ internal sealed unsafe class VideoDecoder(
         {
             if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] avcodec_send_packet flush failed: {FormatFFmpegError(sendResult)} ({sendResult})");
         }
+    }
 
+    /// <summary>
+    /// Takes the flushed decoder's remaining frames while the queue has room. A full queue leaves the
+    /// rest in the decoder for the next call (back-pressure), so the last frames of a file are not
+    /// lost; <see cref="EndOfStream"/> is set once the decoder has none left.
+    /// </summary>
+    private bool DrainFramesAtEndOfStream()
+    {
+        if (_videoCodecCtx == null)
+        {
+            FinishDrainAtEndOfStream();
+            return false;
+        }
+
+        var frameDecoded = false;
         var processed = 0;
         while (_frameQueue.Count < MaxFrames && processed < MaxFrames)
         {
@@ -1170,12 +1220,22 @@ internal sealed unsafe class VideoDecoder(
                     if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] avcodec_receive_frame flush failed: {FormatFFmpegError(receiveResult)} ({receiveResult})");
                 }
 
+                FinishDrainAtEndOfStream();
                 break;
             }
 
             ProcessVideoFrameFromDecoder();
+            frameDecoded = true;
             processed++;
         }
+
+        return frameDecoded;
+    }
+
+    private void FinishDrainAtEndOfStream()
+    {
+        _drainingAtEndOfStream = false;
+        EndOfStream = true;
     }
 
     public void Close()
@@ -1218,6 +1278,7 @@ internal sealed unsafe class VideoDecoder(
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
         EndOfStream = false;
+        _drainingAtEndOfStream = false;
         MaxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _scalerTargetPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
@@ -1272,6 +1333,7 @@ internal sealed unsafe class VideoDecoder(
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;
         _getFormatCallback = null;
+        _hardwareQueueCapacity = 0;
     }
 
     public void Dispose()
@@ -1323,6 +1385,7 @@ internal sealed unsafe class VideoDecoder(
         if (clearQueue)
             ClearFrameQueue();
         EndOfStream = false;
+        _drainingAtEndOfStream = false;
     }
 
     public void ReturnFrame(VideoFrameData? frame)

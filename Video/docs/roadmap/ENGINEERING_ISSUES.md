@@ -40,15 +40,6 @@ Reported: 2026-10-18 (audit; perf items not measured).
   and the background is re-uploaded every frame.
 - Post-process targets are never pruned for removed secondary windows.
 
-### ENG-027 - Hardware decoding does not reserve extra pool surfaces
-
-Reported: 2026-10-18 (audit; Suspected, needs Windows). The pipeline holds up to 12 cloned
-hardware frames plus the current one, each pinning a surface of FFmpeg's d3d11va pool, but
-`extra_hw_frames` is never set. If the pool (sized from the codec's reference needs) runs out,
-decoding fails with a surface-pool error that counts as a hardware failure. Fix to try: set
-`extra_hw_frames` to the pipeline's queue depth plus 2 before `avcodec_open2` on the hardware
-path, and check VRAM use at 4K.
-
 ### ENG-028 - MIDI silent after the audit's DLS converter changes
 
 Reported: 2026-10-19 (owner smoke of the ENG-020 audit branch): everything else works, MIDI
@@ -118,6 +109,83 @@ encoding gap, so this stays ours under 037A.
 
 ## Completed
 
+
+### ENG-027 - Hardware decoding does not reserve extra pool surfaces
+
+Resolved: 2026-10-24, pending manual smoke on Windows.
+
+Reported: 2026-10-18 (audit; Suspected, needs Windows). Real, and the hold was larger than
+reported. FFmpeg's d3d11va (and dxva2) pool is a fixed texture array: `ff_dxva2_common_frame_params`
+asks for 1 work surface plus 16 for H.264/HEVC (8 for VP9/AV1, 2 otherwise), and
+`avcodec_get_hw_frames_parameters`/`ff_decode_get_hw_frames_ctx` add 3 work surfaces, one per
+frame thread and `extra_hw_frames`. So a 4K HEVC pool was 20 + threads surfaces, of which the DPB
+can use up to 16. The FFmpeg 9 Windows DLLs carry the failure strings ("Static surface pool size
+exceeded.", "Failed to allocate a %s/%s frame from a fixed pool of hardware frames. Consider
+setting extra_hw_frames..."). `extra_hw_frames` was never set.
+
+The pipeline's hold: every queued d3d11va frame is an `av_frame_clone` that keeps its surface.
+Steady playback buffers `GetTargetBufferedVideoFrames` (12 at most; 4 at 4K, because the target
+is sized as if frames were BGRA), but the decoder's own cap is `MaxFramesCap` = 24 and the
+hardware path always uses it: seek-to-target decoding (`DecodeForSeekTarget`), EOF draining and
+a multi-frame packet fill the queue up to 24. Presentation holds the frame on screen and, during
+the hand-over on the presentation thread, the previous one, while the decode thread refills the
+queue. Worst case: 24 + 2 = 26 surfaces outside FFmpeg's decode set, more than the DPB slack.
+
+Fix (`VideoFrameBufferPolicy`, shared by `VideoPipeline` and `VideoDecoder`): the native hardware
+queue is capped at the pipeline's buffer target with a floor of 8 (`MinHardwareQueueFrames`), not
+`MaxFramesCap` 24, and `TryCreateHardwareDevice` sets `extra_hw_frames` before `avcodec_open2` to
+that cap plus `PresentationHeldHardwareFrames` (2). The pipeline target formula moved into the
+policy unchanged (4 at 4K, 12 at 1080p60, 6 at 1080p24), so the decoder sizes the cap from the
+stream before opening. Results: 4K gets a cap of 8 and a reserve of 10; the largest is a cap of 12
+and a reserve of 14 (1080p and smaller at 48 fps or more). Without native output (frames copied to the CPU and
+released at once) there is no cap and no reserve; software decoding keeps 24. FFmpeg accepts any
+non-negative value; the D3D11 array limit is 2048. After a successful hardware open the decoder
+logs one Info line: "Hardware decoding (d3d11va) reserves 10 extra pool surfaces: 8 queued frames
+and 2 held by presentation." There is no VAAPI path: Linux registers
+`SoftwareOnlyVideoHardwareAccelerationServices`; d3d12va and dxva2 get the same reserve.
+
+Every path that fills the queue respects the cap:
+- Steady playback (`DecodeVideoBatch`), post-seek warm-up and loop top-up stop at the pipeline
+  target, which is never above the cap.
+- A packet that yields several frames: `DrainDecodedFrames` stops at the cap and leaves the rest in
+  FFmpeg until the next call, as before.
+- End of file: the old `ProcessRemainingFrames` flushed the decoder once, took what fit and set
+  `EndOfStream`, so the frames that did not fit were lost. This was already true with 24 and a
+  smaller cap makes it likelier: the sample 1080p H.264 clip lost its last 5 of 300 frames with
+  the queue full at end of file. Now the decoder stays in a draining state and takes the flushed
+  frames as the queue frees up, then sets `EndOfStream` (the loop pre-seek waits for it, as before).
+- Seek to target (`DecodeForSeekTarget`): exact seeks discard pre-target frames in the decoder, so
+  the queue head is already acceptable and the cap does not matter. Preview seeks queue from the
+  keyframe; before, a full queue (24) with no acceptable frame ended the decode and showed the
+  closest frame, which with a cap of 8 would land up to 8 frames past the keyframe. Now a full
+  queue drops its head when the head and its successor are both before the target (the successor
+  is at least as close, so the best and fallback picks are unchanged) and decoding goes on, still
+  bounded by the seek's time budget and attempt count. This applies to software decoding too.
+
+Tests: `VideoFrameBufferPolicyTests` (target, cap, reserve, seek drop rule) and
+`LinuxNativeSmokeTests.RealFfmpeg_FullQueueAtEndOfFileKeepsTheLastFrames` (fails on the old drain
+with 295/300). The hardware path itself is not verified here (no GPU).
+
+Cost: about 12.5 MB per 4K NV12 surface (128-aligned 3840x2176) and 25 MB per P010 surface. At 4K
+the reserve of 10 adds about 125 MB (8-bit) or 250 MB (10-bit) of VRAM per player, against about
+325/650 MB for the first fix's reserve of 26. At 1080p (1920x1152 for HEVC) the reserve of 14 adds
+about 46 MB (8-bit) or 93 MB (10-bit).
+
+Manual smoke (Windows, hardware decoding on, Log open at Info):
+1. Play a long 4K HEVC file (10-bit HDR if available) with hardware decoding. Check the Log
+   shows the reserve line once per open ("reserves 10 extra pool surfaces: 8 queued frames")
+   and `hw=d3d11va` with `queue=n/8` in the decode diagnostics; note GPU memory in Task Manager
+   against the previous build.
+2. Seek storm: drag the progress bar back and forth for 30 s, then click-seek 20 times quickly,
+   including near the end. Video must keep up with no freeze, no fallback to software, and no
+   "Static surface pool size exceeded", "fixed pool of hardware frames", `get_buffer` or
+   `Decoder.DeviceLost` lines. Scrub previews should still land near the pointer on a long-GOP
+   file.
+3. Pause for a minute, resume, then pause/resume ten times quickly. Playback resumes at once.
+4. Open the secondary screen (composition path) and repeat steps 2-3.
+5. Let the file reach the end with loop on and off: the last frames show (no cut-off), the loop
+   wraps, and `MediaEnded` fires once.
+6. Repeat step 2 with a 4K AV1 or VP9 file (smaller base pool: 12 + threads).
 
 ### ENG-022 - Subtitle content flag is never revoked
 

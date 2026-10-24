@@ -81,4 +81,54 @@ public sealed class LinuxNativeSmokeTests
         Assert.Contains($"decoder {decoder.DecoderName} in software", description);
         Assert.DoesNotContain("last FFmpeg error", decoder.DescribeHardwareStartupFailure());
     }
+
+    /// <summary>
+    /// ENG-027: a full queue at end of file must hold the flushed decoder's last frames back, not
+    /// drop them. Keeps the queue full the whole way (frames are taken only when it is), so end of
+    /// file is read with one free slot, then counts every frame against an eager decode.
+    /// </summary>
+    [Fact]
+    public void RealFfmpeg_FullQueueAtEndOfFileKeepsTheLastFrames()
+    {
+        var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
+        var sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO");
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(sample) || !OperatingSystem.IsLinux())
+            return;
+
+        var operations = new LinuxNativeOperations();
+        foreach (var fileName in LinuxNativeLibraryCatalog.FfmpegInLoadOrder)
+        {
+            var path = Path.Combine(directory, fileName);
+            if (File.Exists(path))
+                Assert.True(operations.TryLoad(path, out _));
+        }
+
+        Assert.True(operations.TryActivateFfmpeg(directory));
+        var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software);
+
+        Assert.Equal(CountFrames(configuration, sample, keepQueueFull: false), CountFrames(configuration, sample, keepQueueFull: true));
+    }
+
+    private static int CountFrames(MediaPlayerConfiguration configuration, string sample, bool keepQueueFull)
+    {
+        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, SoftwareOnlyVideoHardwareAccelerationServices.Instance);
+        Assert.True(decoder.Open(sample));
+
+        var frames = 0;
+        for (var guard = 0; guard < 100_000 && !(decoder.EndOfStream && decoder.FrameCount == 0); guard++)
+        {
+            _ = decoder.DecodeNextFrame();
+            if (!keepQueueFull || decoder.FrameCount >= decoder.MaxFrames || decoder.EndOfStream)
+            {
+                if (decoder.GetNextFrame() is { } frame)
+                {
+                    frames++;
+                    decoder.ReturnFrame(frame);
+                }
+            }
+        }
+
+        Assert.True(decoder.EndOfStream, "decoder never reached end of stream");
+        return frames;
+    }
 }

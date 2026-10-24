@@ -40,6 +40,14 @@ internal static class VideoSeekPolicy
     }
 
     /// <summary>
+    /// Whether a seek may drop the oldest queued frame to make room under the queue cap: only when
+    /// it is before the target and its successor is too, so the successor is at least as close and
+    /// the best and fallback picks are unchanged.
+    /// </summary>
+    public static bool CanDropQueuedSeekFrame(double headFrameTime, double nextFrameTime, double target) =>
+        headFrameTime < target && nextFrameTime >= headFrameTime && nextFrameTime <= target;
+
+    /// <summary>
     /// Where an active scrub settles (Stage 035A): on the frame its last preview showed, so
     /// playback carries on from the picture on screen, or on the target when no preview frame
     /// was shown. A lone click never gets here; it seeks exactly.
