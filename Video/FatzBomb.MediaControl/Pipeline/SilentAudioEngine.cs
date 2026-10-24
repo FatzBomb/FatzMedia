@@ -3,10 +3,10 @@ using FatzBomb.MediaControl.Core.Abstractions;
 namespace FatzBomb.MediaControl.Pipeline;
 
 /// <summary>
-/// The audio engine of a Background-mode player (Stage 043A): it never initializes an audio
-/// output, opens nothing, and accepts volume, pitch, tempo and normalization settings without
-/// effect. Background mode never opens audio, so the engine only fills the audio slot of the
-/// media-engine graph.
+/// The audio engine of a Background-mode player (Stage 043A), and of any player whose platform
+/// could not load BASS (ENG-033): it never initializes an audio output, never calls BASS, opens
+/// nothing, and accepts volume, pitch, tempo and normalization settings without effect. Such a
+/// player never opens audio, so the engine only fills the audio slot of the media-engine graph.
 /// </summary>
 internal sealed class SilentAudioEngine : IAudioEngine
 {
@@ -32,7 +32,7 @@ internal sealed class SilentAudioEngine : IAudioEngine
     public event EventHandler<double>? PositionChanged { add { } remove { } }
     public event EventHandler? PlaybackEnded { add { } remove { } }
 
-    /// <summary>Does nothing and reports no output: Background mode has no audio device.</summary>
+    /// <summary>Does nothing and reports no output: the player has no audio device.</summary>
     public bool Init(int device = -1, int sampleRate = 44100) => false;
 
     public bool Open(string filePath) => false;

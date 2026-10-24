@@ -20,7 +20,8 @@ internal sealed partial class VideoPipeline(
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
-    IVideoHardwareAccelerationServices hardwareAccelerationServices) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink
+    IVideoHardwareAccelerationServices hardwareAccelerationServices,
+    bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink
 {
     private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -30,6 +31,8 @@ internal sealed partial class VideoPipeline(
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     private readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
     private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
+    // False in Background mode (043A) and without BASS (ENG-033): picture only, on the playback clock.
+    private readonly bool _usesAudio = usesAudio;
     private readonly AudioPresentationClock _presentationClock = new();
     private readonly IOutputLatencyProvider _outputLatencyProvider = new BassOutputLatencyProvider(configuration.EnableUsbBluetoothLatencyHeuristic);
     private readonly Lock _decodeLock = new();
@@ -271,13 +274,14 @@ internal sealed partial class VideoPipeline(
         // Keep audio on its own FFmpeg cursor. Routing codec priming/preroll packets through the
         // video cursor can offset startup until the first seek (reproduced with AV1 + E-AC-3).
         // SeekCore still repositions both cursors to the same target.
-        // Background mode (043A) decodes the picture only and runs on the playback clock.
-        _audioEngine = _configuration.Mode == MediaPlayerMode.Background
-            ? null
-            : new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex);
+        // Background mode (043A), and any mode without BASS (ENG-033), decodes the picture only
+        // and runs on the playback clock.
+        _audioEngine = _usesAudio
+            ? new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex)
+            : null;
         if (_audioEngine is null)
         {
-            if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] Background mode: picture only; using playback clock.");
+            if (_configuration.EnableLogging) Debug.WriteLine("[VideoPipeline] No video audio (Background mode or no audio engine): picture only; using playback clock.");
         }
         else if (!_audioEngine.Open(path))
         {

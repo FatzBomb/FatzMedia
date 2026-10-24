@@ -69,8 +69,25 @@ public sealed class NativeDependencyReportTests
     }
 
     [Fact]
+    public void Report_WithoutBass_IsNotAFailureButSaysAudioIsUnavailable()
+    {
+        var report = new NativeDependencyReport(
+            [
+                new NativeLibraryCheck("BASS", "bass.dll", false, NativeLibraryStatus.Missing),
+                new NativeLibraryCheck("FFmpeg", "avcodec-63.dll", true, NativeLibraryStatus.Loaded),
+            ],
+            [])
+        { IsAudioAvailable = false };
+
+        Assert.True(report.RequiredLoaded);
+        Assert.Empty(report.RequiredProblems);
+        Assert.Equal([NativeDependencyReport.AudioUnavailableLine, "BASS bass.dll (optional) is missing."], report.Describe());
+    }
+
+    [Fact]
     public void EmptyReport_IsWhatPlatformsWithoutChecksReturn()
     {
+        Assert.True(NativeDependencyReport.Empty.IsAudioAvailable);
         Assert.True(NativeDependencyReport.Empty.RequiredLoaded);
         Assert.Empty(NativeDependencyReport.Empty.Describe());
         IMediaControlPlatformFactory factory = new MinimalFactory();

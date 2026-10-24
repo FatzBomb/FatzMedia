@@ -22,7 +22,11 @@ public enum NativeLibraryStatus
 /// <summary>One native library the platform looked for.</summary>
 /// <param name="Component">The library family, such as <c>BASS</c> or <c>FFmpeg</c>.</param>
 /// <param name="FileName">The exact file name the control needs.</param>
-/// <param name="IsRequired">Whether playback depends on it; optional BASS plugins only add formats.</param>
+/// <param name="IsRequired">
+/// Whether the player needs it to play anything (FFmpeg). BASS is never required: without its
+/// core libraries audio is unavailable (<see cref="NativeDependencyReport.IsAudioAvailable"/>),
+/// and its plugins only add formats.
+/// </param>
 /// <param name="Status">What happened when the platform looked for it.</param>
 /// <param name="Path">Where it was found, when it was found.</param>
 /// <param name="Hint">
@@ -51,6 +55,13 @@ public sealed partial class NativeDependencyReport(IReadOnlyList<NativeLibraryCh
     /// <summary>The folders searched, in priority order.</summary>
     public IReadOnlyList<string> SearchPaths { get; } = searchPaths ?? throw new ArgumentNullException(nameof(searchPaths));
 
+    /// <summary>
+    /// Whether the audio engine's libraries (BASS) loaded. When false the player still starts:
+    /// video plays without sound and media that needs audio does not open. True for a platform
+    /// that does not check native libraries.
+    /// </summary>
+    public bool IsAudioAvailable { get; init; } = true;
+
     /// <summary>True when every required library loaded.</summary>
     public bool RequiredLoaded => Libraries.Where(static library => library.IsRequired).All(static library => library.Status == NativeLibraryStatus.Loaded);
 
@@ -60,8 +71,19 @@ public sealed partial class NativeDependencyReport(IReadOnlyList<NativeLibraryCh
     /// <summary>Optional libraries that did not load: only the formats they add are affected.</summary>
     public IReadOnlyList<NativeLibraryCheck> OptionalProblems => [.. Libraries.Where(static library => !library.IsRequired && library.Status != NativeLibraryStatus.Loaded)];
 
-    /// <summary>One readable line per library that did not load, required ones first.</summary>
-    public IReadOnlyList<string> Describe() => [.. RequiredProblems.Concat(OptionalProblems).Select(DescribeLine)];
+    /// <summary>
+    /// One readable line per library that did not load, required ones first; when audio is
+    /// unavailable, a line saying so comes before the optional ones.
+    /// </summary>
+    public IReadOnlyList<string> Describe() =>
+    [
+        .. RequiredProblems.Select(DescribeLine),
+        .. (IsAudioAvailable ? Array.Empty<string>() : new[] { AudioUnavailableLine }),
+        .. OptionalProblems.Select(DescribeLine),
+    ];
+
+    /// <summary>The <see cref="Describe"/> line for a report without audio.</summary>
+    public const string AudioUnavailableLine = "Audio is unavailable: the BASS libraries did not load. Video plays without sound; audio media will not open.";
 
     /// <summary>
     /// Returns a hint when <paramref name="expectedFileName"/> is versioned (<c>avcodec-63.dll</c>,

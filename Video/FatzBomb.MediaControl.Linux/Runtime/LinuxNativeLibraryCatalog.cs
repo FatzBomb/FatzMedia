@@ -2,8 +2,11 @@ using FFmpeg.AutoGen;
 
 namespace FatzBomb.MediaControl.Linux.Runtime;
 
-/// <summary>A BASS shared library and the audio extensions it enables.</summary>
-internal sealed record BassLibrary(string FileName, string DllImportName, IReadOnlyList<string> Extensions, bool IsRequired);
+/// <summary>
+/// A BASS shared library and the audio extensions it enables. BASS is loaded (audio available)
+/// only when every <paramref name="IsCore"/> library loads; the others are plugins.
+/// </summary>
+internal sealed record BassLibrary(string FileName, string DllImportName, IReadOnlyList<string> Extensions, bool IsCore);
 
 /// <summary>
 /// Linux shared-library names for the host-supplied BASS and FFmpeg binaries. Mirrors the

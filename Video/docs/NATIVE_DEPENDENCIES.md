@@ -1,6 +1,6 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-10-17
+Updated: 2026-10-24
 
 The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
 and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
@@ -69,9 +69,9 @@ the package. The host supplies shared libraries in a host path (absolute or rela
 the app), `native/`, or `runtimes/linux-<arch>/native/`. System library directories are
 not searched implicitly.
 
-| Kind | Required | Optional |
+| Kind | Core / required | Optional |
 |---|---|---|
-| BASS | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
+| BASS (optional, ENG-033: core needed for audio) | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
 | FFmpeg (avcodec 63 ABI, FFmpeg 9.0.x) | `libavutil.so.61`, `libswresample.so.7`, `libswscale.so.10`, `libavcodec.so.63`, `libavformat.so.63` | `libavfilter.so.12`, `libavdevice.so.63` |
 
 FFmpeg libraries must sit in one directory; they are preloaded in dependency order
@@ -88,13 +88,33 @@ Approved source: Un4seen Developments only:
 - Supported ABI line: BASS 2.4.
 - Verified repository fixture: `bass.dll` 2.4.17.
 - Current official update candidate at policy date: BASS 2.4.18.3.
-- Required: `bass.dll`, `bass_fx.dll`.
+- Core: `bass.dll`, `bass_fx.dll`. BASS as a whole is optional (ENG-033): without the
+  core DLLs the player still starts, with no audio (see "Running without BASS").
 - Optional plugins: `bass_aac.dll`, `bass_ac3.dll`, `bassalac.dll`, `basscd.dll`,
   `bassflac.dll`, `bassmidi.dll`, `bassopus.dll`, and `basswma.dll`.
 - Optional plugin presence controls the corresponding accepted file extensions. When
   FFmpeg is loaded, formats a missing plugin would have played (AAC/M4A, ALAC, FLAC,
   Opus, AC-3, WMA, and other audio FFmpeg decodes) still open through the FFmpeg
   fallback (Stage 033A); MIDI and CD audio still need `bassmidi` and `basscd`.
+
+### Running without BASS (ENG-033)
+
+FFmpeg is the only required native set. When the BASS core (`bass.dll` + `bass_fx.dll`,
+`libbass.so` + `libbass_fx.so`) is missing or fails to load:
+
+- The player constructs in every mode. Native loading reports a Warning, not a failure, and
+  no BASS function is called: no plugins, no audio device monitor, no MIDI soundfont, no
+  output watchdog, and `AudioOutputDevices.Enumerate` returns an empty list.
+- `NativeDependencyReport.IsAudioAvailable` is false; the BASS checks are listed with
+  `IsRequired` false, and `Describe()` adds "Audio is unavailable: ...".
+- Background mode works fully (it never uses audio).
+- Full mode plays video pictures on the playback clock without sound, as Background mode
+  does; images and CD+G graphics without audio open normally.
+- Media that needs audio (audio files, MP3+G, network audio, and video soundtracks in Audio
+  mode) fails to load: `Load` returns false, with an Error diagnostic and a `MediaError`
+  (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found; <file> was
+  not loaded."
+- A later player creation retries BASS with its own paths; the loaded FFmpeg is kept.
 
 BASS is free only for qualifying non-commercial use. Commercial host developers
 must obtain the appropriate BASS licence. Un4seen states that BASS licences apply to
@@ -167,14 +187,16 @@ FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
 `MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
 returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
 with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
-(found, but its set is incomplete), or `FailedToLoad`, plus the search paths. When a
+(found, but its set is incomplete), or `FailedToLoad`, plus the search paths and
+`IsAudioAvailable` (false when the BASS core did not load). Only FFmpeg libraries are
+required; BASS libraries are always reported as not required. When a
 versioned file is missing and another version of it is present, the check carries a hint
 (for example "Found avcodec-62.dll, a different version; this control needs
 avcodec-63.dll."). `Describe()` gives one readable line per problem for a host to show.
 The Windows and Linux platforms fill it in; other platforms return
-`NativeDependencyReport.Empty`. When a required library fails, the player constructor
-throws (its message includes the hints), so read the report from the platform factory
-you passed in.
+`NativeDependencyReport.Empty`. When a required (FFmpeg) library fails, the player
+constructor throws (its message includes the hints), so read the report from the platform
+factory you passed in. A missing BASS does not throw (ENG-033).
 
 ## Binary-Free Package Layout
 

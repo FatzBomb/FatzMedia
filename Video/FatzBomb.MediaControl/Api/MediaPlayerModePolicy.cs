@@ -73,6 +73,21 @@ internal static class MediaPlayerModePolicy
     /// <summary>Whether <paramref name="mode"/> always loops (Background: <c>LoopMedia</c> cannot be turned off).</summary>
     public static bool ForcesLoop(MediaPlayerMode mode) => mode == MediaPlayerMode.Background;
 
+    /// <summary>
+    /// The error for a load that needs audio while the audio engine's native libraries (BASS) are
+    /// not loaded (ENG-033).
+    /// </summary>
+    public const string AudioUnavailableMessage = "Audio engine unavailable: BASS libraries not found";
+
+    /// <summary>
+    /// Whether opening a file of <paramref name="type"/> through <paramref name="route"/> needs the
+    /// audio engine. Video plays its picture on the playback clock without one; images and CD+G
+    /// graphics never need it; audio files, MP3+G and soundtracks (Audio mode) do.
+    /// </summary>
+    public static bool NeedsAudioEngine(MediaModeRoute route, FileType type) =>
+        route == MediaModeRoute.AudioOnly
+        || (route == MediaModeRoute.Normal && type is FileType.Audio or FileType.AudioArchive or FileType.AudioCdg or FileType.AudioCdgArchive);
+
     /// <summary>Describes a file kind for a rejection diagnostic.</summary>
     public static string Describe(FileType type) => type switch
     {

@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-23
+Updated: 2026-10-24
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -150,6 +150,71 @@ label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio h
 encoding gap, so this stays ours under 037A.
 
 ## Completed
+
+### ENG-033 - BASS required at startup
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-24 (owner). FatzAudio (037A) is planned to replace BASS, so end users should
+not need the BASS DLLs. A player could not start at all without them: on Linux the engine
+threw "Failed to load required native libraries. Missing required BASS library: libbass.so...",
+even in Background mode (043A), which never uses audio. Windows `Bootstrap` did the same
+(`_isInitialized = IsBassLoaded && IsFfmpegLoaded`), and also called `BASS_PluginLoad` for the
+plugins after `bass.dll` was missing, which throws once nothing can resolve `bass`.
+
+Fix:
+- **Platforms (native loading):** FFmpeg is the only required set. A missing or failed BASS
+  core (`bass.dll`/`bass_fx.dll`, `libbass.so`/`libbass_fx.so`) is a Warning; native loading
+  succeeds without it. Plugins (and on Linux the `DllImport` resolver) are attempted only after
+  the whole core loaded, and BASS audio extensions join `FileTypes.Audio` only then, so no BASS
+  function is called without BASS. A later player creation retries BASS; the loaded FFmpeg is
+  kept (Linux no longer re-activates it). `LastNativeLoadMessage` reads "Native libraries loaded
+  without BASS: audio is unavailable. ..." The device monitors (`PollingAudioDeviceMonitor`,
+  `BassDeviceAudioMonitor`) are registered only when BASS loaded, and Windows
+  `AudioOutputDevices.Enumerate` returns an empty list instead of calling BASS.
+- **Report:** BASS checks are never `IsRequired`; `NativeDependencyReport.IsAudioAvailable`
+  (new, `init`, default true) is false and `Describe()` adds "Audio is unavailable: the BASS
+  libraries did not load. Video plays without sound; audio media will not open." Hosts that log
+  required problems as Errors and the rest as Warnings now show BASS as Warnings.
+- **Core contract:** `IMediaControlPlatformServices.IsAudioAvailable` (new, default `true`, so
+  existing implementations compile). Core reads it after `EnsureNativeLibrariesLoaded`; Core
+  still has no native loading. Without audio, `MediaControlServiceProvider` uses
+  `SilentAudioEngine` in every mode (so no `AudioEngine.Init`, MIDI soundfont or DLS cache, and
+  `BassOutputWatchdog` never gets a client) and raises one Warning per graph in Full and Audio
+  mode.
+- **Loads:** `PipelineMediaEngine` refuses media that needs audio before touching an engine
+  (`MediaPlayerModePolicy.NeedsAudioEngine`: audio files, MP3+G, their archives, Audio-mode
+  soundtracks, network audio): `Load` returns false with an Error diagnostic and the existing
+  error event (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found;
+  <file> was not loaded." Audio mode creates no soundtrack engine.
+- **Video in Full mode (decision):** plays its picture on the playback clock without sound.
+  The change was small: `VideoPipelineFactory` passes `usesAudio` (audio available and not
+  Background mode) to `VideoPipeline`, which already ran on `PlaybackClock` in Background mode
+  and for video without an audio stream. Images and CD+G graphics without audio open normally.
+
+Tests: `AudioUnavailableTests` (policy, service graph, loads that need audio in Full and Audio
+mode, network audio, player-level `MediaError`), `NativeDependencyReportTests`
+(`Report_WithoutBass_...`), `LinuxNativeLibraryBootstrapperTests` (no BASS starts without audio,
+skips resolver and plugins, truthful report, BASS retry without a second FFmpeg activation),
+`LinuxPlatformCompositionTests` (no monitor without BASS). Opt-in native: `LinuxNoBassNativeTests`
+(real FFmpeg 9, no BASS, H.264 clip, software renderer frame sink) plays in Background and Full
+mode and observes presented frames. Avalonia test player under Xvfb (Linux, no BASS): Background
+and Full play the H.264 clip; Audio mode logs the Error and `MediaError` above.
+
+Manual smoke (Windows):
+1. Rename `bass.dll` and `bass_fx.dll` (and the plugins) in the host's `native/` folder, for
+   example to `bass.dll.off`, for `FatzBomb.MediaControl.Player` and `.Player.Avalonia`.
+2. Start the WPF player: it opens with no startup error; the log shows the BASS files as
+   Warnings and "Audio is unavailable: the BASS libraries did not load...". Load a video: the
+   picture plays without sound. Load an MP3: it fails with an Error "Audio engine unavailable:
+   BASS libraries not found; <file> was not loaded."
+3. Start the Avalonia player in Full mode: same messages (BASS files as Warnings, the
+   "without BASS" native message); a video plays its picture, an MP3 fails with the Error.
+4. Start the Avalonia player with `--mode=background` and a video: it plays and loops.
+5. Start it with `--mode=audio` and a video or MP3: the player opens; the load fails with the
+   Error above.
+6. Restore the DLL names; start both players again: audio plays as before and no BASS Warning
+   is logged.
 
 ### ENG-025 - Process-global state shared across players
 

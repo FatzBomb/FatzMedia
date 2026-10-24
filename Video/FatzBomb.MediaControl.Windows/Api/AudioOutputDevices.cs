@@ -15,7 +15,8 @@ public static class AudioOutputDevices
         Enumerate(DLLPath.GetConfiguredNativeLibraryPaths());
 
     /// <summary>
-    /// Gets the currently available audio output devices using host-provided native-library paths.
+    /// Gets the currently available audio output devices using host-provided native-library paths;
+    /// empty when the BASS libraries are not loaded.
     /// </summary>
     public static IReadOnlyList<AudioOutputDeviceInfo> Enumerate(IEnumerable<string> nativeLibraryPaths)
     {
@@ -27,8 +28,9 @@ public static class AudioOutputDevices
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Without BASS (ENG-033) there are no audio outputs to list, and no BASS call is made.
         return !Bootstrap.EnsureInitialized(resolvedPaths)
             ? throw new InvalidOperationException(Bootstrap.Message)
-            : BassAudioOutputDevices.Enumerate();
+            : Bootstrap.IsBassLoaded ? BassAudioOutputDevices.Enumerate() : [];
     }
 }

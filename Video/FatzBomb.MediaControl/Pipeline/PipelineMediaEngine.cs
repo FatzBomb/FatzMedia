@@ -20,6 +20,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private readonly PlaybackCoordinator _coordinator;
     private readonly MediaPlayerConfiguration _configuration;
     private readonly MediaPlayerMode _mode;
+    private readonly bool _audioAvailable;
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
     private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
@@ -54,8 +55,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         IPrecisionWaiterFactory precisionWaiterFactory,
         IVideoHardwareAccelerationServices hardwareAccelerationServices,
         MediaPlayerConfiguration configuration,
-        bool ownsAudioEngine = false)
+        bool ownsAudioEngine = false,
+        bool audioAvailable = true)
     {
+        _audioAvailable = audioAvailable;
         _audioEngine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
         _archiveService = archiveService ?? throw new ArgumentNullException(nameof(archiveService));
         _configuration = configuration;
@@ -64,7 +67,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
         ArgumentNullException.ThrowIfNull(cdgEngine);
         ArgumentNullException.ThrowIfNull(subtitleEngine);
-        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine);
+        _coordinator = new PlaybackCoordinator(_audioEngine, cdgEngine, subtitleEngine, videoEngineFactory, midiLyricProvider, configuration, ownsAudioEngine, audioAvailable);
         _coordinator.PlaybackEnded += OnPlaybackEnded;
         _coordinator.PlaybackLooped += OnPlaybackLooped;
     }
@@ -155,6 +158,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         MediaModeRoute route = MediaPlayerModePolicy.RouteFile(_mode, fileTree.Type);
         if (route == MediaModeRoute.Reject)
             return RejectForMode(MediaPlayerModePolicy.Describe(fileTree.Type), Path.GetFileName(path), path);
+
+        if (!_audioAvailable && MediaPlayerModePolicy.NeedsAudioEngine(route, fileTree.Type))
+            return RejectAudioUnavailable(Path.GetFileName(path), path);
 
         if (route == MediaModeRoute.AudioOnly)
             return OpenAudioOnly(fileTree, path);
@@ -256,6 +262,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             return false;
         }
 
+        if (!_audioAvailable)
+            return RejectAudioUnavailable(source.DisplayName, uri.AbsoluteUri);
+
         if (!_coordinator.OpenNetworkAudio(uri))
         {
             RaiseError(MediaErrorCode.OpenFailed, $"Failed to open network stream: {source.DisplayName}", uri.AbsoluteUri);
@@ -308,6 +317,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         var message = MediaPlayerModePolicy.RejectionMessage(_mode, what, displayName);
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, MediaPlayerModePolicy.DiagnosticCategory, message, sourcePath: sourcePath);
         RaiseError(MediaErrorCode.UnsupportedFormat, message, sourcePath);
+        return false;
+    }
+
+    /// <summary>
+    /// Rejects a load that needs audio while the audio engine's native libraries (BASS) are not
+    /// loaded (ENG-033): an Error diagnostic and an error event.
+    /// </summary>
+    private bool RejectAudioUnavailable(string displayName, string? sourcePath)
+    {
+        var message = $"{MediaPlayerModePolicy.AudioUnavailableMessage}; {displayName} was not loaded.";
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioEngine", message, sourcePath: sourcePath);
+        RaiseError(MediaErrorCode.NativeLibraryMissing, message, sourcePath);
         return false;
     }
 

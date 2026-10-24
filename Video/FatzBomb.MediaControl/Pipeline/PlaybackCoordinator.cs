@@ -20,7 +20,8 @@ internal sealed class PlaybackCoordinator : IDisposable
         IVideoEngineFactory videoEngineFactory,
         IMidiLyricProvider midiLyricProvider,
         MediaPlayerConfiguration configuration,
-        bool ownsAudioEngine = false)
+        bool ownsAudioEngine = false,
+        bool audioAvailable = true)
     {
         ArgumentNullException.ThrowIfNull(videoEngineFactory);
         _midiLyricProvider = midiLyricProvider ?? throw new ArgumentNullException(nameof(midiLyricProvider));
@@ -38,7 +39,8 @@ internal sealed class PlaybackCoordinator : IDisposable
             _session.AttachAudio(audio);
         }
 
-        if (mode == MediaPlayerMode.Audio)
+        // Without BASS (ENG-033) there is no soundtrack engine: soundtrack loads are refused first.
+        if (mode == MediaPlayerMode.Audio && audioAvailable)
         {
             var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
                 ? deviceProvider.BassDeviceIndex
