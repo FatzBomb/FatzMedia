@@ -206,19 +206,22 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   the 1080p variant only (2, 8); seek latency 916-929 ms before, 307-325 ms after. The open's
   probe still reads the first segments of every variant (2 each), which `avformat_find_stream_info`
   needs to describe them. No adaptive switching: the variant stays fixed for the session.
-- **Two connections per network video with sound.** As for local video, `VideoAudioEngine`
-  reads on its own cursor, so a progressive file or an HLS VOD is downloaded twice, and a live
-  HLS playlist can start the two connections one segment apart (audio/video offset up to one
-  target duration). A shared cursor (`SharedDemuxer` fan-out) for network sources is the fix; it
-  needs BASS to verify, which the Linux sandbox lacks.
-- **Pause and Stop during a stall wait for the read.** Close/Dispose abort a blocked network read,
-  and since ENG-035 a newer seek gives up the read or seek of the older one; Pause and Stop still
-  join the decode thread, so during a stall they can take up to the read timeout
-  (`ConnectTimeout`, 15 s by default).
-- **A network seek downloads its target twice.** A lone seek runs a preview `SeekCore` and then the
-  settle `SeekCore` for the same target (SeekPump), and each repositions both cursors, so an HLS
-  seek fetches the target segment twice (ENG-035 measurements: 0.6-1.4 s per seek at 150-1000 ms
-  per segment). Settling on the preview's position when the target did not change would halve it.
+- **Two connections per network video with sound.** Resolved 2026-10-25 (039A slice 2), pending
+  Windows smoke with BASS. As for local video, `VideoAudioEngine` read on its own cursor, so a
+  progressive file or an HLS VOD was downloaded twice, and a live HLS playlist could start the two
+  connections one segment apart. Network video's audio now shares the picture's `SharedDemuxer`
+  and takes its packets from the read-ahead (`NetworkReadAhead`): one connection, every segment
+  fetched once (demuxer-level test; playing the shared audio needs BASS).
+- **Pause and Stop during a stall wait for the read.** Resolved 2026-10-25 (039A slice 2). The
+  read-ahead's reader thread owns the network I/O; the decode and presentation loops never wait
+  for packets, a seek's waits give up when Pause or Stop is queued, and network Stop waits at
+  most 0.5 s for its first frame. Measured with every segment hung for 20 s: Pause 2-11 ms, Stop
+  0.4-0.5 s, Close 30-100 ms.
+- **A network seek downloads its target twice.** Resolved 2026-10-25 (039A slice 2). A lone
+  network seek settles on its exact preview (`VideoPipeline.CanSettleOnPreview`) instead of
+  seeking again, and the seek's decode budget no longer counts the wait for the download (which
+  made the preview give up and the settle fetch the segment again). Local seeks are unchanged.
+  Measured (150 ms per segment): the target segment is fetched once per seek instead of twice.
 - **Live progressive streams are not reconnected mid-stream.** FFmpeg reconnects a streamed (no
   range) source from byte 0, so `reconnect_streamed` stays off; a dropped live MPEG-TS-over-HTTP
   stream ends. HLS live recovers through its playlist reloads.
@@ -231,9 +234,26 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   video stream ("No playable video stream"); the Audio hint sends it to BASS, which has no HLS
   support without its add-on. An FFmpeg audio path for network sources (or a fallback from the
   video open) would cover it.
-- **Network soundtrack buffering (Audio mode) is coarse.** `SoundtrackAudioEngine` reports fill 0
-  while its read is stalled and 1 otherwise, since the BASS push buffer level is not readable
-  without the engine lock.
+- **Network soundtrack buffering (Audio mode) is coarse.** Resolved 2026-10-25 (039A slice 2),
+  pending Windows smoke: the soundtrack's own cursor has a read-ahead too, and its buffering comes
+  from it (starved for 0.5 s starts, the resume threshold ends) like network video's.
+- **Read-ahead follow-ups (039A slice 2).**
+  - A forward seek is served from the buffer only when the sound has not already taken the
+    target's packets. The audio consumer runs up to about 4 s ahead of the picture (the BASS push
+    buffer), so with BASS a forward seek shorter than that goes to the network. Keeping a short
+    tail of taken audio packets would cover it.
+  - Buffering is still an event only, as in slice 1: the clock is not held while the buffer
+    refills. With sound, BASS runs dry and the position waits naturally; picture-only playback
+    keeps its clock and drops late frames.
+  - The starvation timer restarts with every packet that arrives, so a trickle slower than
+    playback but faster than one packet per 0.5 s stutters without raising buffering.
+  - A lone network seek now decodes to its exact frame before the pump interval and the settle:
+    on localhost (150 ms per segment) a seek outside the buffer takes 370-440 ms against
+    305-318 ms before, while downloading half as much. A remote segment download dominates
+    either way.
+  - Network Stop shows the first frame only if it arrives within 0.5 s; otherwise the next Play
+    or render shows it. Audio-mode Play still prebuffers on the caller's thread and can wait for
+    a stalled download.
 
 Code review 2026-10-25 (batch PR), not fixed:
 - `NetworkTlsRules.IsCertificateFailure` treats any `[tls @` log line mentioning "certificate" or
@@ -244,6 +264,15 @@ Code review 2026-10-25 (batch PR), not fixed:
   differ (audio always waits the delay). Fold audio into the shared helper when 037A touches it.
 - Reset leaves the previous `_loadLifetime` CancellationTokenSource undisposed (one per Reset);
   disposing it on the timeout path is unsafe while the running open may still wait on it.
+
+Read-ahead code review (2026-10-25), not fixed:
+- A stream whose track ends before the source does (audio 30 s shorter than video) counts as
+  starved until the reader reaches the end: the reader ignores the duration cap (up to the 2x byte
+  limit) and, after a seek into that tail, buffering never ends. Needs a per-stream "ended" signal.
+- Picture and sound share one data-arrived event, so one consumer's reset can delay the other's
+  wake-up by up to one 50 ms wait slice.
+- If the audio engine fails after re-enabling its stream, that stream is not discarded again, so
+  HLS/DASH keep downloading (and dropping) its segments for the session.
 
 ## Completed
 

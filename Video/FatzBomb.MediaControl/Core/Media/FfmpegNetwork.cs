@@ -11,7 +11,8 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// <param name="Retry">The host's bounded retry policy: its connect timeout bounds the open and every read.</param>
 /// <param name="Cancellation">Cancels an open in progress (Close or Dispose while connecting).</param>
 /// <param name="Tls">The host's certificate checks for https (ENG-034).</param>
-internal sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls)
+/// <param name="ReadAhead">How far a <see cref="SharedDemuxer"/> reads ahead (slice 2); null uses the default.</param>
+internal sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls, NetworkReadAheadPolicy? ReadAhead = null)
 {
     /// <summary>The default policies, not cancellable.</summary>
     public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, CancellationToken.None, NetworkTlsPolicy.Default);
@@ -100,11 +101,18 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     private long _deadline;
     private long _operationStarted;
     private long _supersededBefore;
+    private Func<bool>? _operationCancelled;
 
     public FfmpegInterrupt() => _handle = GCHandle.Alloc(this, GCHandleType.Weak);
 
     /// <summary>Whether <see cref="Abort"/> was called since the last <see cref="Reset"/>.</summary>
     public bool IsAborted => _aborted;
+
+    /// <summary>
+    /// Whether the engine itself is ending the operation in progress (abort, cancellation, or a newer
+    /// operation superseding it), as opposed to a timeout. FFmpeg's log lines that follow are expected.
+    /// </summary>
+    public bool IsCancelledByOwner => _aborted || _cancellation.IsCancellationRequested || IsOperationSuperseded;
 
     /// <summary>Whether an interrupt was requested (abort, cancellation, or a passed deadline).</summary>
     public bool IsInterruptRequested
@@ -122,15 +130,28 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
         }
     }
 
-    /// <summary>Whether the operation in progress started before <see cref="SupersedeOperationsStartedBefore"/> was last called.</summary>
+    /// <summary>
+    /// Whether the operation in progress started before <see cref="SupersedeOperationsStartedBefore"/>
+    /// was last called, or the owner's cancellation condition (<see cref="SetOperationCancellation"/>)
+    /// holds.
+    /// </summary>
     private bool IsOperationSuperseded
     {
         get
         {
             var started = Interlocked.Read(ref _operationStarted);
-            return started != 0 && started < Interlocked.Read(ref _supersededBefore);
+            return started != 0
+                && (started < Interlocked.Read(ref _supersededBefore) || Volatile.Read(ref _operationCancelled)?.Invoke() == true);
         }
     }
+
+    /// <summary>
+    /// Sets a condition that gives up the operation in progress while it holds, like
+    /// <see cref="SupersedeOperationsStartedBefore"/> but without a timing window: the network
+    /// read-ahead (slice 2) uses it to give up a read for a position a seek has left. It is polled
+    /// from FFmpeg's I/O, so it must be cheap and lock-free. Null removes it.
+    /// </summary>
+    public void SetOperationCancellation(Func<bool>? condition) => Volatile.Write(ref _operationCancelled, condition);
 
     /// <summary>How long the current operation has been running, or zero when none is.</summary>
     public TimeSpan CurrentOperationDuration
@@ -147,6 +168,7 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     {
         _aborted = false;
         _cancellation = cancellation;
+        Volatile.Write(ref _operationCancelled, null);
         _ = Interlocked.Exchange(ref _deadline, 0);
         _ = Interlocked.Exchange(ref _operationStarted, 0);
     }

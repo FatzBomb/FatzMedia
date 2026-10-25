@@ -294,7 +294,9 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     /// <summary>
     /// Opens the audio of an http/https source (Stage 039A): one attempt (retries belong to the
-    /// caller), no normalization pre-analysis (unity gain, as for 014A network audio).
+    /// caller), no normalization pre-analysis (unity gain, as for 014A network audio). With a
+    /// shared cursor that is already open (network video, slice 2) the audio takes its packets
+    /// from the picture's read-ahead and opens no connection of its own.
     /// </summary>
     internal bool OpenNetwork(string url, FfmpegNetworkOptions options)
     {
@@ -325,6 +327,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     /// <summary>Whether this engine's network reader reached the end of the stream. Lock-free.</summary>
     internal bool NetworkEndOfStream => _ownsDemuxer && _demuxer.NetworkEndOfStream;
+
+    /// <summary>
+    /// Progress of this engine's network read-ahead towards ending a buffering spell, <c>0..1</c>
+    /// (slice 2); 1 with a shared cursor, whose owner reports it. Never waits for network I/O.
+    /// </summary>
+    internal double NetworkReadAheadFill => _ownsDemuxer ? _demuxer.ReadAheadResumeFill : 1;
 
     /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
     internal string? LastNetworkError => _demuxer.LastNetworkError;
@@ -758,6 +766,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
         if (_ownsDemuxer)
             _demuxer.Close();
+        else
+            _demuxer.UnregisterAudioStream(); // the shared read-ahead stops keeping its packets
 
         _audioStream = null;
         AudioStreamIndex = -1;

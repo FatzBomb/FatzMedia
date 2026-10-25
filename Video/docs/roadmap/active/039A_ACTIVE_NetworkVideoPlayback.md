@@ -2,7 +2,8 @@
 
 Prepared: 2026-10-24 (idea deferred from 014A, completed 2026-10-18, which delivered HTTP/HTTPS audio).
 Status: slice 1 (HTTP/HTTPS progressive video and HLS, one slice) implemented, pending manual smoke
-(`updates/039A_1`).
+(`updates/039A_1`). Slice 2 (network read-ahead) implemented, pending manual smoke
+(`updates/039A_2`).
 
 ## Why This Is Worth Doing
 
@@ -47,7 +48,8 @@ picks the variant), playlist/library ownership, DASH, RTSP/RTMP/SRT.
    URL.
 6. **Audio.** The soundtrack of network video goes through the same `VideoAudioEngine` path as
    local video (its own connection, no normalization pre-analysis). Without BASS (ENG-033) Full
-   mode plays the picture silently.
+   mode plays the picture silently. (Slice 2: the audio shares the picture's read-ahead; one
+   connection.)
 7. **Modes.** Background accepts network video (picture only, looping where seekable) and still
    rejects network audio. Audio mode plays a network video's soundtrack (BASS required; without
    BASS the load is refused with `NativeLibraryMissing`, as for any soundtrack).
@@ -64,6 +66,30 @@ picks the variant), playlist/library ownership, DASH, RTSP/RTMP/SRT.
 
 - **Slice 1 (`updates/039A_1`)** - everything above. HTTP progressive and HLS share the FFmpeg
   path, so they were delivered together rather than as two slices.
+- **Slice 2 (`updates/039A_2`)** - network read-ahead (owner's scope: forward read-ahead only; no
+  back-buffer, no whole-file cache; a seek outside the buffered range rebuffers from the new
+  position). Acceptance criteria:
+  1. **Read-ahead.** A background reader demuxes packets of network video ahead of playback into
+     a bounded queue: by duration (default 20 s) and bytes (default 64 MB), whichever comes
+     first, set by `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`). Local
+     files are unchanged. `BufferingChanged` comes from the buffer: buffering starts when it runs
+     dry while playing and ends at a resume threshold (default 2 s).
+  2. **One read for picture and sound.** Network video's audio is fed from the same read-ahead
+     packets; no second connection. The `_ioGate`/`_sync` order and the ENG-035 rule (getters
+     never wait on network I/O) hold; the Audio-mode soundtrack keeps working (its own cursor,
+     with its own read-ahead).
+  3. **Seek inside the buffer.** A forward seek to a buffered point drops packets up to the
+     keyframe at or before the target and decodes on, with no network request. Any other seek
+     empties the buffer and seeks as before.
+  4. **One network seek per seek.** The preview and settle of a lone network seek share one
+     network seek.
+  5. **Transport.** Pause and Stop do not wait for a stalled read; Close and Dispose abort the
+     reader with the ENG-035 interrupt.
+  6. **Verification.** Pure parts unit-tested (accounting, seek-in-range decision, hysteresis);
+     opt-in Linux native tests: a 2 s stall with 2+ s buffered (no buffering, no frame gap), the
+     caps, a seek inside the buffer (no request, latency), a seek outside (refill), one
+     connection with an audio stream, Pause during a stall, Close during a fill; seek latency and
+     memory reported.
 
 ## Recommended Direction (from the idea, kept for reference)
 

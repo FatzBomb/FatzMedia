@@ -738,23 +738,35 @@ A network source is video when the hint says so or the URI path has a video exte
 deadlines, and the read-stall timer) and passes FFmpeg options derived from the
 `NetworkRetryPolicy` (`rw_timeout`, HTTP `reconnect*` only when retries are enabled,
 `seg_max_retry`). `VideoPipeline` implements internal `INetworkVideoEngine.OpenNetwork` (one
-attempt, no archive/temp file, no embedded-subtitle scan); its `VideoAudioEngine` opens the same
-URL on its own connection with no normalization pre-analysis. `PipelineMediaEngine` runs the
+attempt, no archive/temp file, no embedded-subtitle scan). Since slice 2 the `SharedDemuxer` of a
+network source has a read-ahead (`NetworkReadAhead`, queues in the pure `ReadAheadBuffer<T>`): a
+reader thread owns every network read and seek and demuxes the registered streams ahead of
+playback, up to `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`: 20 s or
+64 MB by default). The video's `VideoAudioEngine` shares that cursor (one connection, one
+download; no normalization pre-analysis); local video keeps audio on its own cursor. A seek to a
+buffered forward target is served from the queues (dropped to the keyframe at or before it); any
+other seek empties them and the reader seeks, giving up its read in progress through an interrupt
+condition. Consumer reads wait for packets except on the playback loops (`NoWait`), Stop (0.5 s)
+and the paused render (`NoWait`); a seek's waits give up when a newer seek, Pause or Stop is
+queued; the soundtrack pump's waits end with its cancellation. A lone network seek settles on its
+exact preview instead of seeking again. `PipelineMediaEngine` runs the
 attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
 `INetworkMediaControl`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
 before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
 from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
 whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
 non-EOF read error ends the stream once (`Network read failed`). `NetworkBufferingMonitor`
-(250 ms) turns read stalls plus queue fill into `BufferingChanged`, forwarded through the
+(250 ms) turns the read-ahead's state into `BufferingChanged` (a consumer starved for 0.5 s
+starts buffering; the resume threshold, 2 s by default, ends it), forwarded through the
 coordinator and engine to the player. Modes: Background plays network video (picture only),
 Audio plays its soundtrack (`SoundtrackAudioEngine.OpenNetwork`; network soundtracks never loop).
 No lock a host's thread can wait on is held across network I/O (ENG-035): `VideoAudioEngine`
 opens, reads and seeks its cursor under `_ioGate`, not the `_sync` lock that `Position` and the
-setters take; `RenderCurrentFrame` skips (does not wait) while a seek holds the presentation lock;
-a seek request supersedes the in-flight reads and seeks of both cursors
-(`FfmpegInterrupt.SupersedeOperationsStartedBefore`; a superseded read returns `AVERROR_EXIT`,
-not end of stream); Close makes a seek in progress give up before aborting.
+setters take; the read-ahead's lock is a leaf held for queue work only; `RenderCurrentFrame` skips (does not wait) while a seek holds the presentation lock;
+a seek request supersedes the consumer waits of the read-ahead (and, for a cursor without one,
+its in-flight reads and seeks: `FfmpegInterrupt.SupersedeOperationsStartedBefore`); a superseded
+read returns `AVERROR_EXIT`, not end of stream; Close makes a seek in progress give up before
+aborting the reader.
 See `roadmap/active/039A_ACTIVE_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)

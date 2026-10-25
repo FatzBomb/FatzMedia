@@ -148,9 +148,9 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     /// <summary>
-    /// The audio cursor (a second connection; it needs BASS to play, so this drives its demuxer
-    /// directly): it picks the audio of the variant the picture plays and fetches that variant's
-    /// segments only.
+    /// Audio stream selection (it needs BASS to play, so this drives a demuxer directly): the audio
+    /// of the variant the picture plays, fetching that variant's segments only. Since slice 2 the
+    /// player's audio shares the picture's read-ahead (<c>ReadAhead_FeedsPictureAndSound...</c>).
     /// </summary>
     [Fact]
     public unsafe void HlsMultiVariant_AudioCursor_ReadsTheChosenVariantOnly()
@@ -313,7 +313,8 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
         using var server = new LocalHttpMediaServer(media);
         // The sample keeps its index at the end, so FFmpeg reads the head, then the index, then
         // streams from the start. That playback response is cut at 45 %; the reconnect it causes
-        // is answered after 1.5 s.
+        // is answered after 3 s. The read-ahead holds 1 s, so the stall outlasts it (slice 2:
+        // buffering starts when the buffer runs dry).
         var cut = false;
         var delayed = false;
         server.Plan = request =>
@@ -327,13 +328,13 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             if (cut && !delayed && request.RangeStart > fileLength / 4)
             {
                 delayed = true;
-                return new HttpResponsePlan(DelayBeforeResponse: TimeSpan.FromSeconds(1.5));
+                return new HttpResponsePlan(DelayBeforeResponse: TimeSpan.FromSeconds(3));
             }
 
             return new HttpResponsePlan();
         };
 
-        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { MaxRetries = 3 });
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { MaxRetries = 3 }, readAhead: new NetworkReadAheadPolicy { MaxDuration = TimeSpan.FromSeconds(1) });
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(Mp4))), session.Errors);
         Assert.True(session.Player.Play());
 
@@ -581,13 +582,13 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
         public IReadOnlyList<bool> BufferingList => [.. _buffering];
 
-        public static PlayerSession Create(string ffmpeg, MediaPlayerMode mode, NetworkRetryPolicy? retry = null, bool attachSurface = true, NetworkTlsPolicy? tls = null)
+        public static PlayerSession Create(string ffmpeg, MediaPlayerMode mode, NetworkRetryPolicy? retry = null, bool attachSurface = true, NetworkTlsPolicy? tls = null, NetworkReadAheadPolicy? readAhead = null)
         {
             // An empty application folder: the only search path is the FFmpeg folder, so BASS is missing.
             var appBase = Directory.CreateTempSubdirectory("fbm-net-video-").FullName;
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
             var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls };
+            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls, NetworkReadAhead = readAhead };
             var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
             var sink = new CountingFrameSink();
             MediaPresentationFrameSinkHandle? handle = null;
@@ -617,10 +618,14 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
 
     private sealed class CountingFrameSink : IMediaPresentationFrameSink
     {
+        private readonly ConcurrentQueue<long> _presentedAt = new();
         private int _frames;
         private volatile bool _lastFrameHasContent;
 
         public int Frames => Volatile.Read(ref _frames);
+
+        /// <summary>When each frame was presented (Stopwatch timestamps), oldest first.</summary>
+        public IReadOnlyList<long> PresentedAt => [.. _presentedAt];
 
         public bool LastFrameHasContent => _lastFrameHasContent;
 
@@ -635,6 +640,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             }
 
             _lastFrameHasContent = distinct.Count > 8;
+            _presentedAt.Enqueue(Stopwatch.GetTimestamp());
             _ = Interlocked.Increment(ref _frames);
         }
     }

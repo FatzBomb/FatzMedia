@@ -32,6 +32,14 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// - <b><see cref="ClearAudioEof"/></b>: called by <c>VideoAudioEngine</c> in shared-demuxer
 ///   mode to re-arm audio after a loop wrap.
 /// </para>
+/// <para>
+/// - <b>Network read-ahead (Stage 039A slice 2)</b>: a source opened with
+///   <see cref="Open(string, FfmpegNetworkOptions)"/> is read by a <see cref="NetworkReadAhead"/>
+///   reader thread instead of the consumers. Reads take packets from its queues (waiting for them
+///   unless the thread limited its waits), <see cref="Seek"/> is served from the queues when the
+///   target is buffered and otherwise hands the seek to the reader, and the consumer lock below is
+///   not used. Local files keep the inline cursor described above.
+/// </para>
 /// </remarks>
 internal sealed unsafe class SharedDemuxer : IDisposable
 {
@@ -43,6 +51,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     private bool _audioEof;
     private int _videoStreamIndex = -1;
     private int _audioStreamIndex = -1;
+    // The network read-ahead (slice 2), or null for a local file. Read once per call: Close clears it.
+    private volatile NetworkReadAhead? _readAhead;
+    private NetworkVideoProbe _networkProbe;
 
     public bool IsOpen => _demuxer.IsOpen;
     public uint StreamCount => _demuxer.StreamCount;
@@ -50,8 +61,33 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public bool Open(string path) => _demuxer.Open(path);
 
-    /// <summary>Opens an http/https source (Stage 039A); see <see cref="MediaDemuxer.Open(string, FfmpegNetworkOptions)"/>.</summary>
-    public bool Open(string url, FfmpegNetworkOptions options) => _demuxer.Open(url, options);
+    /// <summary>
+    /// Opens an http/https source (Stage 039A; see <see cref="MediaDemuxer.Open(string, FfmpegNetworkOptions)"/>)
+    /// with a read-ahead bounded by <see cref="FfmpegNetworkOptions.ReadAhead"/> (slice 2). The reader
+    /// starts with the first read or seek, once the consumers registered their streams.
+    /// </summary>
+    public bool Open(string url, FfmpegNetworkOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        DisposeReadAhead();
+        if (!_demuxer.Open(url, options))
+            return false;
+
+        // Probed once, before the reader owns the format context (avio_size can do I/O).
+        _networkProbe = _demuxer.GetNetworkProbe();
+        _readAhead = new NetworkReadAhead(
+            _demuxer,
+            options.ReadAhead ?? NetworkReadAheadPolicy.Default,
+            url,
+            reportSeekFailures: NetworkVideoPolicy.Resolve(_networkProbe).IsSeekable);
+        return true;
+    }
+
+    /// <summary>The network read-ahead of the open source, or null (a local file, or a URL opened without it).</summary>
+    internal NetworkReadAhead? ReadAhead => _readAhead;
+
+    /// <summary>Progress of the read-ahead towards ending a buffering spell, <c>0..1</c>; 1 without one.</summary>
+    public double ReadAheadResumeFill => _readAhead?.ResumeFill ?? 1;
 
     /// <summary>True while a network source is open.</summary>
     public bool IsNetwork => _demuxer.IsNetwork;
@@ -59,24 +95,44 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
     public string? LastNetworkError => _demuxer.LastNetworkError;
 
-    /// <summary>How long the network read in progress has been blocked. Lock-free.</summary>
-    public TimeSpan NetworkReadStall => _demuxer.NetworkReadStall;
+    /// <summary>
+    /// How long the network read in progress has been blocked; with the read-ahead, how long a
+    /// consumer has found its queue empty. Never waits for network I/O.
+    /// </summary>
+    public TimeSpan NetworkReadStall => _readAhead is { } readAhead ? readAhead.ConsumerStall : _demuxer.NetworkReadStall;
 
-    /// <summary>Whether the network reader reached the end of the stream. Lock-free.</summary>
-    public bool NetworkEndOfStream => _demuxer.NetworkEndOfStream;
+    /// <summary>Whether the network reader reached the end of the stream. Never waits for network I/O.</summary>
+    public bool NetworkEndOfStream => _readAhead is { } readAhead ? readAhead.IsAtEnd : _demuxer.NetworkEndOfStream;
 
     /// <summary>
     /// Aborts blocking network I/O without taking the queue lock, so a Close does not wait for a
     /// stalled read to time out (Stage 039A).
     /// </summary>
-    public void Abort() => _demuxer.Abort();
+    public void Abort()
+    {
+        _readAhead?.Abort();
+        _demuxer.Abort();
+    }
 
-    /// <inheritdoc cref="MediaDemuxer.SupersedeOperationsStartedBefore"/>
-    public void SupersedeOperationsStartedBefore(long timestamp) => _demuxer.SupersedeOperationsStartedBefore(timestamp);
+    /// <summary>
+    /// Gives up the network I/O (or, with the read-ahead, the consumer waits) that started before
+    /// <paramref name="timestamp"/> (ENG-035). With the read-ahead the reader goes on: a newer seek
+    /// that needs the network repositions it itself.
+    /// </summary>
+    public void SupersedeOperationsStartedBefore(long timestamp)
+    {
+        if (_readAhead is { } readAhead)
+            readAhead.SupersedeWaitsStartedBefore(timestamp);
+        else
+            _demuxer.SupersedeOperationsStartedBefore(timestamp);
+    }
 
     /// <summary>What FFmpeg reported for the open network source.</summary>
     public NetworkVideoProbe GetNetworkProbe()
     {
+        if (_readAhead is not null)
+            return _networkProbe;
+
         lock (_sync)
             return _demuxer.GetNetworkProbe();
     }
@@ -111,9 +167,30 @@ internal sealed unsafe class SharedDemuxer : IDisposable
         }
     }
 
-    public void RegisterVideoStream(int index) => _videoStreamIndex = index;
+    public void RegisterVideoStream(int index)
+    {
+        _videoStreamIndex = index;
+        _readAhead?.Register(index, lead: true);
+    }
 
-    public void RegisterAudioStream(int index) => _audioStreamIndex = index;
+    public void RegisterAudioStream(int index)
+    {
+        _audioStreamIndex = index;
+        _readAhead?.Register(index, lead: false);
+    }
+
+    /// <summary>
+    /// Forgets the audio consumer (its engine closed or failed to open), so the read-ahead stops
+    /// keeping its packets. Its stream is not discarded again: the reader may be reading.
+    /// </summary>
+    public void UnregisterAudioStream()
+    {
+        if (_audioStreamIndex < 0)
+            return;
+
+        _readAhead?.Unregister(_audioStreamIndex);
+        _audioStreamIndex = -1;
+    }
 
     /// <summary>
     /// Reads the next video packet into <paramref name="packet"/>. Non-video
@@ -124,6 +201,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// </summary>
     public int ReadVideoPacket(AVPacket* packet)
     {
+        if (_readAhead is { } readAhead)
+            return readAhead.Read(_videoStreamIndex, packet);
+
         lock (_sync)
         {
             if (_videoPackets.Count > 0)
@@ -179,6 +259,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// </summary>
     public int ReadAudioPacket(AVPacket* packet)
     {
+        if (_readAhead is { } readAhead)
+            return readAhead.Read(_audioStreamIndex, packet);
+
         lock (_sync)
         {
             if (_audioPackets.Count > 0)
@@ -230,8 +313,16 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// and clears their EOF flags. Called by <c>VideoPipeline.SeekCore</c> for
     /// settle (commit) seeks — NOT by the engines directly.
     /// </summary>
+    /// <remarks>
+    /// With the network read-ahead the seek is served from the buffered packets when the target is
+    /// buffered (no network request); otherwise the queues are emptied and the reader seeks, and
+    /// this returns at once (0) while the next reads wait for the new position.
+    /// </remarks>
     public int Seek(int streamIndex, long timestamp, int flags)
     {
+        if (_readAhead is { } readAhead)
+            return readAhead.Seek(streamIndex, timestamp, flags);
+
         lock (_sync)
         {
             FlushQueue(_videoPackets);
@@ -254,6 +345,14 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// </summary>
     public void PrepareLoopWrap()
     {
+        // The read-ahead already holds the tail packets and the end marker for the audio queue;
+        // the reader seeks to 0 and the next lap's packets follow them.
+        if (_readAhead is { } readAhead)
+        {
+            readAhead.RequestLoopWrap(_videoStreamIndex);
+            return;
+        }
+
         lock (_sync)
         {
             // Drain phase: read all remaining packets from the underlying demuxer
@@ -300,6 +399,12 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// </summary>
     public void ClearAudioEof()
     {
+        if (_readAhead is { } readAhead)
+        {
+            readAhead.ClearEnd(_audioStreamIndex);
+            return;
+        }
+
         lock (_sync)
         {
             _audioEof = false;
@@ -308,6 +413,8 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public void Close()
     {
+        // The reader must have stopped before the format context closes.
+        DisposeReadAhead();
         lock (_sync)
         {
             _demuxer.Close();
@@ -324,6 +431,16 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     {
         Close();
         _demuxer.Dispose();
+    }
+
+    private void DisposeReadAhead()
+    {
+        // Disposed before it is forgotten: until then a late consumer read gets the end from it,
+        // never the format context the reader is still using.
+        NetworkReadAhead? readAhead = _readAhead;
+        readAhead?.Dispose();
+        _readAhead = null;
+        _networkProbe = default;
     }
 
     private static void BufferPacket(Queue<IntPtr> queue, AVPacket* source)
