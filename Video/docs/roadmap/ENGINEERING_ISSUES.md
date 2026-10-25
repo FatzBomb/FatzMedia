@@ -1202,6 +1202,6 @@ were updated, and this engineering register was added.
 
 ## Current Validation Baseline
 
-- Release build: 0 warnings/errors.
-- Automated tests: 464 passed.
-- Formatting, Core boundary, WPF boundary, and presentation-parity gates: passed.
+CI is the record (Windows and Linux jobs in `.github/workflows/ci.yml`); counts are not kept here
+because they go stale. Release builds are warning-free, and every test project, the format check
+and the `check-*.ps1` gates must pass.
