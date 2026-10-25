@@ -208,6 +208,13 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     public void SupersedeOperationsStartedBefore(long timestamp) => _interrupt?.SupersedeOperationsStartedBefore(timestamp);
 
     /// <summary>
+    /// Gives up the network read or seek in progress, with <see cref="ffmpeg.AVERROR_EXIT"/> as for
+    /// a superseded one, while <paramref name="condition"/> holds (see
+    /// <see cref="FfmpegInterrupt.SetOperationCancellation"/>). Network sources only; null removes it.
+    /// </summary>
+    public void SetOperationCancellation(Func<bool>? condition) => _interrupt?.SetOperationCancellation(condition);
+
+    /// <summary>
     /// What FFmpeg reported for the open network source: playlist or progressive, length, byte
     /// seeking, and duration (Stage 039A capability row).
     /// </summary>
@@ -336,8 +343,9 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// </summary>
     public void SetStreamDiscard(int index, AVDiscard discard)
     {
+        // Only a change is written: the network read-ahead's reader may be reading meanwhile.
         AVStream* stream = GetStream(index);
-        if (stream != null)
+        if (stream != null && stream->discard != discard)
             stream->discard = discard;
     }
 

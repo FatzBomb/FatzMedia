@@ -95,6 +95,8 @@ internal sealed partial class VideoPipeline(
     private const double TinyVideoSeekThresholdSeconds = 0.25;
     private const double PreviewMaxFrameDistanceSeconds = 2.0;
     private const double SettleMaxFrameDistanceSeconds = 0.50;
+    // Network Stop (slice 2): how long Stop waits for the first frame from the reader's seek to 0.
+    private static readonly TimeSpan StopFrameNetworkWait = TimeSpan.FromMilliseconds(500);
     private int _presentationDiagnosticFrames;
     private int _presentationDiagnosticDroppedFrames;
     private int _presentationDiagnosticSelectionSkippedFrames;
@@ -272,9 +274,9 @@ internal sealed partial class VideoPipeline(
     }
 
     /// <summary>
-    /// Opens an http/https video (Stage 039A): one attempt through FFmpeg's network path for the
-    /// picture and, as for local video, a second connection for the audio (its own cursor). No
-    /// archive, temp file, normalization analysis or embedded-subtitle scan.
+    /// Opens an http/https video (Stage 039A): one attempt through FFmpeg's network path. One
+    /// connection serves picture and sound: the shared demuxer's read-ahead (slice 2) feeds both.
+    /// No archive, temp file, normalization analysis or embedded-subtitle scan.
     /// </summary>
     public bool OpenNetwork(string url, FfmpegNetworkOptions options)
     {
@@ -304,13 +306,15 @@ internal sealed partial class VideoPipeline(
             return false;
         }
 
-        // Keep audio on its own FFmpeg cursor. Routing codec priming/preroll packets through the
-        // video cursor can offset startup until the first seek (reproduced with AV1 + E-AC-3).
-        // SeekCore still repositions both cursors to the same target.
+        // A local file keeps audio on its own FFmpeg cursor. Routing codec priming/preroll packets
+        // through the video cursor can offset startup until the first seek (reproduced with AV1 +
+        // E-AC-3). SeekCore still repositions both cursors to the same target. A network video
+        // shares the picture's cursor, so its read-ahead downloads the source once (slice 2,
+        // ENG-034); SeekCore's container seek then repositions both.
         // Background mode (043A), and any mode without BASS (ENG-033), decodes the picture only
         // and runs on the playback clock.
         _audioEngine = _usesAudio
-            ? new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex)
+            ? new VideoAudioEngine(_outputLatencyProvider, _bassDeviceIndex, network is not null ? _sharedDemuxer : null)
             : null;
         if (_audioEngine is null)
         {
@@ -376,29 +380,23 @@ internal sealed partial class VideoPipeline(
             {
                 if (generation == _generation && _isOpen)
                     NetworkBufferingChanged?.Invoke(this, args);
-            });
+            },
+            NetworkBufferingMonitor.ReadAheadExitFill);
     }
 
     /// <summary>
-    /// Samples the network readers for buffering: the longer of the picture and audio reads in
-    /// progress, and the decoded frames queued against the decode target. Lock-free reads only:
-    /// a stalled read holds the decode lock.
+    /// Samples the read-ahead for buffering (slice 2): how long the picture or sound has found its
+    /// packet queue empty, and the progress towards the resume threshold. Never waits: the
+    /// read-ahead's lock is held for queue work only.
     /// </summary>
     private NetworkBufferingSample SampleNetworkBuffering()
     {
         SharedDemuxer? demuxer = _sharedDemuxer;
         VideoDecoder? decoder = _videoDecoder;
-        VideoAudioEngine? audio = _audioEngine;
         if (demuxer is null || decoder is null)
             return default;
 
-        TimeSpan stall = demuxer.NetworkReadStall;
-        if (audio?.NetworkReadStall is { } audioStall && audioStall > stall)
-            stall = audioStall;
-
-        var target = Math.Max(1, VideoFrameBufferPolicy.MinBufferedFrames);
-        var fill = Math.Clamp(decoder.FrameCount / (double)target, 0, 1);
-        return new NetworkBufferingSample(_isPlaying, stall, fill, decoder.EndOfStream || demuxer.NetworkEndOfStream);
+        return new NetworkBufferingSample(_isPlaying, demuxer.NetworkReadStall, demuxer.ReadAheadResumeFill, decoder.EndOfStream || demuxer.NetworkEndOfStream);
     }
 
     private bool OpenTempFile(string tempPath)
@@ -632,6 +630,7 @@ internal sealed partial class VideoPipeline(
 
     public bool Pause()
     {
+        using TransportCallScope waiting = EnterTransportCall();
         lock (_transportGate)
         {
             if (!_isOpen)
@@ -657,6 +656,7 @@ internal sealed partial class VideoPipeline(
 
     public bool Stop()
     {
+        using TransportCallScope waiting = EnterTransportCall();
         lock (_transportGate)
         {
             if (!_isOpen)
@@ -688,7 +688,11 @@ internal sealed partial class VideoPipeline(
                         _ = decoder.SeekSharedDemuxer(0);
                         _ = decoder.Seek(0);
                     }
-                    _ = DecodeUntilFrameAvailable();
+
+                    // A network source's reader seeks to 0 by itself (slice 2): show the first
+                    // frame if it arrives promptly, but do not wait for a stalled network.
+                    using (_sharedDemuxer is { IsNetwork: true } ? NetworkReadAhead.WaitAtMost(StopFrameNetworkWait) : default)
+                        _ = DecodeUntilFrameAvailable();
                     _ = PresentFrameForCurrentPosition();
                 }
             }
@@ -751,8 +755,16 @@ internal sealed partial class VideoPipeline(
             if (!_isOpen)
                 return false;
 
+            // Every wait for network packets in this seek (decoding to the target, the post-seek
+            // warm-up, the audio prebuffer) gives up once a newer seek is queued (slice 2).
+            using NetworkReadAhead.WaitScope waits = NetworkReadAhead.AbandonWaitsWhen(_abandonSeekWaits ??= ShouldAbandonSeekWaits);
+
             var target = NormalizeSeekTarget(seconds);
             var videoFramePresented = false;
+            // A lone network seek: the exact preview already sought and presented this target, so
+            // the settle resumes from it instead of seeking the network again (ENG-034).
+            var settleOnPreview = !asPreview && CanSettleOnPreview(target);
+            _reusablePreview = null;
             SetActiveSeekTarget(target);
             try
             {
@@ -775,8 +787,9 @@ internal sealed partial class VideoPipeline(
                 WaitForPresentationIdle();
 
                 // Reposition the video cursor before flushing its decoder. Audio owns a separate
-                // cursor and is repositioned independently below.
-                if (_sharedDemuxer != null && _videoDecoder != null)
+                // cursor and is repositioned independently below (a network video's audio shares
+                // this cursor, and its seek only re-arms the decoder).
+                if (!settleOnPreview && _sharedDemuxer != null && _videoDecoder != null)
                     _ = _videoDecoder.SeekSharedDemuxer(target);
 
                 if (HasAudio)
@@ -795,6 +808,7 @@ internal sealed partial class VideoPipeline(
                 }
 
                 var videoSeekProcessingStopwatch = Stopwatch.StartNew();
+                var waitedBeforeVideoSeek = NetworkReadAhead.WaitedTicksOnThisThread;
                 // Enforce the pipeline-wide presentationLock -> decodeLock ordering. The presentation
                 // loop holds _presentationLock while driving TryPreSeekLoopStart /
                 // TryCommitVideoOnlyLoopWrap (which take _decodeLock), so seeking must acquire
@@ -802,11 +816,13 @@ internal sealed partial class VideoPipeline(
                 lock (_presentationLock)
                 {
                     lock (_decodeLock)
-                        videoFramePresented = SeekVideoNearTarget(target, asPreview, allowPreviewFallback);
+                        videoFramePresented = settleOnPreview || SeekVideoNearTarget(target, asPreview, allowPreviewFallback);
                 }
 
                 videoSeekProcessingStopwatch.Stop();
-                RecordAdaptiveVideoSeekProcessingTime(videoSeekProcessingStopwatch.Elapsed);
+                // The pump interval follows decoding cost; a network download is not part of it.
+                if (!settleOnPreview)
+                    RecordAdaptiveVideoSeekProcessingTime(videoSeekProcessingStopwatch.Elapsed - Stopwatch.GetElapsedTime(0, NetworkReadAhead.WaitedTicksOnThisThread - waitedBeforeVideoSeek));
 
                 if (HasSupersedingSeekRequest())
                     return videoFramePresented;
@@ -815,7 +831,13 @@ internal sealed partial class VideoPipeline(
                 PositionChanged?.Invoke(this, target);
 
                 if (asPreview)
+                {
+                    // The exact preview of a lone click leaves the decoder just past the presented
+                    // target frame, with its successors queued: what the settle needs.
+                    if (videoFramePresented && !allowPreviewFallback && _videoDecoder is { } previewDecoder)
+                        _reusablePreview = new ReusablePreview(target, _generation, previewDecoder);
                     return videoFramePresented;
+                }
 
                 PreparePostSeekVideoRecovery(target);
 
@@ -849,6 +871,51 @@ internal sealed partial class VideoPipeline(
     }
 
     private double NormalizeSeekTarget(double seconds) => VideoSeekPolicy.NormalizeTarget(seconds, Duration);
+
+    // ShouldAbandonSeekWaits as a cached delegate for SeekCore's wait scope.
+    private Func<bool>? _abandonSeekWaits;
+    // Pause and Stop calls waiting for the transport gate (slice 2).
+    private int _transportCallsWaiting;
+
+    /// <summary>
+    /// A seek gives up its waits for network packets once a newer seek is queued, or, for a
+    /// network source, while Pause or Stop wait for it: neither waits for a stalled download
+    /// (slice 2). Local files keep their seek budgets.
+    /// </summary>
+    private bool ShouldAbandonSeekWaits() =>
+        (Volatile.Read(ref _transportCallsWaiting) > 0 && _sharedDemuxer is { IsNetwork: true }) || HasSupersedingSeekRequest();
+
+    /// <summary>Marks a Pause or Stop as waiting for the transport gate, and cuts the network waits of a seek holding it.</summary>
+    private TransportCallScope EnterTransportCall()
+    {
+        _ = Interlocked.Increment(ref _transportCallsWaiting);
+        SupersedeNetworkOperationsStartedBefore(Stopwatch.GetTimestamp());
+        return new TransportCallScope(this);
+    }
+
+    private readonly struct TransportCallScope(VideoPipeline owner) : IDisposable
+    {
+        public void Dispose() => _ = Interlocked.Decrement(ref owner._transportCallsWaiting);
+    }
+
+    /// <summary>The exact preview a network settle can resume from (slice 2), or null.</summary>
+    private ReusablePreview? _reusablePreview;
+
+    private sealed record ReusablePreview(double Target, int Generation, VideoDecoder Decoder);
+
+    /// <summary>
+    /// Whether a settle to <paramref name="target"/> can resume from the preview before it: a
+    /// network source (each seek is a download; local seeks are unchanged), an exact preview of
+    /// the same target that presented its frame, and nothing repositioned playback since (no other
+    /// seek, Stop or open, and the same decoder). Under the transport gate.
+    /// </summary>
+    private bool CanSettleOnPreview(double target) =>
+        _reusablePreview is { } preview
+        && _sharedDemuxer is { IsNetwork: true }
+        && preview.Generation == _generation
+        && ReferenceEquals(preview.Decoder, _videoDecoder)
+        && _currentFrame is not null
+        && !VideoSeekPolicy.IsMeaningfullyDifferentTarget(target, preview.Target);
 
     private void RecordAdaptiveVideoSeekProcessingTime(TimeSpan elapsed) => _seekPumpTiming.Record(elapsed);
 
@@ -969,6 +1036,8 @@ internal sealed partial class VideoPipeline(
                 if (!_isOpen || _videoDecoder == null)
                     return;
 
+                // Called from the host's UI thread: decode only packets already read ahead.
+                using NetworkReadAhead.WaitScope waits = NetworkReadAhead.NoWait();
                 _ = DecodeUntilFrameAvailable();
             }
             finally
@@ -1041,6 +1110,8 @@ internal sealed partial class VideoPipeline(
         // on the next tick. Stage 11 paces primary video at source cadence when FPS is known
         // instead of polling at display refresh for 24/30fps content.
         const int diagnosticInterval = 120;
+        // The loop wrap decodes here; with a network source it takes only packets already read ahead.
+        using NetworkReadAhead.WaitScope waits = NetworkReadAhead.NoWait();
         using var pacer = new MediaLoopPacer(_precisionWaiterFactory);
         var stopwatch = Stopwatch.StartNew();
         var lastTickSeconds = stopwatch.Elapsed.TotalSeconds;
@@ -1259,6 +1330,9 @@ internal sealed partial class VideoPipeline(
 
     private void DecodeLoop(int generation, CancellationToken cancellationToken)
     {
+        // A network source's packets come from the read-ahead (slice 2): never wait for them here,
+        // so a dry buffer does not hold up the other stream, Pause or Stop. The loop comes back.
+        using NetworkReadAhead.WaitScope waits = NetworkReadAhead.NoWait();
         while (!cancellationToken.IsCancellationRequested && generation == _generation)
         {
             var decoded = false;
@@ -1739,8 +1813,9 @@ internal sealed partial class VideoPipeline(
         while (decoder.FrameCount < targetBufferedFrames && stopwatch.ElapsedMilliseconds < budgetMilliseconds)
         {
             // A seek at or near the end leaves nothing to decode: stop instead of spinning out the
-            // budget (up to about 3 s with the transport gate held).
-            if (HasSupersedingSeekRequest() || decoder.EndOfStream)
+            // budget (up to about 3 s with the transport gate held). Likewise once the network
+            // waits are abandoned (a newer seek, or a waiting Pause or Stop; slice 2).
+            if (ShouldAbandonSeekWaits() || decoder.EndOfStream)
                 break;
 
             if (decoder.DecodeNextFrame())
@@ -1983,9 +2058,13 @@ internal sealed partial class VideoPipeline(
             return;
 
         var stopwatch = Stopwatch.StartNew();
+        // The budget is for decoding: a network source's wait for the target's packets (a seek
+        // outside the read-ahead) does not count, or the preview would give up on the download
+        // and the settle download it again (slice 2). A newer seek still cuts the wait short.
+        var waitedAtStart = NetworkReadAhead.WaitedTicksOnThisThread;
         var attempts = 0;
         while (attempts++ < maxDecodeAttempts
-            && stopwatch.ElapsedMilliseconds <= budgetMilliseconds
+            && (long)(stopwatch.Elapsed - Stopwatch.GetElapsedTime(0, NetworkReadAhead.WaitedTicksOnThisThread - waitedAtStart)).TotalMilliseconds <= budgetMilliseconds
             && (!allowSupersedingAbort || !HasSupersedingSeekRequest()))
         {
             if (HasAcceptableSeekFrame(decoder, target, maxFrameDistance, requireAtOrAfterTarget))

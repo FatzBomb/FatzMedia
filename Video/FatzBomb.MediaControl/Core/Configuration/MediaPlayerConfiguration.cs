@@ -150,6 +150,12 @@ public readonly record struct MediaPlayerConfiguration
     public NetworkTlsPolicy? NetworkTls { get; init; }
 
     /// <summary>
+    /// How far network video reads ahead of playback. <see langword="null"/> uses
+    /// <see cref="NetworkReadAheadPolicy.Default"/> (20 s or 64 MB).
+    /// </summary>
+    public NetworkReadAheadPolicy? NetworkReadAhead { get; init; }
+
+    /// <summary>
     /// How HDR video is shown on SDR output. The default tone maps HDR10 (PQ) and HLG video to SDR.
     /// </summary>
     public HdrToneMappingOptions HdrToneMapping { get; init; }

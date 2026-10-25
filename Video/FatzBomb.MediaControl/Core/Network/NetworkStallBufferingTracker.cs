@@ -1,16 +1,25 @@
 namespace FatzBomb.MediaControl.Core.Network;
 
 /// <summary>
-/// Buffering state for sources read through FFmpeg (Stage 039A). FFmpeg exposes no download
-/// buffer to sample, so buffering is detected from the reader: a network read blocked for at
-/// least the stall threshold while the decoded queue is below the exit fill enters buffering;
-/// a free reader with the queue back at the exit fill (or the end of the stream) leaves it.
-/// Progress is reported every 10 points while buffering, as <see cref="BufferingStateTracker"/> does.
+/// Buffering state for sources read through FFmpeg (Stage 039A). A reader stalled for at least the
+/// stall threshold while the fill is below the exit fill enters buffering; a free reader with the
+/// fill back at the exit fill (or the end of the stream) leaves it. Progress is reported every 10
+/// points while buffering, as <see cref="BufferingStateTracker"/> does.
+/// <para>
+/// Network video (slice 2) samples its read-ahead: the stall is how long the picture or sound has
+/// found its packet queue empty (the buffer ran dry), and the fill is the progress towards the
+/// resume threshold (<see cref="NetworkReadAheadPolicy.ResumeDuration"/>), with an exit fill of 1.
+/// The Audio-mode soundtrack does the same. Without a read-ahead, the stall is the blocked read and
+/// the fill the decoded queue against its target, with the default exit fill.
+/// </para>
 /// </summary>
-internal sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, double exitFill = 0.25)
+internal sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, double exitFill = NetworkStallBufferingTracker.DefaultExitFill)
 {
     /// <summary>The default stall threshold: far longer than a healthy read, short enough to report a visible stall.</summary>
     public static readonly TimeSpan DefaultStallThreshold = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The default exit fill: a quarter of the queue target.</summary>
+    public const double DefaultExitFill = 0.25;
 
     private readonly TimeSpan _stallThreshold = stallThreshold > TimeSpan.Zero ? stallThreshold : DefaultStallThreshold;
     private readonly double _exitFill = Math.Clamp(exitFill, 0, 1);

@@ -326,7 +326,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         var started = Stopwatch.GetTimestamp();
         try
         {
-            var options = new FfmpegNetworkOptions(policy, cancellation.Token, tls);
+            var options = new FfmpegNetworkOptions(policy, cancellation.Token, tls, _configuration.NetworkReadAhead);
             outcome = NetworkOpenRetry.Run(
                 policy,
                 cancellation.Token,

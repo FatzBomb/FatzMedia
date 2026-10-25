@@ -22,7 +22,7 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// <para>
 /// A network video's soundtrack (Stage 039A) opens through FFmpeg's network path with no
 /// normalization pre-analysis, never loops (as 014A network audio), and reports buffering from
-/// its reader.
+/// its read-ahead (slice 2).
 /// </para>
 /// </remarks>
 internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide
@@ -117,21 +117,20 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
         Volatile.Write(ref _networkCapabilities, NetworkVideoPolicy.Resolve(_audio.GetNetworkProbe()));
         MediaSourceCapabilities? opened = _networkCapabilities;
+        // The soundtrack's own cursor has a read-ahead too (slice 2): buffering starts when its
+        // queue runs dry and ends at the resume threshold, as for network video.
         _bufferingMonitor = new NetworkBufferingMonitor(
-            () =>
-            {
-                TimeSpan stall = _audio.NetworkReadStall;
-                return new NetworkBufferingSample(
-                    _audio.State == AudioEngineState.Playing,
-                    stall,
-                    stall >= NetworkStallBufferingTracker.DefaultStallThreshold ? 0 : 1,
-                    _audio.NetworkEndOfStream);
-            },
+            () => new NetworkBufferingSample(
+                _audio.State == AudioEngineState.Playing,
+                _audio.NetworkReadStall,
+                _audio.NetworkReadAheadFill,
+                _audio.NetworkEndOfStream),
             args =>
             {
                 if (ReferenceEquals(Volatile.Read(ref _networkCapabilities), opened) && _audio.IsOpen)
                     NetworkBufferingChanged?.Invoke(this, args);
-            });
+            },
+            NetworkBufferingMonitor.ReadAheadExitFill);
         return true;
     }
 
@@ -190,6 +189,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     private void Seek(double seconds)
     {
         ResetEndTracking();
+        // The pump may be waiting for a network packet while holding the engine's I/O gate: give
+        // the wait up so the seek does not wait for a stalled download (ENG-035, slice 2).
+        _audio.SupersedeNetworkOperationsStartedBefore(Stopwatch.GetTimestamp());
         _ = _audio.Seek(seconds);
     }
 
@@ -283,6 +285,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
     private void PumpLoop(int generation, CancellationToken cancellationToken)
     {
+        // A network read waits for the read-ahead's packets (so a stall is not taken for the end
+        // below), but Pause, Stop and Close cancel the wait instead of waiting for the network.
+        using NetworkReadAhead.WaitScope waits = NetworkReadAhead.CancelWaitsWith(cancellationToken);
         var lastPosition = double.NaN;
         var stallStarted = 0L;
         while (!cancellationToken.IsCancellationRequested && IsCurrent(generation))
