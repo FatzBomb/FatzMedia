@@ -173,11 +173,21 @@ encoding gap, so this stays ours under 037A.
 ### ENG-034 - Network video follow-ups (039A)
 
 Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none blocks the slice.
-- **HTTPS certificates are not verified.** FFmpeg's TLS layer checks the peer only when its
-  `tls_verify` option is on (off by default; OpenSSL and GnuTLS builds), and the engine does not
-  set it. 014A audio goes through BASS, which has its own rules. Fix: a policy option (default
-  on) that sets `tls_verify=1` (and `ca_file` where the platform has no default store); needs a
-  Windows check with the shipped FFmpeg build.
+- **HTTPS certificates are not verified.** Resolved 2026-10-25, pending Windows smoke.
+  Finding: FFmpeg 9 already defaults `tls_verify` to on (FFmpeg 8 defaulted it off), but its HLS
+  and DASH demuxers open segments with a fixed option subset, so a host's `tls_verify`/`ca_file`
+  never reached segments. The engine now sets `tls_verify=1` explicitly on every https open and,
+  through a wrapped `AVFormatContext.io_open` (`FfmpegTlsIoOpen`), on every nested playlist,
+  segment and key open. Hosts get `MediaPlayerConfiguration.NetworkTls` (`NetworkTlsPolicy`:
+  `AllowInvalidCertificates`, default false; `CertificateAuthorityFile`, a PEM passed as
+  `ca_file`). A rejected certificate fails the open with "certificate verification failed for
+  <host>: <FFmpeg TLS text> (<FFmpeg error>)" and is not retried. A build that cannot verify as
+  configured (OpenSSL on Windows or mbedTLS without a CA file; Schannel given a CA file) gets a
+  Warning diagnostic before connecting; verification is never turned off for it. Linux BtbN
+  OpenSSL: default roots from `/etc/ssl` (`SSL_CERT_FILE`/`SSL_CERT_DIR` honoured), host name
+  checked. Recommended Windows build (TqkLibrary LGPL3 9.0.2): Schannel, Windows store. BASS
+  (014A audio) exposes no certificate setting, so audio is unchanged; see
+  `docs/NATIVE_DEPENDENCIES.md` for the backend table and the Windows checks.
 - **Two connections per network video with sound.** As for local video, `VideoAudioEngine`
   reads on its own cursor, so a progressive file or an HLS VOD is downloaded twice, and a live
   HLS playlist can start the two connections one segment apart (audio/video offset up to one

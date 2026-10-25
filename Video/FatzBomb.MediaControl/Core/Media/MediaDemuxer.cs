@@ -24,6 +24,13 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// network source (the stream dropped after FFmpeg's own reconnects) is reported once and then
 /// returned as end of file, so playback ends instead of retrying a dead connection forever.
 /// </para>
+/// <para>
+/// An https source is verified per the host's <see cref="NetworkTlsPolicy"/> (ENG-034):
+/// <c>tls_verify</c> and <c>ca_file</c> go to the first connection and, through
+/// <see cref="FfmpegTlsIoOpen"/>, to every playlist, segment and key opened after it. A rejected
+/// certificate fails the open with "certificate verification failed for &lt;host&gt;" and
+/// FFmpeg's TLS error text.
+/// </para>
 /// </remarks>
 internal sealed unsafe class MediaDemuxer : IDisposable
 {
@@ -31,6 +38,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     private const int MaxNetworkLogDiagnostics = 20;
     private AVFormatContext* _formatContext;
     private FfmpegInterrupt? _interrupt;
+    private FfmpegTlsIoOpen? _tlsIoOpen;
+    private readonly List<string> _tlsFailureLines = [];
     private string? _networkUrl;
     private bool _networkReadFailed;
     private bool _networkEndOfStream;
@@ -112,10 +121,19 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         _interrupt ??= new FfmpegInterrupt();
         _interrupt.Reset(options.Cancellation);
         _networkLogObserver ??= OnNetworkLog;
+        _tlsFailureLines.Clear();
+        IReadOnlyList<KeyValuePair<string, string>> tlsOptions = NetworkTlsRules.CreateFfmpegOptions(options.Tls);
+        _tlsIoOpen ??= new FfmpegTlsIoOpen();
+        _tlsIoOpen.SetOptions(tlsOptions);
 
         AVDictionary* dictionary = null;
         foreach (KeyValuePair<string, string> option in NetworkVideoPolicy.CreateFfmpegOptions(options.Retry))
             _ = ffmpeg.av_dict_set(&dictionary, option.Key, option.Value, 0);
+        if (NetworkTlsRules.IsHttps(url))
+        {
+            foreach (KeyValuePair<string, string> option in tlsOptions)
+                _ = ffmpeg.av_dict_set(&dictionary, option.Key, option.Value, 0);
+        }
 
         try
         {
@@ -128,6 +146,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             }
 
             _interrupt.Install(context);
+            _tlsIoOpen.Install(context);
             int result;
             using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver))
             {
@@ -152,7 +171,13 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             {
                 LastNetworkError = _interrupt.IsAborted || options.Cancellation.IsCancellationRequested
                     ? "cancelled"
-                    : FfmpegNetwork.DescribeError(result);
+                    : _tlsFailureLines.Count > 0
+                        ? NetworkTlsRules.DescribeCertificateFailure(
+                            Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.Host : url,
+                            _tlsFailureLines,
+                            FfmpegNetwork.DescribeError(result),
+                            FfmpegNetwork.GetTlsSetupWarning(url, options.Tls))
+                        : FfmpegNetwork.DescribeError(result);
                 Close();
                 return false;
             }
@@ -330,6 +355,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         Close();
         _interrupt?.Dispose();
         _interrupt = null;
+        _tlsIoOpen?.Dispose();
+        _tlsIoOpen = null;
     }
 
     private void OnNetworkLog(int level, string line)
@@ -337,7 +364,10 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         // FFmpeg's HTTP layer logs each reconnect ("Will reconnect at ... in N second(s)") on the
         // reading thread; those are the mid-stream retries of the host's policy. Other lines (a
         // short body, a skipped HLS segment) are warnings: whether the stream ends is reported
-        // once, by ReadPacket.
+        // once, by ReadPacket. A TLS line about the certificate is kept for the open's error.
+        if (_tlsFailureLines.Count < 3 && line.StartsWith("[tls @", StringComparison.Ordinal) && NetworkTlsRules.IsCertificateFailure(line))
+            _tlsFailureLines.Add(line);
+
         if (_networkLogDiagnostics >= MaxNetworkLogDiagnostics)
             return;
 

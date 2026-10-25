@@ -76,7 +76,12 @@ Delivered:
 - **Buffering from read stalls**: FFmpeg exposes no download buffer, so the reader's blocked time
   is the signal; a full queue during a slow read does not count.
 - **HTTPS certificate verification is FFmpeg's default** (off for OpenSSL/GnuTLS builds); a
-  policy option is ENG-034.
+  policy option is ENG-034. Follow-up 2026-10-25 (ENG-034): verification is on by default and
+  set explicitly, including for HLS/DASH segments; hosts opt out or name a CA file through
+  `MediaPlayerConfiguration.NetworkTls` (`NetworkTlsPolicy`). Backend table and decisions in
+  `docs/NATIVE_DEPENDENCIES.md` (HTTPS Certificate Verification). Linux: 6 new opt-in native
+  cases (`LinuxNetworkVideoNativeTests.Https_*`, `Http_IsUnaffectedByTheTlsPolicy`) against an
+  in-process self-signed https server.
 
 ## Measurements (Linux sandbox, localhost, FFmpeg 9 shared libraries, no BASS, software decode, 1080p30 H.264, 10 s)
 
@@ -159,7 +164,24 @@ with `bass.dll`/`bass_fx.dll` renamed (ENG-033).
 6. Point the URL box at an address that accepts but never answers (for example a `nc -l 9999`
    listener): press Close while it connects; it returns at once and the load reports
    "Network open cancelled".
-7. An https URL (internet): plays with the shipped FFmpeg build (needs its TLS backend).
+7. HTTPS certificates (ENG-034), with the shipped FFmpeg DLLs:
+   a. An https URL with a public certificate (internet) plays; the log has no TLS warning
+      (with an OpenSSL-only build it would show "FFmpeg's TLS backend is OpenSSL ..." and fail).
+   b. A local self-signed https server, for example
+      `npx http-server <folder> -p 8443 -S -C cert.pem -K key.pem` with a certificate for
+      `localhost` (`openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 7 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`):
+      `--url=https://localhost:8443/clip.mp4` fails with
+      `certificate verification failed for localhost: ... Creating security context failed (0x80090325) ...`
+      and one attempt only, even with `--net-retries=3`.
+   c. Same with `--net-allow-invalid-certs`: plays; the log shows "Certificate verification is off".
+   d. Import `cert.pem` into the current user's Trusted Root store (`certutil -user -addstore Root cert.pem`),
+      run without flags: plays (MP4 and the HLS folder). Remove it afterwards
+      (`certutil -user -delstore Root localhost`). Also try `--net-ca-file=cert.pem` without
+      the import: expect the "Schannel ignores NetworkTlsPolicy.CertificateAuthorityFile" warning
+      and the rejection from step b. If Schannel instead reports a revocation status
+      (0x80092012), record it in ENG-034.
+   e. BASS network audio against the same self-signed server (`--url=https://localhost:8443/song.mp3`):
+      record whether BASS plays it (no verification) or refuses it; BASS has no setting for it.
 8. BASS renamed: steps 1-2 play the picture without sound; no error.
 9. Avalonia player: `--mode=background --url=http://localhost:8080/clip.mp4` plays and loops;
    `--mode=audio` with the same URL plays the soundtrack only (BASS present), or fails with

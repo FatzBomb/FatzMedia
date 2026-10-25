@@ -10,16 +10,18 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// </summary>
 /// <param name="Retry">The host's bounded retry policy: its connect timeout bounds the open and every read.</param>
 /// <param name="Cancellation">Cancels an open in progress (Close or Dispose while connecting).</param>
-internal sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation)
+/// <param name="Tls">The host's certificate checks for https (ENG-034).</param>
+internal sealed record FfmpegNetworkOptions(NetworkRetryPolicy Retry, CancellationToken Cancellation, NetworkTlsPolicy Tls)
 {
-    /// <summary>The default policy, not cancellable.</summary>
-    public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, CancellationToken.None);
+    /// <summary>The default policies, not cancellable.</summary>
+    public static FfmpegNetworkOptions Default { get; } = new(NetworkRetryPolicy.Default, CancellationToken.None, NetworkTlsPolicy.Default);
 }
 
 /// <summary>Process-wide FFmpeg network setup (Stage 039A).</summary>
 internal static class FfmpegNetwork
 {
     private static int _initialized;
+    private static FfmpegTlsBackend? _tlsBackend;
 
     /// <summary>Calls <c>avformat_network_init</c> once per process, before the first network open.</summary>
     public static void EnsureInitialized()
@@ -27,6 +29,41 @@ internal static class FfmpegNetwork
         if (Interlocked.Exchange(ref _initialized, 1) == 0)
             _ = ffmpeg.avformat_network_init();
     }
+
+    /// <summary>
+    /// The TLS backend of the loaded FFmpeg build (ENG-034), read once from its configure line;
+    /// <see cref="FfmpegTlsBackend.Unknown"/> when FFmpeg is not loaded.
+    /// </summary>
+    public static FfmpegTlsBackend TlsBackend
+    {
+        get
+        {
+            if (_tlsBackend is { } known)
+                return known;
+
+            FfmpegTlsBackend backend;
+            try
+            {
+                backend = NetworkTlsRules.DetectBackend(ffmpeg.avformat_configuration(), OperatingSystem.IsWindows());
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or TypeInitializationException)
+            {
+                // Not loaded yet (or a test host without FFmpeg): ask again next time.
+                return FfmpegTlsBackend.Unknown;
+            }
+
+            _tlsBackend = backend;
+            return backend;
+        }
+    }
+
+    /// <summary>
+    /// The warning for this FFmpeg build when it cannot verify <paramref name="url"/> with
+    /// <paramref name="policy"/> as given (see <see cref="NetworkTlsRules.GetSetupWarning"/>), or
+    /// <see langword="null"/>. Only https URLs are checked.
+    /// </summary>
+    public static string? GetTlsSetupWarning(string url, NetworkTlsPolicy policy) =>
+        NetworkTlsRules.IsHttps(url) ? NetworkTlsRules.GetSetupWarning(TlsBackend, OperatingSystem.IsWindows(), policy) : null;
 
     /// <summary>Whether <paramref name="path"/> is an absolute http/https URL rather than a file path.</summary>
     public static bool IsNetworkUrl(string? path) =>
@@ -141,5 +178,76 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
 
         var handle = GCHandle.FromIntPtr((nint)opaque);
         return handle.IsAllocated && handle.Target is FfmpegInterrupt interrupt && interrupt.IsInterruptRequested ? 1 : 0;
+    }
+}
+
+/// <summary>
+/// Adds the host's TLS options to every nested open of one network format context (ENG-034).
+/// FFmpeg hands the open options to the first connection only: the HLS and DASH demuxers open
+/// playlists, segments and keys through <c>AVFormatContext.io_open</c> with a fixed subset
+/// (headers, cookies, timeouts) that leaves out <c>tls_verify</c> and <c>ca_file</c>. This wraps
+/// the context's <c>io_open</c> and adds the TLS options to each https open that does not set
+/// them, so a segment is verified exactly like its playlist.
+/// </summary>
+internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
+{
+    private GCHandle _handle;
+    private AVDictionary* _options;
+    private nint _defaultIoOpen;
+
+    public FfmpegTlsIoOpen() => _handle = GCHandle.Alloc(this, GCHandleType.Weak);
+
+    /// <summary>Takes the TLS options for the next open.</summary>
+    public void SetOptions(IReadOnlyList<KeyValuePair<string, string>> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        fixed (AVDictionary** dictionary = &_options)
+        {
+            ffmpeg.av_dict_free(dictionary);
+            foreach (KeyValuePair<string, string> option in options)
+                _ = ffmpeg.av_dict_set(dictionary, option.Key, option.Value, 0);
+        }
+    }
+
+    /// <summary>Wraps the <c>io_open</c> of a freshly allocated <paramref name="context"/>.</summary>
+    public void Install(AVFormatContext* context)
+    {
+        _defaultIoOpen = (nint)context->io_open.Pointer;
+        context->opaque = (void*)GCHandle.ToIntPtr(_handle);
+        context->io_open = new AVFormatContext_io_open_func { Pointer = (nint)(delegate* unmanaged[Cdecl]<AVFormatContext*, AVIOContext**, byte*, int, AVDictionary**, int>)&OnIoOpen };
+    }
+
+    public void Dispose()
+    {
+        fixed (AVDictionary** dictionary = &_options)
+            ffmpeg.av_dict_free(dictionary);
+        if (_handle.IsAllocated)
+            _handle.Free();
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    private static int OnIoOpen(AVFormatContext* context, AVIOContext** pb, byte* url, int flags, AVDictionary** options)
+    {
+        FfmpegTlsIoOpen? hook = null;
+        if (context != null && context->opaque != null)
+        {
+            var handle = GCHandle.FromIntPtr((nint)context->opaque);
+            hook = handle.IsAllocated ? handle.Target as FfmpegTlsIoOpen : null;
+        }
+
+        if (hook is null || hook._defaultIoOpen == 0)
+            return ffmpeg.AVERROR_BUG;
+
+        var open = (delegate* unmanaged[Cdecl]<AVFormatContext*, AVIOContext**, byte*, int, AVDictionary**, int>)hook._defaultIoOpen;
+        if (hook._options == null || !NetworkTlsRules.IsHttps(Marshal.PtrToStringUTF8((nint)url)))
+            return open(context, pb, url, flags, options);
+
+        // The caller's dictionary keeps the options FFmpeg did not use; a NULL one gets a local copy.
+        AVDictionary* local = null;
+        AVDictionary** target = options != null ? options : &local;
+        _ = ffmpeg.av_dict_copy(target, hook._options, ffmpeg.AV_DICT_DONT_OVERWRITE);
+        var result = open(context, pb, url, flags, target);
+        ffmpeg.av_dict_free(&local);
+        return result;
     }
 }

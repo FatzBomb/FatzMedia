@@ -452,6 +452,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 ResetTempoOnMediaLoad = App.ResetTempoOnMediaLoad,
                 SilenceTrim = new SilenceTrimOptions { Enabled = App.EnableSilenceTrim },
                 NetworkRetry = new NetworkRetryPolicy { MaxRetries = App.NetworkRetries },
+                NetworkTls = new NetworkTlsPolicy
+                {
+                    AllowInvalidCertificates = App.NetworkAllowInvalidCertificates,
+                    CertificateAuthorityFile = App.NetworkCaFile,
+                },
                 HdrToneMapping = new HdrToneMappingOptions(
                     Disabled: App.DisableHdrToneMapping,
                     PreferCpu: App.PreferCpuHdrToneMapping)

@@ -59,6 +59,10 @@ public partial class App : Application
 
     public static int NetworkRetries { get; private set; }
 
+    public static string? NetworkCaFile { get; private set; }
+
+    public static bool NetworkAllowInvalidCertificates { get; private set; }
+
     public static double[]? EqualizerGains { get; private set; }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -122,6 +126,13 @@ public partial class App : Application
             .Where(static argument => argument.StartsWith(retryPrefix, StringComparison.OrdinalIgnoreCase))
             .Select(static argument => int.TryParse(argument[retryPrefix.Length..], out var retries) ? retries : 0)
             .FirstOrDefault();
+        const string caFilePrefix = "--net-ca-file=";
+        NetworkCaFile = e.Args
+            .Where(static argument => argument.StartsWith(caFilePrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(static argument => argument[caFilePrefix.Length..].Trim('"'))
+            .FirstOrDefault(static path => path.Length > 0);
+        NetworkAllowInvalidCertificates = e.Args.Any(static argument =>
+            string.Equals(argument, "--net-allow-invalid-certs", StringComparison.OrdinalIgnoreCase));
         const string eqPrefix = "--eq=";
         EqualizerGains = e.Args
             .Where(static argument => argument.StartsWith(eqPrefix, StringComparison.OrdinalIgnoreCase))

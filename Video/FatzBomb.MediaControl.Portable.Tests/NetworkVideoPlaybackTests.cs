@@ -68,6 +68,38 @@ public sealed class NetworkVideoPlaybackTests
     }
 
     [Fact]
+    public void CertificateFailures_AreNotRetried_AndReportTheHost()
+    {
+        const string Rejected = "certificate verification failed for media.example: error:0A000086:SSL routines::certificate verify failed (Input/output error)";
+        var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => false, LastNetworkError = Rejected };
+        var policy = new NetworkRetryPolicy { MaxRetries = 3, InitialDelay = TimeSpan.Zero };
+        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        MediaErrorInfo? error = null;
+        ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
+
+        Assert.False(engine.Open(MediaInputSource.FromUri(new Uri("https://media.example/clip.mp4"), MediaNetworkContent.Video)));
+
+        Assert.Single(video.NetworkUrls);
+        Assert.Equal(MediaErrorCode.OpenFailed, error!.Code);
+        Assert.Contains(Rejected, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NetworkTlsPolicy_ReachesTheVideoOpen_DefaultingToVerification()
+    {
+        FfmpegNetworkOptions? seen = null;
+        var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, options) => { seen = options; return true; }, NetworkCapabilities = SeekableFile };
+        using (PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video))
+            Assert.True(engine.Open(ClipSource));
+        Assert.Same(NetworkTlsPolicy.Default, seen!.Tls);
+
+        var tls = new NetworkTlsPolicy { AllowInvalidCertificates = true };
+        using PipelineMediaEngine optedOut = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkTls = tls });
+        Assert.True(optedOut.Open(MediaInputSource.FromUri(new Uri("https://media.example/clip.mp4"), MediaNetworkContent.Video)));
+        Assert.Same(tls, seen.Tls);
+    }
+
+    [Fact]
     public void ARetrySucceeds_AfterAFailedAttempt()
     {
         var attempts = 0;

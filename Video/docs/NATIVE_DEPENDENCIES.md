@@ -1,6 +1,6 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-10-24
+Updated: 2026-10-25
 
 The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
 and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
@@ -146,8 +146,55 @@ the owner confirms the signed tarball).
 - Hosts must use a shared-library build; static executables alone are insufficient.
 - Network video (Stage 039A) uses FFmpeg's own protocols: the build needs the `http`, `tcp`
   and `hls` components (on by default) and a TLS backend for `https` (OpenSSL, GnuTLS,
-  mbedTLS or Schannel). FFmpeg's TLS layer verifies certificates only if its `tls_verify`
-  option is on, which the engine does not set yet (ENG-034).
+  mbedTLS or Schannel). Certificate checks are described under HTTPS Certificate Verification.
+
+### HTTPS Certificate Verification (ENG-034)
+
+Network video verifies https certificates by default: the engine sets `tls_verify=1` on the
+open and on every HLS/DASH playlist, segment and key it opens (FFmpeg passes only a fixed option
+subset to those, so the engine adds the TLS options through `AVFormatContext.io_open`). Hosts
+change this with `MediaPlayerConfiguration.NetworkTls` (`NetworkTlsPolicy`):
+`CertificateAuthorityFile` (a PEM bundle, FFmpeg's `ca_file`) for a private CA, or
+`AllowInvalidCertificates` (off by default) for a server the host controls. A rejected
+certificate fails the load with `certificate verification failed for <host>: <FFmpeg text>` and
+is not retried. Plain http is unaffected.
+
+Where the trusted roots come from depends on the build's TLS backend (read at run time from
+`avformat_configuration`; FFmpeg's configure lets Schannel win only when no other TLS library is
+enabled):
+
+| Backend | Default roots | `CertificateAuthorityFile` | Engine behaviour without a CA file |
+| --- | --- | --- | --- |
+| Schannel (Windows) | Windows certificate store; host name and revocation checked | Ignored (install the CA in the store) | Verifies; Warning if a CA file is set |
+| OpenSSL (Linux) | Build-time `OPENSSLDIR`; BtbN builds use `/etc/ssl` (`certs/`, `cert.pem`), `SSL_CERT_FILE`/`SSL_CERT_DIR` override | Used | Verifies |
+| OpenSSL (Windows) | Build-time path such as `/opt/ffbuild/ssl`, which does not exist on Windows | Used | Warning before connecting; every https server is rejected until a CA file is set or a Schannel build is used |
+| GnuTLS | System trust (also the Windows store) | Used | Verifies |
+| mbedTLS | None | Used | Warning before connecting; rejected until a CA file is set |
+
+Checked builds:
+
+- Linux, BtbN FFmpeg 9.0 LGPL (`/opt/fatzbomb-native/ffmpeg`, `scripts/setup-linux-native.sh`):
+  OpenSSL 3.6 linked statically (`--enable-openssl --disable-schannel`, `OPENSSLDIR: "/etc/ssl"`).
+  Without `ca_file` it loads the default paths (`/etc/ssl/certs` on Debian/Ubuntu); a self-signed
+  server is rejected (`error:0A000086:SSL routines::certificate verify failed`), accepted with
+  `ca_file`, `SSL_CERT_FILE` or `SSL_CERT_DIR`, and a certificate for another host name is
+  rejected. Covered by the opt-in tests in `LinuxNetworkVideoNativeTests` (`Https_*`).
+- Windows, `TqkLibrary.FFmpeg.Lgpl3.Native.win.x64` 9.0.2 (configure line read from the DLLs):
+  `--enable-schannel`, no `--enable-openssl`; the bundled OpenSSL 3.6.3 serves libsrt, librist
+  and libssh, not FFmpeg's https. So https uses the Windows store. Not yet run on Windows.
+
+Windows checks for the owner (see the 039A StageUpdate smoke steps): with the shipped DLLs, an
+https URL with a public certificate plays and the log has no TLS warning; a self-signed local
+server is rejected with `certificate verification failed for ...` (Schannel reports
+`Creating security context failed (0x80090325)`), plays with `--net-allow-invalid-certs`, and
+plays after its certificate is imported into the current user's Trusted Root store. Before
+shipping a different FFmpeg build, read its backend: `ffmpeg -hide_banner -buildconf` (or
+search `avformat-63.dll` for `--enable-openssl` / `--enable-schannel`).
+
+Network audio played through BASS (014A) does not use this policy. ManagedBass 4.0.2 exposes no
+TLS or certificate setting (its network options are agent, proxy, timeouts, buffer, pre-buffer,
+playlist and passive FTP), so the engine cannot change how BASS checks certificates; whether it
+verifies them is not documented in the API surface available here and is a Windows check.
 
 For a proprietary host, the default approved build policy is an LGPL-compatible
 shared build compiled without `--enable-gpl` and without `--enable-nonfree`, followed

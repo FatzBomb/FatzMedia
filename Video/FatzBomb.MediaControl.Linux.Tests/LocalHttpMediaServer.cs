@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace FatzBomb.MediaControl.Linux.Tests;
@@ -17,7 +20,7 @@ internal sealed record HttpRequestRecord(int Number, string Path, long? RangeSta
 /// A tiny in-process HTTP/1.1 file server on 127.0.0.1 for the network video tests: serves files
 /// from a folder with byte ranges (<c>Accept-Ranges: bytes</c>, 206 responses) and lets a test
 /// delay a response or cut it short to simulate a stalled or dropped server. Text files can be
-/// overridden (a live HLS playlist).
+/// overridden (a live HLS playlist). With a certificate it serves https (ENG-034).
 /// </summary>
 internal sealed class LocalHttpMediaServer : IDisposable
 {
@@ -27,11 +30,14 @@ internal sealed class LocalHttpMediaServer : IDisposable
     private readonly ConcurrentDictionary<string, byte[]> _overrides = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<HttpRequestRecord> _requests = new();
     private readonly ConcurrentBag<TcpClient> _clients = [];
+    private readonly X509Certificate2? _certificate;
     private int _requestCount;
+    private int _handshakes;
 
-    public LocalHttpMediaServer(string root, Func<HttpRequestRecord, HttpResponsePlan>? plan = null)
+    public LocalHttpMediaServer(string root, Func<HttpRequestRecord, HttpResponsePlan>? plan = null, X509Certificate2? certificate = null)
     {
         _root = root;
+        _certificate = certificate;
         Plan = plan ?? (_ => new HttpResponsePlan());
         _listener.Start();
         _ = Task.Run(AcceptLoopAsync);
@@ -43,7 +49,10 @@ internal sealed class LocalHttpMediaServer : IDisposable
 
     public IReadOnlyCollection<HttpRequestRecord> Requests => [.. _requests];
 
-    public Uri UriFor(string relativePath) => new($"http://127.0.0.1:{Port}/{relativePath.TrimStart('/')}");
+    /// <summary>The number of TLS handshakes started (https only), accepted or not.</summary>
+    public int Handshakes => Volatile.Read(ref _handshakes);
+
+    public Uri UriFor(string relativePath) => new($"{(_certificate is null ? "http" : "https")}://127.0.0.1:{Port}/{relativePath.TrimStart('/')}");
 
     /// <summary>Serves <paramref name="content"/> for <paramref name="relativePath"/> instead of the file.</summary>
     public void Override(string relativePath, string content) => _overrides["/" + relativePath.TrimStart('/')] = Encoding.UTF8.GetBytes(content);
@@ -73,7 +82,15 @@ internal sealed class LocalHttpMediaServer : IDisposable
         {
             try
             {
-                NetworkStream stream = client.GetStream();
+                await using SslStream? tls = _certificate is null ? null : new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
+                Stream stream = tls ?? (Stream)client.GetStream();
+                if (tls is not null)
+                {
+                    // A client that rejects the certificate aborts the handshake; no request is recorded.
+                    _ = Interlocked.Increment(ref _handshakes);
+                    await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = _certificate }, _stop.Token).ConfigureAwait(false);
+                }
+
                 var header = await ReadHeaderAsync(stream).ConfigureAwait(false);
                 if (header is null)
                     return;
@@ -159,7 +176,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
         }
     }
 
-    private static async Task<string?> ReadHeaderAsync(NetworkStream stream)
+    private static async Task<string?> ReadHeaderAsync(Stream stream)
     {
         var buffer = new byte[16 * 1024];
         var total = 0;
@@ -178,7 +195,7 @@ internal sealed class LocalHttpMediaServer : IDisposable
         return null;
     }
 
-    private Task WriteAsync(NetworkStream stream, string text) => stream.WriteAsync(Encoding.ASCII.GetBytes(text), _stop.Token).AsTask();
+    private Task WriteAsync(Stream stream, string text) => stream.WriteAsync(Encoding.ASCII.GetBytes(text), _stop.Token).AsTask();
 
     public void Dispose()
     {
@@ -196,6 +213,48 @@ internal sealed class LocalHttpMediaServer : IDisposable
         }
 
         _stop.Dispose();
+    }
+}
+
+/// <summary>
+/// A self-signed server certificate for 127.0.0.1 and localhost, made in process (ENG-034 tests),
+/// with its PEM written to a temporary file for <see cref="NetworkTlsPolicy.CertificateAuthorityFile"/>.
+/// </summary>
+internal sealed class SelfSignedCertificate : IDisposable
+{
+    private SelfSignedCertificate(X509Certificate2 certificate, string pemPath)
+    {
+        Certificate = certificate;
+        PemPath = pemPath;
+    }
+
+    public X509Certificate2 Certificate { get; }
+
+    public string PemPath { get; }
+
+    public static SelfSignedCertificate Create()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=127.0.0.1", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddIpAddress(IPAddress.Loopback);
+        names.AddDnsName("localhost");
+        request.CertificateExtensions.Add(names.Build());
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(certificateAuthority: true, hasPathLengthConstraint: false, pathLengthConstraint: 0, critical: true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], critical: false));
+        using X509Certificate2 created = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+        var pemPath = Path.Combine(Directory.CreateTempSubdirectory("fbm-tls-").FullName, "ca.pem");
+        File.WriteAllText(pemPath, created.ExportCertificatePem());
+        // Reload through PKCS#12 so the private key is usable by SslStream on every platform.
+        X509Certificate2 certificate = X509CertificateLoader.LoadPkcs12(created.Export(X509ContentType.Pkcs12), password: null);
+        return new SelfSignedCertificate(certificate, pemPath);
+    }
+
+    public void Dispose()
+    {
+        Certificate.Dispose();
+        Directory.Delete(Path.GetDirectoryName(PemPath)!, recursive: true);
     }
 }
 

@@ -269,6 +269,112 @@ public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
         Assert.Empty(server.Requests);
     }
 
+    [Fact]
+    public void Https_SelfSignedServer_IsRejectedByDefault_WithTheCertificateError()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        using var certificate = SelfSignedCertificate.Create();
+        using var server = new LocalHttpMediaServer(media, certificate: certificate.Certificate);
+        // Retries are on: a rejected certificate must not be retried.
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { MaxRetries = 2, InitialDelay = TimeSpan.Zero });
+
+        Assert.False(session.Player.Load(MediaInputSource.FromUri(server.UriFor(Mp4))));
+
+        Assert.True(SpinWait.SpinUntil(() => session.ErrorList.Count > 0, TimeSpan.FromSeconds(5)), "no MediaError");
+        output.WriteLine($"rejected: {session.Errors}");
+        Assert.Contains(session.ErrorList, line => line.Contains("certificate verification failed for 127.0.0.1", StringComparison.Ordinal)
+            && line.Contains("certificate verify failed", StringComparison.Ordinal));
+        Assert.Contains(session.DiagnosticList, line => line.StartsWith("Error Network: Network stream unavailable after 1 attempt(s): certificate verification failed for 127.0.0.1", StringComparison.Ordinal));
+        Assert.Empty(server.Requests);
+        // One handshake per cursor at most (the picture; the audio cursor opens only after it).
+        Assert.Equal(1, server.Handshakes);
+    }
+
+    [Fact]
+    public void Https_SelfSignedServer_IsAccepted_WhenTheHostAllowsInvalidCertificates()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        using var certificate = SelfSignedCertificate.Create();
+        using var server = new LocalHttpMediaServer(media, certificate: certificate.Certificate);
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, tls: new NetworkTlsPolicy { AllowInvalidCertificates = true });
+
+        AssertPlays(session, server.UriFor(Mp4));
+        Assert.Contains(session.DiagnosticList, line => line.Contains("Certificate verification is off", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Https_SelfSignedServer_IsAccepted_WithItsCertificateAsTheCaFile()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        using var certificate = SelfSignedCertificate.Create();
+        using var server = new LocalHttpMediaServer(media, certificate: certificate.Certificate);
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, tls: new NetworkTlsPolicy { CertificateAuthorityFile = certificate.PemPath });
+
+        AssertPlays(session, server.UriFor(Mp4));
+    }
+
+    [Fact]
+    public void Https_HlsSegments_UseTheHostsCaFileToo()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media) || !File.Exists(Path.Combine(media, HlsPlaylist)))
+            return;
+
+        // FFmpeg's HLS demuxer opens segments without the open's TLS options; the engine adds them.
+        using var certificate = SelfSignedCertificate.Create();
+        using var server = new LocalHttpMediaServer(media, certificate: certificate.Certificate);
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, tls: new NetworkTlsPolicy { CertificateAuthorityFile = certificate.PemPath });
+
+        AssertPlays(session, server.UriFor(HlsPlaylist));
+        Assert.Contains(server.Requests, request => request.Path.EndsWith(".ts", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Https_WithAMissingCaFile_FailsWithTheCertificateError()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        using var certificate = SelfSignedCertificate.Create();
+        using var server = new LocalHttpMediaServer(media, certificate: certificate.Certificate);
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, tls: new NetworkTlsPolicy { CertificateAuthorityFile = "/nonexistent/fbm-ca.pem" });
+
+        Assert.False(session.Player.Load(MediaInputSource.FromUri(server.UriFor(Mp4))));
+        Assert.True(SpinWait.SpinUntil(() => session.ErrorList.Count > 0, TimeSpan.FromSeconds(5)), "no MediaError");
+        output.WriteLine($"missing CA file: {session.Errors}");
+        Assert.Contains(session.ErrorList, line => line.Contains("certificate verification failed for 127.0.0.1", StringComparison.Ordinal)
+            && line.Contains("SSL_CTX_load_verify_locations", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Http_IsUnaffectedByTheTlsPolicy()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        // A CA file that does not exist would fail any https open; plain http never reads it.
+        using var server = new LocalHttpMediaServer(media);
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, tls: new NetworkTlsPolicy { CertificateAuthorityFile = "/nonexistent/fbm-ca.pem" });
+
+        AssertPlays(session, server.UriFor(Mp4));
+        Assert.DoesNotContain(session.DiagnosticList, line => line.Contains("certificate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AssertPlays(PlayerSession session, Uri uri)
+    {
+        Assert.True(session.Player.Load(MediaInputSource.FromUri(uri)), session.Errors);
+        Assert.True(session.Player.Play());
+        Assert.True(SpinWait.SpinUntil(() => session.Sink.Frames >= 5, TimeSpan.FromSeconds(15)), $"frames {session.Sink.Frames}");
+        Assert.True(session.Sink.LastFrameHasContent, "presented frame looks blank");
+        Assert.Empty(session.ErrorList);
+        _ = session.Player.Stop();
+    }
+
     /// <summary>The request that streams the sample from its start (after the head and index reads).</summary>
     private static bool IsPlaybackRequest(HttpRequestRecord request, long fileLength) =>
         request.Path.EndsWith(Mp4, StringComparison.Ordinal) && request.Number > 1 && (request.RangeStart ?? 0) < fileLength / 10;
@@ -334,13 +440,13 @@ public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
 
         public IReadOnlyList<bool> BufferingList => [.. _buffering];
 
-        public static PlayerSession Create(string ffmpeg, MediaPlayerMode mode, NetworkRetryPolicy? retry = null, bool attachSurface = true)
+        public static PlayerSession Create(string ffmpeg, MediaPlayerMode mode, NetworkRetryPolicy? retry = null, bool attachSurface = true, NetworkTlsPolicy? tls = null)
         {
             // An empty application folder: the only search path is the FFmpeg folder, so BASS is missing.
             var appBase = Directory.CreateTempSubdirectory("fbm-net-video-").FullName;
             var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
             var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry };
+            var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software) { Mode = mode, NetworkRetry = retry, NetworkTls = tls };
             var player = new MediaControlPlayer(factory, configuration, [ffmpeg]);
             var sink = new CountingFrameSink();
             MediaPresentationFrameSinkHandle? handle = null;

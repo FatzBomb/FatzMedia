@@ -310,6 +310,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         Uri uri = source.Uri!;
         var url = uri.AbsoluteUri;
         NetworkRetryPolicy policy = _configuration.NetworkRetry ?? NetworkRetryPolicy.Default;
+        NetworkTlsPolicy tls = _configuration.NetworkTls ?? NetworkTlsPolicy.Default;
+        if (FfmpegNetwork.GetTlsSetupWarning(url, tls) is { } tlsWarning)
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, NetworkDiagnosticCategory, tlsWarning, sourcePath: url);
+        else if (tls.AllowInvalidCertificates && NetworkTlsRules.IsHttps(url))
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, NetworkDiagnosticCategory, "Certificate verification is off for this https source (NetworkTlsPolicy.AllowInvalidCertificates).", sourcePath: url);
+
         using var cancellation = new CancellationTokenSource();
         Volatile.Write(ref _pendingNetworkOpen, cancellation);
         NetworkOpenOutcome outcome;
@@ -317,7 +323,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         var started = Stopwatch.GetTimestamp();
         try
         {
-            var options = new FfmpegNetworkOptions(policy, cancellation.Token);
+            var options = new FfmpegNetworkOptions(policy, cancellation.Token, tls);
             outcome = NetworkOpenRetry.Run(
                 policy,
                 cancellation.Token,
@@ -326,8 +332,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                     if (soundtrackOnly ? _coordinator.OpenNetworkSoundtrack(uri, options) : _coordinator.OpenNetworkVideo(uri, options))
                         return NetworkAttemptResult.Opened;
 
-                    // No FFmpeg error means it connected but found no usable stream: not retried.
-                    return _coordinator.LastNetworkVideoError is null ? NetworkAttemptResult.Unusable : NetworkAttemptResult.Failed;
+                    // No FFmpeg error means it connected but found no usable stream, and a rejected
+                    // certificate is rejected again: neither is retried.
+                    return _coordinator.LastNetworkVideoError is not { } error || NetworkTlsRules.IsCertificateFailureError(error)
+                        ? NetworkAttemptResult.Unusable
+                        : NetworkAttemptResult.Failed;
                 },
                 (retry, delay) => DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Warning,
