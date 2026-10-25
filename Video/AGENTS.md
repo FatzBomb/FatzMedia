@@ -72,5 +72,6 @@ not up front.
   and manual smoke steps), and mark the manifest "implemented, pending manual smoke". Finished
   stages move to `complete/`. Bugs and deferred findings go in `docs/roadmap/ENGINEERING_ISSUES.md`.
 - One commit per stage or slice.
-- Standing approval: commit and push to the session's working branch. Open a PR, merge, or
-  push to `main` only when asked.
+- Standing approval: commit and push to the session's working branch, and open a PR when a
+  batch of related work is complete and validated (not for every small fix). Merging and
+  pushing to `main` stay with the owner.
