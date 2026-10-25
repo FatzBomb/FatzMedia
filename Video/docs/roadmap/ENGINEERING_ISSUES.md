@@ -274,6 +274,13 @@ Read-ahead code review (2026-10-25), not fixed:
 - If the audio engine fails after re-enabling its stream, that stream is not discarded again, so
   HLS/DASH keep downloading (and dropping) its segments for the session.
 
+Owner smoke (2026-10-25), not fixed:
+- An MP4 with its index (`moov`) at the end, served without byte ranges (for example
+  `python -m http.server`), cannot play: FFmpeg reads to the index and cannot seek back. The
+  player reports only "Network read failed: I/O error; the stream ends here". Detect it
+  (`seekable=False` plus a mov "partial file" error) and say the server needs range support or
+  the file needs `-movflags +faststart`.
+
 ## Completed
 
 ### ENG-035 - Network seeks blocked the host's UI thread
