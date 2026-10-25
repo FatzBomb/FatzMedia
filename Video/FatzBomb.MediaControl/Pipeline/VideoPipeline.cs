@@ -976,6 +976,7 @@ internal sealed partial class VideoPipeline(
             _loopPreSeekActive = false;
             _lastObservedAudioLoopCount = 0;
             _currentVideoPath = null;
+            _reusablePreview = null; // it holds the decoder disposed below
             StopDecodeLoopAndWait();
             StopPresentationLoopAndWait();
             WaitForPresentationIdle();

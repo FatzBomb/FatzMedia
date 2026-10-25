@@ -170,6 +170,27 @@ public sealed class ReadAheadBufferTests
     }
 
     [Fact]
+    public void ClearEnd_AfterTheEnd_AwaitsTheNextLapUntilSomethingIsTaken()
+    {
+        ReadAheadBuffer<int> buffer = CreateBuffer();
+        buffer.MarkEnded(Audio);
+        buffer.ClearEnd(Audio);
+        Assert.True(buffer.IsAwaitingNextLap(Audio));
+        // Re-arming a stream that had not ended (a seek) awaits nothing.
+        buffer.ClearEnd(Video);
+        Assert.False(buffer.IsAwaitingNextLap(Video));
+
+        AddMedia(buffer, 0, 0.1);
+        _ = TakeTime(buffer, Audio);
+        Assert.False(buffer.IsAwaitingNextLap(Audio));
+
+        buffer.MarkEnded(Audio);
+        buffer.ClearEnd(Audio);
+        buffer.Flush();
+        Assert.False(buffer.IsAwaitingNextLap(Audio));
+    }
+
+    [Fact]
     public void Starvation_IsTimedFromTheFirstEmptyTake_AndEndsWithAPacketOrTheEnd()
     {
         ReadAheadBuffer<int> buffer = CreateBuffer();

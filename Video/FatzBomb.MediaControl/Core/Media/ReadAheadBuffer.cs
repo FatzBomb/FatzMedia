@@ -145,6 +145,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         }
 
         stream.StarvedSince = 0;
+        stream.AwaitingNextLap = false;
         if (entry.IsEnd)
         {
             stream.Ended = true;
@@ -171,12 +172,22 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         }
     }
 
-    /// <summary>Re-arms a stream after its end (a gapless loop wrap: the next lap's packets follow).</summary>
+    /// <summary>
+    /// Re-arms a stream after its end (a gapless loop wrap: the next lap's packets follow). A stream
+    /// that had ended waits for the next lap until a packet or marker is taken
+    /// (<see cref="IsAwaitingNextLap"/>), so its consumer does not find the same end again.
+    /// </summary>
     public void ClearEnd(int streamIndex)
     {
-        if (Find(streamIndex) is { } stream)
+        if (Find(streamIndex) is { Ended: true } stream)
+        {
             stream.Ended = false;
+            stream.AwaitingNextLap = true;
+        }
     }
+
+    /// <summary>Whether <paramref name="streamIndex"/> was re-armed after its end and has taken nothing since.</summary>
+    public bool IsAwaitingNextLap(int streamIndex) => Find(streamIndex)?.AwaitingNextLap == true;
 
     /// <summary>Gets how long the consumer that has waited longest has found its queue empty.</summary>
     public TimeSpan LongestStarvation(long now)
@@ -334,6 +345,9 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         /// <summary>The consumer took the end-of-stream marker; reads return the end until cleared.</summary>
         public bool Ended { get; set; }
 
+        /// <summary>Re-armed after its end (a loop wrap) and nothing taken since.</summary>
+        public bool AwaitingNextLap { get; set; }
+
         /// <summary>When the consumer found the queue empty (a Stopwatch timestamp), or 0.</summary>
         public long StarvedSince { get; set; }
 
@@ -401,6 +415,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         {
             Bytes = 0;
             Ended = false;
+            AwaitingNextLap = false;
             StarvedSince = 0;
             LastTakenEnd = null;
             _tailDecodeEnd = null;

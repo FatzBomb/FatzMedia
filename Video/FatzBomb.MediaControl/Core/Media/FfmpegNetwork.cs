@@ -108,6 +108,12 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     /// <summary>Whether <see cref="Abort"/> was called since the last <see cref="Reset"/>.</summary>
     public bool IsAborted => _aborted;
 
+    /// <summary>
+    /// Whether the engine itself is ending the operation in progress (abort, cancellation, or a newer
+    /// operation superseding it), as opposed to a timeout. FFmpeg's log lines that follow are expected.
+    /// </summary>
+    public bool IsCancelledByOwner => _aborted || _cancellation.IsCancellationRequested || IsOperationSuperseded;
+
     /// <summary>Whether an interrupt was requested (abort, cancellation, or a passed deadline).</summary>
     public bool IsInterruptRequested
     {

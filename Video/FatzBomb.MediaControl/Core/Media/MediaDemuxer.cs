@@ -465,13 +465,18 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         if (_tlsFailureLines.Count < 3 && line.StartsWith("[tls @", StringComparison.Ordinal) && NetworkTlsRules.IsCertificateFailure(line))
             _tlsFailureLines.Add(line);
 
+        // Lines that follow the engine's own cancellation (a newer seek, Close) are expected
+        // ("Immediate exit requested", "Failed to send close message"): not reported.
+        if (_interrupt?.IsCancelledByOwner == true)
+            return;
+
         if (_networkLogDiagnostics >= MaxNetworkLogDiagnostics)
             return;
 
         _networkLogDiagnostics++;
         var isRetry = line.Contains("reconnect", StringComparison.OrdinalIgnoreCase);
         DiagnosticRouter.Raise(
-            MediaDiagnosticLevel.Warning,
+            isRetry || level <= ffmpeg.AV_LOG_ERROR ? MediaDiagnosticLevel.Warning : MediaDiagnosticLevel.Info,
             NetworkDiagnosticCategory,
             isRetry ? $"Network retry: {line}" : $"FFmpeg ({(level <= ffmpeg.AV_LOG_ERROR ? "error" : "warning")}): {line}",
             sourcePath: _networkUrl);

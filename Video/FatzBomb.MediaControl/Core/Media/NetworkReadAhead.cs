@@ -70,6 +70,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     private bool _atEnd;
     private bool _readerPaused;
     private bool _hardCapReported;
+    // The reader thread ran and returned (an abort or a failure): no one serves a seek any more.
+    private bool _readerExited;
     // Bumped by every seek the reader must make; the reader's I/O for an older one is given up.
     private int _generation;
     private int _readerGeneration;
@@ -227,7 +229,9 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                         var buffered = (AVPacket*)item;
                         ffmpeg.av_packet_move_ref(packet, buffered);
                         ffmpeg.av_packet_free(&buffered);
-                        _readerWake.Set();
+                        // Only an idle reader needs waking: a busy one checks the caps on its next pass.
+                        if (_readerPaused)
+                            _readerWake.Set();
                         return 0;
                     case ReadAheadTake.EndOfStream:
                         return ffmpeg.AVERROR_EOF;
@@ -235,6 +239,11 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
 
                 if (_atEnd && _pendingSeek is null)
                 {
+                    // A stream re-armed for a loop wrap waits for the picture's wrap to bring the
+                    // next lap; ending it again would make its consumer wrap once per read.
+                    if (_buffer.IsAwaitingNextLap(streamIndex))
+                        return ffmpeg.AVERROR_EXIT;
+
                     _buffer.MarkEnded(streamIndex);
                     return ffmpeg.AVERROR_EOF;
                 }
@@ -369,6 +378,11 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
 
     private void RequestReaderSeekNoLock(SeekRequest request)
     {
+        // A reader that exited cannot seek: leave the queues empty at the end rather than queue a
+        // request that reads would wait on forever.
+        if (_readerExited)
+            return;
+
         Volatile.Write(ref _generation, _generation + 1);
         _pendingSeek = request;
         NetworkSeeks++;
@@ -452,6 +466,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 }
 
                 _readerPaused = true;
+                _readerExited = true;
+                _pendingSeek = null;
             }
 
             _dataArrived.Set();

@@ -265,6 +265,15 @@ Code review 2026-10-25 (batch PR), not fixed:
 - Reset leaves the previous `_loadLifetime` CancellationTokenSource undisposed (one per Reset);
   disposing it on the timeout path is unsafe while the running open may still wait on it.
 
+Read-ahead code review (2026-10-25), not fixed:
+- A stream whose track ends before the source does (audio 30 s shorter than video) counts as
+  starved until the reader reaches the end: the reader ignores the duration cap (up to the 2x byte
+  limit) and, after a seek into that tail, buffering never ends. Needs a per-stream "ended" signal.
+- Picture and sound share one data-arrived event, so one consumer's reset can delay the other's
+  wake-up by up to one 50 ms wait slice.
+- If the audio engine fails after re-enabling its stream, that stream is not discarded again, so
+  HLS/DASH keep downloading (and dropping) its segments for the session.
+
 ## Completed
 
 ### ENG-035 - Network seeks blocked the host's UI thread
