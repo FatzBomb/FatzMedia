@@ -14,10 +14,21 @@ public sealed class CompositionTargetPlan(long captureSequence, IEnumerable<Comp
     public bool HasMultipleTargets => ActiveTargetCount > 1;
     public bool HasMetadataWork => MetadataWorkTargetCount > 0;
 
-    public bool ShouldPresentTarget(string targetId) => _targets.Any(target =>
-        target.IsActive
-        && target.Action.HasFlag(CompositionTargetUpdateAction.Present)
-        && string.Equals(target.Id, targetId, StringComparison.Ordinal));
+    public bool ShouldPresentTarget(string targetId)
+    {
+        // Called per target per frame: a loop, not a capturing lambda (ENG-026).
+        foreach (CompositionTargetUpdate target in _targets)
+        {
+            if (target.IsActive
+                && target.Action.HasFlag(CompositionTargetUpdateAction.Present)
+                && string.Equals(target.Id, targetId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public string Summary
     {

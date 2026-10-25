@@ -1,6 +1,6 @@
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
-using System.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -10,7 +10,9 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Managed;
 /// <summary>
 /// Renders into an offscreen D3D11 target, then reads the completed frame back into a managed sink.
 /// The synchronous GPU readback is intentionally opt-in and is slower than direct swap-chain
-/// presentation, especially for high-resolution or high-refresh video.
+/// presentation, especially for high-resolution or high-refresh video. The CPU readback buffer
+/// survives <see cref="Cleanup"/> and re-creation at another size (a live resize re-creates the
+/// target at every step), and is released by <see cref="Dispose"/> (ENG-026).
 /// </summary>
 internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
 {
@@ -20,12 +22,18 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
     private IMediaPresentationFrameSink? _sink;
     private byte[] _pixels = [];
     private bool _deviceLostReported;
+    private readonly RendererDiagnosticLatch _createFailure = new();
+    private readonly RendererDiagnosticLatch _readbackFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.ManagedFrameSink;
     public bool IsActive => _targetTexture != null && _stagingTexture != null && _sink != null;
     public int Width { get; private set; }
     public int Height { get; private set; }
     public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public D3D11TargetViewCache TargetViews { get; } = new();
+
+    /// <summary>Gets the length of the retained readback buffer (tests).</summary>
+    internal int ReadbackBufferLength => _pixels.Length;
 
     public bool Matches(IMediaPresentationFrameSink sink, int width, int height) =>
         IsActive && ReferenceEquals(_sink, sink) && Width == width && Height == height;
@@ -75,12 +83,13 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
             _sink = sink;
             Width = width;
             Height = height;
-            _pixels = new byte[checked(width * height * 4)];
+            _pixels = RetainedPixelBuffer.Ensure(_pixels, checked(width * height * 4));
+            _createFailure.Reset();
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[D3D11ManagedFrameSink] Target creation failed: {ex.Message}");
+            _ = _createFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Managed frame-sink target creation at {width}x{height} failed: {ex.Message}", ex);
             Cleanup();
             return false;
         }
@@ -131,6 +140,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
             }
 
             _deviceLostReported = false;
+            _readbackFailure.Reset();
             return true;
         }
         catch (Exception ex)
@@ -148,7 +158,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
         else
         {
-            Debug.WriteLine($"[D3D11ManagedFrameSink] Frame readback Map failed: {result}");
+            _ = _readbackFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Managed frame-sink readback Map failed: {result}");
         }
     }
 
@@ -161,7 +171,7 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         }
         else
         {
-            Debug.WriteLine($"[D3D11ManagedFrameSink] Frame readback failed: {ex.Message}");
+            _ = _readbackFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Managed frame-sink readback failed: {ex.Message}", ex);
         }
     }
 
@@ -191,19 +201,24 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", message);
     }
 
+    /// <summary>Releases the textures and the sink; the readback buffer is kept for the next <see cref="Create"/>.</summary>
     public void Cleanup()
     {
+        TargetViews.Release();
         _stagingTexture?.Dispose();
         _stagingTexture = null;
         _targetTexture?.Dispose();
         _targetTexture = null;
         _deviceResources = null;
         _sink = null;
-        _pixels = Array.Empty<byte>();
         Width = 0;
         Height = 0;
         _deviceLostReported = false;
     }
 
-    public void Dispose() => Cleanup();
+    public void Dispose()
+    {
+        Cleanup();
+        _pixels = [];
+    }
 }

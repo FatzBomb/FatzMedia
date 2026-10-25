@@ -53,7 +53,7 @@ public sealed class NetworkPipelineTests
     [Theory]
     [InlineData("https://cdn.example/clip.mp4", MediaNetworkContent.Auto)]
     [InlineData("https://cdn.example/stream", MediaNetworkContent.Video)]
-    public void NetworkVideo_IsRejectedWithUnsupportedFormat(string address, MediaNetworkContent hint)
+    public void NetworkVideo_WithNoPlayableVideoStream_IsRejectedWithUnsupportedFormat(string address, MediaNetworkContent hint)
     {
         FileTypes.Video.Add(".mp4");
         try
@@ -167,6 +167,34 @@ public sealed class PlayerNetworkEventTests
         Assert.True(bufferingArgs.IsBuffering);
         Assert.Equal(0.3, bufferingArgs.BufferFill);
         Assert.Equal("Daft Punk", metadataArgs.Artist);
+    }
+
+    [Fact]
+    public async Task NetworkVideoBuffering_FromTheEngine_IsForwardedToHost()
+    {
+        var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
+        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var buffering = new TaskCompletionSource<MediaBufferingChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.BufferingChanged += (_, e) => buffering.TrySetResult(e);
+        Assert.True(player.Load("clip.mp4"));
+
+        engine.RaiseNetworkBuffering(true, 0.1);
+
+        MediaBufferingChangedEventArgs args = await buffering.Task.WaitAsync(Timeout);
+        Assert.True(args.IsBuffering);
+        Assert.Equal(0.1, args.BufferFill);
+    }
+
+    [Fact]
+    public void CloseAndDispose_CancelANetworkOpenInProgress()
+    {
+        var engine = new TestMediaEngine();
+        var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+
+        player.Close();
+        Assert.Equal(1, engine.CancelPendingNetworkOpenCount);
+        player.Dispose();
+        Assert.Equal(2, engine.CancelPendingNetworkOpenCount);
     }
 
     [Fact]

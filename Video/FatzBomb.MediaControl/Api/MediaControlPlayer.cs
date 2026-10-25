@@ -20,6 +20,8 @@ public partial class MediaControlPlayer : IMediaControlSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
+    // How long Dispose waits for diagnostics already queued to reach the host.
+    private static readonly TimeSpan DiagnosticDrainTimeout = TimeSpan.FromSeconds(1);
     private const double SeekImmediateCompletionToleranceSeconds = 0.001;
     // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
     // distance (2 s) from the target, plus the normal settle tolerance.
@@ -29,13 +31,22 @@ public partial class MediaControlPlayer : IMediaControlSession
     private IMediaEngine _mediaEngine;
     private IMediaPresentationCoordinator _presentationCoordinator;
     private MediaControlOperationQueue _controlOperations;
+    // MediaDiagnostic delivery, in order but not behind the control queue; lives as long as the
+    // player (Reset and mode switches keep it). Closed by Dispose.
+    private readonly SerialEventDispatcher _diagnosticEvents = new("MediaDiagnostic", DiagnosticDrainTimeout);
     private PlaybackPositionNotifier _positionNotifier;
     // The host's surfaces. Guarded by _surfaceGate: host calls arrive on the UI thread while a
     // rebuild (Reset, SetModeAsync) holds and reattaches them on the control queue.
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _presentationSurfaces = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _surfaceGate = new();
     private bool _surfacesHeld;
+    // Held only while a call checks the lifecycle and takes its place in the control queue, never
+    // for the operation itself (ENG-024).
     private readonly Lock _operationAdmissionGate = new();
+    // Serializes Reset and Dispose with each other; held for their whole run.
+    private readonly Lock _lifecycleGate = new();
+    // Cancelled by Reset and Dispose so loads in progress or queued stop early; Reset replaces it.
+    private volatile CancellationTokenSource _loadLifetime = new();
     private readonly Lock _seekCompletionGate = new();
     private readonly Lock _queuedSeekGate = new();
     private QueuedSeek? _queuedSeek;
@@ -47,7 +58,9 @@ public partial class MediaControlPlayer : IMediaControlSession
     private PendingSeek? _pendingSeek;
     private int _hasPendingSeek;
     private int _resetting;
-    private bool _disposed;
+    // A rebuild freed the graph and failed to build the next one: nothing in the fields is live.
+    private bool _sessionGraphFreed;
+    private volatile bool _disposed;
 
     public MediaControlPlayer(
         IMediaControlPlatformFactory platformFactory,
@@ -70,6 +83,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             // and the static diagnostic subscription that would keep this instance alive.
             DisposeCore();
             try { _controlOperations?.Dispose(); } catch { }
+            _diagnosticEvents.Dispose();
             throw;
         }
 
@@ -217,35 +231,122 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     public TimeSpan Duration => TimeSpan.FromSeconds(_mediaEngine.Duration);
 
-    public bool Load(string path) => ExecuteControlOperation(() => File.Load(path));
+    public bool Load(string path) => Load(path, ignoreSidecar: false);
 
-    public bool Load(string path, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, ignoreSidecar));
+    public bool Load(string path, bool ignoreSidecar = false) =>
+        LoadOnQueue(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar);
 
-    public bool Load(MediaInputSource source, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(source, ignoreSidecar));
+    public bool Load(MediaInputSource source, bool ignoreSidecar = false) =>
+        LoadOnQueue(() => source, static () => null, ignoreSidecar);
 
-    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, backgroundPath, ignoreSidecar));
+    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) =>
+        LoadOnQueue(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar);
 
-    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) => ExecuteControlOperation(() => File.Load(path, backgroundPaths, ignoreSidecar));
+    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
+        LoadOnQueue(() => MediaInputSource.FromFile(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar);
 
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        ExecuteControlOperation(() => File.Load(source, backgroundSource, ignoreSidecar));
+        LoadOnQueue(() => source, () => backgroundSource, ignoreSidecar);
 
-    public Task<bool> LoadAsync(string path) => EnqueueControlOperation(() => File.LoadAsync(path));
+    public Task<bool> LoadAsync(string path) => LoadAsync(path, ignoreSidecar: false);
 
     public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
-        EnqueueControlOperation(() => File.LoadAsync(path, ignoreSidecar));
+        EnqueueLoad(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
-        EnqueueControlOperation(() => File.LoadAsync(source, ignoreSidecar));
+        EnqueueLoad(() => source, static () => null, ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        EnqueueControlOperation(() => File.LoadAsync(path, backgroundPath, ignoreSidecar));
+        EnqueueLoad(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        EnqueueControlOperation(() => File.LoadAsync(path, backgroundPaths, ignoreSidecar));
+        EnqueueLoad(() => MediaInputSource.FromFile(path), () => MediaFile.SelectExplicitBackground(backgroundPaths), ignoreSidecar, CancellationToken.None);
 
     public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        EnqueueControlOperation(() => File.LoadAsync(source, backgroundSource, ignoreSidecar));
+        EnqueueLoad(() => source, () => backgroundSource, ignoreSidecar, CancellationToken.None);
+
+    /// <summary>
+    /// Loads <paramref name="path"/> on the control queue; <paramref name="cancellationToken"/> cancels
+    /// the load (ENG-024). See <see cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>.
+    /// </summary>
+    public Task<bool> LoadAsync(string path, CancellationToken cancellationToken) =>
+        LoadAsync(path, ignoreSidecar: false, cancellationToken);
+
+    /// <inheritdoc cref="LoadAsync(string, CancellationToken)"/>
+    public Task<bool> LoadAsync(string path, bool ignoreSidecar, CancellationToken cancellationToken) =>
+        EnqueueLoad(() => MediaInputSource.FromFile(path), static () => null, ignoreSidecar, cancellationToken);
+
+    /// <inheritdoc cref="LoadAsync(string, CancellationToken)"/>
+    public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar, CancellationToken cancellationToken) =>
+        EnqueueLoad(() => MediaInputSource.FromFile(path), () => FileBackground(backgroundPath), ignoreSidecar, cancellationToken);
+
+    /// <inheritdoc cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>
+    public Task<bool> LoadAsync(MediaInputSource source, CancellationToken cancellationToken) =>
+        EnqueueLoad(() => source, static () => null, ignoreSidecar: false, cancellationToken);
+
+    /// <summary>
+    /// Loads media on the control queue with a cancellation token (ENG-024). Cancelled while it
+    /// waits in the queue, it is skipped when its turn comes and nothing changes. Cancelled during
+    /// the open, the open stops where it can (network retry delays end at once; a connect attempt
+    /// in progress finishes first, at most <see cref="NetworkRetryPolicy.ConnectTimeout"/>), the
+    /// previous media is already closed, and the player ends closed. Either way the task is
+    /// cancelled. Cancelled after the media loaded, the load stands (the task returns
+    /// <see langword="true"/>) and only the <see cref="PlayOnLoad"/> start is skipped.
+    /// <see cref="Reset"/> and <see cref="Dispose()"/> cancel loads in progress or queued; such a load
+    /// returns <see langword="false"/>, as from the overloads without a token.
+    /// </summary>
+    public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken) =>
+        EnqueueLoad(() => source, () => backgroundSource, ignoreSidecar, cancellationToken);
+
+    private static MediaInputSource? FileBackground(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? null : MediaInputSource.FromFile(path);
+
+    /// <summary>A synchronous load: on the caller's thread in its queue turn, cancelled only by Reset or Dispose.</summary>
+    private bool LoadOnQueue(Func<MediaInputSource> source, Func<MediaInputSource?> backgroundSource, bool ignoreSidecar) =>
+        ExecuteControlOperation(() =>
+        {
+            CancellationToken lifetime = _loadLifetime.Token;
+            try
+            {
+                return File.Load(source(), backgroundSource(), ignoreSidecar, lifetime);
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+            {
+                return false;
+            }
+        });
+
+    private Task<bool> EnqueueLoad(
+        Func<MediaInputSource> source,
+        Func<MediaInputSource?> backgroundSource,
+        bool ignoreSidecar,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromCanceled<bool>(cancellationToken);
+
+        return EnqueueControlOperation(async () =>
+        {
+            // Read when the load runs: a Reset replaces the lifetime (and File) after cancelling it.
+            CancellationToken lifetime = _loadLifetime.Token;
+            using CancellationTokenSource? linked = cancellationToken.CanBeCanceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(lifetime, cancellationToken)
+                : null;
+            try
+            {
+                return await File.LoadAsync(source(), backgroundSource(), ignoreSidecar, linked?.Token ?? lifetime).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && lifetime.IsCancellationRequested)
+            {
+                // Cancelled by Reset or Dispose, not by the caller.
+                return false;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+        });
+    }
 
     public bool Play() => ExecuteControlOperation(() => Controls.Play());
 
@@ -313,8 +414,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             _queuedSeek = queued;
         }
 
-        // Queued outside _queuedSeekGate: a synchronous Seek holds the admission gate while it
-        // waits for its turn, so taking that gate under ours could deadlock with the worker.
+        // Queued outside _queuedSeekGate: the admission gate is never taken under it.
         Task<bool> enqueued;
         try
         {
@@ -463,22 +563,35 @@ public partial class MediaControlPlayer : IMediaControlSession
         _presentationCoordinator.RefreshCurrentPosition();
     }
 
-    public void Close() => ExecuteControlOperation(() =>
+    public void Close()
     {
-        File.Close();
-        return true;
-    });
+        CancelPendingNetworkOpen();
+        _ = ExecuteControlOperation(() =>
+        {
+            File.Close();
+            return true;
+        });
+    }
 
+    /// <summary>
+    /// Runs a synchronous API call in its queue turn on the caller's thread. Only taking the turn is
+    /// under the admission gate; the wait for it and the operation are not (ENG-024), so a long
+    /// synchronous call never blocks asynchronous callers, which only queue.
+    /// </summary>
     private T ExecuteControlOperation<T>(Func<T> operation)
     {
-        ThrowIfResetting();
+        MediaControlOperationQueue.ExclusiveTurn turn;
         lock (_operationAdmissionGate)
         {
             ThrowIfResetting();
-            return _controlOperations.Execute(operation);
+            turn = _controlOperations.BeginExclusiveTurn();
         }
+
+        return turn.Run(operation);
     }
 
+    // The admission gate is held only to check the lifecycle and write to the queue, never for
+    // the operation: an async call never waits for a long one.
     private Task<T> EnqueueControlOperation<T>(Func<T> operation)
     {
         ThrowIfResetting();
@@ -620,6 +733,10 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         lock (_surfaceGate)
         {
+            // A Dispose that gave up waiting for this rebuild has released the surfaces already.
+            if (_disposed)
+                return;
+
             KeyValuePair<string, MediaPresentationSurfaceDescriptor>[] held = [.. _presentationSurfaces];
             _presentationSurfaces.Clear();
             _surfacesHeld = false;
@@ -638,6 +755,28 @@ public partial class MediaControlPlayer : IMediaControlSession
         }
     }
 
+    /// <summary>
+    /// Detaches every surface from the coordinator and forgets it, as the host's own detach calls
+    /// would (they are not serialized with control operations either).
+    /// </summary>
+    private void DetachPresentationSurfacesForDispose()
+    {
+        lock (_surfaceGate)
+        {
+            if (!_surfacesHeld)
+            {
+                foreach (var surfaceId in _presentationSurfaces.Keys.ToArray())
+                {
+                    try { _ = _presentationCoordinator.DetachPresentationSurface(surfaceId); }
+                    catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Detaching surface {surfaceId} failed: {ex.Message}"); }
+                }
+            }
+
+            _presentationSurfaces.Clear();
+            _surfacesHeld = true;
+        }
+    }
+
     private static string[] ResolveNativeLibraryPaths(IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedPaths = nativeLibraryPaths
@@ -653,35 +792,100 @@ public partial class MediaControlPlayer : IMediaControlSession
         return resolvedPaths;
     }
 
+    /// <summary>
+    /// How long <see cref="Reset"/> waits for the operation in progress (after cancelling loads)
+    /// before it gives up and returns <see langword="false"/>.
+    /// </summary>
+    internal TimeSpan ResetWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long <see cref="Dispose()"/> waits for the operation in progress (after cancelling loads)
+    /// before it returns and leaves the teardown to the control queue.
+    /// </summary>
+    internal TimeSpan DisposeWaitTimeout { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Frees the session graph and builds a new one from <paramref name="configuration"/>; the
+    /// surfaces are kept and reattached, nothing is loaded, and the runtime settings (volume, pitch,
+    /// tempo, normalization, equalizer, loop, base visual transform, display options) start from their
+    /// defaults again. Each of those that had changed raises its change event once, on the control
+    /// queue after Reset returns (ENG-024).
+    /// </summary>
+    /// <remarks>
+    /// Threading (ENG-024): blocks the caller. Loads in progress or queued are cancelled (they return
+    /// <see langword="false"/>); Reset then waits for the operations queued before it, at most 5 s.
+    /// If they have not finished by then (a network connect attempt in progress), Reset gives up,
+    /// raises a Warning diagnostic and returns <see langword="false"/>: nothing was rebuilt and the
+    /// player is usable. Calls made while it runs throw <see cref="InvalidOperationException"/>.
+    /// It throws <see cref="InvalidOperationException"/> from inside a control operation or an event
+    /// handler raised in one (it would wait for itself); schedule it after the handler returns.
+    /// When the new graph cannot be built it throws, and the player stays rebuildable: control calls
+    /// throw <see cref="ObjectDisposedException"/> until a later Reset succeeds.
+    /// </remarks>
     public bool Reset(MediaPlayerConfiguration configuration, IEnumerable<string> nativeLibraryPaths)
     {
         var resolvedNativeLibraryPaths = ResolveNativeLibraryPaths(nativeLibraryPaths);
-        lock (_operationAdmissionGate)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_controlOperations.IsExecutingOperation)
+            throw new InvalidOperationException("Reset cannot run from inside a media control operation or event handler.");
+
+        ResetChanges? changes;
+        lock (_lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            MediaControlOperationQueue oldOperations = _controlOperations;
-            if (oldOperations.IsExecutingOperation)
-                throw new InvalidOperationException("Reset cannot run from inside a media control operation or event handler.");
+            MediaControlOperationQueue oldOperations;
+            MediaControlOperationQueue.ExclusiveTurn turn;
+            lock (_operationAdmissionGate)
+            {
+                oldOperations = _controlOperations;
+                if (oldOperations.IsExecutingOperation)
+                    throw new InvalidOperationException("Reset cannot run from inside a media control operation or event handler.");
 
-            Volatile.Write(ref _resetting, 1);
+                turn = oldOperations.BeginExclusiveTurn();
+                Volatile.Write(ref _resetting, 1);
+            }
+
+            var turnTaken = false;
             try
             {
-                return oldOperations.Execute(() => ResetCore(configuration, resolvedNativeLibraryPaths));
+                _loadLifetime.Cancel();
+                if (!turn.TryWait(ResetWaitTimeout))
+                {
+                    // Nothing was torn down. Loads queued from now on are not cancelled.
+                    _loadLifetime = new CancellationTokenSource();
+                    using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(this);
+                    DiagnosticRouter.Raise(
+                        MediaDiagnosticLevel.Warning,
+                        "MediaControlPlayer",
+                        $"Reset gave up after {ResetWaitTimeout.TotalSeconds:0.#} s waiting for the operation in progress; the player was not reset.");
+                    return false;
+                }
+
+                turnTaken = true;
+                changes = turn.Run(() => ResetCore(configuration, resolvedNativeLibraryPaths));
             }
             finally
             {
-                oldOperations.Dispose();
+                if (turnTaken)
+                    oldOperations.Dispose();
                 Volatile.Write(ref _resetting, 0);
             }
         }
+
+        RaiseResetChanges(changes);
+        return true;
     }
 
-    private bool ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
+    private ResetChanges? ResetCore(MediaPlayerConfiguration configuration, IReadOnlyList<string> resolvedNativeLibraryPaths)
     {
         // Discard the prepared-next item (its analysis ran on the old engine).
         try { ClearPreparedNextForLifecycle(); } catch { }
+        // After a failed Reset there is no live graph to compare with.
+        ResetChanges? before = _sessionGraphFreed ? null : TryCaptureResetChanges();
+        // Loads queued behind Reset run on the new graph and must not inherit the cancellation.
+        _loadLifetime = new CancellationTokenSource();
         RebuildSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue: false, restoreSettings: null);
-        return true;
+        return before;
     }
 
     /// <summary>
@@ -708,6 +912,8 @@ public partial class MediaControlPlayer : IMediaControlSession
         TearDownSessionGraph();
 
         MediaControlOperationQueue oldOperations = _controlOperations;
+        (object Services, IMediaEngine Engine, IMediaPresentationCoordinator Coordinator, MediaControls Controls) freed =
+            (_serviceProvider, _mediaEngine, _presentationCoordinator, Controls);
         try
         {
             CreateSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue ? oldOperations : null, restoreSettings);
@@ -719,8 +925,21 @@ public partial class MediaControlPlayer : IMediaControlSession
             // when Reset returns). Until then control calls fail with ObjectDisposedException.
             if (!keepOperationQueue && ReferenceEquals(_controlOperations, oldOperations))
                 _controlOperations = new MediaControlOperationQueue("MediaControl");
+
+            // Free what the failed build created; the rest was freed above, so neither a retried
+            // rebuild nor Dispose frees it again (ENG-024).
+            if (!ReferenceEquals(Controls, freed.Controls))
+                try { Controls.Dispose(); } catch { }
+            if (!ReferenceEquals(_presentationCoordinator, freed.Coordinator))
+                try { _presentationCoordinator.Dispose(); } catch { }
+            if (!ReferenceEquals(_mediaEngine, freed.Engine))
+                try { _mediaEngine.Dispose(); } catch { }
+            if (!ReferenceEquals(_serviceProvider, freed.Services))
+                try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
             throw;
         }
+
+        _sessionGraphFreed = false;
 
         ApplyVideoFrameTiming();
         ReattachHeldPresentationSurfaces();
@@ -730,6 +949,11 @@ public partial class MediaControlPlayer : IMediaControlSession
     /// <summary>Stops and closes the media, unsubscribes, and disposes the session graph.</summary>
     private void TearDownSessionGraph()
     {
+        HoldPresentationSurfaces();
+        if (_sessionGraphFreed)
+            return;
+
+        _sessionGraphFreed = true;
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.OnScrubEnded(); } catch { }
         try { File.Close(); } catch { }
@@ -754,7 +978,6 @@ public partial class MediaControlPlayer : IMediaControlSession
         catch { }
 
         StopAudioDeviceMonitor();
-        HoldPresentationSurfaces();
 
         try { Controls.Dispose(); } catch { }
         try { _presentationCoordinator.Dispose(); } catch { }
@@ -853,22 +1076,60 @@ public partial class MediaControlPlayer : IMediaControlSession
             control.FrameTiming = _videoFrameTiming;
     }
 
+    /// <summary>
+    /// Stops playback and frees the player.
+    /// </summary>
+    /// <remarks>
+    /// Threading (ENG-024): loads in progress or queued are cancelled (they return
+    /// <see langword="false"/>), then Dispose waits for the operations queued before it, at most
+    /// 2 s, and tears down on the caller's thread. If they have not finished by then (a network
+    /// connect attempt in progress), Dispose detaches the surfaces and returns: the player rejects
+    /// every call from then on, and the teardown runs on the control queue as soon as that operation
+    /// ends, so the engine may be freed shortly after Dispose returned. It throws
+    /// <see cref="InvalidOperationException"/> from inside a control operation or an event handler
+    /// raised in one (it would wait for itself); a UI-thread callback or task started there runs
+    /// outside it once the handler returned, and may dispose. Calling it again does nothing.
+    /// </remarks>
     public void Dispose()
     {
-        lock (_operationAdmissionGate)
+        if (_disposed)
+            return;
+
+        if (_controlOperations.IsExecutingOperation)
+            throw new InvalidOperationException("Dispose cannot run from inside a media control operation or event handler.");
+
+        // A network open or read blocked inside FFmpeg is aborted first, so teardown does not wait
+        // for its timeout (039A).
+        CancelPendingNetworkOpen();
+
+        lock (_lifecycleGate)
         {
             if (_disposed)
                 return;
 
-            MediaControlOperationQueue operations = _controlOperations;
-            if (operations.IsExecutingOperation)
-                throw new InvalidOperationException("Dispose cannot run from inside a media control operation or event handler.");
+            MediaControlOperationQueue operations;
+            MediaControlOperationQueue.ExclusiveTurn turn;
+            lock (_operationAdmissionGate)
+            {
+                operations = _controlOperations;
+                if (operations.IsExecutingOperation)
+                    throw new InvalidOperationException("Dispose cannot run from inside a media control operation or event handler.");
 
-            Volatile.Write(ref _resetting, 1);
+                turn = operations.BeginExclusiveTurn();
+                Volatile.Write(ref _resetting, 1);
+            }
+
+            try { _loadLifetime.Cancel(); } catch { }
+            if (!turn.TryWait(DisposeWaitTimeout))
+            {
+                DisposeLater(operations);
+                return;
+            }
+
             var teardownRan = false;
             try
             {
-                _ = operations.Execute(() =>
+                _ = turn.Run(() =>
                 {
                     teardownRan = true;
                     DisposeCore();
@@ -885,9 +1146,48 @@ public partial class MediaControlPlayer : IMediaControlSession
             {
                 operations.Dispose();
                 _disposed = true;
+                // The teardown's own diagnostics are delivered (bounded); nothing after this.
+                _diagnosticEvents.Dispose();
                 GC.SuppressFinalize(this);
             }
         }
+    }
+
+    /// <summary>
+    /// Dispose gave up waiting (ENG-024): reject calls now, free the host's surfaces now (the host may
+    /// destroy their windows), and tear down on the queue once the operation in progress ends.
+    /// </summary>
+    private void DisposeLater(MediaControlOperationQueue operations)
+    {
+        _disposed = true;
+        GC.SuppressFinalize(this);
+        using (DiagnosticRouter.EnterOwner(this))
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "MediaControlPlayer",
+                $"Dispose did not get its turn within {DisposeWaitTimeout.TotalSeconds:0.#} s; the player is closed and finishes freeing itself when the operation in progress ends.");
+        }
+
+        // That warning is the last diagnostic the host sees: the operation still running and the
+        // deferred teardown below belong to a disposed player.
+        _diagnosticEvents.Dispose();
+
+        DetachPresentationSurfacesForDispose();
+        _ = operations.Enqueue(() =>
+        {
+            try
+            {
+                DisposeCore();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MediaControlPlayer] Deferred dispose failed: {ex.Message}");
+            }
+
+            // From inside its own operation, the queue finishes after this returns.
+            operations.Dispose();
+        });
     }
 
     private void DisposeCore()
@@ -901,6 +1201,10 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.Dispose(); } catch { }
+        if (_sessionGraphFreed)
+            return;
+
+        _sessionGraphFreed = true;
         try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }

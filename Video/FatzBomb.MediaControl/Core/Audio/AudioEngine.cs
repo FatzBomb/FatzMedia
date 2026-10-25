@@ -2,6 +2,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio.Fade;
 using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Network;
+using FatzBomb.MediaControl.Core.Threading;
 using ManagedBass;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -745,6 +746,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             MBass.NetTimeOut = (int)_networkRetry.ConnectTimeout.TotalMilliseconds;
             MBass.NetReadTimeOut = (int)_networkRetry.ConnectTimeout.TotalMilliseconds;
 
+            // ENG-024: the load's cancellation (the host's token, the player's Reset or Dispose)
+            // ends the retry delays and skips further attempts; a connect in progress finishes.
+            CancellationToken cancellation = MediaOpenCancellation.Current;
             var success = false;
             for (var attempt = 1; attempt <= _networkRetry.MaxAttempts; attempt++)
             {
@@ -752,9 +756,15 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 {
                     var delay = _networkRetry.GetDelayBeforeRetry(attempt - 1);
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioEngine", $"Network retry {attempt - 1}/{_networkRetry.MaxRetries} in {delay.TotalSeconds:F1}s", sourcePath: url);
-                    Thread.Sleep(delay);
+                    _ = cancellation.WaitHandle.WaitOne(delay);
                     if (_disposed)
                         return false;
+                }
+
+                if (cancellation.IsCancellationRequested)
+                {
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", "Network open cancelled", sourcePath: url);
+                    return false;
                 }
 
                 success = _streamManager.OpenFromUrl(url);

@@ -1,17 +1,19 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
 /// <summary>
-/// Vulkan renderer backend, preview slices 1-2: one primary managed BGRA frame-sink surface,
-/// GPU clear, background blit, wash and CDG overlay draws, CPU readback into the sink. Stage 027A
-/// slice 2 adds the shared GPU image surface: the composed frame is blitted into one of two
-/// exported images (opaque POSIX descriptors, optional exported semaphores) that the UI
-/// compositor imports, with no readback.
-/// Window-system swapchains, subtitles, base-visual transforms, native video resources, and
-/// multi-target fan-out are later slices; frames that need them are rejected with a diagnostic
-/// instead of being drawn incorrectly.
+/// Vulkan renderer backend, preview slices 1-2: managed BGRA frame-sink surfaces, GPU clear,
+/// background blit, wash and CDG overlay draws, CPU readback into each sink. Stage 027A slice 2
+/// adds the shared GPU image surface: the composed frame is blitted into one of two exported
+/// images (opaque POSIX descriptors, optional exported semaphores) that the UI compositor
+/// imports, with no readback. Stage 027A slice 5: any number of surfaces, of any role, each of
+/// either kind; every composition is rendered once per target at the target's size.
+/// Window-system swapchains, subtitles, base-visual transforms and native video resources are
+/// later slices; frames that need them are rejected with a diagnostic instead of being drawn
+/// incorrectly.
 /// </summary>
 internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
 {
@@ -22,13 +24,10 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     // down mid-frame. Lock order: _renderGate, then _sync.
     private readonly Lock _renderGate = new();
     private VulkanOffscreenCompositor? _compositor;
-    private MediaPresentationSurfaceDescriptor? _surface;
-    private IMediaPresentationFrameSink? _sink;
-    private IMediaSharedGpuImageConsumer? _consumer;
-    private SharedTarget? _shared;
+
+    // Attached surfaces by id (guarded by _sync): the primary plus any secondary screens.
+    private readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
     private long _sharedGeneration;
-    private int _recreateShared;
-    private bool _dropReported;
     private VulkanFrameSupport _lastReportedUnsupported = VulkanFrameSupport.Supported;
     private bool _disposed;
 
@@ -79,7 +78,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     public bool SetSurfaceLiveResize(MediaPresentationSurfaceDescriptor surface, bool isResizing)
     {
         lock (_sync)
-            return !_disposed && _surface?.Id == surface.Id;
+            return !_disposed && _targets.ContainsKey(surface.Id);
     }
 
     public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)
@@ -88,13 +87,10 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                if (_disposed || _surface?.Id != surface.Id)
+                if (_disposed || !_targets.Remove(surface.Id, out Target? target))
                     return false;
 
-                _surface = null;
-                _sink = null;
-                _consumer = null;
-                RetireSharedNoLock();
+                RetireSharedNoLock(target);
                 return true;
             }
         }
@@ -115,18 +111,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     public bool PresentComposition(MediaCompositionFrame frame)
     {
         VulkanOffscreenCompositor? compositor;
-        IMediaPresentationFrameSink? sink;
-        int width;
-        int height;
+        Target[] targets;
         lock (_sync)
         {
-            if (_disposed || _surface is null || (_sink is null && _consumer is null) || !Initialize())
+            if (_disposed || _targets.Count == 0 || !Initialize())
                 return false;
 
             compositor = _compositor;
-            sink = _sink;
-            width = _surface.PixelWidth;
-            height = _surface.PixelHeight;
+            targets = [.. _targets.Values];
         }
 
         VulkanFrameSupport support = VulkanCompositionPlanner.Classify(frame);
@@ -136,45 +128,107 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             return false;
         }
 
-        if (sink is null)
-            return PresentShared(frame, compositor!, width, height);
+        // As Direct3D11 and the software renderer do: with a primary attached, success is the
+        // primary's present, so a secondary that presented never hides a failed primary frame.
+        var primaryExpected = false;
+        var primaryPresented = false;
+        var anyPresented = false;
+        var anyIncluded = false;
+        foreach (Target target in targets)
+        {
+            var isPrimary = target.Surface.Role == MediaPresentationSurfaceRole.Primary;
+            // A composition for some targets only (display-locked video on several monitors).
+            if (!frame.IsForTarget(isPrimary, target.Surface.Id))
+                continue;
 
-        var deviceLost = false;
+            anyIncluded = true;
+            PresentResult result = target.Consumer is not null
+                ? PresentShared(frame, compositor!, target)
+                : PresentSink(frame, compositor!, target);
+            if (result == PresentResult.DeviceLost)
+            {
+                CleanupResources();
+                return false;
+            }
+
+            // Detached since this frame began: not a target of it any more.
+            if (result == PresentResult.Detached)
+                continue;
+
+            primaryExpected |= isPrimary;
+            var presented = result == PresentResult.Presented;
+            primaryPresented |= isPrimary && presented;
+            anyPresented |= presented;
+        }
+
+        // A filter that matches no attached target (its surface just detached) is nothing to do.
+        if (!anyIncluded)
+            return frame.Targets is not null;
+
+        var succeeded = primaryExpected ? primaryPresented : anyPresented;
+        if (succeeded)
+        {
+            _renderFailureLatch.Reset();
+            FramePresented?.Invoke(this, EventArgs.Empty);
+        }
+        return succeeded;
+    }
+
+    private readonly RendererDiagnosticLatch _renderFailureLatch = new();
+
+    private enum PresentResult
+    {
+        Presented,
+        Failed,
+        Detached,
+        DeviceLost,
+    }
+
+    /// <summary>Renders at the target's size and reads the frame back into its sink.</summary>
+    private PresentResult PresentSink(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
+    {
         lock (_renderGate)
         {
+            IMediaPresentationFrameSink? sink;
+            int width;
+            int height;
             lock (_sync)
             {
+                if (!IsCurrentNoLock(target) || target.Sink is null)
+                    return PresentResult.Detached;
                 if (_disposed || !ReferenceEquals(_compositor, compositor))
-                    return false;
+                    return PresentResult.Failed;
+
+                sink = target.Sink;
+                width = target.Surface.PixelWidth;
+                height = target.Surface.PixelHeight;
             }
 
             try
             {
-                var pixels = compositor!.Render(VulkanCompositionPlanner.Plan(frame, width, height));
-                sink!.PresentFrame(pixels, width, height, width * 4);
+                var pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
+                sink.PresentFrame(pixels, width, height, width * 4);
+                return PresentResult.Presented;
             }
             catch (VulkanException exception)
             {
-                DiagnosticRouter.Raise(
-                    MediaDiagnosticLevel.Error,
-                    exception.IsDeviceLost ? DeviceLostDiagnosticCategory : "Vulkan",
-                    exception.Message,
-                    innerException: exception);
-                if (!exception.IsDeviceLost)
-                    return false;
-
-                deviceLost = true;
+                return ReportRenderFailure(exception);
             }
         }
+    }
 
-        if (deviceLost)
+    private PresentResult ReportRenderFailure(VulkanException exception)
+    {
+        // Device loss is always reported: it drives recovery. Other failures repeat per frame, so
+        // they are reported once until a frame presents again (ENG-026).
+        if (exception.IsDeviceLost)
         {
-            CleanupResources();
-            return false;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, exception.Message, innerException: exception);
+            return PresentResult.DeviceLost;
         }
 
-        FramePresented?.Invoke(this, EventArgs.Empty);
-        return true;
+        _ = _renderFailureLatch.Raise(MediaDiagnosticLevel.Error, "Vulkan", exception.Message, exception);
+        return PresentResult.Failed;
     }
 
     public void CleanupResources()
@@ -183,7 +237,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                RetireSharedNoLock();
+                // Surfaces stay attached: their shared images are exported again on the next frame.
+                foreach (Target target in _targets.Values)
+                    RetireSharedNoLock(target);
                 _compositor?.Dispose();
                 _compositor = null;
                 IsInitialized = false;
@@ -208,10 +264,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                     return;
 
                 _disposed = true;
-                _surface = null;
-                _sink = null;
-                _consumer = null;
-                RetireSharedNoLock();
+                foreach (Target target in _targets.Values)
+                    RetireSharedNoLock(target);
+                _targets.Clear();
                 _compositor?.Dispose();
                 _compositor = null;
                 IsInitialized = false;
@@ -234,13 +289,13 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA backgrounds, wash and CDG overlays are supported.");
     }
 
+    private bool IsCurrentNoLock(Target target) =>
+        _targets.TryGetValue(target.Surface.Id, out Target? current) && ReferenceEquals(current, target);
+
     private bool SetSurface(MediaPresentationSurfaceDescriptor surface, bool requireExisting)
     {
-        if (surface.Role == MediaPresentationSurfaceRole.Primary
-            && MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
-        {
+        if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
             return SetSharedSurface(surface, consumer!, requireExisting);
-        }
 
         if (!TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink? sink))
             return false;
@@ -249,16 +304,29 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                if (_disposed || (requireExisting && _surface?.Id != surface.Id))
+                if (_disposed || (requireExisting && !_targets.ContainsKey(surface.Id)))
                     return false;
 
-                RetireSharedNoLock();
-                _consumer = null;
-                _surface = surface;
-                _sink = sink;
+                Target target = GetOrAddTargetNoLock(surface);
+                RetireSharedNoLock(target);
+                target.Consumer = null;
+                target.Sink = sink;
                 return true;
             }
         }
+    }
+
+    private Target GetOrAddTargetNoLock(MediaPresentationSurfaceDescriptor surface)
+    {
+        if (_targets.TryGetValue(surface.Id, out Target? target))
+        {
+            target.Surface = surface;
+            return target;
+        }
+
+        target = new Target(surface);
+        _targets.Add(surface.Id, target);
+        return target;
     }
 
     /// <summary>
@@ -279,19 +347,27 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                if (_disposed || (requireExisting && _surface?.Id != surface.Id))
+                var existed = _targets.TryGetValue(surface.Id, out Target? target);
+                if (_disposed || (requireExisting && !existed))
                     return false;
 
-                if (!TryCreateSharedNoLock(consumer, surface.PixelWidth, surface.PixelHeight, out var reason))
+                // A resize keeps the target object, so a frame already under way still finds it.
+                target ??= new Target(surface);
+                target.Surface = surface;
+                target.Sink = null;
+                target.Consumer = consumer;
+                if (!TryCreateSharedNoLock(target, surface.PixelWidth, surface.PixelHeight, out var reason))
                 {
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images unavailable: {reason}");
+                    // The old images are retired; the surface is not served any more.
+                    if (existed)
+                        _ = _targets.Remove(surface.Id);
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images unavailable for '{surface.Id}': {reason}");
                     consumer.OnUnavailable(reason!);
                     return false;
                 }
 
-                _surface = surface;
-                _sink = null;
-                _consumer = consumer;
+                if (!existed)
+                    _targets.Add(surface.Id, target);
                 return true;
             }
         }
@@ -314,9 +390,10 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             canExportSemaphoreFd ? [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd] : []);
     }
 
-    private bool TryCreateSharedNoLock(IMediaSharedGpuImageConsumer consumer, int width, int height, out string? reason)
+    private bool TryCreateSharedNoLock(Target target, int width, int height, out string? reason)
     {
-        RetireSharedNoLock();
+        RetireSharedNoLock(target);
+        IMediaSharedGpuImageConsumer consumer = target.Consumer!;
         if (_compositor is not { } compositor)
         {
             reason = "no usable Vulkan device";
@@ -370,7 +447,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 // A render-complete signal nobody waited on would make the next signal invalid:
                 // start a fresh set instead. Releases of a retired set change nothing.
                 if (ring.Release(frame, consumed) && !consumed && semaphoreSync)
-                    Volatile.Write(ref _recreateShared, 1);
+                    Volatile.Write(ref target.RecreateShared, 1);
             },
             consumed =>
             {
@@ -385,98 +462,101 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 }
             },
             (int)VulkanOffscreenCompositor.ExportLayout);
-        _shared = new SharedTarget(exported, set, ring);
-        Volatile.Write(ref _recreateShared, 0);
-        _dropReported = false;
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images exported: {set}");
+        target.Shared = new SharedTarget(exported, set, ring);
+        Volatile.Write(ref target.RecreateShared, 0);
+        target.DropReported = false;
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images exported for '{target.Surface.Id}': {set}");
         consumer.OnImagesCreated(set);
         reason = null;
         return true;
     }
 
-    /// <summary>Renders into the next free exported image and announces it; drops the frame when the compositor holds both.</summary>
-    private bool PresentShared(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, int width, int height)
+    /// <summary>Renders into the target's next free exported image and announces it; drops the frame when the compositor holds both.</summary>
+    private PresentResult PresentShared(MediaCompositionFrame frame, VulkanOffscreenCompositor compositor, Target target)
     {
-        var deviceLost = false;
         lock (_renderGate)
         {
             SharedTarget? shared;
             IMediaSharedGpuImageConsumer? consumer;
+            int width;
+            int height;
             lock (_sync)
             {
-                if (_disposed || !ReferenceEquals(_compositor, compositor) || _consumer is null || _surface is null)
-                    return false;
+                if (!IsCurrentNoLock(target) || target.Consumer is null)
+                    return PresentResult.Detached;
+                if (_disposed || !ReferenceEquals(_compositor, compositor))
+                    return PresentResult.Failed;
 
-                // A resize may have landed since the caller read the size: export at the current one.
-                width = _surface.PixelWidth;
-                height = _surface.PixelHeight;
+                // Read under the lock: a resize may have landed since the frame was scheduled.
+                width = target.Surface.PixelWidth;
+                height = target.Surface.PixelHeight;
 
-                if (Volatile.Read(ref _recreateShared) != 0 || _shared is null || _shared.Images.Width != width || _shared.Images.Height != height)
+                if (Volatile.Read(ref target.RecreateShared) != 0 || target.Shared is null || target.Shared.Images.Width != width || target.Shared.Images.Height != height)
                 {
-                    if (!TryCreateSharedNoLock(_consumer, width, height, out var reason))
+                    if (!TryCreateSharedNoLock(target, width, height, out var reason))
                     {
-                        _consumer.OnUnavailable(reason!);
-                        return false;
+                        target.Consumer.OnUnavailable(reason!);
+                        return PresentResult.Failed;
                     }
                 }
 
-                shared = _shared!;
-                consumer = _consumer;
+                shared = target.Shared!;
+                consumer = target.Consumer;
             }
 
             if (!shared.Ring.TryBeginWrite(SharedImageWaitTimeout, out MediaSharedGpuImageWrite write))
             {
                 // The compositor still shows both images: it is behind (or not rendering), and a
                 // newer frame follows. Not a failure.
-                if (!_dropReported)
+                if (!target.DropReported)
                 {
-                    _dropReported = true;
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", "Shared GPU image frame dropped: the compositor has not released an image yet.");
+                    target.DropReported = true;
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU image frame dropped for '{target.Surface.Id}': the compositor has not released an image yet.");
                 }
 
-                return true;
+                return PresentResult.Presented;
             }
 
             try
             {
                 compositor.RenderToExport(VulkanCompositionPlanner.Plan(frame, width, height), shared.Images, write.BufferIndex, write.WaitForConsumerRelease);
                 consumer.OnFrameReady(shared.Ring.CompleteWrite(write.BufferIndex));
+                return PresentResult.Presented;
             }
             catch (VulkanException exception)
             {
                 shared.Ring.AbortWrite(write.BufferIndex);
-                DiagnosticRouter.Raise(
-                    MediaDiagnosticLevel.Error,
-                    exception.IsDeviceLost ? DeviceLostDiagnosticCategory : "Vulkan",
-                    exception.Message,
-                    innerException: exception);
-                if (!exception.IsDeviceLost)
-                    return false;
-
-                deviceLost = true;
+                return ReportRenderFailure(exception);
             }
         }
-
-        if (deviceLost)
-        {
-            CleanupResources();
-            return false;
-        }
-
-        FramePresented?.Invoke(this, EventArgs.Empty);
-        return true;
     }
 
-    private void RetireSharedNoLock()
+    private void RetireSharedNoLock(Target target)
     {
-        SharedTarget? shared = _shared;
-        _shared = null;
+        SharedTarget? shared = target.Shared;
+        target.Shared = null;
         if (shared is null)
             return;
 
         shared.Set.Retire();
         _compositor?.DestroyExportedImages(shared.Images, closeDescriptors: false);
         shared.Ring.Dispose();
+    }
+
+    /// <summary>
+    /// One attached surface: a frame sink, or a shared GPU image consumer with its exported set.
+    /// Mutable fields are guarded by the backend's locks (the release callback only sets
+    /// <see cref="RecreateShared"/>).
+    /// </summary>
+    private sealed class Target(MediaPresentationSurfaceDescriptor surface)
+    {
+        public int RecreateShared;
+
+        public MediaPresentationSurfaceDescriptor Surface { get; set; } = surface;
+        public IMediaPresentationFrameSink? Sink { get; set; }
+        public IMediaSharedGpuImageConsumer? Consumer { get; set; }
+        public SharedTarget? Shared { get; set; }
+        public bool DropReported { get; set; }
     }
 
     private sealed class SharedTarget(VulkanExportedImageSet images, MediaSharedGpuImageSet set, MediaSharedGpuImageRing ring)
@@ -491,7 +571,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     private static bool TryGetManagedFrameSink(MediaPresentationSurfaceDescriptor? surface, out IMediaPresentationFrameSink? sink)
     {
         sink = null;
-        return surface is { IsValid: true, Role: MediaPresentationSurfaceRole.Primary }
+        return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
             && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
             && MediaPresentationFrameSinkHandle.TryResolve(handle, out sink)

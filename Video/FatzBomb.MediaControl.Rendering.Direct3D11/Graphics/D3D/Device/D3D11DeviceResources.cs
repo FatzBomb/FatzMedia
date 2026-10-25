@@ -276,7 +276,8 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
         if (VideoDevice == null || VideoContext == null)
         {
-            Debug.WriteLine("[VorticeD3D11] D3D11 video processor unavailable; falling back to CPU texture uploads");
+            // Once per device: explains hardware video drawn through CPU uploads.
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", "Direct3D11 video processor unavailable; video frames are uploaded from the CPU.");
         }
         else if (configuration.EnableLogging)
         {

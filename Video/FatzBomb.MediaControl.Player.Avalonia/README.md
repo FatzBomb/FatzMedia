@@ -12,15 +12,24 @@ measuring rig for several players in one process.
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
   reason. `--surface=framesink` forces the frame sink, for comparison.
-- Open (file picker, filter from the engine), Play/Pause, Stop, seek bar, volume, pitch (-12..+12
-  semitones), tempo (50..200 %), loop.
+- Open (file picker, filter from the engine), a URL box with **URL...** for http/https sources (MP4/MKV
+  progressive or HLS `.m3u8`, Stage 039A; capabilities and buffering are logged), Play/Pause, Stop, seek bar,
+  volume, pitch (-12..+12 semitones), tempo (50..200 %), loop.
+- **Second screen** (Stage 027A slice 5): a box per player opens the adapter's
+  `SecondaryPresentationWindow` for that player, full screen on the screen given by
+  `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
+  screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
+  its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
 - A log panel per player: every `MediaDiagnostic` and `MediaError` event, newest first (500 entries).
+  **Copy log** puts the whole log, oldest first, on the clipboard (for a bug report).
 - **Players: 1-4** in the toolbar: that many independent players in a grid, each with its own engine,
   surface, file, transport and log. Changing the count or renderer recreates the players (files are not kept).
 - A status line per player: state, frames presented per second (from `PresentationFramePresented`), process CPU
   (share of all cores, plus cores used), managed memory (`GC.GetTotalMemory`) and working set, and the
   surface pixel size. CPU and memory are for the whole process, so they are the same on every line;
-  fps is per player. Sampled once a second.
+  fps is per player. Sampled once a second. The seek bar's 200 ms timer reads `State`, `Duration` and
+  `Position` off the UI thread (ENG-035), so an engine read that blocks or throws cannot freeze the
+  window: a read slower than 100 ms, blocked for a second, or failing is logged as a Warning.
 
 ## Run
 
@@ -35,8 +44,10 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 
 Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
 software; `direct3d11` in the Windows build only), `--surface=auto|framesink` (default auto),
-`--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--native=<dir>` (repeatable),
-and an optional media file for the first player. Each player's Mode box switches its mode on the fly
+`--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--second-screen=<n>`
+(1-based screen number; opens player 1's second screen there at startup, full screen),
+`--native=<dir>` (repeatable), and an optional media file or http/https URL for the first player
+(`--url=<http(s)://...>` does the same). Each player's Mode box switches its mode on the fly
 (`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.

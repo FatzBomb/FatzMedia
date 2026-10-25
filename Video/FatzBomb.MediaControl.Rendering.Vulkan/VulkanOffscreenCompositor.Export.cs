@@ -188,7 +188,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory (import)");
                 Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (import)");
 
-                readback = EnsureBuffer(ref _readbackBuffer, (ulong)width * (ulong)height * 4, BufferUsageFlags.TransferDstBit);
+                readback = EnsureBuffer(ref _readbackBuffer, (ulong)width * (ulong)height * 4, BufferUsageFlags.TransferDstBit, ReadbackMemoryPreferences);
                 Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
                 var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
                 Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
@@ -206,10 +206,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
                 var length = width * height * 4;
                 var pixels = new byte[length];
-                void* mapped;
-                Check(_vk.MapMemory(_device, readback.Value.Memory, 0, (ulong)length, 0, &mapped), "vkMapMemory");
-                new ReadOnlySpan<byte>(mapped, length).CopyTo(pixels);
-                _vk.UnmapMemory(_device, readback.Value.Memory);
+                ReadBack(readback.Value, pixels);
                 return pixels;
             }
             finally

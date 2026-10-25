@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-23
+Updated: 2026-10-25
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -27,60 +27,81 @@ Reported: 2026-10-18 (audit). Candidate for the FatzAudio stage (037A), which re
   still needs the player-level Reset.
 - `VideoAudioEngine` publishes position snapshots that mix raw and latency-corrected values.
 
-### ENG-022 - Subtitle content flag is never revoked
-
-Reported: 2026-10-18 (audit). `SubtitlePipeline` only ever adds `MediaContent.Subtitle`: turning
-subtitles off, or loading embedded tracks without selecting one (MIDI with lyrics hidden),
-leaves it set. The coordinator then runs its 75 Hz render loop for audio-only media and
-presents empty compositions on seeks, and `HasSubtitle`/`HasVisualContent` read true.
-Not fixed in the audit because the flag also means "tracks available" to the picker, and the
-render loop is decided at play: tying the coordinator to the selected track needs the
-coordinator to follow `ISubtitleEngine.CuesChanged` (start or stop the loop), or the flag
-split into "available" and "showing".
-
-### ENG-023 - Software-path compositions are built and presented unordered
-
-Reported: 2026-10-18 (audit; Likely, not reproduced). On the software path the coordinator builds
-a composition under its lock and presents it outside it; the video-frame thread and the render
-loop can overlap, so an older composition can be presented after a newer one and stay up while
-paused. Not a simple fix: per-target cadence (017A) presents compositions to target subsets,
-so "drop older" would wrongly skip one target's frame, and a separate build-and-present lock
-needs its order against the coordinator lock proven for every caller.
-
-### ENG-024 - Player API threading contract gaps
-
-Reported: 2026-10-18 (audit).
-- `Reset` silently reverts runtime settings (volume, pitch, tempo, EQ, loop...) to defaults and
-  raises no change events.
-- `Dispose`, `Reset` and the sync API block the calling (UI) thread with no bound; some
-  "Async" methods block too.
-- `Reset` is not serialized against surface attach/detach calls and some property reads.
-- The worker-context flag is an `AsyncLocal` and flows into child tasks, so a task started
-  from an event handler can bypass serialization or make `Dispose`/`Reset` throw wrongly.
-- Event delivery is inconsistent: some events swallow handler exceptions, others let them
-  escape onto engine threads.
-
 ### ENG-026 - Renderer robustness and per-frame costs (Direct3D11, Vulkan)
 
-Reported: 2026-10-18 (audit; perf items not measured).
-- Most D3D11 failure logs are `Debug.WriteLine`, compiled out of Release: route the ones a
-  user would need through `DiagnosticRouter` (latched, since some repeat per frame).
-- A secondary (projector) window resize recreates its swap chain instead of queuing
-  `ResizeBuffers` like the primary.
-- Per-frame allocations: a render-target view per target per frame, target snapshot lists and
-  LINQ in the backend set, the DirectComposition back buffer re-wrapped after every present.
-- The managed frame sink reallocates on resize churn; Vulkan readback memory may be uncached
-  and the background is re-uploaded every frame.
-- Post-process targets are never pruned for removed secondary windows.
+Reported: 2026-10-18 (audit; perf items not measured). Partly resolved: 2026-10-24, pending
+manual smoke; the items below "Still open" need a measurement on Windows first.
 
-### ENG-027 - Hardware decoding does not reserve extra pool surfaces
+Resolved (each re-checked against the code first):
+- **D3D11 failure logs.** Failures a user would need now go through `DiagnosticRouter` with a
+  per-site `RendererDiagnosticLatch` (Core, `Core/Graphics/Rendering`): one report per
+  episode, re-armed on the next success. Covered: `ResizeBuffers` and resize failures (native
+  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform and
+  overlay present/clear failures, frame-sink readback and creation failures, shared-texture
+  present failures and stuck-mutex re-exports (Info), composition layer upload/allocation
+  failures, per-target draw failures, the DirectComposition overlay draw, video processor blit
+  and hardware-frame failures, and the black clear of a new target. Raised once, unlatched:
+  the composition pipeline failure (it stops retrying), "video processor unavailable" (once per
+  device) and the legacy Discard swap-chain fallback (once per swap chain). The remaining
+  `Debug.WriteLine` calls are verbose traces (created/resized, periodic stats, skip reasons
+  already returned as `LastPresentFailureReason`).
+- **Secondary window resize** queues `ResizeBuffers` for the next frame boundary, as the primary
+  does (`D3D11PresentationBackendSet.ApplyPendingSecondaryResizes`, applied with the primary's
+  pending resize). Only when the resize throws is the swap chain re-created, as before.
+- **Per-frame allocations (D3D11).** Each backend owns a `D3D11TargetViewCache` for its target
+  texture, released before the texture is disposed or its swap chain resized; snapshots carry
+  it to the compositor, and the video processor's pre-blit clear has one too. The backend set
+  keeps secondaries in sorted lists and fills a caller's list (`CollectActiveTargetBackends`)
+  instead of `OrderBy`/iterators; the surface controller reuses its snapshot lists; the present
+  loop, `OwnsTexture`, `HasMultipleActiveTargets`, `CompositionTargetRegistry` and
+  `CompositionTargetPlan.ShouldPresentTarget` have no LINQ or capturing lambdas. DirectComposition
+  no longer calls `GetBuffer(0)` after every present: buffer 0 of a Direct3D 11 flip-model chain
+  always names the current back buffer (the native HWND backend already relied on this).
+- **Managed frame sink** keeps its readback buffer through re-creation (Core
+  `RetainedPixelBuffer`: grown as needed, replaced only below a quarter of its size); the
+  primary's is released when all surfaces are cleaned up, a secondary's when it is removed.
+- **Vulkan readback** prefers host-cached memory (cached+coherent, then cached with an
+  invalidate before the read, then coherent). lavapipe's only type is cached and coherent.
+- **Vulkan background** is uploaded once per change, keyed by the frame's `BackgroundRevision`,
+  its pixel buffer and the source image; other targets and repeated frames reuse it. Revision
+  -1 (unknown) always uploads.
+- **Post-process targets** of targets that are gone are released on the next composition
+  (`TargetResourcePruning.RetainOnly`).
 
-Reported: 2026-10-18 (audit; Suspected, needs Windows). The pipeline holds up to 12 cloned
-hardware frames plus the current one, each pinning a surface of FFmpeg's d3d11va pool, but
-`extra_hw_frames` is never set. If the pool (sized from the codec's reference needs) runs out,
-decoding fails with a surface-pool error that counts as a hardware failure. Fix to try: set
-`extra_hw_frames` to the pipeline's queue depth plus 2 before `avcodec_open2` on the hardware
-path, and check VRAM use at 4K.
+Tests: Portable `RendererResourcePolicyTests` (latch, pruning, buffer policy, registry);
+Vulkan `VulkanResourceReuseTests` (memory-type choice, cached readback on lavapipe, one upload
+for several targets, re-upload on new revision, buffer, size or unknown revision, two frame
+sinks sharing one upload); Windows CI `D3D11RendererCostTests` on WARP (view reuse until the
+target is re-created, readback buffer through resize churn, post-process target released after
+a secondary detaches). On the Linux Avalonia player (Vulkan on lavapipe, 1080p H.264, software
+decode) CPU and fps did not change measurably: 30 fps, 21-24 % of 4 cores with one screen,
+31-32 % with a second screen, before and after; lavapipe's upload is a memcpy beside software
+decoding and rasterisation.
+
+Still open (measure on Windows before changing):
+- The managed frame sink still re-creates its target and staging textures at every size of a
+  live resize. Measure: WPF composited mode, drag-resize a 1080p video window, watch
+  frame drops and the composition timings (`EnablePerformanceLogging`). A fix would render into a sub-rectangle of a
+  larger texture.
+- Two targets of the same size are composed separately (D3D11 and Vulkan). Measure GPU time per
+  frame with two same-size screens (PIX or the composition diagnostics) before sharing one
+  composition.
+- Smaller per-frame allocations remain: the compositor's drawn-target list, the target plan's
+  array, the registry capture's `Select`, and the services' present callback. Measure the gen0
+  rate with `dotnet-counters` during 60 fps playback before chasing them.
+- The non-coherent cached readback branch is unit-tested only. Measure readback time on a
+  discrete GPU (NVIDIA, AMD) with Vulkan frame sinks, before and after.
+
+Manual smoke (Windows, native DLLs in place):
+1. WPF player, native HWND mode, open the projector window and drag-resize it for a few
+   seconds: it keeps playing with no black flashes; the log shows no `D3D11` warnings.
+2. DirectComposition mode with a CD+G file (base and overlay layers): plays, resizes, pauses
+   and seeks as before; CPU no higher than before.
+3. WPF composited (frame-sink) mode: drag-resize the window; playback continues.
+4. Avalonia player, Direct3D11, `--second-screen`: both screens play, close and reopen the
+   second screen a few times with a whole-composition video effect on; memory does not grow.
+5. Avalonia player, `--renderer=vulkan` on a discrete GPU with `--surface=framesink`: plays;
+   note CPU against the previous build.
 
 ### ENG-028 - MIDI silent after the audit's DLS converter changes
 
@@ -149,7 +170,475 @@ line break only triggers when the previous syllable ends in a space. `MidiMetada
 label matching has no word boundary ("Songbird" gives title "bird"). FatzAudio has the same
 encoding gap, so this stays ours under 037A.
 
+### ENG-034 - Network video follow-ups (039A)
+
+Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none blocks the slice.
+- **HTTPS certificates are not verified.** Resolved 2026-10-25, pending Windows smoke.
+  Finding: FFmpeg 9 already defaults `tls_verify` to on (FFmpeg 8 defaulted it off), but its HLS
+  and DASH demuxers open segments with a fixed option subset, so a host's `tls_verify`/`ca_file`
+  never reached segments. The engine now sets `tls_verify=1` explicitly on every https open and,
+  through a wrapped `AVFormatContext.io_open` (`FfmpegTlsIoOpen`), on every nested playlist,
+  segment and key open. Hosts get `MediaPlayerConfiguration.NetworkTls` (`NetworkTlsPolicy`:
+  `AllowInvalidCertificates`, default false; `CertificateAuthorityFile`, a PEM passed as
+  `ca_file`). A rejected certificate fails the open with "certificate verification failed for
+  <host>: <FFmpeg TLS text> (<FFmpeg error>)" and is not retried. A build that cannot verify as
+  configured (OpenSSL on Windows or mbedTLS without a CA file; Schannel given a CA file) gets a
+  Warning diagnostic before connecting; verification is never turned off for it. Linux BtbN
+  OpenSSL: default roots from `/etc/ssl` (`SSL_CERT_FILE`/`SSL_CERT_DIR` honoured), host name
+  checked. Recommended Windows build (TqkLibrary LGPL3 9.0.2): Schannel, Windows store. BASS
+  (014A audio) exposes no certificate setting, so audio is unchanged; see
+  `docs/NATIVE_DEPENDENCIES.md` for the backend table and the Windows checks.
+- **Multi-variant HLS downloaded every variant.** Resolved 2026-10-25, pending Windows smoke.
+  Owner's smoke (`https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`, up to 1080p): long waits
+  after a seek and occasional stutter. Confirmed cause: FFmpeg's HLS (and DASH) demuxer fetches
+  segments for every variant whose streams are not discarded, and the picture cursor
+  (`SharedDemuxer`, not owned by `VideoDecoder`) discarded nothing. Fix: for network sources the
+  picture cursor plays one video rendition chosen by `NetworkVariantPolicy` (the highest
+  advertised bandwidth at or below 1080p; when all are taller, the smallest; an unknown height
+  counts as within the cap; the display size is not known at open) and discards every stream no
+  consumer registered (`SharedDemuxer.DiscardUnregisteredNetworkStreams`). The audio cursor picks
+  the audio of the same variant (`av_find_best_stream` with the chosen video as the related
+  stream, so its program; a shared `EXT-X-MEDIA` rendition belongs to each program that uses it)
+  and already discarded the rest. Local files are unchanged (FFmpeg's best streams, nothing
+  discarded on the shared cursor; embedded subtitles use their own demuxer). Measured on a local
+  3-variant master playlist (480p/720p/1080p, 2 s segments, 150 ms server delay per segment):
+  segment requests after the open went from every variant (playback 2/2/2, two seeks 8/8/8) to
+  the 1080p variant only (2, 8); seek latency 916-929 ms before, 307-325 ms after. The open's
+  probe still reads the first segments of every variant (2 each), which `avformat_find_stream_info`
+  needs to describe them. No adaptive switching: the variant stays fixed for the session.
+- **Two connections per network video with sound.** As for local video, `VideoAudioEngine`
+  reads on its own cursor, so a progressive file or an HLS VOD is downloaded twice, and a live
+  HLS playlist can start the two connections one segment apart (audio/video offset up to one
+  target duration). A shared cursor (`SharedDemuxer` fan-out) for network sources is the fix; it
+  needs BASS to verify, which the Linux sandbox lacks.
+- **Pause and Stop during a stall wait for the read.** Close/Dispose abort a blocked network read,
+  and since ENG-035 a newer seek gives up the read or seek of the older one; Pause and Stop still
+  join the decode thread, so during a stall they can take up to the read timeout
+  (`ConnectTimeout`, 15 s by default).
+- **A network seek downloads its target twice.** A lone seek runs a preview `SeekCore` and then the
+  settle `SeekCore` for the same target (SeekPump), and each repositions both cursors, so an HLS
+  seek fetches the target segment twice (ENG-035 measurements: 0.6-1.4 s per seek at 150-1000 ms
+  per segment). Settling on the preview's position when the target did not change would halve it.
+- **Live progressive streams are not reconnected mid-stream.** FFmpeg reconnects a streamed (no
+  range) source from byte 0, so `reconnect_streamed` stays off; a dropped live MPEG-TS-over-HTTP
+  stream ends. HLS live recovers through its playlist reloads.
+- **A moov-at-end MP4 needs a range-capable server.** Without `Accept-Ranges` FFmpeg cannot seek
+  back from the index to the media data: the load succeeds (NetworkFile, not seekable) and the
+  first read ends the stream (`Network read failed`). Faststart MP4s, MKV and TS stream fine from
+  such servers. A clearer open-time failure is possible (probe a first packet before reporting
+  the open).
+- **Audio-only HLS does not play.** `.m3u8` classifies as video, and the video path needs a
+  video stream ("No playable video stream"); the Audio hint sends it to BASS, which has no HLS
+  support without its add-on. An FFmpeg audio path for network sources (or a fallback from the
+  video open) would cover it.
+- **Network soundtrack buffering (Audio mode) is coarse.** `SoundtrackAudioEngine` reports fill 0
+  while its read is stalled and 1 otherwise, since the BASS push buffer level is not readable
+  without the engine lock.
+
+Code review 2026-10-25 (batch PR), not fixed:
+- `NetworkTlsRules.IsCertificateFailure` treats any `[tls @` log line mentioning "certificate" or
+  "verify" as a certificate rejection, so an unrelated TLS warning followed by a transient failure
+  is reported as a certificate failure and not retried. Tighten it once each backend's real
+  messages are captured (Schannel on Windows, OpenSSL here).
+- The BASS network-audio retry loop (`AudioEngine`) duplicates `NetworkOpenRetry.Run`; the two
+  differ (audio always waits the delay). Fold audio into the shared helper when 037A touches it.
+- Reset leaves the previous `_loadLifetime` CancellationTokenSource undisposed (one per Reset);
+  disposing it on the timeout path is unsafe while the running open may still wait on it.
+
 ## Completed
+
+### ENG-035 - Network seeks blocked the host's UI thread
+
+Resolved: 2026-10-25, pending Windows smoke (steps below).
+
+Reported: 2026-10-25, owner's Windows smoke of PR #13 (head 89209e8): Avalonia test player,
+`--url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8` (multi-variant HLS up to 1080p),
+Direct3D11, BASS present. The first seek worked after a delay; on the second the whole window
+froze and had to be ended from Task Manager. The player seeks with `SeekAsync` on release and
+reads `State`, `Duration` and `Position` every 200 ms on the UI thread.
+
+Findings (three locks held across network I/O, and seeks that could not be cut short):
+- **`Position` waited for the audio cursor's downloads (BASS; read in the code, the most likely
+  cause of the freeze).** `VideoAudioEngine` held its `_sync` lock across every packet read and
+  container seek of its own network cursor: the decode loop's reads, `Seek` (`av_seek_frame`) and
+  the post-seek `PrebufferAudio` (up to 4096 reads, from the segment start to the target: the audio
+  cursor downloads the whole muxed TS of the 1080p variant). `Position`, `Normalize` and the
+  volume, pitch and tempo setters take `_sync`, so the UI timer's `Position` read blocked for every
+  segment download after a seek, and for the read timeout (15 s) on a stalled segment.
+- **The redraw after a seek waited for the seek's downloads (reproduced).** `SeekCore` holds the
+  presentation and decode locks while it decodes to the target, which for a network source
+  includes downloading segments. `RenderCurrentFrame` (playing) waited for the presentation lock;
+  it is reached from the control queue (`SeekAsync`'s refresh, so every queued operation waited
+  behind it) and from sync setters on the UI thread (`AudioSyncOffset` and the other offsets,
+  `ShowMidiLyrics`; a paused surface resize returns early). Stack dump (old engine, 10 s stalled
+  segment): the control queue in `RenderCurrentFrame` <- `RefreshCurrentPosition` <-
+  `SeekOperation`, the setter likewise, the seek worker in `av_read_frame` <- `DecodeForSeekTarget`
+  <- `SeekCore`. Measured: the setter blocked 1.28 s during ordinary seeks (150-1000 ms per
+  segment) and 9.2 s during the stall.
+- **A newer seek waited for the older seek's stalled read (reproduced).** Nothing interrupted a
+  network read except Close's abort, so a seek during a stalled segment settled only after the
+  stall: 9.8-10 s for a 10 s stall (HLS and progressive MP4).
+- **Close waited for a stalled seek (reproduced).** Close took the presentation lock before
+  aborting, and the seek held it: 9.7 s during a 10 s stall.
+- No deadlock was found. The Avalonia adapter only posts to the UI thread, and the shared-GPU-image
+  ring waits are bounded; the admission gate (ENG-024) does not block `SeekAsync`'s caller.
+
+Fix:
+- `VideoAudioEngine` has a second lock, `_ioGate`, taken before `_sync`, that owns the demuxer
+  cursor (open, read, seek, close). Reads, seeks and the network open run under `_ioGate` only;
+  `_sync` is held for decoding, BASS calls and position bookkeeping. The loop wrap records its lap
+  boundary only after its seek succeeded. Local files keep the same behaviour (one more
+  uncontended lock per packet).
+- A newer seek supersedes the network I/O of the older one: `FfmpegInterrupt` interrupts an
+  operation that started before a given time (`SupersedeOperationsStartedBefore`), and
+  `VideoPipeline.Seek` applies it to both cursors with the time taken just before the request, so
+  the new seek's own I/O is never cut; `SeekCore` does it again before stopping the decode loop. A
+  superseded read returns `AVERROR_EXIT` and is not taken for a dropped stream (no "Network read
+  failed", no end of stream); the audio cursor does not take it for the end (no loop wrap).
+- `RenderCurrentFrame` does not wait for the presentation lock while a seek sequence is active
+  (the seek presents its own frame); otherwise it waits as before.
+- Close makes the seek in progress give up (`SeekPump.BeginShutdown`: the seek's superseding
+  checks turn true) and supersedes its I/O until it releases the presentation lock, then aborts.
+- Avalonia test player: the 200 ms timer reads `State`, `Duration` and `Position` on the thread
+  pool and skips a tick while a read is out (a slow, stalled or failing read is logged), and each
+  player has **Copy log** (the whole log, oldest first, to the clipboard).
+
+Measured (Linux, FFmpeg 9, no BASS, local 3-variant HLS from `LocalHttpMediaServer`):
+
+| | before | after |
+|---|---|---|
+| Longest UI call, seeks at 150-1000 ms per segment | 1280 ms (sync-offset setter) | 4 ms |
+| Longest UI call, 10 s stalled segment | 9156 ms | 7 ms |
+| Newer seek during a 10 s stalled segment (HLS / MP4 range request) | 9963 / 9821 ms | 617-711 / 324-427 ms |
+| Close during a stalled seek | 9664 ms | 102 ms |
+
+`State`, `Position`, `Duration`, `IsOpen` and a surface resize stayed under 2 ms throughout without
+BASS (the picture-only clock is lock-free), so the `Position` freeze itself needs Windows to see.
+
+Tests (opt-in native, `LinuxNetworkVideoNativeTests.Seeks.cs`; a UI thread polls the getters every
+200 ms and, once a second, resizes the surface and sets the sync offset; a watchdog writes
+`dotnet-stack report` stacks to the output if a call blocks for 2 s or a seek does not settle):
+`HlsMultiVariant_RapidAndSpacedSeeks_KeepTheGettersResponsive`,
+`HlsMultiVariant_SeekDuringAStalledSegment_IsSupersededAndClosesPromptly` and
+`ProgressiveMp4_SeekDuringAStalledRangeRequest_IsSupersededAndPlaysOn`. The audio cursor's
+`_ioGate` split is not exercised here (no BASS): it is verified by reading and by the smoke below.
+
+Windows smoke (Avalonia test player, BASS and FFmpeg 9 in `native/`):
+1. `dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 --
+   --renderer=direct3d11 --url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`. Sound plays.
+2. Seek about ten times by clicking and by dragging the seek bar: forward, back, twice in quick
+   succession, and once more before the previous seek has shown its frame. The window must stay
+   responsive throughout (move it, drag the volume slider, change the tempo); each seek shows its
+   frame and plays on with sound in sync, and the log shows no "Status read" warning.
+3. Pause, seek twice, Play: it resumes at the last target.
+4. Seek, then close the window at once: it closes within about a second.
+5. Repeat 1-2 with `--renderer=software` and with a local MP4 (no regression: seeks settle as
+   before, the loop with Loop on is gapless).
+6. **Copy log**, paste into a text editor: the whole log, oldest first.
+7. If the window ever freezes again: before ending the task, run
+   `dotnet tool install -g dotnet-stack` (once) and
+   `dotnet-stack report -p <pid> > stacks.txt` (the pid is in Task Manager's Details tab), and
+   attach `stacks.txt` and the copied log.
+
+
+### ENG-027 - Hardware decoding does not reserve extra pool surfaces
+
+Resolved: 2026-10-24, pending manual smoke on Windows.
+
+Reported: 2026-10-18 (audit; Suspected, needs Windows). Real, and the hold was larger than
+reported. FFmpeg's d3d11va (and dxva2) pool is a fixed texture array: `ff_dxva2_common_frame_params`
+asks for 1 work surface plus 16 for H.264/HEVC (8 for VP9/AV1, 2 otherwise), and
+`avcodec_get_hw_frames_parameters`/`ff_decode_get_hw_frames_ctx` add 3 work surfaces, one per
+frame thread and `extra_hw_frames`. So a 4K HEVC pool was 20 + threads surfaces, of which the DPB
+can use up to 16. The FFmpeg 9 Windows DLLs carry the failure strings ("Static surface pool size
+exceeded.", "Failed to allocate a %s/%s frame from a fixed pool of hardware frames. Consider
+setting extra_hw_frames..."). `extra_hw_frames` was never set.
+
+The pipeline's hold: every queued d3d11va frame is an `av_frame_clone` that keeps its surface.
+Steady playback buffers `GetTargetBufferedVideoFrames` (12 at most; 4 at 4K, because the target
+is sized as if frames were BGRA), but the decoder's own cap is `MaxFramesCap` = 24 and the
+hardware path always uses it: seek-to-target decoding (`DecodeForSeekTarget`), EOF draining and
+a multi-frame packet fill the queue up to 24. Presentation holds the frame on screen and, during
+the hand-over on the presentation thread, the previous one, while the decode thread refills the
+queue. Worst case: 24 + 2 = 26 surfaces outside FFmpeg's decode set, more than the DPB slack.
+
+Fix (`VideoFrameBufferPolicy`, shared by `VideoPipeline` and `VideoDecoder`): the native hardware
+queue is capped at the pipeline's buffer target with a floor of 8 (`MinHardwareQueueFrames`), not
+`MaxFramesCap` 24, and `TryCreateHardwareDevice` sets `extra_hw_frames` before `avcodec_open2` to
+that cap plus `PresentationHeldHardwareFrames` (2). The pipeline target formula moved into the
+policy unchanged (4 at 4K, 12 at 1080p60, 6 at 1080p24), so the decoder sizes the cap from the
+stream before opening. Results: 4K gets a cap of 8 and a reserve of 10; the largest is a cap of 12
+and a reserve of 14 (1080p and smaller at 48 fps or more). Without native output (frames copied to the CPU and
+released at once) there is no cap and no reserve; software decoding keeps 24. FFmpeg accepts any
+non-negative value; the D3D11 array limit is 2048. After a successful hardware open the decoder
+logs one Info line: "Hardware decoding (d3d11va) reserves 10 extra pool surfaces: 8 queued frames
+and 2 held by presentation." There is no VAAPI path: Linux registers
+`SoftwareOnlyVideoHardwareAccelerationServices`; d3d12va and dxva2 get the same reserve.
+
+Every path that fills the queue respects the cap:
+- Steady playback (`DecodeVideoBatch`), post-seek warm-up and loop top-up stop at the pipeline
+  target, which is never above the cap.
+- A packet that yields several frames: `DrainDecodedFrames` stops at the cap and leaves the rest in
+  FFmpeg until the next call, as before.
+- End of file: the old `ProcessRemainingFrames` flushed the decoder once, took what fit and set
+  `EndOfStream`, so the frames that did not fit were lost. This was already true with 24 and a
+  smaller cap makes it likelier: the sample 1080p H.264 clip lost its last 5 of 300 frames with
+  the queue full at end of file. Now the decoder stays in a draining state and takes the flushed
+  frames as the queue frees up, then sets `EndOfStream` (the loop pre-seek waits for it, as before).
+- Seek to target (`DecodeForSeekTarget`): exact seeks discard pre-target frames in the decoder, so
+  the queue head is already acceptable and the cap does not matter. Preview seeks queue from the
+  keyframe; before, a full queue (24) with no acceptable frame ended the decode and showed the
+  closest frame, which with a cap of 8 would land up to 8 frames past the keyframe. Now a full
+  queue drops its head when the head and its successor are both before the target (the successor
+  is at least as close, so the best and fallback picks are unchanged) and decoding goes on, still
+  bounded by the seek's time budget and attempt count. This applies to software decoding too.
+
+Tests: `VideoFrameBufferPolicyTests` (target, cap, reserve, seek drop rule) and
+`LinuxNativeSmokeTests.RealFfmpeg_FullQueueAtEndOfFileKeepsTheLastFrames` (fails on the old drain
+with 295/300). The hardware path itself is not verified here (no GPU).
+
+Cost: about 12.5 MB per 4K NV12 surface (128-aligned 3840x2176) and 25 MB per P010 surface. At 4K
+the reserve of 10 adds about 125 MB (8-bit) or 250 MB (10-bit) of VRAM per player, against about
+325/650 MB for the first fix's reserve of 26. At 1080p (1920x1152 for HEVC) the reserve of 14 adds
+about 46 MB (8-bit) or 93 MB (10-bit).
+
+Manual smoke (Windows, hardware decoding on, Log open at Info):
+1. Play a long 4K HEVC file (10-bit HDR if available) with hardware decoding. Check the Log
+   shows the reserve line once per open ("reserves 10 extra pool surfaces: 8 queued frames")
+   and `hw=d3d11va` with `queue=n/8` in the decode diagnostics; note GPU memory in Task Manager
+   against the previous build.
+2. Seek storm: drag the progress bar back and forth for 30 s, then click-seek 20 times quickly,
+   including near the end. Video must keep up with no freeze, no fallback to software, and no
+   "Static surface pool size exceeded", "fixed pool of hardware frames", `get_buffer` or
+   `Decoder.DeviceLost` lines. Scrub previews should still land near the pointer on a long-GOP
+   file.
+3. Pause for a minute, resume, then pause/resume ten times quickly. Playback resumes at once.
+4. Open the secondary screen (composition path) and repeat steps 2-3.
+5. Let the file reach the end with loop on and off: the last frames show (no cut-off), the loop
+   wraps, and `MediaEnded` fires once.
+6. Repeat step 2 with a 4K AV1 or VP9 file (smaller base pool: 12 + threads).
+
+### ENG-022 - Subtitle content flag is never revoked
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-18 (audit). Still real: `SubtitlePipeline` only ever added
+`MediaContent.Subtitle`, so turning subtitles off, or loading embedded tracks without selecting
+one (MIDI lyrics hidden), left it set; the coordinator ran its 75 Hz loop for audio-only media,
+presented empty compositions on seeks, and `HasSubtitle`/`HasVisualContent` read true.
+
+Fix: the flag now means "a subtitle track is showing". `SubtitlePipeline` sets it when a track
+is selected and clears it on `SelectTrack(null)` and `Close()` (new `MediaState.RemoveContent`);
+loading tracks no longer sets it. The picker reads `SubtitleTracks`, not the flag, so "tracks
+available" is unaffected. `MediaPresentationCoordinator` decides the render loop through
+`SyncRenderLoop`, called from `StartRendering` and `RefreshCurrentPosition` (which
+`SelectSubtitleTrack` and `ShowMidiLyrics` already call), so selecting a track while playing
+starts the loop and deselecting stops it. Tests: `SubtitlePipelineTests.ContentFlag_FollowsTheSelectedTrack`,
+`MediaPresentationCoordinatorTests.SelectingASubtitle_WhilePlayingStartsAndStopsTheRenderLoop`.
+Manual smoke: play audio, select and deselect a sidecar subtitle (the overlay appears and goes,
+CPU idles after off); play a MIDI with lyrics hidden (no loop, `HasSubtitle` false).
+
+### ENG-023 - Software-path compositions are built and presented unordered
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-18 (audit; Likely). Still real: `BuildAndPresentSoftwareComposition` built
+under `_lock` and presented outside it, so the video-frame thread and the render loop could
+present an older composition after a newer one.
+
+Fix: no "drop older" (per-target cadence would lose a target's frame). Build and present now
+both run under a new `_softwarePresentGate`, taken before `_lock`, so compositions reach the
+renderer in build order and every target subset still gets its frame. No caller holds `_lock`
+when entering `BuildAndPresentSoftwareComposition` (checked), so the order cannot invert. The CDG
+and hardware paths are unchanged. Test:
+`MediaPresentationCoordinatorTests.SoftwareCompositions_ArePresentedInTheOrderTheyWereBuilt`
+(blocks the first present, starts a second; failed before). The Linux real-media sink receives
+bare pixels with no timestamp, so frame order is not observable there; the opt-in Linux tests
+were run to check the gate causes no stall.
+
+### ENG-033 - BASS required at startup
+
+Resolved: 2026-10-24, pending manual smoke.
+
+Reported: 2026-10-24 (owner). FatzAudio (037A) is planned to replace BASS, so end users should
+not need the BASS DLLs. A player could not start at all without them: on Linux the engine
+threw "Failed to load required native libraries. Missing required BASS library: libbass.so...",
+even in Background mode (043A), which never uses audio. Windows `Bootstrap` did the same
+(`_isInitialized = IsBassLoaded && IsFfmpegLoaded`), and also called `BASS_PluginLoad` for the
+plugins after `bass.dll` was missing, which throws once nothing can resolve `bass`.
+
+Fix:
+- **Platforms (native loading):** FFmpeg is the only required set. A missing or failed BASS
+  core (`bass.dll`/`bass_fx.dll`, `libbass.so`/`libbass_fx.so`) is a Warning; native loading
+  succeeds without it. Plugins (and on Linux the `DllImport` resolver) are attempted only after
+  the whole core loaded, and BASS audio extensions join `FileTypes.Audio` only then, so no BASS
+  function is called without BASS. A later player creation retries BASS; the loaded FFmpeg is
+  kept (Linux no longer re-activates it). `LastNativeLoadMessage` reads "Native libraries loaded
+  without BASS: audio is unavailable. ..." The device monitors (`PollingAudioDeviceMonitor`,
+  `BassDeviceAudioMonitor`) are registered only when BASS loaded, and Windows
+  `AudioOutputDevices.Enumerate` returns an empty list instead of calling BASS.
+- **Report:** BASS checks are never `IsRequired`; `NativeDependencyReport.IsAudioAvailable`
+  (new, `init`, default true) is false and `Describe()` adds "Audio is unavailable: the BASS
+  libraries did not load. Video plays without sound; audio media will not open." Hosts that log
+  required problems as Errors and the rest as Warnings now show BASS as Warnings.
+- **Core contract:** `IMediaControlPlatformServices.IsAudioAvailable` (new, default `true`, so
+  existing implementations compile). Core reads it after `EnsureNativeLibrariesLoaded`; Core
+  still has no native loading. Without audio, `MediaControlServiceProvider` uses
+  `SilentAudioEngine` in every mode (so no `AudioEngine.Init`, MIDI soundfont or DLS cache, and
+  `BassOutputWatchdog` never gets a client) and raises one Warning per graph in Full and Audio
+  mode.
+- **Loads:** `PipelineMediaEngine` refuses media that needs audio before touching an engine
+  (`MediaPlayerModePolicy.NeedsAudioEngine`: audio files, MP3+G, their archives, Audio-mode
+  soundtracks, network audio): `Load` returns false with an Error diagnostic and the existing
+  error event (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found;
+  <file> was not loaded." Audio mode creates no soundtrack engine.
+- **Video in Full mode (decision):** plays its picture on the playback clock without sound.
+  The change was small: `VideoPipelineFactory` passes `usesAudio` (audio available and not
+  Background mode) to `VideoPipeline`, which already ran on `PlaybackClock` in Background mode
+  and for video without an audio stream. Images and CD+G graphics without audio open normally.
+
+Tests: `AudioUnavailableTests` (policy, service graph, loads that need audio in Full and Audio
+mode, network audio, player-level `MediaError`), `NativeDependencyReportTests`
+(`Report_WithoutBass_...`), `LinuxNativeLibraryBootstrapperTests` (no BASS starts without audio,
+skips resolver and plugins, truthful report, BASS retry without a second FFmpeg activation),
+`LinuxPlatformCompositionTests` (no monitor without BASS). Opt-in native: `LinuxNoBassNativeTests`
+(real FFmpeg 9, no BASS, H.264 clip, software renderer frame sink) plays in Background and Full
+mode and observes presented frames. Avalonia test player under Xvfb (Linux, no BASS): Background
+and Full play the H.264 clip; Audio mode logs the Error and `MediaError` above.
+
+Manual smoke (Windows):
+1. Rename `bass.dll` and `bass_fx.dll` (and the plugins) in the host's `native/` folder, for
+   example to `bass.dll.off`, for `FatzBomb.MediaControl.Player` and `.Player.Avalonia`.
+2. Start the WPF player: it opens with no startup error; the log shows the BASS files as
+   Warnings and "Audio is unavailable: the BASS libraries did not load...". Load a video: the
+   picture plays without sound. Load an MP3: it fails with an Error "Audio engine unavailable:
+   BASS libraries not found; <file> was not loaded."
+3. Start the Avalonia player in Full mode: same messages (BASS files as Warnings, the
+   "without BASS" native message); a video plays its picture, an MP3 fails with the Error.
+4. Start the Avalonia player with `--mode=background` and a video: it plays and loops.
+5. Start it with `--mode=audio` and a video or MP3: the player opens; the load fails with the
+   Error above.
+6. Restore the DLL names; start both players again: audio plays as before and no BASS Warning
+   is logged.
+
+### ENG-024 - Player API threading contract gaps
+
+Resolved: 2026-10-24, pending manual smoke (steps below).
+
+Reported: 2026-10-18 (audit).
+- `Reset` silently reverts runtime settings (volume, pitch, tempo, EQ, loop...) to defaults and
+  raises no change events.
+- `Dispose`, `Reset` and the sync API block the calling (UI) thread with no bound; some
+  "Async" methods block too.
+- `Reset` is not serialized against surface attach/detach calls and some property reads.
+- The worker-context flag is an `AsyncLocal` and flows into child tasks, so a task started
+  from an event handler can bypass serialization or make `Dispose`/`Reset` throw wrongly.
+- Event delivery is inconsistent: some events swallow handler exceptions, others let them
+  escape onto engine threads.
+
+The earlier audit text also named: `Reset` and the sync API hold `_operationAdmissionGate` for
+the whole operation; `LoadAsync` has no `CancellationToken` (closing a window during a slow
+network load froze the UI for up to 15 s plus retries); a failed `Reset` leaves the player
+unusable; two players created together get an empty `Bootstrap` message (Windows).
+
+Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
+- **Admission (fixed).** `_operationAdmissionGate` is held only to check the lifecycle and take a
+  place in the queue. A sync call takes its exclusive turn under the gate
+  (`MediaControlOperationQueue.BeginExclusiveTurn`) and waits for it and runs outside it, so the
+  `Async` methods never wait for a long sync call. `Reset` and `Dispose` are serialized by a
+  separate `_lifecycleGate` and also hold the admission gate only to take their turn; calls made
+  meanwhile fail at once (`InvalidOperationException`, as before) instead of blocking.
+- **Bounded `Dispose`/`Reset` and load cancellation (fixed).** A player-lifetime
+  `CancellationTokenSource` is cancelled by `Reset` and `Dispose`; every load (sync, async,
+  prepared-next, the mode switch's reopen) runs with it, and `MediaOpenCancellation` (an
+  `AsyncLocal` set around the engine open) carries it to the BASS network open, whose retry
+  delays now end at once and whose next attempts are skipped. A connect attempt in progress
+  cannot be interrupted (BASS has no cancel for `BASS_StreamCreateURL`). Such a load returns
+  `false`. `Dispose` then waits at most 2 s for its turn; past that it marks the player disposed,
+  detaches the surfaces (the host may destroy their windows) and queues the teardown behind the
+  operation in progress. `Reset` waits at most 5 s; past that it raises a Warning and returns
+  `false` with nothing rebuilt (the player stays usable). New overloads:
+  `LoadAsync(string, CancellationToken)`, `LoadAsync(string, bool, CancellationToken)`,
+  `LoadAsync(string, string?, bool, CancellationToken)`, `LoadAsync(MediaInputSource,
+  CancellationToken)`, `LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)`;
+  the first and last are also on `IMediaControlSession` with default implementations. Cancelled
+  while queued: skipped, nothing changes. Cancelled during the open: the player ends closed.
+  Either way the task is cancelled. Cancelled after `MediaLoaded`: the load stands and only the
+  PlayOnLoad start is skipped.
+- **Worker-context flag (fixed).** The `AsyncLocal` bool is replaced by per-operation scopes. A
+  synchronous operation's scope applies on the worker thread only; an asynchronous one's follows
+  its flow; each ends when its operation returns. `HostEventDispatcher` runs each host handler in
+  a handler scope bound to its thread that ends when it returns. So a task, timer, engine thread
+  or UI-thread callback started from an operation or handler is outside it once it runs on
+  another thread or after it returned: its sync calls queue, and its `Dispose`/`Reset` work
+  instead of throwing. Queue workers no longer inherit another queue's scope.
+- **Event delivery (fixed).** Every public player event goes through `HostEventDispatcher`: one
+  throwing handler does not stop the others, nothing escapes onto engine, render or queue
+  threads, and the failure is a `HostEvent` Warning (for `MediaDiagnostic` itself only a debug
+  line, to avoid a loop). `MediaEnded`, `MediaStopped`, `MediaError`, `MediaDiagnostic`,
+  `AudioDeviceChanged`, `MediaStarted` and `PresentationFramePresented` (render thread) were the
+  inconsistent ones.
+- **Live diagnostics (follow-up 2026-10-25).** `MediaDiagnostic` was delivered on the control
+  queue, so diagnostics raised during a long operation (the network open's "Network retry 1/3 in
+  1.0s" ...) reached the host together after the load ended. Each player now delivers them in
+  order on its own worker (`SerialEventDispatcher`), still through `HostEventDispatcher` and the
+  ENG-025 owner filter; `Dispose` waits up to 1 s for those already queued and delivers nothing
+  after it returns (the `DisposeLater` warning is the last one). A diagnostic handler no longer
+  runs inside a control operation, so it may call `Dispose`/`Reset`. `BufferingChanged`,
+  `StreamMetadataChanged`, `MediaError` and the lifecycle events stay on the control queue: they
+  are ordered against the load (`MediaLoaded` first, stale-source checks), and network video
+  raises buffering only after its open. Tests: `SerialEventDispatcherTests` (5),
+  `PlayerThreadingContractTests` (+2: delivery during a long load, in order; nothing after Dispose),
+  and the opt-in native `LinuxNetworkVideoNativeTests.RetryDiagnostics_ReachTheHostWhileTheLoadRuns`
+  (refused connect, two retries: delivered at 35 and 535 ms, the load ended at 1539 ms).
+- **Reset's settings (fixed, defaults kept).** `Reset` still starts from the defaults (the 043A
+  decision); now each of volume, pitch, tempo, normalization, equalizer, loop and base visual
+  transform that changed raises its change event once, on the new control queue after `Reset`
+  returns, with the new `MediaChangeReason.PlayerReset`.
+- **Failed `Reset` (already fixed by ENG-020; tidied).** The player stays rebuildable: control
+  calls throw `ObjectDisposedException`, surface calls keep the surfaces, and a later `Reset`
+  reattaches them. New: the parts a failed build created are freed at once, and neither a retry
+  nor `Dispose` frees the old graph a second time.
+- **Concurrent player creation (already fixed by ENG-020).** `Bootstrap` loads under a lock with
+  a double-checked flag, so the loser waits and reuses the result.
+
+Documented as the contract (XML docs on `IMediaControlSession`, `Reset`, `Dispose`, `LoadAsync`):
+- The sync methods block the caller until their turn and the operation finish, without a bound;
+  UI threads should use the `Async` methods (as AGENTS.md says).
+- `Reset` and `Dispose` still throw `InvalidOperationException` from inside a control operation
+  or a handler raised in one, since they would wait for themselves.
+- Surface calls during a `Reset` or mode switch: already safe since 043A slice 2 (`_surfaceGate`,
+  held and reattached). Property getters/setters and the sync-offset and subtitle methods are not
+  queued: they act on the current graph, also during a rebuild, so a value set during a rebuild
+  may be lost. Queuing every property was rejected (setters would become asynchronous).
+- An asynchronous operation's scope follows its flow, so engine threads it starts count as
+  inside it until it completes (in practice the end of a load, after any PlayOnLoad wait).
+
+Tests: `PlayerThreadingContractTests` (14): async calls during a slow sync load return at once;
+async calls during a slow Reset fail at once; Dispose during a cancellable open returns well
+within the bound and cancels the load; Dispose during an uncancellable open returns after the
+bound, refuses calls, releases the surfaces and tears down when the open ends; `LoadAsync`
+cancelled while queued, during the open, and with an already-cancelled token; Reset giving up
+after its bound; a failed Reset is clearly faulted, then rebuildable or disposable; Reset change
+events; surface calls racing mode switches and Resets; Dispose from a task a handler started;
+handler exceptions. `MediaControlOperationQueueTests` (+5): scope ends with the operation, other
+threads are outside, handler scopes, abandoned turns, cancellation. Two `MediaControlPlayerTests`
+now expect the load that Reset/Dispose waited for to report `false` (cancelled). The new
+concurrency tests passed 20 runs in a row.
+
+Manual smoke (Windows and Linux players):
+1. In the WPF Player, open a network stream that does not answer (for example
+   `http://10.255.255.1/stream.mp3`) with retries enabled, then close the window at once: it
+   closes within about 2 s (before: up to 15 s per attempt plus retries). The log may show
+   "Dispose did not get its turn within 2 s".
+2. Same with the Avalonia test player (`--mode=full`), closing one player's window or the app.
+3. Normal use in the WPF and Avalonia players: load, play, seek-drag, pause, stop, natural end
+   with loop on and off, load another file, prepared-next transition: no change in behaviour, and
+   no new `HostEvent` warnings in the log. (No test host calls `Reset`; it is covered by tests.)
+4. Start a slow load (a large archive or a network stream) and press Play/Seek meanwhile: the UI
+   stays responsive; the commands run after the load.
+5. Switch modes (Avalonia `--mode`, or the API) during playback and resize the window during the
+   switch: the picture comes back at the new size.
 
 ### ENG-025 - Process-global state shared across players
 
@@ -481,6 +970,8 @@ Not covered (unchanged behaviour): Direct3D11 in `WpfComposited` mode with a sec
 The D3D11 backend set's no-mixed-target policy makes the managed sink the only target, and the
 bridge accepts a managed frame sink only for the primary, so the secondary stays blank there,
 as it did with the HWND payload. Use `NativeHwndOverlay` for a secondary window with Direct3D11.
+Fixed by 027A slice 5 (2026-10-24, pending owner smoke): Direct3D11 now gives a secondary frame
+sink its own offscreen target beside the managed primary.
 
 Review (local) decisions: with a primary attached, a software present succeeds only when the
 primary presented (as `D3D11PresentationBackendSet.NotifyTargetsPresented` does), so a
@@ -488,7 +979,8 @@ secondary never hides a failed primary frame; a reopened secondary is placed bef
 Not changed: two targets of the same size are still rendered separately (rare: the windows
 differ in size in practice); the Vulkan backend still accepts only a primary frame sink, but
 no Avalonia/WinForms adapter opens a secondary window yet, so fold multi-target support into
-ENG-014 when one does; `SecondaryPresentationWindow` gained an optional constructor parameter
+ENG-014 when one does (done in 027A slice 5: Vulkan and Direct3D11 accept secondary frame-sink
+and shared-image surfaces); `SecondaryPresentationWindow` gained an optional constructor parameter
 (source-compatible; no package has shipped yet).
 
 ### ENG-015 - Secondary window blank or frozen with plain hardware video
@@ -710,6 +1202,6 @@ were updated, and this engineering register was added.
 
 ## Current Validation Baseline
 
-- Release build: 0 warnings/errors.
-- Automated tests: 464 passed.
-- Formatting, Core boundary, WPF boundary, and presentation-parity gates: passed.
+CI is the record (Windows and Linux jobs in `.github/workflows/ci.yml`); counts are not kept here
+because they go stale. Release builds are warning-free, and every test project, the format check
+and the `check-*.ps1` gates must pass.

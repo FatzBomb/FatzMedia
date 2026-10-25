@@ -43,7 +43,7 @@ public sealed record NativeVideoFrameResource(
     public VideoColorSpace ColorSpace { get; init; }
 
     /// <summary>
-    /// Set for an HDR10 frame the renderer should tone map to SDR (Stage 038A); null for SDR
+    /// Set for an HDR10 or HLG frame the renderer should tone map to SDR (Stages 038A, 042A); null for SDR
     /// frames and when tone mapping is off.
     /// </summary>
     public HdrToneMapRequest? HdrToneMap { get; init; }

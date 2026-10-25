@@ -44,6 +44,14 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private readonly ISubtitleRasterizer _subtitleRasterizer;
     private readonly TimeSpan _wipeTransitionDuration;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
+    private bool _isRenderLoopRunning;
+    // Guards _isRenderLoopRunning with its scheduler start/stop: seek refreshes, StartRendering and
+    // StopRendering run on different threads. PlaybackScheduler.Start/Stop never wait.
+    private readonly Lock _renderLoopGate = new();
+    // Orders software-path compositions (ENG-023): taken before _lock, held from build to present,
+    // so an older composition cannot be presented after a newer one. Nothing may call
+    // BuildAndPresentSoftwareComposition while holding _lock.
+    private readonly Lock _softwarePresentGate = new();
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
@@ -309,6 +317,10 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         // Audio with no picture, lyrics, subtitles, or background has nothing to redraw at the new
         // position; presenting an empty frame on every seek only produced failed presents.
+        // The subtitle flag follows the selected track (ENG-022): selecting or deselecting one while
+        // playing starts or stops the loop that updates the overlay.
+        SyncRenderLoop();
+
         if (!HasCurrentVisualContent())
             return;
 
@@ -338,17 +350,43 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _isRenderingActive = true;
         _attachedVideo?.SetHostRenderEventDrivenPresentation(false);
 
-        if (_attachedCdg != null || (HasSubtitleContent && _attachedVideo == null))
-            _presentationScheduler.Start(RenderLoop);
+        SyncRenderLoop();
 
         if (HasCurrentVisualContent())
             PresentCurrentComposition("presentation started");
     }
 
+    internal bool IsRenderLoopRunning => _isRenderLoopRunning;
+
+    private bool NeedsRenderLoop => _attachedCdg != null || (HasSubtitleContent && _attachedVideo == null);
+
+    private void SyncRenderLoop()
+    {
+        if (!_isRenderingActive)
+            return;
+
+        var needed = NeedsRenderLoop;
+        lock (_renderLoopGate)
+        {
+            if (!_isRenderingActive || needed == _isRenderLoopRunning)
+                return;
+
+            _isRenderLoopRunning = needed;
+            if (needed)
+                _presentationScheduler.Start(RenderLoop);
+            else
+                _presentationScheduler.Stop();
+        }
+    }
+
     public void StopRendering()
     {
-        _isRenderingActive = false;
-        _presentationScheduler.Stop();
+        lock (_renderLoopGate)
+        {
+            _isRenderingActive = false;
+            _isRenderLoopRunning = false;
+            _presentationScheduler.Stop();
+        }
         if (_mediaEngine.State is MediaPlayerState.Stopped or MediaPlayerState.Null)
         {
             ClearVisibleComposition("presentation stopped", preserveBackground: true);
@@ -1283,19 +1321,22 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         double? subtitlePositionSeconds = null,
         bool updateSubtitleOverlay = true)
     {
-        if (updateSubtitleOverlay)
-            _ = UpdateSubtitleOverlay(subtitlePositionSeconds);
-        MediaCompositionFrame frame;
-        RetainedFrameBuffer? rentedBackground;
-        lock (_lock)
+        lock (_softwarePresentGate)
         {
-            if (!EnsureBackendInitialized())
-                return CompositionPresentResult.Failed;
+            if (updateSubtitleOverlay)
+                _ = UpdateSubtitleOverlay(subtitlePositionSeconds);
+            MediaCompositionFrame frame;
+            RetainedFrameBuffer? rentedBackground;
+            lock (_lock)
+            {
+                if (!EnsureBackendInitialized())
+                    return CompositionPresentResult.Failed;
 
-            frame = BuildCompositionFrameNoLock(null, washArgb, retainedRefresh, reason, out rentedBackground);
+                frame = BuildCompositionFrameNoLock(null, washArgb, retainedRefresh, reason, out rentedBackground);
+            }
+
+            return PresentSoftwareComposition(frame, rentedBackground);
         }
-
-        return PresentSoftwareComposition(frame, rentedBackground);
     }
 
     private CompositionPresentResult PresentSoftwareComposition(MediaCompositionFrame frame, RetainedFrameBuffer? rentedBackground)

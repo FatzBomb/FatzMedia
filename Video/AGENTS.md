@@ -54,6 +54,8 @@ not up front.
 - Keep portable tests in `FatzBomb.MediaControl.Tests`; `Portable.Tests` compiles them by link.
   A Windows-only test file needs a `D3D11*`/`Direct3D11*` name or an entry in the `Exclude` list
   of `Portable.Tests`. Tests that mutate `FileTypes` use `[Collection("File type registry")]`.
+- Linux native playback in the sandbox: `scripts/setup-linux-native.sh` installs FFmpeg 9.0 LGPL libraries and
+  test media under `/opt/fatzbomb-native` and prints `FATZBOMB_LINUX_FFMPEG_DIR` (BASS is not available).
 - Linux sandbox: build with `EnableWindowsTargeting=true`; run `Portable.Tests`, `Linux.Tests`,
   `Rendering.Vulkan.Tests` (needs `mesa-vulkan-drivers`) and `Avalonia.Tests` (headless).
   `dotnet format FatzBomb.MediaControl.sln --verify-no-changes` works with
@@ -70,5 +72,6 @@ not up front.
   and manual smoke steps), and mark the manifest "implemented, pending manual smoke". Finished
   stages move to `complete/`. Bugs and deferred findings go in `docs/roadmap/ENGINEERING_ISSUES.md`.
 - One commit per stage or slice.
-- Standing approval: commit and push to the session's working branch. Open a PR, merge, or
-  push to `main` only when asked.
+- Standing approval: commit and push to the session's working branch, and open a PR when a
+  batch of related work is complete and validated (not for every small fix). Merging and
+  pushing to `main` stay with the owner.

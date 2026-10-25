@@ -25,20 +25,28 @@ public static class MediaControlServiceProvider
     {
         ArgumentNullException.ThrowIfNull(platformServices);
         platformServices.EnsureNativeLibrariesLoaded(nativeLibraryPaths);
+        var audioAvailable = platformServices.IsAudioAvailable;
+        if (!audioAvailable && MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode))
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "Bootstrap",
+                $"{MediaPlayerModePolicy.AudioUnavailableMessage}. Video plays without sound; audio media will not open.");
+        }
 
         var services = new ServiceCollection();
-        RegisterCoreServices(services, configuration);
+        RegisterCoreServices(services, configuration, audioAvailable);
         platformServices.AddPlatformServices(services, configuration);
-        RegisterMediaEngine(services, configuration);
+        RegisterMediaEngine(services, configuration, audioAvailable);
 
         return services.BuildServiceProvider();
     }
 
-    private static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration)
+    private static void RegisterCoreServices(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
     {
         _ = services.AddSingleton(MediaAnalysisCache.Shared);
-        // Background mode (043A) never initializes audio output.
-        _ = services.AddSingleton<IAudioEngine>(provider => MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
+        // Background mode (043A) never initializes audio output; without BASS (ENG-033) no mode can.
+        _ = services.AddSingleton<IAudioEngine>(provider => audioAvailable && MediaPlayerModePolicy.UsesAudioOutput(configuration.Mode)
             ? CreateAudioEngine(configuration, provider.GetRequiredService<MediaAnalysisCache>())
             : new SilentAudioEngine());
         _ = services.AddSingleton<IMediaFileAnalyzer>(provider =>
@@ -49,13 +57,14 @@ public static class MediaControlServiceProvider
         _ = services.AddSingleton<IMidiLyricProvider, BassMidiLyricProvider>();
     }
 
-    private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration)
+    private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
     {
         _ = services.AddSingleton<IVideoEngineFactory>(provider =>
             new VideoPipelineFactory(
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
                 provider.GetRequiredService<IVideoPipelinePlatformServices>(),
-                provider.GetRequiredService<IVideoHardwareAccelerationServices>()));
+                provider.GetRequiredService<IVideoHardwareAccelerationServices>(),
+                audioAvailable));
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
             new PipelineMediaEngine(
@@ -67,7 +76,8 @@ public static class MediaControlServiceProvider
                 provider.GetRequiredService<IMidiLyricProvider>(),
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
                 provider.GetRequiredService<IVideoHardwareAccelerationServices>(),
-                configuration));
+                configuration,
+                audioAvailable: audioAvailable));
     }
 
     private static IAudioEngine CreateAudioEngine(

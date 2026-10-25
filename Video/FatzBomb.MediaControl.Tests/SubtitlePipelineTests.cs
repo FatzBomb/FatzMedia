@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Pipeline;
 
@@ -52,5 +53,31 @@ public class SubtitlePipelineTests
         {
             File.Delete(sidecarPath);
         }
+    }
+
+    [Fact]
+    public void ContentFlag_FollowsTheSelectedTrack()
+    {
+        // ENG-022: the flag was set when a track was loaded and never revoked.
+        using var engine = new SubtitleEngine();
+        var state = new MediaState();
+        using var pipeline = new SubtitlePipeline(engine, state);
+        var cue = new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4), "Embedded");
+
+        // Loaded but not selected (MIDI lyrics hidden): tracks are listed, nothing is showing.
+        Assert.True(pipeline.LoadEmbeddedTracks([new EmbeddedSubtitleTrack(0, "MIDI Lyrics", [cue])], selectFirstTrack: false));
+        Assert.Single(pipeline.Tracks);
+        Assert.False(state.Content.HasFlag(MediaContent.Subtitle));
+
+        Assert.True(pipeline.SelectTrack("embedded:0"));
+        Assert.True(state.Content.HasFlag(MediaContent.Subtitle));
+
+        Assert.True(pipeline.SelectTrack(null));
+        Assert.False(state.Content.HasFlag(MediaContent.Subtitle));
+        Assert.Single(pipeline.Tracks);
+
+        Assert.True(pipeline.SelectTrack("embedded:0"));
+        pipeline.Close();
+        Assert.False(state.Content.HasFlag(MediaContent.Subtitle));
     }
 }

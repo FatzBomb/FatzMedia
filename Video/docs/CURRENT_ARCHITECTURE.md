@@ -16,7 +16,7 @@ package pattern. Status as of 2026-10-16:
 - UI adapters: `FatzBomb.MediaControl.Avalonia` (composited frame-sink, preview) and
   `FatzBomb.MediaControl.WinForms` (HWND) implemented; `FatzBomb.MediaControl.WinUI` planned.
 - Renderer backends: `FatzBomb.MediaControl.Rendering.Vulkan` (headless offscreen preview,
-  frame-sink surfaces only) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
+  frame-sink and shared-image surfaces, any number of them) implemented; `Rendering.OpenGL` and `Rendering.Metal` planned.
 - Platform services: `FatzBomb.MediaControl.Linux` (baseline) implemented;
   `FatzBomb.MediaControl.MacOS` planned.
 
@@ -148,7 +148,9 @@ managed object handles. A token remains resolvable until its owner detaches the 
 and disposes the token handle. Managed readback failures participate in the same
 `D3D11.DeviceLost` recovery path as swap-chain failures. Primary backend recreation keeps
 secondary HWND resources alive; they are suspended while the no-mixed-target managed
-mode is active and resume when a native primary returns.
+mode is active and resume when a native primary returns. Offscreen secondaries (Stage 027A
+slice 5: a managed frame sink or shared textures per secondary surface, target ids
+`offscreen-secondary:<id>`) are presented beside any primary, or without one.
 
 ## Runtime Flow
 
@@ -370,6 +372,19 @@ runs teardown in an exclusive queue turn, drains terminal event deliveries, clos
 old queue, and then publishes disposed state. Synchronous disposal from inside a
 serialized control callback is rejected because it cannot safely wait for its own
 active queue turn.
+
+ENG-024 (2026-10-24) narrowed the admission gate to taking a place in the queue: a
+synchronous call takes its exclusive turn under the gate and waits for it outside, so
+the `Async` methods never block behind a long synchronous call, `Reset` or `Dispose`.
+`Reset` and `Dispose` are serialized by their own lifecycle lock, cancel loads (a
+player-lifetime `CancellationTokenSource`, which `MediaOpenCancellation` carries to the
+engine's open so network retry delays end at once), and wait for their turn with a
+bound: `Dispose` 2 s, then it releases the surfaces and leaves the teardown to the
+queue; `Reset` 5 s, then it returns `false` with nothing changed. "Inside an operation"
+is a per-operation scope (bound to the worker thread for synchronous operations) that
+ends when the operation returns, and every host event is raised through
+`HostEventDispatcher` in a handler scope bound to its thread, so work a handler hands
+elsewhere is serialized like any other caller.
 
 Video/CDG seeks retain latest-wins settle signaling. After a successful seek, the
 player also checks the current engine position through near-exact equality; an
@@ -712,8 +727,35 @@ normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffer
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
 `StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
-prepared-next analysis. Network video is deferred (file-path demuxer). See
-`roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
+prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
+
+### Network Video (Stage 039A, implemented — pending manual smoke)
+
+A network source is video when the hint says so or the URI path has a video extension or
+`.m3u8` (`NetworkVideoPolicy.IsVideo`). It opens through FFmpeg's network path, not BASS:
+`MediaDemuxer.Open(url, FfmpegNetworkOptions)` calls `avformat_network_init` once
+(`FfmpegNetwork`), installs an interrupt callback (`FfmpegInterrupt`: abort, open cancellation,
+deadlines, and the read-stall timer) and passes FFmpeg options derived from the
+`NetworkRetryPolicy` (`rw_timeout`, HTTP `reconnect*` only when retries are enabled,
+`seg_max_retry`). `VideoPipeline` implements internal `INetworkVideoEngine.OpenNetwork` (one
+attempt, no archive/temp file, no embedded-subtitle scan); its `VideoAudioEngine` opens the same
+URL on its own connection with no normalization pre-analysis. `PipelineMediaEngine` runs the
+attempts under the policy (`NetworkOpenRetry`, cancellable) and implements internal
+`INetworkMediaControl`: `MediaControlPlayer.Close`/`Dispose` call `CancelPendingNetworkOpen`
+before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
+from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
+whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
+non-EOF read error ends the stream once (`Network read failed`). `NetworkBufferingMonitor`
+(250 ms) turns read stalls plus queue fill into `BufferingChanged`, forwarded through the
+coordinator and engine to the player. Modes: Background plays network video (picture only),
+Audio plays its soundtrack (`SoundtrackAudioEngine.OpenNetwork`; network soundtracks never loop).
+No lock a host's thread can wait on is held across network I/O (ENG-035): `VideoAudioEngine`
+opens, reads and seeks its cursor under `_ioGate`, not the `_sync` lock that `Position` and the
+setters take; `RenderCurrentFrame` skips (does not wait) while a seek holds the presentation lock;
+a seek request supersedes the in-flight reads and seeks of both cursors
+(`FfmpegInterrupt.SupersedeOperationsStartedBefore`; a superseded read returns `AVERROR_EXIT`,
+not end of stream); Close makes a seek in progress give up before aborting.
+See `roadmap/active/039A_ACTIVE_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 
@@ -741,9 +783,14 @@ See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 ## Avalonia Adapter (Stage 027A, slice 1)
 
 `FatzBomb.MediaControl.Avalonia` (net10.0, Core only) provides a composited
-`MediaSurface` that attaches one primary managed frame-sink surface to any
+`MediaSurface` that attaches one managed frame-sink surface to any
 `IMediaControlSession`, resizes it with layout bounds x render scaling, and draws the
 final frames the host-selected renderer produces; plus `AvaloniaMediaInputSources`.
+Since slice 5 its `Role` and `SurfaceId` let a second `MediaSurface` (or the
+`SecondaryPresentationWindow` helper, placed full screen on a chosen screen) show the same
+session on another screen; every renderer accepts secondary frame-sink and shared-image
+surfaces, each rendered at its own size. While the session is in Audio mode (no renderer)
+the surface shows only its background.
 It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
@@ -764,6 +811,7 @@ Shared GPU image surfaces (Stage 027A slice 2):
   logs the reason.
 - Renderers own every GPU object. Adapters see only handles and Avalonia's
   `ICompositionGpuInterop`.
+- Each surface, primary or secondary, has its own exported set and ring (slice 5).
 
 ## Audio Filter Framework (Stage 020A, slice 1)
 

@@ -12,6 +12,7 @@ namespace FatzBomb.MediaControl;
 /// </summary>
 internal sealed class WindowsMediaControlPlatformServices : IMediaControlPlatformServices
 {
+    /// <summary>FFmpeg is required; without BASS the player starts with no audio (ENG-033).</summary>
     public void EnsureNativeLibrariesLoaded(IReadOnlyList<string> nativeLibraryPaths)
     {
         if (!Bootstrap.EnsureInitialized(nativeLibraryPaths))
@@ -20,11 +21,15 @@ internal sealed class WindowsMediaControlPlatformServices : IMediaControlPlatfor
         }
     }
 
+    public bool IsAudioAvailable => Bootstrap.IsBassLoaded;
+
     public void AddPlatformServices(IServiceCollection services, MediaPlayerConfiguration configuration)
     {
         _ = services.AddSingleton<IPrecisionWaiterFactory>(_ => new WindowsPrecisionWaiterFactory());
         _ = services.AddSingleton<IVideoPipelinePlatformServices>(_ => new WindowsVideoPipelinePlatformServices());
         _ = services.AddSingleton<IVideoHardwareAccelerationServices>(_ => new WindowsVideoHardwareAccelerationServices());
-        _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
+        // The monitor polls BASS, so it exists only when BASS loaded.
+        if (IsAudioAvailable)
+            _ = services.AddSingleton<IAudioDeviceMonitor>(_ => new PollingAudioDeviceMonitor());
     }
 }

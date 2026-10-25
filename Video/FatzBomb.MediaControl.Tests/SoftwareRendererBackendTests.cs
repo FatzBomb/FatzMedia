@@ -165,6 +165,48 @@ public sealed class SoftwareRendererBackendTests
     }
 
     [Fact]
+    public void TwoTargetsOfDifferentShapes_AreEachComposedForTheirOwnSize()
+    {
+        // Stage 027A slice 5: a karaoke singer screen beside the operator view. Each target is
+        // composed at its own size (letterboxing included), never a scaled copy of the other.
+        var backend = new SoftwareRendererBackend();
+        var primarySink = new RecordingFrameSink();
+        var projectorSink = new RecordingFrameSink();
+        using var primaryHandle = new MediaPresentationFrameSinkHandle(primarySink);
+        using var projectorHandle = new MediaPresentationFrameSinkHandle(projectorSink);
+        MediaPresentationSurfaceDescriptor projector = CreateSurface(projectorHandle, 8, 2) with
+        {
+            Id = "singer",
+            Role = MediaPresentationSurfaceRole.Projector
+        };
+        // A 2x1 red|blue picture, fitted (letterboxed) into a 4x4 and an 8x2 target.
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        {
+            BackgroundBgra = new byte[] { 0, 0, 255, 255, 255, 0, 0, 255 },
+            BackgroundWidth = 2,
+            BackgroundHeight = 1,
+            BackgroundStride = 8,
+            BackgroundStretchMode = MediaCompositionStretchMode.UniformFit,
+        };
+
+        Assert.True(backend.AttachSurface(CreateSurface(primaryHandle, 4, 4)));
+        Assert.True(backend.AttachSurface(projector));
+        Assert.True(backend.PresentComposition(frame));
+
+        var renderer = new SoftwareCompositionRenderer();
+        Assert.Equal((4, 4, 16), (primarySink.Width, primarySink.Height, primarySink.Stride));
+        Assert.Equal(renderer.Render(frame, 4, 4).Pixels.ToArray(), primarySink.Pixels);
+        Assert.Equal((8, 2, 32), (projectorSink.Width, projectorSink.Height, projectorSink.Stride));
+        Assert.Equal(renderer.Render(frame, 8, 2).Pixels.ToArray(), projectorSink.Pixels);
+        // The 4x4 target letterboxes (black rows), the 2:1-wider 8x2 target pillarboxes.
+        Assert.Equal([0, 0, 0, 255], primarySink.Pixels[..4]);
+        Assert.Equal([0, 0, 0, 255], projectorSink.Pixels[..4]);
+        Assert.Equal([0, 0, 255, 255], projectorSink.Pixels[(2 * 4)..(3 * 4)]);
+        Assert.Equal([255, 0, 0, 255], projectorSink.Pixels[(4 * 4)..(5 * 4)]);
+        backend.Dispose();
+    }
+
+    [Fact]
     public void CleanupResources_ClearsInitializationAndSurface()
     {
         var backend = new SoftwareRendererBackend();

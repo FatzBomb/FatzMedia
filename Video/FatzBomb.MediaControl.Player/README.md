@@ -114,8 +114,9 @@ and device, and the Log panel's `Renderer` entries say what was tried and why.
 
 ## HDR video
 
-HDR10 video is tone mapped to SDR (Stage 038A): the Log's `Decoding ...` line says
-`HDR10/PQ, tone mapped to SDR`, and an Info line names the peak brightness used.
+HDR10 video (Stage 038A) and HLG video (Stage 042A) are tone mapped to SDR: the Log's
+`Decoding ...` line says `HDR10/PQ, tone mapped to SDR` or `HLG HDR, tone mapped to SDR`, and an
+Info line names the peak brightness used (for HLG, BT.2100's 1000-nit nominal display).
 With the Direct3D11 renderer and hardware decoding, a shader does it on the GPU (a `D3D11.Hdr`
 line says so); otherwise the engine's CPU tone mapper does, with the same curve.
 `--hdr-tonemap-cpu` uses the CPU tone mapper on Direct3D11 too, and `--no-hdr-tonemap` shows HDR

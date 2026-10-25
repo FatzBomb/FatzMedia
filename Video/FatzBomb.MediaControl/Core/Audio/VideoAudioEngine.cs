@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Audio.Fade;
 using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Media;
+using FatzBomb.MediaControl.Core.Network;
 using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
@@ -23,6 +24,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
+    // Lock order: _ioGate, then _sync. _ioGate owns the demuxer cursor (open, read, seek, close);
+    // the packet reads and container seeks (network I/O for a network source: a segment download
+    // can take seconds) run under it but never under _sync. _sync guards the decoder, the BASS
+    // channel and the position bookkeeping, and is only ever held for CPU work, so Position,
+    // Normalize and the volume/pitch/tempo setters a host calls from its UI thread never wait for
+    // the network (ENG-035: the Avalonia player froze when a network seek held _sync).
+    private readonly Lock _ioGate = new();
     private readonly Lock _sync = new();
     private readonly SharedDemuxer _demuxer;
     private readonly bool _ownsDemuxer;
@@ -284,56 +292,117 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         return OpenFile(filePath, CreatePathNormalizationCacheKey(filePath));
     }
 
-    private bool OpenFile(string filePath, string? normalizationCacheKey)
+    /// <summary>
+    /// Opens the audio of an http/https source (Stage 039A): one attempt (retries belong to the
+    /// caller), no normalization pre-analysis (unity gain, as for 014A network audio).
+    /// </summary>
+    internal bool OpenNetwork(string url, FfmpegNetworkOptions options)
     {
-        lock (_sync)
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(options);
+        return OpenCore(url, () => _demuxer.IsOpen || _demuxer.Open(url, options), normalizationCacheKey: null, analyzeNormalization: false);
+    }
+
+    /// <summary>Aborts blocking network I/O at once, without the engine lock (Stage 039A).</summary>
+    internal void AbortNetwork()
+    {
+        if (_ownsDemuxer)
+            _demuxer.Abort();
+    }
+
+    /// <summary>
+    /// Gives up a network read or seek of this engine's cursor that started before
+    /// <paramref name="timestamp"/>, without a lock (ENG-035: a newer seek supersedes it).
+    /// </summary>
+    internal void SupersedeNetworkOperationsStartedBefore(long timestamp)
+    {
+        if (_ownsDemuxer)
+            _demuxer.SupersedeOperationsStartedBefore(timestamp);
+    }
+
+    /// <summary>How long this engine's network read has been blocked. Lock-free.</summary>
+    internal TimeSpan NetworkReadStall => _ownsDemuxer ? _demuxer.NetworkReadStall : TimeSpan.Zero;
+
+    /// <summary>Whether this engine's network reader reached the end of the stream. Lock-free.</summary>
+    internal bool NetworkEndOfStream => _ownsDemuxer && _demuxer.NetworkEndOfStream;
+
+    /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
+    internal string? LastNetworkError => _demuxer.LastNetworkError;
+
+    /// <summary>What FFmpeg reported for the open network source.</summary>
+    internal NetworkVideoProbe GetNetworkProbe() => _demuxer.GetNetworkProbe();
+
+    private bool OpenFile(string filePath, string? normalizationCacheKey) =>
+        OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true);
+
+    private bool OpenCore(string filePath, Func<bool> openDemuxer, string? normalizationCacheKey, bool analyzeNormalization)
+    {
+        lock (_ioGate)
         {
-            if (_disposed)
-                return false;
-
-            CloseCore();
-
-            if (!_demuxer.IsOpen && !_demuxer.Open(filePath))
-                return false;
-
-            AudioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
-            if (AudioStreamIndex < 0)
+            lock (_sync)
             {
+                if (_disposed)
+                    return false;
+
                 CloseCore();
+            }
+
+            // A network connect and probe can take seconds: outside _sync.
+            if (!openDemuxer())
                 return false;
-            }
 
-            _demuxer.RegisterAudioStream(AudioStreamIndex);
-
-            // With its own demuxer (the video pipeline gives audio a separate cursor), every
-            // other stream is read and dropped: discard them so the file is not demuxed twice.
-            if (_ownsDemuxer)
-            {
-                for (uint i = 0; i < _demuxer.StreamCount; i++)
-                {
-                    if ((int)i != AudioStreamIndex)
-                        _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
-                }
-            }
-
-            _audioStream = _demuxer.GetStream(AudioStreamIndex);
-            _streamStartSeconds = GetStreamStartSeconds(_audioStream);
-            if (!InitializeDecoder() || !CreateBassStreams())
-            {
-                CloseCore();
-                return false;
-            }
-
-            var formatDurationTicks = _demuxer.FormatDurationTicks;
-            Duration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
-            State = AudioEngineState.Stopped;
-            PublishPositionSnapshot(_positionBaseSeconds);
-            StartNormalizationAnalysis(filePath, normalizationCacheKey);
-            _openPublished = IsOpenCore;
-            Opened?.Invoke(this, EventArgs.Empty);
-            Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
-            return true;
+            lock (_sync)
+                return CompleteOpenCore(filePath, normalizationCacheKey, analyzeNormalization);
         }
+    }
+
+    // Under _ioGate and _sync, with the demuxer open.
+    private bool CompleteOpenCore(string filePath, string? normalizationCacheKey, bool analyzeNormalization)
+    {
+        // A network source takes the audio of the variant the picture plays (039A).
+        AudioStreamIndex = _demuxer.SelectAudioStream();
+        if (AudioStreamIndex < 0)
+        {
+            CloseCore();
+            return false;
+        }
+
+        _demuxer.RegisterAudioStream(AudioStreamIndex);
+
+        // With its own demuxer (the video pipeline gives audio a separate cursor), every
+        // other stream is read and dropped: discard them so the file is not demuxed twice
+        // (and, for HLS/DASH, so the other variants are not downloaded).
+        if (_ownsDemuxer)
+        {
+            for (uint i = 0; i < _demuxer.StreamCount; i++)
+            {
+                if ((int)i != AudioStreamIndex)
+                    _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
+            }
+        }
+        else
+        {
+            _demuxer.DiscardUnregisteredNetworkStreams();
+        }
+
+        _audioStream = _demuxer.GetStream(AudioStreamIndex);
+        _streamStartSeconds = GetStreamStartSeconds(_audioStream);
+        if (!InitializeDecoder() || !CreateBassStreams())
+        {
+            CloseCore();
+            return false;
+        }
+
+        var formatDurationTicks = _demuxer.FormatDurationTicks;
+        Duration = formatDurationTicks > 0 ? formatDurationTicks / (double)ffmpeg.AV_TIME_BASE : 0;
+        State = AudioEngineState.Stopped;
+        PublishPositionSnapshot(_positionBaseSeconds);
+        if (analyzeNormalization)
+            StartNormalizationAnalysis(filePath, normalizationCacheKey);
+        _openPublished = IsOpenCore;
+        Opened?.Invoke(this, EventArgs.Empty);
+        Debug.WriteLine($"[VideoAudioEngine] Opened audio stream: {_sampleRate}Hz, {_sourceChannels}ch -> {_channels}ch, duration {Duration:F2}s");
+        return true;
     }
 
     public bool Open(IArchiveEntryInfo archiveEntry)
@@ -355,27 +424,31 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     public bool DecodeAndPushAudio()
     {
-        lock (_sync)
+        lock (_ioGate)
             return DecodeAndPushAudioCore();
     }
 
+    // Under _ioGate: the packet read runs outside _sync.
     private bool DecodeAndPushAudioCore()
     {
-        if (!IsOpenCore || !_demuxer.IsOpen)
-            return false;
-
-        if (IsAudioBufferThrottledCore())
+        lock (_sync)
         {
-            // The push is throttled (2-4s of audio already buffered), but the position must
-            // still be sampled: GetPositionCore advances the gapless-loop bookkeeping
-            // (AdvanceCompletedLoops / CompletedLoopCount) as the played position crosses a
-            // recorded lap boundary. Near a loop wrap the buffer stays full for seconds at a
-            // time - skipping the sample here would delay CompletedLoopCount (and the video
-            // side's wrap commit) by up to the full buffer drain, leaving the video frozen
-            // on the old lap's tail while the audio is already playing the next lap, then
-            // forcing a visible fast-forward catch-up when the late commit finally lands.
-            PublishPositionSnapshot(GetPositionCore());
-            return false;
+            if (!IsOpenCore || !_demuxer.IsOpen)
+                return false;
+
+            if (IsAudioBufferThrottledCore())
+            {
+                // The push is throttled (2-4s of audio already buffered), but the position must
+                // still be sampled: GetPositionCore advances the gapless-loop bookkeeping
+                // (AdvanceCompletedLoops / CompletedLoopCount) as the played position crosses a
+                // recorded lap boundary. Near a loop wrap the buffer stays full for seconds at a
+                // time - skipping the sample here would delay CompletedLoopCount (and the video
+                // side's wrap commit) by up to the full buffer drain, leaving the video frozen
+                // on the old lap's tail while the audio is already playing the next lap, then
+                // forcing a visible fast-forward catch-up when the late commit finally lands.
+                PublishPositionSnapshot(GetPositionCore());
+                return false;
+            }
         }
 
         AVPacket* packet = ffmpeg.av_packet_alloc();
@@ -384,19 +457,27 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
         try
         {
-            if (_demuxer.ReadAudioPacket(packet) >= 0)
+            var result = _demuxer.ReadAudioPacket(packet);
+            lock (_sync)
             {
-                var processed = ProcessAudioPacket(packet);
-                if (processed)
-                    PublishPositionSnapshot(GetPositionCore());
-                return processed;
+                if (result >= 0)
+                {
+                    var processed = ProcessAudioPacket(packet);
+                    if (processed)
+                        PublishPositionSnapshot(GetPositionCore());
+                    return processed;
+                }
+
+                // A newer seek gave up the read (network); the seek repositions the cursor next.
+                if (result == ffmpeg.AVERROR_EXIT || !LoopPlayback || Duration <= 0)
+                    return false;
             }
 
             // End of stream. Gapless loop: seek the FFmpeg decoder back to 0 and keep pushing
             // PCM into the same BASS push stream instead of stopping it - the channel never
             // stops, so there is no audio gap at the loop boundary. Mirrors
             // BackgroundVideoLoop's decoder-only pre-seek pattern.
-            return LoopPlayback && Duration > 0 && WrapDecoderForLoop();
+            return WrapDecoderForLoop();
         }
         finally
         {
@@ -405,21 +486,20 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    // Records the continuous-timeline mark at which this lap's pushed audio ends, then seeks
-    // the FFmpeg decoder back to 0. The BASS channel and its position counter are untouched,
-    // so playback continues without interruption; PushAudioFrame's existing monotonic guard
-    // (see below) keeps _lastPushedAudioEndSeconds increasing across the wrap automatically.
+    // Seeks the FFmpeg decoder back to 0, then records the continuous-timeline mark at which this
+    // lap's pushed audio ends. The BASS channel and its position counter are untouched, so
+    // playback continues without interruption; PushAudioFrame's existing monotonic guard (see
+    // below) keeps _lastPushedAudioEndSeconds increasing across the wrap automatically. Under
+    // _ioGate (nothing is pushed meanwhile); the mark is recorded only once the seek succeeded,
+    // so AdvanceCompletedLoops never sees a boundary that will never be reached.
     private bool WrapDecoderForLoop()
     {
-        _pendingLoopBoundaries.Enqueue(_lastPushedAudioEndSeconds);
+        if (!SeekDecoder(0))
+            return false;
 
-        if (SeekDecoder(0))
-            return true;
-
-        // Wrap failed - undo the pending mark so AdvanceCompletedLoops never sees a
-        // boundary that will never actually be reached.
-        _ = _pendingLoopBoundaries.Count > 0 ? _pendingLoopBoundaries.Dequeue() : 0;
-        return false;
+        lock (_sync)
+            _pendingLoopBoundaries.Enqueue(_lastPushedAudioEndSeconds);
+        return true;
     }
 
     public bool Play()
@@ -503,52 +583,67 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     public bool Stop()
     {
-        lock (_sync)
-            return StopCore();
-    }
-
-    private bool StopCore()
-    {
-        _positionBaseSeconds = 0;
-        if (PlayHandle != 0)
+        lock (_ioGate)
         {
-            _ = Bass.ChannelStop(PlayHandle);
-            _ = Bass.ChannelSetPosition(PlayHandle, 0);
+            lock (_sync)
+            {
+                _positionBaseSeconds = 0;
+                if (PlayHandle != 0)
+                {
+                    _ = Bass.ChannelStop(PlayHandle);
+                    _ = Bass.ChannelSetPosition(PlayHandle, 0);
+                }
+
+                if (SourceHandle != 0)
+                    _ = Bass.ChannelSetPosition(SourceHandle, 0);
+
+                ResetAudioBufferTracking();
+            }
+
+            // Network I/O: outside _sync. _ioGate keeps the push loop out meanwhile.
+            _ = SeekDecoder(0);
+            lock (_sync)
+            {
+                _fade.EndSession(releaseHandle: false);
+                SetState(AudioEngineState.Stopped);
+                PublishPositionSnapshot(0);
+                PositionChanged?.Invoke(this, 0);
+            }
+
+            return true;
         }
-
-        if (SourceHandle != 0)
-            _ = Bass.ChannelSetPosition(SourceHandle, 0);
-
-        ResetAudioBufferTracking();
-        _ = SeekDecoder(0);
-        _fade.EndSession(releaseHandle: false);
-        SetState(AudioEngineState.Stopped);
-        PublishPositionSnapshot(0);
-        PositionChanged?.Invoke(this, 0);
-        return true;
     }
 
     public bool Seek(double seconds) => Seek(seconds, resumePlayback: true);
 
     public bool Seek(double seconds, bool resumePlayback)
     {
-        lock (_sync)
-            return SeekCore(seconds, resumePlayback);
+        lock (_ioGate)
+        {
+            double target;
+            lock (_sync)
+            {
+                if (!IsOpenCore)
+                    return false;
+
+                target = Duration > 0 ? Math.Clamp(seconds, 0, Duration) : Math.Max(0, seconds);
+            }
+
+            // The decoder seeks first: if it fails, playback carries on untouched instead of being
+            // left paused with its buffered audio flushed. _ioGate keeps the push loop out
+            // meanwhile; the seek (network I/O) runs outside _sync.
+            if (!SeekDecoder(target))
+                return false;
+
+            lock (_sync)
+                return CompleteSeekCore(target, resumePlayback);
+        }
     }
 
-    private bool SeekCore(double seconds, bool resumePlayback)
+    // Under _ioGate and _sync, once the decoder sought to target.
+    private bool CompleteSeekCore(double target, bool resumePlayback)
     {
-        if (!IsOpenCore)
-            return false;
-
-        var target = Duration > 0 ? Math.Clamp(seconds, 0, Duration) : Math.Max(0, seconds);
         var wasPlaying = State == AudioEngineState.Playing;
-
-        // The decoder seeks first: if it fails, playback carries on untouched instead of being
-        // left paused with its buffered audio flushed. _sync keeps the push loop out meanwhile.
-        if (!SeekDecoder(target))
-            return false;
-
         if (PlayHandle != 0)
         {
             _ = Bass.ChannelPause(PlayHandle);
@@ -575,10 +670,14 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     public bool PrebufferAudio(int minimumFrames = 8, int maxDecodeAttempts = 128)
     {
-        lock (_sync)
+        // _pushedAudioFrameCount only changes under _ioGate, so it is read here without _sync.
+        lock (_ioGate)
         {
-            if (!IsOpenCore || minimumFrames <= 0 || maxDecodeAttempts <= 0)
-                return false;
+            lock (_sync)
+            {
+                if (!IsOpenCore || minimumFrames <= 0 || maxDecodeAttempts <= 0)
+                    return false;
+            }
 
             var startingFrameCount = _pushedAudioFrameCount;
             var attempts = 0;
@@ -592,8 +691,11 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     public void Close()
     {
-        lock (_sync)
-            CloseCore();
+        lock (_ioGate)
+        {
+            lock (_sync)
+                CloseCore();
+        }
     }
 
     private void CloseCore()
@@ -943,6 +1045,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
+    // Under _ioGate and not under _sync: the container seek is network I/O for a network source.
+    // The stream fields it reads change only under _ioGate (open, close).
     private bool SeekDecoder(double seconds)
     {
         if (!_demuxer.IsOpen || _audioStream == null)
@@ -950,23 +1054,25 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
         // Shared-demuxer mode remains available for internal callers that coordinate the
         // container seek externally. Main-pipeline audio owns its cursor and uses the seek below.
-        if (!_ownsDemuxer)
+        if (_ownsDemuxer)
+        {
+            var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
+            if (_demuxer.Seek(AudioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
+                return false;
+        }
+        else
         {
             _demuxer.ClearAudioEof();
-            if (_codecContext != null)
-                ffmpeg.avcodec_flush_buffers(_codecContext);
-            _discardAudioBeforeSeconds = seconds;
-            return true;
         }
 
-        var timestamp = (long)((seconds + _streamStartSeconds) / ffmpeg.av_q2d(_audioStream->time_base));
-        if (_demuxer.Seek(AudioStreamIndex, timestamp, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
-            return false;
+        lock (_sync)
+        {
+            if (_codecContext != null)
+                ffmpeg.avcodec_flush_buffers(_codecContext);
 
-        if (_codecContext != null)
-            ffmpeg.avcodec_flush_buffers(_codecContext);
+            _discardAudioBeforeSeconds = seconds;
+        }
 
-        _discardAudioBeforeSeconds = seconds;
         return true;
     }
 

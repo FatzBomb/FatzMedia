@@ -3,10 +3,12 @@ using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using SharpGen.Runtime;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
@@ -18,6 +20,11 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 /// </summary>
 internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration configuration) : IDisposable
 {
+    // Blit failures repeat every frame: one diagnostic until a blit succeeds (ENG-026).
+    private readonly RendererDiagnosticLatch _blitFailure = new();
+    // The view the output is cleared through before each blit, kept per output texture like the
+    // video processor output view (ENG-026), and released with it by Reset.
+    private readonly D3D11TargetViewCache _clearViews = new();
     private ID3D11VideoProcessorEnumerator? _videoProcessorEnumerator;
     private ID3D11VideoProcessor? _videoProcessor;
     private ID3D11VideoProcessorOutputView? _videoOutputView;
@@ -27,7 +34,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private int _videoProcessorOutputHeight;
     private double _videoProcessorFps;
     private IntPtr _videoProcessorOutputTexturePointer;
-    private (VideoColorSpace ColorSpace, bool Pq)? _appliedColorSpace;
+    private (VideoColorSpace ColorSpace, HdrTransferFunction? Hdr)? _appliedColorSpace;
     private readonly D3D11HdrToneMapPresenter _hdrToneMapPresenter = new();
     private bool _hdrPathReported;
 
@@ -126,7 +133,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                     hdrSource,
                     hdrDestination))
             {
-                ReportHdrPath(MediaDiagnosticLevel.Info, "HDR10 video is tone mapped to SDR on the GPU (Direct3D11 shader).");
+                ReportHdrPath(MediaDiagnosticLevel.Info, $"{DescribeTransfer(request.Transfer)} video is tone mapped to SDR on the GPU (Direct3D11 shader).");
                 deviceResources.Context.Flush();
                 return true;
             }
@@ -139,7 +146,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             {
                 ReportHdrPath(
                     MediaDiagnosticLevel.Warning,
-                    $"HDR10 tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
+                    $"{DescribeTransfer(request.Transfer)} tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
             }
         }
 
@@ -164,7 +171,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
-        ApplyColorSpaces(deviceResources, sourceTexture, presentationTexture, resolvedColorSpace, pq: toneMap != null);
+        ApplyColorSpaces(deviceResources, sourceTexture, presentationTexture, resolvedColorSpace, toneMap?.Transfer);
         (Vortice.RawRect Source, Vortice.RawRect Destination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
         ApplyVideoProcessorRects(deviceResources.VideoContext, streamIndex: 0, Source, Destination);
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
@@ -174,11 +181,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, _streams);
         if (result.Failure)
         {
-            Debug.WriteLine($"[VorticeD3D11] Video processor blit failed: {result}");
+            _ = _blitFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Video processor blit failed: {result}");
             return false;
         }
 
         deviceResources.Context.Flush();
+        _blitFailure.Reset();
         return true;
     }
 
@@ -195,6 +203,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         _videoProcessorOutputWidth = 0;
         _videoProcessorOutputHeight = 0;
         _videoProcessorOutputTexturePointer = IntPtr.Zero;
+        _clearViews.Release();
         _videoProcessorFps = 0;
         _appliedColorSpace = null;
         _streams[0].InputSurface = null;
@@ -214,6 +223,9 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     }
 
     public void Dispose() => ResetDeviceResources();
+
+    private static string DescribeTransfer(HdrTransferFunction transfer) =>
+        transfer == HdrTransferFunction.Hlg ? "HLG" : "HDR10";
 
     private void ReportHdrPath(MediaDiagnosticLevel level, string message)
     {
@@ -307,15 +319,20 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         ID3D11Texture2D sourceTexture,
         ID3D11Texture2D presentationTexture,
         VideoColorSpace colorSpace,
-        bool pq)
+        HdrTransferFunction? hdr)
     {
-        if (_videoProcessor == null || _appliedColorSpace == (colorSpace, pq))
+        if (_videoProcessor == null || _appliedColorSpace == (colorSpace, hdr))
         {
             return;
         }
 
-        // HDR10 the shader could not take: declare PQ, so a driver that tone maps can.
-        ColorSpaceType inputColorSpace = pq ? ColorSpaceType.YcbcrStudioG2084LeftP2020 : ToDxgiColorSpace(colorSpace);
+        // HDR the shader could not take: declare PQ or HLG, so a driver that tone maps can.
+        ColorSpaceType inputColorSpace = hdr switch
+        {
+            HdrTransferFunction.Pq => ColorSpaceType.YcbcrStudioG2084LeftP2020,
+            HdrTransferFunction.Hlg => ColorSpaceType.YcbcrStudioGhlgTopLeftP2020,
+            _ => ToDxgiColorSpace(colorSpace)
+        };
         if (deviceResources.VideoContext1 is { } videoContext1
             && SupportsConversion(sourceTexture, presentationTexture, inputColorSpace))
         {
@@ -334,7 +351,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             videoContext.VideoProcessorSetOutputColorSpace(_videoProcessor, new VideoProcessorColorSpace { RGB_Range = 0 });
         }
 
-        _appliedColorSpace = (colorSpace, pq);
+        _appliedColorSpace = (colorSpace, hdr);
     }
 
     private bool SupportsConversion(ID3D11Texture2D sourceTexture, ID3D11Texture2D presentationTexture, ColorSpaceType inputColorSpace)
@@ -402,14 +419,14 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         return new Rational(numerator, 1000);
     }
 
-    private static void ClearPresentationTextureToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D presentationTexture, bool flush)
+    private void ClearPresentationTextureToBlack(D3D11DeviceResources deviceResources, ID3D11Texture2D presentationTexture, bool flush)
     {
         if (deviceResources.Device == null || deviceResources.Context == null)
         {
             return;
         }
 
-        using ID3D11RenderTargetView renderTargetView = deviceResources.Device.CreateRenderTargetView(presentationTexture);
+        ID3D11RenderTargetView renderTargetView = _clearViews.Get(deviceResources.Device, presentationTexture);
         deviceResources.Context.ClearRenderTargetView(renderTargetView, new Color4(0f, 0f, 0f, 1f));
         if (flush)
         {

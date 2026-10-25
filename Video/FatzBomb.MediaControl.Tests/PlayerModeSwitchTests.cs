@@ -305,11 +305,11 @@ public sealed class PlayerModeSwitchTests
         Assert.True(factory.Engines[^1].IsOpen);
     }
 
-    private static MediaPresentationSurfaceDescriptor Surface(string id, int width, int height) =>
+    internal static MediaPresentationSurfaceDescriptor Surface(string id, int width, int height) =>
         new(id, MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd((nint)0x1234), width, height);
 
     /// <summary>A new engine and coordinator for every graph, so each rebuild can be observed.</summary>
-    private sealed class SwitchTestPlatformFactory : IMediaControlPlatformFactory
+    internal sealed class SwitchTestPlatformFactory : IMediaControlPlatformFactory
     {
         private int _createServiceProviderCount;
 
@@ -346,7 +346,7 @@ public sealed class PlayerModeSwitchTests
     }
 
     /// <summary>A coordinator that accepts surfaces and records them.</summary>
-    private sealed class RecordingCoordinator : IMediaPresentationCoordinator
+    internal sealed class RecordingCoordinator : IMediaPresentationCoordinator
     {
         public event EventHandler? FramePresented { add { } remove { } }
 

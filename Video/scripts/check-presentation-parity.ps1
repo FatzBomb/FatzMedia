@@ -73,13 +73,14 @@ Assert-Match $coordinator '_rendererBackend\.AttachSurface\s*\(\s*surface\s*\)' 
 
 Assert-Match $backendSet '_secondaryNativeHwndTargets' 'D3D11 backend set must own secondary native HWND targets.'
 Assert-Match $backendSet 'CreateSecondaryNativeHwndTarget' 'D3D11 backend set must create secondary native HWND targets.'
-Assert-Match $backendSet 'foreach\s*\(\s*KeyValuePair<string,\s*D3D11NativeHwndSwapChainBackend>\s+pair\s+in\s+_secondaryNativeHwndTargets' 'D3D11 backend set must enumerate secondary targets.'
-Assert-Match $backendSet 'yield\s+return\s+new\s+D3D11PresentationBackendTarget\s*\(\s*pair\.Key,\s*pair\.Value,\s*pair\.Value\.Hwnd,\s*"NativeHwndSwapChain"' 'Secondary targets must enter the same active target snapshot list as native HWND swap-chain outputs.'
+# ENG-026: the per-frame enumeration and present loops are index loops over the sorted target lists.
+Assert-Match $backendSet '_secondaryNativeHwndTargets\.Values' 'D3D11 backend set must enumerate secondary targets.'
+Assert-Match $backendSet 'targets\.Add\s*\(\s*new\s+D3D11PresentationBackendTarget\s*\(\s*nativeIds\[i\],\s*natives\[i\],\s*natives\[i\]\.Hwnd,\s*"NativeHwndSwapChain"' 'Secondary targets must enter the same active target snapshot list as native HWND swap-chain outputs.'
 Assert-Match $backendSet 'NotifyTargetsPresented\s*\(\s*IReadOnlyList<D3D11PresentationTargetSnapshot>\s+targets' 'D3D11 backend set must notify/present a list of target snapshots.'
-Assert-Match $backendSet 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+targets\s*\)' 'D3D11 backend set must notify each presented target.'
+Assert-Match $backendSet 'D3D11PresentationTargetSnapshot\s+target\s*=\s*targets\[i\]' 'D3D11 backend set must notify each presented target.'
 Assert-Match $backendSet 'NormalizeSecondaryNativeHwndTargetId' 'D3D11 backend set must normalize secondary target ids.'
 
-Assert-Match $surfaceController 'foreach\s*\(\s*D3D11PresentationBackendTarget\s+candidate\s+in\s+backends\.EnumerateActiveTargetBackends\s*\(\s*\)\s*\)' 'Surface controller must build snapshots from all active primary and secondary backends.'
+Assert-Match $surfaceController 'backends\.CollectActiveTargetBackends\s*\(\s*_scratchBackends\s*\)' 'Surface controller must build snapshots from all active primary and secondary backends.'
 Assert-Match $surfaceController 'snapshots\.Add\s*\(\s*new\s+D3D11PresentationTargetSnapshot' 'Surface controller must return target snapshots for compositor fan-out.'
 
 Assert-Match $presentationServices 'Surfaces\.GetActiveTargetSnapshots\s*\(\s*applyPendingNativeResize:\s*true' 'Renderer presentation services must collect all active final targets before visible composition.'

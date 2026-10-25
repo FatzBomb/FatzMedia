@@ -4,7 +4,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FatzBomb.MediaControl.Avalonia;
@@ -20,6 +22,8 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 public partial class PlayerPanel : UserControl
 {
     private const int MaxLogEntries = 500;
+    // A status read slower than this is logged: engine getters should never block (ENG-035).
+    private static readonly TimeSpan SlowStatusRead = TimeSpan.FromMilliseconds(100);
 
     private readonly int _index;
     private readonly RendererOption _renderer;
@@ -33,7 +37,15 @@ public partial class PlayerPanel : UserControl
     private bool _isUpdatingSeek;
     private bool _isUpdatingMode;
     private bool _isUpdatingLoop;
+    private bool _isUpdatingSecondScreen;
+    private SecondaryPresentationWindow? _secondScreen;
     private bool _disposed;
+    // The engine reads of the 200 ms timer run off the UI thread, so a read that blocks or throws
+    // cannot wedge the window; the status line shows the last state read.
+    private Task? _statusRead;
+    private long _statusReadStarted;
+    private bool _statusReadStallLogged;
+    private MediaPlayerState _lastState;
 
     // Designer/XAML loader constructor.
     public PlayerPanel()
@@ -97,6 +109,7 @@ public partial class PlayerPanel : UserControl
             player.MediaDiagnostic += OnDiagnostic;
             player.MediaError += OnError;
             player.PresentationFramePresented += OnFramePresented;
+            player.BufferingChanged += OnBufferingChanged;
             player.PlayOnLoad = true;
             player.LoopMedia = LoopBox.IsChecked == true;
             player.Effects.Volume = VolumeSlider.Value / 100;
@@ -110,6 +123,10 @@ public partial class PlayerPanel : UserControl
             SetControlsEnabled(true);
             _lastFrameTimestamp = Stopwatch.GetTimestamp();
             _uiTimer.Start();
+
+            // --second-screen=<n> opens player 1's second screen at startup.
+            if (_index == 1 && StartupOptions.Current.SecondScreen is not null)
+                SecondScreenBox.IsChecked = true;
 
             if (!string.IsNullOrEmpty(startupPath))
                 await OpenAsync(startupPath);
@@ -128,6 +145,7 @@ public partial class PlayerPanel : UserControl
 
         _disposed = true;
         _uiTimer.Stop();
+        CloseSecondScreen();
         Surface.Player = null;
         MediaControlPlayer? player = _player;
         _player = null;
@@ -137,6 +155,7 @@ public partial class PlayerPanel : UserControl
         player.MediaDiagnostic -= OnDiagnostic;
         player.MediaError -= OnError;
         player.PresentationFramePresented -= OnFramePresented;
+        player.BufferingChanged -= OnBufferingChanged;
         // Dispose waits for admitted media operations: never on the UI thread.
         await Task.Run(player.Dispose);
     }
@@ -153,9 +172,117 @@ public partial class PlayerPanel : UserControl
 
         PixelSize size = Surface.AttachedPixelSize;
         StatusText.Text =
-            $"{Label} {player.State} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
+            $"{Label} {_lastState} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
             $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height} " +
-            $"via {DescribePath(Surface.PresentationPath)}";
+            $"via {DescribePath(Surface.PresentationPath)}{DescribeSecondScreen()}";
+    }
+
+    private string DescribeSecondScreen()
+    {
+        if (_secondScreen?.Surface is not { } surface)
+            return string.Empty;
+
+        PixelSize size = surface.AttachedPixelSize;
+        return $" | 2nd screen {size.Width}x{size.Height} via {DescribePath(surface.PresentationPath)}{(surface.IsPresentationSuspended ? " (cleared: Audio mode)" : string.Empty)}";
+    }
+
+    /// <summary>Opens or closes this player's second screen (Stage 027A slice 5).</summary>
+    private void OnSecondScreenChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingSecondScreen)
+            return;
+
+        if (SecondScreenBox.IsChecked == true)
+            OpenSecondScreen();
+        else
+            CloseSecondScreen();
+    }
+
+    private void OpenSecondScreen()
+    {
+        if (_player is not { } player || _secondScreen is not null || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            SetSecondScreenBox(false);
+            return;
+        }
+
+        (Screen? screen, var fullScreen, var where) = ChooseSecondScreen(owner);
+        var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
+        window.Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
+        window.Surface.PresentationPathChanged += OnSecondScreenPathChanged;
+        window.Closed += OnSecondScreenClosed;
+        _secondScreen = window;
+        AddLog(MediaDiagnosticLevel.Info, "Surface", $"{Label} second screen opens {where}");
+        window.ShowOnScreen(screen, fullScreen, owner);
+    }
+
+    /// <summary>
+    /// <c>--second-screen=&lt;n&gt;</c> when that screen exists, else the first screen that is not the
+    /// main window's, full screen; with one screen, a window beside the player.
+    /// </summary>
+    private static (Screen? Screen, bool FullScreen, string Where) ChooseSecondScreen(Window owner)
+    {
+        IReadOnlyList<Screen> screens = owner.Screens.All;
+        if (StartupOptions.Current.SecondScreen is { } number && number <= screens.Count)
+            return (screens[number - 1], true, $"full screen on screen {number} of {screens.Count} ({screens[number - 1].DisplayName})");
+
+        Screen? current = owner.Screens.ScreenFromWindow(owner);
+        for (var i = 0; i < screens.Count; i++)
+        {
+            if (!Equals(screens[i], current))
+                return (screens[i], true, $"full screen on screen {i + 1} of {screens.Count} ({screens[i].DisplayName})");
+        }
+
+        return (current, false, $"in a window (one screen{(StartupOptions.Current.SecondScreen is { } missing ? $"; screen {missing} does not exist" : string.Empty)})");
+    }
+
+    private void CloseSecondScreen()
+    {
+        SecondaryPresentationWindow? window = _secondScreen;
+        if (window is null)
+            return;
+
+        _secondScreen = null;
+        window.Closed -= OnSecondScreenClosed;
+        window.Surface.PresentationPathChanged -= OnSecondScreenPathChanged;
+        window.Close();
+        SetSecondScreenBox(false);
+    }
+
+    // The user closed the window.
+    private void OnSecondScreenClosed(object? sender, EventArgs e)
+    {
+        if (_secondScreen is not { } window || !ReferenceEquals(sender, window))
+            return;
+
+        window.Surface.PresentationPathChanged -= OnSecondScreenPathChanged;
+        window.Closed -= OnSecondScreenClosed;
+        _secondScreen = null;
+        SetSecondScreenBox(false);
+    }
+
+    private void SetSecondScreenBox(bool isChecked)
+    {
+        _isUpdatingSecondScreen = true;
+        try
+        {
+            SecondScreenBox.IsChecked = isChecked;
+        }
+        finally
+        {
+            _isUpdatingSecondScreen = false;
+        }
+    }
+
+    private void OnSecondScreenPathChanged(object? sender, EventArgs e)
+    {
+        if (sender is MediaSurface { PresentationPath: not MediaSurfacePresentationPath.None } surface)
+        {
+            AddLog(
+                MediaDiagnosticLevel.Info,
+                "Surface",
+                $"{Label} second screen presents via {DescribePath(surface.PresentationPath)}{(surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
+        }
     }
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -181,17 +308,59 @@ public partial class PlayerPanel : UserControl
         }
     }
 
+    private async void OnOpenUrlClick(object? sender, RoutedEventArgs e) => await OpenUrlBoxAsync();
+
+    private async void OnUrlKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+            await OpenUrlBoxAsync();
+    }
+
+    private async Task OpenUrlBoxAsync()
+    {
+        var text = UrlBox.Text?.Trim() ?? string.Empty;
+        if (!TryParseNetworkUrl(text, out _))
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", "Enter an http:// or https:// URL.");
+            return;
+        }
+
+        try
+        {
+            await OpenAsync(text);
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Error, "Player", $"Open failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Opens a local file, or an http/https URL as a network source (Stage 039A).</summary>
     private async Task OpenAsync(string path)
     {
         if (_player is not { } player)
             return;
 
-        FileText.Text = Path.GetFileName(path);
+        var isUrl = TryParseNetworkUrl(path, out Uri? uri);
+        FileText.Text = isUrl ? path : Path.GetFileName(path);
+        if (isUrl)
+            UrlBox.Text = path;
         AddLog(MediaDiagnosticLevel.Info, "Player", $"Loading {path}");
         // PlayOnLoad starts playback after a successful load.
-        if (!await player.LoadAsync(path))
+        var loaded = isUrl ? await player.LoadAsync(MediaInputSource.FromUri(uri!)) : await player.LoadAsync(path);
+        if (!loaded)
+        {
             AddLog(MediaDiagnosticLevel.Warning, "Player", $"Could not load {path}");
+            return;
+        }
+
+        if (isUrl && player.CurrentSourceCapabilities is { } capabilities)
+            AddLog(MediaDiagnosticLevel.Info, "Network",
+                $"{capabilities.SourceClass}, seekable={capabilities.IsSeekable}, duration={(capabilities.IsDurationKnown ? FormatTime(player.Duration.TotalSeconds) : "unknown")}");
     }
+
+    private static bool TryParseNetworkUrl(string text, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
+        Uri.TryCreate(text, UriKind.Absolute, out uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private async void OnPlayPauseClick(object? sender, RoutedEventArgs e)
     {
@@ -307,16 +476,53 @@ public partial class PlayerPanel : UserControl
         if (_player is not { } player)
             return;
 
-        PlayPauseButton.Content = player.State == MediaPlayerState.Playing ? "Pause" : "Play";
-        var duration = player.Duration.TotalSeconds;
+        if (_statusRead is { IsCompleted: false })
+        {
+            // The previous read has not returned: skip this tick (once logged) instead of piling up.
+            var blocked = Stopwatch.GetElapsedTime(_statusReadStarted);
+            if (!_statusReadStallLogged && blocked > TimeSpan.FromSeconds(1))
+            {
+                _statusReadStallLogged = true;
+                AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read blocked for {blocked.TotalSeconds:F1} s (State/Duration/Position); the UI stays live");
+            }
+
+            return;
+        }
+
+        _statusReadStarted = Stopwatch.GetTimestamp();
+        _statusRead = ReadStatusAsync(player);
+    }
+
+    private async Task ReadStatusAsync(MediaControlPlayer player)
+    {
+        (MediaPlayerState State, double Duration, double Position) status;
+        try
+        {
+            status = await Task.Run(() => (player.State, player.Duration.TotalSeconds, player.Position.TotalSeconds));
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read failed: {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        var elapsed = Stopwatch.GetElapsedTime(_statusReadStarted);
+        if (elapsed > SlowStatusRead)
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read took {elapsed.TotalMilliseconds:F0} ms (State/Duration/Position)");
+        _statusReadStallLogged = false;
+        if (!ReferenceEquals(player, _player))
+            return;
+
+        _lastState = status.State;
+        PlayPauseButton.Content = status.State == MediaPlayerState.Playing ? "Pause" : "Play";
         _isUpdatingSeek = true;
         try
         {
-            SeekSlider.Maximum = Math.Max(duration, 1);
-            DurationText.Text = FormatTime(duration);
+            SeekSlider.Maximum = Math.Max(status.Duration, 1);
+            DurationText.Text = FormatTime(status.Duration);
             if (!_isSeeking)
             {
-                SeekSlider.Value = Math.Clamp(player.Position.TotalSeconds, 0, SeekSlider.Maximum);
+                SeekSlider.Value = Math.Clamp(status.Position, 0, SeekSlider.Maximum);
                 PositionText.Text = FormatTime(SeekSlider.Value);
             }
         }
@@ -326,7 +532,31 @@ public partial class PlayerPanel : UserControl
         }
     }
 
+    /// <summary>Copies the whole log, oldest first, to the clipboard.</summary>
+    private async void OnCopyLogClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+            {
+                AddLog(MediaDiagnosticLevel.Warning, "Player", "No clipboard available");
+                return;
+            }
+
+            var lines = _log.Count;
+            await clipboard.SetTextAsync(string.Join(Environment.NewLine, _log.Reverse()));
+            AddLog(MediaDiagnosticLevel.Info, "Player", $"Copied {lines} log lines to the clipboard");
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Copy log failed: {ex.Message}");
+        }
+    }
+
     // The engine raises these on background threads.
+    private void OnBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => AddLog(MediaDiagnosticLevel.Info, "Network", $"Buffering={e.IsBuffering} fill={e.BufferFill:P0}"));
+
     private void OnDiagnostic(object? sender, MediaDiagnosticEventArgs e) =>
         Dispatcher.UIThread.Post(() => AddLog(e.Level, e.Category, e.Message));
 
@@ -379,7 +609,10 @@ public partial class PlayerPanel : UserControl
     private void SetControlsEnabled(bool enabled)
     {
         OpenButton.IsEnabled = enabled;
+        UrlBox.IsEnabled = enabled;
+        OpenUrlButton.IsEnabled = enabled;
         ModeBox.IsEnabled = enabled;
+        SecondScreenBox.IsEnabled = enabled;
         PlayPauseButton.IsEnabled = enabled;
         StopButton.IsEnabled = enabled;
         SeekSlider.IsEnabled = enabled;

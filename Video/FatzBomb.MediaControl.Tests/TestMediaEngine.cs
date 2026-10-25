@@ -1,15 +1,27 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl
 {
     private double _position;
+    private int _cancelPendingNetworkOpenCount;
+
+    /// <summary>How often the player cancelled a network open in progress (Stage 039A).</summary>
+    public int CancelPendingNetworkOpenCount => Volatile.Read(ref _cancelPendingNetworkOpenCount);
+
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    public void CancelPendingNetworkOpen() => _ = Interlocked.Increment(ref _cancelPendingNetworkOpenCount);
+
+    public void RaiseNetworkBuffering(bool isBuffering, double fill) =>
+        NetworkBufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
 
     public TestAudioEngine TestAudio { get; } = new();
     public TestVideoEngine? TestVideo { get; init; }
@@ -174,8 +186,29 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 }
 
-internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, IPresentationTimingSink
+internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, IPresentationTimingSink, INetworkVideoEngine
 {
+    /// <summary>
+    /// One network open attempt (Stage 039A): returns whether it connected. Unset, every attempt
+    /// connects to content with no usable stream (fails with no <see cref="LastNetworkError"/>).
+    /// </summary>
+    public Func<string, FfmpegNetworkOptions, bool>? NetworkOpen { get; set; }
+    public List<string> NetworkUrls { get; } = [];
+    public MediaSourceCapabilities? NetworkCapabilities { get; set; }
+    public string? LastNetworkError { get; set; }
+    public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    public bool OpenNetwork(string url, FfmpegNetworkOptions options)
+    {
+        NetworkUrls.Add(url);
+        var opened = NetworkOpen?.Invoke(url, options) ?? false;
+        IsOpen = opened;
+        return opened;
+    }
+
+    public void RaiseNetworkBuffering(bool isBuffering, double fill) =>
+        NetworkBufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
+
     public Func<double?>? RendererRefreshRateSource { get; private set; }
 
     public void SetRendererRefreshRateSource(Func<double?>? source) => RendererRefreshRateSource = source;

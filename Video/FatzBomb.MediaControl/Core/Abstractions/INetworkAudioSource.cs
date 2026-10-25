@@ -28,3 +28,20 @@ internal interface IMediaSourceCapabilityProvider
 {
     MediaSourceCapabilities? CurrentCapabilities { get; }
 }
+
+/// <summary>
+/// Engine support for network video (Stage 039A): cancelling an open in progress and buffering
+/// changes of sources read through FFmpeg (network video and Audio-mode network soundtracks).
+/// </summary>
+internal interface INetworkMediaControl
+{
+    /// <summary>
+    /// Cancels the network video open in progress, if any: the connect attempt and any retry delay
+    /// end at once and the load fails. Thread-safe; called outside the control queue by Close and
+    /// Dispose.
+    /// </summary>
+    void CancelPendingNetworkOpen();
+
+    /// <summary>Raised from a timer thread when buffering state or fill changes.</summary>
+    event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+}

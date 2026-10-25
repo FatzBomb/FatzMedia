@@ -36,9 +36,9 @@ internal static unsafe class FFmpegVideoColor
     /// <summary>
     /// The stream's color space for the decode-path log line, for example "BT.709 limited
     /// range" or "BT.601 limited range (assumed)" when the stream has no tags, plus a note on
-    /// HDR video, which is shown without tone mapping and so looks washed out.
+    /// HDR video: tone mapped to SDR, or (tone mapping off) shown without it, so washed out.
     /// </summary>
-    public static string Describe(VideoColorSpace tagged, int width, int height, AVColorTransferCharacteristic transfer, bool toneMapsHdr10 = false)
+    public static string Describe(VideoColorSpace tagged, int width, int height, AVColorTransferCharacteristic transfer, bool toneMapsHdr = false)
     {
         VideoColorSpace resolved = tagged.Resolve(width, height);
         var matrix = resolved.Matrix switch
@@ -51,10 +51,12 @@ internal static unsafe class FFmpegVideoColor
         var assumed = tagged.Matrix == VideoColorMatrix.Unspecified || tagged.Range == VideoColorRange.Unspecified ? " (assumed)" : string.Empty;
         var hdr = transfer switch
         {
-            AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084 => toneMapsHdr10
+            AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084 => toneMapsHdr
                 ? "; HDR10/PQ, tone mapped to SDR"
                 : "; HDR10/PQ, shown as SDR without tone mapping (looks washed out)",
-            AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67 => "; HLG HDR, shown as SDR without tone mapping",
+            AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67 => toneMapsHdr
+                ? "; HLG HDR, tone mapped to SDR"
+                : "; HLG HDR, shown as SDR without tone mapping",
             _ => string.Empty
         };
         return $"{matrix} {range}{assumed}{hdr}";

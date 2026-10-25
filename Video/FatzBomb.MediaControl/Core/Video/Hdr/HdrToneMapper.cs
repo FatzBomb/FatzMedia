@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Core.Graphics;
 
-// Stage 038A slice 1: HDR10 to SDR tone mapping on the CPU.
+// Stage 038A slice 1: HDR10 to SDR tone mapping on the CPU; Stage 042A slice 1: HLG.
 
 namespace FatzBomb.MediaControl.Core.Video.Hdr;
 
@@ -29,6 +30,53 @@ internal static class PqCurve
         var y = Math.Pow(Math.Clamp(nits / PeakNits, 0, 1), M1);
         return Math.Pow((C1 + (C2 * y)) / (1 + (C3 * y)), M2);
     }
+}
+
+/// <summary>
+/// ARIB STD-B67 / ITU-R BT.2100 hybrid log-gamma (HLG): the OETF, its inverse and the OOTF's
+/// system gamma (Stage 042A).
+/// </summary>
+internal static class HlgCurve
+{
+    private const double A = 0.17883277;
+    private const double B = 1 - (4 * A);
+    private static readonly double C = 0.5 - (A * Math.Log(4 * A));
+
+    /// <summary>The nominal display peak HLG is shown for: BT.2100's reference display, 1000 nits.</summary>
+    public const double NominalPeakNits = 1000;
+
+    /// <summary>BT.2020 luminance weights, which the HLG OOTF takes scene luminance with.</summary>
+    public const double Kr = 0.2627, Kg = 0.6780, Kb = 0.0593;
+
+    /// <summary>Normalized scene light in [0, 1] for an HLG signal in [0, 1] (the inverse OETF).</summary>
+    public static double ToSceneLinear(double signal)
+    {
+        var e = Math.Clamp(signal, 0, 1);
+        return e <= 0.5 ? e * e / 3 : (Math.Exp((e - C) / A) + B) / 12;
+    }
+
+    /// <summary>The HLG signal in [0, 1] for normalized scene light in [0, 1] (the OETF).</summary>
+    public static double FromSceneLinear(double light)
+    {
+        var e = Math.Clamp(light, 0, 1);
+        return e <= 1.0 / 12 ? Math.Sqrt(3 * e) : (A * Math.Log((12 * e) - B)) + C;
+    }
+
+    /// <summary>
+    /// BT.2100's system gamma for a display peaking at <paramref name="nominalPeakNits"/>:
+    /// 1.2 + 0.42 log10(Lw / 1000), so 1.2 at 1000 nits.
+    /// </summary>
+    public static double SystemGamma(double nominalPeakNits) => 1.2 + (0.42 * Math.Log10(nominalPeakNits / 1000));
+
+    /// <summary>
+    /// Display luminance of one channel in nits through the BT.2100 OOTF,
+    /// Lw * Ys^(gamma - 1) * E, for scene light <paramref name="channel"/> and scene luminance
+    /// <paramref name="sceneLuminance"/> (both normalized). Black level is 0.
+    /// </summary>
+    public static double ToDisplayNits(double channel, double sceneLuminance, double nominalPeakNits) =>
+        sceneLuminance > 0
+            ? nominalPeakNits * Math.Pow(sceneLuminance, SystemGamma(nominalPeakNits) - 1) * channel
+            : 0;
 }
 
 /// <summary>
@@ -66,11 +114,13 @@ internal static class Bt2390ToneCurve
 }
 
 /// <summary>
-/// Converts full-range HDR10 RGB (PQ, BT.2020 primaries; 16-bit RGB48 as swscale produces it
-/// with the BT.2020 matrix) into SDR BGRA8 (BT.709 primaries, BT.1886 gamma 2.4) - Stage 038A.
+/// Converts full-range HDR RGB (PQ or HLG, BT.2020 primaries; 16-bit RGB48 as swscale produces it
+/// with the BT.2020 matrix) into SDR BGRA8 (BT.709 primaries, BT.1886 gamma 2.4) - Stages 038A
+/// (PQ) and 042A (HLG).
 /// </summary>
 /// <remarks>
-/// Per pixel: PQ to linear light; the BT.2390 curve applied to the brightest channel, the same
+/// <para>
+/// PQ, per pixel: PQ to linear light; the BT.2390 curve applied to the brightest channel, the same
 /// gain for all three (hue preserved, no per-channel desaturation); BT.2020 to BT.709 primaries,
 /// clipped; then SDR gamma. The PQ decode, the curve gain (indexed by the brightest channel's
 /// signal, since PQ is monotonic) and the gamma encode are 4096-entry tables small enough to
@@ -80,6 +130,18 @@ internal static class Bt2390ToneCurve
 /// level. The curve compresses the source's range into [0, reference white], so the source peak
 /// is SDR white and the reference white itself lands a little below it (about 230 of 255 for a
 /// 1000-nit source at the default 203 nits), as with mpv's default SDR output.
+/// </para>
+/// <para>
+/// HLG, per pixel: the inverse OETF per channel to scene light E (a 4096-entry table like PQ's);
+/// scene luminance Ys (BT.2020 weights); the BT.2100 OOTF for the nominal peak Lw gives display
+/// light Lw * Ys^(gamma - 1) * E, so the brightest channel shows m * Lw nits with
+/// m = Ys^(gamma - 1) * max(E); the BT.2390 curve maps that peak, and every channel keeps its
+/// ratio to it (hue preserved, as for PQ): linear = E / max(E) * curve(m * Lw) / reference white.
+/// Ys^(gamma - 1) and curve(m * Lw) are tables indexed by the float's exponent and top 7
+/// mantissa bits (128 steps per octave over 24 octaves), so their relative error stays below
+/// 0.4% at every level without a pow per pixel; the curve table holds the mapped luminance,
+/// which is monotonic, so gray levels can only rise. Gamut and gamma steps are PQ's.
+/// </para>
 /// </remarks>
 internal sealed unsafe class HdrToneMapper
 {
@@ -96,38 +158,89 @@ internal sealed unsafe class HdrToneMapper
 
     private const int RowsPerBand = 16;
 
+    // HLG's log-indexed tables (Stage 042A): 2^LogMantissaBits steps per octave, from
+    // 2^-LogOctaves to 1; values below the first step use entry 0, above 1 the last entry.
+    private const int LogMantissaBits = 7;
+    private const int LogOctaves = 24;
+    private const int LogTableSize = (LogOctaves << LogMantissaBits) + 1;
+    private const int LogIndexShift = 23 - LogMantissaBits;
+    private const int LogIndexBase = (127 - LogOctaves) << LogMantissaBits;
+    private const float HlgKr = (float)HlgCurve.Kr, HlgKg = (float)HlgCurve.Kg, HlgKb = (float)HlgCurve.Kb;
+
     private readonly float[] _linear = new float[TableSize];
     private readonly float[] _gain = new float[TableSize];
     private readonly byte[] _encode = new byte[TableSize];
+    private readonly float[]? _inverseScene;
+    private readonly float[]? _ootf;
+    private readonly float[]? _mapped;
 
-    public HdrToneMapper(double sourcePeakNits, double referenceWhiteNits)
+    public HdrToneMapper(double sourcePeakNits, double referenceWhiteNits, HdrTransferFunction transfer = HdrTransferFunction.Pq)
     {
         SourcePeakNits = sourcePeakNits;
         ReferenceWhiteNits = referenceWhiteNits;
+        Transfer = transfer;
         for (var index = 0; index < TableSize; index++)
         {
-            // Each PQ entry stands for the 16-bit signals index << 4 .. (index << 4) + 15.
+            // Each signal entry stands for the 16-bit signals index << 4 .. (index << 4) + 15.
             var signal = index == 0 ? 0 : ((index << SignalShift) + (1 << (SignalShift - 1))) / 65535.0;
-            var nits = PqCurve.ToNits(signal);
-            _linear[index] = (float)(nits / referenceWhiteNits);
-            _gain[index] = nits > 0
-                ? (float)(Bt2390ToneCurve.Map(nits, sourcePeakNits, referenceWhiteNits) / nits)
-                : 1f;
+            if (transfer == HdrTransferFunction.Hlg)
+            {
+                _linear[index] = (float)HlgCurve.ToSceneLinear(signal);
+            }
+            else
+            {
+                var nits = PqCurve.ToNits(signal);
+                _linear[index] = (float)(nits / referenceWhiteNits);
+                _gain[index] = nits > 0
+                    ? (float)(Bt2390ToneCurve.Map(nits, sourcePeakNits, referenceWhiteNits) / nits)
+                    : 1f;
+            }
 
             var root = index / (double)(TableSize - 1);
             _encode[index] = (byte)Math.Round(255 * Math.Pow(root * root, 1 / SdrGamma), MidpointRounding.AwayFromZero);
         }
+
+        if (transfer == HdrTransferFunction.Hlg)
+        {
+            _inverseScene = new float[TableSize];
+            for (var index = 1; index < TableSize; index++)
+                _inverseScene[index] = 1f / _linear[index];
+
+            var ootfExponent = HlgCurve.SystemGamma(sourcePeakNits) - 1;
+            _ootf = new float[LogTableSize];
+            _mapped = new float[LogTableSize];
+            for (var index = 0; index < LogTableSize; index++)
+            {
+                // The middle of the step: 2^octave * (1 + (mantissa + 0.5) / 2^LogMantissaBits).
+                var octave = (index >> LogMantissaBits) - LogOctaves;
+                var mantissa = index & ((1 << LogMantissaBits) - 1);
+                var value = Math.Min(Math.ScaleB(1 + ((mantissa + 0.5) / (1 << LogMantissaBits)), octave), 1);
+                _ootf[index] = (float)Math.Pow(value, ootfExponent);
+                _mapped[index] = index == 0
+                    ? 0f
+                    : (float)(Bt2390ToneCurve.Map(value * sourcePeakNits, sourcePeakNits, referenceWhiteNits) / referenceWhiteNits);
+            }
+        }
     }
 
-    /// <summary>The source peak the curve compresses from, in nits.</summary>
+    /// <summary>The source peak the curve compresses from, in nits (for HLG, the nominal display peak).</summary>
     public double SourcePeakNits { get; }
 
     /// <summary>The luminance shown as SDR white, in nits.</summary>
     public double ReferenceWhiteNits { get; }
 
+    /// <summary>The source's transfer function.</summary>
+    public HdrTransferFunction Transfer { get; }
+
     /// <summary>Converts one row of RGB48 (R, G, B per pixel) into BGRA8 with opaque alpha.</summary>
     public void ConvertRow(ReadOnlySpan<ushort> rgb48, Span<byte> bgra)
     {
+        if (Transfer == HdrTransferFunction.Hlg)
+        {
+            ConvertHlgRow(rgb48, bgra);
+            return;
+        }
+
         var pixels = Math.Min(rgb48.Length / 3, bgra.Length / 4);
         fixed (ushort* source = rgb48)
         fixed (byte* destination = bgra)
@@ -146,6 +259,51 @@ internal sealed unsafe class HdrToneMapper
                 var lr = linear[r] * scale;
                 var lg = linear[g] * scale;
                 var lb = linear[b] * scale;
+                output[0] = encode[ToIndex((B0 * lr) + (B1 * lg) + (B2 * lb))];
+                output[1] = encode[ToIndex((G0 * lr) + (G1 * lg) + (G2 * lb))];
+                output[2] = encode[ToIndex((R0 * lr) + (R1 * lg) + (R2 * lb))];
+                output[3] = 255;
+            }
+        }
+    }
+
+    private void ConvertHlgRow(ReadOnlySpan<ushort> rgb48, Span<byte> bgra)
+    {
+        var pixels = Math.Min(rgb48.Length / 3, bgra.Length / 4);
+        fixed (ushort* source = rgb48)
+        fixed (byte* destination = bgra)
+        fixed (float* scene = _linear)
+        fixed (float* inverseScene = _inverseScene)
+        fixed (float* ootf = _ootf)
+        fixed (float* mapped = _mapped)
+        fixed (byte* encode = _encode)
+        {
+            ushort* input = source;
+            byte* output = destination;
+            for (var pixel = 0; pixel < pixels; pixel++, input += 3, output += 4)
+            {
+                var r = input[0] >> SignalShift;
+                var g = input[1] >> SignalShift;
+                var b = input[2] >> SignalShift;
+                var top = Math.Max(r, Math.Max(g, b));
+                if (top == 0)
+                {
+                    output[0] = output[1] = output[2] = 0;
+                    output[3] = 255;
+                    continue;
+                }
+
+                // The OOTF's luminance-dependent gain, then the curve on the brightest channel's
+                // display light; each channel keeps its ratio to the brightest.
+                var er = scene[r];
+                var eg = scene[g];
+                var eb = scene[b];
+                var luminance = (HlgKr * er) + (HlgKg * eg) + (HlgKb * eb);
+                var peak = ootf[ToLogIndex(luminance)] * scene[top];
+                var scale = mapped[ToLogIndex(peak)] * inverseScene[top];
+                var lr = er * scale;
+                var lg = eg * scale;
+                var lb = eb * scale;
                 output[0] = encode[ToIndex((B0 * lr) + (B1 * lg) + (B2 * lb))];
                 output[1] = encode[ToIndex((G0 * lr) + (G1 * lg) + (G2 * lb))];
                 output[2] = encode[ToIndex((R0 * lr) + (R1 * lg) + (R2 * lb))];
@@ -176,6 +334,10 @@ internal sealed unsafe class HdrToneMapper
             }
         });
     }
+
+    /// <summary>The log-table index of a non-negative value: its exponent and top mantissa bits, clamped.</summary>
+    private static int ToLogIndex(float value) =>
+        Math.Clamp((BitConverter.SingleToInt32Bits(value) >> LogIndexShift) - LogIndexBase, 0, LogTableSize - 1);
 
     /// <summary>The encode-table index for linear light: its square root, clipped to [0, 1].</summary>
     private static int ToIndex(float value) =>

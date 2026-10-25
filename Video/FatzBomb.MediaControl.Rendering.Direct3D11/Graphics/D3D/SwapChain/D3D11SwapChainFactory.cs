@@ -48,7 +48,8 @@ internal static class D3D11SwapChainFactory
         }
         catch (Exception ex)
         {
-            if (configuration.EnableLogging) Debug.WriteLine($"[VorticeD3D11] FlipSequential swap-chain unavailable; falling back to legacy Discard. Reason: {ex.Message}");
+            // Once per swap chain: the legacy chain has no flip-model pacing.
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Flip-model swap chain unavailable; using the legacy Discard swap chain. Reason: {ex.Message}");
         }
 
         SwapChainDescription legacyDescription = CreateNativeSwapChainDescription(hwnd, width, height, bufferCount: 1, SwapEffect.Discard);

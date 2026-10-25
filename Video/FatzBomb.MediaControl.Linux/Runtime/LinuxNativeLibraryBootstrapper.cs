@@ -29,26 +29,34 @@ internal sealed record LinuxNativeLoadResult(
     IReadOnlyList<string> Messages,
     NativeDependencyReport Report)
 {
-    public bool IsInitialized => IsBassLoaded && IsFfmpegLoaded;
+    /// <summary>FFmpeg loaded, so a player can start. BASS is optional (ENG-033).</summary>
+    public bool IsInitialized => IsFfmpegLoaded;
 
-    public string Message => IsInitialized
-        ? $"Native libraries loaded. BASS: {BassDirectory}; FFmpeg: {FfmpegDirectory}."
-        : "Failed to load required native libraries. " + string.Join(" ", Messages);
+    /// <summary>BASS loaded, so the player has audio.</summary>
+    public bool IsAudioAvailable => IsBassLoaded;
+
+    public string Message => !IsInitialized
+        ? "Failed to load required native libraries. " + string.Join(" ", Messages)
+        : IsBassLoaded
+            ? $"Native libraries loaded. BASS: {BassDirectory}; FFmpeg: {FfmpegDirectory}."
+            : $"Native libraries loaded without BASS: audio is unavailable. FFmpeg: {FfmpegDirectory}. " + string.Join(" ", Messages);
 }
 
 /// <summary>
 /// Loads host-supplied BASS and FFmpeg shared libraries on Linux. BASS core libraries are
 /// dlopen'ed by absolute path and exposed to ManagedBass through a <c>DllImport</c> resolver;
 /// add-ons go through <c>BASS_PluginLoad</c>; FFmpeg libraries are preloaded in dependency order
-/// and then activated through FFmpeg.AutoGen's root path. A failed attempt can be retried with
-/// other paths; a successful one is kept for the process (native libraries cannot be unloaded
-/// safely while in use).
+/// and then activated through FFmpeg.AutoGen's root path. FFmpeg is required; BASS is optional
+/// (ENG-033): without it the player starts with no audio. A failed attempt, or one without BASS,
+/// can be retried with other paths; what loaded is kept for the process (native libraries cannot
+/// be unloaded safely while in use), so FFmpeg is never activated twice.
 /// </summary>
 internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations operations, string baseDirectory, string runtimeIdentifier)
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, string> _loadedBassByFileName = new(StringComparer.Ordinal);
     private LinuxNativeLoadResult? _success;
+    private string? _loadedFfmpegDirectory;
 
     public static LinuxNativeLibraryBootstrapper Default { get; } = new(
         new LinuxNativeOperations(),
@@ -61,7 +69,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
     {
         lock (_gate)
         {
-            if (_success is not null)
+            if (_success is { IsBassLoaded: true })
                 return _success;
 
             List<string> messages = [];
@@ -90,7 +98,9 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
                 _success = result;
 
             DiagnosticRouter.Raise(
-                result.IsInitialized ? MediaDiagnosticLevel.Info : MediaDiagnosticLevel.Error,
+                !result.IsInitialized ? MediaDiagnosticLevel.Error
+                    : result.IsAudioAvailable ? MediaDiagnosticLevel.Info
+                    : MediaDiagnosticLevel.Warning,
                 "LinuxBootstrap",
                 result.Message);
             return result;
@@ -104,37 +114,41 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             searchPaths,
             LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
 
-        var requiredOk = true;
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsRequired))
+        var coreOk = true;
+        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
         {
             if (_loadedBassByFileName.ContainsKey(library.FileName))
                 continue;
 
             if (!found.TryGetValue(library.FileName, out var path))
             {
-                messages.Add($"Missing required BASS library: {library.FileName}.");
-                requiredOk = false;
+                messages.Add($"Missing BASS library (audio unavailable): {library.FileName}.");
+                coreOk = false;
                 continue;
             }
 
             if (!operations.TryLoad(path, out _))
             {
-                messages.Add($"Required BASS library was found but did not load: {path}.");
-                requiredOk = false;
+                messages.Add($"BASS library was found but did not load (audio unavailable): {path}.");
+                coreOk = false;
                 continue;
             }
 
             _loadedBassByFileName[library.FileName] = path;
-            FileTypes.Audio.UnionWith(library.Extensions);
         }
 
-        if (!requiredOk)
+        // Without the full core no BASS function may be called (no resolver, no plugins) and no
+        // BASS format is offered.
+        if (!coreOk)
             return false;
+
+        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => library.IsCore))
+            FileTypes.Audio.UnionWith(library.Extensions);
 
         operations.InstallBassResolver(ResolveBassPath);
         bassDirectory = Path.GetDirectoryName(_loadedBassByFileName["libbass.so"]);
 
-        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => !library.IsRequired))
+        foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass.Where(static library => !library.IsCore))
         {
             if (_loadedBassByFileName.ContainsKey(library.FileName))
                 continue;
@@ -165,6 +179,13 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
 
     private bool LoadFfmpeg(IReadOnlyList<string> searchPaths, List<string> messages, out string? ffmpegDirectory)
     {
+        // A retry for BASS keeps the FFmpeg that is already active.
+        if (_loadedFfmpegDirectory is not null)
+        {
+            ffmpegDirectory = _loadedFfmpegDirectory;
+            return true;
+        }
+
         ffmpegDirectory = searchPaths.FirstOrDefault(path =>
             LinuxNativeLibraryCatalog.RequiredFfmpeg.All(fileName => File.Exists(Path.Combine(path, fileName))));
         if (ffmpegDirectory is null)
@@ -197,6 +218,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
 
         FileTypes.Video.UnionWith(LinuxNativeLibraryCatalog.VideoExtensions);
         FileTypes.RegisterFfmpegAudio();
+        _loadedFfmpegDirectory = ffmpegDirectory;
         return true;
     }
 
@@ -206,18 +228,19 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         // Listing the search paths is only needed to explain a missing file.
         var presentNames = new Lazy<string[]>(() => [.. ListFileNames(searchPaths)]);
         Dictionary<string, string> foundBass = LinuxNativeLibraryLocator.Locate(searchPaths, LinuxNativeLibraryCatalog.Bass.Select(static library => library.FileName));
+        // BASS is never required (ENG-033): without its core the report says audio is unavailable.
         foreach (BassLibrary library in LinuxNativeLibraryCatalog.Bass)
         {
             if (_loadedBassByFileName.TryGetValue(library.FileName, out var loadedPath))
-                checks.Add(new NativeLibraryCheck("BASS", library.FileName, library.IsRequired, NativeLibraryStatus.Loaded, loadedPath));
+                checks.Add(new NativeLibraryCheck("BASS", library.FileName, IsRequired: false, NativeLibraryStatus.Loaded, loadedPath));
             else if (foundBass.TryGetValue(library.FileName, out var foundPath))
             {
-                // Optional plugins are not attempted when a required library failed.
-                NativeLibraryStatus status = library.IsRequired || bassLoaded ? NativeLibraryStatus.FailedToLoad : NativeLibraryStatus.NotLoaded;
-                checks.Add(new NativeLibraryCheck("BASS", library.FileName, library.IsRequired, status, foundPath));
+                // Plugins are not attempted when a core library failed.
+                NativeLibraryStatus status = library.IsCore || bassLoaded ? NativeLibraryStatus.FailedToLoad : NativeLibraryStatus.NotLoaded;
+                checks.Add(new NativeLibraryCheck("BASS", library.FileName, IsRequired: false, status, foundPath));
             }
             else
-                checks.Add(Missing("BASS", library.FileName, library.IsRequired, presentNames));
+                checks.Add(Missing("BASS", library.FileName, isRequired: false, presentNames));
         }
 
         IEnumerable<string> requiredFfmpeg = LinuxNativeLibraryCatalog.FfmpegInLoadOrder.Where(LinuxNativeLibraryCatalog.RequiredFfmpeg.Contains);
@@ -225,7 +248,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
         {
             checks.AddRange(requiredFfmpeg.Select(fileName =>
                 new NativeLibraryCheck("FFmpeg", fileName, IsRequired: true, NativeLibraryStatus.Loaded, Path.Combine(ffmpegDirectory, fileName))));
-            return new NativeDependencyReport(checks, searchPaths);
+            return new NativeDependencyReport(checks, searchPaths) { IsAudioAvailable = bassLoaded };
         }
 
         // A folder with the full set that still failed is a load failure; otherwise report
@@ -243,7 +266,7 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
                 checks.Add(Missing("FFmpeg", fileName, isRequired: true, presentNames));
         }
 
-        return new NativeDependencyReport(checks, searchPaths);
+        return new NativeDependencyReport(checks, searchPaths) { IsAudioAvailable = bassLoaded };
     }
 
     private static NativeLibraryCheck Missing(string component, string fileName, bool isRequired, Lazy<string[]> presentNames) =>

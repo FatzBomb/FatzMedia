@@ -9,10 +9,30 @@ namespace FatzBomb.MediaControl;
 /// Framework-neutral public playback/control contract for a FatzBombMedia media-control instance.
 /// </summary>
 /// <remarks>
+/// <para>
 /// UI adapters such as WPF, WinForms, WinUI, Avalonia, and MAUI should expose this session instead
 /// of re-implementing playback/controller logic. Adapters may add tiny convenience pass-throughs,
 /// but playback, rendering, retained layers, swap chains, and target fan-out remain owned by the
 /// shared media-control implementation.
+/// </para>
+/// <para>
+/// Threading contract (ENG-024). Control calls (load, transport, seek, close, mode switch) run one
+/// at a time on the session's control queue. The <c>Async</c> methods only queue: they never wait
+/// for another call, so a UI thread should use them. The synchronous methods wait for their turn
+/// and run on the caller's thread, without a bound; their events are raised on that thread.
+/// <see cref="Reset"/> and <see cref="IDisposable.Dispose"/> cancel loads, then wait for the calls
+/// queued before them with a bound (see each). The surface methods are not queued either; during a
+/// <see cref="Reset"/> or a mode switch the surfaces are held and attached to the new engine.
+/// Property getters and setters and the sync-offset and subtitle methods are not queued: they act
+/// on the current engine at once, also while a rebuild replaces it, so a value set during a
+/// rebuild may be lost (set it again once the rebuild finished). Events fire on background threads
+/// (or on the caller's thread for a synchronous call); handlers must marshal to the UI thread, and
+/// a handler that throws is reported as a <c>HostEvent</c> Warning diagnostic without affecting
+/// the other handlers. A handler raised inside a control call counts as part of it: the
+/// synchronous methods called from it run at once, but <see cref="Reset"/> and Dispose throw
+/// <see cref="InvalidOperationException"/>. Work the handler starts elsewhere (a UI-thread
+/// callback, a task) is outside it once it runs on another thread or after the handler returned.
+/// </para>
 /// </remarks>
 public interface IMediaControlSession : IDisposable
 {
@@ -121,6 +141,24 @@ public interface IMediaControlSession : IDisposable
 
     /// <summary>Loads media from a framework-neutral Core source with an optional neutral background source asynchronously.</summary>
     Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false);
+
+    /// <summary>
+    /// Loads media from a file path asynchronously; <paramref name="cancellationToken"/> cancels the
+    /// load (ENG-024; see <see cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>).
+    /// </summary>
+    Task<bool> LoadAsync(string path, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested ? Task.FromCanceled<bool>(cancellationToken) : LoadAsync(path);
+
+    /// <summary>
+    /// Loads media asynchronously; <paramref name="cancellationToken"/> cancels the load (ENG-024).
+    /// A load cancelled before it started changes nothing; one cancelled during the open leaves the
+    /// session closed. Either way the task is cancelled. Sessions without load cancellation only
+    /// check the token before the load starts.
+    /// </summary>
+    Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested
+            ? Task.FromCanceled<bool>(cancellationToken)
+            : LoadAsync(source, backgroundSource, ignoreSidecar);
 
     /// <summary>Starts or resumes playback.</summary>
     bool Play();
@@ -327,8 +365,15 @@ public interface IMediaControlSession : IDisposable
     /// Stops all running processes, disposes internal resources, then reinitializes the entire
     /// engine with the supplied configuration and native-library paths. Existing presentation
     /// surface registrations are preserved and reattached. No media is loaded after reset; the
-    /// caller is responsible for re-loading and resuming playback on the new device.
+    /// caller is responsible for re-loading and resuming playback on the new device. The runtime
+    /// settings start from their defaults again; each one that changed raises its change event with
+    /// <see cref="MediaChangeReason.PlayerReset"/>.
     /// </summary>
+    /// <remarks>
+    /// Blocks the caller. Loads in progress or queued are cancelled, then Reset waits at most 5 s for
+    /// the calls queued before it; past that it returns <see langword="false"/> and changes nothing.
+    /// Throws <see cref="InvalidOperationException"/> from inside a control call or its event handler.
+    /// </remarks>
     /// <param name="configuration">New immutable configuration to apply (device, fallback mode, etc.).</param>
     /// <param name="nativeLibraryPaths">Native-library search paths (BASS/FFmpeg).</param>
     /// <returns>True if the engine was successfully reinitialized.</returns>

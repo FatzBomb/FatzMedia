@@ -92,6 +92,10 @@ internal sealed unsafe class VideoDecoder(
     private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
     private const int MaxFramesCap = 24;
+    // Queue cap while native hardware frames are output (0 otherwise); sized with the pool reserve.
+    private int _hardwareQueueCapacity;
+    // End of file was read and the decoder flushed; its last frames are drained as the queue frees up.
+    private bool _drainingAtEndOfStream;
     private const int MinFrames = 3;
     private const long SoftwareFrameMemoryBudget = 128L * 1024 * 1024;
     private const int DecodeDiagnosticsFrameInterval = 120;
@@ -161,17 +165,18 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen && !_demuxer.Open(path))
             return false;
 
-        VideoStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
+        VideoStreamIndex = _demuxer.SelectVideoStream();
         if (VideoStreamIndex < 0) { Close(); return false; }
 
         _demuxer.RegisterVideoStream(VideoStreamIndex);
 
         _videoStream = _demuxer.GetStream(VideoStreamIndex);
 
-        // Discard non-video streams so av_read_frame only returns video packets — but
-        // only when we own the demuxer (single-stream mode: background video, hardware
-        // probe). When sharing the demuxer (main video+audio path), non-video packets
-        // are dispatched to the audio consumer by SharedDemuxer, so we must NOT discard.
+        // Discard non-video streams so av_read_frame only returns video packets when we own
+        // the demuxer (single-stream mode: background video, hardware probe). A shared demuxer
+        // dispatches the streams its consumers registered; for a network source it discards the
+        // rest, or HLS/DASH would download every variant (039A). A shared local file is read
+        // as before.
         if (_ownsDemuxer)
         {
             for (uint i = 0; i < _demuxer.StreamCount; i++)
@@ -179,6 +184,10 @@ internal sealed unsafe class VideoDecoder(
                 if ((int)i != VideoStreamIndex)
                     _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
             }
+        }
+        else
+        {
+            _demuxer.DiscardUnregisteredNetworkStreams();
         }
 
         if (!InitializeVideoDecoder())
@@ -210,15 +219,15 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen || _packet == null) return false;
         if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
+        if (_drainingAtEndOfStream) return DrainFramesAtEndOfStream();
 
         var readResult = _demuxer.ReadVideoPacket(_packet);
         if (readResult < 0)
         {
             if (readResult == ffmpeg.AVERROR_EOF)
             {
-                ProcessRemainingFrames();
-                EndOfStream = true;
-                return false; // No more frames
+                BeginDrainAtEndOfStream();
+                return DrainFramesAtEndOfStream();
             }
             return false; // Error
         }
@@ -240,12 +249,16 @@ internal sealed unsafe class VideoDecoder(
     /// the main video pipeline uses the fixed cap because it has its own buffer target
     /// (<c>MaxBufferedVideoFrames</c>) and byte limit (<c>MaxBufferedVideoBytes</c>) in
     /// VideoPipeline, and needs the full queue depth for slow software decoders (e.g. AV1).
-    /// Hardware frames are cheap (cloned AVFrame referencing an existing D3D11 texture), so
-    /// the cap is used. Software frames are full BGRA buffers, so the count is scaled down
-    /// for larger resolutions to stay within a memory budget.
+    /// Native hardware frames each pin a surface of FFmpeg's fixed pool, so their queue is capped
+    /// at <see cref="_hardwareQueueCapacity"/>, the size of the pool reserve (ENG-027). Software
+    /// frames are full BGRA buffers, so the count is scaled down for larger resolutions to stay
+    /// within a memory budget.
     /// </summary>
     private int ComputeMaxFrames()
     {
+        if (_hardwareQueueCapacity > 0)
+            return _hardwareQueueCapacity;
+
         if (!_scaleMaxFramesByResolution || IsHardwareAccelerated)
             return MaxFramesCap;
 
@@ -326,13 +339,18 @@ internal sealed unsafe class VideoDecoder(
 
         _videoLinesize = Width * 4;
 
-        AVRational avg = _videoStream->avg_frame_rate;
-        FramesPerSecond = avg.num > 0 && avg.den > 0 ? avg.num / (double)avg.den : 30.0;
+        FramesPerSecond = GetStreamFramesPerSecond();
 
         AVCodecDescriptor* codecDescr = ffmpeg.avcodec_descriptor_get(_videoStream->codecpar->codec_id);
         CodecName = codecDescr != null ? Marshal.PtrToStringAnsi((IntPtr)codecDescr->name) : "Unknown";
 
         return true;
+    }
+
+    private double GetStreamFramesPerSecond()
+    {
+        AVRational avg = _videoStream->avg_frame_rate;
+        return avg.num > 0 && avg.den > 0 ? avg.num / (double)avg.den : 30.0;
     }
 
     private AVCodec* FindHardwareCapableDecoder(AVCodecID codecId)
@@ -491,6 +509,14 @@ internal sealed unsafe class VideoDecoder(
             IsHardwareAccelerated = false;
             HardwareAccelerationMethod = null;
         }
+        else if (_videoCodecCtx->extra_hw_frames > 0)
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Info,
+                "VideoDecoder",
+                $"Hardware decoding ({HardwareAccelerationMethod}) reserves {_videoCodecCtx->extra_hw_frames} extra pool surfaces: " +
+                $"{_hardwareQueueCapacity} queued frames and {VideoFrameBufferPolicy.PresentationHeldHardwareFrames} held by presentation.");
+        }
 
         return true;
     }
@@ -580,6 +606,19 @@ internal sealed unsafe class VideoDecoder(
             CleanupHardwareDevice();
             return false;
         }
+
+        // Queued native frames are clones that keep their pool surface, so the queue is capped and
+        // FFmpeg reserves that many surfaces (ENG-027). Without native output, frames are copied to
+        // the CPU and released at once: no cap and no reserve.
+        AVCodecParameters* parameters = _videoStream->codecpar;
+        _hardwareQueueCapacity = _enableHardwareFrameOutput
+            ? VideoFrameBufferPolicy.GetHardwareQueueCapacity(
+                VideoFrameBufferPolicy.GetTargetBufferedFrames(parameters->width, parameters->height, GetStreamFramesPerSecond()),
+                MaxFramesCap)
+            : 0;
+        _videoCodecCtx->extra_hw_frames = _hardwareQueueCapacity > 0
+            ? VideoFrameBufferPolicy.GetHardwareSurfaceReserve(_hardwareQueueCapacity)
+            : 0;
 
         _getFormatCallback = SelectHardwarePixelFormat;
         _videoCodecCtx->get_format = new AVCodecContext_get_format_func
@@ -774,8 +813,8 @@ internal sealed unsafe class VideoDecoder(
             int_array8 dstLinesize = new();
             if (toneMapper != null)
             {
-                // HDR10: swscale converts to full-range 16-bit RGB (still PQ, BT.2020), then
-                // the tone mapper writes SDR BGRA (Stage 038A).
+                // HDR10 or HLG: swscale converts to full-range 16-bit RGB (still PQ or HLG,
+                // BT.2020), then the tone mapper writes SDR BGRA (Stages 038A, 042A).
                 var scratchStride = Width * 6;
                 var scratch = _toneMapScratch is { } existing && existing.Length >= scratchStride * Height
                     ? existing
@@ -839,16 +878,18 @@ internal sealed unsafe class VideoDecoder(
 
     private bool TryQueueNativeHardwareFrame(double pts, long totalStart)
     {
-        // HDR10 frames go to the renderer with a tone-map request (Stage 038A slice 2), unless
-        // the host asks for the CPU tone mapper; then they are copied back like software frames.
-        var toneMapped = IsToneMappedFrame();
+        // HDR10 and HLG frames go to the renderer with a tone-map request (Stages 038A slice 2,
+        // 042A), unless the host asks for the CPU tone mapper; then they are copied back like
+        // software frames.
+        HdrTransferFunction? transfer = GetToneMappedTransfer();
+        var toneMapped = transfer != null;
         if (toneMapped && _toneMapFallback.IsRequested && !_toneMapFallbackReported)
         {
             _toneMapFallbackReported = true;
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,
                 "VideoDecoder",
-                $"The renderer cannot tone map HDR10 ({_toneMapFallback.Reason}); the engine tone maps it on the CPU instead.");
+                $"The renderer cannot tone map {DescribeTransfer(transfer!.Value)} ({_toneMapFallback.Reason}); the engine tone maps it on the CPU instead.");
         }
 
         if (!_enableHardwareFrameOutput
@@ -960,7 +1001,7 @@ internal sealed unsafe class VideoDecoder(
             parameters->width,
             parameters->height,
             parameters->color_trc,
-            toneMapsHdr10: !_hdrToneMapping.Disabled);
+            toneMapsHdr: !_hdrToneMapping.Disabled);
         return $"{codec.ToUpperInvariant()}{(string.IsNullOrEmpty(profile) ? string.Empty : $" {profile}")}{bitDepth} " +
             $"{parameters->width}x{parameters->height} ({pixelFormat}, {color}), decoder {DecoderName ?? "unknown"} {path}{filtered}";
     }
@@ -1049,53 +1090,76 @@ internal sealed unsafe class VideoDecoder(
         return tagged.Resolve(Width, Height);
     }
 
-    /// <summary>Whether the current frame is HDR10 (PQ) video the engine tone maps to SDR.</summary>
-    private bool IsToneMappedFrame()
+    /// <summary>Whether the current frame is HDR (PQ or HLG) video the engine tone maps to SDR.</summary>
+    private bool IsToneMappedFrame() => GetToneMappedTransfer() != null;
+
+    /// <summary>
+    /// The current frame's HDR transfer (frame tag, else stream tag) when the engine tone maps
+    /// it to SDR: PQ (Stage 038A) or HLG (Stage 042A); null for SDR video or when tone mapping is off.
+    /// </summary>
+    private HdrTransferFunction? GetToneMappedTransfer()
     {
         if (_hdrToneMapping.Disabled)
-            return false;
+            return null;
 
         AVColorTransferCharacteristic transfer = _videoFrame->color_trc;
         if (transfer == AVColorTransferCharacteristic.AVCOL_TRC_UNSPECIFIED && _videoStream != null)
             transfer = _videoStream->codecpar->color_trc;
-        return transfer == AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084;
+        return transfer switch
+        {
+            AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084 => HdrTransferFunction.Pq,
+            AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67 => HdrTransferFunction.Hlg,
+            _ => null
+        };
     }
 
+    private static string DescribeTransfer(HdrTransferFunction transfer) =>
+        transfer == HdrTransferFunction.Hlg ? "HLG" : "HDR10";
+
     /// <summary>
-    /// The tone mapper for the stream's peak luminance (its HDR10 metadata), created again only
-    /// when that peak changes.
+    /// The tone mapper for the stream's transfer and peak luminance (its HDR10 metadata, or HLG's
+    /// nominal peak), created again only when either changes.
     /// </summary>
     private HdrToneMapper GetToneMapper()
     {
         HdrToneMapRequest request = GetToneMapRequest(onCpu: true);
         if (_toneMapper is { } current
+            && current.Transfer == request.Transfer
             && Math.Abs(current.SourcePeakNits - request.SourcePeakNits) < 1
             && current.ReferenceWhiteNits == request.TargetPeakNits)
         {
             return current;
         }
 
-        return _toneMapper = new HdrToneMapper(request.SourcePeakNits, request.TargetPeakNits);
+        return _toneMapper = new HdrToneMapper(request.SourcePeakNits, request.TargetPeakNits, request.Transfer);
     }
 
     /// <summary>
-    /// The current frame's tone-map parameters: its peak luminance from the HDR10 metadata and the
-    /// configured SDR white. The first call per open logs them and where the mapping runs.
+    /// The current frame's tone-map parameters: its transfer; its peak luminance from the HDR10
+    /// metadata, or for HLG the nominal display peak; and the configured SDR white. The first
+    /// call per open logs them and where the mapping runs.
     /// </summary>
     private HdrToneMapRequest GetToneMapRequest(bool onCpu = false)
     {
         var referenceWhite = _hdrToneMapping.EffectiveReferenceWhiteNits;
-        var peak = FFmpegVideoColor.GetHdrPeakNits(_videoFrame, _videoStream, referenceWhite);
+        HdrTransferFunction transfer = GetToneMappedTransfer() ?? HdrTransferFunction.Pq;
+        var peak = transfer == HdrTransferFunction.Hlg
+            ? (Nits: HlgCurve.NominalPeakNits, Source: "BT.2100 nominal")
+            : FFmpegVideoColor.GetHdrPeakNits(_videoFrame, _videoStream, referenceWhite);
+        var request = new HdrToneMapRequest(peak.Nits, referenceWhite) { Fallback = _toneMapFallback, Transfer = transfer };
         if (!_toneMapReported)
         {
             _toneMapReported = true;
+            var where = onCpu ? "on the CPU" : "by the renderer";
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Info,
                 "VideoDecoder",
-                $"HDR10 video is tone mapped to SDR {(onCpu ? "on the CPU" : "by the renderer")}: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
+                transfer == HdrTransferFunction.Hlg
+                    ? $"HLG video is tone mapped to SDR {where}: display peak {peak.Nits:0} nits ({peak.Source}, system gamma {request.HlgSystemGamma:0.##}), SDR white at {referenceWhite:0} nits."
+                    : $"HDR10 video is tone mapped to SDR {where}: peak {peak.Nits:0} nits ({peak.Source}), SDR white at {referenceWhite:0} nits.");
         }
 
-        return new HdrToneMapRequest(peak.Nits, referenceWhite) { Fallback = _toneMapFallback };
+        return request;
     }
 
     private bool EnsureScaler(AVPixelFormat sourceFormat, VideoColorSpace colorSpace, AVPixelFormat targetFormat)
@@ -1145,8 +1209,9 @@ internal sealed unsafe class VideoDecoder(
         return true;
     }
 
-    private void ProcessRemainingFrames()
+    private void BeginDrainAtEndOfStream()
     {
+        _drainingAtEndOfStream = true;
         if (_videoCodecCtx == null) return;
 
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, null);
@@ -1156,7 +1221,22 @@ internal sealed unsafe class VideoDecoder(
         {
             if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] avcodec_send_packet flush failed: {FormatFFmpegError(sendResult)} ({sendResult})");
         }
+    }
 
+    /// <summary>
+    /// Takes the flushed decoder's remaining frames while the queue has room. A full queue leaves the
+    /// rest in the decoder for the next call (back-pressure), so the last frames of a file are not
+    /// lost; <see cref="EndOfStream"/> is set once the decoder has none left.
+    /// </summary>
+    private bool DrainFramesAtEndOfStream()
+    {
+        if (_videoCodecCtx == null)
+        {
+            FinishDrainAtEndOfStream();
+            return false;
+        }
+
+        var frameDecoded = false;
         var processed = 0;
         while (_frameQueue.Count < MaxFrames && processed < MaxFrames)
         {
@@ -1170,12 +1250,22 @@ internal sealed unsafe class VideoDecoder(
                     if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] avcodec_receive_frame flush failed: {FormatFFmpegError(receiveResult)} ({receiveResult})");
                 }
 
+                FinishDrainAtEndOfStream();
                 break;
             }
 
             ProcessVideoFrameFromDecoder();
+            frameDecoded = true;
             processed++;
         }
+
+        return frameDecoded;
+    }
+
+    private void FinishDrainAtEndOfStream()
+    {
+        _drainingAtEndOfStream = false;
+        EndOfStream = true;
     }
 
     public void Close()
@@ -1218,6 +1308,7 @@ internal sealed unsafe class VideoDecoder(
         _streamStartInitialized = false;
         _discardFramesBeforeSeconds = null;
         EndOfStream = false;
+        _drainingAtEndOfStream = false;
         MaxFrames = MaxFramesCap;
         _scalerSourcePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         _scalerTargetPixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
@@ -1272,6 +1363,7 @@ internal sealed unsafe class VideoDecoder(
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;
         _getFormatCallback = null;
+        _hardwareQueueCapacity = 0;
     }
 
     public void Dispose()
@@ -1323,6 +1415,7 @@ internal sealed unsafe class VideoDecoder(
         if (clearQueue)
             ClearFrameQueue();
         EndOfStream = false;
+        _drainingAtEndOfStream = false;
     }
 
     public void ReturnFrame(VideoFrameData? frame)

@@ -14,6 +14,10 @@ software renderer's UniformFit mapping), and readback. Frames with subtitles, ba
 transforms, or native/retained backgrounds are rejected with a diagnostic. Window swapchains
 are a later slice.
 
+Any number of surfaces can be attached (Stage 027A slice 5: a primary plus secondary screens),
+each a managed frame sink or a shared GPU image consumer (exported opaque-fd images, Stage
+027A slice 2), and each composition is rendered once per surface at that surface's size.
+
 ## Shaders
 
 GLSL sources live in `Shaders/*.vert|*.frag`. The compiled SPIR-V (`*.spv`) is committed and

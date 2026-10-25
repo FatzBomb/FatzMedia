@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Idempotent Linux sandbox setup for real playback: FFmpeg 9.0 LGPL shared libraries (matching
+# FFmpeg.AutoGen 9.0.1.1, avcodec 63) plus small test media. Nothing is written into the repo.
+# Override the root with FATZBOMB_NATIVE_ROOT; the FFmpeg build with FFMPEG_ASSET.
+set -euo pipefail
+
+root="${FATZBOMB_NATIVE_ROOT:-/opt/fatzbomb-native}"
+asset="${FFMPEG_ASSET:-ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0}"
+url="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$asset.tar.xz"
+ff="$root/ffmpeg"
+media="$root/media"
+mkdir -p "$ff" "$media"
+
+if [ ! -e "$ff/lib/libavcodec.so.63" ]; then
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL -o "$tmp/ff.tar.xz" "$url"
+  tar -xf "$tmp/ff.tar.xz" -C "$tmp"
+  cp -a "$tmp/$asset"/lib "$tmp/$asset"/bin "$tmp/$asset"/LICENSE.txt "$ff"/
+fi
+
+# The LGPL CLI has no libx264/libx265; encode test media with any ffmpeg that has them.
+enc=""
+for c in "$ff/bin/ffmpeg" "$(command -v ffmpeg || true)"; do
+  [ -x "$c" ] && "$c" -hide_banner -encoders 2>/dev/null | grep libx265 >/dev/null && { enc="$c"; break; }
+done
+[ -n "$enc" ] || echo "no ffmpeg with libx264/libx265 found (apt install ffmpeg); skipping media" >&2
+
+gen() { # gen <output> <ffmpeg args...>
+  local out="$1"; shift
+  [ -s "$out" ] || "$enc" -v error -y "$@" "$out"
+}
+if [ -n "$enc" ]; then
+  src=(-f lavfi -i "testsrc2=size=1920x1080:rate=30:duration=10" -f lavfi -i "anullsrc=r=48000:cl=stereo")
+  gen "$media/h264_1080p.mp4" "${src[@]}" -t 10 -c:v libx264 -preset veryfast -crf 26 -g 60 -pix_fmt yuv420p -c:a aac -b:a 64k -shortest
+  hdr=(-f lavfi -i "testsrc2=size=1920x1080:rate=30:duration=10" -t 10 -c:v libx265 -preset veryfast -crf 28 -pix_fmt yuv420p10le -tag:v hvc1
+       -color_primaries bt2020 -colorspace bt2020nc)
+  gen "$media/hevc_hdr10.mp4" "${hdr[@]}" -color_trc smpte2084 \
+    -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400:hdr10=1:repeat-headers=1:log-level=error"
+  gen "$media/hevc_hlg.mp4" "${hdr[@]}" -color_trc arib-std-b67 \
+    -x265-params "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:repeat-headers=1:log-level=error"
+  if [ ! -s "$media/hls/index.m3u8" ]; then
+    mkdir -p "$media/hls"
+    "$enc" -v error -y -i "$media/h264_1080p.mp4" -c copy -f hls -hls_time 2 -hls_playlist_type vod \
+      -hls_segment_filename "$media/hls/seg%03d.ts" "$media/hls/index.m3u8"
+  fi
+  # 30 s master playlist with three variants (480p/720p/1080p, each a TS with its own audio).
+  if [ ! -s "$media/hls_multi/master.m3u8" ]; then
+    mkdir -p "$media/hls_multi"
+    (cd "$media/hls_multi" && "$enc" -v error -y -stream_loop 2 -i "$media/h264_1080p.mp4" \
+      -filter_complex "[0:v]split=3[a][b][c];[a]scale=-2:480[v0];[b]scale=-2:720[v1];[c]null[v2]" \
+      -map "[v0]" -map 0:a -map "[v1]" -map 0:a -map "[v2]" -map 0:a \
+      -c:v libx264 -preset veryfast -g 60 -keyint_min 60 -sc_threshold 0 -b:v:0 800k -b:v:1 2000k -b:v:2 4000k \
+      -c:a aac -b:a 64k -f hls -hls_time 2 -hls_playlist_type vod -master_pl_name master.m3u8 \
+      -var_stream_map "v:0,a:0 v:1,a:1 v:2,a:2" -hls_segment_filename "v%v/seg%03d.ts" "v%v/index.m3u8")
+  fi
+fi
+
+echo "export FATZBOMB_LINUX_FFMPEG_DIR=$ff/lib"
+echo "export LD_LIBRARY_PATH=$ff/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}   # optional; the engine preloads by path"
+echo "# media: $media (HLS: cd $media/hls && python3 -m http.server 8000)"

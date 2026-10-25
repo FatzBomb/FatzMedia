@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
@@ -20,6 +21,9 @@ namespace FatzBomb.MediaControl.Core.Graphics.Composition.D3D11;
 internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : IDisposable
 {
     public MediaCompositionLayerId Id { get; } = id;
+    // Upload and allocation failures repeat every frame: one diagnostic until one succeeds (ENG-026).
+    private readonly RendererDiagnosticLatch _failure = new();
+
     public MediaCompositionLayer? Descriptor { get; private set; }
     public MediaCompositionLayerDirtyFlags DirtyFlags { get; private set; } = MediaCompositionLayerDirtyFlags.None;
     public long LastCapturedSequence { get; private set; } = -1;
@@ -178,11 +182,12 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             TextureHeight = height;
             TextureStride = stride;
             StretchMode = stretchMode == MediaCompositionStretchMode.Auto ? MediaCompositionStretchMode.UniformFit : stretchMode;
+            _failure.Reset();
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Layer {Id} BGRA upload failed: {ex.GetType().Name}: {ex.Message}");
+            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Direct3D11 layer {Id} BGRA upload failed: {ex.GetType().Name}: {ex.Message}", ex);
             ReleaseResources();
             return false;
         }
@@ -201,7 +206,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Layer {Id} render-target allocation failed: {ex.GetType().Name}: {ex.Message}");
+            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Direct3D11 layer {Id} render-target allocation failed: {ex.GetType().Name}: {ex.Message}", ex);
             ReleaseResources();
             return false;
         }
@@ -251,11 +256,12 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
             TextureHeight = CdgConstants.FrameHeight;
             TextureStride = CdgConstants.FrameWidth;
             StretchMode = MediaCompositionStretchMode.UniformFit;
+            _failure.Reset();
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[COMPOSITION-D3D11] Layer {Id} CDG upload failed: {ex.GetType().Name}: {ex.Message}");
+            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Direct3D11 layer {Id} CD+G upload failed: {ex.GetType().Name}: {ex.Message}", ex);
             ReleaseCdgResources();
             return false;
         }

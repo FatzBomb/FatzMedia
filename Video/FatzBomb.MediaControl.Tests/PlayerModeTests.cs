@@ -72,13 +72,32 @@ public sealed class PlayerModeTests
     [InlineData(MediaPlayerMode.Background, MediaInputSourceKind.FilePath, false, true)]
     [InlineData(MediaPlayerMode.Background, MediaInputSourceKind.Bgra32Image, false, true)]
     [InlineData(MediaPlayerMode.Background, MediaInputSourceKind.NetworkUri, false, false)]
-    [InlineData(MediaPlayerMode.Background, MediaInputSourceKind.NetworkUri, true, false)]
+    [InlineData(MediaPlayerMode.Background, MediaInputSourceKind.NetworkUri, true, true)]
     [InlineData(MediaPlayerMode.Audio, MediaInputSourceKind.FilePath, false, true)]
     [InlineData(MediaPlayerMode.Audio, MediaInputSourceKind.Bgra32Image, false, false)]
     [InlineData(MediaPlayerMode.Audio, MediaInputSourceKind.NetworkUri, false, true)]
-    [InlineData(MediaPlayerMode.Audio, MediaInputSourceKind.NetworkUri, true, false)]
+    [InlineData(MediaPlayerMode.Audio, MediaInputSourceKind.NetworkUri, true, true)]
     public void AcceptsSource_FollowsTheModeTable(MediaPlayerMode mode, MediaInputSourceKind kind, bool networkIsVideo, bool expected) =>
         Assert.Equal(expected, MediaPlayerModePolicy.AcceptsSource(mode, kind, networkIsVideo));
+
+    [Theory]
+    [InlineData(MediaPlayerMode.Full, false, "Normal")]
+    [InlineData(MediaPlayerMode.Full, true, "Normal")]
+    [InlineData(MediaPlayerMode.Background, false, "Reject")]
+    [InlineData(MediaPlayerMode.Background, true, "Normal")]
+    [InlineData(MediaPlayerMode.Audio, false, "Normal")]
+    [InlineData(MediaPlayerMode.Audio, true, "AudioOnly")]
+    public void RouteNetwork_FollowsTheModeTable(MediaPlayerMode mode, bool isVideo, string expected) =>
+        Assert.Equal(expected, MediaPlayerModePolicy.RouteNetwork(mode, isVideo).ToString());
+
+    [Theory]
+    [InlineData(MediaPlayerMode.Full, false, true)]
+    [InlineData(MediaPlayerMode.Full, true, false)]
+    [InlineData(MediaPlayerMode.Background, true, false)]
+    [InlineData(MediaPlayerMode.Audio, false, true)]
+    [InlineData(MediaPlayerMode.Audio, true, true)]
+    public void NetworkNeedsAudioEngine_OnlyForNetworkAudioAndSoundtracks(MediaPlayerMode mode, bool isVideo, bool expected) =>
+        Assert.Equal(expected, MediaPlayerModePolicy.NetworkNeedsAudioEngine(MediaPlayerModePolicy.RouteNetwork(mode, isVideo), isVideo));
 
     [Theory]
     [InlineData(MediaPlayerMode.Full, true, true, true, false)]

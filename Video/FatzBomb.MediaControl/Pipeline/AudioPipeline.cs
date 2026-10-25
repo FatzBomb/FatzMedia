@@ -1,6 +1,7 @@
 
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
+using FatzBomb.MediaControl.Core.Media;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
@@ -91,17 +92,27 @@ internal sealed class AudioPipeline : IDisposable
     /// Opens a direct HTTP/HTTPS audio source. Network sources never apply silence trim, and live
     /// sources report zero duration.
     /// </summary>
-    internal bool OpenUrl(string url)
+    internal bool OpenUrl(string url) =>
+        Engine is INetworkAudioSource network && OpenNetwork(url, () => network.OpenUrl(url));
+
+    /// <summary>
+    /// Opens the soundtrack of a network video (Stage 039A, Audio mode): one attempt, as
+    /// <see cref="OpenUrl"/> does for network audio.
+    /// </summary>
+    internal bool OpenNetworkSoundtrack(string url, FfmpegNetworkOptions options) =>
+        Engine is SoundtrackAudioEngine soundtrack && OpenNetwork(url, () => soundtrack.OpenNetwork(url, options));
+
+    private bool OpenNetwork(string url, Func<bool> open)
     {
         ThrowIfDisposed();
-        if (string.IsNullOrWhiteSpace(url) || Engine is not INetworkAudioSource network)
+        if (string.IsNullOrWhiteSpace(url))
             return false;
 
         Close();
 
         _ownStateForCurrentOpen = true;
         _analyzeSilenceForCurrentOpen = false;
-        if (!network.OpenUrl(url))
+        if (!open())
         {
             State.Reset();
             return false;

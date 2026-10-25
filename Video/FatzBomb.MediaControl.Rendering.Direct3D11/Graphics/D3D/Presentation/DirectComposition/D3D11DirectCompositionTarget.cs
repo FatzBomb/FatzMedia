@@ -1,6 +1,5 @@
-using System.Diagnostics;
-using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using Vortice.DirectComposition;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -13,7 +12,7 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition
 /// presentation backend.  This keeps composition visuals/transforms separate
 /// from the main D3D11 renderer coordinator.
 /// </summary>
-internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration configuration) : IDisposable
+internal sealed class D3D11DirectCompositionTarget : IDisposable
 {
     private IDCompositionDevice? _compositionDevice;
     private IDCompositionTarget? _compositionTarget;
@@ -23,9 +22,15 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
     private int _outputWidth;
     private int _outputHeight;
     private bool _deviceLostReported;
+    // Commit and transform failures other than device loss repeat every frame: one report each.
+    private readonly RendererDiagnosticLatch _commitFailure = new();
+    private readonly RendererDiagnosticLatch _transformFailure = new();
 
     public IDXGISwapChain1? OverlaySwapChain { get; private set; }
     public ID3D11Texture2D? OverlayTexture { get; private set; }
+
+    /// <summary>The cached render-target view of <see cref="OverlayTexture"/>, released with it.</summary>
+    public D3D11TargetViewCache OverlayTargetViews { get; } = new();
     public bool IsActive => _compositionDevice != null && OverlaySwapChain != null;
 
     public bool Create(
@@ -115,6 +120,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
 
     public void ReleaseOverlayBackBuffer()
     {
+        OverlayTargetViews.Release();
         OverlayTexture?.Dispose();
         OverlayTexture = null;
     }
@@ -152,15 +158,16 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {caller} Commit detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
                 }
             }
-            else if (configuration.EnableLogging)
+            else
             {
-                Debug.WriteLine($"[VorticeD3D11] DirectComposition {caller} Commit failed: {result}");
+                _ = _commitFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition {caller} Commit failed: {result}");
             }
 
             return false;
         }
 
         _deviceLostReported = false;
+        _commitFailure.Reset();
         return true;
     }
 
@@ -187,14 +194,15 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition root transform update detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
                 }
             }
-            else if (configuration.EnableLogging)
+            else
             {
-                Debug.WriteLine($"[VorticeD3D11] DirectComposition root transform update failed: {result}");
+                _ = _transformFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition root transform update failed: {result}");
             }
 
             return false;
         }
 
+        _transformFailure.Reset();
         return true;
     }
 
@@ -213,6 +221,7 @@ internal sealed class D3D11DirectCompositionTarget(MediaPlayerConfiguration conf
 
     public void Dispose()
     {
+        OverlayTargetViews.Release();
         OverlayTexture?.Dispose();
         OverlayTexture = null;
         OverlaySwapChain?.Dispose();

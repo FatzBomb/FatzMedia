@@ -71,6 +71,12 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
     /// <summary>Sizes the composition visual to the control (UI thread).</summary>
     public void SetSize(Size size) => _visual.Size = new Vector(size.Width, size.Height);
 
+    /// <summary>
+    /// Shows or hides the composition visual (UI thread). Hidden, the control's background shows
+    /// instead of the last imported frame, which the drawing surface keeps.
+    /// </summary>
+    public void SetVisible(bool visible) => _visual.Visible = visible;
+
     public void OnImagesCreated(MediaSharedGpuImageSet images)
     {
         MediaSharedGpuImageSet? skipped;

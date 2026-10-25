@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -24,13 +25,16 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState) : ID3D11PresentationBackend
 {
-    private readonly D3D11DirectCompositionTarget _target = new(configuration);
+    private readonly D3D11DirectCompositionTarget _target = new();
 
     private IDXGISwapChain? _baseSwapChain;
     private int _pendingWidth;
     private int _pendingHeight;
     private bool _baseDeviceLostReported;
     private bool _overlayDeviceLostReported;
+    // Failures other than device loss that can repeat every frame or resize retry: one report each.
+    private readonly RendererDiagnosticLatch _resizeFailure = new();
+    private readonly RendererDiagnosticLatch _overlayPresentFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -38,6 +42,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public int Height { get; private set; }
     public ID3D11Texture2D? TargetTexture { get; private set; }
     public ID3D11Texture2D? OverlayTexture => _target.OverlayTexture;
+    public D3D11TargetViewCache TargetViews { get; } = new();
+
+    /// <summary>The cached render-target view of <see cref="OverlayTexture"/>.</summary>
+    public D3D11TargetViewCache OverlayTargetViews => _target.OverlayTargetViews;
     public IntPtr Hwnd { get; private set; }
     public bool HasPendingResize { get; private set; }
 
@@ -82,6 +90,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             Width = width;
             Height = height;
             HasPendingResize = false;
+            _resizeFailure.Reset();
+            _overlayPresentFailure.Reset();
             return true;
         }
         catch (Exception ex)
@@ -139,6 +149,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             var resizeStart = Stopwatch.GetTimestamp();
 
             resetVideoProcessorState();
+            TargetViews.Release();
             TargetTexture?.Dispose();
             TargetTexture = null;
             _target.ReleaseOverlayBackBuffer();
@@ -149,7 +160,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
-            ReportResizeIfDeviceLost(baseResizeResult, _baseSwapChain, "base", ref _baseDeviceLostReported);
+            ReportResizeFailure(baseResizeResult, _baseSwapChain, "base", width, height, ref _baseDeviceLostReported);
 
             Result overlayResizeResult = _target.OverlaySwapChain.ResizeBuffers(
                 0,
@@ -157,7 +168,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 (uint)height,
                 Format.Unknown,
                 SwapChainFlags.None);
-            ReportResizeIfDeviceLost(overlayResizeResult, _target.OverlaySwapChain, "overlay", ref _overlayDeviceLostReported);
+            ReportResizeFailure(overlayResizeResult, _target.OverlaySwapChain, "overlay", width, height, ref _overlayDeviceLostReported);
 
             if (baseResizeResult.Failure || overlayResizeResult.Failure)
             {
@@ -180,6 +191,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             Width = width;
             Height = height;
             HasPendingResize = false;
+            _resizeFailure.Reset();
             _target.SetContentSize(width, height);
             diagnostics.RecordNativeResize(D3D11PresentationDiagnostics.ElapsedMilliseconds(resizeStart), width, height);
 
@@ -190,12 +202,12 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition resize failed: {ex.Message}");
+            _ = _resizeFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition resize to {width}x{height} failed: {ex.Message}", ex);
             return false;
         }
     }
 
-    private static void ReportResizeIfDeviceLost(Result result, IDXGISwapChain? swapChain, string chainName, ref bool alreadyReported)
+    private void ReportResizeFailure(Result result, IDXGISwapChain? swapChain, string chainName, int width, int height, ref bool alreadyReported)
     {
         if (result.Failure)
         {
@@ -209,7 +221,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
             }
             else
-                Debug.WriteLine($"[VorticeD3D11] DirectComposition {chainName} ResizeBuffers failed: {result}");
+                _ = _resizeFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition {chainName} ResizeBuffers to {width}x{height} failed: {result}; presenting at {Width}x{Height} and retrying.");
 
             return;
         }
@@ -232,18 +244,10 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             return false;
         }
 
-        if (!_target.Commit())
-            return false;
-
-        try
-        {
-            ReacquireBaseBackBuffer();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            return ReportBackBufferFailure(ex, _baseSwapChain, ref _baseDeviceLostReported, "base");
-        }
+        // No GetBuffer(0) after the present (ENG-026): in Direct3D 11 buffer 0 of a flip-model
+        // swap chain always names the current back buffer, as the native HWND backend relies on,
+        // so the wrapper and its cached render-target view stay valid until a resize.
+        return _target.Commit();
     }
 
     public bool PresentOverlayAndCommit(uint syncInterval = 1)
@@ -266,71 +270,18 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 }
             }
             else
-                Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay Present failed: {result}");
+                _ = _overlayPresentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition overlay Present failed: {result}");
 
             return false;
         }
 
         _overlayDeviceLostReported = false;
-        if (!_target.Commit())
-            return false;
-
-        try
-        {
-            ReacquireOverlayBackBuffer();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            return ReportBackBufferFailure(ex, _target.OverlaySwapChain, ref _overlayDeviceLostReported, "overlay");
-        }
+        _overlayPresentFailure.Reset();
+        // As for the base chain, buffer 0 stays the current back buffer: no re-wrap (ENG-026).
+        return _target.Commit();
     }
 
     public void ReacquireOverlayBackBuffer() => _target.ReacquireOverlayBackBuffer();
-
-    private void ReacquireBaseBackBuffer()
-    {
-        if (_baseSwapChain == null)
-            return;
-
-        // Nulled first: if GetBuffer throws (device removed), no disposed wrapper is left
-        // looking like a live target.
-        TargetTexture?.Dispose();
-        TargetTexture = null;
-        TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
-    }
-
-    private static bool ReportBackBufferFailure(
-        Exception exception,
-        IDXGISwapChain? swapChain,
-        ref bool deviceLostReported,
-        string chainName)
-    {
-        Result removedReason = default;
-        try
-        {
-            using ID3D11Device? device = swapChain?.GetDevice<ID3D11Device>();
-            removedReason = device?.DeviceRemovedReason ?? default;
-        }
-        catch
-        {
-        }
-
-        if (D3D11DeviceLostClassifier.IsDeviceLost(removedReason))
-        {
-            if (!deviceLostReported)
-            {
-                deviceLostReported = true;
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition {chainName} back-buffer reacquire detected GPU device lost: {D3D11DeviceLostClassifier.Describe(removedReason, swapChain)}", innerException: exception);
-            }
-        }
-        else
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition {chainName} back-buffer reacquire failed: {exception.Message}", innerException: exception);
-        }
-
-        return false;
-    }
 
     public void ClearOverlayToTransparent(D3D11DeviceResources deviceResources)
     {
@@ -364,7 +315,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                     }
                     else
                     {
-                        Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay clear Present failed: {result}");
+                        _ = _overlayPresentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition overlay clear Present failed: {result}");
                     }
 
                     return;
@@ -377,12 +328,13 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VorticeD3D11] DirectComposition overlay clear failed: {ex.Message}");
+            _ = _overlayPresentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition overlay clear failed: {ex.Message}", ex);
         }
     }
 
     public void Cleanup()
     {
+        TargetViews.Release();
         TargetTexture?.Dispose();
         TargetTexture = null;
         _baseSwapChain?.Dispose();

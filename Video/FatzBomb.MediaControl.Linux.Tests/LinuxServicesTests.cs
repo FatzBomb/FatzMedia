@@ -123,6 +123,7 @@ public sealed class BassDeviceAudioMonitorTests
     }
 }
 
+[Collection("File type registry")]
 public sealed class LinuxPlatformCompositionTests
 {
     [Fact]
@@ -142,15 +143,54 @@ public sealed class LinuxPlatformCompositionTests
     [Fact]
     public void AddPlatformServices_RegistersEveryPlatformContract()
     {
-        var services = new ServiceCollection();
-        new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new NoOperations(), Path.GetTempPath(), "linux-x64"), LinuxPlatformOptions.Default)
-            .AddPlatformServices(services, MediaPlayerConfiguration.Auto);
-        using ServiceProvider provider = services.BuildServiceProvider();
+        var dir = CreateFakeLibraries(["libbass.so", "libbass_fx.so", .. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
+        try
+        {
+            var platform = new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
+            platform.EnsureNativeLibrariesLoaded([dir]);
+            var services = new ServiceCollection();
+            platform.AddPlatformServices(services, MediaPlayerConfiguration.Auto);
+            using ServiceProvider provider = services.BuildServiceProvider();
 
-        Assert.IsType<LinuxPrecisionWaiterFactory>(provider.GetRequiredService<IPrecisionWaiterFactory>());
-        Assert.IsType<LinuxVideoPipelinePlatformServices>(provider.GetRequiredService<IVideoPipelinePlatformServices>());
-        Assert.Same(SoftwareOnlyVideoHardwareAccelerationServices.Instance, provider.GetRequiredService<IVideoHardwareAccelerationServices>());
-        Assert.IsType<BassDeviceAudioMonitor>(provider.GetRequiredService<IAudioDeviceMonitor>());
+            Assert.True(platform.IsAudioAvailable);
+            Assert.IsType<LinuxPrecisionWaiterFactory>(provider.GetRequiredService<IPrecisionWaiterFactory>());
+            Assert.IsType<LinuxVideoPipelinePlatformServices>(provider.GetRequiredService<IVideoPipelinePlatformServices>());
+            Assert.Same(SoftwareOnlyVideoHardwareAccelerationServices.Instance, provider.GetRequiredService<IVideoHardwareAccelerationServices>());
+            Assert.IsType<BassDeviceAudioMonitor>(provider.GetRequiredService<IAudioDeviceMonitor>());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WithoutBass_StartsWithoutAudioAndRegistersNoDeviceMonitor()
+    {
+        var dir = CreateFakeLibraries([.. LinuxNativeLibraryCatalog.RequiredFfmpeg]);
+        try
+        {
+            var platform = new LinuxMediaControlPlatformServices(new LinuxNativeLibraryBootstrapper(new LoadingOperations(), dir, "linux-x64"), LinuxPlatformOptions.Default);
+
+            IServiceProvider provider = MediaControlServiceProvider.Create(MediaPlayerConfiguration.Auto, [dir], platform);
+
+            Assert.False(platform.IsAudioAvailable);
+            Assert.Null(provider.GetService<IAudioDeviceMonitor>());
+            _ = Assert.IsType<FatzBomb.MediaControl.Pipeline.SilentAudioEngine>(provider.GetRequiredService<IAudioEngine>());
+            Assert.NotNull(provider.GetRequiredService<IMediaEngine>());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static string CreateFakeLibraries(IEnumerable<string> fileNames)
+    {
+        var dir = Directory.CreateTempSubdirectory("fbm-linux-libs-").FullName;
+        foreach (var fileName in fileNames)
+            File.WriteAllText(Path.Combine(dir, fileName), "");
+        return dir;
     }
 
     [Fact]
@@ -200,6 +240,24 @@ public sealed class LinuxPlatformCompositionTests
         public bool TryLoadBassPlugin(string path) => false;
 
         public bool TryActivateFfmpeg(string directory) => false;
+
+        public void InstallBassResolver(Func<string, string?> resolvePath)
+        {
+        }
+    }
+
+    /// <summary>Pretends every library loads, so no native code runs.</summary>
+    private sealed class LoadingOperations : ILinuxNativeOperations
+    {
+        public bool TryLoad(string path, out IntPtr handle)
+        {
+            handle = new IntPtr(1);
+            return true;
+        }
+
+        public bool TryLoadBassPlugin(string path) => true;
+
+        public bool TryActivateFfmpeg(string directory) => true;
 
         public void InstallBassResolver(Func<string, string?> resolvePath)
         {

@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -45,12 +45,16 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
     private bool _recreate;
     private bool _dropReported;
     private bool _deviceLostReported;
+    // Failures that can repeat every frame: one report per episode, until a frame goes through.
+    private readonly RendererDiagnosticLatch _presentFailure = new();
+    private readonly RendererDiagnosticLatch _reexport = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.SharedTexture;
     public bool IsActive => _targetTexture != null && _set != null && _consumer != null;
     public int Width { get; private set; }
     public int Height { get; private set; }
     public ID3D11Texture2D? TargetTexture => _targetTexture;
+    public D3D11TargetViewCache TargetViews { get; } = new();
 
     /// <summary>What this backend exports: keyed-mutex textures as NT or legacy global handles.</summary>
     internal static MediaSharedGpuImageCapability[] ProducerCapabilities { get; } =
@@ -172,6 +176,8 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         }
 
         _deviceLostReported = false;
+        _presentFailure.Reset();
+        _reexport.Reset();
         _consumer!.OnFrameReady(ring.CompleteWrite(write.BufferIndex));
         return true;
     }
@@ -183,6 +189,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         _ring?.Dispose();
         _ring = null;
         DisposeSharedTextures();
+        TargetViews.Release();
         _targetTexture?.Dispose();
         _targetTexture = null;
         _deviceResources = null;
@@ -282,7 +289,10 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
 
         // Timed out or abandoned: the texture pair is out of step with the compositor. Export a
         // fresh set; the compositor imports it and the next frame proceeds.
-        Debug.WriteLine($"[D3D11SharedTexture] AcquireSync returned 0x{result:X} ({(result == WaitTimeout ? "timeout" : result == WaitAbandoned ? "abandoned" : "unexpected")}); re-exporting.");
+        _ = _reexport.Raise(
+            MediaDiagnosticLevel.Info,
+            "D3D11",
+            $"Shared texture AcquireSync returned 0x{result:X} ({(result == WaitTimeout ? "timeout" : result == WaitAbandoned ? "abandoned" : "unexpected")}); re-exporting the textures.");
         _recreate = true;
         return true;
     }
@@ -360,7 +370,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         if (D3D11DeviceLostClassifier.IsDeviceLost(result))
             RaiseDeviceLostOnce(D3D11DeviceLostClassifier.Describe(result, swapChain: null));
         else
-            Debug.WriteLine($"[D3D11SharedTexture] Present failed: {result}");
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Shared texture present failed: {result}");
     }
 
     private void ReportPresentException(SharpGenException exception)
@@ -378,7 +388,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         if (removed.Failure && D3D11DeviceLostClassifier.IsDeviceLost(removed))
             RaiseDeviceLostOnce($"Shared texture present detected GPU device lost: {D3D11DeviceLostClassifier.Describe(removed, swapChain: null)}");
         else
-            Debug.WriteLine($"[D3D11SharedTexture] Present failed: {exception.Message}");
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Shared texture present failed: {exception.Message}", exception);
     }
 
     private void RaiseDeviceLostOnce(string message)

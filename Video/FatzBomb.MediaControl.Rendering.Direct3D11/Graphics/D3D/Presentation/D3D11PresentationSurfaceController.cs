@@ -22,6 +22,10 @@ internal sealed class D3D11PresentationSurfaceController(
     public IntPtr NativeHwnd { get; private set; }
     private D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
     private long _directCompositionOverlaySplitSuppressedUntil;
+    // Reused every frame (ENG-026). Every caller holds the presentation lock.
+    private readonly List<D3D11PresentationBackendTarget> _scratchBackends = [];
+    private readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
+    private readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
     public bool LastActivationCreated { get; private set; }
     public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
@@ -44,24 +48,42 @@ internal sealed class D3D11PresentationSurfaceController(
         string? reason,
         out D3D11PresentationTargetSnapshot snapshot)
     {
-        IReadOnlyList<D3D11PresentationTargetSnapshot> targets = GetActiveTargetSnapshots(applyPendingNativeResize, reason);
-        snapshot = targets.Count > 0 ? targets[0] : default;
+        FillActiveTargetSnapshots(_probeSnapshots, applyPendingNativeResize, reason);
+        snapshot = _probeSnapshots.Count > 0 ? _probeSnapshots[0] : default;
+        _probeSnapshots.Clear();
         return snapshot.IsValid;
     }
 
+    /// <summary>
+    /// The active targets for this frame. The list is reused by the next call (ENG-026): callers
+    /// use it within the frame, under the presentation lock, and do not keep it.
+    /// </summary>
     public IReadOnlyList<D3D11PresentationTargetSnapshot> GetActiveTargetSnapshots(
         bool applyPendingNativeResize,
         string? reason)
     {
+        FillActiveTargetSnapshots(_frameSnapshots, applyPendingNativeResize, reason);
+        return _frameSnapshots;
+    }
+
+    private void FillActiveTargetSnapshots(
+        List<D3D11PresentationTargetSnapshot> snapshots,
+        bool applyPendingNativeResize,
+        string? reason)
+    {
+        snapshots.Clear();
         if (applyPendingNativeResize && !ApplyPendingPresentationResizeIfNeeded())
         {
             LogInvalidTarget(reason, "pending presentation resize failed");
-            return [];
+            return;
         }
 
-        var snapshots = new List<D3D11PresentationTargetSnapshot>();
+        if (applyPendingNativeResize)
+            backends.ApplyPendingSecondaryResizes();
+
         ID3D11PresentationBackend? primary = backends.Active;
-        foreach (D3D11PresentationBackendTarget candidate in backends.EnumerateActiveTargetBackends())
+        backends.CollectActiveTargetBackends(_scratchBackends);
+        foreach (D3D11PresentationBackendTarget candidate in _scratchBackends)
         {
             ID3D11PresentationBackend backend = candidate.Backend;
             ID3D11Texture2D? texture = backend.TargetTexture;
@@ -95,17 +117,27 @@ internal sealed class D3D11PresentationSurfaceController(
                 candidate.NativeHwnd,
                 backend.Kind,
                 candidate.BackendName,
-                isPrimary ? TargetRevision : backend.GetHashCode(),
-                Composition.Planning.CompositionTargetKind.FinalPresentation));
+                isPrimary ? TargetRevision : SecondaryRevision(backend, texture),
+                Composition.Planning.CompositionTargetKind.FinalPresentation,
+                backend.TargetViews));
         }
 
+        _scratchBackends.Clear();
         if (snapshots.Count == 0)
         {
             LogInvalidTarget(reason, "no active backend targets");
         }
-
-        return snapshots;
     }
+
+    /// <summary>
+    /// A secondary target's revision. An offscreen secondary re-creates its texture in the same
+    /// backend object (a resize, or a new sink of the same size), and a new texture must not be
+    /// taken for the one a retained refresh already drew into.
+    /// </summary>
+    private static long SecondaryRevision(ID3D11PresentationBackend backend, ID3D11Texture2D texture) =>
+        backend.Kind is D3D11PresentationBackendKind.ManagedFrameSink or D3D11PresentationBackendKind.SharedTexture
+            ? HashCode.Combine(backend, texture)
+            : backend.GetHashCode();
 
     public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot snapshot)
     {
@@ -127,7 +159,8 @@ internal sealed class D3D11PresentationSurfaceController(
             backends.DirectComposition.Kind,
             "DirectCompositionOverlay",
             TargetRevision,
-            Composition.Planning.CompositionTargetKind.DirectCompositionOverlay);
+            Composition.Planning.CompositionTargetKind.DirectCompositionOverlay,
+            backends.DirectComposition.OverlayTargetViews);
 
         return snapshot.IsValid;
     }
@@ -253,6 +286,50 @@ internal sealed class D3D11PresentationSurfaceController(
     }
 
     public bool RemoveSecondaryPresentationTarget(string targetId) => backends.RemoveSecondaryTarget(targetId);
+
+    /// <summary>Stage 027A slice 5: attaches or resizes a secondary surface's managed frame sink.</summary>
+    public bool CreateSecondaryManagedFrameSinkSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        string targetId,
+        IMediaPresentationFrameSink sink,
+        int width,
+        int height,
+        bool enableLogging)
+    {
+        if (isDisposed || !deviceResources.HasDevice || width <= 0 || height <= 0)
+            return false;
+
+        var created = backends.CreateSecondaryManagedFrameSinkTarget(deviceResources, targetId, sink, width, height);
+        if (created && enableLogging)
+            Debug.WriteLine($"[VorticeD3D11] Secondary managed frame-sink target '{targetId}' at {width}x{height}");
+
+        return created;
+    }
+
+    /// <summary>Stage 027A slice 5: attaches or resizes a secondary surface's shared textures.</summary>
+    public bool CreateSecondarySharedTextureSurface(
+        bool isDisposed,
+        D3D11DeviceResources deviceResources,
+        string targetId,
+        IMediaSharedGpuImageConsumer consumer,
+        int width,
+        int height,
+        bool enableLogging,
+        out string? failureReason)
+    {
+        if (isDisposed || !deviceResources.HasDevice || width <= 0 || height <= 0)
+        {
+            failureReason = isDisposed ? "the renderer is disposed" : "the Direct3D11 device is not ready";
+            return false;
+        }
+
+        var created = backends.CreateSecondarySharedTextureTarget(deviceResources, targetId, consumer, width, height, out failureReason);
+        if (created && enableLogging)
+            Debug.WriteLine($"[VorticeD3D11] Secondary shared-texture target '{targetId}' at {width}x{height}");
+
+        return created;
+    }
 
     public bool CreateManagedFrameSinkSurface(
         bool isDisposed,

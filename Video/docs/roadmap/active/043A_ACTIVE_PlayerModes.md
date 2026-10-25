@@ -11,8 +11,8 @@ Full mode instead. Prepares for 037A, where an Audio-mode player later attaches 
 | Mode | Loads | Accepts | Rejects (load returns false + diagnostic) |
 |---|---|---|---|
 | **Full** | today's player | everything | - |
-| **Background** | video decoding, renderer, surfaces; no BASS, no audio device monitor, no CD+G/subtitle/MIDI playback | video (picture only, no audio decoded), images, BGRA sources (including a solid colour) | audio-only files, CD+G, MIDI, network audio |
-| **Audio** | audio engine only; no presentation coordinator, no GPU device, no surfaces, no video decoder | anything with audio: audio files, MIDI, the soundtrack of a video file, the audio of MP3+G (graphics ignored) | images, BGRA sources, video files with no audio stream |
+| **Background** | video decoding, renderer, surfaces; no BASS, no audio device monitor, no CD+G/subtitle/MIDI playback | video (picture only, no audio decoded), network video (039A; loops where seekable), images, BGRA sources (including a solid colour) | audio-only files, CD+G, MIDI, network audio |
+| **Audio** | audio engine only; no presentation coordinator, no GPU device, no surfaces, no video decoder | anything with audio: audio files, MIDI, network audio, the soundtrack of a video file or network video (039A), the audio of MP3+G (graphics ignored) | images, BGRA sources, video files with no audio stream |
 
 Background mode always loops (`LoopMedia` reads true and cannot be turned off) and never has
 audio, so `Volume`/EQ/fades are accepted and ignored. Audio mode does not render to surfaces. In
@@ -124,8 +124,9 @@ Full or Background (see "Slice 2 decisions").
 - **Control queue.** The switch is a control operation (`EnqueueControlOperation`), so it runs on
   the queue worker, off the caller's thread, and every call made during it queues behind it. The
   switch keeps the queue (a `Reset` replaces it), so those calls run on the new graph. The switch
-  never takes `_operationAdmissionGate`: a `Dispose` or `Reset` that arrives during a switch holds
-  that gate while it waits for its turn behind the switch, then runs normally. The same mode
+  never takes `_operationAdmissionGate`: a `Dispose` or `Reset` that arrives during a switch waits
+  for its turn behind the switch, then runs normally (since ENG-024 it holds the gate only to
+  take its turn, cancels the switch's reopen, and waits with a bound). The same mode
   returns `true` without rebuilding; this is decided when the switch runs, so a second queued
   switch to the same mode is a no-op.
 - **Settings carried over.** The switch captures the host's settings from the old graph and
@@ -170,7 +171,10 @@ Full or Background (see "Slice 2 decisions").
   (returns `true`, with an Info diagnostic) and only remembers their ids, so in Audio mode the
   player's set stays current and adapters keep their normal attach/resize/detach lifecycle (with
   `false`, adapters never detach, and a stale handle would be attached on return). This changes the
-  slice 1 behaviour (attach returned `false` with a Warning). The host's surface calls hold
+  slice 1 behaviour (attach returned `false` with a Warning). Open item, closed for Avalonia by
+  027A slice 5: a surface kept in Audio mode showed its last video frame; the Avalonia
+  `MediaSurface` now shows only its background while the session is in Audio mode (the WPF and
+  WinForms adapters are not changed by it). The host's surface calls hold
   `_surfaceGate` only around their own coordinator call; the rebuild holds it only while it
   reattaches, never while the graph is torn down or built.
 - **ModeChanged** is queued on the control queue after the switch, so it arrives after the

@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Core.Network;
 using FFmpeg.AutoGen;
 
 namespace FatzBomb.MediaControl.Core.Media;
@@ -49,11 +50,66 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public bool Open(string path) => _demuxer.Open(path);
 
+    /// <summary>Opens an http/https source (Stage 039A); see <see cref="MediaDemuxer.Open(string, FfmpegNetworkOptions)"/>.</summary>
+    public bool Open(string url, FfmpegNetworkOptions options) => _demuxer.Open(url, options);
+
+    /// <summary>True while a network source is open.</summary>
+    public bool IsNetwork => _demuxer.IsNetwork;
+
+    /// <summary>The FFmpeg error of the last failed network open, or null.</summary>
+    public string? LastNetworkError => _demuxer.LastNetworkError;
+
+    /// <summary>How long the network read in progress has been blocked. Lock-free.</summary>
+    public TimeSpan NetworkReadStall => _demuxer.NetworkReadStall;
+
+    /// <summary>Whether the network reader reached the end of the stream. Lock-free.</summary>
+    public bool NetworkEndOfStream => _demuxer.NetworkEndOfStream;
+
+    /// <summary>
+    /// Aborts blocking network I/O without taking the queue lock, so a Close does not wait for a
+    /// stalled read to time out (Stage 039A).
+    /// </summary>
+    public void Abort() => _demuxer.Abort();
+
+    /// <inheritdoc cref="MediaDemuxer.SupersedeOperationsStartedBefore"/>
+    public void SupersedeOperationsStartedBefore(long timestamp) => _demuxer.SupersedeOperationsStartedBefore(timestamp);
+
+    /// <summary>What FFmpeg reported for the open network source.</summary>
+    public NetworkVideoProbe GetNetworkProbe()
+    {
+        lock (_sync)
+            return _demuxer.GetNetworkProbe();
+    }
+
     public int FindBestStream(AVMediaType mediaType) => _demuxer.FindBestStream(mediaType);
 
     public AVStream* GetStream(int index) => _demuxer.GetStream(index);
 
     public void SetStreamDiscard(int index, AVDiscard discard) => _demuxer.SetStreamDiscard(index, discard);
+
+    /// <inheritdoc cref="MediaDemuxer.SelectVideoStream"/>
+    public int SelectVideoStream() => _demuxer.SelectVideoStream();
+
+    /// <inheritdoc cref="MediaDemuxer.SelectAudioStream"/>
+    public int SelectAudioStream() => _demuxer.SelectAudioStream();
+
+    /// <summary>
+    /// Network sources: discards every stream no consumer registered, and re-enables the
+    /// registered ones (a consumer that opened first may have discarded them). FFmpeg's HLS and
+    /// DASH demuxers otherwise download the segments of every variant (039A smoke). Local files
+    /// are left as they are: their unregistered packets are read and dropped, as before.
+    /// </summary>
+    public void DiscardUnregisteredNetworkStreams()
+    {
+        if (!_demuxer.IsNetwork)
+            return;
+
+        for (var index = 0; index < (int)_demuxer.StreamCount; index++)
+        {
+            var registered = index == _videoStreamIndex || index == _audioStreamIndex;
+            _demuxer.SetStreamDiscard(index, registered ? AVDiscard.AVDISCARD_DEFAULT : AVDiscard.AVDISCARD_ALL);
+        }
+    }
 
     public void RegisterVideoStream(int index) => _videoStreamIndex = index;
 

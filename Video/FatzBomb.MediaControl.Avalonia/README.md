@@ -1,14 +1,28 @@
 # FatzBomb.MediaControl.Avalonia
 
-Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1-2).
+Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
 
 ```xml
 <fbm:MediaSurface Player="{Binding Player}" VideoDisplayMode="Zoom" />
 ```
 
-- `MediaSurface` attaches one primary surface to any `IMediaControlSession`, resizes it with
+- `MediaSurface` attaches one surface to any `IMediaControlSession`, resizes it with
   layout bounds and render scaling, detaches when removed from the visual tree or when
-  `Player` changes, and shows the final frames.
+  `Player`, `Role` or `SurfaceId` changes, and shows the final frames.
+- **Second screen** (slice 5): put another `MediaSurface` with
+  `Role="Projector"` (and a distinct `SurfaceId` per extra screen) in any window bound to the
+  same player, or use the helper window:
+
+  ```csharp
+  var singer = new SecondaryPresentationWindow(player);          // surface id "secondary"
+  singer.ShowOnScreen(Screens.All[1], fullScreen: true, owner: this);
+  // F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+  ```
+
+  Every renderer (software, Vulkan, Direct3D11) renders each frame once per surface at that
+  surface's size, and each surface picks its own path below.
+- While the player is in Audio mode (no renderer presents), the surface shows only its
+  `Background` instead of the last frame (`IsPresentationSuspended`).
 - Two paths (`PresentationPath`, with the reason in `PresentationPathReason`, plus an Info
   diagnostic):
   - **Shared GPU image** (`PreferGpuSharedSurface`, default true): when Avalonia's

@@ -52,14 +52,35 @@ internal static class MediaPlayerModePolicy
     /// <summary>
     /// Decides whether <paramref name="mode"/> accepts a source of <paramref name="kind"/>. File
     /// sources are decided later by <see cref="RouteFile"/>; <paramref name="networkIsVideo"/> is the
-    /// resolved content of a network source.
+    /// resolved content of a network source (see <see cref="RouteNetwork"/>).
     /// </summary>
     public static bool AcceptsSource(MediaPlayerMode mode, MediaInputSourceKind kind, bool networkIsVideo = false) => mode switch
     {
-        MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image,
-        MediaPlayerMode.Audio => kind == MediaInputSourceKind.FilePath || (kind == MediaInputSourceKind.NetworkUri && !networkIsVideo),
+        MediaPlayerMode.Background => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.Bgra32Image
+            || (kind == MediaInputSourceKind.NetworkUri && networkIsVideo),
+        MediaPlayerMode.Audio => kind is MediaInputSourceKind.FilePath or MediaInputSourceKind.NetworkUri,
         _ => true,
     };
+
+    /// <summary>
+    /// Decides how <paramref name="mode"/> opens a network source (Stage 039A). Background plays
+    /// network video as a picture (looping where the source is seekable) and rejects network
+    /// audio; Audio plays network audio and the soundtrack of network video.
+    /// </summary>
+    public static MediaModeRoute RouteNetwork(MediaPlayerMode mode, bool isVideo) => mode switch
+    {
+        MediaPlayerMode.Background => isVideo ? MediaModeRoute.Normal : MediaModeRoute.Reject,
+        MediaPlayerMode.Audio => isVideo ? MediaModeRoute.AudioOnly : MediaModeRoute.Normal,
+        _ => MediaModeRoute.Normal,
+    };
+
+    /// <summary>
+    /// Whether opening a network source through <paramref name="route"/> needs the audio engine
+    /// (ENG-033): network audio (BASS) and a soundtrack do; network video plays its picture on the
+    /// playback clock without one.
+    /// </summary>
+    public static bool NetworkNeedsAudioEngine(MediaModeRoute route, bool isVideo) =>
+        route == MediaModeRoute.AudioOnly || (route == MediaModeRoute.Normal && !isVideo);
 
     /// <summary>Whether <paramref name="mode"/> loads sidecar, archive or explicit backgrounds behind its main media.</summary>
     public static bool UsesBackgrounds(MediaPlayerMode mode) => mode != MediaPlayerMode.Audio;
@@ -72,6 +93,21 @@ internal static class MediaPlayerModePolicy
 
     /// <summary>Whether <paramref name="mode"/> always loops (Background: <c>LoopMedia</c> cannot be turned off).</summary>
     public static bool ForcesLoop(MediaPlayerMode mode) => mode == MediaPlayerMode.Background;
+
+    /// <summary>
+    /// The error for a load that needs audio while the audio engine's native libraries (BASS) are
+    /// not loaded (ENG-033).
+    /// </summary>
+    public const string AudioUnavailableMessage = "Audio engine unavailable: BASS libraries not found";
+
+    /// <summary>
+    /// Whether opening a file of <paramref name="type"/> through <paramref name="route"/> needs the
+    /// audio engine. Video plays its picture on the playback clock without one; images and CD+G
+    /// graphics never need it; audio files, MP3+G and soundtracks (Audio mode) do.
+    /// </summary>
+    public static bool NeedsAudioEngine(MediaModeRoute route, FileType type) =>
+        route == MediaModeRoute.AudioOnly
+        || (route == MediaModeRoute.Normal && type is FileType.Audio or FileType.AudioArchive or FileType.AudioCdg or FileType.AudioCdgArchive);
 
     /// <summary>Describes a file kind for a rejection diagnostic.</summary>
     public static string Describe(FileType type) => type switch

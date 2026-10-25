@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
@@ -22,6 +23,8 @@ internal sealed class D3D11FramePresenter(
     D3D11FrameUploadResources uploadResources,
     D3D11VideoProcessorPresenter videoProcessorPresenter)
 {
+    private readonly RendererDiagnosticLatch _failure = new();
+
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
         Func<bool> preparePresentationTarget,
@@ -78,11 +81,13 @@ internal sealed class D3D11FramePresenter(
                 return false;
 
             RecordUpload(presentStart, width, height, presentationWidth, presentationHeight);
+            _failure.Reset();
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[D3D11FramePresenter] Hardware frame presentation failed: {ex.Message}");
+            // Per frame while it lasts: one diagnostic per episode (ENG-026).
+            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Hardware frame presentation failed: {ex.Message}", ex);
             return false;
         }
     }

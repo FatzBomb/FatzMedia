@@ -115,7 +115,7 @@ public sealed class FfmpegAudioReaderNativeTests
         }
     }
 
-    private static void ActivateFfmpeg(string directory)
+    internal static void ActivateFfmpeg(string directory)
     {
         var operations = new LinuxNativeOperations();
         foreach (var fileName in LinuxNativeLibraryCatalog.FfmpegInLoadOrder)

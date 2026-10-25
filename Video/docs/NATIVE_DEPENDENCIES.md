@@ -1,6 +1,6 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-10-17
+Updated: 2026-10-25
 
 The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
 and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
@@ -69,9 +69,9 @@ the package. The host supplies shared libraries in a host path (absolute or rela
 the app), `native/`, or `runtimes/linux-<arch>/native/`. System library directories are
 not searched implicitly.
 
-| Kind | Required | Optional |
+| Kind | Core / required | Optional |
 |---|---|---|
-| BASS | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
+| BASS (optional, ENG-033: core needed for audio) | `libbass.so`, `libbass_fx.so` | `libbass_aac.so`, `libbass_ac3.so`, `libbassflac.so`, `libbassmidi.so`, `libbassopus.so`, `libbasswv.so` |
 | FFmpeg (avcodec 63 ABI, FFmpeg 9.0.x) | `libavutil.so.61`, `libswresample.so.7`, `libswscale.so.10`, `libavcodec.so.63`, `libavformat.so.63` | `libavfilter.so.12`, `libavdevice.so.63` |
 
 FFmpeg libraries must sit in one directory; they are preloaded in dependency order
@@ -88,13 +88,34 @@ Approved source: Un4seen Developments only:
 - Supported ABI line: BASS 2.4.
 - Verified repository fixture: `bass.dll` 2.4.17.
 - Current official update candidate at policy date: BASS 2.4.18.3.
-- Required: `bass.dll`, `bass_fx.dll`.
+- Core: `bass.dll`, `bass_fx.dll`. BASS as a whole is optional (ENG-033): without the
+  core DLLs the player still starts, with no audio (see "Running without BASS").
 - Optional plugins: `bass_aac.dll`, `bass_ac3.dll`, `bassalac.dll`, `basscd.dll`,
   `bassflac.dll`, `bassmidi.dll`, `bassopus.dll`, and `basswma.dll`.
 - Optional plugin presence controls the corresponding accepted file extensions. When
   FFmpeg is loaded, formats a missing plugin would have played (AAC/M4A, ALAC, FLAC,
   Opus, AC-3, WMA, and other audio FFmpeg decodes) still open through the FFmpeg
   fallback (Stage 033A); MIDI and CD audio still need `bassmidi` and `basscd`.
+
+### Running without BASS (ENG-033)
+
+FFmpeg is the only required native set. When the BASS core (`bass.dll` + `bass_fx.dll`,
+`libbass.so` + `libbass_fx.so`) is missing or fails to load:
+
+- The player constructs in every mode. Native loading reports a Warning, not a failure, and
+  no BASS function is called: no plugins, no audio device monitor, no MIDI soundfont, no
+  output watchdog, and `AudioOutputDevices.Enumerate` returns an empty list.
+- `NativeDependencyReport.IsAudioAvailable` is false; the BASS checks are listed with
+  `IsRequired` false, and `Describe()` adds "Audio is unavailable: ...".
+- Background mode works fully (it never uses audio).
+- Full mode plays video pictures on the playback clock without sound, as Background mode
+  does; images and CD+G graphics without audio open normally. This includes network video
+  (Stage 039A).
+- Media that needs audio (audio files, MP3+G, network audio, and video soundtracks in Audio
+  mode) fails to load: `Load` returns false, with an Error diagnostic and a `MediaError`
+  (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found; <file> was
+  not loaded."
+- A later player creation retries BASS with its own paths; the loaded FFmpeg is kept.
 
 BASS is free only for qualifying non-commercial use. Commercial host developers
 must obtain the appropriate BASS licence. Un4seen states that BASS licences apply to
@@ -123,6 +144,57 @@ the owner confirms the signed tarball).
   H.264/HEVC/VP9/AV1. As with any third-party build, review its configuration before
   redistributing it.
 - Hosts must use a shared-library build; static executables alone are insufficient.
+- Network video (Stage 039A) uses FFmpeg's own protocols: the build needs the `http`, `tcp`
+  and `hls` components (on by default) and a TLS backend for `https` (OpenSSL, GnuTLS,
+  mbedTLS or Schannel). Certificate checks are described under HTTPS Certificate Verification.
+
+### HTTPS Certificate Verification (ENG-034)
+
+Network video verifies https certificates by default: the engine sets `tls_verify=1` on the
+open and on every HLS/DASH playlist, segment and key it opens (FFmpeg passes only a fixed option
+subset to those, so the engine adds the TLS options through `AVFormatContext.io_open`). Hosts
+change this with `MediaPlayerConfiguration.NetworkTls` (`NetworkTlsPolicy`):
+`CertificateAuthorityFile` (a PEM bundle, FFmpeg's `ca_file`) for a private CA, or
+`AllowInvalidCertificates` (off by default) for a server the host controls. A rejected
+certificate fails the load with `certificate verification failed for <host>: <FFmpeg text>` and
+is not retried. Plain http is unaffected.
+
+Where the trusted roots come from depends on the build's TLS backend (read at run time from
+`avformat_configuration`; FFmpeg's configure lets Schannel win only when no other TLS library is
+enabled):
+
+| Backend | Default roots | `CertificateAuthorityFile` | Engine behaviour without a CA file |
+| --- | --- | --- | --- |
+| Schannel (Windows) | Windows certificate store; host name and revocation checked | Ignored (install the CA in the store) | Verifies; Warning if a CA file is set |
+| OpenSSL (Linux) | Build-time `OPENSSLDIR`; BtbN builds use `/etc/ssl` (`certs/`, `cert.pem`), `SSL_CERT_FILE`/`SSL_CERT_DIR` override | Used | Verifies |
+| OpenSSL (Windows) | Build-time path such as `/opt/ffbuild/ssl`, which does not exist on Windows | Used | Warning before connecting; every https server is rejected until a CA file is set or a Schannel build is used |
+| GnuTLS | System trust (also the Windows store) | Used | Verifies |
+| mbedTLS | None | Used | Warning before connecting; rejected until a CA file is set |
+
+Checked builds:
+
+- Linux, BtbN FFmpeg 9.0 LGPL (`/opt/fatzbomb-native/ffmpeg`, `scripts/setup-linux-native.sh`):
+  OpenSSL 3.6 linked statically (`--enable-openssl --disable-schannel`, `OPENSSLDIR: "/etc/ssl"`).
+  Without `ca_file` it loads the default paths (`/etc/ssl/certs` on Debian/Ubuntu); a self-signed
+  server is rejected (`error:0A000086:SSL routines::certificate verify failed`), accepted with
+  `ca_file`, `SSL_CERT_FILE` or `SSL_CERT_DIR`, and a certificate for another host name is
+  rejected. Covered by the opt-in tests in `LinuxNetworkVideoNativeTests` (`Https_*`).
+- Windows, `TqkLibrary.FFmpeg.Lgpl3.Native.win.x64` 9.0.2 (configure line read from the DLLs):
+  `--enable-schannel`, no `--enable-openssl`; the bundled OpenSSL 3.6.3 serves libsrt, librist
+  and libssh, not FFmpeg's https. So https uses the Windows store. Not yet run on Windows.
+
+Windows checks for the owner (see the 039A StageUpdate smoke steps): with the shipped DLLs, an
+https URL with a public certificate plays and the log has no TLS warning; a self-signed local
+server is rejected with `certificate verification failed for ...` (Schannel reports
+`Creating security context failed (0x80090325)`), plays with `--net-allow-invalid-certs`, and
+plays after its certificate is imported into the current user's Trusted Root store. Before
+shipping a different FFmpeg build, read its backend: `ffmpeg -hide_banner -buildconf` (or
+search `avformat-63.dll` for `--enable-openssl` / `--enable-schannel`).
+
+Network audio played through BASS (014A) does not use this policy. ManagedBass 4.0.2 exposes no
+TLS or certificate setting (its network options are agent, proxy, timeouts, buffer, pre-buffer,
+playlist and passive FTP), so the engine cannot change how BASS checks certificates; whether it
+verifies them is not documented in the API surface available here and is a Windows check.
 
 For a proprietary host, the default approved build policy is an LGPL-compatible
 shared build compiled without `--enable-gpl` and without `--enable-nonfree`, followed
@@ -167,14 +239,16 @@ FFmpeg's own at <https://ffmpeg.org/legal.html> and is not legal advice.
 `MediaControlPlayer.NativeDependencies` (and `IMediaControlPlatformFactory.NativeDependencies`)
 returns a `NativeDependencyReport`: one `NativeLibraryCheck` per BASS and FFmpeg library
 with its exact file name, whether it is required, and `Loaded`, `Missing`, `NotLoaded`
-(found, but its set is incomplete), or `FailedToLoad`, plus the search paths. When a
+(found, but its set is incomplete), or `FailedToLoad`, plus the search paths and
+`IsAudioAvailable` (false when the BASS core did not load). Only FFmpeg libraries are
+required; BASS libraries are always reported as not required. When a
 versioned file is missing and another version of it is present, the check carries a hint
 (for example "Found avcodec-62.dll, a different version; this control needs
 avcodec-63.dll."). `Describe()` gives one readable line per problem for a host to show.
 The Windows and Linux platforms fill it in; other platforms return
-`NativeDependencyReport.Empty`. When a required library fails, the player constructor
-throws (its message includes the hints), so read the report from the platform factory
-you passed in.
+`NativeDependencyReport.Empty`. When a required (FFmpeg) library fails, the player
+constructor throws (its message includes the hints), so read the report from the platform
+factory you passed in. A missing BASS does not throw (ENG-033).
 
 ## Binary-Free Package Layout
 

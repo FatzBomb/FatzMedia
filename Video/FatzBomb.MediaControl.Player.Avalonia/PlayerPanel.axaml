@@ -5,10 +5,12 @@
   <Border Margin="2" BorderThickness="1" BorderBrush="#40808080" Padding="6">
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
 
-      <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
         <Button x:Name="OpenButton" Content="Open..." Click="OnOpenClick" />
-        <TextBlock x:Name="FileText" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+        <TextBlock x:Name="FileText" Grid.Column="1" Margin="2,0,0,0" VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis" Text="(no file)" />
+        <TextBox x:Name="UrlBox" Grid.Column="2" Width="240" PlaceholderText="http(s)://... (MP4, MKV, HLS)" KeyDown="OnUrlKeyDown" />
+        <Button x:Name="OpenUrlButton" Grid.Column="3" Content="URL..." Click="OnOpenUrlClick" />
       </Grid>
 
       <Border Grid.Row="1" Background="Black" MinHeight="80">
@@ -27,6 +29,9 @@
         <CheckBox x:Name="LoopBox" Content="Loop" IsCheckedChanged="OnLoopChanged" />
         <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
         <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
+        <CheckBox x:Name="SecondScreenBox" Content="Second screen" Margin="8,0,0,0" IsCheckedChanged="OnSecondScreenChanged" />
+        <Button x:Name="CopyLogButton" Content="Copy log" Margin="8,0,0,0" Click="OnCopyLogClick"
+                ToolTip.Tip="Copies this player's whole log (oldest first) to the clipboard" />
       </StackPanel>
 
       <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">

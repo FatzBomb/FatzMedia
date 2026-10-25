@@ -222,7 +222,7 @@ public sealed class SharedGpuImagePathTests
     /// A compositor whose interop offers handle kinds but cannot import (Avalonia's interop
     /// interfaces are not implementable outside Avalonia).
     /// </summary>
-    private static class FakeInterop
+    internal static class FakeInterop
     {
         public static readonly byte[] Luid = [1, 0, 0, 0, 0, 0, 0, 0];
 

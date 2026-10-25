@@ -4,7 +4,7 @@ Prepared: 2026-10-18 (idea), activated 2026-10-18.
 Status: Completed 2026-10-18. Slice 1 (HDR10 tone mapping on the CPU path, every renderer)
 and slice 2 (Direct3D11 shader for hardware-decoded HDR10, with CPU fallback); owner smoke
 passed 2026-10-18 (`updates/038A_1`, `updates/038A_2`: "everything looked good"). HLG and HDR
-output moved to `future/042A_IDEA_HdrFollowUps.md`.
+output moved to 042A (`active/042A_ACTIVE_HdrFollowUps.md`).
 
 ## Why This Is Worth Doing
 

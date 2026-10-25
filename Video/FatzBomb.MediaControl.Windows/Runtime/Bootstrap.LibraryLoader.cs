@@ -15,7 +15,7 @@ internal static partial class Bootstrap
         // A retry after a failed initialization replaces this component's earlier results.
         _ = _nativeChecks.RemoveAll(static check => check.Component == "BASS");
 
-        (string dllFile, string[] extensions, bool isRequired)[] libraryFiles =
+        (string dllFile, string[] extensions, bool isCore)[] libraryFiles =
         [
             ("bass.dll", [".aif", ".aiff", ".mp3", ".mp3pro", ".ogg", ".wav", ".mod", ".it", ".s3m", ".xm", ".mo3", ".mtm", ".umx"], true),
                 ("bass_fx.dll", [], true),
@@ -29,83 +29,95 @@ internal static partial class Bootstrap
                 ("basswma.dll", [".wma"], false)
         ];
 
-        bool loadSuccess;
-        string successMessage;
-        var foundRequired = 0;
+        // BASS is optional (ENG-033): without bass.dll and bass_fx.dll the player starts with no
+        // audio. Plugins load through BASS_PluginLoad, so they are attempted only once both core
+        // DLLs loaded: no BASS function is called without them.
+        var foundCore = 0;
         var foundOptional = 0;
-        var totalRequired = libraryFiles.Count(l => l.isRequired);
-        var totalOptional = libraryFiles.Count(l => !l.isRequired);
-        List<string> missingRequired = [];
+        var totalCore = libraryFiles.Count(l => l.isCore);
+        var totalOptional = libraryFiles.Count(l => !l.isCore);
+        List<string> missingCore = [];
         List<string> missingOptional = [];
-        List<string> failedRequired = [];
+        List<string> failedCore = [];
         List<string> failedOptional = [];
+        List<string> coreExtensions = [];
 
         Dictionary<string, string> found = DirectoryScanner.LocateFiles(searchPaths, libraryFiles.Select(f => f.dllFile), true, CompatibilityLevel.Compatible);
 
-        foreach ((var dllFile, var extensions, var isRequired) in libraryFiles)
-            if (found.TryGetValue(dllFile, out var loadPath))
+        foreach ((var dllFile, var extensions, _) in libraryFiles.Where(static l => l.isCore))
+        {
+            if (!found.TryGetValue(dllFile, out var loadPath) || !File.Exists(loadPath))
             {
-                if (File.Exists(loadPath))
-                {
-                    var loaded = isRequired
-                        ? LoadLibrary(loadPath) != IntPtr.Zero
-                        : MBass.PluginLoad(loadPath) != 0;
+                AddNativeCheck("BASS", dllFile, isRequired: false, NativeLibraryStatus.Missing);
+                missingCore.Add(dllFile);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} not found (audio unavailable)");
+                continue;
+            }
 
-                    AddNativeCheck("BASS", dllFile, isRequired, loaded ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, loadPath);
-                    if (loaded)
-                    {
-                        FileTypes.Audio.UnionWith(extensions);
-                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"{dllFile} loaded from {loadPath}");
-                        if (isRequired)
-                            foundRequired++;
-                        else
-                            foundOptional++;
-                    }
-                    else
-                        if (isRequired)
-                        {
-                            failedRequired.Add(dllFile);
-                            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "BASS", $"{dllFile} loading failed from {loadPath} (required)");
-                        }
-                        else
-                        {
-                            failedOptional.Add(dllFile);
-                            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} loading failed from {loadPath} (optional)");
-                        }
-                }
+            var loaded = LoadLibrary(loadPath) != IntPtr.Zero;
+            AddNativeCheck("BASS", dllFile, isRequired: false, loaded ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, loadPath);
+            if (loaded)
+            {
+                coreExtensions.AddRange(extensions);
+                foundCore++;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"{dllFile} loaded from {loadPath}");
             }
             else
             {
-                AddNativeCheck("BASS", dllFile, isRequired, NativeLibraryStatus.Missing);
-                if (isRequired)
-                {
-                    missingRequired.Add(dllFile);
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "BASS", $"{dllFile} not found (required)");
-                }
-                else
-                {
-                    missingOptional.Add(dllFile);
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} not found (optional)");
-                }
+                failedCore.Add(dllFile);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} loading failed from {loadPath} (audio unavailable)");
+            }
+        }
 
+        var loadSuccess = foundCore >= totalCore;
+        if (loadSuccess)
+            FileTypes.Audio.UnionWith(coreExtensions);
+
+        foreach ((var dllFile, var extensions, _) in libraryFiles.Where(static l => !l.isCore))
+        {
+            if (!found.TryGetValue(dllFile, out var loadPath) || !File.Exists(loadPath))
+            {
+                AddNativeCheck("BASS", dllFile, isRequired: false, NativeLibraryStatus.Missing);
+                missingOptional.Add(dllFile);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} not found (optional)");
+                continue;
             }
 
-        loadSuccess = foundRequired >= totalRequired;
-        if (missingRequired.Count > 0)
-            AddNativeLoadMessage($"Missing required BASS DLLs: {string.Join(", ", missingRequired)}.");
-        if (failedRequired.Count > 0)
-            AddNativeLoadMessage($"Required BASS DLLs were found but did not load: {string.Join(", ", failedRequired)}.");
+            if (!loadSuccess)
+            {
+                AddNativeCheck("BASS", dllFile, isRequired: false, NativeLibraryStatus.NotLoaded, loadPath);
+                continue;
+            }
+
+            var loaded = MBass.PluginLoad(loadPath) != 0;
+            AddNativeCheck("BASS", dllFile, isRequired: false, loaded ? NativeLibraryStatus.Loaded : NativeLibraryStatus.FailedToLoad, loadPath);
+            if (loaded)
+            {
+                FileTypes.Audio.UnionWith(extensions);
+                foundOptional++;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "BASS", $"{dllFile} loaded from {loadPath}");
+            }
+            else
+            {
+                failedOptional.Add(dllFile);
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "BASS", $"{dllFile} loading failed from {loadPath} (optional)");
+            }
+        }
+
+        if (missingCore.Count > 0)
+            AddNativeLoadMessage($"Missing BASS DLLs (audio unavailable): {string.Join(", ", missingCore)}.");
+        if (failedCore.Count > 0)
+            AddNativeLoadMessage($"BASS DLLs were found but did not load (audio unavailable): {string.Join(", ", failedCore)}.");
         if (missingOptional.Count > 0)
             AddNativeLoadMessage($"Optional BASS plugins not found: {string.Join(", ", missingOptional)}.");
         if (failedOptional.Count > 0)
             AddNativeLoadMessage($"Optional BASS plugins were found but did not load: {string.Join(", ", failedOptional)}.");
 
-        successMessage = loadSuccess ? "✅ Bass Loaded!" : "❌ Bass Failed!!!";
-        successMessage += $"  [Required: {foundRequired}/{totalRequired}]  [Optional: {foundOptional}/{totalOptional}]";
+        var summary = $"[Core: {foundCore}/{totalCore}]  [Optional: {foundOptional}/{totalOptional}]";
         DiagnosticRouter.Raise(
-            loadSuccess ? MediaDiagnosticLevel.Info : MediaDiagnosticLevel.Error,
+            loadSuccess ? MediaDiagnosticLevel.Info : MediaDiagnosticLevel.Warning,
             "Bootstrap",
-            loadSuccess ? "BASS loaded successfully" : $"BASS failed: {successMessage}");
+            loadSuccess ? "BASS loaded successfully" : $"BASS not loaded; audio is unavailable. {summary}");
 
         return loadSuccess;
     }
