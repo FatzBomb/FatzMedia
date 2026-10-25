@@ -125,6 +125,17 @@ internal sealed class SeekPump : IDisposable
         Reset();
     }
 
+    /// <summary>
+    /// Makes the seek in progress give up at its next check (<see cref="HasSupersedingRequest"/>
+    /// turns true) without joining the worker, as when the pipeline closes; <see cref="Stop"/>
+    /// joins it and <see cref="Start"/> clears the flag (ENG-035).
+    /// </summary>
+    public void BeginShutdown()
+    {
+        _shutdown = true;
+        _ = _signal.Set();
+    }
+
     /// <summary>Queues a seek; it replaces any request not yet taken (latest wins).</summary>
     public void Request(double target)
     {

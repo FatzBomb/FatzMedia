@@ -21,12 +21,15 @@ measuring rig for several players in one process.
   screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
   its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
 - A log panel per player: every `MediaDiagnostic` and `MediaError` event, newest first (500 entries).
+  **Copy log** puts the whole log, oldest first, on the clipboard (for a bug report).
 - **Players: 1-4** in the toolbar: that many independent players in a grid, each with its own engine,
   surface, file, transport and log. Changing the count or renderer recreates the players (files are not kept).
 - A status line per player: state, frames presented per second (from `PresentationFramePresented`), process CPU
   (share of all cores, plus cores used), managed memory (`GC.GetTotalMemory`) and working set, and the
   surface pixel size. CPU and memory are for the whole process, so they are the same on every line;
-  fps is per player. Sampled once a second.
+  fps is per player. Sampled once a second. The seek bar's 200 ms timer reads `State`, `Duration` and
+  `Position` off the UI thread (ENG-035), so an engine read that blocks or throws cannot freeze the
+  window: a read slower than 100 ms, blocked for a second, or failing is logged as a Warning.
 
 ## Run
 

@@ -85,8 +85,8 @@ internal static class FfmpegNetwork
 /// <summary>
 /// The FFmpeg interrupt callback of one network format context (Stage 039A). FFmpeg polls it
 /// during blocking network I/O; it asks FFmpeg to give up when the owner aborted (Close, Dispose),
-/// the open was cancelled, or the operation's deadline passed. It also times the read in progress,
-/// which is how buffering is detected.
+/// the open was cancelled, the operation's deadline passed, or a newer seek superseded the
+/// operation (ENG-035). It also times the read in progress, which is how buffering is detected.
 /// </summary>
 internal sealed unsafe class FfmpegInterrupt : IDisposable
 {
@@ -99,6 +99,7 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     private CancellationToken _cancellation;
     private long _deadline;
     private long _operationStarted;
+    private long _supersededBefore;
 
     public FfmpegInterrupt() => _handle = GCHandle.Alloc(this, GCHandleType.Weak);
 
@@ -113,8 +114,21 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
             if (_aborted || _cancellation.IsCancellationRequested)
                 return true;
 
+            if (IsOperationSuperseded)
+                return true;
+
             var deadline = Interlocked.Read(ref _deadline);
             return deadline != 0 && Stopwatch.GetTimestamp() >= deadline;
+        }
+    }
+
+    /// <summary>Whether the operation in progress started before <see cref="SupersedeOperationsStartedBefore"/> was last called.</summary>
+    private bool IsOperationSuperseded
+    {
+        get
+        {
+            var started = Interlocked.Read(ref _operationStarted);
+            return started != 0 && started < Interlocked.Read(ref _supersededBefore);
         }
     }
 
@@ -143,6 +157,25 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     /// <summary>Asks FFmpeg to give up every blocking call on this context from now on. Thread-safe and lock-free.</summary>
     public void Abort() => _aborted = true;
 
+    /// <summary>
+    /// Asks FFmpeg to give up the operation in progress if it started before
+    /// <paramref name="timestamp"/> (a <see cref="Stopwatch"/> timestamp); operations started
+    /// later are unaffected (ENG-035: a newer seek makes a read or seek for the old position
+    /// pointless). Thread-safe and lock-free.
+    /// </summary>
+    public void SupersedeOperationsStartedBefore(long timestamp)
+    {
+        var current = Interlocked.Read(ref _supersededBefore);
+        while (timestamp > current)
+        {
+            var seen = Interlocked.CompareExchange(ref _supersededBefore, timestamp, current);
+            if (seen == current)
+                return;
+
+            current = seen;
+        }
+    }
+
     /// <summary>Installs the callback on <paramref name="context"/>.</summary>
     public void Install(AVFormatContext* context)
     {
@@ -158,11 +191,17 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
         _ = Interlocked.Exchange(ref _operationStarted, now);
     }
 
-    /// <summary>Ends the operation started by <see cref="BeginOperation"/>.</summary>
-    public void EndOperation()
+    /// <summary>
+    /// Ends the operation started by <see cref="BeginOperation"/>. Returns whether it was
+    /// superseded (<see cref="SupersedeOperationsStartedBefore"/>), so a failure is not taken for
+    /// a dropped stream.
+    /// </summary>
+    public bool EndOperation()
     {
+        var superseded = IsOperationSuperseded;
         _ = Interlocked.Exchange(ref _deadline, 0);
         _ = Interlocked.Exchange(ref _operationStarted, 0);
+        return superseded;
     }
 
     public void Dispose()

@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-24
+Updated: 2026-10-25
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -211,9 +211,14 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   HLS playlist can start the two connections one segment apart (audio/video offset up to one
   target duration). A shared cursor (`SharedDemuxer` fan-out) for network sources is the fix; it
   needs BASS to verify, which the Linux sandbox lacks.
-- **Pause, Stop and Seek during a stall wait for the read.** Only Close/Dispose abort a blocked
-  network read; the transport commands join the decode thread, so during a stall they can take up
-  to the read timeout (`ConnectTimeout`, 15 s by default).
+- **Pause and Stop during a stall wait for the read.** Close/Dispose abort a blocked network read,
+  and since ENG-035 a newer seek gives up the read or seek of the older one; Pause and Stop still
+  join the decode thread, so during a stall they can take up to the read timeout
+  (`ConnectTimeout`, 15 s by default).
+- **A network seek downloads its target twice.** A lone seek runs a preview `SeekCore` and then the
+  settle `SeekCore` for the same target (SeekPump), and each repositions both cursors, so an HLS
+  seek fetches the target segment twice (ENG-035 measurements: 0.6-1.4 s per seek at 150-1000 ms
+  per segment). Settling on the preview's position when the target did not change would halve it.
 - **Live progressive streams are not reconnected mid-stream.** FFmpeg reconnects a streamed (no
   range) source from byte 0, so `reconnect_streamed` stays off; a dropped live MPEG-TS-over-HTTP
   stream ends. HLS live recovers through its playlist reloads.
@@ -241,6 +246,99 @@ Code review 2026-10-25 (batch PR), not fixed:
   disposing it on the timeout path is unsafe while the running open may still wait on it.
 
 ## Completed
+
+### ENG-035 - Network seeks blocked the host's UI thread
+
+Resolved: 2026-10-25, pending Windows smoke (steps below).
+
+Reported: 2026-10-25, owner's Windows smoke of PR #13 (head 89209e8): Avalonia test player,
+`--url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8` (multi-variant HLS up to 1080p),
+Direct3D11, BASS present. The first seek worked after a delay; on the second the whole window
+froze and had to be ended from Task Manager. The player seeks with `SeekAsync` on release and
+reads `State`, `Duration` and `Position` every 200 ms on the UI thread.
+
+Findings (three locks held across network I/O, and seeks that could not be cut short):
+- **`Position` waited for the audio cursor's downloads (BASS; read in the code, the most likely
+  cause of the freeze).** `VideoAudioEngine` held its `_sync` lock across every packet read and
+  container seek of its own network cursor: the decode loop's reads, `Seek` (`av_seek_frame`) and
+  the post-seek `PrebufferAudio` (up to 4096 reads, from the segment start to the target: the audio
+  cursor downloads the whole muxed TS of the 1080p variant). `Position`, `Normalize` and the
+  volume, pitch and tempo setters take `_sync`, so the UI timer's `Position` read blocked for every
+  segment download after a seek, and for the read timeout (15 s) on a stalled segment.
+- **The redraw after a seek waited for the seek's downloads (reproduced).** `SeekCore` holds the
+  presentation and decode locks while it decodes to the target, which for a network source
+  includes downloading segments. `RenderCurrentFrame` (playing) waited for the presentation lock;
+  it is reached from the control queue (`SeekAsync`'s refresh, so every queued operation waited
+  behind it) and from sync setters on the UI thread (`AudioSyncOffset` and the other offsets,
+  `ShowMidiLyrics`; a paused surface resize returns early). Stack dump (old engine, 10 s stalled
+  segment): the control queue in `RenderCurrentFrame` <- `RefreshCurrentPosition` <-
+  `SeekOperation`, the setter likewise, the seek worker in `av_read_frame` <- `DecodeForSeekTarget`
+  <- `SeekCore`. Measured: the setter blocked 1.28 s during ordinary seeks (150-1000 ms per
+  segment) and 9.2 s during the stall.
+- **A newer seek waited for the older seek's stalled read (reproduced).** Nothing interrupted a
+  network read except Close's abort, so a seek during a stalled segment settled only after the
+  stall: 9.8-10 s for a 10 s stall (HLS and progressive MP4).
+- **Close waited for a stalled seek (reproduced).** Close took the presentation lock before
+  aborting, and the seek held it: 9.7 s during a 10 s stall.
+- No deadlock was found. The Avalonia adapter only posts to the UI thread, and the shared-GPU-image
+  ring waits are bounded; the admission gate (ENG-024) does not block `SeekAsync`'s caller.
+
+Fix:
+- `VideoAudioEngine` has a second lock, `_ioGate`, taken before `_sync`, that owns the demuxer
+  cursor (open, read, seek, close). Reads, seeks and the network open run under `_ioGate` only;
+  `_sync` is held for decoding, BASS calls and position bookkeeping. The loop wrap records its lap
+  boundary only after its seek succeeded. Local files keep the same behaviour (one more
+  uncontended lock per packet).
+- A newer seek supersedes the network I/O of the older one: `FfmpegInterrupt` interrupts an
+  operation that started before a given time (`SupersedeOperationsStartedBefore`), and
+  `VideoPipeline.Seek` applies it to both cursors with the time taken just before the request, so
+  the new seek's own I/O is never cut; `SeekCore` does it again before stopping the decode loop. A
+  superseded read returns `AVERROR_EXIT` and is not taken for a dropped stream (no "Network read
+  failed", no end of stream); the audio cursor does not take it for the end (no loop wrap).
+- `RenderCurrentFrame` does not wait for the presentation lock while a seek sequence is active
+  (the seek presents its own frame); otherwise it waits as before.
+- Close makes the seek in progress give up (`SeekPump.BeginShutdown`: the seek's superseding
+  checks turn true) and supersedes its I/O until it releases the presentation lock, then aborts.
+- Avalonia test player: the 200 ms timer reads `State`, `Duration` and `Position` on the thread
+  pool and skips a tick while a read is out (a slow, stalled or failing read is logged), and each
+  player has **Copy log** (the whole log, oldest first, to the clipboard).
+
+Measured (Linux, FFmpeg 9, no BASS, local 3-variant HLS from `LocalHttpMediaServer`):
+
+| | before | after |
+|---|---|---|
+| Longest UI call, seeks at 150-1000 ms per segment | 1280 ms (sync-offset setter) | 4 ms |
+| Longest UI call, 10 s stalled segment | 9156 ms | 7 ms |
+| Newer seek during a 10 s stalled segment (HLS / MP4 range request) | 9963 / 9821 ms | 617-711 / 324-427 ms |
+| Close during a stalled seek | 9664 ms | 102 ms |
+
+`State`, `Position`, `Duration`, `IsOpen` and a surface resize stayed under 2 ms throughout without
+BASS (the picture-only clock is lock-free), so the `Position` freeze itself needs Windows to see.
+
+Tests (opt-in native, `LinuxNetworkVideoNativeTests.Seeks.cs`; a UI thread polls the getters every
+200 ms and, once a second, resizes the surface and sets the sync offset; a watchdog writes
+`dotnet-stack report` stacks to the output if a call blocks for 2 s or a seek does not settle):
+`HlsMultiVariant_RapidAndSpacedSeeks_KeepTheGettersResponsive`,
+`HlsMultiVariant_SeekDuringAStalledSegment_IsSupersededAndClosesPromptly` and
+`ProgressiveMp4_SeekDuringAStalledRangeRequest_IsSupersededAndPlaysOn`. The audio cursor's
+`_ioGate` split is not exercised here (no BASS): it is verified by reading and by the smoke below.
+
+Windows smoke (Avalonia test player, BASS and FFmpeg 9 in `native/`):
+1. `dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 --
+   --renderer=direct3d11 --url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`. Sound plays.
+2. Seek about ten times by clicking and by dragging the seek bar: forward, back, twice in quick
+   succession, and once more before the previous seek has shown its frame. The window must stay
+   responsive throughout (move it, drag the volume slider, change the tempo); each seek shows its
+   frame and plays on with sound in sync, and the log shows no "Status read" warning.
+3. Pause, seek twice, Play: it resumes at the last target.
+4. Seek, then close the window at once: it closes within about a second.
+5. Repeat 1-2 with `--renderer=software` and with a local MP4 (no regression: seeks settle as
+   before, the loop with Loop on is gapless).
+6. **Copy log**, paste into a text editor: the whole log, oldest first.
+7. If the window ever freezes again: before ending the task, run
+   `dotnet tool install -g dotnet-stack` (once) and
+   `dotnet-stack report -p <pid> > stacks.txt` (the pid is in Task Manager's Details tab), and
+   attach `stacks.txt` and the copied log.
 
 
 ### ENG-027 - Hardware decoding does not reserve extra pool surfaces

@@ -155,7 +155,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
                 // avformat_open_input frees the context when it fails.
                 _interrupt.BeginOperation(options.Retry.ConnectTimeout);
                 result = ffmpeg.avformat_open_input(&context, url, null, &dictionary);
-                _interrupt.EndOperation();
+                _ = _interrupt.EndOperation();
                 if (result >= 0)
                 {
                     _formatContext = context;
@@ -164,7 +164,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
                     // rw_timeout and the probe by twice the connect timeout.
                     _interrupt.BeginOperation(options.Retry.ConnectTimeout * 2);
                     result = ffmpeg.avformat_find_stream_info(_formatContext, null);
-                    _interrupt.EndOperation();
+                    _ = _interrupt.EndOperation();
                 }
             }
 
@@ -197,6 +197,15 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// without a lock (Close, Dispose, or a cancelled open). Local files are unaffected.
     /// </summary>
     public void Abort() => _interrupt?.Abort();
+
+    /// <summary>
+    /// Makes a network read or seek that started before <paramref name="timestamp"/> (a
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamp) return at once with
+    /// <see cref="ffmpeg.AVERROR_EXIT"/>; later ones are unaffected and the stream stays usable
+    /// (ENG-035: a newer seek supersedes I/O for the old position). From any thread, lock-free.
+    /// Local files are unaffected.
+    /// </summary>
+    public void SupersedeOperationsStartedBefore(long timestamp) => _interrupt?.SupersedeOperationsStartedBefore(timestamp);
 
     /// <summary>
     /// What FFmpeg reported for the open network source: playlist or progressive, length, byte
@@ -336,7 +345,9 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// Reads the next packet into <paramref name="packet"/> via
     /// <c>av_read_frame</c>, returning its result code unchanged (0 on success,
     /// <see cref="ffmpeg.AVERROR_EOF"/> at end of stream, other negatives on
-    /// error). Returns <see cref="ffmpeg.AVERROR_EOF"/> when closed.
+    /// error). Returns <see cref="ffmpeg.AVERROR_EOF"/> when closed, and
+    /// <see cref="ffmpeg.AVERROR_EXIT"/> for a network read a newer seek superseded
+    /// (<see cref="SupersedeOperationsStartedBefore"/>).
     /// </summary>
     public int ReadPacket(AVPacket* packet)
     {
@@ -350,15 +361,20 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             return ffmpeg.AVERROR_EOF;
 
         int result;
+        bool superseded;
         using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver!))
         {
             _interrupt.BeginOperation();
             result = ffmpeg.av_read_frame(_formatContext, packet);
-            _interrupt.EndOperation();
+            superseded = _interrupt.EndOperation();
         }
 
         if (result >= 0)
             return result;
+
+        // A newer seek gave up this read: the stream is fine, the caller seeks next.
+        if (superseded && !_interrupt.IsAborted)
+            return ffmpeg.AVERROR_EXIT;
 
         _networkEndOfStream = true;
         if (result == ffmpeg.AVERROR_EOF || _interrupt.IsAborted)
@@ -397,7 +413,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         {
             _interrupt.BeginOperation();
             result = ffmpeg.av_seek_frame(_formatContext, streamIndex, timestamp, flags);
-            _interrupt.EndOperation();
+            _ = _interrupt.EndOperation();
         }
 
         if (result >= 0)

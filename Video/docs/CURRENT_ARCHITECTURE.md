@@ -749,6 +749,12 @@ non-EOF read error ends the stream once (`Network read failed`). `NetworkBufferi
 (250 ms) turns read stalls plus queue fill into `BufferingChanged`, forwarded through the
 coordinator and engine to the player. Modes: Background plays network video (picture only),
 Audio plays its soundtrack (`SoundtrackAudioEngine.OpenNetwork`; network soundtracks never loop).
+No lock a host's thread can wait on is held across network I/O (ENG-035): `VideoAudioEngine`
+opens, reads and seeks its cursor under `_ioGate`, not the `_sync` lock that `Position` and the
+setters take; `RenderCurrentFrame` skips (does not wait) while a seek holds the presentation lock;
+a seek request supersedes the in-flight reads and seeks of both cursors
+(`FfmpegInterrupt.SupersedeOperationsStartedBefore`; a superseded read returns `AVERROR_EXIT`,
+not end of stream); Close makes a seek in progress give up before aborting.
 See `roadmap/active/039A_ACTIVE_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)

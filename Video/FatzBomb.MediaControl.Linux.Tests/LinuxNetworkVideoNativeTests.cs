@@ -17,7 +17,7 @@ namespace FatzBomb.MediaControl.Linux.Tests;
 /// output are the 039A measurements.
 /// </summary>
 [Collection("File type registry")]
-public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
+public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
 {
     private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
     private const string Mp4 = "h264_1080p.mp4";

@@ -715,8 +715,28 @@ internal sealed partial class VideoPipeline(
         if (!_isOpen)
             return false;
 
+        // A network read or seek still running for an older position (a stalled segment) would
+        // hold the seek worker or the decode loop for up to the read timeout: give it up. Taken
+        // before the request, so the worker's I/O for this target is never cut (ENG-035).
+        var requested = Stopwatch.GetTimestamp();
         SeekPump.Request(NormalizeSeekTarget(seconds));
+        SupersedeNetworkOperationsStartedBefore(requested);
         return true;
+    }
+
+    /// <summary>
+    /// Gives up the network reads and seeks of both cursors (picture and audio) that started
+    /// before <paramref name="timestamp"/>; later ones are unaffected. Lock-free; local files
+    /// are unaffected (ENG-035).
+    /// </summary>
+    private void SupersedeNetworkOperationsStartedBefore(long timestamp)
+    {
+        // One read of each field: Close nulls them from another thread.
+        if (_sharedDemuxer is not { IsNetwork: true } demuxer)
+            return;
+
+        demuxer.SupersedeOperationsStartedBefore(timestamp);
+        _audioEngine?.SupersedeNetworkOperationsStartedBefore(timestamp);
     }
 
     /// <summary>
@@ -747,6 +767,9 @@ internal sealed partial class VideoPipeline(
                     _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
 
                 _generation++;
+                // The decode loop may be blocked in a network read for the old position (one
+                // that began after the request): give it up rather than wait for it (ENG-035).
+                SupersedeNetworkOperationsStartedBefore(Stopwatch.GetTimestamp());
                 StopDecodeLoopAndWait();
                 StopPresentationLoopAndWait();
                 WaitForPresentationIdle();
@@ -845,8 +868,22 @@ internal sealed partial class VideoPipeline(
         _networkBufferingMonitor = null;
         if (_sharedDemuxer is { IsNetwork: true } networkDemuxer)
         {
-            lock (_presentationLock)
+            // A seek holds the presentation lock across its network reads: make it give up (it
+            // checks for a superseding request, which shutdown is) and cut its reads short, or
+            // Close would wait for a stalled segment (ENG-035).
+            SeekPump.BeginShutdown();
+            while (!_presentationLock.TryEnter(TimeSpan.FromMilliseconds(20)))
+                SupersedeNetworkOperationsStartedBefore(Stopwatch.GetTimestamp());
+
+            try
+            {
                 _isPlaying = false;
+            }
+            finally
+            {
+                _presentationLock.Exit();
+            }
+
             networkDemuxer.Abort();
             _audioEngine?.AbortNetwork();
         }
@@ -940,12 +977,29 @@ internal sealed partial class VideoPipeline(
             }
         }
 
-        lock (_presentationLock)
+        // A seek holds the presentation lock while it decodes to its target (for a network source
+        // that includes downloading segments, seconds when the server stalls) and presents that
+        // frame itself: do not wait for it. Callers are the control queue (the refresh after a
+        // seek) and the host's UI thread (a surface resize), which froze for the whole network
+        // seek (ENG-035).
+        if (!_presentationLock.TryEnter())
+        {
+            if (IsSeekSequenceActive())
+                return;
+
+            _presentationLock.Enter();
+        }
+
+        try
         {
             if (!_isOpen || _videoDecoder is null)
                 return;
 
             _ = PresentFrameForCurrentPosition(forceReissue);
+        }
+        finally
+        {
+            _presentationLock.Exit();
         }
     }
 

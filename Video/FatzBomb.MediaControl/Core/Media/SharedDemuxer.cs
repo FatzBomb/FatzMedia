@@ -71,6 +71,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// </summary>
     public void Abort() => _demuxer.Abort();
 
+    /// <inheritdoc cref="MediaDemuxer.SupersedeOperationsStartedBefore"/>
+    public void SupersedeOperationsStartedBefore(long timestamp) => _demuxer.SupersedeOperationsStartedBefore(timestamp);
+
     /// <summary>What FFmpeg reported for the open network source.</summary>
     public NetworkVideoProbe GetNetworkProbe()
     {

@@ -30,6 +30,8 @@
         <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
         <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
         <CheckBox x:Name="SecondScreenBox" Content="Second screen" Margin="8,0,0,0" IsCheckedChanged="OnSecondScreenChanged" />
+        <Button x:Name="CopyLogButton" Content="Copy log" Margin="8,0,0,0" Click="OnCopyLogClick"
+                ToolTip.Tip="Copies this player's whole log (oldest first) to the clipboard" />
       </StackPanel>
 
       <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">

@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
@@ -21,6 +22,8 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 public partial class PlayerPanel : UserControl
 {
     private const int MaxLogEntries = 500;
+    // A status read slower than this is logged: engine getters should never block (ENG-035).
+    private static readonly TimeSpan SlowStatusRead = TimeSpan.FromMilliseconds(100);
 
     private readonly int _index;
     private readonly RendererOption _renderer;
@@ -37,6 +40,12 @@ public partial class PlayerPanel : UserControl
     private bool _isUpdatingSecondScreen;
     private SecondaryPresentationWindow? _secondScreen;
     private bool _disposed;
+    // The engine reads of the 200 ms timer run off the UI thread, so a read that blocks or throws
+    // cannot wedge the window; the status line shows the last state read.
+    private Task? _statusRead;
+    private long _statusReadStarted;
+    private bool _statusReadStallLogged;
+    private MediaPlayerState _lastState;
 
     // Designer/XAML loader constructor.
     public PlayerPanel()
@@ -163,7 +172,7 @@ public partial class PlayerPanel : UserControl
 
         PixelSize size = Surface.AttachedPixelSize;
         StatusText.Text =
-            $"{Label} {player.State} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
+            $"{Label} {_lastState} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
             $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height} " +
             $"via {DescribePath(Surface.PresentationPath)}{DescribeSecondScreen()}";
     }
@@ -467,22 +476,80 @@ public partial class PlayerPanel : UserControl
         if (_player is not { } player)
             return;
 
-        PlayPauseButton.Content = player.State == MediaPlayerState.Playing ? "Pause" : "Play";
-        var duration = player.Duration.TotalSeconds;
+        if (_statusRead is { IsCompleted: false })
+        {
+            // The previous read has not returned: skip this tick (once logged) instead of piling up.
+            var blocked = Stopwatch.GetElapsedTime(_statusReadStarted);
+            if (!_statusReadStallLogged && blocked > TimeSpan.FromSeconds(1))
+            {
+                _statusReadStallLogged = true;
+                AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read blocked for {blocked.TotalSeconds:F1} s (State/Duration/Position); the UI stays live");
+            }
+
+            return;
+        }
+
+        _statusReadStarted = Stopwatch.GetTimestamp();
+        _statusRead = ReadStatusAsync(player);
+    }
+
+    private async Task ReadStatusAsync(MediaControlPlayer player)
+    {
+        (MediaPlayerState State, double Duration, double Position) status;
+        try
+        {
+            status = await Task.Run(() => (player.State, player.Duration.TotalSeconds, player.Position.TotalSeconds));
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read failed: {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        var elapsed = Stopwatch.GetElapsedTime(_statusReadStarted);
+        if (elapsed > SlowStatusRead)
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Status read took {elapsed.TotalMilliseconds:F0} ms (State/Duration/Position)");
+        _statusReadStallLogged = false;
+        if (!ReferenceEquals(player, _player))
+            return;
+
+        _lastState = status.State;
+        PlayPauseButton.Content = status.State == MediaPlayerState.Playing ? "Pause" : "Play";
         _isUpdatingSeek = true;
         try
         {
-            SeekSlider.Maximum = Math.Max(duration, 1);
-            DurationText.Text = FormatTime(duration);
+            SeekSlider.Maximum = Math.Max(status.Duration, 1);
+            DurationText.Text = FormatTime(status.Duration);
             if (!_isSeeking)
             {
-                SeekSlider.Value = Math.Clamp(player.Position.TotalSeconds, 0, SeekSlider.Maximum);
+                SeekSlider.Value = Math.Clamp(status.Position, 0, SeekSlider.Maximum);
                 PositionText.Text = FormatTime(SeekSlider.Value);
             }
         }
         finally
         {
             _isUpdatingSeek = false;
+        }
+    }
+
+    /// <summary>Copies the whole log, oldest first, to the clipboard.</summary>
+    private async void OnCopyLogClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+            {
+                AddLog(MediaDiagnosticLevel.Warning, "Player", "No clipboard available");
+                return;
+            }
+
+            var lines = _log.Count;
+            await clipboard.SetTextAsync(string.Join(Environment.NewLine, _log.Reverse()));
+            AddLog(MediaDiagnosticLevel.Info, "Player", $"Copied {lines} log lines to the clipboard");
+        }
+        catch (Exception ex)
+        {
+            AddLog(MediaDiagnosticLevel.Warning, "Player", $"Copy log failed: {ex.Message}");
         }
     }
 
