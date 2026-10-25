@@ -225,8 +225,12 @@ public partial class MediaControlPlayer
         });
     }
 
-    /// <summary>Queues an empty operation; completes once all previously queued work ran.</summary>
-    internal Task FlushControlOperationsAsync() => _controlOperations.Enqueue(static () => { });
+    /// <summary>Test hook: waits for the control operations queued so far, then for the diagnostics they raised.</summary>
+    internal async Task FlushControlOperationsAsync()
+    {
+        await _controlOperations.Enqueue(static () => { }).ConfigureAwait(false);
+        await _diagnosticEvents.FlushAsync().ConfigureAwait(false);
+    }
 
     private IMediaFileAnalyzer ResolveMediaFileAnalyzer() =>
         _serviceProvider.GetService<IMediaFileAnalyzer>() ?? UnavailableMediaFileAnalyzer.Instance;

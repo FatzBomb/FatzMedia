@@ -330,7 +330,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             if (!openDemuxer())
                 return false;
 
-            AudioStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
+            // A network source takes the audio of the variant the picture plays (039A).
+            AudioStreamIndex = _demuxer.SelectAudioStream();
             if (AudioStreamIndex < 0)
             {
                 CloseCore();
@@ -340,7 +341,8 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             _demuxer.RegisterAudioStream(AudioStreamIndex);
 
             // With its own demuxer (the video pipeline gives audio a separate cursor), every
-            // other stream is read and dropped: discard them so the file is not demuxed twice.
+            // other stream is read and dropped: discard them so the file is not demuxed twice
+            // (and, for HLS/DASH, so the other variants are not downloaded).
             if (_ownsDemuxer)
             {
                 for (uint i = 0; i < _demuxer.StreamCount; i++)
@@ -348,6 +350,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
                     if ((int)i != AudioStreamIndex)
                         _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
                 }
+            }
+            else
+            {
+                _demuxer.DiscardUnregisteredNetworkStreams();
             }
 
             _audioStream = _demuxer.GetStream(AudioStreamIndex);

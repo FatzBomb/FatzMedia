@@ -239,6 +239,78 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             : ffmpeg.av_find_best_stream(_formatContext, mediaType, -1, -1, null, 0);
 
     /// <summary>
+    /// The video stream to play. A local file keeps FFmpeg's best stream. A network source with
+    /// several video renditions (HLS variants, DASH representations) plays the one
+    /// <see cref="NetworkVariantPolicy"/> picks, so the picture and audio cursors agree on it.
+    /// </summary>
+    public int SelectVideoStream()
+    {
+        if (IsNetwork)
+        {
+            var chosen = NetworkVariantPolicy.Select(GetVideoVariantCandidates());
+            if (chosen >= 0)
+                return chosen;
+        }
+
+        return FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
+    }
+
+    /// <summary>
+    /// The audio stream to play. A network source takes the audio of the chosen video variant's
+    /// program (its own audio, or the shared audio rendition HLS adds to each program that uses
+    /// it); FFmpeg falls back to every stream when that program has none. A local file keeps
+    /// FFmpeg's best audio stream, as before.
+    /// </summary>
+    public int SelectAudioStream()
+    {
+        if (_formatContext == null || !IsNetwork)
+            return FindBestStream(AVMediaType.AVMEDIA_TYPE_AUDIO);
+
+        var video = SelectVideoStream();
+        return ffmpeg.av_find_best_stream(_formatContext, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, video >= 0 ? video : -1, null, 0);
+    }
+
+    /// <summary>
+    /// Discards every stream but <paramref name="keep"/> (negative entries are ignored). For HLS
+    /// and DASH this is what stops FFmpeg from downloading the segments of the other variants.
+    /// </summary>
+    public void DiscardAllStreamsExcept(ReadOnlySpan<int> keep)
+    {
+        for (var index = 0; index < (int)StreamCount; index++)
+        {
+            if (!keep.Contains(index))
+                SetStreamDiscard(index, AVDiscard.AVDISCARD_ALL);
+        }
+    }
+
+    private List<NetworkVariantCandidate> GetVideoVariantCandidates()
+    {
+        var candidates = new List<NetworkVariantCandidate>();
+        for (var index = 0; index < (int)StreamCount; index++)
+        {
+            AVStream* stream = _formatContext->streams[index];
+            if (stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_VIDEO
+                || (stream->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) != 0)
+            {
+                continue;
+            }
+
+            // HLS and DASH tag each stream with its variant's advertised bandwidth.
+            AVDictionaryEntry* entry = ffmpeg.av_dict_get(stream->metadata, "variant_bitrate", null, 0);
+            var bandwidth = entry != null && long.TryParse(
+                System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)entry->value),
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var advertised)
+                ? advertised
+                : stream->codecpar->bit_rate;
+            candidates.Add(new NetworkVariantCandidate(index, bandwidth, stream->codecpar->width, stream->codecpar->height));
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
     /// Returns the <see cref="AVStream"/> at <paramref name="index"/>, or null
     /// when closed or out of range. The pointer is owned by the format context
     /// and remains valid until <see cref="Close"/>.

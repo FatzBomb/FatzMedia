@@ -22,6 +22,8 @@ public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
     private const string DefaultMediaDirectory = "/opt/fatzbomb-native/media";
     private const string Mp4 = "h264_1080p.mp4";
     private const string HlsPlaylist = "hls/index.m3u8";
+    private const string MultiVariantPlaylist = "hls_multi/master.m3u8";
+    private static readonly TimeSpan SegmentRoundTrip = TimeSpan.FromMilliseconds(150);
 
     [Fact]
     public void ProgressiveMp4_PresentsFramesAndSeeks()
@@ -99,6 +101,115 @@ public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
         _ = session.Player.Stop();
     }
 
+    /// <summary>
+    /// A master playlist with three variants (480p, 720p, 1080p, each a TS with its own audio):
+    /// after the open, playback and a seek fetch the segments of one variant only. The server
+    /// waits <see cref="SegmentRoundTrip"/> before each segment, standing in for a remote server's
+    /// round trip. Media: <c>hls_multi/master.m3u8</c> (made by <c>scripts/setup-linux-native.sh</c>).
+    /// </summary>
+    [Fact]
+    public void HlsMultiVariant_FetchesTheSegmentsOfOneVariantOnly()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media) || !File.Exists(Path.Combine(media, MultiVariantPlaylist)))
+            return;
+
+        using var server = new LocalHttpMediaServer(media);
+        server.Plan = request => request.Path.EndsWith(".ts", StringComparison.Ordinal)
+            ? new HttpResponsePlan(DelayBeforeResponse: SegmentRoundTrip)
+            : new HttpResponsePlan();
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full);
+
+        var startup = Stopwatch.StartNew();
+        Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(MultiVariantPlaylist))), session.Errors);
+        var loadMs = startup.Elapsed.TotalMilliseconds;
+        var afterLoad = server.Requests.Count;
+        var openCounts = CountSegmentsPerVariant(server.Requests.Take(afterLoad));
+
+        Assert.True(session.Player.Play());
+        Assert.True(SpinWait.SpinUntil(() => session.Player.Position > TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(30)), $"position {session.Player.Position}");
+        var afterPlayback = server.Requests.Count;
+        var playbackCounts = CountSegmentsPerVariant(server.Requests.Skip(afterLoad).Take(afterPlayback - afterLoad));
+
+        var seekMs = MeasureSeek(session, 20.0);
+        var backSeekMs = MeasureSeek(session, 6.0);
+        var seekCounts = CountSegmentsPerVariant(server.Requests.Skip(afterPlayback));
+
+        output.WriteLine($"HLS multi-variant: load {loadMs:F0} ms, seek to 20 s {seekMs:F0} ms, back to 6 s {backSeekMs:F0} ms; " +
+            $"segment requests per variant: open {Describe(openCounts)}, playback {Describe(playbackCounts)}, seeks {Describe(seekCounts)}");
+
+        Assert.Single(playbackCounts.Keys.Union(seekCounts.Keys));
+        // The variant is chosen on purpose: the highest bandwidth within the 1080p cap.
+        Assert.Equal("v2", playbackCounts.Keys.Single());
+        Assert.Empty(session.ErrorList);
+        _ = session.Player.Stop();
+
+        static string Describe(IReadOnlyDictionary<string, int> counts) =>
+            counts.Count == 0 ? "none" : string.Join(", ", counts.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}={pair.Value}"));
+    }
+
+    /// <summary>
+    /// The audio cursor (a second connection; it needs BASS to play, so this drives its demuxer
+    /// directly): it picks the audio of the variant the picture plays and fetches that variant's
+    /// segments only.
+    /// </summary>
+    [Fact]
+    public unsafe void HlsMultiVariant_AudioCursor_ReadsTheChosenVariantOnly()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media) || !File.Exists(Path.Combine(media, MultiVariantPlaylist)))
+            return;
+
+        FfmpegAudioReaderNativeTests.ActivateFfmpeg(ffmpeg);
+        using var server = new LocalHttpMediaServer(media);
+        using var demuxer = new Core.Media.MediaDemuxer();
+        Assert.True(demuxer.Open(server.UriFor(MultiVariantPlaylist).AbsoluteUri, Core.Media.FfmpegNetworkOptions.Default), demuxer.LastNetworkError);
+        var afterOpen = server.Requests.Count;
+
+        var video = demuxer.SelectVideoStream();
+        var audio = demuxer.SelectAudioStream();
+        Assert.Equal(1080, demuxer.GetStream(video)->codecpar->height);
+        Assert.Equal(FFmpeg.AutoGen.AVMediaType.AVMEDIA_TYPE_AUDIO, demuxer.GetStream(audio)->codecpar->codec_type);
+        // In the same variant as the picture (HLS tags each stream with its variant's bandwidth).
+        Assert.Equal("4470400", VariantBitrate(demuxer, video));
+        Assert.Equal("4470400", VariantBitrate(demuxer, audio));
+
+        demuxer.DiscardAllStreamsExcept([audio]);
+        FFmpeg.AutoGen.AVPacket* packet = FFmpeg.AutoGen.ffmpeg.av_packet_alloc();
+        try
+        {
+            var audioPackets = 0;
+            while (audioPackets < 600 && demuxer.ReadPacket(packet) >= 0)
+            {
+                // The packets the open's probe buffered come first, from every stream.
+                if (packet->stream_index == audio)
+                    audioPackets++;
+                FFmpeg.AutoGen.ffmpeg.av_packet_unref(packet);
+            }
+
+            Assert.Equal(600, audioPackets);
+        }
+        finally
+        {
+            FFmpeg.AutoGen.ffmpeg.av_packet_free(&packet);
+        }
+
+        var readCounts = CountSegmentsPerVariant(server.Requests.Skip(afterOpen));
+        output.WriteLine($"HLS multi-variant audio cursor: stream {audio}, segment requests per variant after the open {string.Join(", ", readCounts.Select(pair => $"{pair.Key}={pair.Value}"))}");
+        Assert.Equal("v2", Assert.Single(readCounts).Key);
+
+        static string? VariantBitrate(Core.Media.MediaDemuxer demuxer, int streamIndex)
+        {
+            FFmpeg.AutoGen.AVDictionaryEntry* entry = FFmpeg.AutoGen.ffmpeg.av_dict_get(demuxer.GetStream(streamIndex)->metadata, "variant_bitrate", null, 0);
+            return entry == null ? null : System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)entry->value);
+        }
+    }
+
+    /// <summary>Segment requests per variant folder (<c>hls_multi/v0/seg003.ts</c> counts for <c>v0</c>).</summary>
+    private static Dictionary<string, int> CountSegmentsPerVariant(IEnumerable<HttpRequestRecord> requests) =>
+        requests
+            .Where(request => request.Path.EndsWith(".ts", StringComparison.Ordinal))
+            .GroupBy(request => request.Path.Split('/', StringSplitOptions.RemoveEmptyEntries) is { Length: >= 2 } parts ? parts[^2] : string.Empty)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
     [Fact]
     public void HlsLive_IsNotSeekable_HasNoDuration_AndClosesPromptly()
     {
@@ -160,6 +271,36 @@ public sealed class LinuxNetworkVideoNativeTests(ITestOutputHelper output)
         output.WriteLine($"close during connect: {closeMs:F0} ms (load finished {close.Elapsed.TotalMilliseconds:F0} ms after Close)");
         Assert.True(close.Elapsed < TimeSpan.FromSeconds(2), $"close took {close.Elapsed}");
         Assert.Contains(session.DiagnosticList, line => line.Contains("cancelled", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RetryDiagnostics_ReachTheHostWhileTheLoadRuns()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out _))
+            return;
+
+        // A port nothing listens on: every attempt is refused at once.
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { MaxRetries = 2, InitialDelay = TimeSpan.FromMilliseconds(500) });
+        var retriesSeen = new ConcurrentQueue<TimeSpan>();
+        var clock = Stopwatch.StartNew();
+        session.Player.MediaDiagnostic += (_, e) =>
+        {
+            if (e.Message.StartsWith("Network retry", StringComparison.Ordinal))
+                retriesSeen.Enqueue(clock.Elapsed);
+        };
+
+        Assert.False(session.Player.Load(MediaInputSource.FromUri(new Uri($"http://127.0.0.1:{port}/clip.mp4"), MediaNetworkContent.Video)));
+        var loadEnded = clock.Elapsed;
+
+        TimeSpan[] seen = [.. retriesSeen];
+        output.WriteLine($"retry diagnostics at {string.Join(", ", seen.Select(time => $"{time.TotalMilliseconds:F0} ms"))}; load ended at {loadEnded.TotalMilliseconds:F0} ms");
+        Assert.Equal(2, seen.Length);
+        // The first retry is announced before its 0.5 s delay and the second attempt, not after the load.
+        Assert.True(seen[0] < loadEnded - TimeSpan.FromMilliseconds(400), $"first retry at {seen[0]}, load ended at {loadEnded}");
     }
 
     [Fact]

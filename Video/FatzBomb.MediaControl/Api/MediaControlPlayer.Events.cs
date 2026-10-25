@@ -160,8 +160,11 @@ public partial class MediaControlPlayer
             return;
 
         var args = new MediaDiagnosticEventArgs(info.Level, info.Category, info.Message, info.SourcePath, info.InnerException);
-        // A failing diagnostic handler is not reported as a diagnostic: that would raise it again.
-        _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaDiagnostic), reportFailures: false));
+        // Delivered in order on the player's own diagnostic worker, not the control queue: a
+        // diagnostic raised during a long operation (a network retry during a load) reaches the
+        // host while the operation runs. A failing diagnostic handler is not reported as a
+        // diagnostic: that would raise it again.
+        _ = _diagnosticEvents.Post(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaDiagnostic), reportFailures: false));
     }
 
     private void OnAudioDeviceMonitorChanged(object? sender, AudioDeviceChangeInfo info) =>

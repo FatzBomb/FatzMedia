@@ -84,6 +84,30 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public void SetStreamDiscard(int index, AVDiscard discard) => _demuxer.SetStreamDiscard(index, discard);
 
+    /// <inheritdoc cref="MediaDemuxer.SelectVideoStream"/>
+    public int SelectVideoStream() => _demuxer.SelectVideoStream();
+
+    /// <inheritdoc cref="MediaDemuxer.SelectAudioStream"/>
+    public int SelectAudioStream() => _demuxer.SelectAudioStream();
+
+    /// <summary>
+    /// Network sources: discards every stream no consumer registered, and re-enables the
+    /// registered ones (a consumer that opened first may have discarded them). FFmpeg's HLS and
+    /// DASH demuxers otherwise download the segments of every variant (039A smoke). Local files
+    /// are left as they are: their unregistered packets are read and dropped, as before.
+    /// </summary>
+    public void DiscardUnregisteredNetworkStreams()
+    {
+        if (!_demuxer.IsNetwork)
+            return;
+
+        for (var index = 0; index < (int)_demuxer.StreamCount; index++)
+        {
+            var registered = index == _videoStreamIndex || index == _audioStreamIndex;
+            _demuxer.SetStreamDiscard(index, registered ? AVDiscard.AVDISCARD_DEFAULT : AVDiscard.AVDISCARD_ALL);
+        }
+    }
+
     public void RegisterVideoStream(int index) => _videoStreamIndex = index;
 
     public void RegisterAudioStream(int index) => _audioStreamIndex = index;

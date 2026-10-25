@@ -908,8 +908,8 @@ public sealed class MediaControlPlayerTests
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Player", "for A");
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Player", "unowned");
 
-        // Each player delivers in order on its control queue, so "unowned" arriving means "for A"
-        // was already delivered (or dropped).
+        // Each player delivers its diagnostics in order on its own worker, so "unowned" arriving
+        // means "for A" was already delivered (or dropped).
         Assert.True(bothSawUnowned.Wait(TestEnvironment.EventuallyTimeout));
         await playerA.FlushControlOperationsAsync();
         await playerB.FlushControlOperationsAsync();

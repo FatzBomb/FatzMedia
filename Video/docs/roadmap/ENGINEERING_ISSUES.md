@@ -188,6 +188,24 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   checked. Recommended Windows build (TqkLibrary LGPL3 9.0.2): Schannel, Windows store. BASS
   (014A audio) exposes no certificate setting, so audio is unchanged; see
   `docs/NATIVE_DEPENDENCIES.md` for the backend table and the Windows checks.
+- **Multi-variant HLS downloaded every variant.** Resolved 2026-10-25, pending Windows smoke.
+  Owner's smoke (`https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`, up to 1080p): long waits
+  after a seek and occasional stutter. Confirmed cause: FFmpeg's HLS (and DASH) demuxer fetches
+  segments for every variant whose streams are not discarded, and the picture cursor
+  (`SharedDemuxer`, not owned by `VideoDecoder`) discarded nothing. Fix: for network sources the
+  picture cursor plays one video rendition chosen by `NetworkVariantPolicy` (the highest
+  advertised bandwidth at or below 1080p; when all are taller, the smallest; an unknown height
+  counts as within the cap; the display size is not known at open) and discards every stream no
+  consumer registered (`SharedDemuxer.DiscardUnregisteredNetworkStreams`). The audio cursor picks
+  the audio of the same variant (`av_find_best_stream` with the chosen video as the related
+  stream, so its program; a shared `EXT-X-MEDIA` rendition belongs to each program that uses it)
+  and already discarded the rest. Local files are unchanged (FFmpeg's best streams, nothing
+  discarded on the shared cursor; embedded subtitles use their own demuxer). Measured on a local
+  3-variant master playlist (480p/720p/1080p, 2 s segments, 150 ms server delay per segment):
+  segment requests after the open went from every variant (playback 2/2/2, two seeks 8/8/8) to
+  the 1080p variant only (2, 8); seek latency 916-929 ms before, 307-325 ms after. The open's
+  probe still reads the first segments of every variant (2 each), which `avformat_find_stream_info`
+  needs to describe them. No adaptive switching: the variant stays fixed for the session.
 - **Two connections per network video with sound.** As for local video, `VideoAudioEngine`
   reads on its own cursor, so a progressive file or an HLS VOD is downloaded twice, and a live
   HLS playlist can start the two connections one segment apart (audio/video offset up to one
@@ -462,6 +480,19 @@ Re-verified against the code after 043A slices 1-2, ENG-025 and ENG-032. Fixed:
   line, to avoid a loop). `MediaEnded`, `MediaStopped`, `MediaError`, `MediaDiagnostic`,
   `AudioDeviceChanged`, `MediaStarted` and `PresentationFramePresented` (render thread) were the
   inconsistent ones.
+- **Live diagnostics (follow-up 2026-10-25).** `MediaDiagnostic` was delivered on the control
+  queue, so diagnostics raised during a long operation (the network open's "Network retry 1/3 in
+  1.0s" ...) reached the host together after the load ended. Each player now delivers them in
+  order on its own worker (`SerialEventDispatcher`), still through `HostEventDispatcher` and the
+  ENG-025 owner filter; `Dispose` waits up to 1 s for those already queued and delivers nothing
+  after it returns (the `DisposeLater` warning is the last one). A diagnostic handler no longer
+  runs inside a control operation, so it may call `Dispose`/`Reset`. `BufferingChanged`,
+  `StreamMetadataChanged`, `MediaError` and the lifecycle events stay on the control queue: they
+  are ordered against the load (`MediaLoaded` first, stale-source checks), and network video
+  raises buffering only after its open. Tests: `SerialEventDispatcherTests` (5),
+  `PlayerThreadingContractTests` (+2: delivery during a long load, in order; nothing after Dispose),
+  and the opt-in native `LinuxNetworkVideoNativeTests.RetryDiagnostics_ReachTheHostWhileTheLoadRuns`
+  (refused connect, two retries: delivered at 35 and 535 ms, the load ended at 1539 ms).
 - **Reset's settings (fixed, defaults kept).** `Reset` still starts from the defaults (the 043A
   decision); now each of volume, pitch, tempo, normalization, equalizer, loop and base visual
   transform that changed raises its change event once, on the new control queue after `Reset`

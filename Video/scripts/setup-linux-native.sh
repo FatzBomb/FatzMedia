@@ -43,6 +43,16 @@ if [ -n "$enc" ]; then
     "$enc" -v error -y -i "$media/h264_1080p.mp4" -c copy -f hls -hls_time 2 -hls_playlist_type vod \
       -hls_segment_filename "$media/hls/seg%03d.ts" "$media/hls/index.m3u8"
   fi
+  # 30 s master playlist with three variants (480p/720p/1080p, each a TS with its own audio).
+  if [ ! -s "$media/hls_multi/master.m3u8" ]; then
+    mkdir -p "$media/hls_multi"
+    (cd "$media/hls_multi" && "$enc" -v error -y -stream_loop 2 -i "$media/h264_1080p.mp4" \
+      -filter_complex "[0:v]split=3[a][b][c];[a]scale=-2:480[v0];[b]scale=-2:720[v1];[c]null[v2]" \
+      -map "[v0]" -map 0:a -map "[v1]" -map 0:a -map "[v2]" -map 0:a \
+      -c:v libx264 -preset veryfast -g 60 -keyint_min 60 -sc_threshold 0 -b:v:0 800k -b:v:1 2000k -b:v:2 4000k \
+      -c:a aac -b:a 64k -f hls -hls_time 2 -hls_playlist_type vod -master_pl_name master.m3u8 \
+      -var_stream_map "v:0,a:0 v:1,a:1 v:2,a:2" -hls_segment_filename "v%v/seg%03d.ts" "v%v/index.m3u8")
+  fi
 fi
 
 echo "export FATZBOMB_LINUX_FFMPEG_DIR=$ff/lib"

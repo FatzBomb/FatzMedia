@@ -20,6 +20,8 @@ public partial class MediaControlPlayer : IMediaControlSession
 {
     private static readonly TimeSpan SyncAdjustmentStep = TimeSpan.FromMilliseconds(100);
     private const double SeekSettleToleranceSeconds = 0.25;
+    // How long Dispose waits for diagnostics already queued to reach the host.
+    private static readonly TimeSpan DiagnosticDrainTimeout = TimeSpan.FromSeconds(1);
     private const double SeekImmediateCompletionToleranceSeconds = 0.001;
     // A scrub settles on the frame its last preview showed, at most VideoPipeline's preview frame
     // distance (2 s) from the target, plus the normal settle tolerance.
@@ -29,6 +31,9 @@ public partial class MediaControlPlayer : IMediaControlSession
     private IMediaEngine _mediaEngine;
     private IMediaPresentationCoordinator _presentationCoordinator;
     private MediaControlOperationQueue _controlOperations;
+    // MediaDiagnostic delivery, in order but not behind the control queue; lives as long as the
+    // player (Reset and mode switches keep it). Closed by Dispose.
+    private readonly SerialEventDispatcher _diagnosticEvents = new("MediaDiagnostic", DiagnosticDrainTimeout);
     private PlaybackPositionNotifier _positionNotifier;
     // The host's surfaces. Guarded by _surfaceGate: host calls arrive on the UI thread while a
     // rebuild (Reset, SetModeAsync) holds and reattaches them on the control queue.
@@ -78,6 +83,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             // and the static diagnostic subscription that would keep this instance alive.
             DisposeCore();
             try { _controlOperations?.Dispose(); } catch { }
+            _diagnosticEvents.Dispose();
             throw;
         }
 
@@ -1140,6 +1146,8 @@ public partial class MediaControlPlayer : IMediaControlSession
             {
                 operations.Dispose();
                 _disposed = true;
+                // The teardown's own diagnostics are delivered (bounded); nothing after this.
+                _diagnosticEvents.Dispose();
                 GC.SuppressFinalize(this);
             }
         }
@@ -1160,6 +1168,10 @@ public partial class MediaControlPlayer : IMediaControlSession
                 "MediaControlPlayer",
                 $"Dispose did not get its turn within {DisposeWaitTimeout.TotalSeconds:0.#} s; the player is closed and finishes freeing itself when the operation in progress ends.");
         }
+
+        // That warning is the last diagnostic the host sees: the operation still running and the
+        // deferred teardown below belong to a disposed player.
+        _diagnosticEvents.Dispose();
 
         DetachPresentationSurfacesForDispose();
         _ = operations.Enqueue(() =>

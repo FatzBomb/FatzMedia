@@ -165,17 +165,18 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen && !_demuxer.Open(path))
             return false;
 
-        VideoStreamIndex = _demuxer.FindBestStream(AVMediaType.AVMEDIA_TYPE_VIDEO);
+        VideoStreamIndex = _demuxer.SelectVideoStream();
         if (VideoStreamIndex < 0) { Close(); return false; }
 
         _demuxer.RegisterVideoStream(VideoStreamIndex);
 
         _videoStream = _demuxer.GetStream(VideoStreamIndex);
 
-        // Discard non-video streams so av_read_frame only returns video packets — but
-        // only when we own the demuxer (single-stream mode: background video, hardware
-        // probe). When sharing the demuxer (main video+audio path), non-video packets
-        // are dispatched to the audio consumer by SharedDemuxer, so we must NOT discard.
+        // Discard non-video streams so av_read_frame only returns video packets when we own
+        // the demuxer (single-stream mode: background video, hardware probe). A shared demuxer
+        // dispatches the streams its consumers registered; for a network source it discards the
+        // rest, or HLS/DASH would download every variant (039A). A shared local file is read
+        // as before.
         if (_ownsDemuxer)
         {
             for (uint i = 0; i < _demuxer.StreamCount; i++)
@@ -183,6 +184,10 @@ internal sealed unsafe class VideoDecoder(
                 if ((int)i != VideoStreamIndex)
                     _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
             }
+        }
+        else
+        {
+            _demuxer.DiscardUnregisteredNetworkStreams();
         }
 
         if (!InitializeVideoDecoder())

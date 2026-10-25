@@ -83,6 +83,30 @@ Delivered:
   cases (`LinuxNetworkVideoNativeTests.Https_*`, `Http_IsUnaffectedByTheTlsPolicy`) against an
   in-process self-signed https server.
 
+- **One HLS/DASH variant (follow-up 2026-10-25, ENG-034).** A network source with several video
+  renditions plays one, chosen by `NetworkVariantPolicy`: the highest advertised bandwidth at or
+  below 1080p (the engine does not know the display size when it opens); when every variant is
+  taller, the smallest. The audio cursor takes the audio of that variant's program. All other
+  streams are discarded, so FFmpeg downloads one variant's segments. No adaptive switching.
+- **Live diagnostics (follow-up 2026-10-25, ENG-024).** `MediaDiagnostic` is delivered on a
+  per-player worker, so network retries and the connect are visible while the load runs.
+
+## Multi-variant HLS (follow-up 2026-10-25)
+
+Local master playlist, 30 s, three variants (480p 0.95 Mb/s, 720p 2.27 Mb/s, 1080p 4.47 Mb/s, each
+a TS with its own audio, 2 s segments; `scripts/setup-linux-native.sh` makes it), served by
+`LocalHttpMediaServer` with a 150 ms delay before each segment (a remote round trip).
+`LinuxNetworkVideoNativeTests.HlsMultiVariant_FetchesTheSegmentsOfOneVariantOnly`, three runs each:
+
+| | Segment requests (open / playback to 4 s / seeks to 20 s and back to 6 s) | Seek to 20 s | Back to 6 s |
+|---|---|---|---|
+| Before (every variant read) | v0/v1/v2: 2/2/2, 2/2/2, 8/8/8 | 921-929 ms | 916-920 ms |
+| After (1080p variant only) | 2/2/2, v2: 2, v2: 8 | 310-325 ms | 307-314 ms |
+
+The audio cursor (`HlsMultiVariant_AudioCursor_ReadsTheChosenVariantOnly`, demuxer level since it
+needs BASS to play) picks the 1080p variant's audio and fetches only that variant's segments.
+The open's probe reads the first two segments of every variant either way.
+
 ## Measurements (Linux sandbox, localhost, FFmpeg 9 shared libraries, no BASS, software decode, 1080p30 H.264, 10 s)
 
 FFmpeg alone first (the idea's "before changing the pipeline" step; FFmpeg 6.1 CLI, includes
@@ -188,3 +212,10 @@ with `bass.dll`/`bass_fx.dll` renamed (ENG-033).
    "Audio engine unavailable" (BASS renamed).
 10. Local files: video playback, seek, loop, archives, and network audio (an internet radio
     station, 014A step 1) behave as before.
+11. Multi-variant HLS: `--url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`. Expect the
+    1080p picture, seeks that settle within about a second on a normal connection, and no
+    periodic stutter. With a network monitor (Resource Monitor or the browser-free `netstat`),
+    the download rate is about one variant's bitrate, not the sum of all of them.
+12. With `--net-retries=3`, load an address that refuses connections (for example
+    `http://localhost:9/clip.mp4`): "Network retry 1/3 in 1.0s", "2/3 in 2.0s" and "3/3 in 4.0s"
+    appear in the log about 1, 2 and 4 s apart while the load runs, not all at once after it.

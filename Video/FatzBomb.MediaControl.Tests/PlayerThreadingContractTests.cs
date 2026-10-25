@@ -423,6 +423,68 @@ public sealed class PlayerThreadingContractTests
     }
 
     [Fact]
+    public async Task MediaDiagnostic_RaisedDuringALongOperation_ReachesTheHostBeforeItEnds_InOrder()
+    {
+        const string category = "ThreadingTest.Retry";
+        MediaControlPlayer? owner = null;
+        var received = new ConcurrentQueue<string>();
+        using var allReceived = new CountdownEvent(3);
+        var deliveredDuringOpen = false;
+        var factory = new SwitchTestPlatformFactory
+        {
+            // Like the network open's retries: progress diagnostics while the load still runs.
+            ConfigureEngine = (_, engine) => engine.BeforeOpen = () =>
+            {
+                using (DiagnosticRouter.EnterOwner(owner!))
+                {
+                    for (var attempt = 1; attempt <= 3; attempt++)
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, category, $"retry {attempt}/3");
+                }
+
+                deliveredDuringOpen = allReceived.Wait(TestEnvironment.EventuallyTimeout);
+            }
+        };
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        owner = player;
+        player.MediaDiagnostic += (_, e) =>
+        {
+            if (e.Category != category)
+                return;
+            received.Enqueue(e.Message);
+            allReceived.Signal();
+        };
+
+        Assert.True(await player.LoadAsync("stream.mp3").WaitAsync(TestEnvironment.EventuallyTimeout));
+
+        Assert.True(deliveredDuringOpen, "the diagnostics waited for the load to end");
+        Assert.Equal(["retry 1/3", "retry 2/3", "retry 3/3"], received);
+    }
+
+    [Fact]
+    public async Task MediaDiagnostic_IsNotDeliveredAfterDispose()
+    {
+        const string category = "ThreadingTest.AfterDispose";
+        var player = new MediaControlPlayer(new SwitchTestPlatformFactory(), MediaPlayerConfiguration.Auto, []);
+        var received = new ConcurrentQueue<string>();
+        player.MediaDiagnostic += (_, e) =>
+        {
+            if (e.Category == category)
+                received.Enqueue(e.Message);
+        };
+        using (DiagnosticRouter.EnterOwner(player))
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "before");
+
+        player.Dispose();
+        // Queued before Dispose: delivered by the time it returned.
+        Assert.Equal(["before"], received);
+
+        using (DiagnosticRouter.EnterOwner(player))
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, category, "after");
+        await Task.Delay(100);
+        Assert.Equal(["before"], received);
+    }
+
+    [Fact]
     public async Task HandlerExceptions_DoNotStopOtherHandlers_AndAreReported()
     {
         var factory = new SwitchTestPlatformFactory();
