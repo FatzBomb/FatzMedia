@@ -57,6 +57,15 @@ internal static partial class NetworkTlsRules
         url is not null && (url.StartsWith("https:", StringComparison.OrdinalIgnoreCase) || url.StartsWith("crypto+https:", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// Whether <paramref name="url"/> (possibly behind <c>crypto+</c>) is an http or https URL: the
+    /// opens that take the TLS options, since an http server can redirect to https and FFmpeg's
+    /// http protocol hands its options to the redirected connection.
+    /// </summary>
+    public static bool TakesTlsOptions(string? url) =>
+        IsHttps(url)
+        || (url is not null && (url.StartsWith("http:", StringComparison.OrdinalIgnoreCase) || url.StartsWith("crypto+http:", StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>
     /// The FFmpeg TLS options of <paramref name="policy"/>: <c>tls_verify</c> always (on unless the
     /// host allows invalid certificates), and <c>ca_file</c> when the host named one. Verification
     /// is set explicitly rather than left to FFmpeg's default, which was off before FFmpeg 9.

@@ -186,7 +186,7 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
 /// FFmpeg hands the open options to the first connection only: the HLS and DASH demuxers open
 /// playlists, segments and keys through <c>AVFormatContext.io_open</c> with a fixed subset
 /// (headers, cookies, timeouts) that leaves out <c>tls_verify</c> and <c>ca_file</c>. This wraps
-/// the context's <c>io_open</c> and adds the TLS options to each https open that does not set
+/// the context's <c>io_open</c> and adds the TLS options to each http/https open that does not set
 /// them, so a segment is verified exactly like its playlist.
 /// </summary>
 internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
@@ -239,7 +239,7 @@ internal sealed unsafe class FfmpegTlsIoOpen : IDisposable
             return ffmpeg.AVERROR_BUG;
 
         var open = (delegate* unmanaged[Cdecl]<AVFormatContext*, AVIOContext**, byte*, int, AVDictionary**, int>)hook._defaultIoOpen;
-        if (hook._options == null || !NetworkTlsRules.IsHttps(Marshal.PtrToStringUTF8((nint)url)))
+        if (hook._options == null || !NetworkTlsRules.TakesTlsOptions(Marshal.PtrToStringUTF8((nint)url)))
             return open(context, pb, url, flags, options);
 
         // The caller's dictionary keeps the options FFmpeg did not use; a NULL one gets a local copy.

@@ -100,4 +100,13 @@ public sealed class NetworkTlsRulesTests
     [InlineData(null, false)]
     public void IsHttps_IncludesEncryptedSegments(string? url, bool expected) =>
         Assert.Equal(expected, NetworkTlsRules.IsHttps(url));
+
+    [Theory]
+    [InlineData("https://media.example/a.mp4", true)]
+    [InlineData("http://media.example/a.mp4", true)]
+    [InlineData("crypto+http://media.example/seg.ts", true)]
+    [InlineData("file:///tmp/a.mp4", false)]
+    [InlineData(null, false)]
+    public void TakesTlsOptions_IncludesHttpThatCanRedirectToHttps(string? url, bool expected) =>
+        Assert.Equal(expected, NetworkTlsRules.TakesTlsOptions(url));
 }

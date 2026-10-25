@@ -150,6 +150,41 @@ public sealed class NetworkVideoPlaybackTests
     }
 
     [Fact]
+    public async Task LoadCancellation_EndsANetworkVideoConnectWithoutAnErrorEvent()
+    {
+        using var started = new ManualResetEventSlim();
+        var video = new TestVideoEngine
+        {
+            IsOpen = false,
+            LastNetworkError = "cancelled",
+            NetworkOpen = (url, options) =>
+            {
+                started.Set();
+                _ = options.Cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(30));
+                return false;
+            },
+        };
+        var policy = new NetworkRetryPolicy { MaxRetries = 5, InitialDelay = TimeSpan.FromSeconds(10) };
+        using PipelineMediaEngine engine = CreateEngine(new TestAudioEngine(), video, new MediaPlayerConfiguration { NetworkRetry = policy });
+        MediaErrorInfo? error = null;
+        ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
+        using var load = new CancellationTokenSource();
+
+        Task<bool> open = Task.Run(() =>
+        {
+            using (MediaOpenCancellation.Enter(load.Token))
+                return engine.Open(ClipSource);
+        });
+        Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+        load.Cancel();
+
+        Assert.Same(open, await Task.WhenAny(open, Task.Delay(TimeSpan.FromSeconds(5))));
+        Assert.False(await open);
+        Assert.Single(video.NetworkUrls);
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void CancelPendingNetworkOpen_WithNoOpenInProgress_DoesNothing()
     {
         var video = new TestVideoEngine { IsOpen = false, NetworkOpen = (_, _) => true, NetworkCapabilities = SeekableFile };

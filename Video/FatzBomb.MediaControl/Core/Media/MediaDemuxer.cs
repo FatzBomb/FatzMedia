@@ -129,7 +129,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         AVDictionary* dictionary = null;
         foreach (KeyValuePair<string, string> option in NetworkVideoPolicy.CreateFfmpegOptions(options.Retry))
             _ = ffmpeg.av_dict_set(&dictionary, option.Key, option.Value, 0);
-        if (NetworkTlsRules.IsHttps(url))
+        // http too: a redirect to https must be verified like a direct https URL.
+        if (NetworkTlsRules.TakesTlsOptions(url))
         {
             foreach (KeyValuePair<string, string> option in tlsOptions)
                 _ = ffmpeg.av_dict_set(&dictionary, option.Key, option.Value, 0);

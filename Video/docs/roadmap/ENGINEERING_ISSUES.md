@@ -212,6 +212,16 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   while its read is stalled and 1 otherwise, since the BASS push buffer level is not readable
   without the engine lock.
 
+Code review 2026-10-25 (batch PR), not fixed:
+- `NetworkTlsRules.IsCertificateFailure` treats any `[tls @` log line mentioning "certificate" or
+  "verify" as a certificate rejection, so an unrelated TLS warning followed by a transient failure
+  is reported as a certificate failure and not retried. Tighten it once each backend's real
+  messages are captured (Schannel on Windows, OpenSSL here).
+- The BASS network-audio retry loop (`AudioEngine`) duplicates `NetworkOpenRetry.Run`; the two
+  differ (audio always waits the delay). Fold audio into the shared helper when 037A touches it.
+- Reset leaves the previous `_loadLifetime` CancellationTokenSource undisposed (one per Reset);
+  disposing it on the timeout path is unsafe while the running open may still wait on it.
+
 ## Completed
 
 

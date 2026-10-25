@@ -316,7 +316,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         else if (tls.AllowInvalidCertificates && NetworkTlsRules.IsHttps(url))
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, NetworkDiagnosticCategory, "Certificate verification is off for this https source (NetworkTlsPolicy.AllowInvalidCertificates).", sourcePath: url);
 
-        using var cancellation = new CancellationTokenSource();
+        // Linked to the load's cancellation (ENG-024: the host's token, the player's Reset or
+        // Dispose), so those stop the connect and the retry delays as Close does.
+        CancellationToken loadCancellation = MediaOpenCancellation.Current;
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation);
         Volatile.Write(ref _pendingNetworkOpen, cancellation);
         NetworkOpenOutcome outcome;
         int attempts;
@@ -366,7 +369,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             case NetworkOpenOutcome.Cancelled:
                 _coordinator.Close();
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, NetworkDiagnosticCategory, $"Network open cancelled: {source.DisplayName}", sourcePath: url);
-                RaiseError(MediaErrorCode.OpenFailed, $"Network open cancelled: {source.DisplayName}", url);
+                // A cancelled load (ENG-024) is not an open failure, as for network audio; a Close
+                // or Dispose that cancelled the open still reports it.
+                if (!loadCancellation.IsCancellationRequested)
+                    RaiseError(MediaErrorCode.OpenFailed, $"Network open cancelled: {source.DisplayName}", url);
                 return false;
 
             default:

@@ -45,6 +45,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private readonly TimeSpan _wipeTransitionDuration;
     private readonly PlaybackScheduler _presentationScheduler = new("CoreNativePresentation");
     private bool _isRenderLoopRunning;
+    // Guards _isRenderLoopRunning with its scheduler start/stop: seek refreshes, StartRendering and
+    // StopRendering run on different threads. PlaybackScheduler.Start/Stop never wait.
+    private readonly Lock _renderLoopGate = new();
     // Orders software-path compositions (ENG-023): taken before _lock, held from build to present,
     // so an older composition cannot be presented after a newer one. Nothing may call
     // BuildAndPresentSoftwareComposition while holding _lock.
@@ -363,21 +366,27 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             return;
 
         var needed = NeedsRenderLoop;
-        if (needed == _isRenderLoopRunning)
-            return;
+        lock (_renderLoopGate)
+        {
+            if (!_isRenderingActive || needed == _isRenderLoopRunning)
+                return;
 
-        _isRenderLoopRunning = needed;
-        if (needed)
-            _presentationScheduler.Start(RenderLoop);
-        else
-            _presentationScheduler.Stop();
+            _isRenderLoopRunning = needed;
+            if (needed)
+                _presentationScheduler.Start(RenderLoop);
+            else
+                _presentationScheduler.Stop();
+        }
     }
 
     public void StopRendering()
     {
-        _isRenderingActive = false;
-        _isRenderLoopRunning = false;
-        _presentationScheduler.Stop();
+        lock (_renderLoopGate)
+        {
+            _isRenderingActive = false;
+            _isRenderLoopRunning = false;
+            _presentationScheduler.Stop();
+        }
         if (_mediaEngine.State is MediaPlayerState.Stopped or MediaPlayerState.Null)
         {
             ClearVisibleComposition("presentation stopped", preserveBackground: true);
