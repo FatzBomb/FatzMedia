@@ -88,9 +88,10 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
 }
 
 /// <summary>
-/// One player's engine: the renderer picked in the toolbar and the platform package of this build
-/// (<see cref="PlatformComposition"/>). Every renderer here decodes in software, so CPU comparisons
-/// isolate the presentation path.
+/// One player's engine: the renderer picked in the toolbar, the platform package of this build
+/// (<see cref="PlatformComposition"/>), and the decoding that renderer can present
+/// (<see cref="RendererOption.Decoding"/>, Stage 045A: hardware for Direct3D11 on a GPU, software
+/// otherwise; <c>--decoding=software</c> forces software for CPU comparisons).
 /// </summary>
 internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label) : IPlayerEngineFactory
 {
@@ -100,14 +101,26 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public NativeDependencyReport? NativeDependenciesAfterFailure => _platformFactory?.NativeDependencies;
 
-    public Task<PlayerRendererInfo> ResolveRendererAsync() => Task.FromResult(new PlayerRendererInfo(
-        $"{renderer.Kind} ({PlatformComposition.Name})",
-        VideoDecodingMethod.Software,
-        RequiresFrameSinkSurface: renderer.Kind == RendererKind.Software,
+    public Task<PlayerRendererInfo> ResolveRendererAsync()
+    {
+        StartupOptions options = StartupOptions.Current;
+        var forcedSoftware = options.SoftwareDecoding && renderer.Decoding != VideoDecodingMethod.Software;
+        VideoDecodingMethod decoding = forcedSoftware ? VideoDecodingMethod.Software : renderer.Decoding;
+        var decodingDetail = forcedSoftware ? "software decoding (--decoding=software)" : renderer.DecodingDetail;
+        List<(MediaDiagnosticLevel, string)> lines =
         [
-            (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}"),
+            (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}, {decodingDetail}"),
             (MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"),
-        ]));
+        ];
+        if (options.UnknownDecoding is { } unknown)
+            lines.Add((MediaDiagnosticLevel.Warning, $"{label}: unknown --decoding={unknown} (use auto or software); decoding as auto"));
+
+        return Task.FromResult(new PlayerRendererInfo(
+            $"{renderer.Kind} ({PlatformComposition.Name})",
+            decoding,
+            RequiresFrameSinkSurface: renderer.Kind == RendererKind.Software,
+            lines));
+    }
 
     public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {

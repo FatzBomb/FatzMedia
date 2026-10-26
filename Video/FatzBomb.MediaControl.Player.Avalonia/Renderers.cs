@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Controllers;
+using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Rendering.Vulkan;
 #if WINDOWS
@@ -16,8 +17,17 @@ internal enum RendererKind
     Direct3D11
 }
 
-/// <summary>A renderer the player can offer and whether it is usable on this machine.</summary>
-internal sealed record RendererOption(RendererKind Kind, bool IsAvailable, string Detail)
+/// <summary>
+/// A renderer the player can offer, whether it is usable on this machine (<see cref="Detail"/>
+/// describes its composition, or why it is unusable), and how video is decoded for it
+/// (<see cref="Renderers.ChooseDecoding"/>).
+/// </summary>
+internal sealed record RendererOption(
+    RendererKind Kind,
+    bool IsAvailable,
+    string Detail,
+    VideoDecodingMethod Decoding = VideoDecodingMethod.Software,
+    string DecodingDetail = "software decoding")
 {
     public string Label => IsAvailable ? Kind.ToString() : $"{Kind} (unavailable)";
 }
@@ -31,23 +41,50 @@ internal static class Renderers
 {
     public static IReadOnlyList<RendererOption> Probe()
     {
-        var vulkanUsable = VulkanPresentationCoordinatorFactory.IsSupported(out var reason);
         List<RendererOption> options =
         [
-            new RendererOption(RendererKind.Software, true, "CPU composition, software decoding"),
-            new RendererOption(RendererKind.Vulkan, vulkanUsable, vulkanUsable ? "Vulkan composition, software decoding" : reason ?? "no usable Vulkan device")
+            Describe(RendererKind.Software, new SoftwarePresentationCoordinatorFactory().ProbeAvailability(), "CPU composition"),
+            Describe(RendererKind.Vulkan, new VulkanPresentationCoordinatorFactory().ProbeAvailability(), "Vulkan composition")
         ];
 #if WINDOWS
-        MediaPresentationAvailability direct3D = WindowsDirect3D11MediaControlPlatformFactory
-            .CreatePresentationFactory(new Direct3D11PresentationOptions())
-            .ProbeAvailability();
-        options.Add(new RendererOption(
+        options.Add(Describe(
             RendererKind.Direct3D11,
-            direct3D.IsAvailable,
-            direct3D.IsAvailable ? $"Direct3D11 composition ({direct3D.Detail}), software decoding" : direct3D.Detail));
+            WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(new Direct3D11PresentationOptions()).ProbeAvailability(),
+            "Direct3D11 composition"));
 #endif
         return options;
     }
+
+    private static RendererOption Describe(RendererKind kind, MediaPresentationAvailability availability, string composition)
+    {
+        (VideoDecodingMethod decoding, var decodingDetail) = ChooseDecoding(kind, availability);
+        return new RendererOption(
+            kind,
+            availability.IsAvailable,
+            !availability.IsAvailable ? availability.Detail
+                : string.IsNullOrEmpty(availability.Detail) || availability.Detail == composition ? composition
+                : $"{composition} ({availability.Detail})",
+            decoding,
+            decodingDetail);
+    }
+
+    /// <summary>
+    /// How video is decoded for a renderer (Stage 045A): a host choice, paired with what the
+    /// renderer's probe says it can present (<see cref="MediaPresentationAvailability.RequiresSoftwareDecoding"/>).
+    /// A renderer that presents hardware frames gets <see cref="VideoDecodingMethod.Auto"/>
+    /// (hardware where the GPU decodes the codec, else software): Direct3D11 on a GPU, which keeps
+    /// D3D11VA frames on the GPU through both surface paths. The software and Vulkan renderers take
+    /// no hardware frames, and Direct3D11 on a software rasterizer (WARP) would be handed frames on
+    /// another device, so those decode in software. <paramref name="kind"/> only words the reason.
+    /// </summary>
+    internal static (VideoDecodingMethod Decoding, string Detail) ChooseDecoding(RendererKind kind, MediaPresentationAvailability availability) =>
+        (availability.RequiresSoftwareDecoding, kind) switch
+        {
+            (false, RendererKind.Direct3D11) => (VideoDecodingMethod.Auto, "hardware decoding (D3D11VA) where the GPU supports the codec"),
+            (false, _) => (VideoDecodingMethod.Auto, "hardware decoding where the GPU supports the codec"),
+            (true, RendererKind.Direct3D11) => (VideoDecodingMethod.Software, "software decoding (the renderer runs on a software rasterizer)"),
+            (true, _) => (VideoDecodingMethod.Software, "software decoding (the renderer takes no hardware frames)")
+        };
 
     /// <summary>Resolves a <c>--renderer=</c> value against what the probe found.</summary>
     public static RendererKind Choose(string requested, IReadOnlyList<RendererOption> options)

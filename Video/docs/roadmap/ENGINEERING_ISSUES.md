@@ -338,6 +338,24 @@ HTTPS-audio code review (2026-10-26), not fixed:
 - The soundtrack engine records the BASS output device when it is built, and Full mode now builds
   it for https/HLS audio: check on Windows that a device change while playing is followed.
 
+### ENG-037 - Hardware-frame follow-ups from 045A slice 1
+
+Reported: 2026-10-26 (045A slice 1, GPU decoding on the Avalonia Direct3D11 path). Not fixed;
+details in `active/045A_ACTIVE_GpuDecodingEveryPath.md` (Not in this stage).
+- **Hardware frame a renderer cannot take.** When `EnsureNativeFrameDevice` returns false (a
+  host pairing hardware decoding with the software or Vulkan renderer, or a failed device
+  adoption), Core drops the frame on every path. A paused first frame stays black. Proposed
+  fix: a per-decoder fallback token on `NativeVideoFrameResource` (like `HdrToneMapFallback`).
+  The coordinator sets it, and the pipeline swaps to a software decoder at the current
+  position through the device-loss swap path.
+- **Compositor on another GPU.** The decoder, the renderer and ANGLE all use the default
+  adapter. A compositor elsewhere makes the shared textures fail the LUID check, and the
+  surface uses its frame sink. Choosing the adapter by the compositor's LUID is deferred.
+- **Removed device during re-export.** A GPU reset between adopting a decoder device and
+  re-exporting the shared textures leaves the Avalonia surface on its frame sink for the
+  session (adoption of an already-removed device is refused). `OnUnavailable` cannot yet
+  tell a transient failure from a permanent one.
+
 ## Completed
 
 ### ENG-036 - Adapter diagnostics reached every player in the process

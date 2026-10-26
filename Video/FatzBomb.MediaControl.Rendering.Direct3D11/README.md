@@ -18,3 +18,9 @@ path. Each device creation logs which device, adapter and feature level it got.
 `Direct3D11PresentationCoordinatorFactory` implements `IMediaPresentationAvailabilityProbe`,
 so a host can put it first in a `FallbackPresentationCoordinatorFactory` (for example before
 the software renderer); on a software rasterizer the probe asks for software decoding.
+
+Hardware-decoded (D3D11VA) frames are drawn on the GPU into every target kind: native swap
+chains, DirectComposition, the managed frame sink (one readback), and the keyed-mutex shared
+textures a UI compositor imports (no readback; Stage 045A). On the first frame of a decoder
+the renderer adopts the decoder's device, and Core attaches the surfaces again, so shared
+textures are re-exported on that device.

@@ -272,7 +272,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
     /// <c>IDXGIKeyedMutex::AcquireSync</c> through the vtable: Vortice's wrapper hides the
     /// WAIT_TIMEOUT and WAIT_ABANDONED success codes, which mean the mutex was not acquired.
     /// </summary>
-    private static unsafe int AcquireSync(IDXGIKeyedMutex mutex, ulong key, uint milliseconds)
+    internal static unsafe int AcquireSync(IDXGIKeyedMutex mutex, ulong key, uint milliseconds)
     {
         nint native = mutex.NativePointer;
         var acquire = (delegate* unmanaged[Stdcall]<nint, ulong, uint, int>)(*(nint**)native)[8];

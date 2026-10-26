@@ -23,6 +23,11 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
   reason. `--surface=framesink` forces the frame sink, for comparison.
+- Video decoding (Stage 045A): with Direct3D11 on a GPU the player decodes with D3D11VA where the GPU
+  supports the codec (the log's `Decoding ...` line ends `via d3d11va`). The frames stay on the GPU
+  into the shared GPU image, or are read back once for the frame sink. On WARP, and with the software
+  and Vulkan renderers, it decodes in software; the renderer line in the log says which.
+  `--decoding=software` forces software decoding, for CPU comparisons.
 - Open (file picker, filter from the engine), a URL box with **URL...** for http/https sources (MP4/MKV
   progressive or HLS `.m3u8`, Stage 039A; capabilities and buffering are logged), Play/Pause, Stop, seek bar,
   volume, pitch (-12..+12 semitones), tempo (50..200 %), loop.
@@ -58,7 +63,8 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 
 Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
 software, also `--software`; `direct3d11` in the Windows build only), `--surface=auto|framesink`
-(default auto), `--players=1..4`, `--second-screen=<n>` (1-based screen number; opens player 1's
+(default auto), `--decoding=auto|software` (default auto: hardware for Direct3D11 on a GPU, as
+above), `--players=1..4`, `--second-screen=<n>` (1-based screen number; opens player 1's
 second screen there at startup, full screen), and the flags every test player shares
 (`PlayerStartupOptions`): an optional media file or http/https URL for the first player
 (`--url=<http(s)://...>` does the same and wins over a file), `--mode=full|background|audio`

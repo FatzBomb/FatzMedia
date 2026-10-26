@@ -193,6 +193,14 @@ named `window` handle.
 - `IVideoHardwareAccelerationServices` supplies platform FFmpeg device preference, pixel-format preference, native device/frame extraction, and device-health checks.
 - Core `VideoDecoder` owns codec selection, decode queues, cloned-frame lifetime, software transfer fallback, seeking, and recovery policy. It contains no D3D11/DXVA device constants or D3D11 FFmpeg-structure parsing.
 - Windows currently supplies D3D11VA, D3D12VA, and DXVA2 preference; only D3D11 frames are exported for zero-copy presentation, while other hardware outputs transfer through Core's software frame path.
+- The Direct3D11 renderer draws D3D11 frames into whichever target is active: swap chains,
+  DirectComposition, the managed frame sink (one readback) and the shared textures of the
+  Avalonia surface (a GPU copy, no readback; Stage 045A). On a decoder's first frame the
+  renderer adopts its device (unless that device was removed by a GPU reset) and Core
+  re-attaches every surface, so shared textures are re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
+  for example, decodes with D3D11VA for Direct3D11 on a GPU, and in software on WARP and for
+  the software and Vulkan renderers, which take no hardware frames. Linux has software-only
+  decode services; Vulkan Video is planned in 045A slice 2.
 
 ## HDR Video (Stages 038A, 042A)
 
@@ -881,6 +889,9 @@ Shared GPU image surfaces (Stage 027A slice 2):
 - Renderers own every GPU object. Adapters see only handles and Avalonia's
   `ICompositionGpuInterop`.
 - Each surface, primary or secondary, has its own exported set and ring (slice 5).
+- Hardware-decoded frames reach the shared set on the GPU (Stage 045A slice 1). The renderer
+  re-exports the set when it adopts a decoder's device. If the compositor's GPU differs from the
+  decoder's, the LUID check declines it and the surface uses its frame sink.
 
 ## Audio Filter Framework (Stage 020A, slice 1)
 

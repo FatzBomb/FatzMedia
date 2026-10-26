@@ -96,7 +96,7 @@ public sealed class D3D11HdrToneMapTests
             Hdr10, new HdrToneMapRequest(150, 203), 16, 16, 16, 16,
             new Vortice.RawRect(0, 0, 16, 16), new Vortice.RawRect(0, 0, 16, 16)).Curve.W);
 
-    private static byte[] Cpu(int y, int cb, int cr, HdrToneMapRequest request)
+    internal static byte[] Cpu(int y, int cb, int cr, HdrToneMapRequest request)
     {
         // What swscale produces: full-range 16-bit R'G'B' from limited-range BT.2020 YCbCr.
         double yn = (y - 64) / 876.0, cbn = (cb - 512) / 896.0, crn = (cr - 512) / 896.0;
