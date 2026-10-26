@@ -367,8 +367,9 @@ internal sealed class D3D11RendererPresentationServices
     /// <summary>
     /// HDR output for a composition (Stage 042A slice 2): decided from its video background (a
     /// new hardware frame, or the one a retained refresh shows), SDR while another window shows
-    /// the composition or a video effect is on. When the primary swap chain changes format, the
-    /// targets are taken again (their buffers are new).
+    /// the composition or a video effect is on. When the primary swap chain re-acquired its back
+    /// buffer (a format change, or a failed attempt that released it), the targets are taken
+    /// again: the old snapshot holds a disposed texture.
     /// </summary>
     private HdrOutputDecision? PrepareCompositionHdrOutput(MediaCompositionFrame frame, ref IReadOnlyList<D3D11PresentationTargetSnapshot> targets)
     {
@@ -383,9 +384,9 @@ internal sealed class D3D11RendererPresentationServices
             : !frame.BaseVisualTransform.IsIdentity ? D3D11HdrOutputController.VideoEffectReason : null;
 
         ID3D11PresentationBackend? primary = Backends.Active;
-        HdrOutputMode before = primary is ID3D11HdrOutputBackend hdrBefore ? hdrBefore.OutputMode : HdrOutputMode.Sdr;
+        var before = primary?.TargetTexture;
         HdrOutputDecision? decision = HdrOutput.PreparePrimary(primary, content, blocker);
-        if (primary is ID3D11HdrOutputBackend hdrAfter && hdrAfter.OutputMode != before)
+        if (primary != null && !ReferenceEquals(primary.TargetTexture, before))
             targets = Surfaces.GetActiveTargetSnapshots(applyPendingNativeResize: false, reason: "media composition presentation (HDR output changed)");
 
         return decision;

@@ -34,7 +34,7 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
   Direct3D11, opt-in `Direct3D11PresentationOptions.HdrOutput`: FP16 scRGB swap chain for the
   primary window, SDR layers at the system SDR white level, SDR fallback) is implemented,
-  pending manual smoke (`updates/042A_2`); the Player `--hdr-output` flag is still to be added.
+  pending manual smoke (`updates/042A_2`); the WPF Player turns it on with `--hdr-output`.
   Secondary windows, offscreen surfaces and the Avalonia GPU-shared surface stay SDR.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2

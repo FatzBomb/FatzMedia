@@ -490,6 +490,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 && backgroundLayer.TextureWidth == frame.BackgroundWidth
                 && backgroundLayer.TextureHeight == frame.BackgroundHeight
                 && backgroundLayer.TextureStride == frame.BackgroundStride
+                && !backgroundLayer.HoldsScRgb
                 && backgroundLayer.StretchMode == frame.EffectiveBackgroundStretchMode;
 
             return (revisionMatches && dimensionsMatch && !backgroundLayer.NeedsUpload) || backgroundLayer.UploadBgraPixels(deviceResources.Device!, deviceResources.Context!, descriptor);
