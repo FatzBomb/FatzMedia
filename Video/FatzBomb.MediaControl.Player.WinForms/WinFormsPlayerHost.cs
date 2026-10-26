@@ -117,7 +117,15 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
         {
             // A stable drop folder even before any binaries are supplied.
             var nativeFolder = Path.Combine(AppContext.BaseDirectory, WindowsNativeLibraryPaths.AppNativeRelativePath);
-            _ = Directory.CreateDirectory(nativeFolder);
+            try
+            {
+                _ = Directory.CreateDirectory(nativeFolder);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Read-only install location: the folder is still searched if it appears later.
+            }
+
             defaults = [nativeFolder];
         }
 
