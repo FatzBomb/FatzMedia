@@ -11,7 +11,13 @@ Core must not reference Win32/PInvoke, Vortice, framework-specific UI/bitmap typ
 UI frameworks should integrate through adapter projects, for example:
 
 - `FatzBomb.MediaControl.Wpf` for WPF control/HWND lifecycle interop.
-- Future adapters such as WinForms, Avalonia, WinUI, or a custom native-HWND host.
+- `FatzBomb.MediaControl.Avalonia` and `FatzBomb.MediaControl.WinForms`; future adapters such as
+  WinUI or a custom native-HWND host.
+
+Logic every adapter would otherwise copy lives here (Stage 046A): `MediaSurfaceContentTracker`
+(surface auto-hide and the Audio-mode clear), `MediaSurfacePresentationPath`, and the karaoke and
+background controls' rules and player helper (`LightweightPlayerPolicy`,
+`LightweightPlayerController`: a background plays in `MediaPlayerMode.Background`, without audio).
 
 ## Current visual pipeline rule
 

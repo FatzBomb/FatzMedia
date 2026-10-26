@@ -141,6 +141,36 @@ public sealed class WpfMediaSurfaceParityTests
         Dispatcher.PushFrame(frame);
     }
 
+    [Fact]
+    public void FromImageSource_CopiesStraightAlphaBgra_AsTheOtherAdaptersDo() => RunSta(() =>
+    {
+        byte[] pixels = [0x30, 0x20, 0x10, 0x80, 0x60, 0x50, 0x40, 0xFF];
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(
+            2, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, pixels, 8);
+
+        MediaInputSource source = WpfMediaInputSources.FromImageSource(bitmap, "test");
+
+        Assert.True(source.IsBgraImage);
+        Assert.Equal((2, 1, 8), (source.Width, source.Height, source.Stride));
+        Assert.Equal(pixels, source.BgraPixels);
+        Assert.Equal("test", source.DisplayName);
+        _ = Assert.Throws<NotSupportedException>(() => WpfMediaInputSources.FromImageSource(new System.Windows.Media.DrawingImage()));
+    });
+
+    [Fact]
+    public void LightweightControls_StartWithoutAPlayer_AndKeepTheirDiagnosticCategories() => RunSta(() =>
+    {
+        using var background = new BackgroundSurface();
+        using var karaoke = new KaraokeSurface();
+
+        Assert.Null(background.Session);
+        Assert.Null(karaoke.Session);
+        Assert.Equal("Wpf.BackgroundSurface", BackgroundSurface.DiagnosticCategory);
+        Assert.Equal("Wpf.KaraokeSurface", KaraokeSurface.DiagnosticCategory);
+        Assert.True(background.AutoPlay);
+        Assert.True(karaoke.AutoPlay);
+    });
+
     private static void RunSta(Action action)
     {
         Exception? failure = null;

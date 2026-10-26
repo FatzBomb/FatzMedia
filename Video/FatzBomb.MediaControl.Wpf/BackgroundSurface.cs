@@ -1,4 +1,4 @@
-using FatzBomb.MediaControl.Core.Abstractions;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -8,6 +8,13 @@ namespace FatzBomb.MediaControl.Wpf;
 /// <summary>
 /// Self-contained background player for solid colors, images, and silent looping video.
 /// </summary>
+/// <remarks>
+/// Stage 046A: the player runs in <see cref="MediaPlayerMode.Background"/> mode, so a background
+/// never starts the audio engine (before, a Full-mode player was muted). The rules (what is
+/// accepted, creation, reload and release) are Core's <see cref="LightweightPlayerPolicy"/> and
+/// <see cref="LightweightPlayerController"/>, shared with the Avalonia and WinForms
+/// <c>BackgroundSurface</c>. A solid colour is a fill, without a player.
+/// </remarks>
 public sealed class BackgroundSurface : Grid, IDisposable
 {
     /// <summary>The diagnostic category of this control's own notices (Stage 046A).</summary>
@@ -18,8 +25,6 @@ public sealed class BackgroundSurface : Grid, IDisposable
     private readonly Border _colorLayer;
     private readonly ContentPresenter _solidOverlay;
     private bool _showingSolidColor = true;
-    private int _sourceReloadQueued;
-    private int _sourceReloadVersion;
     private bool _restoringPlatformFactory;
     private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
@@ -29,7 +34,8 @@ public sealed class BackgroundSurface : Grid, IDisposable
         ClipToBounds = true;
         _surface = new MediaSurface();
         _surface.ContentVisibilityChanged += OnInnerContentVisibilityChanged;
-        _playerController = new LightweightPlayerController(this, _surface, ConfigurePlayer);
+        _playerController = new LightweightPlayerController(LightweightPlayerKind.Background, DiagnosticCategory);
+        _playerController.PlayerChanged += OnPlayerChanged;
         _playerController.MediaClosed += OnPlayerMediaClosed;
         _colorLayer = new Border { Background = new SolidColorBrush(BackgroundColor) };
         _ = Children.Add(_colorLayer);
@@ -51,6 +57,17 @@ public sealed class BackgroundSurface : Grid, IDisposable
     }
 
     public IMediaControlSession? Session => _playerController.Session;
+
+    /// <summary>
+    /// Gets or sets the native library folders (BASS, FFmpeg) the control's player is created with;
+    /// <see langword="null"/> (the default) uses <see cref="DLLPath"/> and the platform's default
+    /// folders. Read when the player is created.
+    /// </summary>
+    public IReadOnlyList<string>? NativeLibraryPaths
+    {
+        get => _playerController.NativeLibraryPaths;
+        set => _playerController.NativeLibraryPaths = value;
+    }
 
     public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
         nameof(AutoHide),
@@ -171,16 +188,23 @@ public sealed class BackgroundSurface : Grid, IDisposable
         SetCurrentValue(SourceProperty, color);
     }
 
-    public Task<bool> LoadAsync(string path) => LoadMediaAsync(path, ++_sourceReloadVersion);
+    public Task<bool> LoadAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return LoadMediaAsync(MediaInputSource.FromFile(path));
+    }
 
-    public Task<bool> LoadAsync(ImageSource image) => LoadMediaAsync(image, ++_sourceReloadVersion);
+    public Task<bool> LoadAsync(ImageSource image) => LoadMediaAsync(WpfMediaInputSources.FromImageSource(image));
+
+    /// <summary>Loads a Core source (a file, a BGRA image such as <see cref="MediaInputSource.FromColor"/>, network video).</summary>
+    public Task<bool> LoadAsync(MediaInputSource source) => LoadMediaAsync(source);
 
     public Task<bool> PlayAsync() => _playerController.PlayAsync();
     public Task<bool> PauseAsync() => _playerController.PauseAsync();
     public Task<bool> StopAsync() => _playerController.StopAsync();
 
     private static void OnAutoPlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
-        ((BackgroundSurface)d)._playerController.SetAutoPlay(e.NewValue is true);
+        ((BackgroundSurface)d)._playerController.AutoPlay = e.NewValue is true;
 
     private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -236,16 +260,12 @@ public sealed class BackgroundSurface : Grid, IDisposable
     private static void OnPresentationModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (BackgroundSurface)d;
-        surface._appliedPresentationMode = (WpfPresentationMode)e.NewValue;
-        surface._playerController.SetPresentationMode(surface._appliedPresentationMode);
-        surface.UpdateOverlayRoute();
-    }
+        if (surface._playerController.IsMediaOpen)
+            throw new InvalidOperationException("PresentationMode can only be changed before media is loaded.");
 
-    private static void ConfigurePlayer(Player player)
-    {
-        player.LoopMedia = true;
-        player.Effects.Volume = 0;
-        player.VideoDisplayMode = VideoDisplayMode.Zoom;
+        surface._appliedPresentationMode = (WpfPresentationMode)e.NewValue;
+        surface._surface.PresentationMode = surface._appliedPresentationMode;
+        surface.UpdateOverlayRoute();
     }
 
     private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
@@ -264,15 +284,12 @@ public sealed class BackgroundSurface : Grid, IDisposable
 
     private void QueueSourceReload()
     {
-        if (_disposed || !IsLoaded)
-            return;
-
-        if (Interlocked.Exchange(ref _sourceReloadQueued, 1) == 1)
+        if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
 
         _ = Dispatcher.BeginInvoke(async () =>
         {
-            _sourceReloadQueued = 0;
+            _playerController.ClearQueuedReload();
             if (_disposed || !IsLoaded)
                 return;
 
@@ -294,16 +311,16 @@ public sealed class BackgroundSurface : Grid, IDisposable
 
     private async Task<bool> ReloadSourceAsync()
     {
-        // A newer Source can arrive while a load awaits: each reload checks it is still the
-        // latest after every await, so a slow load never lands over a later one.
-        var reload = ++_sourceReloadVersion;
+        // A newer Source abandons a load in progress: Core's controller checks after every await,
+        // and a solid colour releases the player.
         return Source switch
         {
             null => ShowSolidColor(BackgroundColor),
             Color color => ShowSolidColor(color),
             SolidColorBrush brush => ShowSolidColor(brush.Color),
-            string path => await LoadMediaAsync(path, reload),
-            ImageSource image => await LoadMediaAsync(image, reload),
+            string path => await LoadAsync(path),
+            ImageSource image => await LoadAsync(image),
+            MediaInputSource source => await LoadAsync(source),
             _ => throw new NotSupportedException($"Background source type {Source.GetType().Name} is not supported.")
         };
     }
@@ -320,65 +337,28 @@ public sealed class BackgroundSurface : Grid, IDisposable
         return true;
     }
 
-    private bool IsCurrentReload(int reload) => !_disposed && reload == _sourceReloadVersion;
-
-    private async Task<bool> LoadMediaAsync(string path, int reload)
+    private async Task<bool> LoadMediaAsync(MediaInputSource source)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        Player? player = await _playerController.EnsurePlayerAsync(PlatformFactory, AutoPlay, PresentationMode);
-        if (player == null || !IsCurrentReload(reload))
+        // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
+        Dispatcher.VerifyAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (DesignerProperties.GetIsInDesignMode(this))
             return false;
 
-        PrepareMediaLayerForLoad();
-        player.PlayOnLoad = false;
-        var loaded = await player.LoadAsync(path, ignoreSidecar: true);
-        if (!IsCurrentReload(reload))
-            return false;
+        var valid = await _playerController.LoadAsync(source, PlatformFactory, _ => PrepareMediaLayerForLoad());
+        if (valid)
+            ShowMediaLayer();
 
-        var valid = FinalizeMediaLoad(player, loaded);
-        if (valid && AutoPlay && player.Content.HasFlag(MediaContent.Video))
-            _ = await player.PlayAsync();
-        player.PlayOnLoad = AutoPlay;
         return valid;
     }
 
-    private async Task<bool> LoadMediaAsync(ImageSource image, int reload)
+    private void ShowMediaLayer()
     {
-        ArgumentNullException.ThrowIfNull(image);
-        Player? player = await _playerController.EnsurePlayerAsync(PlatformFactory, AutoPlay, PresentationMode);
-        if (player == null || !IsCurrentReload(reload))
-            return false;
-
-        PrepareMediaLayerForLoad();
-        player.PlayOnLoad = false;
-        var loaded = await player.LoadAsync(image, ignoreSidecar: true);
-        if (!IsCurrentReload(reload))
-            return false;
-
-        var valid = FinalizeMediaLoad(player, loaded);
-        player.PlayOnLoad = AutoPlay;
-        return valid;
-    }
-
-    private bool FinalizeMediaLoad(Player player, bool loaded)
-    {
-        var valid = loaded
-            && (player.Content.HasFlag(MediaContent.Image) || player.Content.HasFlag(MediaContent.Video))
-            && !player.Content.HasFlag(MediaContent.Cdg)
-            && !player.Content.HasFlag(MediaContent.Subtitle);
-        if (!valid)
-        {
-            if (loaded)
-                player.Close();
-            return false;
-        }
-
         _showingSolidColor = false;
         _colorLayer.Visibility = Visibility.Visible;
         if (!AutoHide)
             _surface.Visibility = Visibility.Visible;
         UpdateOverlayRoute();
-        return true;
     }
 
     private void PrepareMediaLayerForLoad() => _surface.Visibility = Visibility.Visible;
@@ -393,8 +373,33 @@ public sealed class BackgroundSurface : Grid, IDisposable
         ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnPlayerMediaClosed(object? sender, EventArgs e) =>
-        CoerceValue(PresentationModeProperty);
+    // UI thread: bind the adopted player, or unbind the released one before it is disposed.
+    private void OnPlayerChanged(object? sender, EventArgs e)
+    {
+        IMediaControlSession? session = _playerController.Session;
+        if (session is not null)
+            _surface.PresentationMode = PresentationMode;
+
+        _surface.Player = session;
+        if (session is null)
+            CoerceValue(PresentationModeProperty);
+    }
+
+    // The player's event thread.
+    private void OnPlayerMediaClosed(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            CoerceValue(PresentationModeProperty);
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (!_disposed)
+                CoerceValue(PresentationModeProperty);
+        });
+    }
 
     private void UpdateOverlayRoute()
     {
@@ -427,11 +432,12 @@ public sealed class BackgroundSurface : Grid, IDisposable
             return;
 
         _disposed = true;
-        _sourceReloadQueued = 0;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
-        _surface.ContentVisibilityChanged -= OnInnerContentVisibilityChanged;
         _playerController.MediaClosed -= OnPlayerMediaClosed;
+        // Disposing releases the player: PlayerChanged unbinds the surface first.
         _playerController.Dispose();
+        _playerController.PlayerChanged -= OnPlayerChanged;
+        _surface.ContentVisibilityChanged -= OnInnerContentVisibilityChanged;
     }
 }

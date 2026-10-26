@@ -88,6 +88,13 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public bool AutoHideSurfaces { get; init; } = true;
 
+    /// <summary>
+    /// Gets whether a test window with the adapter's <c>BackgroundSurface</c> and
+    /// <c>KaraokeSurface</c> opens at startup (<c>--lightweight-surfaces</c>, Stage 046A slice 2;
+    /// every player has it).
+    /// </summary>
+    public bool LightweightSurfacesWindow { get; init; }
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
@@ -130,6 +137,7 @@ public sealed record PlayerStartupOptions
             NetworkAllowInvalidCertificates = HasFlag(args, "--net-allow-invalid-certs"),
             EqualizerGains = Values(args, "--eq=", trimQuotes: false).Select(ParseGains).FirstOrDefault(),
             AutoHideSurfaces = !HasFlag(args, "--no-auto-hide"),
+            LightweightSurfacesWindow = HasFlag(args, "--lightweight-surfaces"),
         };
     }
 

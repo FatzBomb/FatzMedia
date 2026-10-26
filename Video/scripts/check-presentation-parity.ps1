@@ -96,6 +96,47 @@ foreach ($adapter in @(
     Assert-Match $adapter.Secondary 'F11' "$name SecondaryPresentationWindow must toggle full screen with F11."
 }
 
+# Stage 046A slice 2: every adapter offers the karaoke and background controls over Core's
+# lightweight player controller (the rules live in Core's LightweightPlayerPolicy), the same image
+# conversion helper, and a surface overlay; the WinForms surface falls back to a frame sink.
+foreach ($adapter in @(
+        @{ Name = 'WPF'; Folder = 'FatzBomb.MediaControl.Wpf'; Inputs = 'WpfMediaInputSources.cs'; InputMethod = 'FromImageSource' },
+        @{ Name = 'Avalonia'; Folder = 'FatzBomb.MediaControl.Avalonia'; Inputs = 'AvaloniaMediaInputSources.cs'; InputMethod = 'FromBitmap' },
+        @{ Name = 'WinForms'; Folder = 'FatzBomb.MediaControl.WinForms'; Inputs = 'WinFormsMediaInputSources.cs'; InputMethod = 'FromBitmap' })) {
+    $name = $adapter.Name
+    $karaoke = Read-Text "$($adapter.Folder)/KaraokeSurface.cs"
+    $background = Read-Text "$($adapter.Folder)/BackgroundSurface.cs"
+    $inputs = Read-Text "$($adapter.Folder)/$($adapter.Inputs)"
+    $lightweightHost = $karaoke + $background
+    if ($name -ne 'WPF') {
+        $lightweightHost += Read-Text "$($adapter.Folder)/LightweightSurfaceHost.cs"
+    }
+
+    Assert-Match $karaoke 'public\s+(sealed\s+)?class\s+KaraokeSurface' "$name must offer KaraokeSurface."
+    Assert-Match $background 'public\s+(sealed\s+)?class\s+BackgroundSurface' "$name must offer BackgroundSurface."
+    Assert-Match $lightweightHost 'new\s+LightweightPlayerController\s*\(\s*(LightweightPlayerKind\.\w+|kind)' "$name lightweight controls must use Core's LightweightPlayerController."
+    Assert-Match $karaoke 'LightweightPlayerKind\.Karaoke' "$name KaraokeSurface must use Core's karaoke rules."
+    Assert-Match $background 'LightweightPlayerKind\.Background' "$name BackgroundSurface must use Core's background rules (Background mode)."
+    Assert-Match $background 'public\s+(object|Control)\?\s+OverlayContent' "$name BackgroundSurface must expose OverlayContent."
+    foreach ($control in @($karaoke, $background)) {
+        Assert-Match $control 'public\s+bool\s+AutoPlay' "$name lightweight controls must expose AutoPlay."
+        Assert-Match $control 'public\s+bool\s+AutoHide' "$name lightweight controls must expose AutoHide."
+        Assert-Match $control 'event\s+EventHandler\?\s+ContentVisibilityChanged' "$name lightweight controls must expose ContentVisibilityChanged."
+        Assert-Match $control 'public\s+IMediaControlPlatformFactory\?\s+PlatformFactory' "$name lightweight controls must expose PlatformFactory."
+        Assert-Match $control 'public\s+IReadOnlyList<string>\?\s+NativeLibraryPaths' "$name lightweight controls must expose NativeLibraryPaths."
+        Assert-Match $control 'public\s+Task<bool>\s+LoadAsync\s*\(\s*string\s+path\s*\)' "$name lightweight controls must load a path."
+    }
+
+    Assert-Match $background 'public\s+Task<bool>\s+LoadAsync\s*\(\s*MediaInputSource\s+source\s*\)' "$name BackgroundSurface must load a Core source."
+    Assert-Match $inputs "public\s+static\s+(unsafe\s+)?MediaInputSource\s+$($adapter.InputMethod)\s*\(" "$name must convert its framework's image with a static $($adapter.InputMethod)."
+}
+
+Assert-Match $winFormsSurface 'sink\.CreateSurfaceDescriptor\s*\(\s*\)' 'WinForms MediaSurface must fall back to a managed frame sink.'
+Assert-Match $winFormsSurface 'MediaSurfacePresentationPath\.FrameSink' 'WinForms MediaSurface must report the frame-sink path.'
+Assert-Match $winFormsSurface 'public\s+Control\?\s+OverlayContent' 'WinForms MediaSurface must expose OverlayContent (like the WPF surface).'
+Assert-Match $winFormsSurface 'new\s+MediaOverlayForm' 'WinForms OverlayContent must be shown in the layered overlay window.'
+Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurface must keep OverlayContent.'
+
 Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescriptor>\s+_surfaces' 'Core coordinator must retain all attached surface descriptors in one registry.'
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
 Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+MediaPresentationSurfaceDescriptor\?\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
@@ -122,4 +163,4 @@ Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets
 Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
-Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
+Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'

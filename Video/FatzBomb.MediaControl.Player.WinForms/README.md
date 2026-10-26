@@ -5,9 +5,10 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 ## What it tests
 
 - The `FatzBomb.MediaControl.WinForms` adapter: an HWND `MediaSurface` bound to a `MediaControlPlayer`
-  (attach, resize, DPI, live resize, auto-hide, the Audio-mode clear, detach on close), and the
-  adapter's `SecondaryPresentationWindow` (a projector `MediaSurface`) for the second screen
-  (Stage 046A).
+  (attach, resize, DPI, live resize, auto-hide, the Audio-mode clear, detach on close; with
+  `--renderer=software` its frame-sink path), and the adapter's `SecondaryPresentationWindow` (a
+  projector `MediaSurface`) for the second screen (Stage 046A). With `--lightweight-surfaces`, the
+  adapter's `BackgroundSurface` (its overlay in the layered overlay window) and `KaraokeSurface`.
 - The Windows + Direct3D11 platform (`WindowsDirect3D11MediaControlPlatformFactory`) in a non-WPF host.
 - The shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage 044A) through plain
   WinForms bindings (`ViewModelBinder`): the WPF player's features, with its flyouts as tabs.
@@ -39,9 +40,12 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- [media-file|http(s)-url] [options]
 ```
 
-Options: `--renderer=auto|gpu|warp` (Direct3D11: the GPU, else WARP; the GPU only; WARP with
-software decoding; the HWND surface cannot use the software renderer, so `software` falls back to
-auto with a warning) and the flags every test player shares (`PlayerStartupOptions`): `--url=`,
+Options: `--renderer=auto|gpu|warp|software` (Direct3D11: the GPU, else WARP; the GPU only; WARP
+with software decoding; `software`, also `--software`: the software renderer with software
+decoding, which the surface shows through its frame-sink path since Stage 046A slice 2),
+`--lightweight-surfaces` (a smoke window with the adapter's `BackgroundSurface` and
+`KaraokeSurface`, as in every player: type or browse a path, then **Background** or **Karaoke**;
+**Colour** cycles solid colours) and the flags every test player shares (`PlayerStartupOptions`): `--url=`,
 `--mode=`, `--native=<dir>`, `--net-retries=`, `--net-ca-file=`, `--net-allow-invalid-certs`,
 `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`, `--trim-silence`, `--reset-pitch-on-load`,
 `--reset-tempo-on-load`, `--eq=`, `--prepare-next=`, `--auto-next`, `--fade-next=`,

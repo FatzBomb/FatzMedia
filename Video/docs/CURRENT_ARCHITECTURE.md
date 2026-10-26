@@ -139,11 +139,13 @@ mode and carries the latest deferred request to the next true close/release boun
 This is pinned by an STA WPF dependency-property regression test using a fake Core
 platform factory; no native media or window handle is required.
 
-`BackgroundSurface` and `KaraokeSurface` live in the renderer-neutral WPF project and own
-their sessions after the host supplies an `IMediaControlPlatformFactory`, matching the
-existing WPF `Player` construction contract. The former is restricted to
-color/image/silent looping video backgrounds; the latter is restricted to CDG and
-MIDI/KAR on an opaque 4:3 canvas.
+`BackgroundSurface` and `KaraokeSurface` live in every UI adapter (WPF, Avalonia and WinForms
+since Stage 046A slice 2) and own their sessions after the host supplies an
+`IMediaControlPlatformFactory`, matching the existing WPF `Player` construction contract. The
+former is restricted to color/image/silent looping video backgrounds (a `MediaPlayerMode.Background`
+player, no audio engine); the latter is restricted to CDG and MIDI/KAR on an opaque 4:3 canvas.
+Their rules are Core's `LightweightPlayerPolicy` and `LightweightPlayerController` (see
+"Adapter Parity").
 
 Managed frame sinks are registered through opaque, non-reused tokens rather than raw
 managed object handles. A token remains resolvable until its owner detaches the surface
@@ -496,7 +498,7 @@ the positive proof of visual output — never file extensions or content flags:
   for the new references. The Player host enables AutoHide by default and exposes
   `--no-auto-hide` for validation of the manual-control opt-out.
 
-## Adapter Parity (Stage 046A, slice 1)
+## Adapter Parity (Stage 046A, slices 1 and 2)
 
 Owner direction (2026-10-26): no feature solo for one player or adapter. Logic two adapters
 would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters bind to it:
@@ -527,8 +529,41 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
   form's `ResizeBegin` / `ResizeEnd`. The WPF secondary window hosts a `MediaSurface`.
 - `scripts/check-presentation-parity.ps1` checks that all three adapters expose these members.
 
-Slices 2 (Karaoke/Background surfaces on every adapter, WinForms frame sink and overlay) and 3
-(shared player helpers, `--renderer=auto`) are planned in
+### Slice 2: lightweight controls everywhere, WinForms catch-up
+
+- Core `LightweightPlayerPolicy` (public, pure): the karaoke acceptance rule (CD+G without video,
+  or a MIDI file with lyrics), the background rule (image or video, no CD+G or lyrics), each
+  kind's configuration (a background is created in `MediaPlayerMode.Background`: no audio output,
+  no audio engine, forced loop) and settings, and when an accepted item starts.
+- Core `LightweightPlayerController` (public): creates the player on the thread pool once for
+  concurrent requests, adopts it on the caller's synchronization context (`PlayerChanged`, so the
+  control binds its surface on the UI thread), numbers reloads so a newer source abandons an older
+  load after every await, coalesces source changes (`TryQueueReload`), runs the load sequence
+  (no sidecars, inspect, close a rejected item, start), and releases (`PlayerChanged`, then a
+  blocking dispose). A release or dispose abandons pending loads and creations; a player created
+  for an abandoned request is disposed off the UI thread and never adopted. Unlike engine code its
+  awaits resume on the caller's context on purpose; it uses a `System.Threading.Lock`.
+- `KaraokeSurface` and `BackgroundSurface` in the WPF (reworked; same API plus
+  `NativeLibraryPaths` and `LoadAsync(MediaInputSource)`), Avalonia and WinForms adapters, each
+  over a small internal host per adapter (Avalonia and WinForms `LightweightSurfaceHost`). The
+  WPF `PresentationMode` maps to each adapter's own path choice (`PreferGpuSharedSurface`,
+  `PreferNativeWindow`). Loaded/Unloaded maps to visual-tree attachment (Avalonia) and handle
+  creation/destruction (WinForms).
+- WinForms `MediaSurface`: when the renderer refuses the window handle (software renderer) or
+  `PreferNativeWindow` is off, it attaches a managed frame sink (`WinFormsFrameSink`: the
+  Avalonia sink's double buffer and latest-wins publish, a GDI+ `Format32bppPArgb` bitmap written
+  only on the UI thread, drawn double-buffered in `OnPaint`). `OverlayContent` /
+  `OverlayHitTestVisible` show a host control in an owned, colour-keyed layered window
+  (`MediaOverlayForm`: tool window, no activation, click-through unless hit-test visible) that
+  follows the surface and its ancestors, on either path.
+- Image conversions: `WpfMediaInputSources.FromImageSource`, `AvaloniaMediaInputSources.FromBitmap`
+  and `WinFormsMediaInputSources.FromBitmap`, all straight-alpha BGRA copies.
+- Every test player opens a smoke window of the two controls with `--lightweight-surfaces`; the
+  WinForms player's `--renderer=software` uses the software renderer through the frame sink.
+- `scripts/check-presentation-parity.ps1` requires the controls, the Core controller, the
+  conversions and the WinForms frame sink and overlay on all adapters.
+
+Slice 3 (shared player helpers, `--renderer=auto`) is planned in
 `roadmap/active/046A_ACTIVE_AdapterParity.md`.
 
 ## Base-Visual Transform Pipeline (Stage 030A)
@@ -969,4 +1004,4 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 This makes Core commands, properties, and events automatically available through the WPF adapter while keeping adapter-specific additions limited to WPF conversions such as `ImageSource` to `MediaInputSource`.
 
-`MediaSurface` accepts an `IMediaControlSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` is WPF UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.
+`MediaSurface` accepts an `IMediaControlSession`/player and supplies HWND surfaces to Core. Its `OverlayContent` (WPF, and WinForms since Stage 046A slice 2) is UI chrome only; it is not a media overlay. Media overlay, wash, background, and final composition stay in Core.

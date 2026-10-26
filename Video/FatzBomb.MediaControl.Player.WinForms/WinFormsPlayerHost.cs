@@ -2,6 +2,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
+using FatzBomb.MediaControl.Rendering.Software;
 
 namespace FatzBomb.MediaControl.Player.WinForms;
 
@@ -69,13 +70,15 @@ internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard
 
 /// <summary>
 /// The engine for the WinForms player: Windows + Direct3D11 into the HWND <c>MediaSurface</c>.
-/// <c>--renderer=auto</c> (the default: the GPU, else WARP), <c>gpu</c> or <c>warp</c>; the software
-/// renderer needs a frame-sink surface, which the HWND surface is not, so it falls back to auto.
+/// <c>--renderer=auto</c> (the default: the GPU, else WARP), <c>gpu</c> or <c>warp</c>.
+/// <c>--renderer=software</c> (or <c>--software</c>) uses the software renderer, which the surface
+/// shows through its frame-sink path (Stage 046A).
 /// </summary>
 internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayerEngineFactory
 {
     private IMediaControlPlatformFactory? _platformFactory;
     private Direct3D11DeviceSelection _deviceSelection;
+    private bool _software;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = ResolveNativePaths(options);
 
@@ -85,26 +88,36 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
     {
         List<(MediaDiagnosticLevel, string)> lines = [];
         var requested = options.Renderer?.Trim().ToLowerInvariant() ?? (options.SoftwareRenderer ? "software" : "auto");
+        _software = requested is "software" or "cpu";
         (_deviceSelection, VideoDecodingMethod decoding, var summary) = requested switch
         {
             "gpu" or "d3d11" or "direct3d11" or "hardware" => (Direct3D11DeviceSelection.Hardware, VideoDecodingMethod.Hardware, "Direct3D11 GPU (forced)"),
             "warp" => (Direct3D11DeviceSelection.Warp, VideoDecodingMethod.Software, "Direct3D11 WARP (forced)"),
+            "software" or "cpu" => (Direct3D11DeviceSelection.Auto, VideoDecodingMethod.Software, "Software (forced)"),
             _ => (Direct3D11DeviceSelection.Auto, VideoDecodingMethod.Auto, "Direct3D11 (GPU, else WARP)"),
         };
 
-        if (requested is "software" or "cpu")
-            lines.Add((MediaDiagnosticLevel.Warning, "The WinForms surface is a native window: it needs Direct3D11, not the software renderer; using auto."));
-        else if (requested is not ("auto" or "gpu" or "d3d11" or "direct3d11" or "hardware" or "warp"))
-            lines.Add((MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{options.Renderer}' (use auto, gpu or warp); using auto."));
+        if (requested is not ("auto" or "gpu" or "d3d11" or "direct3d11" or "hardware" or "warp" or "software" or "cpu"))
+            lines.Add((MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{options.Renderer}' (use auto, gpu, warp or software); using auto."));
 
-        lines.Add((MediaDiagnosticLevel.Info, $"{summary}: Direct3D11 device selection {_deviceSelection}, {decoding} video decoding."));
+        lines.Add((MediaDiagnosticLevel.Info, _software
+            ? "Software renderer forced (--renderer=software or --software): the surface shows it through its frame-sink path, with software decoding."
+            : $"{summary}: Direct3D11 device selection {_deviceSelection}, {decoding} video decoding."));
         lines.Add((MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"));
-        return Task.FromResult(new PlayerRendererInfo(summary, decoding, RequiresFrameSinkSurface: false, lines));
+        return Task.FromResult(new PlayerRendererInfo(summary, decoding, RequiresFrameSinkSurface: _software, lines));
     }
+
+    /// <summary>
+    /// The platform for the renderer chosen at startup (also used by the lightweight-surfaces
+    /// test window); a new one per call, as nothing is shared between players.
+    /// </summary>
+    public IMediaControlPlatformFactory CreatePlatformFactory() => _software
+        ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
+        : new WindowsDirect3D11MediaControlPlatformFactory(new Direct3D11PresentationOptions { DeviceSelection = _deviceSelection, HdrOutput = options.HdrOutput });
 
     public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
-        var platform = new WindowsDirect3D11MediaControlPlatformFactory(new Direct3D11PresentationOptions { DeviceSelection = _deviceSelection, HdrOutput = options.HdrOutput });
+        IMediaControlPlatformFactory platform = CreatePlatformFactory();
         _platformFactory = platform;
         // Loading BASS and FFmpeg blocks, so the engine is created off the UI thread.
         return Task.Run(() => new MediaControlPlayer(platform, configuration, NativeLibraryPaths));

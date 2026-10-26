@@ -1,7 +1,6 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Configuration;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace FatzBomb.MediaControl.Wpf;
 
@@ -68,25 +67,5 @@ public sealed class Player : MediaControlPlayer
             backgroundSource == null ? null : ToMediaInputSource(backgroundSource),
             ignoreSidecar);
 
-    private static MediaInputSource ToMediaInputSource(ImageSource source)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source is not BitmapSource bitmapSource)
-            throw new NotSupportedException($"ImageSource type {source.GetType().Name} cannot be converted to a Core media input source. Use a BitmapSource-compatible image or pass MediaInputSource directly.");
-
-        BitmapSource bgraSource = bitmapSource.Format == PixelFormats.Bgra32
-            ? bitmapSource
-            : new FormatConvertedBitmap(bitmapSource, PixelFormats.Bgra32, null, 0);
-
-        if (bgraSource.CanFreeze && !bgraSource.IsFrozen)
-            bgraSource.Freeze();
-
-        var width = bgraSource.PixelWidth;
-        var height = bgraSource.PixelHeight;
-        var stride = checked(width * 4);
-        var pixels = new byte[checked(stride * height)];
-        bgraSource.CopyPixels(pixels, stride, 0);
-        return MediaInputSource.FromOwnedBgra32Image(pixels, width, height, stride, "WPF ImageSource");
-    }
+    private static MediaInputSource ToMediaInputSource(ImageSource source) => WpfMediaInputSources.FromImageSource(source);
 }

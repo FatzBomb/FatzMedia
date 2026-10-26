@@ -129,6 +129,7 @@ public sealed class PlayerStartupOptionsTests
             "--eq=1, -2.5,x,4",
             "--software",
             "--no-auto-hide",
+            "--lightweight-surfaces",
             "song.mp3",
         ]);
 
@@ -150,6 +151,8 @@ public sealed class PlayerStartupOptionsTests
         Assert.False(options.AutoHideSurfaces);
         Assert.Equal("song.mp3", options.MediaPath);
         Assert.True(PlayerStartupOptions.Parse([]).AutoHideSurfaces);
+        Assert.True(options.LightweightSurfacesWindow);
+        Assert.False(PlayerStartupOptions.Parse([]).LightweightSurfacesWindow);
     }
 
     [Fact]

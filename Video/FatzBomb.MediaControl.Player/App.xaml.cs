@@ -56,6 +56,32 @@ public partial class App : Application
         ExpectsSoftwareRenderer = rendererChoice == PlayerRendererChoice.Software;
         var invalidRendererValue = invalidRendererArgument ? options.Renderer : null;
         RendererSelection = Task.Run(() => ResolveRenderer(rendererChoice, invalidRendererValue));
+        if (options.LightweightSurfacesWindow)
+            _ = ShowLightweightSurfacesWindowAsync();
+    }
+
+    /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
+    private async Task ShowLightweightSurfacesWindowAsync()
+    {
+        PlayerRendererSelection selection = await RendererSelection;
+
+        // An owner must have been shown: wait for the main window (StartupUri) to load.
+        if (MainWindow is { IsLoaded: false } main)
+        {
+            var loaded = new TaskCompletionSource();
+            main.Loaded += (_, _) => loaded.TrySetResult();
+            await loaded.Task;
+        }
+
+        var window = new LightweightSurfacesWindow(
+            () => new WindowsMediaControlPlatformFactory(selection.Factory),
+            PlayerNativePaths.Combine(StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths()),
+            selection.UsesSoftwareRenderer ? Wpf.WpfPresentationMode.WpfComposited : Wpf.WpfPresentationMode.NativeHwndOverlay,
+            AutoHideSurfaces)
+        {
+            Owner = MainWindow,
+        };
+        window.Show();
     }
 
     private static PlayerRendererSelection ResolveRenderer(PlayerRendererChoice choice, string? invalidValue)

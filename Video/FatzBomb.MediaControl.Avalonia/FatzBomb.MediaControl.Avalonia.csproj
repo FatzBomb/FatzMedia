@@ -8,7 +8,7 @@
     <PackageId>FatzBomb.MediaControl.Avalonia</PackageId>
     <AssemblyName>FatzBomb.MediaControl.Avalonia</AssemblyName>
     <RootNamespace>FatzBomb.MediaControl.Avalonia</RootNamespace>
-    <Description>Avalonia adapter for FatzBomb.MediaControl: a composited MediaSurface over the neutral frame-sink contract and Avalonia bitmap conversions. Owns no rendering or media logic.</Description>
+    <Description>Avalonia adapter for FatzBomb.MediaControl: a composited MediaSurface over the neutral frame-sink contract, a second-screen window, the karaoke and background controls, and Avalonia bitmap conversions. Owns no rendering or media logic.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

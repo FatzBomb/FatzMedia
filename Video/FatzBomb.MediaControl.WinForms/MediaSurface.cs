@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 
 namespace FatzBomb.MediaControl.WinForms;
 
@@ -10,6 +11,17 @@ namespace FatzBomb.MediaControl.WinForms;
 /// live-resize hint, and showing or hiding the child.
 /// </summary>
 /// <remarks>
+/// <para>
+/// When the renderer does not present into windows (the software renderer, or one that presents
+/// only through frame sinks) or <see cref="PreferNativeWindow"/> is off, the surface attaches a
+/// managed frame sink instead (Stage 046A): the renderer's final BGRA frames are copied to a bitmap
+/// on the UI thread and drawn, double-buffered, in <see cref="OnPaint"/>.
+/// <see cref="PresentationPath"/> says which path is used and why.
+/// </para>
+/// <para>
+/// <see cref="OverlayContent"/> shows a host control above the video in a layered window owned by
+/// the surface's form (like the WPF adapter's overlay window), on either path.
+/// </para>
 /// <para>
 /// The child window is hidden, and the control shows its <see cref="Control.BackColor"/>, while
 /// nothing should be seen (Stage 046A, the same rules as the WPF and Avalonia surfaces, decided by
@@ -53,6 +65,14 @@ public class MediaSurface : Control
     private bool _presentationWindowShown;
     private IMediaControlSession? _frameSession;
     private int _framePresentedSinceAttach;
+    private bool _preferNativeWindow = true;
+    private WinFormsFrameSink? _sink;
+    private bool _framesShown;
+    private Control? _overlayContent;
+    private bool _overlayHitTestVisible;
+    private MediaOverlayForm? _overlayForm;
+    private readonly List<Control> _overlayAnchors = [];
+    private bool _overlayAnchorsWatched;
 
     public MediaSurface()
     {
@@ -153,6 +173,68 @@ public class MediaSurface : Control
     }
 
     /// <summary>
+    /// Gets or sets whether the surface lets the renderer present into its child window (default
+    /// <see langword="true"/>). When the renderer refuses the window, or this is off, the surface
+    /// presents through a managed frame sink. A change re-attaches the surface.
+    /// </summary>
+    [DefaultValue(true)]
+    public bool PreferNativeWindow
+    {
+        get => _preferNativeWindow;
+        set
+        {
+            if (_preferNativeWindow == value)
+                return;
+
+            Detach();
+            _preferNativeWindow = value;
+            AttachOrResize();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets a host control shown above the video (default <see langword="null"/>), for
+    /// example full-screen transport controls. It is shown in a borderless layered window owned
+    /// by the surface's form, which follows the surface's position, size and visibility, on either
+    /// presentation path. The window's background is a colour key, so a control with a
+    /// <see cref="Color.Transparent"/> background shows the video around its children; it never
+    /// takes the keyboard focus. The surface never disposes the control.
+    /// </summary>
+    [DefaultValue(null)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Control? OverlayContent
+    {
+        get => _overlayContent;
+        set
+        {
+            if (ReferenceEquals(_overlayContent, value))
+                return;
+
+            _overlayForm?.SetContent(null);
+            _overlayContent = value;
+            UpdateOverlay();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether <see cref="OverlayContent"/> takes mouse input (default
+    /// <see langword="false"/>: clicks pass through to the surface, as in the WPF adapter).
+    /// </summary>
+    [DefaultValue(false)]
+    public bool OverlayHitTestVisible
+    {
+        get => _overlayHitTestVisible;
+        set
+        {
+            if (_overlayHitTestVisible == value)
+                return;
+
+            _overlayHitTestVisible = value;
+            _overlayForm?.SetHitTestVisible(value);
+        }
+    }
+
+    /// <summary>
     /// Gets or sets whether the surface hides its frames (shows only <see cref="Control.BackColor"/>)
     /// while no frame of the current media is shown: before the first frame of a load, after stop,
     /// close, an error, or a natural end without looping (default <see langword="true"/>, as in the
@@ -186,7 +268,8 @@ public class MediaSurface : Control
 
     /// <summary>
     /// Gets how frames reach the screen now: <see cref="MediaSurfacePresentationPath.NativeWindow"/>
-    /// while attached, <see cref="MediaSurfacePresentationPath.None"/> otherwise.
+    /// or <see cref="MediaSurfacePresentationPath.FrameSink"/> while attached,
+    /// <see cref="MediaSurfacePresentationPath.None"/> otherwise.
     /// </summary>
     [Browsable(false)]
     public MediaSurfacePresentationPath PresentationPath { get; private set; }
@@ -215,6 +298,15 @@ public class MediaSurface : Control
     /// <summary>Whether the presentation window is shown now (tests).</summary>
     internal bool IsPresentationWindowVisible => _presentationWindowShown;
 
+    /// <summary>The frame sink while the frame-sink path is used (tests).</summary>
+    internal WinFormsFrameSink? FrameSink => _sink;
+
+    /// <summary>Whether frame-sink frames are drawn now (tests).</summary>
+    internal bool AreFramesShown => _framesShown;
+
+    /// <summary>The overlay window while one exists (tests).</summary>
+    internal Form? OverlayWindow => _overlayForm;
+
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
@@ -225,12 +317,15 @@ public class MediaSurface : Control
         WatchFormResize();
         AttachOrResize();
         UpdateContentState();
+        RewatchOverlayAnchors();
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         Detach();
         WatchFormResize(null);
+        CloseOverlay();
+        WatchOverlayAnchors(false);
         base.OnHandleDestroyed(e);
     }
 
@@ -239,12 +334,26 @@ public class MediaSurface : Control
         base.OnParentChanged(e);
         if (IsHandleCreated)
             WatchFormResize();
+        RewatchOverlayAnchors();
     }
 
     protected override void OnClientSizeChanged(EventArgs e)
     {
         base.OnClientSizeChanged(e);
         AttachOrResize();
+        UpdateOverlay();
+    }
+
+    protected override void OnLocationChanged(EventArgs e)
+    {
+        base.OnLocationChanged(e);
+        UpdateOverlay();
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        UpdateOverlay();
     }
 
     protected override void OnDpiChangedAfterParent(EventArgs e)
@@ -256,9 +365,22 @@ public class MediaSurface : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         // The child window is clipped out while it shows; this paints the background around and
-        // instead of it.
-        using var brush = new SolidBrush(BackColor);
-        e.Graphics.FillRectangle(brush, ClientRectangle);
+        // instead of it. On the frame-sink path it is the frame's backdrop (frames may carry
+        // alpha), painted into the same back buffer, so nothing flickers.
+        Graphics graphics = e.Graphics;
+        using (var brush = new SolidBrush(BackColor))
+            graphics.FillRectangle(brush, ClientRectangle);
+
+        if (!_framesShown || _sink?.Bitmap is not { } frame)
+            return;
+
+        // The renderer composed for this pixel size (letterboxing included); during a resize the
+        // last frame is stretched until the next one arrives.
+        var unscaled = frame.Width == ClientSize.Width && frame.Height == ClientSize.Height;
+        graphics.CompositingMode = CompositingMode.SourceOver;
+        graphics.InterpolationMode = unscaled ? InterpolationMode.NearestNeighbor : InterpolationMode.Bilinear;
+        graphics.PixelOffsetMode = PixelOffsetMode.Half;
+        graphics.DrawImage(frame, ClientRectangle, 0, 0, frame.Width, frame.Height, GraphicsUnit.Pixel);
     }
 
     protected override void Dispose(bool disposing)
@@ -267,6 +389,8 @@ public class MediaSurface : Control
         {
             Detach();
             WatchFormResize(null);
+            CloseOverlay();
+            WatchOverlayAnchors(false);
             _contentTracker.Changed -= OnContentTrackerChanged;
             _contentTracker.Dispose();
         }
@@ -301,31 +425,50 @@ public class MediaSurface : Control
         var scale = DeviceDpi / 96.0;
         var surfaceId = EffectiveSurfaceId;
 
-        // The child window has no pixels of its own until the renderer presents into it, so it
-        // stays hidden (the control paints BackColor) until a frame arrives, whatever AutoHide
-        // says. Listen before attaching: the attach itself presents the current frame.
-        WatchPresentedFrames(session);
-        var attached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
-            surfaceId,
-            _role,
-            MediaNativeSurfaceDescriptor.Win32Hwnd(_host.Handle),
-            pixelSize.Width,
-            pixelSize.Height,
-            scale,
-            scale));
-        if (attached)
+        var attached = false;
+        if (_preferNativeWindow)
         {
-            _attachedSession = session;
-            _attachedSurfaceId = surfaceId;
-            _attachedPixelSize = pixelSize;
-            _attachRefusalReported = false;
-            if (_isLiveResizing)
-                _ = session.SetPresentationSurfaceLiveResize(surfaceId, true);
-            SetPath(MediaSurfacePresentationPath.NativeWindow, "the renderer presents into the control's child window");
+            // The child window has no pixels of its own until the renderer presents into it, so it
+            // stays hidden (the control paints BackColor) until a frame arrives, whatever AutoHide
+            // says. Listen before attaching: the attach itself presents the current frame.
+            WatchPresentedFrames(session);
+            attached = session.AttachPresentationSurface(CreateDescriptor(
+                surfaceId, MediaNativeSurfaceDescriptor.Win32Hwnd(_host.Handle), pixelSize, scale));
+            if (attached)
+            {
+                OnAttached(session, surfaceId, pixelSize);
+                SetPath(MediaSurfacePresentationPath.NativeWindow, "the renderer presents into the control's child window");
+            }
+            else
+            {
+                WatchPresentedFrames(null);
+            }
         }
-        else
+
+        if (!attached)
         {
-            WatchPresentedFrames(null);
+            // Stage 046A: a renderer that does not present into windows (or a host that asked for
+            // it) gets a frame sink; the surface draws its frames itself.
+            WinFormsFrameSink? sink = null;
+            Action publish = () => PublishFrame(sink!);
+            sink = new WinFormsFrameSink(() => RequestFramePublish(sink!, publish));
+            _sink = sink;
+            attached = session.AttachPresentationSurface(CreateDescriptor(surfaceId, sink.CreateSurfaceDescriptor(), pixelSize, scale));
+            if (attached)
+            {
+                OnAttached(session, surfaceId, pixelSize);
+                SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+                SetPath(
+                    MediaSurfacePresentationPath.FrameSink,
+                    _preferNativeWindow
+                        ? "the renderer did not accept the window handle (it presents only through frame sinks)"
+                        : "PreferNativeWindow is off");
+            }
+            else
+            {
+                _sink = null;
+                sink.Dispose();
+            }
         }
 
         if (!attached && !_attachRefusalReported)
@@ -342,6 +485,22 @@ public class MediaSurface : Control
         UpdateContentState();
     }
 
+    private MediaPresentationSurfaceDescriptor CreateDescriptor(
+        string surfaceId,
+        MediaNativeSurfaceDescriptor nativeSurface,
+        (int Width, int Height) pixelSize,
+        double scale) => new(surfaceId, _role, nativeSurface, pixelSize.Width, pixelSize.Height, scale, scale);
+
+    private void OnAttached(IMediaControlSession session, string surfaceId, (int Width, int Height) pixelSize)
+    {
+        _attachedSession = session;
+        _attachedSurfaceId = surfaceId;
+        _attachedPixelSize = pixelSize;
+        _attachRefusalReported = false;
+        if (_isLiveResizing)
+            _ = session.SetPresentationSurfaceLiveResize(surfaceId, true);
+    }
+
     private void Detach()
     {
         IMediaControlSession? session = _attachedSession;
@@ -356,9 +515,49 @@ public class MediaSurface : Control
             _ = session.DetachPresentationSurface(surfaceId);
         }
 
+        // The renderer no longer calls the sink once the surface is detached.
+        WinFormsFrameSink? sink = _sink;
+        _sink = null;
+        sink?.Dispose();
+        if (_framesShown)
+        {
+            _framesShown = false;
+            Invalidate();
+        }
+
+        SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
         WatchPresentedFrames(null);
         SetPath(MediaSurfacePresentationPath.None, null);
         ShowPresentationWindow(false);
+    }
+
+    // The presentation thread, when a frame waits in the sink: publish it on the UI thread.
+    private void RequestFramePublish(WinFormsFrameSink sink, Action publish)
+    {
+        if (!IsHandleCreated)
+        {
+            sink.CancelPublishRequest();
+            return;
+        }
+
+        try
+        {
+            _ = BeginInvoke(publish);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // The handle went away meanwhile; the surface detaches with it.
+            sink.CancelPublishRequest();
+        }
+    }
+
+    private void PublishFrame(WinFormsFrameSink sink)
+    {
+        if (!ReferenceEquals(sink, _sink) || !sink.Publish())
+            return;
+
+        if (_framesShown)
+            Invalidate();
     }
 
     private void ShowPresentationWindow(bool show)
@@ -463,6 +662,7 @@ public class MediaSurface : Control
             {
                 // The renderer that drew into the child is gone; its replacement presents anew.
                 Volatile.Write(ref _framePresentedSinceAttach, 0);
+                _sink?.Clear();
                 DiagnosticRouter.Raise(
                     session,
                     MediaDiagnosticLevel.Info,
@@ -472,10 +672,23 @@ public class MediaSurface : Control
         }
 
         // Hiding the child window shows the background instead of the frame it last kept.
+        var showsContent = _contentTracker.ShowsContent;
         ShowPresentationWindow(
             _attachedSession is not null
+            && PresentationPath == MediaSurfacePresentationPath.NativeWindow
             && Volatile.Read(ref _framePresentedSinceAttach) != 0
-            && _contentTracker.ShowsContent);
+            && showsContent);
+
+        // The frame-sink path draws only while content shows; hidden content is dropped, so a
+        // later load shows its own first frame, not this one (as the Avalonia surface does).
+        var framesShown = _sink is not null && PresentationPath == MediaSurfacePresentationPath.FrameSink && showsContent;
+        if (framesShown != _framesShown)
+        {
+            if (!framesShown)
+                _sink?.Clear();
+            _framesShown = framesShown;
+            Invalidate();
+        }
 
         var isContentVisible = _contentTracker.IsContentVisible;
         if (isContentVisible != _isContentVisible)
@@ -526,6 +739,133 @@ public class MediaSurface : Control
         if (_attachedSession is { } session && _attachedSurfaceId is { } surfaceId)
             _ = session.SetPresentationSurfaceLiveResize(surfaceId, isResizing);
     }
+
+    private void UpdateOverlay()
+    {
+        Control? content = _overlayContent;
+        if (content is null && _overlayForm is null && !_overlayAnchorsWatched)
+            return;
+
+        // The top-level form: an MDI child or an embedded form cannot own a window.
+        Form? owner = IsHandleCreated && !IsDisposed ? TopLevelControl as Form : null;
+        if (content is null || owner is null)
+        {
+            CloseOverlay();
+            if (_overlayAnchorsWatched)
+                WatchOverlayAnchors(false);
+            return;
+        }
+
+        if (!_overlayAnchorsWatched)
+            WatchOverlayAnchors(true);
+
+        if (_overlayForm is null || _overlayForm.IsDisposed || !ReferenceEquals(_overlayForm.Owner, owner))
+        {
+            CloseOverlay();
+            _overlayForm = new MediaOverlayForm { Owner = owner };
+            _overlayForm.FormClosed += OnOverlayFormClosed;
+            _overlayForm.DpiChanged += OnOverlayDpiChanged;
+        }
+
+        MediaOverlayForm overlay = _overlayForm;
+        overlay.SetHitTestVisible(_overlayHitTestVisible);
+        overlay.SetContent(content);
+        var show = Visible
+            && owner.Visible
+            && owner.WindowState != FormWindowState.Minimized
+            && ClientSize.Width > 0
+            && ClientSize.Height > 0;
+        if (!show)
+        {
+            if (overlay.Visible)
+                overlay.Hide();
+            return;
+        }
+
+        Rectangle bounds = RectangleToScreen(ClientRectangle);
+        if (overlay.Bounds != bounds)
+            overlay.Bounds = bounds;
+        if (!overlay.Visible)
+            overlay.Show();
+    }
+
+    private void CloseOverlay()
+    {
+        MediaOverlayForm? overlay = _overlayForm;
+        if (overlay is null)
+            return;
+
+        _overlayForm = null;
+        overlay.FormClosed -= OnOverlayFormClosed;
+        overlay.DpiChanged -= OnOverlayDpiChanged;
+        overlay.SetContent(null);
+        overlay.Dispose();
+    }
+
+    // Closed by its owner closing (or by the user): it disposes itself and hands the content back.
+    private void OnOverlayFormClosed(object? sender, FormClosedEventArgs e)
+    {
+        if (sender is not MediaOverlayForm overlay || !ReferenceEquals(overlay, _overlayForm))
+            return;
+
+        overlay.FormClosed -= OnOverlayFormClosed;
+        overlay.DpiChanged -= OnOverlayDpiChanged;
+        _overlayForm = null;
+    }
+
+    // A move to a monitor of another DPI makes the form take Windows' suggested bounds after this
+    // event: put it back over the surface once that is done.
+    private void OnOverlayDpiChanged(object? sender, DpiChangedEventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed)
+            return;
+
+        try
+        {
+            _ = BeginInvoke(UpdateOverlay);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // The handle went away; the overlay closes with it.
+        }
+    }
+
+    private void RewatchOverlayAnchors()
+    {
+        if (_overlayAnchorsWatched)
+            WatchOverlayAnchors(false);
+
+        UpdateOverlay();
+    }
+
+    // The overlay window follows the surface on screen: a move of any ancestor (the form, a
+    // panel whose row changed) moves the surface without a move of its own.
+    private void WatchOverlayAnchors(bool watch)
+    {
+        foreach (Control anchor in _overlayAnchors)
+        {
+            anchor.Move -= OnOverlayAnchorChanged;
+            anchor.Resize -= OnOverlayAnchorChanged;
+            anchor.ParentChanged -= OnOverlayAnchorParentChanged;
+        }
+
+        _overlayAnchors.Clear();
+        _overlayAnchorsWatched = watch;
+        if (!watch)
+            return;
+
+        for (Control? anchor = Parent; anchor is not null; anchor = anchor.Parent)
+        {
+            anchor.Move += OnOverlayAnchorChanged;
+            anchor.Resize += OnOverlayAnchorChanged;
+            anchor.ParentChanged += OnOverlayAnchorParentChanged;
+            _overlayAnchors.Add(anchor);
+        }
+    }
+
+    private void OnOverlayAnchorChanged(object? sender, EventArgs e) => UpdateOverlay();
+
+    private void OnOverlayAnchorParentChanged(object? sender, EventArgs e) => RewatchOverlayAnchors();
 
     /// <summary>
     /// The child window the renderer presents into. It never paints (the renderer owns its
