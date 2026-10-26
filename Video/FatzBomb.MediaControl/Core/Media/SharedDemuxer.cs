@@ -79,7 +79,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
             _demuxer,
             options.ReadAhead ?? NetworkReadAheadPolicy.Default,
             url,
-            reportSeekFailures: NetworkVideoPolicy.Resolve(_networkProbe).IsSeekable);
+            seekable: NetworkVideoPolicy.Resolve(_networkProbe).IsSeekable);
         return true;
     }
 

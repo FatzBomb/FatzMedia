@@ -3,7 +3,7 @@
 Stage: 039A.2 - Network video: read-ahead
 Date: 2026-10-25
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-26
 
 Owner's scope: forward read-ahead only. No back-buffer and no whole-file cache: after a seek
 outside the buffered range the player rebuffers from the new position.
@@ -172,7 +172,9 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
    stream and of a progressive MP4: playback continues without a stall and no `Buffering=True`
    appears (20 s are buffered). Unplug for 30 s: playback runs on for about 20 s, then
    `Buffering=True`; plug back in: with `--net-retries=3` the stream recovers (`Buffering=False`
-   once about 2 s are buffered); without it, `Network read failed` and the stream ends.
+   once about 2 s are buffered). Without FFmpeg retries the reader reconnects by itself (follow-up
+   below): `Network lost at m:ss`, then `Network back`, and playback goes on. Unplugged for more
+   than 30 s: `Network read failed` and the stream ends.
 5. **Pause, Stop and Close during a stall**: unplug for 30 s and wait for `Buffering=True`, then
    Pause, Play, Stop and close the window: each responds at once (Stop within about 0.5 s).
    Also seek while unplugged and press Pause during that seek: Pause responds at once.
@@ -184,3 +186,61 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
    seeks, pauses; unplug for 3 s: no gap.
 8. **Local files**: video playback, seek, loop and archives behave as before (no read-ahead);
    network audio (an internet radio station, 014A) is unchanged.
+
+## Owner smoke results (2026-10-26, Windows, Avalonia, Software renderer, BASS)
+
+- Steps 1-3 (mux.dev HLS, seeks inside and outside the buffer): passed. Picture and sound are in
+  sync, where they were audibly out of sync before this slice. FFmpeg's "PES packet size
+  mismatch" and "Packet corrupt" lines now log as Info.
+- Step 6 (progressive MP4 with ranges, `avsync.mp4` flash and beep): in sync, also after seeks;
+  Loop restarts once per lap with sound. `python -m http.server` has no range support and cannot
+  serve an MP4 whose index is at the end (recorded in ENG-034); a range-capable server works.
+- Step 7 (Audio mode, mux.dev HLS): plays, seeks, pauses and resumes; each seek shows a short
+  `Buffering=True` (250-500 ms). The Avalonia test player seeks on release only (no scrub).
+- Step 4 (network loss, mux.dev HLS): playback went on from the buffer while disconnected, but
+  after reconnecting it stopped and stayed frozen until a seek. Fixed by the follow-up below; the
+  re-run (short and long drop, seek while disconnected) passed: playback resumes by itself.
+- Step 5 (close during a stall): passed; the window closed in about 3 s.
+
+## Follow-up: reconnect after a dropped network (2026-10-26)
+
+**Cause.** With the default retry policy (no FFmpeg reconnects), the reader took the first failed
+read for the end of the source. An HLS demuxer that cannot fetch its segments skips them and then
+reports a normal end; a progressive download reports an I/O error. Either way the reader queued
+the end, playback ran out the buffer and stopped; only a seek restarted the reader.
+
+**Fix.** For a seekable source with a known duration the reader now treats a failed read, or an
+end before the duration with network failures logged since its last seek, as a dropped network:
+- It reports `Network lost at m:ss: <error>; reconnecting for up to 30 s.` (Warning) and seeks back
+  to the last packets it queued after 0.5 s, then every 1 s, then every 2 s.
+- After a successful seek it skips the packets it already queued (by timestamp, per stream), so
+  playback continues exactly where the buffer ran out; once 1 s of new media is read it reports
+  `Network back: reading again after N s.` (Info).
+- After `NetworkReadAheadPolicy.ReconnectFor` (new, default 30 s, `TimeSpan.Zero` turns it off)
+  it reports `Network read failed: ...; no connection for 30 s, the stream ends here.` (Error),
+  and the stream ends as before.
+- A consumer seek, Stop or Close during the reconnect takes over at once. A seek made while the
+  network is down is retried the same way, from its target.
+- A source whose real end falls short of its stated duration ends after one reconnect: the count
+  of network failures starts again at each reconnect.
+- Live HLS and non-seekable downloads are unchanged (they cannot resume where they stopped).
+
+**Decisions made without the owner.** On by default (30 s), independent of `NetworkRetryPolicy`,
+which stays opt-in for opens and FFmpeg's own reconnects: the read-ahead already holds the
+position, so resuming does not repeat or skip media. The pauses cap at 2 s so playback resumes
+within about 2 s of the network coming back.
+
+**Verification (Linux sandbox).** New native tests reset the open connection and refuse every
+request for 5 s (more than the player holds ahead): HLS and progressive MP4 both report the loss,
+reconnect and play to the end with no error; a seek made during the outage plays from its target
+once the server answers; a server gone for good ends the stream after a 2 s window with
+`Network read failed`. `/code-review medium --fix`: 4 findings fixed (the demuxer's reporting
+flag is set per source, a failure that cannot be reconnected is still reported, the early-end
+check includes the stream's start time, a test doc comment); the window can overrun by one
+blocked connect (up to the 15 s connect timeout), recorded in ENG-034. The existing "server gone, no retries" test runs with
+`ReconnectFor = 0`. Without BASS the clock runs on while the picture waits, so in these tests the
+picture skips what played meanwhile; with sound, BASS waits for data (ENG-034).
+
+**Re-run step 4**: disconnect for 3 s, and once for about 25 s, during mux.dev HLS playback with
+sound. Expect `Network lost at m:ss` in the log, `Buffering=True` once the buffer runs out, then
+`Network back` and playback continuing from where it stopped, without a seek.

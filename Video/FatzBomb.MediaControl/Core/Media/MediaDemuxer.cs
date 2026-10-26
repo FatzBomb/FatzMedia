@@ -44,6 +44,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     private bool _networkReadFailed;
     private bool _networkEndOfStream;
     private int _networkLogDiagnostics;
+    private int _networkFailures;
     private Action<int, string>? _networkLogObserver;
 
     /// <summary>True while a network source is open.</summary>
@@ -54,6 +55,21 @@ internal sealed unsafe class MediaDemuxer : IDisposable
 
     /// <summary>How long the network read in progress has been blocked (zero when none is).</summary>
     public TimeSpan NetworkReadStall => _interrupt?.CurrentOperationDuration ?? TimeSpan.Zero;
+
+    /// <summary>
+    /// How many network failures FFmpeg logged since the open (error lines and skipped HLS
+    /// segments). The read-ahead tells a dropped network from the real end of the source with it.
+    /// </summary>
+    public int NetworkFailureCount => Volatile.Read(ref _networkFailures);
+
+    /// <summary>
+    /// Whether <see cref="ReadPacket"/> reports a failed network read (default). The read-ahead
+    /// turns it off while it can reconnect, and reports the failure itself when it gives up.
+    /// </summary>
+    public bool ReportReadFailures { get; set; } = true;
+
+    /// <summary>The error of the network read that failed (the stream dropped), or null; cleared by a successful seek.</summary>
+    public string? FailedReadError { get; private set; }
 
     /// <summary>Whether a network read reached the end of the stream (or the stream dropped).</summary>
     public bool NetworkEndOfStream => _networkEndOfStream;
@@ -70,6 +86,12 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// stream-duration preference; this only surfaces the format value.
     /// </summary>
     public long FormatDurationTicks => _formatContext != null ? _formatContext->duration : 0;
+
+    /// <summary>
+    /// Format-level start time in <see cref="ffmpeg.AV_TIME_BASE"/> units (<c>_fmt->start_time</c>),
+    /// or 0 when closed or unknown. Packet timestamps run from here to here plus the duration.
+    /// </summary>
+    public long FormatStartTicks => _formatContext != null && _formatContext->start_time != ffmpeg.AV_NOPTS_VALUE ? _formatContext->start_time : 0;
 
     /// <summary>
     /// Opens <paramref name="path"/> and probes stream info. Any previously open
@@ -115,8 +137,10 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         FfmpegLogCapture.EnsureInstalled();
         LastNetworkError = null;
         _networkReadFailed = false;
+        FailedReadError = null;
         _networkEndOfStream = false;
         _networkLogDiagnostics = 0;
+        _networkFailures = 0;
         _networkUrl = url;
         _interrupt ??= new FfmpegInterrupt();
         _interrupt.Reset(options.Cancellation);
@@ -391,10 +415,14 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         // The stream dropped (FFmpeg's reconnects, if enabled, are exhausted): report it once and
         // end the stream instead of retrying a dead connection on every read.
         _networkReadFailed = true;
+        FailedReadError = FfmpegNetwork.DescribeError(result);
+        if (!ReportReadFailures)
+            return ffmpeg.AVERROR_EOF;
+
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Error,
             NetworkDiagnosticCategory,
-            $"Network read failed: {FfmpegNetwork.DescribeError(result)}; the stream ends here.",
+            $"Network read failed: {FailedReadError}; the stream ends here.",
             sourcePath: _networkUrl);
         return ffmpeg.AVERROR_EOF;
     }
@@ -427,6 +455,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         if (result >= 0)
         {
             _networkReadFailed = false;
+            FailedReadError = null;
             _networkEndOfStream = false;
         }
 
@@ -444,6 +473,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
 
         _networkUrl = null;
         _networkReadFailed = false;
+        FailedReadError = null;
         _networkEndOfStream = false;
     }
 
@@ -469,6 +499,9 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         // ("Immediate exit requested", "Failed to send close message"): not reported.
         if (_interrupt?.IsCancelledByOwner == true)
             return;
+
+        if (level <= ffmpeg.AV_LOG_ERROR || line.Contains("Failed to open segment", StringComparison.Ordinal))
+            _ = Interlocked.Increment(ref _networkFailures);
 
         if (_networkLogDiagnostics >= MaxNetworkLogDiagnostics)
             return;

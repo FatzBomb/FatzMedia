@@ -274,6 +274,26 @@ Read-ahead code review (2026-10-25), not fixed:
 - If the audio engine fails after re-enabling its stream, that stream is not discarded again, so
   HLS/DASH keep downloading (and dropping) its segments for the session.
 
+Owner smoke (2026-10-25), not fixed:
+- An MP4 with its index (`moov`) at the end, served without byte ranges (for example
+  `python -m http.server`), cannot play: FFmpeg reads to the index and cannot seek back. The
+  player reports only "Network read failed: I/O error; the stream ends here". Detect it
+  (`seekable=False` plus a mov "partial file" error) and say the server needs range support or
+  the file needs `-movflags +faststart`.
+
+Reconnect follow-up (2026-10-26), not fixed:
+- Buffering is an event only: the clock is not held while the picture waits. With sound, BASS
+  waits for data (check on Windows); a network video without sound, or Background mode, runs the
+  clock on and skips what played during the outage. Holding the clock while buffering would fix
+  both (a timing change in Core).
+- When playback ends while buffering (the clock ran out during an outage), no
+  `Buffering=False` follows: the monitor stops sampling once playback stops.
+- An HLS outage that ends while FFmpeg is still skipping segments makes a gap (the skipped
+  segments) instead of an end, so the reader does not reconnect for them.
+- `python -m http.server`-style servers (no ranges) are never reconnected: only seekable sources.
+- The reconnect window is checked between attempts, so a reconnect seek blocked in a connect can
+  overrun `ReconnectFor` by up to the connect timeout (15 s by default).
+
 ## Completed
 
 ### ENG-035 - Network seeks blocked the host's UI thread

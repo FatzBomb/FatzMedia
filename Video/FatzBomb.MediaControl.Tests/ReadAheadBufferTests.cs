@@ -347,6 +347,10 @@ public sealed class ReadAheadBufferTests
         Assert.Equal(TimeSpan.FromSeconds(1), clamped.ResumeDuration);
         Assert.Equal(TimeSpan.FromMinutes(10), (policy with { MaxDuration = TimeSpan.FromHours(1) }).MaxDuration);
         Assert.Equal(1L << 30, (policy with { MaxBytes = long.MaxValue }).MaxBytes);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), policy.ReconnectFor);
+        Assert.Equal(TimeSpan.Zero, (policy with { ReconnectFor = TimeSpan.FromSeconds(-1) }).ReconnectFor);
+        Assert.Equal(TimeSpan.FromMinutes(5), (policy with { ReconnectFor = TimeSpan.FromHours(1) }).ReconnectFor);
     }
 
     [Fact]
