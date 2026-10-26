@@ -1,10 +1,10 @@
-using Microsoft.Win32;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FatzBomb.MediaControl.Player.Shared.ViewModels;
 using FatzBomb.MediaControl.Player.ViewModels;
 
 namespace FatzBomb.MediaControl.Player;
@@ -50,49 +50,16 @@ public partial class MainWindow : Window
         };
         _fullScreenChromeTimer.Tick += FullScreenChromeTimer_Tick;
 
-        _viewModel = new MainWindowViewModel();
+        _viewModel = new MainWindowViewModel(this);
         DataContext = _viewModel;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         FlyoutPanel.SecondaryWindowToggleRequested += FlyoutPanel_SecondaryWindowToggleRequested;
-        FlyoutPanel.ChooseNextRequested += FlyoutPanel_ChooseNextRequested;
         MediaSurface.SecondaryOutputsChanged += MediaSurface_SecondaryOutputsChanged;
         UpdateSeekBarVisual();
         UpdateSecondaryWindowCheckBox();
 
-        if (App.StartupMediaPath is not null)
-            _ = LoadStartupMediaAsync();
-
-    }
-
-    private async void OpenButton_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Open media file",
-            Filter = _viewModel.Player?.OpenFileDialogFilter ?? "All files|*.*"
-        };
-
-        if (dialog.ShowDialog(this) == true)
-            try
-            {
-                await _viewModel.LoadMediaAsync(dialog.FileName);
-            }
-            catch (Exception ex)
-            {
-                _ = MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-    }
-
-    private async void FlyoutPanel_ChooseNextRequested(object? sender, EventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Choose the next item",
-            Filter = _viewModel.Player?.OpenFileDialogFilter ?? "All files|*.*"
-        };
-
-        if (dialog.ShowDialog(this) == true)
-            await _viewModel.PrepareNextAsync(dialog.FileName);
+        // Creates the engine, then loads the startup media (if any).
+        _ = _viewModel.StartAsync();
     }
 
     private void Window_DragEnter(object sender, DragEventArgs e)
@@ -225,30 +192,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task LoadStartupMediaAsync()
-    {
-        // Native loading can fail, leaving no player: stop waiting then.
-        while (_viewModel.Player is null)
-        {
-            if (_viewModel.StartupError is not null)
-                return;
-            await Task.Delay(200);
-        }
-
-        await Task.Delay(500);
-
-        var path = App.StartupMediaPath;
-        if (path is null || _viewModel.Player is null) return;
-
-        try
-        {
-            await _viewModel.LoadMediaAsync(path);
-        }
-        catch
-        {
-        }
-    }
-
     private void UpdateSeekBarVisual()
     {
         var width = SeekBar.ActualWidth;
@@ -271,7 +214,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            if (_viewModel.ActiveFlyout != ViewModels.PlayerFlyout.None)
+            if (_viewModel.ActiveFlyout != PlayerFlyout.None)
             {
                 _viewModel.CloseFlyout();
                 e.Handled = true;
@@ -501,7 +444,6 @@ public partial class MainWindow : Window
     {
         _fullScreenChromeTimer.Stop();
         FlyoutPanel.SecondaryWindowToggleRequested -= FlyoutPanel_SecondaryWindowToggleRequested;
-        FlyoutPanel.ChooseNextRequested -= FlyoutPanel_ChooseNextRequested;
         MediaSurface.SecondaryOutputsChanged -= MediaSurface_SecondaryOutputsChanged;
         _ = MediaSurface.CloseSecondaryOutput();
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;

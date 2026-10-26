@@ -447,7 +447,7 @@
                         Text="NEXT" />
                     <Button
                         Width="78"
-                        Click="ChooseNextButton_Click"
+                        Command="{Binding ChooseNextCommand}"
                         Content="Choose..."
                         Style="{StaticResource SyncButtonStyle}"
                         ToolTip="Pick the next item; it is analyzed in the background while the current item plays" />

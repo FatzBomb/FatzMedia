@@ -1,9 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
-
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 /// <summary>
 /// Validation-host wiring for network sources (Stage 014A), driven from the Next flyout's URL
@@ -12,7 +10,7 @@ namespace FatzBomb.MediaControl.Player.ViewModels;
 /// <c>--net-allow-invalid-certs</c> set the https certificate policy (ENG-034). Buffering, stream titles, and
 /// capabilities are shown in the flyout and logged to the Log panel.
 /// </summary>
-public sealed partial class MainWindowViewModel
+public partial class PlayerViewModel
 {
     private string _lastStreamTitle = string.Empty;
 
@@ -34,18 +32,18 @@ public sealed partial class MainWindowViewModel
     private void InitializeNetworkControls()
     {
         OpenUrlCommand = new AsyncRelayCommand(OpenUrlAsync, () => CanUsePlayer() && TryParseNetworkUrl(NetworkUrl, out _));
-        NetworkUrl = App.StartupNetworkUri?.AbsoluteUri ?? string.Empty;
+        NetworkUrl = Options.NetworkUri?.AbsoluteUri ?? string.Empty;
     }
 
-    private void StartNetworkValidation(FatzMediaPlayer player)
+    private void StartNetworkValidation(MediaControlPlayer player)
     {
         player.BufferingChanged += OnPlayerBufferingChanged;
         player.StreamMetadataChanged += OnPlayerStreamMetadataChanged;
-        if (App.StartupNetworkUri is { } uri)
+        if (Options.NetworkUri is { } uri)
             _ = LoadNetworkAsync(player, uri);
     }
 
-    private void StopNetworkValidation(FatzMediaPlayer player)
+    private void StopNetworkValidation(MediaControlPlayer player)
     {
         player.BufferingChanged -= OnPlayerBufferingChanged;
         player.StreamMetadataChanged -= OnPlayerStreamMetadataChanged;
@@ -75,9 +73,9 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    private async Task LoadNetworkAsync(FatzMediaPlayer player, Uri uri)
+    private async Task LoadNetworkAsync(MediaControlPlayer player, Uri uri)
     {
-        UpdateEffectOnUiThread(() =>
+        RunOnUiThread(() =>
         {
             _lastStreamTitle = string.Empty;
             StreamInfoText = "Connecting...";
@@ -90,7 +88,7 @@ public sealed partial class MainWindowViewModel
                 ? $"{capabilities?.SourceClass}, seekable={capabilities?.IsSeekable}, duration={player.Duration}"
                 : $"Could not load {uri}";
             ReportNetwork(loaded ? $"Network source loaded: {summary}" : summary);
-            UpdateEffectOnUiThread(() =>
+            RunOnUiThread(() =>
             {
                 StreamInfoText = loaded ? $"{capabilities?.SourceClass}" : "Not connected";
                 StatusText = loaded ? $"Streaming: {uri}" : $"Could not load: {uri}";
@@ -99,14 +97,14 @@ public sealed partial class MainWindowViewModel
         catch (Exception ex)
         {
             ReportNetwork($"Network load failed: {ex.Message}");
-            UpdateEffectOnUiThread(() => StreamInfoText = "Not connected");
+            RunOnUiThread(() => StreamInfoText = "Not connected");
         }
     }
 
     private void OnPlayerBufferingChanged(object? sender, MediaBufferingChangedEventArgs e)
     {
         ReportNetwork($"Buffering={e.IsBuffering} fill={e.BufferFill:P0}");
-        UpdateEffectOnUiThread(() => StreamInfoText = e.IsBuffering
+        RunOnUiThread(() => StreamInfoText = e.IsBuffering
             ? $"Buffering {e.BufferFill:P0}"
             : _lastStreamTitle.Length > 0 ? _lastStreamTitle : "Streaming");
     }
@@ -114,17 +112,18 @@ public sealed partial class MainWindowViewModel
     private void OnPlayerStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e)
     {
         ReportNetwork($"Stream metadata: artist='{e.Artist}' title='{e.Title}'");
-        UpdateEffectOnUiThread(() =>
+        RunOnUiThread(() =>
         {
             _lastStreamTitle = e.RawTitle ?? string.Empty;
             StreamInfoText = _lastStreamTitle;
         });
     }
 
-    private static bool TryParseNetworkUrl(string text, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
+    /// <summary>Gets whether <paramref name="text"/> is an absolute http or https URL.</summary>
+    public static bool TryParseNetworkUrl(string text, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
         Uri.TryCreate(text.Trim(), UriKind.Absolute, out uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private void ReportNetwork(string message) =>
-        UpdateEffectOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "Network", message));
+        RunOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "Network", message));
 }

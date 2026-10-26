@@ -1,23 +1,22 @@
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Windows;
 
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 /// <summary>
 /// Log panel: every engine diagnostic (info, warning, error), newest first. Each entry is also
-/// written to the debug log file (<see cref="App.LogFilePath"/>), which keeps the whole run.
+/// written to <see cref="Trace"/>, which the host's debug log file (<see cref="LogFilePath"/>)
+/// keeps for the whole run.
 /// </summary>
-public sealed partial class MainWindowViewModel
+public partial class PlayerViewModel
 {
     private const int MaxLogEntries = 1000;
 
     public ObservableCollection<DiagnosticLogEntry> DiagnosticLog { get; } = [];
 
-    public string LogFilePath => App.LogFilePath;
+    /// <summary>Gets the host's debug log file, or an empty string when it has none.</summary>
+    public string LogFilePath => _host.LogFilePath ?? string.Empty;
 
     private void AppendToLog(DiagnosticLogEntry entry)
     {
@@ -27,16 +26,26 @@ public sealed partial class MainWindowViewModel
             DiagnosticLog.RemoveAt(DiagnosticLog.Count - 1);
     }
 
+    /// <summary>Gets the whole log, oldest first, one <see cref="DiagnosticLogEntry.Line"/> per line.</summary>
+    public string GetLogText() => string.Join(Environment.NewLine, DiagnosticLog.Reverse().Select(entry => entry.Line));
+
     [RelayCommand]
-    private void CopyLog()
+    private async Task CopyLogAsync()
     {
-        var text = string.Join(Environment.NewLine, DiagnosticLog.Reverse().Select(entry => entry.Line));
+        if (_host.Clipboard is not { } clipboard)
+        {
+            StatusText = "No clipboard is available.";
+            return;
+        }
+
+        var text = GetLogText();
+        var count = DiagnosticLog.Count;
         try
         {
-            Clipboard.SetText(text);
-            StatusText = $"Copied {DiagnosticLog.Count} log lines to the clipboard.";
+            await clipboard.SetTextAsync(text);
+            StatusText = $"Copied {count} log lines to the clipboard.";
         }
-        catch (COMException ex)
+        catch (Exception ex)
         {
             StatusText = $"Could not copy the log: {ex.Message}";
         }
@@ -48,9 +57,9 @@ public sealed partial class MainWindowViewModel
     [RelayCommand]
     private void OpenLogFile()
     {
-        if (!File.Exists(LogFilePath))
+        if (LogFilePath.Length == 0 || !File.Exists(LogFilePath))
         {
-            StatusText = $"No log file at {LogFilePath}.";
+            StatusText = LogFilePath.Length == 0 ? "This player keeps no log file." : $"No log file at {LogFilePath}.";
             return;
         }
 

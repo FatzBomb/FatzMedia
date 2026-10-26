@@ -26,6 +26,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj" />
 		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
 	</ItemGroup>
 
