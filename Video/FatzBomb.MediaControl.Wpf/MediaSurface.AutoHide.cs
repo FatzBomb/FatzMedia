@@ -67,7 +67,22 @@ public sealed partial class MediaSurface
     private void InitializeAutoHide()
     {
         _contentTracker.AutoHide = AutoHide;
-        _contentTracker.Changed += OnContentTrackerChanged;
+        _contentTracker.Changed += CreateWeakContentHandler(this);
+    }
+
+    // The tracker follows the session while Player is set, also while this surface is unloaded.
+    // The session must not keep an unloaded, dropped surface alive through it, so the tracker
+    // holds the surface weakly; once the surface is collected, the tracker stops following.
+    private static EventHandler CreateWeakContentHandler(MediaSurface surface)
+    {
+        var weakSurface = new WeakReference<MediaSurface>(surface);
+        return (sender, e) =>
+        {
+            if (weakSurface.TryGetTarget(out MediaSurface? target))
+                target.OnContentTrackerChanged(sender, e);
+            else
+                (sender as MediaSurfaceContentTracker)?.Dispose();
+        };
     }
 
     // Raised on the thread that changed the state (often Core's render or event thread): marshal,

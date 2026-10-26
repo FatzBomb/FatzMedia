@@ -196,6 +196,24 @@ public sealed class MediaSurfaceContentTrackerTests
     }
 
     [Fact]
+    public void FollowingTheSameSessionAgain_KeepsTheShownState()
+    {
+        // The WPF surface follows its Player across Unloaded/Loaded (029C): a paused video shows
+        // no new frame, so its state must survive.
+        (IMediaControlSession session, TrackedSession fake) = TrackedSession.Create();
+        using var tracker = new MediaSurfaceContentTracker { Session = session };
+        ShowContent(fake);
+        fake.Raise(nameof(IMediaControlSession.MediaPaused), new MediaPausedEventArgs(TimeSpan.Zero));
+        var changes = 0;
+        tracker.Changed += (_, _) => changes++;
+
+        tracker.Session = session;
+
+        Assert.True(tracker.IsContentVisible);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
     public void ReplacedSession_IsUnsubscribedAndItsEventsAreIgnored()
     {
         (IMediaControlSession first, TrackedSession firstFake) = TrackedSession.Create();

@@ -27,10 +27,13 @@ Or use the helper window (Stage 046A, the same shape as the Avalonia and WPF ada
 ```csharp
 var singer = new SecondaryPresentationWindow(player);            // surface id "secondary"
 singer.ShowOnScreen(Screen.AllScreens[1], fullScreen: true, owner: this);
-// F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+// F11 or a double-click toggles full screen; Escape leaves it, or closes a windowed one;
+// closing it detaches.
 ```
 
-The renderer presents into a child window of the surface. The surface hides that child and
+The renderer presents into a child window of the surface. The child stays hidden until the
+renderer presented into it (after each attach and after Audio mode), so the surface shows
+`BackColor`, never leftover pixels, before the first frame. The surface also hides that child and
 paints `BackColor` instead of a stale frame (the same rules as the WPF and Avalonia surfaces,
 from Core's `MediaSurfaceContentTracker`):
 

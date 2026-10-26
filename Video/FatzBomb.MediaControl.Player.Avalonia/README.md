@@ -35,7 +35,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   `SecondaryPresentationWindow` for that player, full screen on the screen given by
   `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
   screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
-  its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
+  its path and reason. F11 or a double-click toggles full screen; Escape leaves it,
+  or closes the window when it is not full screen.
 - A **Log** flyout per player (open at start): every `MediaDiagnostic` and `MediaError` event, newest
   first (1000 entries). **Copy all** puts the whole log, oldest first, on the clipboard (for a bug
   report).

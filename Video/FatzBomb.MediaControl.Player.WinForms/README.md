@@ -21,7 +21,8 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
   **Silent drag** is on), a click jumps there, arrow keys step 5 s. Elapsed and remaining time.
 - **Play**, **Pause**, **Stop**, **Loop**, **Mode** (Full, Background, Audio; switches on the fly),
   **Second screen** (full screen on another monitor, else a 960x540 window; in it F11 or a
-  double-click toggles full screen and Escape leaves it), **Volume**,
+  double-click toggles full screen; Escape leaves it, or closes the window when it is not full
+  screen), **Volume**,
   **Full screen** (also F11 or a double-click on the picture; Escape leaves it; the controls hide
   after 2.5 s without mouse movement).
 - Tabs: **Sync** (A/V, CD+G, subtitle offsets, reset, subtitle picker), **Video** (visual

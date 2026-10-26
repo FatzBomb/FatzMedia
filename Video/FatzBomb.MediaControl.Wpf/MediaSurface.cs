@@ -271,6 +271,11 @@ public sealed partial class MediaSurface : Grid
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
         surface._attachRefusalReported = false;
+
+        // The content tracker follows the Player property, not the load state, so a surface that
+        // is unloaded and loaded again (a tab switch, a new parent) keeps its auto-hide state, as
+        // in Stage 029C: a paused video stays visible without a new frame.
+        surface._contentTracker.Session = e.NewValue as IMediaControlSession;
         if (e.NewValue is IMediaControlSession session)
         {
             surface.AttachSessionEvents(session);
@@ -509,7 +514,6 @@ public sealed partial class MediaSurface : Grid
         session.MediaEnded += OnSessionMediaEnded;
         session.MediaClosed += OnSessionMediaClosed;
         session.PresentationFramePresented += OnSessionPresentationFramePresented;
-        _contentTracker.Session = session;
     }
 
     private void DetachSessionEvents(IMediaControlSession? session)
@@ -524,7 +528,6 @@ public sealed partial class MediaSurface : Grid
         session.PresentationFramePresented -= OnSessionPresentationFramePresented;
         _showPrimarySurfaceAfterPresentation = false;
         _eventSession = null;
-        _contentTracker.Session = null;
     }
 
     private void OnSessionMediaStarted(object? sender, EventArgs e)

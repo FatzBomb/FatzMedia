@@ -64,8 +64,9 @@ Delivered:
     `IsFullScreen`, `ShowOnScreen(Screen?, fullScreen, owner)`, F11 / double-click / Escape.
 - **Players**:
   - The WinForms player uses the adapter's `SecondaryPresentationWindow` (its private
-    `SecondScreenForm` is gone). Escape now leaves full screen instead of closing the window;
-    the "Second screen" box still closes it.
+    `SecondScreenForm` is gone). Escape leaves full screen, and closes the window when it is not
+    full screen (all three adapters' windows behave this way); the "Second screen" box still
+    closes it.
   - `--no-auto-hide` moved to the shared `PlayerStartupOptions` (`AutoHideSurfaces`). The
     Avalonia and WinForms players apply it to their surfaces and second screens; the WPF player
     keeps its own parsing of the same flag.
@@ -132,9 +133,13 @@ Delivered:
     WPF state rules (playing/paused or a stopped standalone visual) still apply, gated by the
     tracker, which then only removes Audio mode.
   - `IsContentVisible` now also needs the session to present (it is false in Audio mode).
-  - The tracker follows the session while the surface is loaded (as the WPF events did), so
-    an unload/reload re-arms. Content shows again on the next presented frame; re-attaching
-    the surface makes Core present the current one.
+  - The tracker follows the `Player` property, not the load state, so its state survives
+    Unloaded/Loaded of the same session (a tab switch, a new parent), as in 029C: a paused video
+    stays visible without a new frame, and `BackgroundSurface`/`KaraokeSurface` do not react.
+    Core's re-present on re-attach was not relied on (for video it is an asynchronous re-render
+    that may not present while paused). The tracker holds the surface weakly, so a dropped,
+    unloaded surface with `Player` still set is not kept alive by the session; once it is
+    collected the tracker stops following at its next change.
 - **Avalonia and WinForms auto-hide defaults to on**, like WPF. This is a visible change for
   those hosts: the surface shows its background until the first frame of the current media,
   and after stop, close, an error or a non-looping end. `AutoHide = false` (players:
@@ -142,7 +147,10 @@ Delivered:
   the frame-sink bitmap when content hides, so a later load never flashes the previous frame.
 - **WinForms child window.** The renderer needs a window it owns to hide, without the control
   changing its own `Visible` (the 029C rule: never the outer control's visibility). The
-  `MediaSurface` keeps its handle and layout. Its child covers it, is disabled and returns
+  `MediaSurface` keeps its handle and layout. The child stays hidden (the control paints
+  `BackColor`) until the renderer presented into it after each attach and after Audio mode,
+  whatever `AutoHide` says, so an unpainted child never shows leftover pixels; nothing paints
+  over the swap chain. Its child covers it, is disabled and returns
   `HTTRANSPARENT`, so mouse input (the players' double-click, pointer moves for the full-screen
   chrome) still reaches the surface. The surface paints `BackColor` around and instead of the
   child. The test `HandleCreation_...` now checks the child's handle (`PresentationHandle`,
@@ -182,9 +190,9 @@ Delivered:
 
 - `EnableWindowsTargeting=true dotnet build FatzBomb.MediaControl.sln -c Release`: 0 warnings,
   0 errors (WPF, WinForms and the Windows tests compile; they do not run here).
-- Portable tests: 1462 passed.
+- Portable tests: 1463 passed.
 - Linux tests (`FATZBOMB_LINUX_FFMPEG_DIR`, `FATZBOMB_LINUX_SAMPLE_VIDEO` set): 101 passed.
-- Avalonia headless tests: 38 passed.
+- Avalonia headless tests: 39 passed.
 - Vulkan tests (lavapipe): 67 passed.
 - `dotnet format FatzBomb.MediaControl.sln --verify-no-changes`: clean.
 - `check-core-boundary.ps1`, `check-adapter-boundary.ps1`, `check-wpf-boundary.ps1`,
@@ -232,12 +240,15 @@ example 100% and 150%).
    Changing the main window's display mode (Zoom / Stretch) changes both screens; the second
    window never resets the main one.
 6. In the second window: F11 goes full screen on its monitor, Escape leaves it, double-click
-   toggles it. Move it to the other monitor first and repeat: full screen covers that monitor,
+   toggles it. Escape in the window (not full screen) closes it, and the "Secondary Window" box
+   unticks. Move it to the other monitor first and repeat: full screen covers that monitor,
    taskbar included.
 7. Stop or close the media: the second window goes black too. Switch to Audio mode: it clears.
 8. Change the presentation mode with the second window open (no media open): it reopens in the
    new mode in the same place.
 9. Resize the main window by dragging its border while a video plays: no errors in the log.
+10. Pause a video, then move the surface to another tab or parent (any host that unloads and
+    reloads it): the paused frame stays visible, `IsContentVisible` stays true.
 
 ### Avalonia player (`FatzBomb.MediaControl.Player.Avalonia`)
 
@@ -261,10 +272,21 @@ example 100% and 150%).
    Back to Full: the video shows again.
 5. Resize the window by dragging its border while a video plays: no errors in the log.
 6. Tick "Second screen" with two monitors: a borderless window covers the other monitor and shows
-   the video; Escape leaves full screen (the window stays); F11 or a double-click toggles full
-   screen; unticking the box closes it. With one monitor it opens as a 960x540 window.
+   the video; Escape leaves full screen (the window stays), a second Escape closes it and unticks
+   the box; F11 or a double-click toggles full screen; unticking the box closes it. With one
+   monitor it opens as a 960x540 window.
 7. Switch to Audio mode with the second screen open: it clears too. Stop: both go black.
 8. `--no-auto-hide`: after Stop the last frame stays on both screens; Audio mode still clears.
+   Before the first frame of a file (and when the second screen opens before playback) the
+   surfaces show black, never leftover pixels.
+
+## Owner questions (answered by the coordinator, 2026-10-26)
+
+1. The `MediaSurfacePresentationPath` namespace move (binary break for compiled Avalonia
+   consumers of the alpha package) is accepted, as documented above.
+2. Process-wide diagnostics for the player-less `LightweightPlayerController` failures are fine.
+3. `HasPresentation` / `HasPresentationChanged` stay public API (the tracker listens to
+   `ModeChanged` only, since review fix 896b397).
 
 ## Owner smoke results
 

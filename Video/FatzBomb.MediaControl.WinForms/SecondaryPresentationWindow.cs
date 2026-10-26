@@ -11,7 +11,8 @@ namespace FatzBomb.MediaControl.WinForms;
 /// chosen <see cref="Screen"/> and full screen.
 /// </summary>
 /// <remarks>
-/// F11 or a double-click toggles full screen, and Escape leaves it. A host that wants another
+/// F11 or a double-click toggles full screen. Escape leaves full screen, and in a window it
+/// closes the window. A host that wants another
 /// layout can put a <see cref="MediaSurface"/> with a non-primary <see cref="MediaSurface.Role"/>
 /// in any form instead.
 /// </remarks>
@@ -138,9 +139,13 @@ public class SecondaryPresentationWindow : Form
             IsFullScreen = !IsFullScreen;
             e.Handled = true;
         }
-        else if (e.KeyCode == Keys.Escape && IsFullScreen)
+        else if (e.KeyCode == Keys.Escape)
         {
-            IsFullScreen = false;
+            // Escape leaves full screen; in a window it closes the window (keyboard close).
+            if (IsFullScreen)
+                IsFullScreen = false;
+            else
+                Close();
             e.Handled = true;
         }
     }

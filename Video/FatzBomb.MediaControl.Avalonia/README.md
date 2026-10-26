@@ -16,7 +16,8 @@ Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
   ```csharp
   var singer = new SecondaryPresentationWindow(player);          // surface id "secondary"
   singer.ShowOnScreen(Screens.All[1], fullScreen: true, owner: this);
-  // F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+  // F11 or a double-click toggles full screen; Escape leaves it, or closes a windowed one;
+// closing it detaches.
   ```
 
   Every renderer (software, Vulkan, Direct3D11) renders each frame once per surface at that

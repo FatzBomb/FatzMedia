@@ -84,6 +84,33 @@ public sealed class AdapterParityTests
     }
 
     [AvaloniaFact]
+    public void Escape_LeavesFullScreen_AndClosesAWindowedSecondScreen()
+    {
+        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        var window = new KeyWindow(session) { Width = 320, Height = 180 };
+        var closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.Show();
+        window.IsFullScreen = true;
+        Dispatcher.UIThread.RunJobs();
+
+        window.Press(global::Avalonia.Input.Key.Escape);
+        Assert.False(window.IsFullScreen);
+        Assert.False(closed);
+
+        window.Press(global::Avalonia.Input.Key.Escape);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(closed);
+        Assert.Contains($"detach {MediaSurface.DefaultSecondarySurfaceId}", recorder.SurfaceCalls);
+    }
+
+    private sealed class KeyWindow(IMediaControlSession session) : SecondaryPresentationWindow(session)
+    {
+        public void Press(global::Avalonia.Input.Key key) =>
+            OnKeyDown(new global::Avalonia.Input.KeyEventArgs { Key = key, RoutedEvent = KeyDownEvent });
+    }
+
+    [AvaloniaFact]
     public void RefusedAttach_RaisesOneWarningOwnedByTheSession()
     {
         (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();

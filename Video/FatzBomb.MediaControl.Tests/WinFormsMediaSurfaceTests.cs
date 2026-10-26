@@ -53,6 +53,7 @@ public sealed class WinFormsMediaSurfaceTests
         (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
         using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Player = session };
         _ = surface.Handle;
+        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
 
         recorder.SwitchMode(MediaPlayerMode.Audio);
@@ -60,8 +61,29 @@ public sealed class WinFormsMediaSurfaceTests
         Assert.False(surface.IsPresentationWindowVisible);
         Assert.True(surface.IsPrimarySurfaceAttached);
 
+        // Back in Full mode the new renderer's first frame shows the child window again.
         recorder.SwitchMode(MediaPlayerMode.Full);
         Assert.False(surface.IsPresentationSuspended);
+        Assert.False(surface.IsPresentationWindowVisible);
+        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        Assert.True(surface.IsPresentationWindowVisible);
+    });
+
+    [Fact]
+    public void AutoHideOff_KeepsTheChildWindowHiddenUntilTheFirstFrame() => RunSta(() =>
+    {
+        // The child window has no pixels until the renderer presents: BackColor shows meanwhile.
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), AutoHide = false, Player = session };
+        _ = surface.Handle;
+        Assert.True(surface.IsPrimarySurfaceAttached);
+        Assert.False(surface.IsPresentationWindowVisible);
+
+        recorder.Raise(nameof(IMediaControlSession.PresentationFramePresented), EventArgs.Empty);
+        Assert.True(surface.IsPresentationWindowVisible);
+
+        // Stop keeps the last frame with auto-hide off.
+        recorder.Raise(nameof(IMediaControlSession.MediaStopped), EventArgs.Empty);
         Assert.True(surface.IsPresentationWindowVisible);
     });
 

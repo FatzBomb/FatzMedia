@@ -51,6 +51,8 @@ public class MediaSurface : Control
     private bool _isContentVisible;
     private bool _isPresentationSuspended;
     private bool _presentationWindowShown;
+    private IMediaControlSession? _frameSession;
+    private int _framePresentedSinceAttach;
 
     public MediaSurface()
     {
@@ -298,6 +300,11 @@ public class MediaSurface : Control
         Detach();
         var scale = DeviceDpi / 96.0;
         var surfaceId = EffectiveSurfaceId;
+
+        // The child window has no pixels of its own until the renderer presents into it, so it
+        // stays hidden (the control paints BackColor) until a frame arrives, whatever AutoHide
+        // says. Listen before attaching: the attach itself presents the current frame.
+        WatchPresentedFrames(session);
         var attached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
             surfaceId,
             _role,
@@ -316,7 +323,12 @@ public class MediaSurface : Control
                 _ = session.SetPresentationSurfaceLiveResize(surfaceId, true);
             SetPath(MediaSurfacePresentationPath.NativeWindow, "the renderer presents into the control's child window");
         }
-        else if (!_attachRefusalReported)
+        else
+        {
+            WatchPresentedFrames(null);
+        }
+
+        if (!attached && !_attachRefusalReported)
         {
             // Layout retries the attach on every resize: report a refusal once per session.
             _attachRefusalReported = true;
@@ -344,6 +356,7 @@ public class MediaSurface : Control
             _ = session.DetachPresentationSurface(surfaceId);
         }
 
+        WatchPresentedFrames(null);
         SetPath(MediaSurfacePresentationPath.None, null);
         ShowPresentationWindow(false);
     }
@@ -356,6 +369,30 @@ public class MediaSurface : Control
         _presentationWindowShown = show;
         _host.Visible = show;
         Invalidate();
+    }
+
+    private void WatchPresentedFrames(IMediaControlSession? session)
+    {
+        if (_frameSession is not null)
+            _frameSession.PresentationFramePresented -= OnPresentationFramePresented;
+
+        Volatile.Write(ref _framePresentedSinceAttach, 0);
+        Volatile.Write(ref _frameSession, session);
+        if (session is not null)
+            session.PresentationFramePresented += OnPresentationFramePresented;
+    }
+
+    // The render thread, once per presented frame: only the first after an attach (or after Audio
+    // mode) asks the UI thread to show the child window.
+    private void OnPresentationFramePresented(object? sender, EventArgs e)
+    {
+        if (sender is not null && !ReferenceEquals(sender, Volatile.Read(ref _frameSession)))
+            return;
+
+        if (!_contentTracker.HasPresentation || Interlocked.Exchange(ref _framePresentedSinceAttach, 1) != 0)
+            return;
+
+        OnContentTrackerChanged(this, EventArgs.Empty);
     }
 
     private string DescribeSurface() => $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
@@ -424,6 +461,8 @@ public class MediaSurface : Control
             _isPresentationSuspended = suspended;
             if (suspended)
             {
+                // The renderer that drew into the child is gone; its replacement presents anew.
+                Volatile.Write(ref _framePresentedSinceAttach, 0);
                 DiagnosticRouter.Raise(
                     session,
                     MediaDiagnosticLevel.Info,
@@ -433,7 +472,10 @@ public class MediaSurface : Control
         }
 
         // Hiding the child window shows the background instead of the frame it last kept.
-        ShowPresentationWindow(_attachedSession is not null && _contentTracker.ShowsContent);
+        ShowPresentationWindow(
+            _attachedSession is not null
+            && Volatile.Read(ref _framePresentedSinceAttach) != 0
+            && _contentTracker.ShowsContent);
 
         var isContentVisible = _contentTracker.IsContentVisible;
         if (isContentVisible != _isContentVisible)

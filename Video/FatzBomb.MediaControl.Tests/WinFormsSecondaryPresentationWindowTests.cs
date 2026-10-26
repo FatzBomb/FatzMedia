@@ -45,9 +45,10 @@ public sealed class WinFormsSecondaryPresentationWindowTests
         Assert.Equal(border, window.FormBorderStyle);
         Assert.Equal(FormWindowState.Normal, window.WindowState);
 
-        // Escape in a window does nothing.
+        // Escape in a window closes it (the keyboard way out of a windowed second screen).
+        window.ShowOnScreen(null, fullScreen: false);
         window.Press(Keys.Escape);
-        Assert.False(window.IsFullScreen);
+        Assert.True(window.IsDisposed);
     });
 
     [Theory]

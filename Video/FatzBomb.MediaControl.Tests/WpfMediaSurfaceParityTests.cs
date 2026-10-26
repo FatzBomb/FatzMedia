@@ -60,6 +60,9 @@ public sealed class WpfMediaSurfaceParityTests
     public void AudioMode_SuspendsTheSurfaceUntilThePlayerLeavesIt() => RunSta(RunAudioModeScenario);
 
     [Fact]
+    public void UnloadedSurface_KeepsFollowingItsPlayer() => RunSta(RunUnloadedScenario);
+
+    [Fact]
     public void SecondaryWindow_HostsAProjectorSurfaceInTheRequestedMode() => RunSta(() =>
     {
         (IMediaControlSession session, WinFormsMediaSurfaceTests.SurfaceRecorder recorder) = WinFormsMediaSurfaceTests.SurfaceRecorder.Create();
@@ -109,6 +112,24 @@ public sealed class WpfMediaSurfaceParityTests
         DrainDispatcher();
         Assert.False(surface.IsPresentationSuspended);
         surface.Player = null;
+    }
+
+    private static void RunUnloadedScenario()
+    {
+        // The content state follows the Player property, not the load state (029C: a paused
+        // video moved to another tab or parent stays visible).
+        var factory = new PlayerModeSwitchTests.SwitchTestPlatformFactory();
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        var surface = new MediaSurface { AutoHide = false, Player = player };
+        surface.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+        DrainDispatcher();
+
+        Assert.True(player.SetModeAsync(MediaPlayerMode.Audio).GetAwaiter().GetResult());
+        player.FlushControlOperationsAsync().GetAwaiter().GetResult();
+        DrainDispatcher();
+        Assert.True(surface.IsPresentationSuspended);
+        surface.Player = null;
+        Assert.False(surface.IsPresentationSuspended);
     }
 
     private static void DrainDispatcher()

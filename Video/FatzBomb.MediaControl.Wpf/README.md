@@ -51,7 +51,8 @@ presentation mode:
 var singer = new SecondaryPresentationWindow(player, "secondary");
 PresentationScreen? other = PresentationScreen.All.FirstOrDefault(screen => !screen.Equals(PresentationScreen.FromWindow(this)));
 singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
-// F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+// F11 or a double-click toggles full screen; Escape leaves it, or closes a windowed one;
+// closing it detaches.
 ```
 
 `MediaSurface.ShowSecondaryOutput()` opens one with the surface's mode and `AutoHide`.
