@@ -227,6 +227,117 @@ public sealed class WinFormsMediaSurfaceTests
         Assert.Equal("screen-2", surface.EffectiveSurfaceId);
     });
 
+    [Fact]
+    public void RendererWithoutWindowSupport_GetsAFrameSink_AndItsFramesArePainted() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        recorder.AttachFilter = static surface => surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink;
+        using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(4, 2), AutoHide = false, Player = session };
+        _ = surface.Handle;
+
+        Assert.Equal(["attach 4x2", "attach 4x2"], recorder.Calls);
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Contains("did not accept the window handle", surface.PresentationPathReason, StringComparison.Ordinal);
+        Assert.False(surface.IsPresentationWindowVisible);
+        Assert.True(surface.AreFramesShown);
+
+        // A frame from the render thread is published on the UI thread.
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([0x10, 0x20, 0x30, 0xFF], 8).SelectMany(static pixel => pixel)];
+        System.Threading.Tasks.Task.Run(() => surface.FrameSink!.PresentFrame(pixels, 4, 2, 16)).Wait();
+        PumpUntil(() => surface.FrameSink!.PublishedFrames == 1);
+        System.Drawing.Color pixel = surface.FrameSink!.Bitmap!.GetPixel(3, 1);
+        Assert.Equal((0x30, 0x20, 0x10), (pixel.R, pixel.G, pixel.B));
+
+        // Audio mode drops the frame; stop detaches and frees the sink.
+        recorder.SwitchMode(MediaPlayerMode.Audio);
+        Assert.Null(surface.FrameSink!.Bitmap);
+        Assert.False(surface.AreFramesShown);
+        surface.Player = null;
+        Assert.Null(surface.FrameSink);
+        Assert.Equal(MediaSurfacePresentationPath.None, surface.PresentationPath);
+    });
+
+    [Fact]
+    public void PreferNativeWindowOff_AttachesOnlyAFrameSink() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), PreferNativeWindow = false, Player = session };
+        _ = surface.Handle;
+
+        Assert.Equal(["attach 64x64"], recorder.Calls);
+        Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Equal("PreferNativeWindow is off", surface.PresentationPathReason);
+
+        // Turning it on re-attaches the window.
+        surface.PreferNativeWindow = true;
+        Assert.Equal(MediaSurfacePresentationPath.NativeWindow, surface.PresentationPath);
+        Assert.Equal(MediaNativeSurfaceTypeIds.Win32Hwnd, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+    });
+
+    [Fact]
+    public void OverlayContent_ShowsInALayeredWindowOwnedByTheForm_AndIsNeverDisposed() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder _) = SurfaceRecorder.Create();
+        using var form = new System.Windows.Forms.Form { ClientSize = new System.Drawing.Size(320, 180), ShowInTaskbar = false };
+        using var surface = new WinFormsMediaSurface { Dock = System.Windows.Forms.DockStyle.Fill, Player = session };
+        var overlay = new System.Windows.Forms.Label { Text = "overlay", BackColor = System.Drawing.Color.Transparent };
+        form.Controls.Add(surface);
+        form.Show();
+        surface.OverlayContent = overlay;
+
+        System.Windows.Forms.Form window = surface.OverlayWindow!;
+        Assert.Same(form, window.Owner);
+        Assert.True(window.Visible);
+        Assert.Same(window, overlay.Parent);
+        Assert.Equal(surface.RectangleToScreen(surface.ClientRectangle), window.Bounds);
+        Assert.Equal(window.BackColor, window.TransparencyKey);
+
+        // It follows the form and hides with the surface.
+        form.Location = new System.Drawing.Point(form.Location.X + 40, form.Location.Y + 20);
+        Assert.Equal(surface.RectangleToScreen(surface.ClientRectangle), window.Bounds);
+        surface.Visible = false;
+        Assert.False(window.Visible);
+        surface.Visible = true;
+        Assert.True(window.Visible);
+
+        surface.OverlayContent = null;
+        Assert.Null(surface.OverlayWindow);
+        Assert.Null(overlay.Parent);
+        Assert.False(overlay.IsDisposed);
+
+        surface.OverlayContent = overlay;
+        form.Close();
+        Assert.False(overlay.IsDisposed);
+        overlay.Dispose();
+    });
+
+    [Fact]
+    public void FromBitmap_CopiesStraightAlphaBgra() => RunSta(() =>
+    {
+        using var bitmap = new System.Drawing.Bitmap(2, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        bitmap.SetPixel(0, 0, System.Drawing.Color.FromArgb(0x80, 0x10, 0x20, 0x30));
+        bitmap.SetPixel(1, 0, System.Drawing.Color.FromArgb(0xFF, 0x40, 0x50, 0x60));
+
+        MediaInputSource source = FatzBomb.MediaControl.WinForms.WinFormsMediaInputSources.FromBitmap(bitmap, "test");
+
+        Assert.True(source.IsBgraImage);
+        Assert.Equal((2, 1, 8), (source.Width, source.Height, source.Stride));
+        Assert.Equal([0x30, 0x20, 0x10, 0x80, 0x60, 0x50, 0x40, 0xFF], source.BgraPixels);
+        Assert.Equal("test", source.DisplayName);
+    });
+
+    private static void PumpUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Condition not met in time.");
+            System.Windows.Forms.Application.DoEvents();
+            Thread.Sleep(5);
+        }
+    }
+
     private static void RunSta(Action action)
     {
         Exception? failure = null;
@@ -258,6 +369,9 @@ public sealed class WinFormsMediaSurfaceTests
         public ConcurrentQueue<string> LiveResizeCalls { get; } = new();
 
         public bool AttachResult { get; set; } = true;
+
+        /// <summary>Decides attach per descriptor when set (overrides <see cref="AttachResult"/>).</summary>
+        public Func<MediaPresentationSurfaceDescriptor, bool>? AttachFilter { get; set; }
 
         public bool IsOpen { get; set; } = true;
 
@@ -298,7 +412,7 @@ public sealed class WinFormsMediaSurfaceTests
                 case nameof(IMediaControlSession.AttachPresentationSurface):
                     LastAttached = (MediaPresentationSurfaceDescriptor)args![0]!;
                     Calls.Enqueue($"attach {LastAttached.PixelWidth}x{LastAttached.PixelHeight}");
-                    return AttachResult;
+                    return AttachFilter?.Invoke(LastAttached) ?? AttachResult;
                 case nameof(IMediaControlSession.SetPresentationSurfaceLiveResize):
                     LiveResizeCalls.Enqueue($"{args![0]} {((bool)args[1]! ? "on" : "off")}");
                     break;

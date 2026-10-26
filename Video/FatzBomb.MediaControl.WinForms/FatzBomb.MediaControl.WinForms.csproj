@@ -9,7 +9,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>FatzBomb.MediaControl.WinForms</PackageId>
-    <Description>WinForms adapter for FatzBomb.MediaControl: an HWND MediaSurface control and a second-screen window. Owns no rendering or media logic.</Description>
+    <Description>WinForms adapter for FatzBomb.MediaControl: an HWND MediaSurface control (frame-sink fallback, overlay content), a second-screen window, and the karaoke and background controls. Owns no rendering or media logic.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

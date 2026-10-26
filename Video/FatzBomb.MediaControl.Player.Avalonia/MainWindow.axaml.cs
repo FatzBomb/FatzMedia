@@ -49,8 +49,18 @@ public partial class MainWindow : Window
         InfoText.Text = $"{PlatformComposition.Name} platform | native: {string.Join(", ", _nativePaths)}";
         _ready = true;
         _statsTimer.Start();
+        if (_options.Shared.LightweightSurfacesWindow)
+            ShowLightweightSurfaces(chosen);
         await RebuildAsync();
     }
+
+    /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
+    private void ShowLightweightSurfaces(RendererKind kind) =>
+        new LightweightSurfacesWindow(
+            () => PlatformComposition.Create(Renderers.Create(kind)),
+            _nativePaths,
+            _options.PreferGpuSurface,
+            _options.Shared.AutoHideSurfaces).Show(this);
 
     private async void OnLayoutChanged(object? sender, SelectionChangedEventArgs e)
     {

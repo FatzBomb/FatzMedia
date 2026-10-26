@@ -51,9 +51,10 @@ internal sealed class MainForm : Form
         AllowDrop = true;
 
         var shell = new WinFormsPlayerShell(this);
+        var engineFactory = new WinFormsPlayerEngineFactory(options);
         _viewModel = new PlayerViewModel(
             options,
-            new PlayerHost(new WinFormsPlayerDispatcher(), new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath));
+            new PlayerHost(new WinFormsPlayerDispatcher(), engineFactory, shell, shell, Program.LogFilePath));
         _binder = new ViewModelBinder(_viewModel);
         _autoHideSurfaces = options.AutoHideSurfaces;
         _surface.AutoHide = _autoHideSurfaces;
@@ -85,7 +86,21 @@ internal sealed class MainForm : Form
         DragDrop += OnDragDrop;
         KeyDown += OnFormKeyDown;
         Shown += async (_, _) => await _viewModel.StartAsync();
+        if (options.LightweightSurfacesWindow)
+            Shown += (_, _) => ShowLightweightSurfaces(engineFactory, options);
         FormClosing += OnFormClosing;
+    }
+
+    /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
+    private async void ShowLightweightSurfaces(WinFormsPlayerEngineFactory engineFactory, PlayerStartupOptions options)
+    {
+        // Resolves the renderer choice (--renderer=) the same way the player's engine does.
+        _ = await engineFactory.ResolveRendererAsync();
+        var form = new LightweightSurfacesForm(engineFactory.CreatePlatformFactory, engineFactory.NativeLibraryPaths, options.AutoHideSurfaces)
+        {
+            Owner = this,
+        };
+        form.Show();
     }
 
     private Control BuildTopBar()
