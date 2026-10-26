@@ -563,8 +563,21 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 - `scripts/check-presentation-parity.ps1` requires the controls, the Core controller, the
   conversions and the WinForms frame sink and overlay on all adapters.
 
-Slice 3 (shared player helpers, `--renderer=auto`) is planned in
-`roadmap/active/046A_ACTIVE_AdapterParity.md`.
+Slice 3 (`updates/046A_3`):
+
+- The test players share their view helpers in `FatzBomb.MediaControl.Player.Shared`
+  (`Presentation/`): the full-screen chrome controller (2.5 s auto-hide of bars and cursor), the
+  process sampler, frame counter and stats line, and the second-screen screen rule over screen
+  rectangles; plus the neutral renderer request (`PlayerRendererRequest`) with the GPU-first
+  `auto` order (Windows: Direct3D11 GPU, WARP, software; elsewhere Vulkan, software) and the
+  `--players`, `--surface`, `--decoding`, `--second-screen` flags. Hosts keep factory
+  construction and window/control code; the WPF and WinForms players share
+  `Configuration/PlayerRendererSelection.cs` (linked).
+- All three players show 1-4 independent players (`--players=`), one view model each.
+- The Avalonia and WinForms adapters have a thin `Player : MediaControlPlayer` facade like the WPF
+  one (`CreateAsync` with a platform factory, `Bitmap` load overloads); only the WPF facade has a
+  default platform (Windows).
+- `scripts/check-presentation-parity.ps1` pins the facades and the shared helpers in every player.
 
 ## Base-Visual Transform Pipeline (Stage 030A)
 

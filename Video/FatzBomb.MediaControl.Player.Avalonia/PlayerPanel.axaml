@@ -59,7 +59,7 @@
       <Grid x:Name="SeekRow" Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
         <TextBlock Classes="value" MinWidth="44" TextAlignment="Right" Text="{Binding ElapsedText}" />
         <!-- Driven from code-behind: a drag scrubs (BeginScrub, drag seeks, EndScrub), a key steps once. -->
-        <Slider x:Name="SeekSlider" Grid.Column="1" Minimum="0" Maximum="1" IsEnabled="{Binding CanSeek}" />
+        <Slider x:Name="SeekSlider" Grid.Column="1" Minimum="0" Maximum="1" SmallChange="5" LargeChange="10" IsEnabled="{Binding CanSeek}" />
         <TextBlock Grid.Column="2" Classes="value" MinWidth="44" Text="{Binding RemainingText}" />
       </Grid>
 
@@ -305,7 +305,7 @@
       <TextBlock x:Name="StatusLine" Grid.Row="5" FontSize="12" TextTrimming="CharacterEllipsis" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" />
 
       <TextBlock x:Name="StatsText" Grid.Row="6" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="11" Opacity="0.8"
-                 TextWrapping="Wrap" Text="starting..." />
+                 TextWrapping="Wrap" Text="{Binding StatsText}" />
     </Grid>
   </Border>
 </UserControl>

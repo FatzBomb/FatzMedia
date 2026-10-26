@@ -8,9 +8,9 @@ using FatzBomb.MediaControl.Wpf;
 namespace FatzBomb.MediaControl.Player.ViewModels;
 
 /// <summary>
-/// The WPF player's view model: the shared <see cref="PlayerViewModel"/> plus what only the WPF
-/// <c>MediaSurface</c> has, the presentation mode (native HWND overlay or WPF composited) and
-/// surface auto-hide.
+/// One WPF player's view model (one per <see cref="PlayerView"/>, <c>--players=1..4</c>): the shared
+/// <see cref="PlayerViewModel"/> plus what only the WPF <c>MediaSurface</c> has, the presentation
+/// mode (native HWND overlay or WPF composited) and surface auto-hide.
 /// </summary>
 public sealed class MainWindowViewModel : PlayerViewModel
 {
@@ -24,9 +24,11 @@ public sealed class MainWindowViewModel : PlayerViewModel
     // Stage 036A: what startup expects until App.RendererSelection resolves (OnRendererResolved).
     private bool _usesSoftwareRenderer = App.ExpectsSoftwareRenderer;
 
-    public MainWindowViewModel(Window owner)
+    /// <param name="owner">The window that owns this player's dialogs.</param>
+    /// <param name="index">The player's number (1-based); only player 1 gets the startup media.</param>
+    public MainWindowViewModel(Window owner, int index)
         : base(
-            App.StartupOptions,
+            App.StartupOptions.ForPlayer(index),
             new PlayerHost(
                 new WpfPlayerDispatcher(),
                 new WpfPlayerEngineFactory(),
@@ -34,6 +36,7 @@ public sealed class MainWindowViewModel : PlayerViewModel
                 new WpfPlayerFilePicker(owner),
                 App.LogFilePath))
     {
+        Label = $"P{index}";
     }
 
     public IReadOnlyList<WpfPresentationMode> PresentationModes =>
@@ -51,7 +54,7 @@ public sealed class MainWindowViewModel : PlayerViewModel
 
             _ = SetProperty(ref field, value);
         }
-    } = App.ExpectsSoftwareRenderer
+    } = App.ExpectsSoftwareRenderer || App.StartupOptions.PreferFrameSinkSurface
         ? WpfPresentationMode.WpfComposited
         : WpfPresentationMode.NativeHwndOverlay;
 

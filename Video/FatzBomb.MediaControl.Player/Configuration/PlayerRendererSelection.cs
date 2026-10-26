@@ -1,54 +1,52 @@
 using FatzBomb.MediaControl.Controllers;
+using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using FatzBomb.MediaControl.Rendering.Software;
+using FatzBomb.MediaControl.Rendering.Vulkan;
 
 namespace FatzBomb.MediaControl.Player.Configuration;
 
-/// <summary>The renderer the Player is asked to use (<c>--renderer=</c>).</summary>
-internal enum PlayerRendererChoice
-{
-    /// <summary>Direct3D11 on the GPU, then WARP, then the software renderer (the default).</summary>
-    Auto,
-
-    /// <summary>Direct3D11 on the GPU only.</summary>
-    Gpu,
-
-    /// <summary>Direct3D11 on WARP only, with software decoding.</summary>
-    Warp,
-
-    /// <summary>The software renderer, with software decoding (also <c>--software</c>).</summary>
-    Software
-}
-
 /// <summary>
-/// Stage 036A: builds the presentation factory for a <see cref="PlayerRendererChoice"/>, resolves
-/// the fallback chain at startup (the surface mode and decoding depend on it), and keeps what was
-/// found for the status line and the Log panel.
+/// The Windows players' renderer choice (Stage 036A, shared by the WPF and WinForms players since
+/// Stage 046A slice 3; the WinForms project compiles this file by link): maps the shared
+/// <see cref="PlayerRendererRequest"/> to a presentation factory, resolves the GPU-first
+/// <see cref="PlayerRendererRequest.Auto"/> chain at startup (the surface path and the decoding
+/// depend on it), and keeps what was found for the status line and the Log panel.
 /// </summary>
+/// <remarks>
+/// <see cref="PlayerRendererRequest.Auto"/> is <see cref="PlayerRendererRules.AutoOrder"/> on
+/// Windows: <c>FallbackPresentationCoordinatorFactory(Direct3D11 Auto, Software)</c>, Direct3D11's
+/// Auto device being the GPU, then WARP. Each player gets its own factory
+/// (<see cref="CreateFactory"/>) of the chosen kind; nothing is shared between players.
+/// </remarks>
 internal sealed class PlayerRendererSelection
 {
+    private readonly Func<IMediaPresentationCoordinatorFactory> _createFactory;
     private readonly List<(MediaDiagnosticLevel Level, string Message)> _logLines;
 
     private PlayerRendererSelection(
-        IMediaPresentationCoordinatorFactory factory,
-        bool usesSoftwareRenderer,
+        Func<IMediaPresentationCoordinatorFactory> createFactory,
+        bool usesFrameSinkRenderer,
         bool usesSoftwareDecoding,
         string summary,
         List<(MediaDiagnosticLevel Level, string Message)> logLines)
     {
-        Factory = factory;
-        UsesSoftwareRenderer = usesSoftwareRenderer;
+        _createFactory = createFactory;
+        UsesSoftwareRenderer = usesFrameSinkRenderer;
         UsesSoftwareDecoding = usesSoftwareDecoding;
         Summary = summary;
         _logLines = logLines;
     }
 
-    public IMediaPresentationCoordinatorFactory Factory { get; }
-
-    /// <summary>Gets whether the renderer needs a frame-sink (WPF-composited) surface: the software renderer.</summary>
+    /// <summary>
+    /// Gets whether the renderer presents through frame sinks only (software, Vulkan): the WPF
+    /// surface is then WPF-composited, the WinForms surface uses its frame sink.
+    /// </summary>
     public bool UsesSoftwareRenderer { get; }
 
-    /// <summary>Gets whether video is decoded in software (software renderer, or Direct3D11 on a software rasterizer).</summary>
+    /// <summary>Gets whether video is decoded in software (software or Vulkan renderer, or Direct3D11 on a software rasterizer).</summary>
     public bool UsesSoftwareDecoding { get; }
 
     /// <summary>Gets a one-line description for the status line.</summary>
@@ -57,59 +55,94 @@ internal sealed class PlayerRendererSelection
     /// <summary>Gets what was probed and chosen, for the Log panel.</summary>
     public IReadOnlyList<(MediaDiagnosticLevel Level, string Message)> LogLines => _logLines;
 
+    /// <summary>Creates a presentation factory of the chosen renderer, one per player.</summary>
+    public IMediaPresentationCoordinatorFactory CreateFactory() => _createFactory();
+
     public void AddLogLine(MediaDiagnosticLevel level, string message) => _logLines.Insert(0, (level, message));
 
-    public static bool TryParse(string value, out PlayerRendererChoice choice)
+    /// <summary>
+    /// Gets what one player's view model needs from this choice: the decoding the renderer can
+    /// present, or software with <c>--decoding=software</c> (<see cref="PlayerStartupOptions.ApplyDecoding"/>),
+    /// the surface kind, and the log lines followed by <paramref name="extraLines"/>.
+    /// </summary>
+    public PlayerRendererInfo ToRendererInfo(PlayerStartupOptions options, IEnumerable<(MediaDiagnosticLevel Level, string Message)>? extraLines = null)
     {
-        choice = value.Trim().ToLowerInvariant() switch
-        {
-            "auto" => PlayerRendererChoice.Auto,
-            "gpu" or "d3d11" or "hardware" => PlayerRendererChoice.Gpu,
-            "warp" => PlayerRendererChoice.Warp,
-            "software" or "cpu" => PlayerRendererChoice.Software,
-            _ => (PlayerRendererChoice)(-1)
-        };
-        return Enum.IsDefined(choice);
+        ArgumentNullException.ThrowIfNull(options);
+        (VideoDecodingMethod decoding, var forced) = options.ApplyDecoding(
+            UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
+        List<(MediaDiagnosticLevel Level, string Message)> lines = [.. _logLines];
+        if (forced is not null)
+            lines.Add((MediaDiagnosticLevel.Info, $"Video decoding: {forced}."));
+        if (extraLines is not null)
+            lines.AddRange(extraLines);
+        return new PlayerRendererInfo(Summary, decoding, UsesSoftwareRenderer, lines);
     }
 
-    /// <param name="hdrOutput">Stage 042A slice 2: HDR output on HDR displays (<c>--hdr-output</c>).</param>
-    public static PlayerRendererSelection Resolve(PlayerRendererChoice choice, bool hdrOutput = false)
+    /// <param name="request">The shared renderer request (<c>--renderer=</c>, <c>--software</c>).</param>
+    /// <param name="hdrOutput">Stage 042A slice 2: HDR output on HDR displays (<c>--hdr-output</c>, Direct3D11 only).</param>
+    public static PlayerRendererSelection Resolve(PlayerRendererRequest request, bool hdrOutput = false)
     {
-        Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection selection) =>
-            WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(
+        Func<IMediaPresentationCoordinatorFactory> Direct3D11(Direct3D11DeviceSelection selection) =>
+            () => WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(
                 new Direct3D11PresentationOptions { DeviceSelection = selection, HdrOutput = hdrOutput });
 
-        switch (choice)
+        switch (request)
         {
-            // Forced tiers skip the probe: the session's own device diagnostics name what it got.
-            case PlayerRendererChoice.Gpu:
+            // Forced Direct3D11 tiers skip the probe: the session's own device diagnostics name what it got.
+            case PlayerRendererRequest.Gpu:
                 return new PlayerRendererSelection(
                     Direct3D11(Direct3D11DeviceSelection.Hardware),
-                    usesSoftwareRenderer: false,
+                    usesFrameSinkRenderer: false,
                     usesSoftwareDecoding: false,
                     "Direct3D11 GPU (forced)",
                     [(MediaDiagnosticLevel.Info, "Direct3D11 forced to the GPU (--renderer=gpu).")]);
 
-            case PlayerRendererChoice.Warp:
+            case PlayerRendererRequest.Warp:
                 return new PlayerRendererSelection(
                     Direct3D11(Direct3D11DeviceSelection.Warp),
-                    usesSoftwareRenderer: false,
+                    usesFrameSinkRenderer: false,
                     usesSoftwareDecoding: true,
                     "Direct3D11 WARP (forced)",
                     [(MediaDiagnosticLevel.Info, "Direct3D11 forced to WARP (--renderer=warp), with software decoding.")]);
 
-            case PlayerRendererChoice.Software:
+            case PlayerRendererRequest.Direct3D11:
                 return new PlayerRendererSelection(
-                    new SoftwarePresentationCoordinatorFactory(),
-                    usesSoftwareRenderer: true,
+                    Direct3D11(Direct3D11DeviceSelection.Auto),
+                    usesFrameSinkRenderer: false,
+                    usesSoftwareDecoding: false,
+                    "Direct3D11 (GPU, else WARP; forced)",
+                    [(MediaDiagnosticLevel.Info, "Direct3D11 forced (--renderer=direct3d11): the GPU, else WARP, without the software fallback.")]);
+
+            case PlayerRendererRequest.Software:
+                return new PlayerRendererSelection(
+                    static () => new SoftwarePresentationCoordinatorFactory(),
+                    usesFrameSinkRenderer: true,
                     usesSoftwareDecoding: true,
                     "Software (forced)",
-                    [(MediaDiagnosticLevel.Info, "Software renderer forced (--renderer=software or --software).")]);
+                    [(MediaDiagnosticLevel.Info, "Software renderer forced (--renderer=software or --software), shown through frame sinks, with software decoding.")]);
+
+            case PlayerRendererRequest.Vulkan:
+                {
+                    MediaPresentationAvailability vulkan = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
+                    if (vulkan.IsAvailable)
+                    {
+                        return new PlayerRendererSelection(
+                            static () => new VulkanPresentationCoordinatorFactory(),
+                            usesFrameSinkRenderer: true,
+                            usesSoftwareDecoding: true,
+                            "Vulkan (forced)",
+                            [(MediaDiagnosticLevel.Info, $"Vulkan forced (--renderer=vulkan): {vulkan.Detail}; shown through frame sinks, with software decoding.")]);
+                    }
+
+                    PlayerRendererSelection auto = Resolve(PlayerRendererRequest.Auto, hdrOutput);
+                    auto.AddLogLine(MediaDiagnosticLevel.Warning, $"--renderer=vulkan is not usable here ({vulkan.Detail}); using auto.");
+                    return auto;
+                }
 
             default:
                 {
                     var chain = new FallbackPresentationCoordinatorFactory(
-                        Direct3D11(Direct3D11DeviceSelection.Auto),
+                        Direct3D11(Direct3D11DeviceSelection.Auto)(),
                         new SoftwarePresentationCoordinatorFactory());
                     MediaPresentationAvailability selected = chain.SelectedAvailability;
                     var lines = chain.Selection
@@ -119,9 +152,12 @@ internal sealed class PlayerRendererSelection
                                 : MediaDiagnosticLevel.Warning,
                             $"{result.BackendName}: {(result.IsAvailable ? "available" : "unavailable")} - {result.Detail}{(result.IsSelected ? " (selected)" : "")}"))
                         .ToList();
+                    Func<IMediaPresentationCoordinatorFactory> create = chain.Selected is SoftwarePresentationCoordinatorFactory
+                        ? static () => new SoftwarePresentationCoordinatorFactory()
+                        : Direct3D11(Direct3D11DeviceSelection.Auto);
                     return new PlayerRendererSelection(
-                        chain,
-                        usesSoftwareRenderer: selected.RequiresFrameSinkSurface,
+                        create,
+                        usesFrameSinkRenderer: selected.RequiresFrameSinkSurface,
                         usesSoftwareDecoding: selected.RequiresSoftwareDecoding,
                         $"{chain.BackendName} (auto): {selected.Detail}",
                         lines);
@@ -129,10 +165,32 @@ internal sealed class PlayerRendererSelection
         }
     }
 
+    /// <summary>
+    /// Resolves <paramref name="options"/>' renderer off the calling thread (the auto chain creates a
+    /// probe device), never throwing: a failure gives the software renderer. The command line's
+    /// unknown values are logged first.
+    /// </summary>
+    public static Task<PlayerRendererSelection> ResolveInBackground(PlayerStartupOptions options) => Task.Run(() =>
+    {
+        PlayerRendererSelection selection;
+        try
+        {
+            selection = Resolve(options.RendererRequest, options.HdrOutput);
+        }
+        catch (Exception ex)
+        {
+            selection = SoftwareAfterFailure(ex);
+        }
+
+        foreach (var warning in options.DescribeUnknownValues().Reverse())
+            selection.AddLogLine(MediaDiagnosticLevel.Warning, warning);
+        return selection;
+    });
+
     /// <summary>Used when building the chain itself failed (for example a missing renderer assembly).</summary>
     public static PlayerRendererSelection SoftwareAfterFailure(Exception exception) => new(
-        new SoftwarePresentationCoordinatorFactory(),
-        usesSoftwareRenderer: true,
+        static () => new SoftwarePresentationCoordinatorFactory(),
+        usesFrameSinkRenderer: true,
         usesSoftwareDecoding: true,
         "Software (renderer selection failed)",
         [(MediaDiagnosticLevel.Error, $"Renderer selection failed ({exception.Message}); using the software renderer.")]);

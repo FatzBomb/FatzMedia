@@ -9,7 +9,10 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
   `--renderer=software` its frame-sink path), and the adapter's `SecondaryPresentationWindow` (a
   projector `MediaSurface`) for the second screen (Stage 046A). With `--lightweight-surfaces`, the
   adapter's `BackgroundSurface` (its overlay in the layered overlay window) and `KaraokeSurface`.
-- The Windows + Direct3D11 platform (`WindowsDirect3D11MediaControlPlatformFactory`) in a non-WPF host.
+- The Windows platform with the renderer choice shared with the WPF player
+  (`PlayerRendererSelection`, compiled by link): Direct3D11, WARP, software or Vulkan in a non-WPF host,
+  through the adapter's `Player.CreateAsync` (Stage 046A slice 3).
+- `--players=1..4` independent players side by side (one `PlayerPanel` and view model each).
 - The shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage 044A) through plain
   WinForms bindings (`ViewModelBinder`): the WPF player's features, with its flyouts as tabs.
   It runs in WinForms' dark mode (`Application.SetColorMode`), like the other players.
@@ -17,7 +20,8 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 ## Features
 
 - Top bar: **Open...** (dialog filtered by the engine), what is loaded, the URL box (http/https;
-  Enter or **URL...** opens it). A file dropped on the window opens too.
+  Enter or **URL...** opens it). A file dropped on a player, including its video (the surface
+  takes drops on both paths), opens there.
 - Seek bar: dragging scrubs (`BeginScrub`, a seek per move, `EndScrub`; silent while moving when
   **Silent drag** is on), a click jumps there, arrow keys step 5 s. Elapsed and remaining time.
 - **Play**, **Pause**, **Stop**, **Loop**, **Mode** (Full, Background, Audio; switches on the fly),
@@ -31,7 +35,8 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
   **A/V** (auto play, display-locked timing, display mode, CD+G background), **Next** (prepared
   item, play next now, clear, auto-next, fade length, fade out/in/cancel, stream info), **Log**
   (every diagnostic, newest first, coloured by level; Copy all, Clear, Open log file).
-- A status line with the latest status, warning or error. Every diagnostic also goes to
+- A status line with the latest status, warning or error, and the shared stats line (state, fps,
+  CPU, memory, surface size and path). Every diagnostic also goes to
   `%TEMP%\FatzBombMedia\player-winforms-debug.log`, overwritten at each start.
 
 ## Run
@@ -40,9 +45,11 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- [media-file|http(s)-url] [options]
 ```
 
-Options: `--renderer=auto|gpu|warp|software` (Direct3D11: the GPU, else WARP; the GPU only; WARP
-with software decoding; `software`, also `--software`: the software renderer with software
-decoding, which the surface shows through its frame-sink path since Stage 046A slice 2),
+Options: every flag is shared with the other players (see
+`FatzBomb.MediaControl.Player.Shared/README.md`): `--players=1..4`,
+`--renderer=auto|gpu|warp|software|vulkan|direct3d11` (auto: Direct3D11 on the GPU, then WARP,
+then software; software and Vulkan are shown through the surface's frame-sink path),
+`--surface=auto|framesink`, `--decoding=auto|software`, `--second-screen=<n>`,
 `--lightweight-surfaces` (a smoke window with the adapter's `BackgroundSurface` and
 `KaraokeSurface`, as in every player: type or browse a path, then **Background** or **Karaoke**;
 **Colour** cycles solid colours) and the flags every test player shares (`PlayerStartupOptions`): `--url=`,

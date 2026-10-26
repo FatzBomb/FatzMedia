@@ -4,7 +4,9 @@ Prepared: 2026-10-26
 Status: slice 1 (P1 fixes, shared adapter logic in Core, second-screen parity) implemented,
 pending manual smoke (`updates/046A_1`). Slice 2 (KaraokeSurface and BackgroundSurface on every
 adapter, WinForms frame sink, overlay and bitmap input) implemented, pending manual smoke
-(`updates/046A_2`). Slice 3 is planned below, not implemented.
+(`updates/046A_2`). Slice 3 (shared player helpers, GPU-first `--renderer=auto`, `--players` in
+every player, `Player` facades in the Avalonia and WinForms adapters) implemented, pending manual
+smoke (`updates/046A_3`). **The whole stage is implemented, pending manual smoke.**
 
 Owner direction (2026-10-26): "No features solo for one player. All players should share the
 same functionality (our wrappers more so)." The wrappers are the adapters
@@ -106,7 +108,11 @@ Acceptance:
 
 ## Slice 3 - Shared player helpers and renderer choice
 
-Status: planned.
+Status: implemented, pending manual smoke (`updates/046A_3`). Decisions taken there: the WPF and
+WinForms players share one Windows renderer mapping (`PlayerRendererSelection`, compiled by link);
+the Avalonia player's default renderer becomes `auto`; the Avalonia and WinForms adapters get a thin
+`Player` facade without a default platform; runtime renderer / player-count switching stays an
+Avalonia toolbar feature (owner question).
 
 Acceptance:
 
@@ -119,4 +125,6 @@ Acceptance:
 3. `--players=1..4` in the WPF and WinForms players.
 4. Small parity items: the Avalonia warning for `--hdr-output`, the WPF seek-bar key step, a
    file drop onto the WinForms video area.
-5. Tests for the shared helpers; manual smoke on the three players.
+5. The owner question of slice 2: a `Player` convenience class in the Avalonia and WinForms
+   adapters if it stays thin (decided in `updates/046A_3`).
+6. Tests for the shared helpers; manual smoke on the three players (`updates/046A_3`).

@@ -32,9 +32,10 @@ pieces.
 
 | Layer | Responsibility |
 |---|---|
-| `MainWindow.xaml`, `Controls/PlayerFlyoutPanel.xaml` | Declare buttons, sliders, flyouts, status text, and the `MediaSurface`. |
-| `MainWindow.xaml.cs` | View-only concerns: seek bar drag, file drops, fullscreen chrome, the secondary window. |
-| `ViewModels/MainWindowViewModel.cs` | Derives from the shared `PlayerViewModel`; adds the WPF-only presentation mode and surface auto-hide. |
+| `MainWindow.xaml(.cs)` | Hosts 1-4 `PlayerView`s (`--players=`), the window's full-screen state, F11 / Escape, the once-a-second process reading. |
+| `PlayerView.xaml`, `Controls/PlayerFlyoutPanel.xaml` | One player: buttons, sliders, flyouts, status and stats lines, and the `MediaSurface`. |
+| `PlayerView.xaml.cs` | View-only concerns: seek bar drag and keys, file drops, the full-screen layout (shared chrome controller), the second screen. |
+| `ViewModels/MainWindowViewModel.cs` | One per player; derives from the shared `PlayerViewModel`; adds the WPF-only presentation mode and surface auto-hide. |
 | `Hosting/` | The WPF dispatcher and timer, clipboard, open-file dialog, and the engine factory (renderer chain, Windows platform, native paths). |
 | Shared `PlayerViewModel` | Engine creation, transport, scrubbing, sync, effects, equalizer, subtitles, visual transforms, prepared next, network sources, player mode, log. |
 
@@ -113,8 +114,12 @@ The player understands the flags all test players share (`PlayerStartupOptions`)
 or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--net-retries=`,
 `--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`,
 `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
-`--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, plus its own
-`--renderer=`/`--software` (below) and `--no-auto-hide` (shared by every player since Stage 046A). The **PLAYER** box in the **A/V** flyout
+`--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, `--renderer=`/`--software` (below), `--no-auto-hide`, and since Stage 046A slice 3
+`--players=1..4` (players side by side, one `PlayerView` and view model each),
+`--surface=auto|framesink` (`framesink` starts in `WpfComposited`), `--decoding=auto|software` and
+`--second-screen=<n>` (see `FatzBomb.MediaControl.Player.Shared/README.md`; every player has them).
+Under each player a stats line shows state, fps, CPU, memory and the surface's size and path; the
+seek bar steps with the arrow keys (5 s) and Page Up / Page Down (10 s) once clicked. The **PLAYER** box in the **A/V** flyout
 switches the player mode on the fly (Stage 043A).
 
 `--lightweight-surfaces` (every player, Stage 046A slice 2) also opens a smoke window with the
@@ -125,11 +130,14 @@ background colours; **Stop both** stops them.
 
 ## Renderer choice
 
-`--renderer=auto|gpu|warp|software` picks the renderer (Stage 036A). `auto`, the default,
-uses Direct3D11 on the GPU, then Direct3D11 on WARP (Windows' software rasterizer), then the
-software renderer, choosing at startup. `gpu` and `warp` force one Direct3D11 device (`warp`
-decodes in software); `software` (or the older `--software`) forces the software renderer
-with the WPF-composited surface and software decoding. The status line names the renderer
+`--renderer=auto|gpu|warp|software|vulkan|direct3d11` picks the renderer (Stage 036A; the shared
+names since Stage 046A slice 3, `Configuration/PlayerRendererSelection.cs`, which the WinForms
+player compiles too). `auto`, the default, uses Direct3D11 on the GPU, then Direct3D11 on WARP
+(Windows' software rasterizer), then the software renderer, choosing at startup. `gpu` and `warp`
+force one Direct3D11 device (`warp` decodes in software); `direct3d11` is Direct3D11's own choice
+(GPU, else WARP) without the software fallback; `software` (or the older `--software`) forces the
+software renderer, and `vulkan` the Vulkan renderer (when usable), both with the WPF-composited
+surface and software decoding. The status line names the renderer
 and device, and the Log panel's `Renderer` entries say what was tried and why.
 
 ## HDR video
@@ -200,14 +208,14 @@ docs/VALIDATION.md
 
 ## Secondary-Output Validation
 
-The Player includes a validation button for secondary/projector output. The Player does not call renderer or swap-chain APIs directly. It asks the WPF `MediaSurface` to open or close a secondary output:
+The **Secondary Window** box in the **A/V** flyout opens that player's second screen. The Player
+does not call renderer or swap-chain APIs directly. Since Stage 046A slice 3 it opens the
+adapter's `SecondaryPresentationWindow` itself (projector role, the player's presentation mode)
+with `ShowOnScreen`, on the screen the shared rule picks (`--second-screen=<n>`, else the first
+screen that is not the main window's, else a window), as the Avalonia and WinForms players do.
+(`MediaSurface.ShowSecondaryOutput()` remains the adapter's one-call alternative.)
 
-```csharp
-MediaSurface.ShowSecondaryOutput();
-MediaSurface.CloseSecondaryOutput();
-```
-
-`MediaSurface` creates the WPF validation window and supplies its HWND to the shared session as a neutral presentation-surface descriptor. The shared media-control implementation owns the secondary target, swap-chain lifetime, compositor fan-out, and final presents.
+The window's surface supplies its HWND to the shared session as a neutral presentation-surface descriptor. The shared media-control implementation owns the secondary target, swap-chain lifetime, compositor fan-out, and final presents.
 
 Stage 10X smoke tests:
 

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -11,6 +10,7 @@ using Avalonia.Threading;
 using FatzBomb.MediaControl.Avalonia;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
+using FatzBomb.MediaControl.Player.Shared.Presentation;
 using FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
@@ -18,32 +18,27 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 /// <summary>
 /// One independent player: a shared <see cref="PlayerViewModel"/> (its own engine, transport,
 /// effects, flyouts and log, bound in XAML) over this panel's <c>MediaSurface</c>. The code-behind
-/// keeps only view behaviour: the seek slider's drag, the second screen, full screen, file drops,
-/// the surface's presentation path and the per-player frame rate.
+/// keeps only view behaviour: the seek slider's drag, the second screen, full screen, file drops
+/// and the surface's presentation path. The full-screen chrome rule, the stats line and the
+/// second-screen placement are shared with the other players (Player.Shared, Stage 046A slice 3).
 /// </summary>
 public partial class PlayerPanel : UserControl
 {
-    private static readonly TimeSpan FullScreenChromeDelay = TimeSpan.FromSeconds(2.5);
-
     private readonly int _index;
-    private readonly DispatcherTimer _chromeTimer = new() { Interval = FullScreenChromeDelay };
-    private MediaControlPlayer? _framePlayer;
-    private long _frames;
-    private long _lastFrameTimestamp = Stopwatch.GetTimestamp();
+    private readonly FullScreenChromeController _chrome;
     private bool _isDragging;
     private bool _isUpdatingSeek;
     private bool _isUpdatingSecondScreen;
-    private bool _isFullScreen;
     private SecondaryPresentationWindow? _secondScreen;
     private bool _disposed;
 
     // Designer/XAML loader constructor.
     public PlayerPanel()
-        : this(1, new RendererOption(RendererKind.Software, true, string.Empty), [], new PlayerStartupOptions())
+        : this(1, new RendererOption(RendererKind.Software, true, string.Empty), [], new PlayerStartupOptions(), [])
     {
     }
 
-    internal PlayerPanel(int index, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options)
+    internal PlayerPanel(int index, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options, IReadOnlyList<string> startupWarnings)
     {
         _index = index;
         InitializeComponent();
@@ -51,7 +46,7 @@ public partial class PlayerPanel : UserControl
         var shell = new AvaloniaPlayerShell(this);
         ViewModel = new PlayerViewModel(
             options,
-            new PlayerHost(AvaloniaPlayerDispatcher.Instance, new AvaloniaPlayerEngineFactory(renderer, nativePaths, Label), shell, shell, App.LogFilePath))
+            new PlayerHost(AvaloniaPlayerDispatcher.Instance, new AvaloniaPlayerEngineFactory(renderer, nativePaths, Label, startupWarnings), shell, shell, App.LogFilePath))
         {
             Label = Label,
             // The log is the most used flyout here (several players side by side): open at start.
@@ -67,8 +62,8 @@ public partial class PlayerPanel : UserControl
         SeekSlider.ValueChanged += OnSeekValueChanged;
 
         // --surface=framesink forces the readback path for comparison (Stage 027A slice 2).
-        Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
-        Surface.AutoHide = StartupOptions.Current.Shared.AutoHideSurfaces;
+        Surface.PreferGpuSharedSurface = !StartupOptions.Current.PreferFrameSinkSurface;
+        Surface.AutoHide = StartupOptions.Current.AutoHideSurfaces;
         Surface.PresentationPathChanged += OnPresentationPathChanged;
         Surface.Tapped += OnSurfaceTapped;
         Surface.DoubleTapped += OnSurfaceDoubleTapped;
@@ -79,7 +74,11 @@ public partial class PlayerPanel : UserControl
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         PointerMoved += OnPanelPointerMoved;
-        _chromeTimer.Tick += OnChromeTimerTick;
+        // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
+        _chrome = new FullScreenChromeController(
+            AvaloniaPlayerDispatcher.Instance,
+            ShowChrome,
+            () => ViewModel.ActiveFlyout != PlayerFlyout.None || _isDragging || IsPointerOverChrome());
     }
 
     /// <summary>Gets this player's view model.</summary>
@@ -94,7 +93,6 @@ public partial class PlayerPanel : UserControl
     internal async Task InitializeAsync()
     {
         await ViewModel.StartAsync();
-        _lastFrameTimestamp = Stopwatch.GetTimestamp();
 
         // --second-screen=<n> opens player 1's second screen at startup.
         if (_index == 1 && StartupOptions.Current.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
@@ -107,10 +105,9 @@ public partial class PlayerPanel : UserControl
             return;
 
         _disposed = true;
-        _chromeTimer.Stop();
+        _chrome.Dispose();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         CloseSecondScreen();
-        TrackFrames(null);
         // The surface lets go of the engine before it is disposed.
         Surface.Player = null;
         // Dispose waits for admitted media operations: the view model does it off the UI thread.
@@ -119,34 +116,22 @@ public partial class PlayerPanel : UserControl
 
     internal void UpdateStatus(ProcessSample process)
     {
-        if (ViewModel.Player is null)
-            return;
-
-        var now = Stopwatch.GetTimestamp();
-        var elapsed = Math.Max(Stopwatch.GetElapsedTime(_lastFrameTimestamp, now).TotalSeconds, 0.001);
-        _lastFrameTimestamp = now;
-        var fps = Interlocked.Exchange(ref _frames, 0) / elapsed;
-
         PixelSize size = Surface.AttachedPixelSize;
-        StatsText.Text =
-            $"{Label} {ViewModel.PlaybackState} | {fps:F1} fps | CPU {process.CpuPercent:F0}% ({process.CoresUsed:F2} of {Environment.ProcessorCount} cores) | " +
-            $"managed {process.ManagedMegabytes:F0} MB, working set {process.WorkingSetMegabytes:F0} MB (whole process) | surface {size.Width}x{size.Height} " +
-            $"via {DescribePath(Surface.PresentationPath)}{DescribeSecondScreen()}";
+        var surface = PlayerStatsLine.DescribeSurface(size.Width, size.Height, Surface.PresentationPath, Surface.IsPresentationSuspended);
+        ViewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, DescribeSecondScreen()));
     }
 
     /// <summary>Enters or leaves full screen: only the picture, with the controls shown while the pointer moves.</summary>
     internal void SetFullScreen(bool fullScreen)
     {
-        _isFullScreen = fullScreen;
         ViewModel.CloseFlyout();
         Frame.Margin = fullScreen ? default : new Thickness(2);
         Frame.Padding = fullScreen ? default : new Thickness(6);
         Frame.BorderThickness = fullScreen ? default : new Thickness(1);
-        ShowChrome(true);
         if (fullScreen)
-            _chromeTimer.Start();
+            _chrome.Enter();
         else
-            _chromeTimer.Stop();
+            _chrome.Exit();
     }
 
     /// <summary>Escape: closes the open flyout first; returns whether it did.</summary>
@@ -163,27 +148,12 @@ public partial class PlayerPanel : UserControl
     {
         switch (e.PropertyName)
         {
-            case nameof(PlayerViewModel.Player):
-                TrackFrames(ViewModel.Player);
-                break;
             case nameof(PlayerViewModel.SeekPositionSeconds):
             case nameof(PlayerViewModel.DurationSeconds):
                 UpdateSeekSlider();
                 break;
         }
     }
-
-    private void TrackFrames(MediaControlPlayer? player)
-    {
-        if (_framePlayer is { } previous)
-            previous.PresentationFramePresented -= OnFramePresented;
-        _framePlayer = player;
-        if (player is not null)
-            player.PresentationFramePresented += OnFramePresented;
-    }
-
-    // Raised on the render thread.
-    private void OnFramePresented(object? sender, EventArgs e) => Interlocked.Increment(ref _frames);
 
     private void UpdateSeekSlider()
     {
@@ -250,20 +220,12 @@ public partial class PlayerPanel : UserControl
 
     private void OnPanelPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!_isFullScreen)
-            return;
-
-        ShowChrome(true);
-        _chromeTimer.Stop();
-        _chromeTimer.Start();
-    }
-
-    private void OnChromeTimerTick(object? sender, EventArgs e)
-    {
-        _chromeTimer.Stop();
-        // Keep the controls while a flyout is open or the pointer is on them.
-        if (_isFullScreen && ViewModel.ActiveFlyout == PlayerFlyout.None && !_isDragging && !IsPointerOverChrome())
-            ShowChrome(false);
+        // Window coordinates: the same for every element of this panel.
+        if (TopLevel.GetTopLevel(this) is { } topLevel)
+        {
+            Point position = e.GetPosition(topLevel);
+            _chrome.PointerMoved(position.X, position.Y);
+        }
     }
 
     private bool IsPointerOverChrome() =>
@@ -304,17 +266,17 @@ public partial class PlayerPanel : UserControl
             ViewModel.AddLogEntry(
                 MediaDiagnosticLevel.Info,
                 "Surface",
-                $"{Label} presents via {DescribePath(Surface.PresentationPath)}{(Surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
+                $"{Label} presents via {MediaSurfacePresentationPathText.Describe(Surface.PresentationPath)}{(Surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
         }
     }
 
-    private string DescribeSecondScreen()
+    private string? DescribeSecondScreen()
     {
         if (_secondScreen?.Surface is not { } surface)
-            return string.Empty;
+            return null;
 
         PixelSize size = surface.AttachedPixelSize;
-        return $" | 2nd screen {size.Width}x{size.Height} via {DescribePath(surface.PresentationPath)}{(surface.IsPresentationSuspended ? " (cleared: Audio mode)" : string.Empty)}";
+        return PlayerStatsLine.DescribeSurface(size.Width, size.Height, surface.PresentationPath, surface.IsPresentationSuspended);
     }
 
     /// <summary>Opens or closes this player's second screen (Stage 027A slice 5).</summary>
@@ -339,8 +301,8 @@ public partial class PlayerPanel : UserControl
 
         (Screen? screen, var fullScreen, var where) = ChooseSecondScreen(owner);
         var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
-        window.Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
-        window.Surface.AutoHide = StartupOptions.Current.Shared.AutoHideSurfaces;
+        window.Surface.PreferGpuSharedSurface = !StartupOptions.Current.PreferFrameSinkSurface;
+        window.Surface.AutoHide = StartupOptions.Current.AutoHideSurfaces;
         window.Surface.PresentationPathChanged += OnSecondScreenPathChanged;
         window.Closed += OnSecondScreenClosed;
         _secondScreen = window;
@@ -348,31 +310,19 @@ public partial class PlayerPanel : UserControl
         window.ShowOnScreen(screen, fullScreen, owner);
     }
 
-    /// <summary>
-    /// <c>--second-screen=&lt;n&gt;</c> when that screen exists, else the first screen that is not the
-    /// main window's, full screen; with one screen, a window beside the player.
-    /// </summary>
+    /// <summary>The shared rule (<see cref="PlayerScreenChooser"/>) over Avalonia's screens.</summary>
     private static (Screen? Screen, bool FullScreen, string Where) ChooseSecondScreen(Window owner)
     {
         IReadOnlyList<Screen> screens = owner.Screens.All;
-        if (StartupOptions.Current.SecondScreen is { } number && number <= screens.Count)
-            return (screens[number - 1], true, $"full screen on screen {number} of {screens.Count} ({Describe(screens[number - 1])})");
-
-        Screen? current = owner.Screens.ScreenFromWindow(owner);
-        for (var i = 0; i < screens.Count; i++)
-        {
-            if (!Equals(screens[i], current))
-                return (screens[i], true, $"full screen on screen {i + 1} of {screens.Count} ({Describe(screens[i])})");
-        }
-
-        return (current, false, $"in a window (one screen{(StartupOptions.Current.SecondScreen is { } missing ? $"; screen {missing} does not exist" : string.Empty)})");
+        PixelRect? ownerBounds = owner.Screens.ScreenFromWindow(owner)?.Bounds;
+        PlayerScreenChoice choice = PlayerScreenChooser.Choose(
+            [.. screens.Select(static screen => new PlayerScreen(screen.DisplayName ?? string.Empty, ToBounds(screen.Bounds), screen.IsPrimary))],
+            ownerBounds is { } bounds ? ToBounds(bounds) : null,
+            StartupOptions.Current.SecondScreen);
+        return (choice.ScreenIndex is { } index ? screens[index] : null, choice.FullScreen, choice.Where);
     }
 
-    // Avalonia leaves DisplayName empty on some platforms (Windows): fall back to the screen's size and place.
-    private static string Describe(Screen screen) =>
-        string.IsNullOrWhiteSpace(screen.DisplayName)
-            ? $"{screen.Bounds.Width}x{screen.Bounds.Height} at {screen.Bounds.X},{screen.Bounds.Y}{(screen.IsPrimary ? ", primary" : string.Empty)}"
-            : screen.DisplayName;
+    private static PlayerScreenBounds ToBounds(PixelRect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
     private void CloseSecondScreen()
     {
@@ -419,14 +369,7 @@ public partial class PlayerPanel : UserControl
             ViewModel.AddLogEntry(
                 MediaDiagnosticLevel.Info,
                 "Surface",
-                $"{Label} second screen presents via {DescribePath(surface.PresentationPath)}{(surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
+                $"{Label} second screen presents via {MediaSurfacePresentationPathText.Describe(surface.PresentationPath)}{(surface.PresentationPathReason is { } reason ? $" ({reason})" : string.Empty)}");
         }
     }
-
-    private static string DescribePath(MediaSurfacePresentationPath path) => path switch
-    {
-        MediaSurfacePresentationPath.SharedGpuImage => "shared GPU image",
-        MediaSurfacePresentationPath.FrameSink => "frame sink",
-        _ => "none"
-    };
 }

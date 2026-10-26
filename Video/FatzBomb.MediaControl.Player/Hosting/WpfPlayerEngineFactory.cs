@@ -8,7 +8,8 @@ namespace FatzBomb.MediaControl.Player.Hosting;
 
 /// <summary>
 /// Creates the WPF <see cref="FatzMediaPlayer"/> with the renderer chosen at startup
-/// (<see cref="App.RendererSelection"/>, Stage 036A) and the Windows platform package.
+/// (<see cref="App.RendererSelection"/>, Stage 036A; a presentation factory per player) and the
+/// Windows platform package.
 /// </summary>
 internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
 {
@@ -25,18 +26,15 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
     {
         PlayerRendererSelection selection = await App.RendererSelection.ConfigureAwait(false);
         _selection = selection;
-        return new PlayerRendererInfo(
-            selection.Summary,
-            selection.UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware,
-            selection.UsesSoftwareRenderer,
-            selection.LogLines);
+        // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
+        return selection.ToRendererInfo(App.StartupOptions);
     }
 
     public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
-        _platformFactory = new WindowsMediaControlPlatformFactory(selection.Factory);
+        _platformFactory = new WindowsMediaControlPlatformFactory(selection.CreateFactory());
         return await FatzMediaPlayer.CreateAsync(configuration, NativeLibraryPaths, _platformFactory).ConfigureAwait(false);
     }
 }

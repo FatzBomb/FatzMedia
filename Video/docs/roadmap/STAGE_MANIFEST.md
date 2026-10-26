@@ -57,8 +57,11 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (Core `LightweightPlayerPolicy` / `LightweightPlayerController`; `KaraokeSurface` and
   `BackgroundSurface` in WPF, Avalonia and WinForms, the background in Background mode without
   audio; WinForms frame-sink fallback, `OverlayContent` and `FromBitmap`; `--lightweight-surfaces`
-  in every player) is implemented, pending manual smoke (`updates/046A_2`). Slice 3 (shared player
-  helpers, `--renderer=auto`, `--players`) is planned in the stage file.
+  in every player) is implemented, pending manual smoke (`updates/046A_2`). Slice 3 (Player.Shared
+  chrome controller, stats line, screen rule and renderer request; GPU-first `--renderer=auto`;
+  `--players`, `--surface`, `--decoding`, `--second-screen` in every player; `Player` facades in
+  the Avalonia and WinForms adapters) is implemented, pending manual smoke (`updates/046A_3`). The
+  whole stage is implemented, pending manual smoke.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

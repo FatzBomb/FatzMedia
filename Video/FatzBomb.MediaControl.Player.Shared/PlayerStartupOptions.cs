@@ -40,6 +40,47 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets whether <c>--software</c> was given (the software renderer, when <c>--renderer=</c> is absent or invalid).</summary>
     public bool SoftwareRenderer { get; init; }
 
+    /// <summary>
+    /// Gets the renderer asked for (<see cref="PlayerRendererRules.Resolve"/> over
+    /// <see cref="Renderer"/> and <see cref="SoftwareRenderer"/>); <see cref="PlayerRendererRequest.Auto"/>
+    /// (GPU first) by default. Stage 046A slice 3.
+    /// </summary>
+    public PlayerRendererRequest RendererRequest => PlayerRendererRules.Resolve(Renderer, SoftwareRenderer).Request;
+
+    /// <summary>Gets a <c>--renderer=</c> value that is not a renderer name (then <see cref="RendererRequest"/> applies), or null.</summary>
+    public string? UnknownRenderer => PlayerRendererRules.Resolve(Renderer, SoftwareRenderer).UnknownValue;
+
+    /// <summary>Gets how many independent players the window shows (<c>--players=1..4</c>, clamped); 1 by default.</summary>
+    public int Players { get; init; } = 1;
+
+    /// <summary>
+    /// Gets whether surfaces always use the frame sink (<c>--surface=framesink</c>) instead of the
+    /// adapter's direct path (<c>--surface=auto</c>, the default): WPF <c>WpfComposited</c> instead
+    /// of the native window, Avalonia <c>PreferGpuSharedSurface = false</c>, WinForms
+    /// <c>PreferNativeWindow = false</c>. For comparisons.
+    /// </summary>
+    public bool PreferFrameSinkSurface { get; init; }
+
+    /// <summary>Gets a <c>--surface=</c> value that is neither <c>auto</c> nor <c>framesink</c> (then auto applies), or null.</summary>
+    public string? UnknownSurface { get; init; }
+
+    /// <summary>
+    /// Gets whether video is decoded in software whatever the renderer could take
+    /// (<c>--decoding=software</c>), for CPU comparisons; otherwise (<c>--decoding=auto</c>, the
+    /// default) each renderer decodes as it says (Stage 045A). See <see cref="ApplyDecoding"/>.
+    /// </summary>
+    public bool SoftwareDecoding { get; init; }
+
+    /// <summary>Gets a <c>--decoding=</c> value that is neither <c>auto</c> nor <c>software</c> (then auto applies), or null.</summary>
+    public string? UnknownDecoding { get; init; }
+
+    /// <summary>
+    /// Gets the screen (1-based, in the host's screen order) player 1's second screen opens on,
+    /// full screen, at startup (<c>--second-screen=&lt;n&gt;</c>); null when not given. The second
+    /// screen toggles use it too (see <see cref="Presentation.PlayerScreenChooser"/>).
+    /// </summary>
+    public int? SecondScreen { get; init; }
+
     /// <summary>Gets whether pitch resets after each load (<c>--reset-pitch-on-load</c>).</summary>
     public bool ResetPitchOnLoad { get; init; }
 
@@ -98,6 +139,9 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
+    /// <summary>The most players a test player window shows.</summary>
+    public const int MaxPlayers = 4;
+
     /// <summary>Parses <paramref name="args"/>. Unknown flags are ignored.</summary>
     public static PlayerStartupOptions Parse(IReadOnlyList<string> args)
     {
@@ -105,6 +149,8 @@ public sealed record PlayerStartupOptions
 
         var positional = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal));
         Uri? positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out Uri? parsedUrl) ? parsedUrl : null;
+        var surface = Values(args, "--surface=").LastOrDefault();
+        var decoding = Values(args, "--decoding=").LastOrDefault();
         Uri? networkUri = Values(args, "--url=")
             .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out Uri? uri) ? uri : null)
             .FirstOrDefault(static uri => uri is not null);
@@ -138,6 +184,16 @@ public sealed record PlayerStartupOptions
             EqualizerGains = Values(args, "--eq=", trimQuotes: false).Select(ParseGains).FirstOrDefault(),
             AutoHideSurfaces = !HasFlag(args, "--no-auto-hide"),
             LightweightSurfacesWindow = HasFlag(args, "--lightweight-surfaces"),
+            Players = Values(args, "--players=", trimQuotes: false)
+                .Select(static value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var count) ? Math.Clamp(count, 1, MaxPlayers) : (int?)null)
+                .LastOrDefault(static count => count is not null) ?? 1,
+            PreferFrameSinkSurface = IsValue(surface, "framesink"),
+            UnknownSurface = surface is null || IsValue(surface, "framesink") || IsValue(surface, "auto") ? null : surface,
+            SoftwareDecoding = IsValue(decoding, "software"),
+            UnknownDecoding = decoding is null || IsValue(decoding, "software") || IsValue(decoding, "auto") ? null : decoding,
+            SecondScreen = Values(args, "--second-screen=", trimQuotes: false)
+                .Select(static value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var screen) && screen > 0 ? screen : (int?)null)
+                .LastOrDefault(static screen => screen is not null),
         };
     }
 
@@ -147,6 +203,34 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public PlayerStartupOptions WithoutStartupMedia() => this with { MediaPath = null, NetworkUri = null, PrepareNextPath = null };
 
+    /// <summary>Gets these options for player <paramref name="index"/> (1-based): only player 1 gets the startup media.</summary>
+    public PlayerStartupOptions ForPlayer(int index) => index == 1 ? this : WithoutStartupMedia();
+
+    /// <summary>
+    /// Gets how video is decoded: <paramref name="rendererDecoding"/> (what the chosen renderer can
+    /// present), or software with <c>--decoding=software</c>, with a short reason.
+    /// </summary>
+    public (VideoDecodingMethod Decoding, string? Forced) ApplyDecoding(VideoDecodingMethod rendererDecoding) =>
+        SoftwareDecoding && rendererDecoding != VideoDecodingMethod.Software
+            ? (VideoDecodingMethod.Software, "software decoding (--decoding=software)")
+            : (rendererDecoding, null);
+
+    /// <summary>
+    /// Gets a warning for each player value that was not understood (<c>--renderer=</c>,
+    /// <c>--surface=</c>, <c>--decoding=</c>), naming the default used instead. Hosts log them.
+    /// </summary>
+    public IReadOnlyList<string> DescribeUnknownValues()
+    {
+        List<string> warnings = [];
+        if (UnknownRenderer is { } renderer)
+            warnings.Add($"Unknown --renderer value '{renderer}' (use {PlayerRendererRules.Usage}); using {PlayerRendererRules.Name(RendererRequest)}.");
+        if (UnknownSurface is { } surface)
+            warnings.Add($"Unknown --surface value '{surface}' (use auto or framesink); using auto.");
+        if (UnknownDecoding is { } decoding)
+            warnings.Add($"Unknown --decoding value '{decoding}' (use auto or software); using auto.");
+        return warnings;
+    }
+
     /// <summary>Gets whether <paramref name="flag"/> was given (case-insensitive).</summary>
     public static bool HasFlag(IReadOnlyList<string> args, string flag) =>
         args.Any(argument => string.Equals(argument, flag, StringComparison.OrdinalIgnoreCase));
@@ -155,6 +239,9 @@ public sealed record PlayerStartupOptions
     public static IEnumerable<string> Values(IReadOnlyList<string> args, string prefix, bool trimQuotes = true) =>
         args.Where(argument => argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(argument => trimQuotes ? argument[prefix.Length..].Trim('"') : argument[prefix.Length..]);
+
+    private static bool IsValue(string? value, string expected) =>
+        value is not null && value.Trim().Equals(expected, StringComparison.OrdinalIgnoreCase);
 
     private static TimeSpan ParseFade(string value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) && double.IsFinite(seconds)

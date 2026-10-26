@@ -137,6 +137,32 @@ Assert-Match $winFormsSurface 'public\s+Control\?\s+OverlayContent' 'WinForms Me
 Assert-Match $winFormsSurface 'new\s+MediaOverlayForm' 'WinForms OverlayContent must be shown in the layered overlay window.'
 Assert-Match $mediaSurface 'public\s+object\?\s+OverlayContent' 'WPF MediaSurface must keep OverlayContent.'
 
+# Stage 046A slice 3: every adapter offers a Player facade with CreateAsync, and every test player
+# binds the helpers in Player.Shared (chrome rule, stats line, screen choice, renderer request,
+# --players) instead of its own copy.
+foreach ($adapter in @('FatzBomb.MediaControl.Wpf', 'FatzBomb.MediaControl.Avalonia', 'FatzBomb.MediaControl.WinForms')) {
+    $facade = Read-Text "$adapter/Player.cs"
+    Assert-Match $facade 'public\s+sealed\s+class\s+Player\s*:\s*MediaControlPlayer' "$adapter must offer a Player facade over MediaControlPlayer."
+    Assert-Match $facade 'public\s+static\s+Task<Player>\s+CreateAsync\s*\([^)]*IMediaControlPlatformFactory\s+platformFactory\s*\)' "$adapter Player must offer CreateAsync with a platform factory."
+}
+
+foreach ($player in @(
+        @{ Name = 'WPF'; View = 'FatzBomb.MediaControl.Player/PlayerView.xaml.cs'; Window = 'FatzBomb.MediaControl.Player/MainWindow.xaml.cs'; Renderer = 'FatzBomb.MediaControl.Player/Configuration/PlayerRendererSelection.cs' },
+        @{ Name = 'Avalonia'; View = 'FatzBomb.MediaControl.Player.Avalonia/PlayerPanel.axaml.cs'; Window = 'FatzBomb.MediaControl.Player.Avalonia/MainWindow.axaml.cs'; Renderer = 'FatzBomb.MediaControl.Player.Avalonia/Renderers.cs' },
+        @{ Name = 'WinForms'; View = 'FatzBomb.MediaControl.Player.WinForms/PlayerPanel.cs'; Window = 'FatzBomb.MediaControl.Player.WinForms/MainForm.cs'; Renderer = 'FatzBomb.MediaControl.Player/Configuration/PlayerRendererSelection.cs' })) {
+    $name = $player.Name
+    $view = Read-Text $player.View
+    $window = Read-Text $player.Window
+    $renderer = Read-Text $player.Renderer
+    Assert-Match $view 'new\s+FullScreenChromeController\s*\(' "$name player must use the shared full-screen chrome controller."
+    Assert-Match $view 'PlayerScreenChooser\.Choose\s*\(' "$name player must place its second screen with the shared screen rule."
+    Assert-Match $view 'UpdateStats\s*\(' "$name player must show the shared stats line."
+    Assert-Match $view 'SecondScreen' "$name player must honour --second-screen=."
+    Assert-Match $window 'ProcessSampler[^;]*=\s*new' "$name player must sample the process with the shared ProcessSampler."
+    Assert-Match $window '\.Players\b|PlayersBox' "$name player must show --players=1..4."
+    Assert-Match $renderer 'PlayerRendererRequest' "$name player must map the shared renderer request."
+}
+
 Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescriptor>\s+_surfaces' 'Core coordinator must retain all attached surface descriptors in one registry.'
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
 Assert-Match $coordinator '_surfaces\.Remove\s*\(\s*surfaceId,\s*out\s+MediaPresentationSurfaceDescriptor\?\s+surface\s*\)' 'Core coordinator must detach surfaces from the shared registry by id.'
@@ -163,4 +189,4 @@ Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets
 Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
-Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
+Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, every adapter offers KaraokeSurface and BackgroundSurface over Core''s lightweight player controller, every adapter offers a Player facade, every test player uses the Player.Shared helpers, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
