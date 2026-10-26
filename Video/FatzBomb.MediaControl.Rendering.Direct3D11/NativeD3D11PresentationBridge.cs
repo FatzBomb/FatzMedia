@@ -454,6 +454,13 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         if (NativeDeviceHandle == resource.Device.DeviceHandle)
             return true;
 
+        // A frame from a removed decoder device (a GPU reset) is not adopted: every surface would
+        // be re-created on a dead device, and a shared-texture consumer told it is unavailable
+        // would stay on its frame sink (Stage 045A). The decoder's device-loss recovery moves it
+        // to software decoding, and those frames need no device.
+        if (D3D11DeviceResources.IsDeviceRemoved(resource.Device.DeviceHandle))
+            return false;
+
         if (!InitializeFromNativeDevice(resource.Device.DeviceHandle, resource.Device.DeviceContextHandle))
             return false;
 

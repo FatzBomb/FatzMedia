@@ -259,6 +259,26 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         }
     }
 
+    /// <summary>
+    /// Whether the device behind <paramref name="devicePointer"/> (for example a decoder's) was
+    /// removed by a GPU reset or driver update. False for a null pointer or when it cannot be asked.
+    /// </summary>
+    public static bool IsDeviceRemoved(IntPtr devicePointer)
+    {
+        if (devicePointer == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            using ID3D11Device device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
+            return device.DeviceRemovedReason.Failure;
+        }
+        catch (SharpGen.Runtime.SharpGenException)
+        {
+            return false;
+        }
+    }
+
     private void InitializeVideoInterfaces(MediaPlayerConfiguration configuration)
     {
         CleanupVideoInterfaces();

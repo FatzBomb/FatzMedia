@@ -123,7 +123,7 @@ public sealed class D3D11MultiTargetTests
         Assert.Empty(consumer.Unavailable);
     }
 
-    private static NativeD3D11PresentationBridge CreateWarpBridge()
+    internal static NativeD3D11PresentationBridge CreateWarpBridge()
     {
         var bridge = new NativeD3D11PresentationBridge(
             new MediaPlayerConfiguration(),
@@ -158,7 +158,7 @@ public sealed class D3D11MultiTargetTests
         }
     }
 
-    private sealed class CopyingFrameSink : IMediaPresentationFrameSink
+    internal sealed class CopyingFrameSink : IMediaPresentationFrameSink
     {
         public int Width { get; private set; }
         public int Height { get; private set; }

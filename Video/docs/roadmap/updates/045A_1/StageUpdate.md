@@ -24,33 +24,49 @@ shared-texture or frame-sink path prevented hardware frames:
 Delivered:
 
 - Avalonia test player (host only; the Avalonia adapter is unchanged):
-  - `Renderers.ChooseDecoding` pairs decoding with the renderer:
+  - `Renderers.ChooseDecoding` pairs decoding with what each renderer's availability probe
+    says (`MediaPresentationAvailability.RequiresSoftwareDecoding`):
     - Direct3D11 on a GPU: `Auto` (D3D11VA where the GPU decodes the codec, else software);
-    - Direct3D11 on a software rasterizer (the probe's `RequiresSoftwareDecoding`): software;
-    - software and Vulkan renderers: software.
-  - Each `RendererOption` carries its decoding, and the renderer log line says which one,
-    for example `Direct3D11 composition (GPU, ...), hardware decoding (D3D11VA) where the GPU
-    supports the codec`.
+    - Direct3D11 on a software rasterizer: software;
+    - software and Vulkan renderers (their probes ask for software decoding): software.
+    When slice 2 lets Vulkan take hardware frames, its probe changes and the host follows.
+  - Each `RendererOption` carries its decoding, and the renderer log line names it, for
+    example `renderer Direct3D11: Direct3D11 composition (GPU, ...), hardware decoding
+    (D3D11VA) where the GPU supports the codec`.
   - `--decoding=auto|software` (Avalonia only). `software` forces software decoding for every
-    renderer, for CPU comparisons, and logs `software decoding (--decoding=software)`.
-- Windows-only tests (`D3D11HardwareFrameOffscreenTests`, WARP, 3 tests). A two-slice NV12
+    renderer, for CPU comparisons; the renderer line then ends `software decoding
+    (--decoding=software)`. Any other value logs a warning and decodes as `auto`.
+- Direct3D11 renderer: `EnsureNativeFrameDevice` no longer adopts a decoder device that has
+  been removed (a GPU reset), using the new `D3D11DeviceResources.IsDeviceRemoved`.
+  - Adopting it would re-create every surface on a dead device. A shared-texture consumer
+    would hear "unavailable" and stay on its frame sink for the session.
+  - The frame is skipped instead; the decoder's device-loss recovery moves to software
+    decoding.
+- Windows-only tests (`D3D11HardwareFrameOffscreenTests`, WARP, 4 tests). A two-slice NV12
   (or P010) texture array on a second WARP device stands in for FFmpeg's D3D11VA pool, frame
   in slice 1:
-  1. **Shared textures.** The bridge exports a set on its own device. `EnsureNativeFrameDevice`
+  1. **Capability.** `Warp_CanStandInForADecoder` asserts that WARP offers the video processor,
+     NV12 video-processor input, and P010 sampling, and checks `IsDeviceRemoved` on a live
+     device. If it fails on a CI machine, the next three tests return after their setup
+     without testing. The failure makes that gap visible, rather than having them pass
+     silently.
+  2. **Shared textures.** The bridge exports a set on its own device. `EnsureNativeFrameDevice`
      adopts the decoder device, as Core does. Re-attaching retires the first set and exports a
      new one on the decoder device. `PresentNativeFrame` draws the frame. A third WARP device
-     opens the textures through their NT handles, like Avalonia's compositor, acquires the
-     consumer key, copies, and releases. The pixels are the frame's red.
-  2. **Frame sink.** The same adoption, then one readback into the sink, with the frame's red.
-  3. **HDR10 on shared textures.** A P010 BT.2020 frame with a tone-map request. The shared
-     texture holds the CPU tone mapper's SDR values (within 3 codes), and no CPU fallback was
-     requested.
+     opens the textures through their NT handles, like Avalonia's compositor, and acquires the
+     consumer key through the vtable; the result is checked, because Vortice hides
+     `WAIT_TIMEOUT`. It copies and releases. The pixels are the frame's red.
+  3. **Frame sink.** The same adoption, then one readback into the sink, with the frame's red.
+  4. **HDR10 on shared textures.** A P010 BT.2020 frame with a tone-map request. The shared
+     texture holds the CPU tone mapper's SDR values (`D3D11HdrToneMapTests.Cpu`, within 3
+     codes), and no CPU fallback was requested.
 
-  WARP has no video decoder; these tests cover everything after the decoder. Without a video
-  processor (or NV12/P010 support) on WARP the tests stop after the setup: the renderer
-  cannot take hardware frames there at all.
+  WARP has no video decoder; these tests cover everything after the decoder. They reuse
+  `D3D11MultiTargetTests.CreateWarpBridge`/`CopyingFrameSink` and `D3D11HdrToneMapTests.Cpu`
+  (made internal), and `D3D11SharedTextureBackend.AcquireSync` (made internal).
 - Docs: this note, the stage file, the manifest, `CURRENT_ARCHITECTURE.md` (hardware frames on
-  offscreen targets), the Direct3D11 renderer README, and the Avalonia player README.
+  offscreen targets), `ENGINEERING_ISSUES.md` (ENG-037: what this slice defers), the Direct3D11
+  renderer README, and the Avalonia player README.
 
 ## Decisions
 
@@ -75,8 +91,12 @@ Delivered:
   The keyed mutex orders the copy against the compositor's device.
 - **No Core change.** The renderer and Core already support the path. The one gap found, a
   dropped frame when a renderer cannot present a hardware frame at all, exists on every path
-  and is not reachable with the test players' pairing. It is deferred with a design in the
-  stage file.
+  and is not reachable with the test players' pairing. It is deferred with a design (stage
+  file, ENG-037).
+- **Hybrid GPUs are no new risk.** FFmpeg's D3D11VA device, the renderer's own device and
+  Avalonia's ANGLE device are all created on the default adapter (a null adapter), which
+  Windows picks per process. A compositor on another GPU already failed the LUID check with
+  software decoding. In that case the surface uses its frame sink, now with GPU decoding.
 
 ## Measurements (Linux sandbox)
 
@@ -103,14 +123,15 @@ CPU time per frame, two runs each. The 4K clip was made here with libkvazaar
   warnings, 0 errors.
 - Tests (all pass): Portable 1439, Linux 101 (with `FATZBOMB_LINUX_FFMPEG_DIR` and
   `FATZBOMB_LINUX_SAMPLE_VIDEO`), Avalonia headless 33, Vulkan on lavapipe 67.
-- The Windows test project, including the 3 new WARP tests, builds. They run on Windows CI
+- The Windows test project, including the 4 new WARP tests, builds. They run on Windows CI
   only, and have not been run.
 - `dotnet format --verify-no-changes`: clean. `check-core-boundary`,
   `check-adapter-boundary`, `check-wpf-boundary`, and `check-presentation-parity`: pass.
 - Avalonia player on Linux (Xvfb, lavapipe, `--renderer=vulkan`, H.264 sample). The log shows
-  `renderer Vulkan: Vulkan composition, software decoding (the Vulkan renderer takes no
-  hardware frames yet)` and `Decoding H264 High 8-bit 1920x1080 (...), decoder h264 in
-  software`.
+  `renderer Vulkan: Vulkan composition (llvmpipe ... (Cpu)), software decoding (the renderer
+  takes no hardware frames)` and `Decoding H264 High 8-bit 1920x1080 (...), decoder h264 in
+  software`. With `--decoding=sofware` (a typo) it warns `unknown --decoding=sofware (use auto
+  or software); decoding as auto`.
 - Not verified here: real D3D11VA frames, Avalonia's ANGLE import, CPU on Windows, HDR on a
   GPU. See the manual smoke below.
 
@@ -135,8 +156,8 @@ Base command:
    `Shared textures exported` line (a new decoder device is adopted) and `via d3d11va`. At
    most one black frame at the switch.
 3. **CPU.** Play the same 1080p film for 30 s, once as in step 1 and once with
-   `--decoding=software`. The second logs `decoder ... in software` and
-   `software decoding (--decoding=software)`. Note the status line's CPU % and cores for
+   `--decoding=software`. The second logs `decoder ... in software`, and its renderer line
+   ends `software decoding (--decoding=software)`. Note the status line's CPU % and cores for
    each. The first should be clearly lower.
 4. **4K HEVC.** Run `C:\fbtest\4k-hevc.mkv`.
    - The log shows `decoder hevc via d3d11va`.
@@ -166,7 +187,14 @@ Base command:
    the picture follows with no stale frame. Switch the Mode box to Audio and back to Full:
    video returns on the shared path.
 10. **Other renderers.** Switch the toolbar to Software, then Vulkan. The log says `software
-    decoding` for each, and the picture plays (frame sink).
+    decoding (the renderer takes no hardware frames)` for each, and the picture plays (frame
+    sink).
+11. **GPU reset (optional, needs the Graphics Tools feature).** During playback, run
+    `dxcap -forcetdr` from an elevated prompt.
+    - The log shows `Decoder.DeviceLost` and `D3D11.DeviceLost`, then recovery: software
+      decoding first, then `Hardware video decode restored` within seconds.
+    - The status line returns to `via shared GPU image` without changing the renderer. If it
+      stays on `via frame sink`, note the log's reason.
 
 ## Owner smoke results
 

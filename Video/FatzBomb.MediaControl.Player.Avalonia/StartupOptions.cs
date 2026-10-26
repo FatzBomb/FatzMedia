@@ -38,6 +38,9 @@ internal sealed class StartupOptions
     /// </summary>
     public bool SoftwareDecoding { get; private init; }
 
+    /// <summary>Gets a <c>--decoding=</c> value that is neither <c>auto</c> nor <c>software</c> (then auto applies), or null.</summary>
+    public string? UnknownDecoding { get; private init; }
+
     /// <summary>
     /// Gets the screen (1-based, in Avalonia's <c>Screens.All</c> order) that player 1's second
     /// screen opens on, full screen, at startup (<c>--second-screen=&lt;n&gt;</c>, Stage 027A slice
@@ -66,6 +69,11 @@ internal sealed class StartupOptions
             Players = players,
             PreferGpuSurface = surface is null || !surface.Equals("framesink", StringComparison.OrdinalIgnoreCase),
             SoftwareDecoding = decoding is not null && decoding.Equals("software", StringComparison.OrdinalIgnoreCase),
+            UnknownDecoding = decoding is null
+                || decoding.Equals("software", StringComparison.OrdinalIgnoreCase)
+                || decoding.Equals("auto", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : decoding,
             SecondScreen = secondScreen,
         };
     }

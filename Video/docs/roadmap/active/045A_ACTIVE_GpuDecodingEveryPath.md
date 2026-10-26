@@ -179,7 +179,7 @@ the import path can run here. A copy-back stopgap was considered and rejected (s
   - it cannot be measured here.
   It could become an opt-in for the software renderer later.
 
-## Not in this stage (deferred)
+## Not in this stage (deferred, ENG-037)
 
 - **A Core safety net when the renderer cannot present a hardware frame** (the renderer's
   `EnsureNativeFrameDevice` returns false: a host that pairs hardware decoding with the
@@ -190,16 +190,21 @@ the import path can run here. A copy-back stopgap was considered and rejected (s
   pipeline then swaps to a software decoder at the current position (the device-loss swap
   path), so a paused first frame is redrawn too.
 - **Decoding on the compositor's GPU.** FFmpeg's D3D11VA device uses the default adapter, as
-  do the renderer and Avalonia's ANGLE. If they ever differ (hybrid laptops with a per-app GPU
-  preference), the re-export after device adoption fails the LUID check and the surface
-  switches to the frame sink, with GPU decoding and one readback. Creating the decoder device
-  on the compositor's adapter (an adapter index for `av_hwdevice_ctx_create`, chosen from the
-  LUID) is deferred.
-- **A device removed during re-export.** If a frame from a lost decoder device triggers an
-  adoption, re-creating the shared textures fails and the Avalonia surface switches to the
-  frame sink for the rest of the session (sticky, `updates/027A_2`). The picture keeps
-  working; the shared path returns when the surface gets another player (a renderer change
-  in the test player). Telling a transient
-  device-removed failure from a permanent one in `OnUnavailable` is deferred.
+  do the renderer's own device and Avalonia's ANGLE, so hardware decoding adds no mismatch
+  that software decoding did not have. If the compositor ever runs on another GPU (hybrid
+  laptops), the LUID check declines the shared textures and the surface uses its frame sink
+  (GPU decoding, one readback). Creating both the renderer and the decoder on the
+  compositor's adapter (an adapter index for `av_hwdevice_ctx_create`, chosen by LUID) is
+  deferred.
+- **A device removed during re-export.** Hardware decoding re-exports the shared textures
+  whenever a new decoder device is adopted (each media open).
+  - The renderer no longer adopts a decoder device that is already removed
+    (`D3D11DeviceResources.IsDeviceRemoved`).
+  - A removal between adoption and re-export can still make the re-export fail. The Avalonia
+    surface then stays on the frame sink for the session (sticky, `updates/027A_2`). The
+    picture keeps working, and the shared path returns when the surface gets another player
+    (a renderer change in the test player).
+  - Telling a transient device-removed failure from a permanent one in `OnUnavailable` is
+    deferred.
 - **Hardware decode for the software and Vulkan renderers on Windows** (copy-back). The
   software renderer is the no-GPU fallback, and Vulkan is not a Windows target.

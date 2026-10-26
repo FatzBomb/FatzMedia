@@ -196,8 +196,8 @@ named `window` handle.
 - The Direct3D11 renderer draws D3D11 frames into whichever target is active: swap chains,
   DirectComposition, the managed frame sink (one readback) and the shared textures of the
   Avalonia surface (a GPU copy, no readback; Stage 045A). On a decoder's first frame the
-  renderer adopts its device and Core re-attaches every surface, so shared textures are
-  re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
+  renderer adopts its device (unless that device was removed by a GPU reset) and Core
+  re-attaches every surface, so shared textures are re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
   for example, decodes with D3D11VA for Direct3D11 on a GPU, and in software on WARP and for
   the software and Vulkan renderers, which take no hardware frames. Linux has software-only
   decode services; Vulkan Video is planned in 045A slice 2.

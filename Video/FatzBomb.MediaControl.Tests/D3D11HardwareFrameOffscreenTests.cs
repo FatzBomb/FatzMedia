@@ -4,7 +4,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
-using FatzBomb.MediaControl.Core.Video.Hdr;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Shared;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -17,9 +17,10 @@ namespace FatzBomb.MediaControl.Tests;
 /// device and every surface is attached again), then drawn on the GPU into the exported keyed-mutex
 /// textures, which a third device opens like a compositor, or read back into a frame sink. WARP
 /// has no video decoder, so a texture array on a second WARP device stands in for FFmpeg's D3D11VA
-/// pool (the frame is its second slice). When WARP offers no video processor these tests stop
-/// after the setup: the renderer cannot take hardware frames there at all. Real D3D11VA frames are
-/// a manual smoke check (docs/roadmap/updates/045A_1).
+/// pool (the frame is its second slice). They need WARP's video processor and NV12/P010 support;
+/// <see cref="Warp_CanStandInForADecoder"/> fails when the machine lacks them, and the other tests
+/// then stop after their setup (the renderer cannot take hardware frames there at all). Real
+/// D3D11VA frames are a manual smoke check (docs/roadmap/updates/045A_1).
 /// </summary>
 public sealed class D3D11HardwareFrameOffscreenTests
 {
@@ -35,9 +36,21 @@ public sealed class D3D11HardwareFrameOffscreenTests
     private const byte RedCr = 240;
 
     [Fact]
+    public void Warp_CanStandInForADecoder()
+    {
+        // Makes a missing capability visible: without it the tests below pass without testing.
+        using D3D11DeviceResources decoder = CreateWarpDevice();
+        Assert.True(decoder.HasVideoProcessorSupport, "WARP offers no Direct3D11 video processor on this machine.");
+        Assert.True(CanDecodeInto(decoder, Format.NV12), "WARP cannot use NV12 textures as video processor input on this machine.");
+        Assert.True(CanDecodeInto(decoder, Format.P010), "WARP cannot sample P010 textures on this machine.");
+        Assert.False(D3D11DeviceResources.IsDeviceRemoved(decoder.Device!.NativePointer));
+        Assert.False(D3D11DeviceResources.IsDeviceRemoved(IntPtr.Zero));
+    }
+
+    [Fact]
     public void AHardwareFrame_OnTheDecoderDevice_IsComposedIntoTheSharedTextures()
     {
-        using NativeD3D11PresentationBridge bridge = CreateWarpBridge();
+        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
         using D3D11DeviceResources compositor = CreateWarpDevice();
         using var consumer = new ImportingConsumer(compositor);
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
@@ -68,8 +81,8 @@ public sealed class D3D11HardwareFrameOffscreenTests
     [Fact]
     public void AHardwareFrame_OnTheDecoderDevice_IsReadBackIntoTheFrameSink()
     {
-        using NativeD3D11PresentationBridge bridge = CreateWarpBridge();
-        var sink = new CopyingFrameSink();
+        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
+        var sink = new D3D11MultiTargetTests.CopyingFrameSink();
         using var handle = new MediaPresentationFrameSinkHandle(sink);
         MediaPresentationSurfaceDescriptor primary = Primary(handle.CreateSurfaceDescriptor());
         Assert.True(bridge.AttachSurface(primary));
@@ -94,7 +107,7 @@ public sealed class D3D11HardwareFrameOffscreenTests
     {
         // HDR tone mapping (Stages 038A, 042A) on the shared-texture path: the shader writes SDR
         // into the private target, and the compositor's copy shows the same values as the CPU mapper.
-        using NativeD3D11PresentationBridge bridge = CreateWarpBridge();
+        using NativeD3D11PresentationBridge bridge = D3D11MultiTargetTests.CreateWarpBridge();
         using D3D11DeviceResources compositor = CreateWarpDevice();
         using var consumer = new ImportingConsumer(compositor);
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
@@ -114,12 +127,13 @@ public sealed class D3D11HardwareFrameOffscreenTests
 
         Assert.True(bridge.PresentNativeFrame(frame));
         Assert.False(fallback.IsRequested, fallback.Reason);
-        byte[] expected = CpuToneMapped(y, cb, cr, request);
+        // What the engine's CPU path produces for the same YCbCr (R, G, B), against BGRA pixels.
+        byte[] rgb = D3D11HdrToneMapTests.Cpu(y, cb, cr, request);
         byte[] pixels = consumer.LastFrame.Pixels;
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
             for (var channel = 0; channel < 3; channel++)
-                Assert.InRange(pixels[offset + channel], expected[channel] - 3, expected[channel] + 3);
+                Assert.InRange(pixels[offset + 2 - channel], rgb[channel] - 3, rgb[channel] + 3);
         }
     }
 
@@ -225,21 +239,6 @@ public sealed class D3D11HardwareFrameOffscreenTests
         }
     };
 
-    // What the engine's CPU path produces for the same 10-bit BT.2020 YCbCr (see D3D11HdrToneMapTests), as BGR.
-    private static byte[] CpuToneMapped(int y, int cb, int cr, HdrToneMapRequest request)
-    {
-        double yn = (y - 64) / 876.0, cbn = (cb - 512) / 896.0, crn = (cr - 512) / 896.0;
-        const double kr = 0.2627, kb = 0.0593, kg = 1 - kr - kb;
-        var r = yn + (2 * (1 - kr) * crn);
-        var b = yn + (2 * (1 - kb) * cbn);
-        var g = (yn - (kr * r) - (kb * b)) / kg;
-        static ushort ToCode(double v) => (ushort)Math.Round(Math.Clamp(v, 0, 1) * 65535);
-
-        var bgra = new byte[4];
-        new HdrToneMapper(request.SourcePeakNits, request.TargetPeakNits, request.Transfer).ConvertRow([ToCode(r), ToCode(g), ToCode(b)], bgra);
-        return bgra;
-    }
-
     private static void AssertRed(byte[] bgra)
     {
         Assert.Equal(Width * Height * 4, bgra.Length);
@@ -251,15 +250,6 @@ public sealed class D3D11HardwareFrameOffscreenTests
         }
     }
 
-    private static NativeD3D11PresentationBridge CreateWarpBridge()
-    {
-        var bridge = new NativeD3D11PresentationBridge(
-            new MediaPlayerConfiguration(),
-            new Direct3D11PresentationOptions { DeviceSelection = Direct3D11DeviceSelection.Warp });
-        Assert.True(bridge.Initialize());
-        return bridge;
-    }
-
     private static D3D11DeviceResources CreateWarpDevice()
     {
         var device = new D3D11DeviceResources(Direct3D11DeviceSelection.Warp);
@@ -269,24 +259,6 @@ public sealed class D3D11HardwareFrameOffscreenTests
 
     private static MediaPresentationSurfaceDescriptor Primary(MediaNativeSurfaceDescriptor native) =>
         new(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, MediaPresentationSurfaceRole.Primary, native, Width, Height);
-
-    private sealed class CopyingFrameSink : IMediaPresentationFrameSink
-    {
-        public int Width { get; private set; }
-        public int Height { get; private set; }
-        public int Frames { get; private set; }
-        public byte[] Pixels { get; private set; } = [];
-
-        public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
-        {
-            (Width, Height) = (width, height);
-            var pixels = new byte[width * height * 4];
-            for (var row = 0; row < height; row++)
-                bgraPixels.Slice(row * stride, width * 4).CopyTo(pixels.AsSpan(row * width * 4));
-            Pixels = pixels;
-            Frames++;
-        }
-    }
 
     /// <summary>
     /// Opens every exported texture on its own device, like Avalonia's compositor, and reads each
@@ -340,8 +312,8 @@ public sealed class D3D11HardwareFrameOffscreenTests
             ID3D11DeviceContext context = device.Context!;
             using ID3D11Texture2D staging = device.Device!.CreateTexture2D(new Texture2DDescription(
                 Format.B8G8R8A8_UNorm, Width, Height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
-            // Throws on failure; a timeout would leave other pixels, which the assertions catch.
-            mutex.AcquireSync(frame.AcquireKey, 1000);
+            // Through the vtable: Vortice's wrapper hides WAIT_TIMEOUT and WAIT_ABANDONED.
+            Assert.Equal(0, D3D11SharedTextureBackend.AcquireSync(mutex, frame.AcquireKey, 1000));
             context.CopyResource(staging, texture);
             mutex.ReleaseSync(frame.ReleaseKey);
 

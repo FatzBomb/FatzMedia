@@ -103,15 +103,17 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        var forcedSoftware = StartupOptions.Current.SoftwareDecoding && renderer.Decoding != VideoDecodingMethod.Software;
+        StartupOptions options = StartupOptions.Current;
+        var forcedSoftware = options.SoftwareDecoding && renderer.Decoding != VideoDecodingMethod.Software;
         VideoDecodingMethod decoding = forcedSoftware ? VideoDecodingMethod.Software : renderer.Decoding;
+        var decodingDetail = forcedSoftware ? "software decoding (--decoding=software)" : renderer.DecodingDetail;
         List<(MediaDiagnosticLevel, string)> lines =
         [
-            (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}"),
+            (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}, {decodingDetail}"),
             (MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"),
         ];
-        if (forcedSoftware)
-            lines.Add((MediaDiagnosticLevel.Info, $"{label}: software decoding (--decoding=software)"));
+        if (options.UnknownDecoding is { } unknown)
+            lines.Add((MediaDiagnosticLevel.Warning, $"{label}: unknown --decoding={unknown} (use auto or software); decoding as auto"));
 
         return Task.FromResult(new PlayerRendererInfo(
             $"{renderer.Kind} ({PlatformComposition.Name})",
