@@ -128,8 +128,10 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         }
 
         VideoColorSpace resolvedColorSpace = colorSpace.Resolve(width, height);
-        if (hdrOutput != null && toneMap == null)
-            return false;
+        // SDR video on a target still scRGB (only while a failed switch back to SDR is being
+        // recovered): the video processor draws it, unscaled but visible, rather than nothing.
+        if (toneMap == null)
+            hdrOutput = null;
 
         if (toneMap is { } request)
         {

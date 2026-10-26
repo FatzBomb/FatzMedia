@@ -59,6 +59,9 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public string? HdrOutputFailure { get; private set; }
 
     private Hdr10MetadataValues? _hdrMetadata;
+    // Borrowed from the renderer (not owned): re-creates the swap chain in SDR when going back
+    // from scRGB fails.
+    private D3D11DeviceResources? _deviceResources;
 
     // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
     private long _resizeRetryNotBefore;
@@ -73,6 +76,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
 
         Cleanup();
+        _deviceResources = deviceResources;
 
         try
         {
@@ -260,7 +264,31 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         if (!applied)
             HdrOutputFailure = failure ?? "the swap chain could not change its format";
 
+        // Going back to SDR failed and the buffers are still FP16: SDR content cannot be drawn
+        // into them by every path, so re-create the swap chain in SDR, as device-loss recovery
+        // does. The failure stays, keeping this swap chain SDR.
+        if (!applied && mode == HdrOutputMode.Sdr && OutputMode == HdrOutputMode.ScRgb)
+            applied = RecreateInSdr(HdrOutputFailure);
+
         return applied;
+    }
+
+    private bool RecreateInSdr(string? failure)
+    {
+        if (_deviceResources is not { } deviceResources)
+            return false;
+
+        (IntPtr hwnd, int width, int height) = (Hwnd, Width, Height);
+        (bool pending, int pendingWidth, int pendingHeight) = (HasPendingResize, _pendingWidth, _pendingHeight);
+        if (!Create(deviceResources, hwnd, width, height))
+            return false;
+
+        (HasPendingResize, _pendingWidth, _pendingHeight) = (pending, pendingWidth, pendingHeight);
+        HdrOutputFailure = failure;
+        // As on activation: a new overlay chain starts transparent.
+        ClearOverlayToTransparent(deviceResources);
+        _ = PresentOverlayAndCommit();
+        return OutputMode == HdrOutputMode.Sdr;
     }
 
     private void ReportResizeFailure(Result result, IDXGISwapChain? swapChain, string chainName, int width, int height, ref bool alreadyReported)

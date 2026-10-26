@@ -95,6 +95,11 @@ back-buffer reference is released as for a resize), and the metadata only when i
   reported once as a Warning. Retried only when the swap chain is created again (new surface,
   device-loss recovery). What the compositor and shader draw always follows the target's
   actual format (`HdrOutputMode` read from the back buffer), never the intent.
+- **Going back to SDR fails** (the buffers stay FP16, e.g. a transient `ResizeBuffers`
+  failure): the backend re-creates its swap chain in SDR, as device-loss recovery does, and
+  keeps it SDR (the failure is the reason). If even that fails, the controller does not retry
+  every frame, only after a resize, and SDR video on the still-FP16 target is drawn by the video
+  processor (unscaled, but never skipped).
 - **HDR shader fails on an scRGB target** (e.g. `d3dcompiler_47.dll` missing): the frame is not
   drawn, the decoder's CPU tone mapper takes over (as in 038A), its frames are SDR, and the
   next frame switches the swap chain back to SDR. The video processor is never asked to fill

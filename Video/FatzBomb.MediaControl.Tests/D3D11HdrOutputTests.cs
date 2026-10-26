@@ -206,6 +206,34 @@ public sealed class D3D11HdrOutputTests
     }
 
     [Fact]
+    public void AFailedSwitchBackToSdr_IsNotRetriedEveryFrame_AndKeepsDrawingScRgb()
+    {
+        var backend = new FakeHdrBackend { FailRevertWith = "ResizeBuffers to B8G8R8A8_UNorm failed" };
+        var controller = new D3D11HdrOutputController(true, _ => HdrMonitor);
+        controller.PrimeDisplay(backend.Hwnd);
+
+        Assert.Equal(HdrOutputMode.ScRgb, controller.PreparePrimary(backend, Pq4000, blocker: null)?.Mode);
+
+        // SDR video: going back fails and the buffers stay FP16. The caller is told to draw
+        // scRGB (what the buffer holds), and the switch is not tried again every frame.
+        for (var frame = 0; frame < 5; frame++)
+        {
+            HdrOutputDecision? output = controller.PreparePrimary(backend, null, blocker: null);
+            Assert.Equal(HdrOutputMode.ScRgb, output?.Mode);
+            Assert.Equal(200, output?.SdrWhiteNits);
+        }
+
+        Assert.Equal(2, backend.ModeChanges);
+
+        // A resize gives the swap chain new buffers: one more try, which now works.
+        backend.Width = 32;
+        backend.FailRevertWith = null;
+        Assert.Null(controller.PreparePrimary(backend, null, blocker: null));
+        Assert.Equal(HdrOutputMode.Sdr, backend.OutputMode);
+        Assert.Equal(3, backend.ModeChanges);
+    }
+
+    [Fact]
     public void AnOffscreenPrimary_StaysSdr()
     {
         var controller = new D3D11HdrOutputController(true, _ => HdrMonitor);
@@ -421,7 +449,7 @@ public sealed class D3D11HdrOutputTests
     {
         public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.ManagedFrameSink;
         public bool IsActive => true;
-        public int Width => 16;
+        public int Width { get; set; } = 16;
         public int Height => 8;
         public ID3D11Texture2D? TargetTexture => null;
         public D3D11TargetViewCache TargetViews { get; } = new();
@@ -436,6 +464,9 @@ public sealed class D3D11HdrOutputTests
         public HdrOutputMode OutputMode { get; private set; }
         public string? HdrOutputFailure { get; private set; }
         public string? FailWith { get; init; }
+
+        // Going back to SDR fails and leaves the buffers FP16 (a transient ResizeBuffers failure).
+        public string? FailRevertWith { get; set; }
         public int ModeChanges { get; private set; }
         public Hdr10MetadataValues? Metadata { get; private set; }
 
@@ -448,6 +479,12 @@ public sealed class D3D11HdrOutputTests
             }
 
             ModeChanges++;
+            if (mode == HdrOutputMode.Sdr && FailRevertWith != null)
+            {
+                HdrOutputFailure = FailRevertWith;
+                return false;
+            }
+
             if (FailWith != null)
             {
                 HdrOutputFailure = FailWith;

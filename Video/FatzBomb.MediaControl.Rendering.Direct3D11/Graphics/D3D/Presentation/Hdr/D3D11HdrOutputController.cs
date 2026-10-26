@@ -26,6 +26,9 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
     private HdrOutputDecision _lastDecision;
     private HdrOutputDecision? _lastScRgb;
     private HdrOutputDecision? _reported;
+    // A primary whose switch back to SDR failed with its buffers still scRGB, at that size: not
+    // retried every frame, only after a resize (or a re-created swap chain, which is SDR).
+    private (ID3D11PresentationBackend Backend, int Width, int Height)? _failedRevert;
 
     public bool IsEnabled => enabled;
 
@@ -62,7 +65,12 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
         HdrDisplayInfo display = _displays!.Get(backend.Hwnd) ?? default;
         var failed = blocker == null && backend.HdrOutputFailure != null;
         HdrOutputDecision decision = Decide(content, display, blocker ?? backend.HdrOutputFailure);
-        if (decision.Mode != backend.OutputMode || decision.Mode == HdrOutputMode.ScRgb)
+        var revertFailedHere = decision.Mode == HdrOutputMode.Sdr
+            && _failedRevert is { } stuck
+            && ReferenceEquals(stuck.Backend, primary)
+            && stuck.Width == primary.Width
+            && stuck.Height == primary.Height;
+        if (!revertFailedHere && (decision.Mode != backend.OutputMode || decision.Mode == HdrOutputMode.ScRgb))
         {
             Hdr10MetadataValues? metadata = decision.Mode == HdrOutputMode.ScRgb ? CreateMetadata(content, decision) : null;
             if (!backend.TrySetOutputMode(decision.Mode, metadata))
@@ -70,6 +78,8 @@ internal sealed class D3D11HdrOutputController(bool enabled, Func<nint, HdrDispl
                 // The change failed: SDR from now on for this swap chain, reported as a warning.
                 failed = true;
                 decision = Decide(content, display, backend.HdrOutputFailure ?? "the swap chain could not change its format");
+                if (backend.OutputMode == HdrOutputMode.ScRgb)
+                    _failedRevert = (primary, primary.Width, primary.Height);
             }
         }
 
