@@ -207,15 +207,13 @@ on, the HDR settings page shows "SDR content brightness".
 8. **Device loss** (optional): with the HDR clip playing, `dxcap -forcetdr` or a driver update:
    playback recovers, first in SDR, then scRGB on the next frame.
 
-### Host flag (not in this commit)
+### Host flag
 
-The test players are being restructured in parallel, so they were not edited. To try this, a
-host passes `new Direct3D11PresentationOptions { HdrOutput = true }` to
-`WindowsDirect3D11MediaControlPlatformFactory` / `CreatePresentationFactory`. Suggested Player
-flag: `--hdr-output`, in `FatzBomb.MediaControl.Player/Configuration/PlayerRendererSelection.cs`
-where `Direct3D11PresentationOptions { DeviceSelection = ... }` is built. The WinForms player can
-take the same flag; the Avalonia player's Direct3D11 path uses shared textures and would only
-log the SDR reason.
+A host passes `new Direct3D11PresentationOptions { HdrOutput = true }` to
+`WindowsDirect3D11MediaControlPlatformFactory` / `CreatePresentationFactory`. The WPF Player
+takes `--hdr-output` (`App.HdrOutput`, passed to `PlayerRendererSelection.Resolve`). The WinForms
+player can take the same flag; the Avalonia player's Direct3D11 path uses shared textures and
+would only log the SDR reason.
 
 ## Not in this slice
 
