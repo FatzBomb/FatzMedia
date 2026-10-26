@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
@@ -11,9 +12,9 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 /// </summary>
 internal static class NativePaths
 {
-    public static IReadOnlyList<string> Resolve(StartupOptions options)
+    public static IReadOnlyList<string> Resolve(PlayerStartupOptions options)
     {
-        List<string> requested = [.. options.Shared.NativeDirectories];
+        List<string> requested = [.. options.NativeDirectories];
         foreach (var variable in new[] { "FATZBOMB_LINUX_FFMPEG_DIR", "FATZBOMB_LINUX_BASS_DIR" })
         {
             if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } fromEnvironment)

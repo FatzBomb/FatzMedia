@@ -16,15 +16,16 @@ public partial class App : Application
     public static PlayerStartupOptions StartupOptions { get; private set; } = new();
 
     /// <summary>
-    /// Gets whether the software renderer is expected before <see cref="RendererSelection"/>
-    /// resolves: only an explicit <c>--software</c> / <c>--renderer=software</c> is known up front.
+    /// Gets whether a frame-sink renderer is expected before <see cref="RendererSelection"/>
+    /// resolves: only an explicit software or Vulkan request is known up front.
     /// </summary>
     public static bool ExpectsSoftwareRenderer { get; private set; }
 
     /// <summary>
-    /// Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software). The auto
-    /// chain creates a probe device, so it resolves off the UI thread and the window shows at once;
-    /// the main view model waits for it before creating the engine.
+    /// Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software; the shared
+    /// request since Stage 046A slice 3). The auto chain creates a probe device, so it resolves off
+    /// the UI thread and the window shows at once; each player's view model waits for it before
+    /// creating its engine.
     /// </summary>
     internal static Task<PlayerRendererSelection> RendererSelection { get; private set; } = null!;
 
@@ -37,25 +38,13 @@ public partial class App : Application
 
         PlayerStartupOptions options = PlayerStartupOptions.Parse(e.Args);
         StartupOptions = options;
-        PlayerRendererChoice rendererChoice = options.SoftwareRenderer
-            ? PlayerRendererChoice.Software
-            : PlayerRendererChoice.Auto;
-        var invalidRendererArgument = false;
-        if (options.Renderer is { } rendererArgument)
-        {
-            if (PlayerRendererSelection.TryParse(rendererArgument, out PlayerRendererChoice parsed))
-                rendererChoice = parsed;
-            else
-                invalidRendererArgument = true;
-        }
-
-        AutoHideSurfaces = !PlayerStartupOptions.HasFlag(e.Args, "--no-auto-hide");
+        AutoHideSurfaces = options.AutoHideSurfaces;
 
         _debugLog = PlayerDebugLog.Attach(LogFilePath, "Player");
 
-        ExpectsSoftwareRenderer = rendererChoice == PlayerRendererChoice.Software;
-        var invalidRendererValue = invalidRendererArgument ? options.Renderer : null;
-        RendererSelection = Task.Run(() => ResolveRenderer(rendererChoice, invalidRendererValue));
+        // Only an explicit frame-sink renderer is known up front; auto may still land on software.
+        ExpectsSoftwareRenderer = options.RendererRequest is PlayerRendererRequest.Software or PlayerRendererRequest.Vulkan;
+        RendererSelection = ResolveRendererAsync(options);
         if (options.LightweightSurfacesWindow)
             _ = ShowLightweightSurfacesWindowAsync();
     }
@@ -74,9 +63,9 @@ public partial class App : Application
         }
 
         var window = new LightweightSurfacesWindow(
-            () => new WindowsMediaControlPlatformFactory(selection.Factory),
+            () => new WindowsMediaControlPlatformFactory(selection.CreateFactory()),
             PlayerNativePaths.Combine(StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths()),
-            selection.UsesSoftwareRenderer ? Wpf.WpfPresentationMode.WpfComposited : Wpf.WpfPresentationMode.NativeHwndOverlay,
+            selection.UsesSoftwareRenderer || StartupOptions.PreferFrameSinkSurface ? Wpf.WpfPresentationMode.WpfComposited : Wpf.WpfPresentationMode.NativeHwndOverlay,
             AutoHideSurfaces)
         {
             Owner = MainWindow,
@@ -84,21 +73,9 @@ public partial class App : Application
         window.Show();
     }
 
-    private static PlayerRendererSelection ResolveRenderer(PlayerRendererChoice choice, string? invalidValue)
+    private static async Task<PlayerRendererSelection> ResolveRendererAsync(PlayerStartupOptions options)
     {
-        PlayerRendererSelection selection;
-        try
-        {
-            selection = PlayerRendererSelection.Resolve(choice, StartupOptions.HdrOutput);
-        }
-        catch (Exception ex)
-        {
-            selection = PlayerRendererSelection.SoftwareAfterFailure(ex);
-        }
-
-        if (invalidValue is not null)
-            selection.AddLogLine(MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{invalidValue}' (use auto, gpu, warp or software); using {choice.ToString().ToLowerInvariant()}.");
-
+        PlayerRendererSelection selection = await PlayerRendererSelection.ResolveInBackground(options).ConfigureAwait(false);
         Trace.WriteLine($"[Player] Renderer: {selection.Summary}");
         return selection;
     }

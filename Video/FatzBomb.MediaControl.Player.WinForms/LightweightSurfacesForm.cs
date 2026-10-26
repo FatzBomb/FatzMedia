@@ -16,7 +16,7 @@ internal sealed class LightweightSurfacesForm : Form
     private readonly TextBox _path = new() { Width = 380, Margin = new Padding(4, 6, 4, 4) };
     private int _colour;
 
-    public LightweightSurfacesForm(Func<IMediaControlPlatformFactory> createPlatformFactory, IReadOnlyList<string> nativeLibraryPaths, bool autoHide)
+    public LightweightSurfacesForm(Func<IMediaControlPlatformFactory> createPlatformFactory, IReadOnlyList<string> nativeLibraryPaths, bool autoHide, bool preferNativeWindow)
     {
         Text = "Background and karaoke surfaces (--lightweight-surfaces)";
         ClientSize = new Size(1100, 520);
@@ -26,6 +26,7 @@ internal sealed class LightweightSurfacesForm : Form
             Dock = DockStyle.Fill,
             NativeLibraryPaths = nativeLibraryPaths,
             AutoHide = autoHide,
+            PreferNativeWindow = preferNativeWindow,
             OverlayContent = new Label
             {
                 Text = "Overlay above the background",
@@ -36,7 +37,7 @@ internal sealed class LightweightSurfacesForm : Form
                 Location = new Point(16, 16),
             },
         };
-        _karaoke = new KaraokeSurface(createPlatformFactory()) { Dock = DockStyle.Fill, NativeLibraryPaths = nativeLibraryPaths, AutoHide = autoHide };
+        _karaoke = new KaraokeSurface(createPlatformFactory()) { Dock = DockStyle.Fill, NativeLibraryPaths = nativeLibraryPaths, AutoHide = autoHide, PreferNativeWindow = preferNativeWindow };
 
         var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false };
         bar.Controls.Add(_path);

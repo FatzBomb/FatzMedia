@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Presentation;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
@@ -12,12 +14,13 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly StartupOptions _options = StartupOptions.Current;
+    private readonly PlayerStartupOptions _options = StartupOptions.Current;
     private readonly IReadOnlyList<string> _nativePaths;
     private readonly List<PlayerPanel> _panels = [];
     private readonly ProcessSampler _sampler = new();
     private readonly DispatcherTimer _statsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private IReadOnlyList<RendererOption> _renderers = [];
+    private IReadOnlyList<string> _startupWarnings = [];
     private bool _ready;
     private bool _rebuilding;
     private bool _rebuildAgain;
@@ -43,13 +46,24 @@ public partial class MainWindow : Window
         foreach (RendererOption option in _renderers)
             RendererBox.Items.Add(new ComboBoxItem { Content = option.Label, IsEnabled = option.IsAvailable, Tag = option.Kind });
 
-        RendererKind chosen = Renderers.Choose(_options.Renderer, _renderers);
-        RendererBox.SelectedIndex = (int)chosen;
+        (RendererKind chosen, var rendererWarning) = Renderers.Choose(_options.RendererRequest, _renderers);
+        RendererBox.SelectedIndex = _renderers.ToList().FindIndex(option => option.Kind == chosen);
+        // The command line's problems, logged by the first build's players (Stage 046A slice 3).
+        List<string> warnings = [.. _options.DescribeUnknownValues()];
+        if (rendererWarning is not null)
+            warnings.Add(rendererWarning);
+        if (_options.HdrOutput)
+        {
+            warnings.Add("--hdr-output is not available in the Avalonia player: its surfaces are composited (shared GPU image or "
+                + "frame sink), and HDR output needs a Direct3D11 native window surface (the WPF and WinForms players). Ignored.");
+        }
+
+        _startupWarnings = warnings;
         PlayersBox.SelectedIndex = _options.Players - 1;
         InfoText.Text = $"{PlatformComposition.Name} platform | native: {string.Join(", ", _nativePaths)}";
         _ready = true;
         _statsTimer.Start();
-        if (_options.Shared.LightweightSurfacesWindow)
+        if (_options.LightweightSurfacesWindow)
             ShowLightweightSurfaces(chosen);
         await RebuildAsync();
     }
@@ -59,8 +73,8 @@ public partial class MainWindow : Window
         new LightweightSurfacesWindow(
             () => PlatformComposition.Create(Renderers.Create(kind)),
             _nativePaths,
-            _options.PreferGpuSurface,
-            _options.Shared.AutoHideSurfaces).Show(this);
+            !_options.PreferFrameSinkSurface,
+            _options.AutoHideSurfaces).Show(this);
 
     private async void OnLayoutChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -116,7 +130,12 @@ public partial class MainWindow : Window
         for (var i = 0; i < count; i++)
         {
             // Only the first player of the first build gets the startup media.
-            var panel = new PlayerPanel(i + 1, option, _nativePaths, _firstBuild ? _options.ForPlayer(i + 1) : _options.Shared.WithoutStartupMedia());
+            var panel = new PlayerPanel(
+                i + 1,
+                option,
+                _nativePaths,
+                _firstBuild ? _options.ForPlayer(i + 1) : _options.WithoutStartupMedia(),
+                _firstBuild ? _startupWarnings : []);
             panel.FullScreenToggleRequested += OnFullScreenToggleRequested;
             _panels.Add(panel);
             PlayersGrid.Children.Add(panel);

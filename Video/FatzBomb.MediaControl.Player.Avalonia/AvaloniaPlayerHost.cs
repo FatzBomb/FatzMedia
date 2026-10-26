@@ -91,9 +91,11 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
 /// One player's engine: the renderer picked in the toolbar, the platform package of this build
 /// (<see cref="PlatformComposition"/>), and the decoding that renderer can present
 /// (<see cref="RendererOption.Decoding"/>, Stage 045A: hardware for Direct3D11 on a GPU, software
-/// otherwise; <c>--decoding=software</c> forces software for CPU comparisons).
+/// otherwise; <c>--decoding=software</c> forces software for CPU comparisons). The engine is the
+/// adapter's <see cref="MediaControl.Avalonia.Player"/> (Stage 046A slice 3).
 /// </summary>
-internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label) : IPlayerEngineFactory
+/// <param name="startupWarnings">Lines logged as warnings before the engine starts (the first build's command-line problems).</param>
+internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label, IReadOnlyList<string> startupWarnings) : IPlayerEngineFactory
 {
     private IMediaControlPlatformFactory? _platformFactory;
 
@@ -103,17 +105,10 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        StartupOptions options = StartupOptions.Current;
-        var forcedSoftware = options.SoftwareDecoding && renderer.Decoding != VideoDecodingMethod.Software;
-        VideoDecodingMethod decoding = forcedSoftware ? VideoDecodingMethod.Software : renderer.Decoding;
-        var decodingDetail = forcedSoftware ? "software decoding (--decoding=software)" : renderer.DecodingDetail;
-        List<(MediaDiagnosticLevel, string)> lines =
-        [
-            (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}, {decodingDetail}"),
-            (MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"),
-        ];
-        if (options.UnknownDecoding is { } unknown)
-            lines.Add((MediaDiagnosticLevel.Warning, $"{label}: unknown --decoding={unknown} (use auto or software); decoding as auto"));
+        (VideoDecodingMethod decoding, var forced) = StartupOptions.Current.ApplyDecoding(renderer.Decoding);
+        List<(MediaDiagnosticLevel, string)> lines = [.. startupWarnings.Select(static warning => (MediaDiagnosticLevel.Warning, warning))];
+        lines.Add((MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}, {forced ?? renderer.DecodingDetail}"));
+        lines.Add((MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"));
 
         return Task.FromResult(new PlayerRendererInfo(
             $"{renderer.Kind} ({PlatformComposition.Name})",
@@ -122,11 +117,11 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
             lines));
     }
 
-    public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
+    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {
         IMediaControlPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
-        // Native loading blocks: off the UI thread.
-        return Task.Run(() => new MediaControlPlayer(platform, configuration, NativeLibraryPaths));
+        // Native loading blocks: CreateAsync runs it off the UI thread.
+        return await MediaControl.Avalonia.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
 }

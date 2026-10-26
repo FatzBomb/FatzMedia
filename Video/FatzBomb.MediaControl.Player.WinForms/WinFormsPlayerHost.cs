@@ -1,8 +1,7 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
-using FatzBomb.MediaControl.Rendering.Direct3D11;
-using FatzBomb.MediaControl.Rendering.Software;
+using FatzBomb.MediaControl.Player.Configuration;
 
 namespace FatzBomb.MediaControl.Player.WinForms;
 
@@ -69,61 +68,53 @@ internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard
 }
 
 /// <summary>
-/// The engine for the WinForms player: Windows + Direct3D11 into the HWND <c>MediaSurface</c>.
-/// <c>--renderer=auto</c> (the default: the GPU, else WARP), <c>gpu</c> or <c>warp</c>.
-/// <c>--renderer=software</c> (or <c>--software</c>) uses the software renderer, which the surface
-/// shows through its frame-sink path (Stage 046A).
+/// One WinForms player's engine: the renderer chosen once at startup (<see cref="Program.RendererSelection"/>,
+/// the Windows renderer choice shared with the WPF player: <c>--renderer=auto</c> is Direct3D11 on
+/// the GPU, then WARP, then software), a presentation factory and a Windows platform package per
+/// player, and the adapter's <see cref="MediaControl.WinForms.Player"/>. A frame-sink renderer
+/// (software, Vulkan) is shown through the surface's frame-sink path (Stage 046A).
 /// </summary>
 internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) : IPlayerEngineFactory
 {
     private IMediaControlPlatformFactory? _platformFactory;
-    private Direct3D11DeviceSelection _deviceSelection;
-    private bool _software;
+    private PlayerRendererSelection? _selection;
 
     public IReadOnlyList<string> NativeLibraryPaths { get; } = ResolveNativePaths(options);
 
     public NativeDependencyReport? NativeDependenciesAfterFailure => _platformFactory?.NativeDependencies;
 
-    public Task<PlayerRendererInfo> ResolveRendererAsync()
+    public async Task<PlayerRendererInfo> ResolveRendererAsync()
     {
-        List<(MediaDiagnosticLevel, string)> lines = [];
-        var requested = options.Renderer?.Trim().ToLowerInvariant() ?? (options.SoftwareRenderer ? "software" : "auto");
-        _software = requested is "software" or "cpu";
-        (_deviceSelection, VideoDecodingMethod decoding, var summary) = requested switch
-        {
-            "gpu" or "d3d11" or "direct3d11" or "hardware" => (Direct3D11DeviceSelection.Hardware, VideoDecodingMethod.Hardware, "Direct3D11 GPU (forced)"),
-            "warp" => (Direct3D11DeviceSelection.Warp, VideoDecodingMethod.Software, "Direct3D11 WARP (forced)"),
-            "software" or "cpu" => (Direct3D11DeviceSelection.Auto, VideoDecodingMethod.Software, "Software (forced)"),
-            _ => (Direct3D11DeviceSelection.Auto, VideoDecodingMethod.Auto, "Direct3D11 (GPU, else WARP)"),
-        };
-
-        if (requested is not ("auto" or "gpu" or "d3d11" or "direct3d11" or "hardware" or "warp" or "software" or "cpu"))
-            lines.Add((MediaDiagnosticLevel.Warning, $"Unknown --renderer value '{options.Renderer}' (use auto, gpu, warp or software); using auto."));
-
-        lines.Add((MediaDiagnosticLevel.Info, _software
-            ? "Software renderer forced (--renderer=software or --software): the surface shows it through its frame-sink path, with software decoding."
-            : $"{summary}: Direct3D11 device selection {_deviceSelection}, {decoding} video decoding."));
+        PlayerRendererSelection selection = await Program.RendererSelection.ConfigureAwait(false);
+        _selection = selection;
+        // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
+        (VideoDecodingMethod decoding, var forced) = options.ApplyDecoding(
+            selection.UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
+        List<(MediaDiagnosticLevel, string)> lines = [.. selection.LogLines];
+        if (forced is not null)
+            lines.Add((MediaDiagnosticLevel.Info, $"Video decoding: {forced}."));
         lines.Add((MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"));
-        return Task.FromResult(new PlayerRendererInfo(summary, decoding, RequiresFrameSinkSurface: _software, lines));
+        return new PlayerRendererInfo(selection.Summary, decoding, selection.UsesSoftwareRenderer, lines);
     }
 
     /// <summary>
     /// The platform for the renderer chosen at startup (also used by the lightweight-surfaces
     /// test window); a new one per call, as nothing is shared between players.
     /// </summary>
-    public IMediaControlPlatformFactory CreatePlatformFactory() => _software
-        ? new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())
-        : new WindowsDirect3D11MediaControlPlatformFactory(new Direct3D11PresentationOptions { DeviceSelection = _deviceSelection, HdrOutput = options.HdrOutput });
+    public static IMediaControlPlatformFactory CreatePlatformFactory(PlayerRendererSelection selection) =>
+        new WindowsMediaControlPlatformFactory(selection.CreateFactory());
 
-    public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
-        IMediaControlPlatformFactory platform = CreatePlatformFactory();
+        PlayerRendererSelection selection = _selection
+            ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
+        IMediaControlPlatformFactory platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
-        // Loading BASS and FFmpeg blocks, so the engine is created off the UI thread.
-        return Task.Run(() => new MediaControlPlayer(platform, configuration, NativeLibraryPaths));
+        // Loading BASS and FFmpeg blocks: CreateAsync runs it off the UI thread.
+        return await MediaControl.WinForms.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
 
-    private static IReadOnlyList<string> ResolveNativePaths(PlayerStartupOptions options)
+    internal static IReadOnlyList<string> ResolveNativePaths(PlayerStartupOptions options)
     {
         IReadOnlyList<string> defaults = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
         if (defaults.Count == 0)

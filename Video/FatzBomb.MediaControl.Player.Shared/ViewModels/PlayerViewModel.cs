@@ -89,6 +89,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         private set
         {
             if (!SetProperty(ref field, value)) return;
+            _frameCounter.Track(value);
             RefreshCommandStates();
         }
     }
