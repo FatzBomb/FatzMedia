@@ -90,6 +90,7 @@ $projectReferences = @{
     )
     'FatzBomb.MediaControl.Player.WinForms\FatzBomb.MediaControl.Player.WinForms.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
