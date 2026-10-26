@@ -764,6 +764,7 @@ public class MediaSurface : Control
             CloseOverlay();
             _overlayForm = new MediaOverlayForm { Owner = owner };
             _overlayForm.FormClosed += OnOverlayFormClosed;
+            _overlayForm.DpiChanged += OnOverlayDpiChanged;
         }
 
         MediaOverlayForm overlay = _overlayForm;
@@ -796,6 +797,7 @@ public class MediaSurface : Control
 
         _overlayForm = null;
         overlay.FormClosed -= OnOverlayFormClosed;
+        overlay.DpiChanged -= OnOverlayDpiChanged;
         overlay.SetContent(null);
         overlay.Dispose();
     }
@@ -807,7 +809,25 @@ public class MediaSurface : Control
             return;
 
         overlay.FormClosed -= OnOverlayFormClosed;
+        overlay.DpiChanged -= OnOverlayDpiChanged;
         _overlayForm = null;
+    }
+
+    // A move to a monitor of another DPI makes the form take Windows' suggested bounds after this
+    // event: put it back over the surface once that is done.
+    private void OnOverlayDpiChanged(object? sender, DpiChangedEventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed)
+            return;
+
+        try
+        {
+            _ = BeginInvoke(UpdateOverlay);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // The handle went away; the overlay closes with it.
+        }
     }
 
     private void RewatchOverlayAnchors()

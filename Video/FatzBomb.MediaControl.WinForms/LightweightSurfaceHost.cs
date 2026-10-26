@@ -5,7 +5,7 @@ namespace FatzBomb.MediaControl.WinForms;
 /// <see cref="LightweightPlayerController"/> bound to an inner <see cref="MediaSurface"/>, the
 /// platform factory rule, and the coalesced source reload on the UI thread. The control's handle
 /// stands for the WPF control's Loaded state: created, the source loads; destroyed, the player is
-/// released.
+/// released (not when the handle is only recreated).
 /// </summary>
 internal sealed class LightweightSurfaceHost : IDisposable
 {
@@ -13,6 +13,9 @@ internal sealed class LightweightSurfaceHost : IDisposable
     private readonly Func<Task> _reload;
     private IMediaControlPlatformFactory? _platformFactory;
     private bool _isContentVisible;
+    private bool _reloadScheduled;
+    private bool _reloadDropped;
+    private bool _recreatingHandle;
     private bool _disposed;
 
     public LightweightSurfaceHost(Control owner, MediaSurface surface, LightweightPlayerKind kind, string diagnosticCategory, Func<Task> reload)
@@ -60,6 +63,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
         try
         {
             _ = _owner.BeginInvoke(new Action(RunQueuedReload));
+            _reloadScheduled = true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
         {
@@ -68,14 +72,38 @@ internal sealed class LightweightSurfaceHost : IDisposable
         }
     }
 
-    public void OnHandleCreated() => QueueReload();
+    public void OnHandleCreated()
+    {
+        // A recreated handle (RecreateHandle: a style change of this control or its form) keeps
+        // the player and its media; only a reload dropped with the old handle runs again.
+        if (_recreatingHandle)
+        {
+            _recreatingHandle = false;
+            var reloadDropped = _reloadDropped;
+            _reloadDropped = false;
+            if (!reloadDropped && Controller.Player is not null)
+                return;
+        }
+
+        QueueReload();
+    }
 
     public void OnHandleDestroyed()
     {
         // A reload queued on the old handle is dropped with it.
+        _reloadDropped = _reloadScheduled;
+        _reloadScheduled = false;
         Controller.ClearQueuedReload();
-        if (!_disposed)
-            Controller.ReleasePlayer();
+        if (_disposed)
+            return;
+
+        if (_owner.RecreatingHandle)
+        {
+            _recreatingHandle = true;
+            return;
+        }
+
+        Controller.ReleasePlayer();
     }
 
     public void Dispose()
@@ -92,6 +120,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
 
     private async void RunQueuedReload()
     {
+        _reloadScheduled = false;
         Controller.ClearQueuedReload();
         if (_disposed || !_owner.IsHandleCreated)
             return;

@@ -222,30 +222,29 @@ public sealed class LightweightPlayerController : IDisposable
             return false;
 
         beforeLoad?.Invoke(player);
-        bool loaded;
+        bool accepted;
         try
         {
             player.PlayOnLoad = false;
-            loaded = await player.LoadAsync(source, ignoreSidecar: true);
-        }
-        catch (ObjectDisposedException) when (!IsCurrentReload(reload))
-        {
-            // Released while loading.
-            return false;
-        }
+            var loaded = await player.LoadAsync(source, ignoreSidecar: true);
+            if (!IsCurrentReload(reload))
+                return false;
 
-        if (!IsCurrentReload(reload))
-            return false;
-
-        var accepted = loaded && LightweightPlayerPolicy.AcceptsLoadedMedia(Kind, player.Content, source.FilePath);
-        if (!accepted)
-        {
-            if (loaded)
-                player.Close();
+            accepted = loaded && LightweightPlayerPolicy.AcceptsLoadedMedia(Kind, player.Content, source.FilePath);
+            if (!accepted)
+            {
+                if (loaded)
+                    player.Close();
+            }
+            else if (AutoPlay && LightweightPlayerPolicy.PlaysAfterLoad(Kind, player.Content))
+            {
+                _ = await player.PlayAsync();
+            }
         }
-        else if (AutoPlay && LightweightPlayerPolicy.PlaysAfterLoad(Kind, player.Content))
+        catch (Exception ex) when ((ex is ObjectDisposedException or OperationCanceledException) && !IsCurrentReload(reload))
         {
-            _ = await player.PlayAsync();
+            // Released (the player disposed) while loading or starting.
+            return false;
         }
 
         if (!IsCurrentReload(reload))
@@ -286,7 +285,7 @@ public sealed class LightweightPlayerController : IDisposable
         lock (_gate)
         {
             _lifetime++;
-            _reloadVersion++;
+            _ = Interlocked.Increment(ref _reloadVersion);
             player = _player;
             wasAnnounced = _announcedPlayer is not null;
             _player = null;

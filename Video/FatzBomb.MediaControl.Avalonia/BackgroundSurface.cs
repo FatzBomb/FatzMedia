@@ -244,6 +244,8 @@ public class BackgroundSurface : Panel, IDisposable
 
     private Task<bool> LoadMediaAsync(MediaInputSource source)
     {
+        // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
+        Dispatcher.UIThread.VerifyAccess();
         ObjectDisposedException.ThrowIf(_host.IsDisposed, this);
         return _host.Controller.LoadAsync(source, PlatformFactory);
     }

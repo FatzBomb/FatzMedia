@@ -268,6 +268,8 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private Task<bool> LoadKaraokeAsync(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        // The controller raises PlayerChanged where this call resumes: it must be the UI thread.
+        Dispatcher.VerifyAccess();
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (DesignerProperties.GetIsInDesignMode(this))
             return Task.FromResult(false);
