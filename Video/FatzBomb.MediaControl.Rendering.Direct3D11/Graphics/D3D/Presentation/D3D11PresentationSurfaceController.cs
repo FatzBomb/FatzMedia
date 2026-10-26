@@ -1,5 +1,7 @@
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Hdr;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Shared;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using Vortice.Direct3D11;
 using System.Diagnostics;
 
@@ -21,6 +23,7 @@ internal sealed class D3D11PresentationSurfaceController(
     public long TargetRevision { get; private set; }
     public IntPtr NativeHwnd { get; private set; }
     private D3D11PresentationBackendKind _activeBackendKind = D3D11PresentationBackendKind.None;
+    private HdrOutputMode _activeOutputMode;
     private long _directCompositionOverlaySplitSuppressedUntil;
     // Reused every frame (ENG-026). Every caller holds the presentation lock.
     private readonly List<D3D11PresentationBackendTarget> _scratchBackends = [];
@@ -100,11 +103,13 @@ internal sealed class D3D11PresentationSurfaceController(
                 ? Composition.Planning.CompositionTargetDescriptor.PrimaryFinalTargetId
                 : candidate.TargetId;
 
+            HdrOutputMode outputMode = OutputModeOf(backend);
             if (isPrimary && (!ReferenceEquals(texture, TargetTexture)
                 || width != Width
                 || height != Height
                 || candidate.NativeHwnd != NativeHwnd
-                || backend.Kind != _activeBackendKind))
+                || backend.Kind != _activeBackendKind
+                || outputMode != _activeOutputMode))
             {
                 Adopt(backend, candidate.NativeHwnd);
             }
@@ -119,7 +124,8 @@ internal sealed class D3D11PresentationSurfaceController(
                 candidate.BackendName,
                 isPrimary ? TargetRevision : SecondaryRevision(backend, texture),
                 Composition.Planning.CompositionTargetKind.FinalPresentation,
-                backend.TargetViews));
+                backend.TargetViews,
+                outputMode));
         }
 
         _scratchBackends.Clear();
@@ -138,6 +144,10 @@ internal sealed class D3D11PresentationSurfaceController(
         backend.Kind is D3D11PresentationBackendKind.ManagedFrameSink or D3D11PresentationBackendKind.SharedTexture
             ? HashCode.Combine(backend, texture)
             : backend.GetHashCode();
+
+    /// <summary>What a backend's target holds: only the HWND swap chains can hold scRGB (Stage 042A slice 2).</summary>
+    private static HdrOutputMode OutputModeOf(ID3D11PresentationBackend backend) =>
+        backend is ID3D11HdrOutputBackend hdr ? hdr.OutputMode : HdrOutputMode.Sdr;
 
     public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot snapshot)
     {
@@ -209,6 +219,7 @@ internal sealed class D3D11PresentationSurfaceController(
         Height = 0;
         NativeHwnd = IntPtr.Zero;
         _activeBackendKind = D3D11PresentationBackendKind.None;
+        _activeOutputMode = HdrOutputMode.Sdr;
         _directCompositionOverlaySplitSuppressedUntil = 0;
         LastActivationCreated = false;
         TargetRevision++;
@@ -682,16 +693,21 @@ internal sealed class D3D11PresentationSurfaceController(
 
     private void Adopt(ID3D11PresentationBackend backend, IntPtr nativeHwnd = default)
     {
+        // A swap chain that switched between SDR and scRGB (Stage 042A slice 2) holds new,
+        // undrawn buffers: a structural change, so a retained refresh draws instead of skipping.
+        HdrOutputMode outputMode = OutputModeOf(backend);
         var structuralChange = Width != backend.Width
             || Height != backend.Height
             || NativeHwnd != nativeHwnd
-            || _activeBackendKind != backend.Kind;
+            || _activeBackendKind != backend.Kind
+            || _activeOutputMode != outputMode;
 
         TargetTexture = backend.TargetTexture;
         Width = backend.Width;
         Height = backend.Height;
         NativeHwnd = nativeHwnd;
         _activeBackendKind = backend.Kind;
+        _activeOutputMode = outputMode;
 
         if (structuralChange)
         {

@@ -5,10 +5,12 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Hdr;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Managed;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using System.Diagnostics;
 
@@ -45,6 +47,7 @@ internal sealed class D3D11RendererPresentationServices
     {
         _configuration = configuration;
         _deviceResources = deviceResources;
+        HdrOutput = new D3D11HdrOutputController(options.HdrOutput, Win32MonitorHdr.TryGet);
 
         VideoProcessorPresenter = new D3D11VideoProcessorPresenter(configuration);
         Diagnostics = new D3D11PresentationDiagnostics(configuration);
@@ -241,7 +244,10 @@ internal sealed class D3D11RendererPresentationServices
             framesPerSecond,
             colorSpace,
             toneMap,
-            notifyPresented);
+            notifyPresented,
+            // Plain hardware video on the primary only (Core composes otherwise): HDR output
+            // decides from the frame alone (Stage 042A slice 2).
+            isDisposed || !_deviceResources.HasDevice ? null : HdrOutput.PreparePrimary(Backends.Active, toneMap, blocker: null));
 
     // isDisposed is read live: the owner can be disposed while a present is in flight.
     public bool NotifyFramePresented(Func<bool> isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
@@ -332,11 +338,13 @@ internal sealed class D3D11RendererPresentationServices
             return false;
         }
 
+        HdrOutputDecision? hdrOutput = PrepareCompositionHdrOutput(frame, ref targets);
         if (!MediaCompositor.PresentToTargets(
                 _deviceResources,
                 frame,
                 targets,
                 VideoProcessorPresenter,
+                hdrOutput,
                 out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
         {
             LastCompositionFailureReason = MediaCompositor.LastFailureReason ?? "media compositor draw failed";
@@ -354,6 +362,33 @@ internal sealed class D3D11RendererPresentationServices
             LastCompositionFailureReason = "swap chain present was not completed";
 
         return presented;
+    }
+
+    /// <summary>
+    /// HDR output for a composition (Stage 042A slice 2): decided from its video background (a
+    /// new hardware frame, or the one a retained refresh shows), SDR while another window shows
+    /// the composition or a video effect is on. When the primary swap chain changes format, the
+    /// targets are taken again (their buffers are new).
+    /// </summary>
+    private HdrOutputDecision? PrepareCompositionHdrOutput(MediaCompositionFrame frame, ref IReadOnlyList<D3D11PresentationTargetSnapshot> targets)
+    {
+        if (!HdrOutput.IsEnabled)
+            return null;
+
+        HdrToneMapRequest? content = frame.HasNativeBackground
+            ? frame.BackgroundNativeResource!.HdrToneMap
+            : frame.HasBackground ? null : frame.HasRetainedBackground ? MediaCompositor.BackgroundHdrContent : null;
+        string? blocker = targets.Count > 1
+            ? D3D11HdrOutputController.SecondaryTargetReason
+            : !frame.BaseVisualTransform.IsIdentity ? D3D11HdrOutputController.VideoEffectReason : null;
+
+        ID3D11PresentationBackend? primary = Backends.Active;
+        HdrOutputMode before = primary is ID3D11HdrOutputBackend hdrBefore ? hdrBefore.OutputMode : HdrOutputMode.Sdr;
+        HdrOutputDecision? decision = HdrOutput.PreparePrimary(primary, content, blocker);
+        if (primary is ID3D11HdrOutputBackend hdrAfter && hdrAfter.OutputMode != before)
+            targets = Surfaces.GetActiveTargetSnapshots(applyPendingNativeResize: false, reason: "media composition presentation (HDR output changed)");
+
+        return decision;
     }
 
     private bool PresentMediaCompositionWithDirectCompositionOverlaySplit(
@@ -553,6 +588,9 @@ internal sealed class D3D11RendererPresentationServices
     }
 
     public D3D11VideoProcessorPresenter VideoProcessorPresenter { get; }
+
+    /// <summary>HDR output on HDR displays (Stage 042A slice 2); inert unless the option is on.</summary>
+    public D3D11HdrOutputController HdrOutput { get; }
 
     public D3D11PresentationDiagnostics Diagnostics { get; }
 

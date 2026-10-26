@@ -4,6 +4,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
@@ -39,7 +40,8 @@ internal sealed class D3D11FramePresenter(
         int presentationWidth,
         int presentationHeight,
         MediaCompositionStretchMode presentationStretch,
-        Func<int, int, bool> notifyPresented)
+        Func<int, int, bool> notifyPresented,
+        HdrOutputDecision? hdrOutput = null)
     {
         if (deviceResources.Context == null
             || !deviceResources.HasVideoProcessorSupport
@@ -71,7 +73,8 @@ internal sealed class D3D11FramePresenter(
                 toneMap,
                 presentationWidth,
                 presentationHeight,
-                presentationStretch);
+                presentationStretch,
+                hdrOutput);
             if (!presented)
             {
                 return false;

@@ -7,6 +7,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -21,6 +22,8 @@ namespace FatzBomb.MediaControl.Core.Graphics.Composition;
 /// <summary>
 /// D3D11 implementation of the single media compositor. It draws an optional
 /// background/base layer, optional wash layer, optional CDG foreground overlay, then presents once.
+/// An scRGB (FP16) target (HDR output, Stage 042A slice 2) gets HDR video as scRGB and every SDR
+/// layer linearized and scaled to the SDR white level, blended in linear light.
 /// </summary>
 internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDiagnostics = false, bool enableCompositionDiagnostics = false)
 {
@@ -59,6 +62,11 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private ID3D11RasterizerState? _rasterizerState;
     private readonly Dictionary<string, PostProcessTarget> _postProcessTargets = new(StringComparer.OrdinalIgnoreCase);
     private long _lastDrawnRevision = -1;
+    // HDR output (Stage 042A slice 2): the SDR white level of scRGB targets, in scRGB units;
+    // the one the scRGB background was filled with; and the HDR video the background holds.
+    private float _sdrScale = 1f;
+    private float _backgroundSdrScale = 1f;
+    private HdrToneMapRequest? _backgroundHdrContent;
     private string? _lastLayerDiagnosticSummary;
     private bool _pipelineFailed;
     private int _compositionPasses;
@@ -76,6 +84,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
     public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasCdgResources == true;
 
+    /// <summary>
+    /// The HDR video (transfer and peak) the background layer last received from a hardware
+    /// frame, or null: what a retained refresh of that background shows, for the HDR output
+    /// decision (Stage 042A slice 2).
+    /// </summary>
+    public HdrToneMapRequest? BackgroundHdrContent => _backgroundHdrContent;
+
     /// <summary>Gets how many per-target post-process textures are kept (tests).</summary>
     internal int PostProcessTargetCount => _postProcessTargets.Count;
 
@@ -89,10 +104,15 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _targetRegistry.Reset();
         _scratchValidTargets.Clear();
         _scratchPresentationTargets.Clear();
+        _backgroundHdrContent = null;
         ReleaseResources();
     }
 
-    public void ClearBackgroundFrame() => _layerCache.GetOrCreate(MediaCompositionLayerId.Background).Clear();
+    public void ClearBackgroundFrame()
+    {
+        _backgroundHdrContent = null;
+        _layerCache.GetOrCreate(MediaCompositionLayerId.Background).Clear();
+    }
 
     public bool SetHardwareBackgroundFrame(
         D3D11DeviceResources deviceResources,
@@ -105,7 +125,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         VideoColorSpace colorSpace,
         HdrToneMapRequest? toneMap,
         MediaCompositionStretchMode stretchMode,
-        long backgroundRevision)
+        long backgroundRevision,
+        HdrOutputDecision? hdrOutput = null)
     {
         if (deviceResources.Device == null
             || deviceResources.Context == null
@@ -121,6 +142,9 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             MediaCompositionStretchMode normalizedStretchMode = stretchMode == MediaCompositionStretchMode.Auto
                 ? MediaCompositionStretchMode.UniformFit
                 : stretchMode;
+            // HDR output: HDR video is kept as scRGB in an FP16 layer (Stage 042A slice 2).
+            HdrOutputDecision? scRgb = toneMap != null && hdrOutput is { Mode: HdrOutputMode.ScRgb } ? hdrOutput : null;
+            Format format = scRgb != null ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
             var hasCurrentRetainedCopy = backgroundRevision >= 0
                 && backgroundLayer.UploadedRevision == backgroundRevision
                 && !backgroundLayer.NeedsUpload
@@ -128,11 +152,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 && backgroundLayer.TextureWidth == width
                 && backgroundLayer.TextureHeight == height
                 && backgroundLayer.TextureStride == width * 4
+                && backgroundLayer.TextureFormat == format
                 && backgroundLayer.StretchMode == normalizedStretchMode;
             if (hasCurrentRetainedCopy)
                 return true;
 
-            if (!backgroundLayer.EnsureRenderTargetTexture(deviceResources.Device, width, height, width * 4, normalizedStretchMode)
+            if (!backgroundLayer.EnsureRenderTargetTexture(deviceResources.Device, width, height, width * 4, normalizedStretchMode, format)
                 || backgroundLayer.Texture == null
                 || backgroundLayer.ShaderResourceView == null)
                 return false;
@@ -150,13 +175,18 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     toneMap,
                     width,
                     height,
-                    MediaCompositionStretchMode.Fill))
+                    MediaCompositionStretchMode.Fill,
+                    scRgb))
             {
                 backgroundLayer.Clear();
+                _backgroundHdrContent = null;
                 return false;
             }
 
             backgroundLayer.MarkUploaded(backgroundRevision);
+            _backgroundHdrContent = toneMap;
+            if (scRgb is { } output)
+                _backgroundSdrScale = (float)HdrOutputPolicy.SdrScale(output.SdrWhiteNits);
             return true;
         }
         catch (Exception ex)
@@ -173,6 +203,38 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
         D3D11VideoProcessorPresenter? videoProcessorPresenter = null)
         => PresentToTargets(deviceResources, frame, targets, videoProcessorPresenter, out _);
+
+    /// <summary>
+    /// <see cref="PresentToTargets(D3D11DeviceResources, MediaCompositionFrame, IReadOnlyList{D3D11PresentationTargetSnapshot}, D3D11VideoProcessorPresenter?, out IReadOnlyList{D3D11PresentationTargetSnapshot})"/>
+    /// with HDR output (Stage 042A slice 2): <paramref name="hdrOutput"/>, when set, is the scRGB
+    /// decision for this composition (HDR video is kept as scRGB, at its display peak; SDR layers
+    /// on scRGB targets use its SDR white level).
+    /// </summary>
+    public bool PresentToTargets(
+        D3D11DeviceResources deviceResources,
+        MediaCompositionFrame frame,
+        IReadOnlyList<D3D11PresentationTargetSnapshot> targets,
+        D3D11VideoProcessorPresenter? videoProcessorPresenter,
+        HdrOutputDecision? hdrOutput,
+        out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets)
+    {
+        HdrOutputDecision? scRgb = hdrOutput is { Mode: HdrOutputMode.ScRgb } ? hdrOutput : null;
+        if (scRgb is { } output)
+            _sdrScale = (float)HdrOutputPolicy.SdrScale(output.SdrWhiteNits);
+
+        _hdrOutput = scRgb;
+        try
+        {
+            return PresentToTargets(deviceResources, frame, targets, videoProcessorPresenter, out presentedTargets);
+        }
+        finally
+        {
+            _hdrOutput = null;
+        }
+    }
+
+    // The scRGB decision of the composition being presented (see the overload above), or null.
+    private HdrOutputDecision? _hdrOutput;
 
     public bool DrawCdgOverlayToTarget(
         D3D11DeviceResources deviceResources,
@@ -338,7 +400,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                         target.Width,
                         target.Height,
                         ownedView ?? target.TargetViews!.Get(deviceResources.Device, target.Texture),
-                        clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious);
+                        clearTarget: frame.ClearMode != MediaCompositionClearMode.PreservePrevious,
+                        target.OutputMode);
                 }
                 finally
                 {
@@ -411,13 +474,16 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 resource.ColorSpace,
                 resource.HdrToneMap,
                 frame.EffectiveBackgroundStretchMode,
-                frame.BackgroundRevision);
+                frame.BackgroundRevision,
+                _hdrOutput);
         }
 
         if (frame.HasBackground)
         {
             if (backgroundLayer == null || descriptor == null)
                 return false;
+
+            _backgroundHdrContent = null;
 
             var revisionMatches = frame.BackgroundRevision >= 0 && frame.BackgroundRevision == backgroundLayer.UploadedRevision;
             var dimensionsMatch = backgroundLayer.HasTexture
@@ -613,9 +679,14 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int outputWidth,
         int outputHeight,
         ID3D11RenderTargetView renderTargetView,
-        bool clearTarget)
+        bool clearTarget,
+        HdrOutputMode targetMode = HdrOutputMode.Sdr)
     {
         var transformWholeComposition = frame.BaseVisualTransform is { IsIdentity: false, IncludeOverlays: true };
+        // Layers are drawn as scRGB only straight into an scRGB target; the whole-composition
+        // transform's intermediate texture is 8-bit sRGB, converted by its final pass.
+        var scRgbTarget = targetMode == HdrOutputMode.ScRgb;
+        var scRgbLayers = scRgbTarget && !transformWholeComposition;
         PostProcessTarget? postProcessTarget = null;
         if (transformWholeComposition && !TryGetPostProcessTarget(device, targetId, outputWidth, outputHeight, out postProcessTarget))
             return false;
@@ -637,7 +708,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             if (clearTarget || transformWholeComposition)
                 context.ClearRenderTargetView(
                     compositionRenderTargetView,
-                    clearTarget ? ResolveClearColor(frame) : new Color4(0f, 0f, 0f, 0f));
+                    clearTarget ? ToOutputColor(ResolveClearColor(frame), scRgbLayers) : new Color4(0f, 0f, 0f, 0f));
 
             if (frame.HasShaderVisibleLayer)
             {
@@ -651,7 +722,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             if (frame.HasAnyBackground
                 && backgroundLayer?.HasTexture == true
                 && _backgroundPixelShader != null)
-                if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer, applyTransform: !transformWholeComposition))
+                if (!DrawBackgroundLayer(context, outputWidth, outputHeight, backgroundLayer, applyTransform: !transformWholeComposition, scRgbLayers))
                     return false;
 
             D3D11CompositionLayerState? washLayer = _layerCache.TryGet(MediaCompositionLayerId.Wash);
@@ -660,14 +731,14 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 if (washLayer?.HasSolidColor != true)
                     return false;
 
-                DrawWashLayer(context, outputWidth, outputHeight, washLayer);
+                DrawWashLayer(context, outputWidth, outputHeight, washLayer, scRgbLayers);
             }
 
             D3D11CompositionLayerState? overlayLayer = _layerCache.TryGet(MediaCompositionLayerId.Overlay);
             CdgRenderSnapshot? snapshot = frame.CdgOverlay;
             if (frame.HasCdgOverlay && snapshot != null && !frame.SuppressCdgOverlayDraw)
             {
-                if (overlayLayer == null || !DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer))
+                if (overlayLayer == null || !DrawCdgOverlayLayer(context, snapshot, outputWidth, outputHeight, overlayLayer, scRgbLayers))
                     return false;
                 _lastDrawnRevision = snapshot.Revision;
             }
@@ -677,7 +748,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             D3D11CompositionLayerState? subtitleLayer = _layerCache.TryGet(MediaCompositionLayerId.Subtitle);
             if (frame.HasSubtitleOverlay)
             {
-                if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer))
+                if (subtitleLayer == null || !DrawSubtitleLayer(context, outputWidth, outputHeight, subtitleLayer, scRgbLayers))
                     return false;
             }
 
@@ -688,7 +759,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     outputWidth,
                     outputHeight,
                     renderTargetView,
-                    postProcessTarget!.ShaderResourceView))
+                    postProcessTarget!.ShaderResourceView,
+                    scRgbTarget))
             {
                 return false;
             }
@@ -791,7 +863,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int outputWidth,
         int outputHeight,
         D3D11CompositionLayerState backgroundLayer,
-        bool applyTransform = true)
+        bool applyTransform = true,
+        bool scRgbTarget = false)
     {
         ID3D11ShaderResourceView? shaderResourceView = backgroundLayer.ShaderResourceView;
         if (shaderResourceView == null || _backgroundPixelShader == null || _baseVisualPixelShader == null)
@@ -802,7 +875,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             ? backgroundLayer.Descriptor?.BaseVisualTransform ?? BaseVisualTransform.Identity
             : BaseVisualTransform.Identity;
 
-        SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0), transform);
+        // An scRGB background (HDR video) goes straight into an scRGB target, and is encoded for
+        // an SDR one (a retained frame after the output went back to SDR); an sRGB one is
+        // linearized for an scRGB target.
+        Vector4 output = backgroundLayer.HoldsScRgb
+            ? (scRgbTarget ? default : new Vector4(0f, 0f, _backgroundSdrScale, 0f))
+            : SdrLayerOutput(scRgbTarget, premultiplied: false);
+        SetQuadConstants(context, backgroundRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0), transform, output);
         context.PSSetShader(transform.IsIdentity ? _backgroundPixelShader : _baseVisualPixelShader);
         context.PSSetShaderResource(0, shaderResourceView);
         context.Draw(4, 0);
@@ -816,7 +895,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int outputWidth,
         int outputHeight,
         ID3D11RenderTargetView renderTargetView,
-        ID3D11ShaderResourceView sourceShaderResourceView)
+        ID3D11ShaderResourceView sourceShaderResourceView,
+        bool scRgbTarget = false)
     {
         if (_baseVisualPostPixelShader == null)
             return false;
@@ -831,7 +911,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             outputWidth,
             outputHeight,
             new Vector4(0f, 0f, 0f, 0f),
-            transform);
+            transform,
+            SdrLayerOutput(scRgbTarget, premultiplied: true));
         context.PSSetShader(_baseVisualPostPixelShader);
         context.PSSetShaderResource(0, sourceShaderResourceView);
         context.Draw(4, 0);
@@ -844,7 +925,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         CdgRenderSnapshot snapshot,
         int outputWidth,
         int outputHeight,
-        D3D11CompositionLayerState overlayLayer)
+        D3D11CompositionLayerState overlayLayer,
+        bool scRgbTarget = false)
     {
         if (!overlayLayer.HasCdgResources || overlayLayer.CdgIndexShaderResourceView == null || overlayLayer.CdgPaletteShaderResourceView == null || _pixelShader == null)
             return false;
@@ -861,7 +943,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             cdgDestination,
             outputWidth,
             outputHeight,
-            new Vector4(CdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f));
+            new Vector4(CdgConstants.ColorCount, snapshot.BackgroundColorIndex, 0f, 0f),
+            outputTransform: SdrLayerOutput(scRgbTarget, premultiplied: false));
         DrawCdgForegroundLayer(
             context,
             overlayLayer.CdgIndexShaderResourceView,
@@ -869,7 +952,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         return true;
     }
 
-    private bool DrawSubtitleLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState subtitleLayer)
+    private bool DrawSubtitleLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState subtitleLayer, bool scRgbTarget = false)
     {
         if (subtitleLayer.ShaderResourceView == null || _backgroundPixelShader == null || _premultipliedBlendState == null)
             return false;
@@ -895,7 +978,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 outputWidth,
                 outputHeight,
                 subtitleLayer.StretchMode);
-        SetQuadConstants(context, subtitleRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0));
+        SetQuadConstants(context, subtitleRect, outputWidth, outputHeight, new Vector4(0, 0, 0, 0), outputTransform: SdrLayerOutput(scRgbTarget, premultiplied: true));
         context.OMSetBlendState(_premultipliedBlendState);
         context.PSSetShader(_backgroundPixelShader);
         context.PSSetShaderResource(0, subtitleLayer.ShaderResourceView);
@@ -922,15 +1005,16 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         return new RectD(left, top, width, height);
     }
 
-    private void DrawWashLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState washLayer)
-        => DrawWashArgbLayer(context, outputWidth, outputHeight, washLayer.SolidColorArgb, premultipliedOutput: false);
+    private void DrawWashLayer(ID3D11DeviceContext context, int outputWidth, int outputHeight, D3D11CompositionLayerState washLayer, bool scRgbTarget = false)
+        => DrawWashArgbLayer(context, outputWidth, outputHeight, washLayer.SolidColorArgb, premultipliedOutput: false, scRgbTarget);
 
     private void DrawWashArgbLayer(
         ID3D11DeviceContext context,
         int outputWidth,
         int outputHeight,
         uint washArgb,
-        bool premultipliedOutput = false)
+        bool premultipliedOutput = false,
+        bool scRgbTarget = false)
     {
         var alpha = ((washArgb >> 24) & 0xFF) / 255.0f;
         ID3D11PixelShader? pixelShader = premultipliedOutput ? _premultipliedSolidPixelShader : _solidPixelShader;
@@ -940,7 +1024,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         var r = ((washArgb >> 16) & 0xFF) / 255.0f;
         var g = ((washArgb >> 8) & 0xFF) / 255.0f;
         var b = (washArgb & 0xFF) / 255.0f;
-        SetQuadConstants(context, new RectD(0, 0, outputWidth, outputHeight), outputWidth, outputHeight, new Vector4(r, g, b, alpha));
+        SetQuadConstants(
+            context,
+            new RectD(0, 0, outputWidth, outputHeight),
+            outputWidth,
+            outputHeight,
+            new Vector4(r, g, b, alpha),
+            outputTransform: SdrLayerOutput(scRgbTarget, premultipliedOutput));
         context.PSSetShader(pixelShader);
         context.Draw(4, 0);
     }
@@ -968,7 +1058,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         int outputWidth,
         int outputHeight,
         Vector4 paletteInfo,
-        BaseVisualTransform transform = default)
+        BaseVisualTransform transform = default,
+        Vector4 outputTransform = default)
     {
         var left = (int)Math.Round(destinationRect.Left);
         var top = (int)Math.Round(destinationRect.Top);
@@ -999,7 +1090,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 transform.RedGain,
                 transform.GreenGain,
                 transform.BlueGain,
-                0f)
+                0f),
+            OutputTransform = outputTransform
         };
 
         ID3D11Buffer constantBuffer = _constantBuffer
@@ -1246,6 +1338,23 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
 
 
+    /// <summary>
+    /// The shader's output transform for an SDR layer (Stage 042A slice 2): on an scRGB target,
+    /// the sRGB EOTF times the SDR white level (x), with y = 1 for premultiplied colors; nothing
+    /// on an SDR target.
+    /// </summary>
+    private Vector4 SdrLayerOutput(bool scRgbTarget, bool premultiplied) =>
+        scRgbTarget ? new Vector4(_sdrScale, premultiplied ? 1f : 0f, 0f, 0f) : default;
+
+    /// <summary>An sRGB clear color, as scRGB at the SDR white level for an scRGB target.</summary>
+    private Color4 ToOutputColor(Color4 color, bool scRgbTarget) => scRgbTarget
+        ? new Color4(
+            (float)(HdrOutputPolicy.SrgbToLinear(color.R) * _sdrScale),
+            (float)(HdrOutputPolicy.SrgbToLinear(color.G) * _sdrScale),
+            (float)(HdrOutputPolicy.SrgbToLinear(color.B) * _sdrScale),
+            color.A)
+        : color;
+
     private static Color4 ToColor4(uint argb)
     {
         var a = ((argb >> 24) & 0xFF) / 255.0f;
@@ -1371,6 +1480,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         public Vector4 TransformAdjustments;
         public Vector4 TransformBlend;
         public Vector4 TransformRgbGains;
+        public Vector4 OutputTransform;
     }
 
     private sealed class PostProcessTarget(
@@ -1403,6 +1513,10 @@ cbuffer CdgConstants : register(b0)
     float4 TransformAdjustments;
     float4 TransformBlend;
     float4 TransformRgbGains;
+    // HDR output (Stage 042A slice 2). x: SDR white in scRGB units, to linearize an sRGB color
+    // into scRGB (0 = off); y: 1 when the color is premultiplied; z: SDR white in scRGB units, to
+    // encode an scRGB color as sRGB for an SDR target (0 = off).
+    float4 OutputTransform;
 };
 
 Texture2D IndexTexture : register(t0);
@@ -1439,9 +1553,54 @@ VertexOut VSMain(uint vertexId : SV_VertexID)
     return output;
 }
 
+float3 SrgbToLinear(float3 color)
+{
+    color = saturate(color);
+    return color <= 0.04045f ? color / 12.92f : pow((color + 0.055f) / 1.055f, 2.4f);
+}
+
+float3 LinearToSrgb(float3 color)
+{
+    color = saturate(color);
+    return color <= 0.0031308f ? color * 12.92f : (1.055f * pow(color, 1.0f / 2.4f)) - 0.055f;
+}
+
+float3 Straight(float4 color)
+{
+    return OutputTransform.y > 0.5f ? color.rgb / max(color.a, 0.000001f) : color.rgb;
+}
+
+float4 Premultiply(float3 color, float alpha)
+{
+    return float4(OutputTransform.y > 0.5f ? color * alpha : color, alpha);
+}
+
+// An sRGB color as scRGB at the SDR white level, as Windows shows SDR content in HDR mode.
+float4 LinearizeForScRgb(float4 color)
+{
+    if (OutputTransform.x <= 0.0f)
+        return color;
+
+    return Premultiply(SrgbToLinear(Straight(color)) * OutputTransform.x, color.a);
+}
+
+// An scRGB color as sRGB, SDR white at 1 and brighter light clipped.
+float4 EncodeForSdr(float4 color)
+{
+    if (OutputTransform.z <= 0.0f)
+        return color;
+
+    return Premultiply(LinearToSrgb(Straight(color) / OutputTransform.z), color.a);
+}
+
+float4 ToOutput(float4 color)
+{
+    return LinearizeForScRgb(EncodeForSdr(color));
+}
+
 float4 PSBackground(VertexOut input) : SV_TARGET
 {
-    return IndexTexture.Sample(PointSampler, input.TexCoord);
+    return ToOutput(IndexTexture.Sample(PointSampler, input.TexCoord));
 }
 
 float3 ApplyVisualTransform(float3 color)
@@ -1487,10 +1646,10 @@ float3 ApplyVisualTransform(float3 color)
 
 float4 PSBaseVisual(VertexOut input) : SV_TARGET
 {
-    float4 sampled = IndexTexture.Sample(PointSampler, input.TexCoord);
+    float4 sampled = EncodeForSdr(IndexTexture.Sample(PointSampler, input.TexCoord));
     // A B8G8R8A8_UNORM SRV is exposed to HLSL as logical RGBA channels;
     // the format describes memory layout and does not require a manual swizzle.
-    return float4(ApplyVisualTransform(sampled.rgb), sampled.a);
+    return LinearizeForScRgb(float4(ApplyVisualTransform(sampled.rgb), sampled.a));
 }
 
 float4 PSBaseVisualPremultiplied(VertexOut input) : SV_TARGET
@@ -1502,17 +1661,17 @@ float4 PSBaseVisualPremultiplied(VertexOut input) : SV_TARGET
     }
 
     float3 color = ApplyVisualTransform(sampled.rgb / sampled.a);
-    return float4(color * sampled.a, sampled.a);
+    return LinearizeForScRgb(float4(color * sampled.a, sampled.a));
 }
 
 float4 PSSolid(VertexOut input) : SV_TARGET
 {
-    return PaletteInfo;
+    return LinearizeForScRgb(PaletteInfo);
 }
 
 float4 PSSolidPremultiplied(VertexOut input) : SV_TARGET
 {
-    return float4(PaletteInfo.rgb * PaletteInfo.a, PaletteInfo.a);
+    return LinearizeForScRgb(float4(PaletteInfo.rgb * PaletteInfo.a, PaletteInfo.a));
 }
 
 float4 PSMain(VertexOut input) : SV_TARGET
@@ -1539,7 +1698,7 @@ float4 PSMain(VertexOut input) : SV_TARGET
 
     float paletteU = (paletteIndex + 0.5f) / PaletteInfo.x;
     float4 color = PaletteTexture.Sample(PointSampler, float2(paletteU, 0.5f));
-    return float4(color.rgb, 1.0f);
+    return LinearizeForScRgb(float4(color.rgb, 1.0f));
 }
 ";
 

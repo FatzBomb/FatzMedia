@@ -2,8 +2,8 @@
 
 Prepared: 2026-10-18 (idea, deferred from 038A). Activated: 2026-10-24.
 Status: slice 1 (HLG tone mapping) implemented, pending manual smoke (`updates/042A_1`).
-Slice 2 (HDR output on HDR displays, Direct3D11) is planned; its renderer-neutral policy and
-math are implemented and tested (`updates/042A_2`), the Direct3D11 wiring is not started.
+Slice 2 (HDR output on HDR displays, Direct3D11, opt-in) implemented for the primary window
+(DirectComposition and native HWND swap chains), pending manual smoke (`updates/042A_2`).
 
 038A tone maps HDR10 (PQ) to SDR on the CPU for every renderer and in a Direct3D11 shader for
 hardware-decoded video. This stage adds HLG to the same paths, then prepares real HDR output.
@@ -45,7 +45,21 @@ Acceptance criteria:
 Not in slice 1: HLG tagged with BT.709 primaries (rare; treated as BT.2020, like HDR10), a
 configurable HLG nominal peak, Dolby Vision, dynamic metadata.
 
-## Slice 2 - HDR output on HDR displays (planned; policy and math implemented)
+## Slice 2 - HDR output on HDR displays (implemented, pending manual smoke)
+
+Wired 2026-10-26 (`updates/042A_2`): `Direct3D11PresentationOptions.HdrOutput`, per-monitor
+detection (`Win32MonitorHdr`, cached in `MonitorQueryCache<T>`), the decision and switch per
+frame (`D3D11HdrOutputController`), FP16 scRGB swap chains for the primary window (the
+DirectComposition base chain, which is what primary windows use, and the native HWND chain),
+the HDR shader's scRGB output and SDR layers linearized at the SDR white level in the
+compositor. Fallback to SDR tone mapping on any failure, one `D3D11.HdrOutput` line per change.
+Differences from the plan below: the DirectComposition primary is wired too (plan step 1 named
+native HWND as the main path; it is the fallback); the Player flag is not added (the test players
+are being restructured; see the update for the host change); retained-frame and failure details
+are in the update. Still SDR: secondary windows, offscreen surfaces, video effects, software
+decoding.
+
+The plan as written before the wiring:
 
 When Windows HDR is on for the monitor, present HDR video as HDR instead of tone mapping it to
 SDR. Opt-in: a Direct3D11 renderer option, default off, so SDR output is untouched.
