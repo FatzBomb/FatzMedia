@@ -3,7 +3,7 @@
 Stage: 039A.2 - Network video: read-ahead
 Date: 2026-10-25
 
-## Status: IMPLEMENTED - owner smoke passed 2026-10-26 except steps 4, 5 and 7
+## Status: IMPLEMENTED - owner smoke passed 2026-10-26 except steps 4 and 5
 
 Owner's scope: forward read-ahead only. No back-buffer and no whole-file cache: after a seek
 outside the buffered range the player rebuffers from the new position.
@@ -193,4 +193,6 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
 - Step 6 (progressive MP4 with ranges, `avsync.mp4` flash and beep): in sync, also after seeks;
   Loop restarts once per lap with sound. `python -m http.server` has no range support and cannot
   serve an MP4 whose index is at the end (recorded in ENG-034); a range-capable server works.
-- Not run yet: steps 4 and 5 (network loss, close during a stall) and step 7 (Audio mode).
+- Step 7 (Audio mode, mux.dev HLS): plays, seeks, pauses and resumes; each seek shows a short
+  `Buffering=True` (250-500 ms). The Avalonia test player seeks on release only (no scrub).
+- Not run yet: steps 4 and 5 (network loss, close during a stall).
