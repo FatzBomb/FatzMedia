@@ -8,6 +8,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Shared;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using Xunit.Abstractions;
 
 namespace FatzBomb.MediaControl.Tests;
 
@@ -17,12 +18,13 @@ namespace FatzBomb.MediaControl.Tests;
 /// device and every surface is attached again), then drawn on the GPU into the exported keyed-mutex
 /// textures, which a third device opens like a compositor, or read back into a frame sink. WARP
 /// has no video decoder, so a texture array on a second WARP device stands in for FFmpeg's D3D11VA
-/// pool (the frame is its second slice). They need WARP's video processor and NV12/P010 support;
-/// <see cref="Warp_CanStandInForADecoder"/> fails when the machine lacks them, and the other tests
-/// then stop after their setup (the renderer cannot take hardware frames there at all). Real
-/// D3D11VA frames are a manual smoke check (docs/roadmap/updates/045A_1).
+/// pool (the frame is its second slice). They need WARP's video processor and NV12/P010 support,
+/// which the GitHub Windows runners' WARP does not offer: there the renderer cannot take hardware
+/// frames at all, the tests stop after their setup, and <see cref="Warp_CanStandInForADecoder"/>
+/// writes which capability is missing to the test output. Real D3D11VA frames are a manual smoke
+/// check (docs/roadmap/updates/045A_1).
 /// </summary>
-public sealed class D3D11HardwareFrameOffscreenTests
+public sealed class D3D11HardwareFrameOffscreenTests(ITestOutputHelper output)
 {
     private const int Width = 16;
     private const int Height = 8;
@@ -38,11 +40,12 @@ public sealed class D3D11HardwareFrameOffscreenTests
     [Fact]
     public void Warp_CanStandInForADecoder()
     {
-        // Makes a missing capability visible: without it the tests below pass without testing.
+        // Says which tests below actually ran on this machine: without these capabilities they stop
+        // after their setup (a machine limit, not a renderer failure; see the class summary).
         using D3D11DeviceResources decoder = CreateWarpDevice();
-        Assert.True(decoder.HasVideoProcessorSupport, "WARP offers no Direct3D11 video processor on this machine.");
-        Assert.True(CanDecodeInto(decoder, Format.NV12), "WARP cannot use NV12 textures as video processor input on this machine.");
-        Assert.True(CanDecodeInto(decoder, Format.P010), "WARP cannot sample P010 textures on this machine.");
+        output.WriteLine(decoder.HasVideoProcessorSupport
+            ? $"WARP video processor: yes; NV12 input: {CanDecodeInto(decoder, Format.NV12)}; P010 sampling: {CanDecodeInto(decoder, Format.P010)}."
+            : "WARP offers no Direct3D11 video processor on this machine: the hardware-frame tests in this class stop after their setup.");
         Assert.False(D3D11DeviceResources.IsDeviceRemoved(decoder.Device!.NativePointer));
         Assert.False(D3D11DeviceResources.IsDeviceRemoved(IntPtr.Zero));
     }

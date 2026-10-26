@@ -45,11 +45,12 @@ Delivered:
 - Windows-only tests (`D3D11HardwareFrameOffscreenTests`, WARP, 4 tests). A two-slice NV12
   (or P010) texture array on a second WARP device stands in for FFmpeg's D3D11VA pool, frame
   in slice 1:
-  1. **Capability.** `Warp_CanStandInForADecoder` asserts that WARP offers the video processor,
-     NV12 video-processor input, and P010 sampling, and checks `IsDeviceRemoved` on a live
-     device. If it fails on a CI machine, the next three tests return after their setup
-     without testing. The failure makes that gap visible, rather than having them pass
-     silently.
+  1. **Capability.** `Warp_CanStandInForADecoder` writes to the test output whether WARP offers
+     the video processor, NV12 video-processor input and P010 sampling, and checks
+     `IsDeviceRemoved` on a live device. The GitHub Windows runners' WARP has **no video
+     processor** (first CI run, 2026-10-26), so the renderer cannot take hardware frames there
+     and the next three tests return after their setup without testing. On CI this path is
+     therefore not covered: the owner's smoke on a real GPU is its check.
   2. **Shared textures.** The bridge exports a set on its own device. `EnsureNativeFrameDevice`
      adopts the decoder device, as Core does. Re-attaching retires the first set and exports a
      new one on the decoder device. `PresentNativeFrame` draws the frame. A third WARP device
@@ -123,8 +124,9 @@ CPU time per frame, two runs each. The 4K clip was made here with libkvazaar
   warnings, 0 errors.
 - Tests (all pass): Portable 1439, Linux 101 (with `FATZBOMB_LINUX_FFMPEG_DIR` and
   `FATZBOMB_LINUX_SAMPLE_VIDEO`), Avalonia headless 33, Vulkan on lavapipe 67.
-- The Windows test project, including the 4 new WARP tests, builds. They run on Windows CI
-  only, and have not been run.
+- The Windows test project, including the 4 new WARP tests, builds. On Windows CI the
+  capability test reported no WARP video processor, so the three hardware-frame tests stop
+  after their setup there (see above).
 - `dotnet format --verify-no-changes`: clean. `check-core-boundary`,
   `check-adapter-boundary`, `check-wpf-boundary`, and `check-presentation-parity`: pass.
 - Avalonia player on Linux (Xvfb, lavapipe, `--renderer=vulkan`, H.264 sample). The log shows
