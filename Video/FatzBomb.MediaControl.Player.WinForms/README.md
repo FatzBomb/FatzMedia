@@ -10,6 +10,7 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 - The Windows + Direct3D11 platform (`WindowsDirect3D11MediaControlPlatformFactory`) in a non-WPF host.
 - The shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage 044A) through plain
   WinForms bindings (`ViewModelBinder`): the WPF player's features, with its flyouts as tabs.
+  It runs in WinForms' dark mode (`Application.SetColorMode`), like the other players.
 
 ## Features
 

@@ -21,7 +21,7 @@ internal sealed class MainForm : Form
     private readonly PlayerViewModel _viewModel;
     private readonly ViewModelBinder _binder;
     private readonly List<ViewModelBinder> _bandBinders = [];
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Black };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
@@ -405,11 +405,11 @@ internal sealed class MainForm : Form
         var item = new ListViewItem([entry.TimeText, entry.Level.ToString(), entry.Category, entry.Message]) { UseItemStyleForSubItems = false };
         item.SubItems[1].ForeColor = entry.Level switch
         {
-            MediaDiagnosticLevel.Error => Color.Firebrick,
-            MediaDiagnosticLevel.Warning => Color.DarkOrange,
+            MediaDiagnosticLevel.Error => Color.FromArgb(255, 110, 110),
+            MediaDiagnosticLevel.Warning => Color.Orange,
             _ => SystemColors.GrayText
         };
-        item.SubItems[2].ForeColor = Color.SteelBlue;
+        item.SubItems[2].ForeColor = Color.LightSkyBlue;
         return item;
     }
 

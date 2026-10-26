@@ -19,6 +19,8 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        // Dark, like the WPF and Avalonia players.
+        Application.SetColorMode(SystemColorMode.Dark);
         Application.Run(new MainForm(options));
     }
 }

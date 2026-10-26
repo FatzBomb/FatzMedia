@@ -354,17 +354,23 @@ public partial class PlayerPanel : UserControl
     {
         IReadOnlyList<Screen> screens = owner.Screens.All;
         if (StartupOptions.Current.SecondScreen is { } number && number <= screens.Count)
-            return (screens[number - 1], true, $"full screen on screen {number} of {screens.Count} ({screens[number - 1].DisplayName})");
+            return (screens[number - 1], true, $"full screen on screen {number} of {screens.Count} ({Describe(screens[number - 1])})");
 
         Screen? current = owner.Screens.ScreenFromWindow(owner);
         for (var i = 0; i < screens.Count; i++)
         {
             if (!Equals(screens[i], current))
-                return (screens[i], true, $"full screen on screen {i + 1} of {screens.Count} ({screens[i].DisplayName})");
+                return (screens[i], true, $"full screen on screen {i + 1} of {screens.Count} ({Describe(screens[i])})");
         }
 
         return (current, false, $"in a window (one screen{(StartupOptions.Current.SecondScreen is { } missing ? $"; screen {missing} does not exist" : string.Empty)})");
     }
+
+    // Avalonia leaves DisplayName empty on some platforms (Windows): fall back to the screen's size and place.
+    private static string Describe(Screen screen) =>
+        string.IsNullOrWhiteSpace(screen.DisplayName)
+            ? $"{screen.Bounds.Width}x{screen.Bounds.Height} at {screen.Bounds.X},{screen.Bounds.Y}{(screen.IsPrimary ? ", primary" : string.Empty)}"
+            : screen.DisplayName;
 
     private void CloseSecondScreen()
     {

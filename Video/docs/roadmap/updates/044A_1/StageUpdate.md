@@ -3,7 +3,7 @@
 Stage: 044A.1 - Test player parity on a shared view model
 Date: 2026-10-26
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-26
 
 Owner decision (2026-10-26): the WPF, Avalonia and WinForms test players match, through one
 UI-agnostic view model; the WPF player is the reference. See
@@ -213,3 +213,19 @@ $hls = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
       `-- --renderer=software` logs a warning and uses auto.
    6. Close the window while a video plays, and once while it is still starting: it closes
       within a second or two, without an error dialog.
+
+## Owner smoke results (2026-10-26, Windows, RTX 5090, BASS)
+
+- WPF regression pass: passed. Scrubbing `video.mp4` showed gaps on `main` too: the test clip has
+  a keyframe only every 8.3 s (x264's default), so each preview decodes up to 250 frames; a film
+  scrubs smoothly. Not a regression.
+- Avalonia (`--renderer=direct3d11 --players=2`) and WinForms: passed, including the second
+  screen on DISPLAY2 and hardware decoding (d3d11va, H.264 and AV1) in WinForms.
+- Follow-ups from the run:
+  - WinForms looked plain: it now runs in WinForms' dark mode.
+  - The Avalonia second-screen line read "screen 2 of 3 ()": Avalonia leaves `DisplayName`
+    empty on Windows, so the line now gives the screen's size and position.
+  - Each Avalonia player's log showed the other player's surface lines (ENG-036).
+  - The Avalonia player decodes in software even on Direct3D11 (its shared-texture path was built
+    that way); hardware decoding there is the next stage.
+
