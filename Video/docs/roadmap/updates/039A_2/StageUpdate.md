@@ -3,7 +3,7 @@
 Stage: 039A.2 - Network video: read-ahead
 Date: 2026-10-25
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-26 except steps 4, 5 and 7
 
 Owner's scope: forward read-ahead only. No back-buffer and no whole-file cache: after a seek
 outside the buffered range the player rebuffers from the new position.
@@ -184,3 +184,14 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
    seeks, pauses; unplug for 3 s: no gap.
 8. **Local files**: video playback, seek, loop and archives behave as before (no read-ahead);
    network audio (an internet radio station, 014A) is unchanged.
+
+## Owner smoke results (2026-10-26, Windows, Avalonia, Software renderer, BASS)
+
+- Steps 1-3 (mux.dev HLS, seeks inside and outside the buffer): passed. Picture and sound are in
+  sync, where they were audibly out of sync before this slice. FFmpeg's "PES packet size
+  mismatch" and "Packet corrupt" lines now log as Info.
+- Step 6 (progressive MP4 with ranges, `avsync.mp4` flash and beep): in sync, also after seeks;
+  Loop restarts once per lap with sound. `python -m http.server` has no range support and cannot
+  serve an MP4 whose index is at the end (recorded in ENG-034); a range-capable server works.
+- Close during a stalled network load: closes at once.
+- Not run yet: steps 4 and 5 (network loss) and step 7 (Audio mode).

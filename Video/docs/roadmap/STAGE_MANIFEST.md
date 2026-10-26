@@ -32,10 +32,11 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/039A_ACTIVE_NetworkVideoPlayback.md` - network video through FFmpeg's network path:
   HTTP/HTTPS progressive (MP4/MKV, ranges for seek) and HLS (VOD seekable, live not), the 014A
   retry policy, buffering events and capability rows, cancellable connects, Background and Audio
-  modes; slice 1 implemented, pending manual smoke (`updates/039A_1`). Slice 2 (network
+  modes; slice 1 owner smoke passed 2026-10-25 (`updates/039A_1`). Slice 2 (network
   read-ahead: a bounded forward buffer, one connection for picture and sound, seeks inside the
   buffer without a request, one network seek per seek, Pause/Stop never wait for a stalled read)
-  implemented, pending manual smoke (`updates/039A_2`). Follow-ups in ENG-034.
+  implemented; owner smoke passed 2026-10-26 except network loss and Audio mode
+  (`updates/039A_2`). Follow-ups in ENG-034.
 - `active/042A_ACTIVE_HdrFollowUps.md` - HDR follow-ups from 038A. Slice 1 (HLG tone mapping:
   inverse OETF, BT.2100 OOTF at 1000 nits, BT.2390 curve; CPU tables and the Direct3D11 shader)
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,

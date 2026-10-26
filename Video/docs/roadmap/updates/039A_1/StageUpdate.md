@@ -3,7 +3,7 @@
 Stage: 039A.1 - Network video: HTTP/HTTPS progressive and HLS through FFmpeg
 Date: 2026-10-24
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: IMPLEMENTED - owner smoke passed 2026-10-25
 
 One slice. HTTP progressive and HLS go through the same FFmpeg open path, so splitting them
 would have added nothing; both are delivered and natively tested here.
