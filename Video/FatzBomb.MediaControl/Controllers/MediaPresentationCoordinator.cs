@@ -206,6 +206,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             if (attached)
             {
                 _surfaces[surface.Id] = surface;
+                // A new target starts a new episode: its first refused present is reported.
+                _presentFailure.Reset();
                 TrackPrimarySurface(surface);
                 UpdateSecondarySurfaceCountNoLock();
                 PublishSurfaceSnapshotNoLock();
@@ -1225,6 +1227,13 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private string DescribeBackendPresentFailure() =>
         _rendererBackend.LastPresentFailureReason is { Length: > 0 } reason ? $" ({reason})" : string.Empty;
 
+    // Refused presents repeat every frame: build the message only for the first of an episode.
+    private void ReportPresentFailure(MediaCompositionFrame frame)
+    {
+        if (!_presentFailure.IsLatched)
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+    }
+
     private bool HasCurrentVisualContent() =>
         _mediaEngine.Content.HasFlag(MediaContent.Image)
         || _mediaEngine.Content.HasFlag(MediaContent.Video)
@@ -1311,7 +1320,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
         {
-            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+            ReportPresentFailure(frame);
             return CompositionPresentResult.Failed;
         }
 
@@ -1350,7 +1359,7 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
             {
-                _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+                ReportPresentFailure(frame);
                 return CompositionPresentResult.Failed;
             }
 

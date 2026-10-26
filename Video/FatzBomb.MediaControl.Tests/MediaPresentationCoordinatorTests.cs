@@ -177,15 +177,18 @@ public sealed class MediaPresentationCoordinatorTests
         using var coordinator = CreateCoordinator(backend, engine);
         Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
         var messages = new ConcurrentQueue<string>();
+        var owner = new object();
         void Record(MediaDiagnosticInfo info)
         {
-            if (info.Category == "Composition")
+            // Only this test's diagnostics: other tests may raise Composition lines in parallel.
+            if (info.Category == "Composition" && ReferenceEquals(info.Owner, owner))
                 messages.Enqueue(info.Message);
         }
 
         DiagnosticRouter.DiagnosticOccurred += Record;
         try
         {
+            using var scope = DiagnosticRouter.EnterOwner(owner);
             backend.PresentFailureReason = "no active D3D11 presentation target";
             coordinator.RefreshCurrentPosition();
             coordinator.RefreshCurrentPosition();
