@@ -21,7 +21,7 @@ internal sealed class MainForm : Form
     private readonly PlayerViewModel _viewModel;
     private readonly ViewModelBinder _binder;
     private readonly List<ViewModelBinder> _bandBinders = [];
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Black };
+    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
@@ -403,13 +403,15 @@ internal sealed class MainForm : Form
     private static ListViewItem ToItem(DiagnosticLogEntry entry)
     {
         var item = new ListViewItem([entry.TimeText, entry.Level.ToString(), entry.Category, entry.Message]) { UseItemStyleForSubItems = false };
+        // SetColorMode(Dark) does not apply everywhere (high contrast, older Windows): keep the light colours there.
+        var dark = Application.IsDarkModeEnabled;
         item.SubItems[1].ForeColor = entry.Level switch
         {
-            MediaDiagnosticLevel.Error => Color.FromArgb(255, 110, 110),
-            MediaDiagnosticLevel.Warning => Color.Orange,
+            MediaDiagnosticLevel.Error => dark ? Color.FromArgb(255, 110, 110) : Color.Firebrick,
+            MediaDiagnosticLevel.Warning => dark ? Color.Orange : Color.DarkOrange,
             _ => SystemColors.GrayText
         };
-        item.SubItems[2].ForeColor = Color.LightSkyBlue;
+        item.SubItems[2].ForeColor = dark ? Color.LightSkyBlue : Color.SteelBlue;
         return item;
     }
 

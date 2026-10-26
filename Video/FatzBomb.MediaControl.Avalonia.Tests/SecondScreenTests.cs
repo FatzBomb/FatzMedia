@@ -27,13 +27,16 @@ public sealed class SecondScreenTests
                 raised.Enqueue(info);
         }
 
+        var windows = new List<Window>();
         DiagnosticRouter.DiagnosticOccurred += Record;
         try
         {
-            Window firstMain = Show(new MediaSurface { Player = first, SurfaceId = "eng036-main-1", Role = MediaPresentationSurfaceRole.Projector }, 320, 180);
-            Window secondMain = Show(new MediaSurface { Player = second, SurfaceId = "eng036-main-2", Role = MediaPresentationSurfaceRole.Projector }, 320, 180);
+            windows.Add(Show(new MediaSurface { Player = first, SurfaceId = "eng036-main-1", Role = MediaPresentationSurfaceRole.Projector }, 320, 180));
+            windows.Add(Show(new MediaSurface { Player = second, SurfaceId = "eng036-main-2", Role = MediaPresentationSurfaceRole.Projector }, 320, 180));
             var firstScreen = new SecondaryPresentationWindow(first, "eng036-screen-1") { Width = 640, Height = 360 };
             var secondScreen = new SecondaryPresentationWindow(second, "eng036-screen-2") { Width = 640, Height = 360 };
+            windows.Add(firstScreen);
+            windows.Add(secondScreen);
             firstScreen.Show();
             secondScreen.Show();
             Dispatcher.UIThread.RunJobs();
@@ -46,14 +49,12 @@ public sealed class SecondScreenTests
             foreach (MediaDiagnosticInfo info in all)
                 Assert.Same(info.Message.Contains("-1'", StringComparison.Ordinal) ? first : second, info.Owner);
             Assert.Equal(2, all.Count(static info => info.Message.Contains("Audio mode", StringComparison.Ordinal)));
-
-            firstScreen.Close();
-            secondScreen.Close();
-            firstMain.Close();
-            secondMain.Close();
         }
         finally
         {
+            // Close even when an assertion failed, so no window outlives the test.
+            foreach (Window window in windows)
+                window.Close();
             DiagnosticRouter.DiagnosticOccurred -= Record;
         }
     }
