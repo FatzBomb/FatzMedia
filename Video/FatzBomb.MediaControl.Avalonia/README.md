@@ -43,7 +43,27 @@ Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
     Linux), frames go straight into Avalonia's compositor with no CPU copy.
   - **Frame sink**: the renderer reads frames back and the surface uploads them as a
     bitmap. Used when the GPU path is off, unsupported, or has failed.
-- `AvaloniaMediaInputSources.FromBitmap` converts Avalonia bitmaps to Core sources.
+- `AvaloniaMediaInputSources.FromBitmap` converts Avalonia bitmaps to Core sources (the same
+  shape as the WPF `WpfMediaInputSources.FromImageSource` and `WinFormsMediaInputSources.FromBitmap`).
+- **`KaraokeSurface` and `BackgroundSurface`** (Stage 046A slice 2, as in the WPF and WinForms
+  adapters): self-contained controls that create their own player from `PlatformFactory` (and
+  `NativeLibraryPaths`), with Core's rules (`LightweightPlayerPolicy`, `LightweightPlayerController`).
+  `KaraokeSurface` shows CD+G and MIDI/KAR on a 4:3 surface centred on `CanvasColor` and rejects
+  video and plain audio after inspection. `BackgroundSurface` shows a `Color`/`ISolidColorBrush`
+  (no player), a path, an Avalonia `Bitmap` or a `MediaInputSource` in `MediaPlayerMode.Background`
+  (looping, no audio engine), with `OverlayContent` composited above it (`OverlayHitTestVisible`,
+  default false). Both have `Source`, `AutoPlay`, `AutoHide`, `IsContentVisible`,
+  `ContentVisibilityChanged`, `Session`, `LoadAsync`, `PlayAsync`/`PauseAsync`/`StopAsync` and
+  `Dispose`. Differences from WPF: `PreferGpuSharedSurface` instead of `PresentationMode` (the
+  surface's own path choice); the player is released when the control leaves the visual tree.
+
+  ```xml
+  <fbm:BackgroundSurface PlatformFactory="{Binding Platform}" Source="{Binding BackgroundPath}">
+      <fbm:BackgroundSurface.OverlayContent>
+          <TextBlock Text="Up next" />
+      </fbm:BackgroundSurface.OverlayContent>
+  </fbm:BackgroundSurface>
+  ```
 - Rendering stays in the renderer the host selected (software, Vulkan, or Direct3D11);
   platform services come from the host's platform factory (Windows or Linux).
 - Session events may arrive on background threads; marshal with

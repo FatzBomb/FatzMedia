@@ -2,7 +2,9 @@
 
 Prepared: 2026-10-26
 Status: slice 1 (P1 fixes, shared adapter logic in Core, second-screen parity) implemented,
-pending manual smoke (`updates/046A_1`). Slices 2 and 3 are planned below, not implemented.
+pending manual smoke (`updates/046A_1`). Slice 2 (KaraokeSurface and BackgroundSurface on every
+adapter, WinForms frame sink, overlay and bitmap input) implemented, pending manual smoke
+(`updates/046A_2`). Slice 3 is planned below, not implemented.
 
 Owner direction (2026-10-26): "No features solo for one player. All players should share the
 same functionality (our wrappers more so)." The wrappers are the adapters
@@ -74,7 +76,11 @@ Acceptance:
 
 ## Slice 2 - KaraokeSurface and BackgroundSurface everywhere, WinForms catch-up
 
-Status: planned.
+Status: implemented, pending manual smoke (`updates/046A_2`). Decisions taken there: the WinForms
+overlay uses the layered window on both paths (a child would need simulated transparency and
+per-control hit-test pass-through); a solid background colour stays a fill without a player;
+each adapter keeps its own path option instead of the WPF `PresentationMode`; every player gets
+a `--lightweight-surfaces` smoke window.
 
 Acceptance:
 
@@ -93,8 +99,10 @@ Acceptance:
 4. WinForms overlay content: a layered owned window above the surface, like the WPF
    `MediaOverlayWindow`, following moves, resizes and visibility.
 5. `WinFormsMediaInputSources.FromBitmap(System.Drawing.Bitmap)` (parity with WPF `ImageSource`
-   and Avalonia `Bitmap` conversions).
-6. Tests and manual smoke as in slice 1.
+   and Avalonia `Bitmap` conversions; the WPF conversion becomes the static
+   `WpfMediaInputSources.FromImageSource`).
+6. The WinForms player's `--renderer=software` really uses the software renderer (frame sink).
+7. Tests and manual smoke as in slice 1.
 
 ## Slice 3 - Shared player helpers and renderer choice
 

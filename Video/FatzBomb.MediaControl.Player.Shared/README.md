@@ -13,7 +13,8 @@ CommunityToolkit.Mvvm only (pinned in `scripts/check-core-boundary.ps1`).
   package, native paths) and the debug log path. `PlayerDebugLog` and `PlayerNativePaths` are
   helpers for hosts.
 - `PlayerStartupOptions`: the command line every player understands; hosts parse their own flags
-  from the same arguments.
+  from the same arguments. `--lightweight-surfaces` (Stage 046A slice 2) asks each player for its
+  smoke window of the adapter's `BackgroundSurface` and `KaraokeSurface`.
 
 A new host implements the four interfaces, binds `PlayerViewModel`, calls `StartAsync()` once its
 view is up, binds its surface to `Player`, and disposes the view model (`DisposeAsync` off the UI

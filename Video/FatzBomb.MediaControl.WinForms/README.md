@@ -1,8 +1,9 @@
 # FatzBomb.MediaControl.WinForms
 
 WinForms adapter for `FatzBomb.MediaControl` (Stage 027A slice 3, Stage 046A): `MediaSurface`,
-an HWND control attached to any `IMediaControlSession` as a presentation surface, and
-`SecondaryPresentationWindow` for a second screen.
+an HWND control attached to any `IMediaControlSession` as a presentation surface (with a frame-sink
+fallback and overlay content), `SecondaryPresentationWindow` for a second screen, the
+`KaraokeSurface` and `BackgroundSurface` controls, and `WinFormsMediaInputSources`.
 
 ```csharp
 var player = new MediaControlPlayer(new WindowsDirect3D11MediaControlPlatformFactory(), MediaPlayerConfiguration.Auto, ["native"]);
@@ -47,3 +48,52 @@ as on any control. `PresentationPath` is `NativeWindow` while attached (with
 `PresentationPathReason`, `PresentationPathChanged` and an Info diagnostic owned by the player);
 a surface the player refuses raises one Warning. The surface sends the live-resize hint while
 its form is being resized. Its own events are raised on the UI thread.
+
+## Frame-sink path (Stage 046A slice 2)
+
+When the session's renderer does not present into windows (the software renderer, or any renderer
+that presents only through frame sinks), the HWND attach is refused and the surface attaches a
+managed frame sink instead: the renderer's final premultiplied BGRA frames are copied to a GDI+
+bitmap on the UI thread (two alternating buffers, latest frame wins, no per-frame allocation)
+and drawn double-buffered in `OnPaint`, so a paint never shows a half-written frame.
+`PresentationPath` is `FrameSink` with the reason; `PreferNativeWindow = false` forces this path
+with any renderer. Auto-hide and the Audio-mode clear work as on the window path (hidden content
+is dropped). Expect a CPU copy per frame: for full-HD video use a renderer that presents into the
+window.
+
+## Overlay content
+
+`OverlayContent` (a `Control`) is shown above the video in a borderless layered window owned by
+the surface's form, like the WPF adapter's overlay window, on either path. It follows the
+surface's screen position, size and visibility (moves of the form or any parent included) and
+minimizes with the form. The window's background is a colour key (a near-black, RGB 1,0,1), so a
+control with `BackColor = Color.Transparent` shows the video around its children; anti-aliased
+edges blend towards that dark key. It never takes the keyboard focus. `OverlayHitTestVisible`
+(default false) makes it take mouse input; otherwise clicks pass through to the surface. The
+surface never disposes the overlay control.
+
+## KaraokeSurface and BackgroundSurface
+
+The same self-contained controls as the WPF and Avalonia adapters, over Core's
+`LightweightPlayerPolicy` and `LightweightPlayerController`. Each creates its own player from
+`PlatformFactory` (and `NativeLibraryPaths`) on the first load and releases it when its handle is
+destroyed; a new handle loads `Source` again.
+
+```csharp
+var background = new BackgroundSurface(new WindowsDirect3D11MediaControlPlatformFactory()) { Dock = DockStyle.Fill };
+background.OverlayContent = new Label { Text = "Up next", BackColor = Color.Transparent, AutoSize = true };
+background.Source = @"C:\loops\stage.mp4";   // or a Color, a Bitmap, a MediaInputSource
+var karaoke = new KaraokeSurface(platform) { Dock = DockStyle.Fill, Source = @"C:\songs\song.zip" };
+```
+
+- `KaraokeSurface`: CD+G and MIDI/KAR on a 4:3 surface centred on `CanvasColor`; video and plain
+  audio are rejected after inspection (closed).
+- `BackgroundSurface`: a `Color` (no player), an image or video path, a `Bitmap` or a
+  `MediaInputSource`, played in `MediaPlayerMode.Background` (looping, no audio engine);
+  `BackgroundColor`, `SetColor`, `OverlayContent`, `OverlayHitTestVisible`.
+- Both: `Source`, `AutoPlay`, `AutoHide`, `IsContentVisible`, `ContentVisibilityChanged`,
+  `Session`, `LoadAsync`, `PlayAsync` / `PauseAsync` / `StopAsync`. Instead of the WPF
+  `PresentationMode` they have `PreferNativeWindow` (the inner surface's path choice).
+
+`WinFormsMediaInputSources.FromBitmap(Bitmap, displayName)` converts a GDI+ bitmap to a Core BGRA
+source (straight alpha, like the WPF and Avalonia conversions).

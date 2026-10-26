@@ -117,6 +117,12 @@ or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--n
 `--renderer=`/`--software` (below) and `--no-auto-hide` (shared by every player since Stage 046A). The **PLAYER** box in the **A/V** flyout
 switches the player mode on the fly (Stage 043A).
 
+`--lightweight-surfaces` (every player, Stage 046A slice 2) also opens a smoke window with the
+adapter's `BackgroundSurface` (with an overlay text) and `KaraokeSurface`, each with its own
+player and the startup renderer (WPF-composited for the software renderer). Type or browse a
+path, then **Background** or **Karaoke** sets that control's `Source`; **Colour** cycles solid
+background colours; **Stop both** stops them.
+
 ## Renderer choice
 
 `--renderer=auto|gpu|warp|software` picks the renderer (Stage 036A). `auto`, the default,

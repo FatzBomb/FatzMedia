@@ -639,10 +639,10 @@ Procedure and expected:
 45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.
 46. Regular `MediaSurface` renders video, CDG, and MIDI/KAR in `NativeHwndOverlay` and `WpfComposited` modes.
 47. `WpfComposited` obeys normal WPF clipping, transforms, opacity, z-order, and interactive overlay input.
-48. `BackgroundSurface` renders color, image, and muted looping video backgrounds in both modes.
-49. `BackgroundSurface` overlay content remains above the background in both modes.
-50. `KaraokeSurface` renders CDG and MIDI/KAR on an opaque 4:3 canvas in both modes.
-51. `KaraokeSurface` rejects video and non-karaoke audio without starting playback.
+48. `BackgroundSurface` renders color, image, and silent looping video backgrounds in both modes; since Stage 046A slice 2 its player is in Background mode and never starts audio. The Avalonia and WinForms `BackgroundSurface` do the same (smoke: `--lightweight-surfaces` in each player, `updates/046A_2`).
+49. `BackgroundSurface` overlay content remains above the background in both modes (Avalonia: composited; WinForms: the layered overlay window).
+50. `KaraokeSurface` renders CDG and MIDI/KAR on an opaque 4:3 canvas in both modes (and in the Avalonia and WinForms adapters).
+51. `KaraokeSurface` rejects video and non-karaoke audio without starting playback (Core `LightweightPlayerPolicy`, every adapter).
 52. Changing WPF presentation mode before load succeeds; changing it while media is open is rejected.
 53. Video playback resumes from the settled seek visual without skipping ahead or replaying earlier frames.
 54. An authored MOD/S3M/XM/IT pattern loopback moves the seekbar back to its first-pass loop position even when whole-file looping is disabled.

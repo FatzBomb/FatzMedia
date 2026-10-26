@@ -54,8 +54,11 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   `MediaSurfaceContentTracker` auto-hide and `MediaSurfacePresentationPath` shared by the WPF,
   Avalonia and WinForms surfaces; WinForms and WPF second-screen windows with the Avalonia shape;
   WPF `Role`/`SurfaceId`) is implemented, pending manual smoke (`updates/046A_1`). Slice 2
-  (Karaoke/Background surfaces everywhere, WinForms frame sink and overlay) and slice 3 (shared
-  player helpers, `--renderer=auto`, `--players`) are planned in the stage file.
+  (Core `LightweightPlayerPolicy` / `LightweightPlayerController`; `KaraokeSurface` and
+  `BackgroundSurface` in WPF, Avalonia and WinForms, the background in Background mode without
+  audio; WinForms frame-sink fallback, `OverlayContent` and `FromBitmap`; `--lightweight-surfaces`
+  in every player) is implemented, pending manual smoke (`updates/046A_2`). Slice 3 (shared player
+  helpers, `--renderer=auto`, `--players`) is planned in the stage file.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

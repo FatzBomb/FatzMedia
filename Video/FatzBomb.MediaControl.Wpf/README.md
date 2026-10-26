@@ -57,10 +57,16 @@ singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
 
 `MediaSurface.ShowSecondaryOutput()` opens one with the surface's mode and `AutoHide`.
 
+`WpfMediaInputSources.FromImageSource(ImageSource, displayName)` converts a WPF bitmap to a Core
+BGRA source (Stage 046A slice 2; `Player`'s `ImageSource` overloads use it), the same shape as
+`AvaloniaMediaInputSources.FromBitmap` and `WinFormsMediaInputSources.FromBitmap`.
+
 ## BackgroundSurface
 
-`BackgroundSurface` accepts an image path, video path, `ImageSource`, or opaque `Color`.
-Video is always muted and loops. `OverlayContent` is presented above the background.
+`BackgroundSurface` accepts an image path, video path, `ImageSource`, `MediaInputSource`, or
+opaque `Color`. Video loops without sound: since Stage 046A slice 2 its player runs in
+`MediaPlayerMode.Background`, so a background never starts the audio engine (before, a muted
+Full-mode player did). `OverlayContent` is presented above the background.
 
 ```xml
 <media:BackgroundSurface
@@ -89,7 +95,12 @@ video and non-karaoke audio after inspection and presents an opaque 4:3 canvas.
 ```
 
 Both controls create and dispose their own player session after the host supplies a
-platform factory. For the current Windows/Direct3D11 stack:
+platform factory. Their rules (what each accepts, the player's mode and settings, creation,
+reload and release) are Core's `LightweightPlayerPolicy` and `LightweightPlayerController`
+(Stage 046A slice 2), shared with the Avalonia and WinForms adapters, which offer the same two
+controls. `NativeLibraryPaths` (default `null`: `DLLPath` and the platform's default folders)
+sets the folders their player loads BASS and FFmpeg from. For the current Windows/Direct3D11
+stack:
 
 ```csharp
 MediaPlatformFactory = new WindowsDirect3D11MediaControlPlatformFactory();
