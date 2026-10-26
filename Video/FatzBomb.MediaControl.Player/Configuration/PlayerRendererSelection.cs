@@ -1,5 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
+using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using FatzBomb.MediaControl.Rendering.Software;
 using FatzBomb.MediaControl.Rendering.Vulkan;
@@ -57,6 +59,24 @@ internal sealed class PlayerRendererSelection
     public IMediaPresentationCoordinatorFactory CreateFactory() => _createFactory();
 
     public void AddLogLine(MediaDiagnosticLevel level, string message) => _logLines.Insert(0, (level, message));
+
+    /// <summary>
+    /// Gets what one player's view model needs from this choice: the decoding the renderer can
+    /// present, or software with <c>--decoding=software</c> (<see cref="PlayerStartupOptions.ApplyDecoding"/>),
+    /// the surface kind, and the log lines followed by <paramref name="extraLines"/>.
+    /// </summary>
+    public PlayerRendererInfo ToRendererInfo(PlayerStartupOptions options, IEnumerable<(MediaDiagnosticLevel Level, string Message)>? extraLines = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        (VideoDecodingMethod decoding, var forced) = options.ApplyDecoding(
+            UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
+        List<(MediaDiagnosticLevel Level, string Message)> lines = [.. _logLines];
+        if (forced is not null)
+            lines.Add((MediaDiagnosticLevel.Info, $"Video decoding: {forced}."));
+        if (extraLines is not null)
+            lines.AddRange(extraLines);
+        return new PlayerRendererInfo(Summary, decoding, UsesSoftwareRenderer, lines);
+    }
 
     /// <param name="request">The shared renderer request (<c>--renderer=</c>, <c>--software</c>).</param>
     /// <param name="hdrOutput">Stage 042A slice 2: HDR output on HDR displays (<c>--hdr-output</c>, Direct3D11 only).</param>

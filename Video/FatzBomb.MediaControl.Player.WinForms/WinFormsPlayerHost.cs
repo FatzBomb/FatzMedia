@@ -88,13 +88,9 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
         PlayerRendererSelection selection = await Program.RendererSelection.ConfigureAwait(false);
         _selection = selection;
         // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
-        (VideoDecodingMethod decoding, var forced) = options.ApplyDecoding(
-            selection.UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
-        List<(MediaDiagnosticLevel, string)> lines = [.. selection.LogLines];
-        if (forced is not null)
-            lines.Add((MediaDiagnosticLevel.Info, $"Video decoding: {forced}."));
-        lines.Add((MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"));
-        return new PlayerRendererInfo(selection.Summary, decoding, selection.UsesSoftwareRenderer, lines);
+        return selection.ToRendererInfo(
+            options,
+            [(MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}")]);
     }
 
     /// <summary>

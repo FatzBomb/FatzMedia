@@ -27,12 +27,7 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         PlayerRendererSelection selection = await App.RendererSelection.ConfigureAwait(false);
         _selection = selection;
         // --decoding=software forces software decoding for CPU comparisons (Stage 046A slice 3).
-        (VideoDecodingMethod decoding, var forced) = App.StartupOptions.ApplyDecoding(
-            selection.UsesSoftwareDecoding ? VideoDecodingMethod.Software : VideoDecodingMethod.Hardware);
-        IReadOnlyList<(MediaDiagnosticLevel, string)> lines = forced is null
-            ? selection.LogLines
-            : [.. selection.LogLines, (MediaDiagnosticLevel.Info, $"Video decoding: {forced}.")];
-        return new PlayerRendererInfo(selection.Summary, decoding, selection.UsesSoftwareRenderer, lines);
+        return selection.ToRendererInfo(App.StartupOptions);
     }
 
     public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)

@@ -393,7 +393,26 @@ public partial class PlayerView : UserControl
 
         root.MouseMove += (_, e) => ReportPointer(root, e);
         root.MouseLeftButtonDown += FullScreenOverlayRoot_MouseLeftButtonDown;
+        root.KeyDown += FullScreenOverlayRoot_KeyDown;
         return root;
+    }
+
+    // The overlay is its own window and takes the keyboard once its controls are clicked (the seek
+    // bar focuses itself), so MainWindow no longer sees Escape or F11: handle them here the same way.
+    private void FullScreenOverlayRoot_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_chrome.IsFullScreen)
+            return;
+
+        if (e.Key == Key.Escape && CloseFlyout())
+        {
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Escape or Key.F11)
+        {
+            FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        }
     }
 
     private void FullScreenOverlayRoot_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
