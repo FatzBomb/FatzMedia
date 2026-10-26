@@ -1274,9 +1274,15 @@ internal sealed partial class VideoPipeline(
             return;
 
         var held = _clock.IsHeld;
+        var frameReady = decoder.FrameCount > 0;
+        // Every presentation tick: a running clock with a frame ready stays as it is, without
+        // taking the read-ahead's lock.
+        if (!held && frameReady)
+            return;
+
         var hold = NetworkClockHold.ShouldHold(
             held,
-            decoder.FrameCount > 0,
+            frameReady,
             readAhead.ConsumerStall,
             readAhead.ResumeFill,
             decoder.EndOfStream || readAhead.IsAtEnd);

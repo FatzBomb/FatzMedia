@@ -350,7 +350,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         var duration = durationTicks > 0 && durationTicks != ffmpeg.AV_NOPTS_VALUE
             ? durationTicks / (double)ffmpeg.AV_TIME_BASE
             : 0;
-        return new NetworkVideoProbe(isSegmented, length, byteSeeking, duration, !isSegmented && ReadIoOption("icy_metadata_headers") is { Length: > 0 });
+        // The ICY headers as the open read them: the reader may be using the HTTP context by now.
+        return new NetworkVideoProbe(isSegmented, length, byteSeeking, duration, _pollsIcyMetadata);
     }
 
     /// <summary>

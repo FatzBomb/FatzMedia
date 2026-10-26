@@ -136,7 +136,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         stream.Bytes += info.Bytes;
         Bytes += info.Bytes;
         stream.NoteAdded(info);
-        EndStreamsReadPast(info.DecodeSeconds ?? info.PresentationSeconds);
+        EndStreamsReadPast(stream, info.DecodeSeconds ?? info.PresentationSeconds);
         return true;
     }
 
@@ -153,15 +153,19 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         }
     }
 
-    /// <summary>Ends the streams whose own end the reader is now well past (see <see cref="StreamEndToleranceSeconds"/>).</summary>
-    private void EndStreamsReadPast(double? readSeconds)
+    /// <summary>
+    /// Ends the other streams whose own end the reader is now well past (see
+    /// <see cref="StreamEndToleranceSeconds"/>). A stream is never ended by its own packets: they
+    /// show its end was underestimated (a duration FFmpeg estimated from the bitrate).
+    /// </summary>
+    private void EndStreamsReadPast(StreamQueue readStream, double? readSeconds)
     {
         if (readSeconds is not { } read)
             return;
 
         foreach (StreamQueue stream in _streams)
         {
-            if (stream.EndQueued || stream.Ended || stream.EndSeconds is not { } end || read < end + StreamEndToleranceSeconds)
+            if (ReferenceEquals(stream, readStream) || stream.EndQueued || stream.Ended || stream.EndSeconds is not { } end || read < end + StreamEndToleranceSeconds)
                 continue;
 
             stream.Entries.Enqueue(new Entry(default!, default, IsEnd: true));

@@ -109,6 +109,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     // the outage). Before any seek, the start.
     private SeekRequest _lastSeek = new(-1, 0, ffmpeg.AVSEEK_FLAG_BACKWARD);
     private long _dropStarted;
+    // Reader thread only: the next read is the reconnect's first (bounded by its window).
+    private bool _boundNextReadToReconnectWindow;
     private double _droppedAt;
     private int _reconnectAttempts;
 
@@ -585,17 +587,20 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             bool idle;
             var reportHardCap = false;
             long bytes;
-            int[]? discards = null;
             lock (_sync)
             {
                 if (_stopping || _aborted)
                     return;
 
-                if (_pendingDiscards.Count > 0)
+                // The format context is the reader's: stream discards change between its reads,
+                // and under _sync so a consumer that registered again meanwhile is never discarded.
+                foreach (var index in _pendingDiscards)
                 {
-                    discards = [.. _pendingDiscards];
-                    _pendingDiscards.Clear();
+                    if (!_buffer.IsRegistered(index))
+                        _demuxer.SetStreamDiscard(index, AVDiscard.AVDISCARD_ALL);
                 }
+
+                _pendingDiscards.Clear();
 
                 generation = _generation;
                 seek = _pendingSeek;
@@ -607,13 +612,6 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 bytes = _buffer.Bytes;
                 if (idle)
                     _readerWake.Reset();
-            }
-
-            // The format context is the reader's: stream discards change between its reads.
-            if (discards is not null)
-            {
-                foreach (var index in discards)
-                    _demuxer.SetStreamDiscard(index, AVDiscard.AVDISCARD_ALL);
             }
 
             if (reportHardCap)
@@ -649,13 +647,16 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 continue;
             }
 
-            // While a reconnect is in progress, its read is bounded by what is left of the window
-            // (ENG-034: a connect that hangs would otherwise hold the reader for rw_timeout).
+            // The first read after a reconnect (where HLS connects) is bounded by what is left of
+            // the window (ENG-034: a connect that hangs would otherwise hold the reader for
+            // rw_timeout). Once data flows again, reads are not cut short by the window.
             var dropStarted = Interlocked.Read(ref _dropStarted);
-            TimeSpan? readTimeout = dropStarted == 0
+            TimeSpan? readTimeout = !_boundNextReadToReconnectWindow || dropStarted == 0
                 ? null
                 : TimeSpan.FromSeconds(Math.Max(0.05, _reconnectSeconds - Stopwatch.GetElapsedTime(dropStarted).TotalSeconds));
             var read = _demuxer.ReadPacket(packet, readTimeout);
+            if (read >= 0)
+                _boundNextReadToReconnectWindow = false;
             var dropped = false;
             string? unreportedFailure = null;
             double? resumedAfter = null;
@@ -808,6 +809,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
 
                 if (result >= 0)
                 {
+                    _boundNextReadToReconnectWindow = true;
                     // Read on from the keyframe before the resume point; what was queued is skipped.
                     _queuedUpTo.Clear();
                     foreach (var (streamIndex, last) in _lastQueued)

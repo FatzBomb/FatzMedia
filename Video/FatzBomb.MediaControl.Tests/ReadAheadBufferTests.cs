@@ -479,4 +479,21 @@ public sealed class ReadAheadBufferTests
 
         Assert.True(buffer.IsEnded(Audio));
     }
+
+    [Fact]
+    public void AStreamWhoseOwnPacketsRunPastItsEnd_IsNotEndedByThem()
+    {
+        // A duration FFmpeg estimated from the bitrate (a VBR MP3 over https) can fall short of
+        // the stream's real end: its own packets past that end must not end it.
+        var buffer = new ReadAheadBuffer<int>(_released.Add);
+        buffer.Register(Video, lead: true, endSeconds: 1.0);
+        AddMedia(buffer, 0, 1 + ReadAheadBuffer<int>.StreamEndToleranceSeconds + 2, withAudio: false);
+
+        Assert.Equal(0, buffer.StreamEndsQueued);
+        while (buffer.TryTake(Video, 1, out _) == ReadAheadTake.Packet)
+        {
+        }
+
+        Assert.False(buffer.IsEnded(Video));
+    }
 }
