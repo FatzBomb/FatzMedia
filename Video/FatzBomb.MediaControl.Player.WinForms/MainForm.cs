@@ -741,13 +741,15 @@ internal sealed class SecondScreenForm : Form
 internal sealed class ScrubTrackBar : TrackBar
 {
     private const int WmLeftButtonDown = 0x0201;
+    private const int WmLeftButtonDoubleClick = 0x0203;
 
     /// <summary>Raised on the left button press, before the native control handles it.</summary>
     public event EventHandler? PressStarting;
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmLeftButtonDown)
+        // The second press of a quick double click arrives as a double-click message.
+        if (m.Msg is WmLeftButtonDown or WmLeftButtonDoubleClick)
             PressStarting?.Invoke(this, EventArgs.Empty);
         base.WndProc(ref m);
     }

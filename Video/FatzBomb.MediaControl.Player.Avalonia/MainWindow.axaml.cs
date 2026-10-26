@@ -94,6 +94,10 @@ public partial class MainWindow : Window
             await panel.DisposeAsync();
         }
 
+        // Closed while the old players were disposed: OnClosing has already run, so build nothing it would miss.
+        if (_closing)
+            return;
+
         var count = PlayersBox.SelectedIndex + 1;
         var kind = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
         RendererOption option = _renderers.First(candidate => candidate.Kind == kind);

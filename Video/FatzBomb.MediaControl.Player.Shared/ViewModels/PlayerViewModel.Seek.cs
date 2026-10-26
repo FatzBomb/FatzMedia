@@ -67,9 +67,16 @@ public partial class PlayerViewModel
         var target = SeekPositionSeconds;
         EnqueueScrubCall(async () =>
         {
-            // The release seek first: it is ignored when it repeats the last drag position.
-            await SendDragSeekAsync(player, target).ConfigureAwait(false);
-            RunScrubCall(() => player.EndScrub());
+            try
+            {
+                // The release seek first: it is ignored when it repeats the last drag position.
+                await SendDragSeekAsync(player, target).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Always end the scrub, or the engine stays muted and treats later seeks as drag seeks.
+                RunScrubCall(() => player.EndScrub());
+            }
         });
     }
 

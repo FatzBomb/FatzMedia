@@ -7,7 +7,8 @@ namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 /// The 200 ms position refresh. <see cref="MediaControlPlayer.State"/>, <see cref="MediaControlPlayer.Duration"/>
 /// and <see cref="MediaControlPlayer.Position"/> are read on the thread pool, never on the UI
 /// thread (ENG-035: a network source can hold them), and a tick is skipped while a read is still
-/// out. A read slower than 100 ms, blocked for a second, or failing is logged as a warning.
+/// out or a seek drag is active. A read slower than 100 ms, blocked for a second, or failing (once
+/// until a read succeeds) is logged as a warning.
 /// </summary>
 public partial class PlayerViewModel
 {
@@ -18,6 +19,7 @@ public partial class PlayerViewModel
     private Task? _statusRead;
     private long _statusReadStarted;
     private bool _statusReadStallLogged;
+    private bool _statusReadFailureLogged;
 
     /// <summary>Gets the transport state from the latest status read.</summary>
     public MediaPlayerState PlaybackState
@@ -33,7 +35,12 @@ public partial class PlayerViewModel
     /// <summary>Gets whether the latest status read found the player playing.</summary>
     public bool IsPlaying => PlaybackState == MediaPlayerState.Playing;
 
-    private void OnPositionTimerTick() => RefreshPlaybackPosition();
+    // A drag owns the seek bar: no reads while it scrubs (they would only be thrown away).
+    private void OnPositionTimerTick()
+    {
+        if (!_isSeekPreviewActive)
+            RefreshPlaybackPosition();
+    }
 
     /// <summary>Starts a status read unless one is out (UI thread); the result is applied on the UI thread.</summary>
     private void RefreshPlaybackPosition()
@@ -77,7 +84,16 @@ public partial class PlayerViewModel
         }
         catch (Exception ex)
         {
-            HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Warning, "Player", $"Status read failed: {ex.GetType().Name}: {ex.Message}");
+            // Logged once until a read succeeds again: a failing read repeats every tick.
+            RunOnUiThread(() =>
+            {
+                _statusReadStallLogged = false;
+                if (_statusReadFailureLogged)
+                    return;
+
+                _statusReadFailureLogged = true;
+                HandleDiagnostic(MediaDiagnosticLevel.Warning, "Player", $"Status read failed: {ex.GetType().Name}: {ex.Message}");
+            });
             return;
         }
 
@@ -87,6 +103,7 @@ public partial class PlayerViewModel
             if (elapsed > SlowStatusRead)
                 HandleDiagnostic(MediaDiagnosticLevel.Warning, "Player", $"Status read took {elapsed.TotalMilliseconds:F0} ms (State/Duration/Position)");
             _statusReadStallLogged = false;
+            _statusReadFailureLogged = false;
             if (ReferenceEquals(player, Player))
                 ApplyStatus(player, status);
         });
