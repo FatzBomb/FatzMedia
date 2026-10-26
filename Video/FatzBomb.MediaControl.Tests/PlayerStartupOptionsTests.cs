@@ -119,6 +119,7 @@ public sealed class PlayerStartupOptionsTests
             "--trim-silence",
             "--no-hdr-tonemap",
             "--hdr-tonemap-cpu",
+            "--hdr-output",
             "--prepare-next=\"C:\\Music\\next.mp3\"",
             "--auto-next",
             "--fade-next=2.5",
@@ -137,6 +138,7 @@ public sealed class PlayerStartupOptionsTests
         Assert.True(options.TrimSilence);
         Assert.True(options.DisableHdrToneMapping);
         Assert.True(options.PreferCpuHdrToneMapping);
+        Assert.True(options.HdrOutput);
         Assert.Equal("C:\\Music\\next.mp3", options.PrepareNextPath);
         Assert.True(options.AutoNext);
         Assert.Equal(TimeSpan.FromSeconds(2.5), options.FadeNext);

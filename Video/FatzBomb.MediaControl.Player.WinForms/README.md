@@ -39,7 +39,7 @@ Options: `--renderer=auto|gpu|warp` (Direct3D11: the GPU, else WARP; the GPU onl
 software decoding; the HWND surface cannot use the software renderer, so `software` falls back to
 auto with a warning) and the flags every test player shares (`PlayerStartupOptions`): `--url=`,
 `--mode=`, `--native=<dir>`, `--net-retries=`, `--net-ca-file=`, `--net-allow-invalid-certs`,
-`--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--trim-silence`, `--reset-pitch-on-load`,
+`--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`, `--trim-silence`, `--reset-pitch-on-load`,
 `--reset-tempo-on-load`, `--eq=`, `--prepare-next=`, `--auto-next`, `--fade-next=`,
 `--visual-transform-demo`.
 

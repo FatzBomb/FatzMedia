@@ -114,6 +114,16 @@ internal sealed unsafe class FfmpegInterrupt : IDisposable
     /// </summary>
     public bool IsCancelledByOwner => _aborted || _cancellation.IsCancellationRequested || IsOperationSuperseded;
 
+    /// <summary>Whether the deadline of the operation in progress has passed.</summary>
+    public bool IsDeadlinePassed
+    {
+        get
+        {
+            var deadline = Interlocked.Read(ref _deadline);
+            return deadline != 0 && Stopwatch.GetTimestamp() >= deadline;
+        }
+    }
+
     /// <summary>Whether an interrupt was requested (abort, cancellation, or a passed deadline).</summary>
     public bool IsInterruptRequested
     {

@@ -194,6 +194,24 @@ named `window` handle.
 - Core `VideoDecoder` owns codec selection, decode queues, cloned-frame lifetime, software transfer fallback, seeking, and recovery policy. It contains no D3D11/DXVA device constants or D3D11 FFmpeg-structure parsing.
 - Windows currently supplies D3D11VA, D3D12VA, and DXVA2 preference; only D3D11 frames are exported for zero-copy presentation, while other hardware outputs transfer through Core's software frame path.
 
+## HDR Video (Stages 038A, 042A)
+
+- Core tone maps HDR10 (PQ) and HLG to SDR (BT.2390, SDR white 203 nits): on the CPU for
+  software frames and every renderer, or, for hardware-decoded D3D11 frames, in the Direct3D11
+  renderer's shader (`D3D11HdrToneMapPresenter`) from the frame's `HdrToneMapRequest`, with a
+  CPU fallback the renderer can request (`HdrToneMapFallback`).
+- HDR output (042A slice 2, opt-in `Direct3D11PresentationOptions.HdrOutput`): Core owns the
+  renderer-neutral decision and math (`Core/Video/Hdr/HdrOutputPolicy`, public as a renderer
+  contract). The Direct3D11 renderer owns detection (`Win32MonitorHdr`: `IDXGIOutput6` color
+  space and peak, the SDR white level from `DisplayConfigGetDeviceInfo`, cached per window off
+  the presentation thread), the per-frame decision for the primary window
+  (`D3D11HdrOutputController`) and the swap-chain switch (`ID3D11HdrOutputBackend`: FP16
+  `RGB_FULL_G10_NONE_P709` scRGB or `B8G8R8A8` sRGB, on the DirectComposition base chain or the
+  native HWND chain). On an scRGB target HDR video is drawn as scRGB at the display's peak and
+  SDR layers are linearized at the SDR white level. Secondary windows, offscreen surfaces
+  (WPF composited, shared textures/Avalonia), video effects and software-decoded HDR stay SDR;
+  any failure falls back to SDR tone mapping with one `D3D11.HdrOutput` diagnostic.
+
 ## MIDI Playback
 
 - BASS optional plugins (bassmidi, bassflac, bassopus, etc.) are loaded via `Bass.PluginLoad` so BASS recognizes their formats automatically.
@@ -723,11 +741,22 @@ queue. Overlapping two-handle crossfades are deferred. See
 the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
 NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
 `IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
-`MediaControlPlayer.CurrentSourceCapabilities` expose the row. HTTP audio opens through
+`MediaControlPlayer.CurrentSourceCapabilities` expose the row. Plain http audio opens through
 the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
 normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
-`StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
+`StreamMetadataChanged` through the control queue. https and HLS audio (BASS does not verify
+certificates; ENG-034, 039A.3) open through FFmpeg's network path instead
+(`NetworkAudioPolicy.OpensThroughFfmpeg`): `PipelineMediaEngine.OpenThroughFfmpeg` runs the same
+retried, cancellable open as network video into the soundtrack engine (`SoundtrackAudioEngine`
+over `VideoAudioEngine`, attached in Full and Audio mode when BASS is there; BASS plays the
+decoded sound), with `NetworkTlsPolicy`, the read-ahead's buffering and the row from
+`NetworkAudioPolicy.Resolve` (014A's metadata rule). ICY titles (FFmpeg's `icy_metadata_packet`)
+and Ogg comment updates are read on the reading thread after each packet, recorded with that
+packet's time, and raised when the played position reaches them
+(`INetworkMediaControl.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
+https audio is refused like http audio. An `.m3u8` with no playable video plays as audio in Full
+mode. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
 prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
 
@@ -761,6 +790,14 @@ dropped network does not end a seekable source: when a read fails, or the source
 duration with network failures logged (HLS skips the segments it cannot fetch), the reader seeks
 back to the last packets it queued every 0.5-2 s for up to `NetworkReadAheadPolicy.ReconnectFor`
 (30 s) and skips what it already queued; only then does the stream end (`Network read failed`).
+Each reconnect seek, and every read while a reconnect is in progress, is bounded by what is left
+of that window, and a successful seek clears the dropped connection's sticky FFmpeg I/O error (else
+the real end reads as a drop). A track shorter than the source ends 2 s after the reader passed its
+own end (`AVStream.duration`) instead of counting as starved. Picture-only network video (no
+sound, Background mode) holds the playback clock while the picture has no frame and has been
+starved for 250 ms, until the resume threshold (`NetworkClockHold`; the pipeline's
+`HoldableClock` ends a hold on every transport change). A non-seekable MP4 must yield its first
+packet during the open, else it fails with the moov/faststart message and is not retried.
 Without the read-ahead, or with `ReconnectFor` zero, a failed read ends the stream at once. `NetworkBufferingMonitor`
 (250 ms) turns the read-ahead's state into `BufferingChanged` (a consumer starved for 0.5 s
 starts buffering; the resume threshold, 2 s by default, ends it), forwarded through the

@@ -340,6 +340,28 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     /// <summary>What FFmpeg reported for the open network source.</summary>
     internal NetworkVideoProbe GetNetworkProbe() => _demuxer.GetNetworkProbe();
 
+    /// <summary>
+    /// Takes the in-stream title (ICY, Ogg comments) that playback has reached on this engine's own
+    /// network cursor (ENG-034). Takes <c>_sync</c> for the position only; never waits for network I/O.
+    /// </summary>
+    internal bool TryTakeStreamMetadata(out StreamMetadata metadata)
+    {
+        double playedUpTo;
+        lock (_sync)
+        {
+            if (!_ownsDemuxer || !IsOpenCore)
+            {
+                metadata = default;
+                return false;
+            }
+
+            // Packet times are on the container timeline; the position starts at the stream's start.
+            playedUpTo = ApplyOutputLatency(GetPositionCore()) + _streamStartSeconds;
+        }
+
+        return _demuxer.TryTakeStreamMetadata(playedUpTo, out metadata);
+    }
+
     private bool OpenFile(string filePath, string? normalizationCacheKey) =>
         OpenCore(filePath, () => _demuxer.IsOpen || _demuxer.Open(filePath), normalizationCacheKey, analyzeNormalization: true);
 

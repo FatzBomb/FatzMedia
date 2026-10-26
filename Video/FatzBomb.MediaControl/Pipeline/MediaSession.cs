@@ -13,12 +13,15 @@ internal sealed class MediaSession : IDisposable
     public AudioPipeline? FileAudio { get; private set; }
 
     /// <summary>
-    /// The audio pipeline in use: the file audio pipeline, or in Audio mode (043A) the soundtrack
-    /// pipeline while a video file's soundtrack is open.
+    /// The audio pipeline in use: the file audio pipeline, or the soundtrack pipeline while a video
+    /// file's soundtrack (Audio mode, 043A) or network audio through FFmpeg (ENG-034) is open.
     /// </summary>
     public AudioPipeline? Audio { get; private set; }
 
-    /// <summary>The Audio-mode pipeline that plays the soundtrack of video files (043A), if any.</summary>
+    /// <summary>
+    /// The pipeline that plays the soundtrack of video files in Audio mode (043A) and network audio
+    /// through FFmpeg in Full and Audio mode (ENG-034), if any.
+    /// </summary>
     public AudioPipeline? Soundtrack { get; private set; }
 
     public CdgPipeline? Cdg { get; private set; }

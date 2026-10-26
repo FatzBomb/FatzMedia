@@ -11,25 +11,56 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 /// </summary>
 internal static unsafe partial class Win32MonitorRefreshRate
 {
-    private const uint MonitorDefaultToNearest = 2;
+    internal const uint MonitorDefaultToNearest = 2;
     private const uint QdcOnlyActivePaths = 2;
     private const uint DisplayConfigDeviceInfoGetSourceName = 1;
-    private const int ErrorSuccess = 0;
+    internal const int ErrorSuccess = 0;
     private const int ErrorInsufficientBuffer = 122;
     private const int MaxQueryAttempts = 3;
 
     /// <summary>Refresh rate in Hz of the monitor showing <paramref name="hwnd"/>, or null when Windows cannot tell.</summary>
     public static double? TryGet(nint hwnd)
     {
-        if (hwnd == 0 || !TryGetMonitorDeviceName(hwnd, out var deviceName))
+        if (hwnd == 0 || !TryGetMonitorDeviceName(hwnd, out var deviceName) || !TryQueryActivePaths(out DisplayConfigPathInfo[] paths))
             return null;
 
+        // QDC_ONLY_ACTIVE_PATHS returns active paths only. A duplicated (cloned) desktop has
+        // several paths for one source; when their rates differ, which one the window is
+        // paced by is unknowable, so report nothing and let the platform rate apply.
+        double? found = null;
+        for (var index = 0; index < paths.Length; index++)
+        {
+            ref DisplayConfigPathInfo path = ref paths[index];
+            if (!TryGetSourceDeviceName(path.SourceInfo.AdapterId, path.SourceInfo.Id, out var sourceName)
+                || !string.Equals(sourceName, deviceName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            DisplayConfigRational rate = path.TargetInfo.RefreshRate;
+            if (rate.Numerator == 0 || rate.Denominator == 0)
+                return null;
+
+            var hertz = (double)rate.Numerator / rate.Denominator;
+            if (!double.IsFinite(hertz) || hertz < 1 || hertz > 1000 || (found is { } previous && Math.Abs(previous - hertz) > 0.001))
+                return null;
+
+            found = hertz;
+        }
+
+        return found;
+    }
+
+    /// <summary>The active display paths (<c>QueryDisplayConfig</c>, <c>QDC_ONLY_ACTIVE_PATHS</c>).</summary>
+    internal static bool TryQueryActivePaths(out DisplayConfigPathInfo[] activePaths)
+    {
+        activePaths = [];
         for (var attempt = 0; attempt < MaxQueryAttempts; attempt++)
         {
             uint pathCount;
             uint modeCount;
             if (GetDisplayConfigBufferSizes(QdcOnlyActivePaths, &pathCount, &modeCount) != ErrorSuccess || pathCount == 0)
-                return null;
+                return false;
 
             var paths = new DisplayConfigPathInfo[pathCount];
             var modes = new DisplayConfigModeInfo[modeCount];
@@ -42,39 +73,16 @@ internal static unsafe partial class Win32MonitorRefreshRate
             if (result == ErrorInsufficientBuffer)
                 continue;
             if (result != ErrorSuccess)
-                return null;
+                return false;
 
-            // QDC_ONLY_ACTIVE_PATHS returns active paths only. A duplicated (cloned) desktop has
-            // several paths for one source; when their rates differ, which one the window is
-            // paced by is unknowable, so report nothing and let the platform rate apply.
-            double? found = null;
-            for (var index = 0; index < pathCount; index++)
-            {
-                ref DisplayConfigPathInfo path = ref paths[index];
-                if (!TryGetSourceDeviceName(path.SourceInfo.AdapterId, path.SourceInfo.Id, out var sourceName)
-                    || !string.Equals(sourceName, deviceName, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                DisplayConfigRational rate = path.TargetInfo.RefreshRate;
-                if (rate.Numerator == 0 || rate.Denominator == 0)
-                    return null;
-
-                var hertz = (double)rate.Numerator / rate.Denominator;
-                if (!double.IsFinite(hertz) || hertz < 1 || hertz > 1000 || (found is { } previous && Math.Abs(previous - hertz) > 0.001))
-                    return null;
-
-                found = hertz;
-            }
-
-            return found;
+            activePaths = pathCount == paths.Length ? paths : paths[..(int)pathCount];
+            return true;
         }
 
-        return null;
+        return false;
     }
 
-    private static bool TryGetMonitorDeviceName(nint hwnd, out string deviceName)
+    internal static bool TryGetMonitorDeviceName(nint hwnd, out string deviceName)
     {
         deviceName = string.Empty;
         var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
@@ -89,7 +97,7 @@ internal static unsafe partial class Win32MonitorRefreshRate
         return deviceName.Length > 0;
     }
 
-    private static bool TryGetSourceDeviceName(Luid adapterId, uint sourceId, out string name)
+    internal static bool TryGetSourceDeviceName(Luid adapterId, uint sourceId, out string name)
     {
         var request = new DisplayConfigSourceDeviceName
         {
@@ -112,7 +120,7 @@ internal static unsafe partial class Win32MonitorRefreshRate
     }
 
     [LibraryImport("user32.dll")]
-    private static partial nint MonitorFromWindow(nint hwnd, uint flags);
+    internal static partial nint MonitorFromWindow(nint hwnd, uint flags);
 
     [LibraryImport("user32.dll")]
     private static partial int GetMonitorInfoW(nint monitor, MonitorInfoEx* info);
@@ -124,7 +132,7 @@ internal static unsafe partial class Win32MonitorRefreshRate
     private static partial int QueryDisplayConfig(uint flags, uint* pathCount, DisplayConfigPathInfo* paths, uint* modeCount, DisplayConfigModeInfo* modes, nint currentTopologyId);
 
     [LibraryImport("user32.dll")]
-    private static partial int DisplayConfigGetDeviceInfo(DisplayConfigDeviceInfoHeader* request);
+    internal static partial int DisplayConfigGetDeviceInfo(DisplayConfigDeviceInfoHeader* request);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Luid

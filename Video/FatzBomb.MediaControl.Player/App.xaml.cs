@@ -63,7 +63,7 @@ public partial class App : Application
         PlayerRendererSelection selection;
         try
         {
-            selection = PlayerRendererSelection.Resolve(choice);
+            selection = PlayerRendererSelection.Resolve(choice, StartupOptions.HdrOutput);
         }
         catch (Exception ex)
         {

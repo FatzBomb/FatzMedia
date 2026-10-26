@@ -75,6 +75,7 @@ Shared (`PlayerStartupOptions`, every player):
 | `--native=<dir>` (repeatable) | native library folders searched first |
 | `--net-retries=<n>`, `--net-ca-file=<pem>`, `--net-allow-invalid-certs` | network policy |
 | `--no-hdr-tonemap`, `--hdr-tonemap-cpu` | HDR comparison modes |
+| `--hdr-output` | HDR output on an HDR display (WPF, WinForms; Direct3D11 native surfaces) |
 | `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load` | engine options |
 | `--eq=g1,...,g10` | equalizer gains (turns it on) |
 | `--prepare-next=<file>`, `--auto-next`, `--fade-next=<s>` | prepared next item |

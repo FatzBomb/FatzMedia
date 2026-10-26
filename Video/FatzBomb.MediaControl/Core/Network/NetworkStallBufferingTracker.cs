@@ -56,6 +56,21 @@ internal sealed class NetworkStallBufferingTracker(TimeSpan stallThreshold, doub
         return changed;
     }
 
+    /// <summary>
+    /// Ends a buffering spell in progress because playback ended (ENG-034). Returns
+    /// <see langword="true"/> when it was buffering, with the fill to report (1).
+    /// </summary>
+    public bool EndSpell(out double fill)
+    {
+        fill = 1;
+        if (!IsBuffering)
+            return false;
+
+        IsBuffering = false;
+        _lastReportedFill = fill;
+        return true;
+    }
+
     public void Reset()
     {
         IsBuffering = false;

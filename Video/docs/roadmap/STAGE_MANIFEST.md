@@ -32,9 +32,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/042A_ACTIVE_HdrFollowUps.md` - HDR follow-ups from 038A. Slice 1 (HLG tone mapping:
   inverse OETF, BT.2100 OOTF at 1000 nits, BT.2390 curve; CPU tables and the Direct3D11 shader)
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
-  Direct3D11, opt-in) is planned; its renderer-neutral policy and math are implemented and
-  tested (`updates/042A_2`), the Direct3D11 wiring waits for ENG-026. The Avalonia GPU-shared
-  surface stays SDR.
+  Direct3D11, opt-in `Direct3D11PresentationOptions.HdrOutput`: FP16 scRGB swap chain for the
+  primary window, SDR layers at the system SDR white level, SDR fallback) is implemented,
+  pending manual smoke (`updates/042A_2`); the WPF Player turns it on with `--hdr-output`.
+  Secondary windows, offscreen surfaces and the Avalonia GPU-shared surface stay SDR.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke
@@ -53,7 +54,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
-- `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26)
+- `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26). Follow-up update `updates/039A_3` (https and HLS audio through FFmpeg so certificates are verified, ENG-034 triage: clock held for picture-only outages, bounded reconnects, moov-at-end message): implemented, pending manual smoke
 - `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
 - `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
 - `complete/014A_COMPLETED_StreamingNetworkPlayback.md` — source capability matrix and HTTP/HTTPS audio with retries; owner smoke passed 2026-10-17; network video deferred to 039A (completed 2026-10-18)

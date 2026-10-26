@@ -111,7 +111,7 @@ The MediaControl packages do not copy or redistribute native DLLs. See
 
 The player understands the flags all test players share (`PlayerStartupOptions`): a media file
 or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--net-retries=`,
-`--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`,
+`--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`,
 `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
 `--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, plus its own
 `--renderer=`/`--software` (below) and `--no-auto-hide`. The **PLAYER** box in the **A/V** flyout
@@ -134,7 +134,9 @@ Info line names the peak brightness used (for HLG, BT.2100's 1000-nit nominal di
 With the Direct3D11 renderer and hardware decoding, a shader does it on the GPU (a `D3D11.Hdr`
 line says so); otherwise the engine's CPU tone mapper does, with the same curve.
 `--hdr-tonemap-cpu` uses the CPU tone mapper on Direct3D11 too, and `--no-hdr-tonemap` shows HDR
-as before (washed out), for comparison.
+as before (washed out), for comparison. `--hdr-output` (Direct3D11, stage 042A slice 2) shows
+HDR video in HDR on a monitor with Windows HDR on, instead of tone mapping it; a
+`D3D11.HdrOutput` line names the output and, when it stays SDR, why.
 
 ## Subtitles
 

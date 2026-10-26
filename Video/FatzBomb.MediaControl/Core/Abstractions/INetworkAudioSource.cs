@@ -30,13 +30,14 @@ internal interface IMediaSourceCapabilityProvider
 }
 
 /// <summary>
-/// Engine support for network video (Stage 039A): cancelling an open in progress and buffering
-/// changes of sources read through FFmpeg (network video and Audio-mode network soundtracks).
+/// Engine support for sources read through FFmpeg's network path (Stage 039A; ENG-034): cancelling
+/// an open in progress, buffering changes (network video, Audio-mode network soundtracks, https
+/// and HLS audio) and the in-stream titles of network audio.
 /// </summary>
 internal interface INetworkMediaControl
 {
     /// <summary>
-    /// Cancels the network video open in progress, if any: the connect attempt and any retry delay
+    /// Cancels the FFmpeg network open in progress, if any: the connect attempt and any retry delay
     /// end at once and the load fails. Thread-safe; called outside the control queue by Close and
     /// Dispose.
     /// </summary>
@@ -44,4 +45,10 @@ internal interface INetworkMediaControl
 
     /// <summary>Raised from a timer thread when buffering state or fill changes.</summary>
     event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    /// <summary>
+    /// Raised from a timer thread when network audio played through FFmpeg (https, HLS; ENG-034)
+    /// reaches a new in-stream title.
+    /// </summary>
+    event EventHandler<MediaStreamMetadataChangedEventArgs>? NetworkStreamMetadataChanged;
 }

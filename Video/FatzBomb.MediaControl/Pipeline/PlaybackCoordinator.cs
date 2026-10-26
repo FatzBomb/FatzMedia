@@ -40,8 +40,10 @@ internal sealed class PlaybackCoordinator : IDisposable
             _session.AttachAudio(audio);
         }
 
-        // Without BASS (ENG-033) there is no soundtrack engine: soundtrack loads are refused first.
-        if (mode == MediaPlayerMode.Audio && audioAvailable)
+        // The soundtrack engine (FFmpeg decode into the audio output) plays Audio mode's video
+        // soundtracks and, in Full and Audio mode, network audio that opens through FFmpeg (https
+        // and HLS, ENG-034). Without BASS (ENG-033) there is none: those loads are refused first.
+        if (mode != MediaPlayerMode.Background && audioAvailable)
         {
             var bassDeviceIndex = audioEngine is IAudioOutputDeviceProvider deviceProvider
                 ? deviceProvider.BassDeviceIndex
@@ -52,7 +54,11 @@ internal sealed class PlaybackCoordinator : IDisposable
                 ownsAudioEngine: true);
             soundtrack.PlaybackEnded += OnPlaybackEnded;
             if (soundtrack.Engine is SoundtrackAudioEngine soundtrackEngine)
+            {
                 soundtrackEngine.NetworkBufferingChanged += OnNetworkBufferingChanged;
+                soundtrackEngine.StreamMetadataChanged += OnNetworkStreamMetadataChanged;
+            }
+
             _session.AttachSoundtrack(soundtrack);
         }
 
@@ -83,6 +89,9 @@ internal sealed class PlaybackCoordinator : IDisposable
 
     /// <summary>Buffering changes of a network video or network soundtrack (Stage 039A), from a timer thread.</summary>
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    /// <summary>In-stream titles of network audio played through FFmpeg (ENG-034), from a timer thread.</summary>
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? NetworkStreamMetadataChanged;
 
 
     public ICdgEngine? Cdg => _session.Cdg?.IsOpen == true ? _session.Cdg.Engine : null;
@@ -208,6 +217,9 @@ internal sealed class PlaybackCoordinator : IDisposable
         return false;
     }
 
+    /// <summary>Whether the soundtrack engine is there (Full and Audio mode, with BASS): network audio through FFmpeg can play.</summary>
+    public bool CanOpenSoundtrack => _session.Soundtrack is not null;
+
     public bool OpenNetworkAudio(Uri uri) => _session.Audio?.OpenUrl(uri.AbsoluteUri) == true;
 
     /// <summary>Gets the network capabilities of the open audio source, or <see langword="null"/>.</summary>
@@ -226,9 +238,12 @@ internal sealed class PlaybackCoordinator : IDisposable
         return _session.Video is INetworkVideoEngine video && video.OpenNetwork(uri.AbsoluteUri, options);
     }
 
-    /// <summary>Audio mode (Stage 039A): makes one attempt to open a network video's soundtrack.</summary>
-    public bool OpenNetworkSoundtrack(Uri uri, FfmpegNetworkOptions options) =>
-        OpenSoundtrack(pipeline => pipeline.OpenNetworkSoundtrack(uri.AbsoluteUri, options));
+    /// <summary>
+    /// Makes one attempt to open a network video's soundtrack (Audio mode, Stage 039A) or, with
+    /// <paramref name="audioSource"/>, network audio through FFmpeg (ENG-034).
+    /// </summary>
+    public bool OpenNetworkSoundtrack(Uri uri, FfmpegNetworkOptions options, bool audioSource = false) =>
+        OpenSoundtrack(pipeline => pipeline.OpenNetworkSoundtrack(uri.AbsoluteUri, options, audioSource));
 
     /// <summary>Gets the capability row of the open network video or soundtrack, or <see langword="null"/>.</summary>
     public MediaSourceCapabilities? NetworkVideoCapabilities =>
@@ -238,10 +253,13 @@ internal sealed class PlaybackCoordinator : IDisposable
                 ? soundtrack.NetworkCapabilities
                 : null;
 
-    /// <summary>Gets FFmpeg's reason for the last failed network video or soundtrack open.</summary>
-    public string? LastNetworkVideoError =>
-        (_session.Soundtrack?.Engine as SoundtrackAudioEngine)?.LastNetworkError
-        ?? (_session.Video as INetworkVideoEngine)?.LastNetworkError;
+    /// <summary>
+    /// Gets FFmpeg's reason for the last failed network open of the soundtrack engine
+    /// (<paramref name="soundtrack"/>) or of the video pipeline.
+    /// </summary>
+    public string? GetLastNetworkError(bool soundtrack) => soundtrack
+        ? (_session.Soundtrack?.Engine as SoundtrackAudioEngine)?.LastNetworkError
+        : (_session.Video as INetworkVideoEngine)?.LastNetworkError;
 
     public bool OpenAudioCdg(string audioPath, string cdgPath)
     {
@@ -386,7 +404,10 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Video is INetworkVideoEngine networkVideo)
             networkVideo.NetworkBufferingChanged -= OnNetworkBufferingChanged;
         if (_session.Soundtrack?.Engine is SoundtrackAudioEngine soundtrackEngine)
+        {
             soundtrackEngine.NetworkBufferingChanged -= OnNetworkBufferingChanged;
+            soundtrackEngine.StreamMetadataChanged -= OnNetworkStreamMetadataChanged;
+        }
 
         _session.Dispose();
     }
@@ -396,6 +417,8 @@ internal sealed class PlaybackCoordinator : IDisposable
     private void OnPlaybackLooped(object? sender, EventArgs e) => PlaybackLooped?.Invoke(this, EventArgs.Empty);
 
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
+
+    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
 
     private void TryLoadEmbeddedSubtitles(string videoPath)
     {

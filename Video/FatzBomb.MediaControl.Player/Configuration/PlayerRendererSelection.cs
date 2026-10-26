@@ -72,11 +72,12 @@ internal sealed class PlayerRendererSelection
         return Enum.IsDefined(choice);
     }
 
-    public static PlayerRendererSelection Resolve(PlayerRendererChoice choice)
+    /// <param name="hdrOutput">Stage 042A slice 2: HDR output on HDR displays (<c>--hdr-output</c>).</param>
+    public static PlayerRendererSelection Resolve(PlayerRendererChoice choice, bool hdrOutput = false)
     {
-        static Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection selection) =>
+        Direct3D11PresentationCoordinatorFactory Direct3D11(Direct3D11DeviceSelection selection) =>
             WindowsDirect3D11MediaControlPlatformFactory.CreatePresentationFactory(
-                new Direct3D11PresentationOptions { DeviceSelection = selection });
+                new Direct3D11PresentationOptions { DeviceSelection = selection, HdrOutput = hdrOutput });
 
         switch (choice)
         {

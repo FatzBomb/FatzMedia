@@ -59,6 +59,12 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets whether HDR video is tone mapped on the CPU (<c>--hdr-tonemap-cpu</c>), for comparison.</summary>
     public bool PreferCpuHdrToneMapping { get; init; }
 
+    /// <summary>
+    /// Gets whether HDR video is shown in HDR on an HDR display (<c>--hdr-output</c>, Direct3D11
+    /// native window surfaces; stage 042A slice 2).
+    /// </summary>
+    public bool HdrOutput { get; init; }
+
     /// <summary>Gets the item to prepare as next at startup (<c>--prepare-next=</c>).</summary>
     public string? PrepareNextPath { get; init; }
 
@@ -108,6 +114,7 @@ public sealed record PlayerStartupOptions
             TrimSilence = HasFlag(args, "--trim-silence"),
             DisableHdrToneMapping = HasFlag(args, "--no-hdr-tonemap"),
             PreferCpuHdrToneMapping = HasFlag(args, "--hdr-tonemap-cpu"),
+            HdrOutput = HasFlag(args, "--hdr-output"),
             PrepareNextPath = Values(args, "--prepare-next=").FirstOrDefault(static path => path.Length > 0),
             AutoNext = HasFlag(args, "--auto-next"),
             FadeNext = Values(args, "--fade-next=").Select(ParseFade).FirstOrDefault(),

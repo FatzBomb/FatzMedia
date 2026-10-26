@@ -23,6 +23,11 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public void RaiseNetworkBuffering(bool isBuffering, double fill) =>
         NetworkBufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
 
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? NetworkStreamMetadataChanged;
+
+    public void RaiseNetworkStreamMetadata(string? title, string? artist, string? rawTitle) =>
+        NetworkStreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(title, artist, rawTitle));
+
     public TestAudioEngine TestAudio { get; } = new();
     public TestVideoEngine? TestVideo { get; init; }
     public TestCdgEngine? TestCdg { get; init; }

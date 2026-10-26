@@ -104,7 +104,7 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
 
     public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
     {
-        var platform = new WindowsDirect3D11MediaControlPlatformFactory(new Direct3D11PresentationOptions { DeviceSelection = _deviceSelection });
+        var platform = new WindowsDirect3D11MediaControlPlatformFactory(new Direct3D11PresentationOptions { DeviceSelection = _deviceSelection, HdrOutput = options.HdrOutput });
         _platformFactory = platform;
         // Loading BASS and FFmpeg blocks, so the engine is created off the UI thread.
         return Task.Run(() => new MediaControlPlayer(platform, configuration, NativeLibraryPaths));

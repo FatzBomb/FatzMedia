@@ -22,7 +22,9 @@ internal sealed record HttpRequestRecord(int Number, string Path, long? RangeSta
 /// A tiny in-process HTTP/1.1 file server on 127.0.0.1 for the network video tests: serves files
 /// from a folder with byte ranges (<c>Accept-Ranges: bytes</c>, 206 responses) and lets a test
 /// delay a response or cut it short to simulate a stalled or dropped server. Text files can be
-/// overridden (a live HLS playlist). With a certificate it serves https (ENG-034).
+/// overridden (a live HLS playlist). With a certificate it serves https (ENG-034). Byte ranges can
+/// be turned off (<see cref="SupportsRanges"/>, like <c>python -m http.server</c>), and a client
+/// that asks for ICY metadata gets an Icecast-style live stream (<see cref="IcyTitle"/>).
 /// </summary>
 internal sealed class LocalHttpMediaServer : IDisposable
 {
@@ -46,6 +48,19 @@ internal sealed class LocalHttpMediaServer : IDisposable
     }
 
     public Func<HttpRequestRecord, HttpResponsePlan> Plan { get; set; }
+
+    /// <summary>Whether byte ranges are served (default). Without them every response is the whole file, with no <c>Accept-Ranges</c>.</summary>
+    public bool SupportsRanges { get; set; } = true;
+
+    /// <summary>
+    /// The ICY title of each metadata block (by block number), or null for no ICY support. A
+    /// request with <c>Icy-MetaData: 1</c> then gets a live stream: no length, no ranges,
+    /// <c>icy-metaint: </c><see cref="IcyMetaInterval"/>, and a metadata block after every interval.
+    /// </summary>
+    public Func<int, string>? IcyTitle { get; set; }
+
+    /// <summary>The audio bytes between two ICY metadata blocks.</summary>
+    public int IcyMetaInterval { get; set; } = 16000;
 
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
@@ -116,8 +131,12 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 var parts = lines[0].Split(' ');
                 var path = Uri.UnescapeDataString(parts.Length > 1 ? parts[1].Split('?')[0] : "/");
                 long? rangeStart = null;
+                var wantsIcy = false;
                 foreach (var line in lines.Skip(1))
                 {
+                    if (line.StartsWith("Icy-MetaData:", StringComparison.OrdinalIgnoreCase) && line["Icy-MetaData:".Length..].Trim() == "1")
+                        wantsIcy = true;
+
                     if (line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase))
                     {
                         var value = line["Range:".Length..].Trim();
@@ -127,6 +146,9 @@ internal sealed class LocalHttpMediaServer : IDisposable
                     }
                 }
 
+                Func<int, string>? icyTitle = wantsIcy ? IcyTitle : null;
+                if (!SupportsRanges || icyTitle is not null)
+                    rangeStart = null;
                 var record = new HttpRequestRecord(Interlocked.Increment(ref _requestCount), path, rangeStart);
                 _requests.Enqueue(record);
                 HttpResponsePlan plan = Plan(record);
@@ -152,17 +174,25 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 var count = length - start;
                 var contentType = path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) ? "application/vnd.apple.mpegurl"
                     : path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ? "video/mp2t"
+                    : path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ? "audio/mpeg"
+                    : path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) ? "audio/ogg"
                     : "video/mp4";
                 var status = rangeStart is null ? "200 OK" : "206 Partial Content";
                 var head = new StringBuilder()
                     .Append($"HTTP/1.1 {status}\r\n")
-                    .Append($"Content-Type: {contentType}\r\n")
-                    .Append("Accept-Ranges: bytes\r\n")
-                    .Append($"Content-Length: {count}\r\n");
+                    .Append($"Content-Type: {contentType}\r\n");
+                if (icyTitle is not null)
+                    head.Append("icy-name: FatzBomb test radio\r\n").Append($"icy-metaint: {IcyMetaInterval}\r\n");
+                else
+                    head.Append($"Content-Length: {count}\r\n");
+                if (SupportsRanges && icyTitle is null)
+                    head.Append("Accept-Ranges: bytes\r\n");
                 if (rangeStart is not null)
                     head.Append($"Content-Range: bytes {start}-{length - 1}/{length}\r\n");
                 head.Append("Connection: close\r\n\r\n");
                 await WriteAsync(stream, head.ToString()).ConfigureAwait(false);
+                if (icyTitle is not null)
+                    stream = new IcyWriteStream(stream, IcyMetaInterval, icyTitle);
 
                 var limit = plan.TruncateAfterBytes is { } truncate ? Math.Min(count, truncate) : count;
                 if (body is not null)
@@ -173,7 +203,8 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 {
                     await using FileStream source = File.OpenRead(file);
                     source.Position = start;
-                    var buffer = new byte[64 * 1024];
+                    // A throttled body goes out in twentieths of a second, not in bursts.
+                    var buffer = new byte[plan.BytesPerSecond > 0 ? (int)Math.Clamp(plan.BytesPerSecond / 20, 1024, 64 * 1024) : 64 * 1024];
                     var remaining = limit;
                     while (remaining > 0)
                     {
@@ -199,6 +230,49 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 // The client went away or the server is stopping.
             }
         }
+    }
+
+    /// <summary>Inserts an ICY metadata block after every <c>interval</c> body bytes (Shoutcast/Icecast framing).</summary>
+    private sealed class IcyWriteStream(Stream inner, int interval, Func<int, string> title) : Stream
+    {
+        private int _sinceBlock;
+        private int _blocks;
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            while (buffer.Length > 0)
+            {
+                var take = Math.Min(buffer.Length, interval - _sinceBlock);
+                await inner.WriteAsync(buffer[..take], cancellationToken).ConfigureAwait(false);
+                buffer = buffer[take..];
+                _sinceBlock += take;
+                if (_sinceBlock < interval)
+                    continue;
+
+                _sinceBlock = 0;
+                var text = Encoding.UTF8.GetBytes($"StreamTitle='{title(_blocks++)}';");
+                var blocks = (text.Length + 15) / 16;
+                var block = new byte[1 + (blocks * 16)];
+                block[0] = (byte)blocks;
+                text.CopyTo(block, 1);
+                await inner.WriteAsync(block, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     private static async Task<string?> ReadHeaderAsync(Stream stream)
