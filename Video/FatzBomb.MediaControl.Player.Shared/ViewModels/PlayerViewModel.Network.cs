@@ -79,7 +79,6 @@ public partial class PlayerViewModel
         {
             _lastStreamTitle = string.Empty;
             StreamInfoText = "Connecting...";
-            LoadedMediaText = uri.ToString();
         });
         try
         {
@@ -91,6 +90,8 @@ public partial class PlayerViewModel
             ReportNetwork(loaded ? $"Network source loaded: {summary}" : summary);
             RunOnUiThread(() =>
             {
+                if (loaded)
+                    LoadedMediaText = uri.ToString();
                 StreamInfoText = loaded ? $"{capabilities?.SourceClass}" : "Not connected";
                 StatusText = loaded ? $"Streaming: {uri}" : $"Could not load: {uri}";
             });

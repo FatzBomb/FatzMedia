@@ -143,6 +143,36 @@ public sealed class PlayerViewModelTests
     }
 
     [Fact]
+    public async Task Load_AFailedLoadKeepsTheLoadedName()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
+        await harness.LoadAsync("song.mp3");
+        harness.Engine.Engine.OpenSucceeds = false;
+
+        await harness.ViewModel.LoadMediaAsync("broken.mp3");
+
+        Assert.Equal("Could not load: broken.mp3", harness.ViewModel.StatusText);
+        Assert.Equal("song.mp3", harness.ViewModel.LoadedMediaText);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhileTheEngineStarts_DisposesItWhenItArrives()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new GatedEngineFactory(release.Task);
+        await using var harness = new PlayerViewModelHarness(null, engine);
+        Task start = harness.ViewModel.StartAsync();
+
+        ValueTask disposing = harness.ViewModel.DisposeAsync();
+        release.SetResult();
+        await disposing;
+        await start;
+
+        Assert.Null(harness.ViewModel.Player);
+        Assert.Equal(1, engine.Engine.DisposeCount);
+    }
+
+    [Fact]
     public async Task TogglePlayPause_FollowsTheLatestState()
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
@@ -552,6 +582,8 @@ public sealed class PlayerViewModelTests
         await viewModel.DisposeAsync();
 
         Assert.Equal(1, harness.Engine.Engine.DisposeCount);
+        Assert.Null(viewModel.Player);
+        Assert.False(viewModel.PlayCommand.CanExecute(null));
         Assert.False(harness.PositionTimer.IsRunning);
         Assert.True(harness.PositionTimer.IsDisposed);
         _ = harness.Dispatcher.RunPending();

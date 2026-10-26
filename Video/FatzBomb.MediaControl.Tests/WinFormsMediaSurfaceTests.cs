@@ -75,6 +75,26 @@ public sealed class WinFormsMediaSurfaceTests
     });
 
     [Fact]
+    public void RoleChangeToPrimary_ReattachesAsPrimaryAndSendsTheDisplayMode() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface
+        {
+            Size = new System.Drawing.Size(64, 64),
+            Role = MediaPresentationSurfaceRole.Projector,
+            VideoDisplayMode = VideoDisplayMode.Stretch,
+            Player = session,
+        };
+        _ = surface.Handle;
+
+        surface.Role = MediaPresentationSurfaceRole.Primary;
+
+        Assert.True(surface.IsPrimarySurfaceAttached);
+        Assert.Equal(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, recorder.LastAttached!.Id);
+        Assert.Equal(1, recorder.VideoDisplayModeSets);
+    });
+
+    [Fact]
     public void SurfaceIdChange_ReattachesAndDetachesTheIdItAttachedWith() => RunSta(() =>
     {
         (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();

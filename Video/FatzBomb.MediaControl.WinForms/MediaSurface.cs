@@ -80,6 +80,8 @@ public class MediaSurface : Control
 
             Detach();
             _role = value;
+            if (_player is not null && value == MediaPresentationSurfaceRole.Primary)
+                _player.VideoDisplayMode = _videoDisplayMode;
             AttachOrResize();
         }
     }

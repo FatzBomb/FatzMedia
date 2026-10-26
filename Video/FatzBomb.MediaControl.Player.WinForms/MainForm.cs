@@ -25,7 +25,7 @@ internal sealed class MainForm : Form
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
-    private readonly TrackBar _seekBar = new() { Dock = DockStyle.Fill, TickStyle = TickStyle.None, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, AutoSize = false, Height = 28 };
+    private readonly ScrubTrackBar _seekBar = new() { Dock = DockStyle.Fill, TickStyle = TickStyle.None, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, AutoSize = false, Height = 28 };
     private readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
     private readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
     private readonly System.Windows.Forms.Timer _chromeTimer = new() { Interval = (int)FullScreenChromeDelay.TotalMilliseconds };
@@ -37,6 +37,7 @@ internal sealed class MainForm : Form
     private bool _cursorHidden;
     private FormWindowState _restoreWindowState;
     private FormBorderStyle _restoreBorderStyle;
+    private bool _closing;
     private bool _closed;
 
     public MainForm(PlayerStartupOptions options)
@@ -67,8 +68,10 @@ internal sealed class MainForm : Form
         _binder.OnChanged(() => _surface.VideoDisplayMode = _viewModel.VideoDisplayMode, nameof(PlayerViewModel.VideoDisplayMode));
         _binder.OnChanged(UpdateSeekBar, nameof(PlayerViewModel.SeekPositionSeconds), nameof(PlayerViewModel.DurationSeconds));
 
+        _seekBar.PressStarting += OnSeekPressStarting;
         _seekBar.MouseDown += OnSeekMouseDown;
         _seekBar.MouseUp += OnSeekMouseUp;
+        _seekBar.MouseCaptureChanged += OnSeekCaptureChanged;
         _seekBar.ValueChanged += OnSeekValueChanged;
         _surface.DoubleClick += (_, _) => ToggleFullScreen();
         _surface.MouseMove += (_, _) => OnFullScreenPointerMoved();
@@ -455,20 +458,37 @@ internal sealed class MainForm : Form
         }
     }
 
-    // A press starts a scrub and jumps to the pointer; dragging the thumb seeks as it moves.
-    private void OnSeekMouseDown(object? sender, MouseEventArgs e)
+    // A press starts a scrub (before the native track bar pages, so that step is a drag seek too)
+    // and jumps to the pointer; dragging the thumb seeks as it moves.
+    private void OnSeekPressStarting(object? sender, EventArgs e)
     {
-        if (e.Button != MouseButtons.Left || !_viewModel.CanSeek)
+        if (_isDragging || !_viewModel.CanSeek)
             return;
 
         _isDragging = true;
         _viewModel.BeginSeekPreview();
+    }
+
+    private void OnSeekMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || !_isDragging)
+            return;
+
         var inset = 13 * DeviceDpi / 96.0;
         var fraction = Math.Clamp((e.X - inset) / Math.Max(1, _seekBar.ClientSize.Width - (2 * inset)), 0, 1);
         _seekBar.Value = (int)Math.Round(fraction * _seekBar.Maximum);
     }
 
-    private void OnSeekMouseUp(object? sender, MouseEventArgs e)
+    private void OnSeekMouseUp(object? sender, MouseEventArgs e) => EndSeekDrag();
+
+    // The track bar lost the mouse (Alt+Tab, a dialog): end the drag where it is.
+    private void OnSeekCaptureChanged(object? sender, EventArgs e)
+    {
+        if (!_seekBar.Capture)
+            EndSeekDrag();
+    }
+
+    private void EndSeekDrag()
     {
         if (!_isDragging)
             return;
@@ -649,8 +669,12 @@ internal sealed class MainForm : Form
             return;
 
         // Dispose waits for admitted media operations, so the view model runs it off the UI
-        // thread; the form closes afterwards.
+        // thread; the form closes afterwards. A second close request waits for the first.
         e.Cancel = true;
+        if (_closing)
+            return;
+
+        _closing = true;
         _chromeTimer.Stop();
         ShowChrome(true);
         CloseSecondScreen();
@@ -710,5 +734,21 @@ internal sealed class SecondScreenForm : Form
     {
         _surface.Player = null;
         base.OnFormClosed(e);
+    }
+}
+
+/// <summary>A track bar that says when the left button goes down, before the native control pages or drags.</summary>
+internal sealed class ScrubTrackBar : TrackBar
+{
+    private const int WmLeftButtonDown = 0x0201;
+
+    /// <summary>Raised on the left button press, before the native control handles it.</summary>
+    public event EventHandler? PressStarting;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WmLeftButtonDown)
+            PressStarting?.Invoke(this, EventArgs.Empty);
+        base.WndProc(ref m);
     }
 }

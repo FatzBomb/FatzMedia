@@ -6,17 +6,17 @@ using FatzBomb.MediaControl.Rendering.Direct3D11;
 namespace FatzBomb.MediaControl.Player.WinForms;
 
 /// <summary>
-/// The WinForms UI thread: the <see cref="SynchronizationContext"/> WinForms installs on the thread
-/// that creates the first control.
+/// The WinForms UI thread: the <see cref="WindowsFormsSynchronizationContext"/> of the thread that
+/// creates the dispatcher.
 /// </summary>
 internal sealed class WinFormsPlayerDispatcher : IPlayerDispatcher
 {
     private readonly SynchronizationContext _context;
     private readonly Thread _uiThread = Thread.CurrentThread;
 
+    /// <summary>Call on the UI thread (normally from the main form's constructor).</summary>
     public WinFormsPlayerDispatcher() =>
-        _context = SynchronizationContext.Current
-            ?? throw new InvalidOperationException("Create the dispatcher on the UI thread after the first control.");
+        _context = SynchronizationContext.Current as WindowsFormsSynchronizationContext ?? new WindowsFormsSynchronizationContext();
 
     public bool CheckAccess() => Thread.CurrentThread == _uiThread;
 

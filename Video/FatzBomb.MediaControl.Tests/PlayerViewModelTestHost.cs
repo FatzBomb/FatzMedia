@@ -96,6 +96,26 @@ internal sealed class TestPlayerFilePicker : IPlayerFilePicker
     }
 }
 
+/// <summary>An engine factory whose creation waits for <paramref name="gate"/> (a slow native load).</summary>
+internal sealed class GatedEngineFactory(Task gate) : IPlayerEngineFactory
+{
+    private readonly TestPlayerEngineFactory _inner = new();
+
+    public TestMediaEngine Engine => _inner.Engine;
+
+    public IReadOnlyList<string> NativeLibraryPaths => _inner.NativeLibraryPaths;
+
+    public NativeDependencyReport? NativeDependenciesAfterFailure => null;
+
+    public Task<PlayerRendererInfo> ResolveRendererAsync() => _inner.ResolveRendererAsync();
+
+    public async Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo renderer, MediaPlayerConfiguration configuration)
+    {
+        await gate.ConfigureAwait(false);
+        return await _inner.CreatePlayerAsync(renderer, configuration).ConfigureAwait(false);
+    }
+}
+
 /// <summary>Creates real <see cref="MediaControlPlayer"/>s over <see cref="TestMediaEngine"/>s.</summary>
 internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 {
@@ -158,11 +178,17 @@ internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 internal sealed class PlayerViewModelHarness : IAsyncDisposable
 {
     public PlayerViewModelHarness(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null, bool withShell = true)
+        : this(options, (IPlayerEngineFactory?)engine, withShell)
     {
-        Engine = engine ?? new TestPlayerEngineFactory();
+    }
+
+    public PlayerViewModelHarness(PlayerStartupOptions? options, IPlayerEngineFactory? engine, bool withShell = true)
+    {
+        IPlayerEngineFactory factory = engine ?? new TestPlayerEngineFactory();
+        Engine = factory as TestPlayerEngineFactory ?? new TestPlayerEngineFactory();
         ViewModel = new PlayerViewModel(
             options ?? new PlayerStartupOptions(),
-            new PlayerHost(Dispatcher, Engine, withShell ? Clipboard : null, withShell ? FilePicker : null));
+            new PlayerHost(Dispatcher, factory, withShell ? Clipboard : null, withShell ? FilePicker : null));
     }
 
     public TestPlayerDispatcher Dispatcher { get; } = new();

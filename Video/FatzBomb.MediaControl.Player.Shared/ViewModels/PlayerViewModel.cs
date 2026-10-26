@@ -370,9 +370,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         {
             IsBusy = true;
             StatusText = $"Loading: {mediaPath}";
-            LoadedMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } name ? name : mediaPath;
             MediaControlPlayer? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
+            if (loaded)
+                LoadedMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } name ? name : mediaPath;
             RefreshPlaybackPosition();
             RefreshSyncOffsets();
             RunOnUiThread(RefreshEffectValues);
@@ -464,7 +465,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             createdPlayer = player;
             if (_disposed)
             {
-                player.Dispose();
+                // Closed while the engine was starting: dispose it off the UI thread.
+                await Task.Run(player.Dispose);
                 return;
             }
 
@@ -758,11 +760,23 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>Detaches from the engine on the calling thread, then disposes it off it, so a UI thread is not blocked.</summary>
+    /// <summary>
+    /// Detaches from the engine on the calling thread, then disposes it off it, so a UI thread is
+    /// not blocked. When the engine is still starting, waits for it and disposes it too.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
+        Task? start;
+        lock (_startGate)
+            start = _startTask;
         if (DetachPlayer() is { } player)
             await Task.Run(player.Dispose).ConfigureAwait(false);
+        if (start is not null)
+        {
+            // StartCoreAsync never throws; it disposes an engine created after this point.
+            await start.ConfigureAwait(false);
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -784,6 +798,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         StopSubtitleTracking(player);
         StopPreparedNextValidation(player);
         StopNetworkValidation(player);
+        // Surfaces bound to Player let go of it, and the commands turn off, before it is disposed.
+        Player = null;
         return player;
     }
 }

@@ -15,14 +15,14 @@ public sealed record PlayerStartupOptions
     public const double MaxFadeNextSeconds = 60;
 
     /// <summary>
-    /// Gets the first argument that is not a flag, when it is not an http/https URL: a media file
-    /// to load at startup.
+    /// Gets the first argument that is not a flag, when it is not an http/https URL and no
+    /// <c>--url=</c> is given: a media file to load at startup.
     /// </summary>
     public string? MediaPath { get; init; }
 
     /// <summary>
-    /// Gets the network source to load at startup: <c>--url=</c>, else the first argument that is
-    /// not a flag when it is an http/https URL (Stage 039A).
+    /// Gets the network source to load at startup: the first http/https <c>--url=</c>, else the
+    /// first argument that is not a flag when it is an http/https URL (Stage 039A).
     /// </summary>
     public Uri? NetworkUri { get; init; }
 
@@ -88,12 +88,13 @@ public sealed record PlayerStartupOptions
         var positional = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal));
         Uri? positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out Uri? parsedUrl) ? parsedUrl : null;
         Uri? networkUri = Values(args, "--url=")
-            .Select(static value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri : null)
+            .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out Uri? uri) ? uri : null)
             .FirstOrDefault(static uri => uri is not null);
 
         return new PlayerStartupOptions
         {
-            MediaPath = positionalUrl is null ? positional : null,
+            // One startup item: a URL (flag or positional) replaces a positional file.
+            MediaPath = positionalUrl is null && networkUri is null ? positional : null,
             NetworkUri = networkUri ?? positionalUrl,
             Mode = Values(args, "--mode=")
                 .Select(static value => Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode mode) && Enum.IsDefined(mode) ? mode : (MediaPlayerMode?)null)

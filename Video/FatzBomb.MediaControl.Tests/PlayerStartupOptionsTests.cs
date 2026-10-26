@@ -34,6 +34,26 @@ public sealed class PlayerStartupOptionsTests
     }
 
     [Fact]
+    public void Parse_AUrlFlagReplacesAPositionalFile()
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/live.mp3"]);
+
+        Assert.Null(options.MediaPath);
+        Assert.Equal(new Uri("https://example.com/live.mp3"), options.NetworkUri);
+    }
+
+    [Theory]
+    [InlineData("--url=file:///music/a.mp3")]
+    [InlineData("--url=ftp://example.com/a.mp3")]
+    public void Parse_OnlyHttpAndHttpsUrlsAreStreams(string argument)
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse([argument, "song.mp3"]);
+
+        Assert.Null(options.NetworkUri);
+        Assert.Equal("song.mp3", options.MediaPath);
+    }
+
+    [Fact]
     public void Parse_UrlFlagWinsOverAPositionalUrl()
     {
         PlayerStartupOptions options = PlayerStartupOptions.Parse(["https://example.com/a.m3u8", "--url=https://example.com/b.m3u8"]);
