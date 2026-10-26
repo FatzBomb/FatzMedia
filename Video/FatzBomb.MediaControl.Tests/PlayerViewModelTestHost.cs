@@ -206,8 +206,9 @@ internal sealed class PlayerViewModelHarness : IAsyncDisposable
     public TestPlayerTimer PositionTimer => Assert.Single(Dispatcher.Timers);
 
     /// <summary>
-    /// Creates and starts a view model. Posted work is not run: unowned diagnostics of other tests
-    /// reach every player and would overwrite the status line (tests run posted work themselves).
+    /// Creates and starts a view model. Posted work is not run: process-wide (unowned) diagnostics,
+    /// which other tests raise on purpose, reach every player and would overwrite the status line
+    /// (tests run posted work themselves).
     /// </summary>
     public static async Task<PlayerViewModelHarness> StartAsync(PlayerStartupOptions? options = null, TestPlayerEngineFactory? engine = null)
     {

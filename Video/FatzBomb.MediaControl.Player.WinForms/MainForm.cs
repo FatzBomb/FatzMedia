@@ -21,7 +21,7 @@ internal sealed class MainForm : Form
     private readonly PlayerViewModel _viewModel;
     private readonly ViewModelBinder _binder;
     private readonly List<ViewModelBinder> _bandBinders = [];
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Black };
+    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
@@ -35,6 +35,7 @@ internal sealed class MainForm : Form
     private bool _isUpdatingSecondScreen;
     private bool _isFullScreen;
     private bool _cursorHidden;
+    private Point _lastPointer;
     private FormWindowState _restoreWindowState;
     private FormBorderStyle _restoreBorderStyle;
     private bool _closing;
@@ -403,13 +404,15 @@ internal sealed class MainForm : Form
     private static ListViewItem ToItem(DiagnosticLogEntry entry)
     {
         var item = new ListViewItem([entry.TimeText, entry.Level.ToString(), entry.Category, entry.Message]) { UseItemStyleForSubItems = false };
+        // SetColorMode(Dark) does not apply everywhere (high contrast, older Windows): keep the light colours there.
+        var dark = Application.IsDarkModeEnabled;
         item.SubItems[1].ForeColor = entry.Level switch
         {
-            MediaDiagnosticLevel.Error => Color.FromArgb(255, 110, 110),
-            MediaDiagnosticLevel.Warning => Color.Orange,
+            MediaDiagnosticLevel.Error => dark ? Color.FromArgb(255, 110, 110) : Color.Firebrick,
+            MediaDiagnosticLevel.Warning => dark ? Color.Orange : Color.DarkOrange,
             _ => SystemColors.GrayText
         };
-        item.SubItems[2].ForeColor = Color.LightSkyBlue;
+        item.SubItems[2].ForeColor = dark ? Color.LightSkyBlue : Color.SteelBlue;
         return item;
     }
 
@@ -557,9 +560,13 @@ internal sealed class MainForm : Form
 
     private void OnFullScreenPointerMoved()
     {
-        if (!_isFullScreen)
+        // Hiding the bars resizes the surface under a still pointer, and Windows then sends a
+        // mouse move: only a real move shows the bars again.
+        Point pointer = Cursor.Position;
+        if (!_isFullScreen || pointer == _lastPointer)
             return;
 
+        _lastPointer = pointer;
         ShowChrome(true);
         _chromeTimer.Stop();
         _chromeTimer.Start();
@@ -568,9 +575,22 @@ internal sealed class MainForm : Form
     private void OnChromeTimerTick(object? sender, EventArgs e)
     {
         _chromeTimer.Stop();
-        if (_isFullScreen && !_isDragging && !_bottom.ClientRectangle.Contains(_bottom.PointToClient(Cursor.Position)))
-            ShowChrome(false);
+        if (!_isFullScreen)
+            return;
+
+        // The pointer is on the bars (the Full screen button itself) or a drag is on: look again later.
+        if (_isDragging || IsPointerOver(_bottom) || IsPointerOver(_topBar))
+        {
+            _chromeTimer.Start();
+            return;
+        }
+
+        _lastPointer = Cursor.Position;
+        ShowChrome(false);
     }
+
+    private static bool IsPointerOver(Control control) =>
+        control.Visible && control.ClientRectangle.Contains(control.PointToClient(Cursor.Position));
 
     private void ShowChrome(bool visible)
     {

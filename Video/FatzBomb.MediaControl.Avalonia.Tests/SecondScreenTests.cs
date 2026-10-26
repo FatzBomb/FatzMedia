@@ -14,6 +14,52 @@ namespace FatzBomb.MediaControl.Avalonia.Tests;
 public sealed class SecondScreenTests
 {
     [AvaloniaFact]
+    public void TwoPlayers_EachSurfaceDiagnosticBelongsToItsOwnSession()
+    {
+        // ENG-036: with several players in one process, a surface's diagnostics reach only the
+        // player it is attached to (an unowned one reaches every player's log).
+        (IMediaControlSession first, RecordingSession firstRecorder) = RecordingSession.Create();
+        (IMediaControlSession second, _) = RecordingSession.Create();
+        var raised = new System.Collections.Concurrent.ConcurrentQueue<MediaDiagnosticInfo>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (info.Category == MediaSurface.DiagnosticCategory && info.Message.Contains("'eng036-", StringComparison.Ordinal))
+                raised.Enqueue(info);
+        }
+
+        var windows = new List<Window>();
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            windows.Add(Show(new MediaSurface { Player = first, SurfaceId = "eng036-main-1", Role = MediaPresentationSurfaceRole.Projector }, 320, 180));
+            windows.Add(Show(new MediaSurface { Player = second, SurfaceId = "eng036-main-2", Role = MediaPresentationSurfaceRole.Projector }, 320, 180));
+            var firstScreen = new SecondaryPresentationWindow(first, "eng036-screen-1") { Width = 640, Height = 360 };
+            var secondScreen = new SecondaryPresentationWindow(second, "eng036-screen-2") { Width = 640, Height = 360 };
+            windows.Add(firstScreen);
+            windows.Add(secondScreen);
+            firstScreen.Show();
+            secondScreen.Show();
+            Dispatcher.UIThread.RunJobs();
+            firstRecorder.SwitchMode(MediaPlayerMode.Audio);
+            Dispatcher.UIThread.RunJobs();
+
+            MediaDiagnosticInfo[] all = [.. raised];
+            Assert.Equal(6, all.Length);
+            Assert.All(all, static info => Assert.NotNull(info.Owner));
+            foreach (MediaDiagnosticInfo info in all)
+                Assert.Same(info.Message.Contains("-1'", StringComparison.Ordinal) ? first : second, info.Owner);
+            Assert.Equal(2, all.Count(static info => info.Message.Contains("Audio mode", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            // Close even when an assertion failed, so no window outlives the test.
+            foreach (Window window in windows)
+                window.Close();
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+    }
+
+    [AvaloniaFact]
     public void TwoSurfacesOnOneSession_AttachWithTheirOwnIdsRolesAndSizes()
     {
         (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
