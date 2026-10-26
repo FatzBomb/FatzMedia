@@ -4,16 +4,22 @@ namespace FatzBomb.MediaControl.WinForms;
 
 /// <summary>
 /// WinForms media surface: a child window whose HWND is attached to the bound
-/// <see cref="IMediaControlSession"/> as the primary presentation surface. The host-selected
-/// renderer (for example Direct3D11) presents into it; the control owns only HWND lifecycle,
-/// size, and DPI.
+/// <see cref="IMediaControlSession"/> as a presentation surface, the primary one by default (a
+/// second screen sets <see cref="Role"/>). The host-selected renderer (for example Direct3D11)
+/// presents into it; the control owns only HWND lifecycle, size, and DPI.
 /// </summary>
 public class MediaSurface : Control
 {
+    /// <summary>The surface id a non-primary surface uses when <see cref="SurfaceId"/> is not set.</summary>
+    public const string DefaultSecondarySurfaceId = "secondary";
+
     private IMediaControlSession? _player;
     private IMediaControlSession? _attachedSession;
+    private string? _attachedSurfaceId;
     private (int Width, int Height) _attachedPixelSize;
     private VideoDisplayMode _videoDisplayMode = VideoDisplayMode.Zoom;
+    private MediaPresentationSurfaceRole _role = MediaPresentationSurfaceRole.Primary;
+    private string? _surfaceId;
 
     public MediaSurface()
     {
@@ -36,13 +42,16 @@ public class MediaSurface : Control
 
             Detach();
             _player = value;
-            if (value is not null)
+            if (value is not null && _role == MediaPresentationSurfaceRole.Primary)
                 value.VideoDisplayMode = _videoDisplayMode;
             AttachOrResize();
         }
     }
 
-    /// <summary>Gets or sets how primary video maps into the surface (forwarded to the session).</summary>
+    /// <summary>
+    /// Gets or sets how primary video maps into the surface (forwarded to the session by a primary
+    /// surface only, so a second screen does not change it).
+    /// </summary>
     [DefaultValue(VideoDisplayMode.Zoom)]
     public VideoDisplayMode VideoDisplayMode
     {
@@ -50,14 +59,65 @@ public class MediaSurface : Control
         set
         {
             _videoDisplayMode = value;
-            if (_player is not null)
+            if (_player is not null && _role == MediaPresentationSurfaceRole.Primary)
                 _player.VideoDisplayMode = value;
         }
     }
 
-    /// <summary>Gets whether the primary surface is attached to a session.</summary>
+    /// <summary>
+    /// Gets or sets the surface's role (default <see cref="MediaPresentationSurfaceRole.Primary"/>).
+    /// Use <see cref="MediaPresentationSurfaceRole.Projector"/> for a second screen of a session
+    /// that already has a primary surface. A change re-attaches the surface.
+    /// </summary>
+    [DefaultValue(MediaPresentationSurfaceRole.Primary)]
+    public MediaPresentationSurfaceRole Role
+    {
+        get => _role;
+        set
+        {
+            if (_role == value)
+                return;
+
+            Detach();
+            _role = value;
+            AttachOrResize();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the surface id sent to the session. Unset, a primary surface uses
+    /// <see cref="MediaPresentationSurfaceDescriptor.PrimarySurfaceId"/> and any other role uses
+    /// <see cref="DefaultSecondarySurfaceId"/>. Surfaces of one session need distinct ids. A change
+    /// re-attaches the surface.
+    /// </summary>
+    [DefaultValue(null)]
+    public string? SurfaceId
+    {
+        get => _surfaceId;
+        set
+        {
+            if (string.Equals(_surfaceId, value, StringComparison.Ordinal))
+                return;
+
+            Detach();
+            _surfaceId = value;
+            AttachOrResize();
+        }
+    }
+
+    /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
     [Browsable(false)]
-    public bool IsPrimarySurfaceAttached => _attachedSession is not null;
+    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(_surfaceId)
+        ? _role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
+        : _surfaceId.Trim();
+
+    /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
+    [Browsable(false)]
+    public bool IsSurfaceAttached => _attachedSession is not null;
+
+    /// <summary>Gets whether this surface is attached to a session as its primary surface.</summary>
+    [Browsable(false)]
+    public bool IsPrimarySurfaceAttached => _attachedSession is not null && _role == MediaPresentationSurfaceRole.Primary;
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -112,7 +172,7 @@ public class MediaSurface : Control
         if (ReferenceEquals(session, _attachedSession))
         {
             if (pixelSize != _attachedPixelSize
-                && session.ResizePresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, pixelSize.Width, pixelSize.Height))
+                && session.ResizePresentationSurface(_attachedSurfaceId!, pixelSize.Width, pixelSize.Height))
             {
                 _attachedPixelSize = pixelSize;
             }
@@ -122,9 +182,10 @@ public class MediaSurface : Control
 
         Detach();
         var scale = DeviceDpi / 96.0;
+        var surfaceId = EffectiveSurfaceId;
         var attached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
-            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
-            MediaPresentationSurfaceRole.Primary,
+            surfaceId,
+            _role,
             MediaNativeSurfaceDescriptor.Win32Hwnd(Handle),
             pixelSize.Width,
             pixelSize.Height,
@@ -133,6 +194,7 @@ public class MediaSurface : Control
         if (attached)
         {
             _attachedSession = session;
+            _attachedSurfaceId = surfaceId;
             _attachedPixelSize = pixelSize;
         }
     }
@@ -140,9 +202,11 @@ public class MediaSurface : Control
     private void Detach()
     {
         IMediaControlSession? session = _attachedSession;
+        var surfaceId = _attachedSurfaceId;
         _attachedSession = null;
+        _attachedSurfaceId = null;
         _attachedPixelSize = default;
-        if (session is not null)
-            _ = session.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId);
+        if (session is not null && surfaceId is not null)
+            _ = session.DetachPresentationSurface(surfaceId);
     }
 }
