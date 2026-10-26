@@ -139,6 +139,76 @@ public sealed class PlayerViewModelTests
         Assert.Equal(MediaPlayerState.Stopped, harness.Player.State);
         Assert.Equal("Stopped", harness.ViewModel.StatusText);
         Assert.Equal(1, harness.Engine.Engine.StopCount);
+        Assert.Equal("song.mp3", harness.ViewModel.LoadedMediaText);
+    }
+
+    [Fact]
+    public async Task TogglePlayPause_FollowsTheLatestState()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
+        PlayerViewModel viewModel = harness.ViewModel;
+        viewModel.AutoPlay = false;
+        await harness.LoadAsync("song.mp3");
+        Assert.Equal(MediaPlayerState.Stopped, viewModel.PlaybackState);
+
+        await viewModel.TogglePlayPauseCommand.ExecuteAsync(null);
+        Assert.Equal(MediaPlayerState.Playing, harness.Player.State);
+        await harness.Dispatcher.UntilAsync(() => viewModel.IsPlaying);
+
+        await viewModel.TogglePlayPauseCommand.ExecuteAsync(null);
+        Assert.Equal(MediaPlayerState.Paused, harness.Player.State);
+    }
+
+    [Fact]
+    public async Task Mode_StartsInTheRequestedModeAndSwitchesOnTheFly()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync(new PlayerStartupOptions { Mode = MediaPlayerMode.Audio });
+        PlayerViewModel viewModel = harness.ViewModel;
+        Assert.Equal(MediaPlayerMode.Audio, harness.Engine.Configuration?.Mode);
+        Assert.Equal(MediaPlayerMode.Audio, viewModel.PlayerMode);
+        Assert.Equal(MediaPlayerMode.Audio, harness.Player.Mode);
+        Assert.True(viewModel.CanSwitchMode);
+        Assert.Equal(Enum.GetValues<MediaPlayerMode>(), viewModel.PlayerModes);
+
+        viewModel.PlayerMode = MediaPlayerMode.Background;
+        Assert.True(viewModel.IsSwitchingMode);
+        await harness.Dispatcher.UntilAsync(() => !viewModel.IsSwitchingMode);
+
+        Assert.Equal(MediaPlayerMode.Background, harness.Player.Mode);
+        Assert.Equal(MediaPlayerMode.Background, viewModel.PlayerMode);
+        // Background mode loops; the view model shows it without sending it back.
+        Assert.True(viewModel.LoopPlayback);
+        Assert.Equal([MediaPlayerMode.Audio, MediaPlayerMode.Background], harness.Engine.Platform.Modes);
+
+        viewModel.PlayerMode = MediaPlayerMode.Full;
+        await harness.Dispatcher.UntilAsync(() => !viewModel.IsSwitchingMode && harness.Player.Mode == MediaPlayerMode.Full);
+        await harness.Dispatcher.UntilAsync(() => !viewModel.LoopPlayback);
+        Assert.False(harness.Player.LoopMedia);
+    }
+
+    [Fact]
+    public async Task Mode_BackgroundAtStartupShowsTheForcedLoop()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync(new PlayerStartupOptions { Mode = MediaPlayerMode.Background });
+
+        Assert.True(harness.Player.LoopMedia);
+        Assert.True(harness.ViewModel.LoopPlayback);
+    }
+
+    [Fact]
+    public async Task Mode_AFailedSwitchShowsTheModeTheEngineKept()
+    {
+        var engine = new TestPlayerEngineFactory();
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync(engine: engine);
+        PlayerViewModel viewModel = harness.ViewModel;
+        engine.FailNextServiceProvider = true;
+
+        viewModel.PlayerMode = MediaPlayerMode.Audio;
+        await harness.Dispatcher.UntilAsync(() => !viewModel.IsSwitchingMode);
+
+        Assert.Equal(MediaPlayerMode.Full, harness.Player.Mode);
+        Assert.Equal(MediaPlayerMode.Full, viewModel.PlayerMode);
+        Assert.Contains(viewModel.DiagnosticLog, static entry => entry is { Category: "Player", Message: "Could not switch to Audio mode" });
     }
 
     [Fact]
@@ -208,12 +278,17 @@ public sealed class PlayerViewModelTests
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
-        await viewModel.LoadMediaAsync("song.mp3");
+        await harness.LoadAsync("song.mp3");
         TestMediaEngine engine = harness.Engine.Engine;
         engine.Duration = 3725;
         engine.Position = 61.6;
 
-        harness.PositionTimer.Tick();
+        // A tick while the previous read is out is skipped: tick until one reads the new values.
+        await harness.Dispatcher.UntilAsync(() =>
+        {
+            harness.PositionTimer.Tick();
+            return viewModel.DurationSeconds == 3725;
+        });
 
         Assert.Equal(3725, viewModel.DurationSeconds);
         Assert.Equal(61.6, viewModel.PositionSeconds, 6);
@@ -221,6 +296,8 @@ public sealed class PlayerViewModelTests
         Assert.True(viewModel.CanSeek);
         Assert.Equal("1:01", viewModel.ElapsedText);
         Assert.Equal("-1:01:03", viewModel.RemainingText);
+        Assert.Equal(MediaPlayerState.Playing, viewModel.PlaybackState);
+        Assert.True(viewModel.IsPlaying);
     }
 
     [Fact]
@@ -229,8 +306,7 @@ public sealed class PlayerViewModelTests
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
         MediaControlPlayer player = harness.Player;
-        await viewModel.LoadMediaAsync("song.mp3");
-        harness.PositionTimer.Tick();
+        await harness.LoadAsync("song.mp3");
         TestMediaEngine engine = harness.Engine.Engine;
 
         viewModel.BeginSeekPreview();
@@ -247,6 +323,58 @@ public sealed class PlayerViewModelTests
 
         await harness.Dispatcher.UntilAsync(() => !player.Controls.IsScrubbing && Math.Abs(engine.Position - 45) < 0.001);
         Assert.Equal(45, viewModel.PositionSeconds);
+        viewModel.CancelSeekPreview();
+        await player.FlushControlOperationsAsync();
+        Assert.False(player.Controls.IsScrubbing);
+    }
+
+    [Fact]
+    public async Task SeekPreview_NeverBlocksTheCallerBehindASlowSeek()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
+        PlayerViewModel viewModel = harness.ViewModel;
+        MediaControlPlayer player = harness.Player;
+        await harness.LoadAsync("song.mp3");
+        TestMediaEngine engine = harness.Engine.Engine;
+        using var release = new ManualResetEventSlim();
+        var held = 0;
+        engine.OnSeek = seconds =>
+        {
+            if (seconds == 5 && Interlocked.Exchange(ref held, 1) == 0)
+                release.Wait(TestEnvironment.EventuallyTimeout);
+        };
+        Task<bool> slow = player.SeekAsync(5);
+        await harness.Dispatcher.UntilAsync(() => Volatile.Read(ref held) == 1);
+
+        // BeginScrub and EndScrub wait behind the held seek, but not on the caller's thread.
+        viewModel.BeginSeekPreview();
+        viewModel.SeekPositionSeconds = 20;
+        viewModel.SeekPositionSeconds = 25;
+        viewModel.EndSeekPreview();
+        Assert.False(player.Controls.IsScrubbing);
+        Assert.Equal(25, viewModel.PositionSeconds);
+
+        release.Set();
+        Assert.True(await slow);
+        await harness.Dispatcher.UntilAsync(() => Math.Abs(engine.Position - 25) < 0.001);
+        await player.FlushControlOperationsAsync();
+        await harness.Dispatcher.UntilAsync(() => !player.Controls.IsScrubbing);
+    }
+
+    [Fact]
+    public async Task SeekTo_SeeksOnceWithoutAScrub()
+    {
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
+        PlayerViewModel viewModel = harness.ViewModel;
+        await harness.LoadAsync("song.mp3");
+        var scrubbing = false;
+        harness.Engine.Engine.OnSeek = _ => scrubbing |= harness.Player.Controls.IsScrubbing;
+
+        viewModel.SeekTo(70);
+
+        Assert.Equal(70, viewModel.PositionSeconds);
+        await harness.Dispatcher.UntilAsync(() => Math.Abs(harness.Engine.Engine.Position - 70) < 0.001);
+        Assert.False(scrubbing);
     }
 
     [Fact]
@@ -254,8 +382,7 @@ public sealed class PlayerViewModelTests
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();
         PlayerViewModel viewModel = harness.ViewModel;
-        await viewModel.LoadMediaAsync("song.mp3");
-        harness.PositionTimer.Tick();
+        await harness.LoadAsync("song.mp3");
         var seeks = 0;
         harness.Engine.Engine.OnSeek = _ => Interlocked.Increment(ref seeks);
 
@@ -430,6 +557,31 @@ public sealed class PlayerViewModelTests
         _ = harness.Dispatcher.RunPending();
         Assert.Equal(entries, viewModel.DiagnosticLog.Count);
         Assert.Throws<ObjectDisposedException>(() => player.Play());
+    }
+
+    [Fact]
+    public async Task NetworkUrl_AtStartupLoadsTheStream()
+    {
+        var uri = new Uri("https://example.com/live.m3u8");
+        await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync(new PlayerStartupOptions { NetworkUri = uri });
+
+        Assert.Equal(uri.AbsoluteUri, harness.ViewModel.NetworkUrl);
+        await harness.Dispatcher.UntilAsync(() => harness.ViewModel.LoadedMediaText == uri.ToString()
+            && harness.ViewModel.DiagnosticLog.Any(static entry => entry.Category == "Network"));
+    }
+
+    [Fact]
+    public async Task AddLogEntry_LogsHostLinesOnTheUiThread()
+    {
+        await using var harness = new PlayerViewModelHarness();
+
+        harness.ViewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", "presents via frame sink");
+        Assert.Empty(harness.ViewModel.DiagnosticLog);
+        _ = harness.Dispatcher.RunPending();
+
+        DiagnosticLogEntry entry = Assert.Single(harness.ViewModel.DiagnosticLog);
+        Assert.Equal("Surface", entry.Category);
+        Assert.EndsWith("[Info] Surface: presents via frame sink", entry.Line);
     }
 
     [Theory]

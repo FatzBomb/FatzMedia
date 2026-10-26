@@ -1,4 +1,6 @@
 using System.Globalization;
+using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 namespace FatzBomb.MediaControl.Player.Shared;
 
@@ -12,11 +14,23 @@ public sealed record PlayerStartupOptions
     /// <summary>The engine clamps fade lengths to 60 s; clamped here too so <c>TimeSpan.FromSeconds</c> cannot throw.</summary>
     public const double MaxFadeNextSeconds = 60;
 
-    /// <summary>Gets the first argument that is not a flag: a media file to load at startup.</summary>
+    /// <summary>
+    /// Gets the first argument that is not a flag, when it is not an http/https URL: a media file
+    /// to load at startup.
+    /// </summary>
     public string? MediaPath { get; init; }
 
-    /// <summary>Gets the network source to load at startup (<c>--url=</c>).</summary>
+    /// <summary>
+    /// Gets the network source to load at startup: <c>--url=</c>, else the first argument that is
+    /// not a flag when it is an http/https URL (Stage 039A).
+    /// </summary>
     public Uri? NetworkUri { get; init; }
+
+    /// <summary>Gets the mode the player is created in (<c>--mode=full|background|audio</c>, Stage 043A).</summary>
+    public MediaPlayerMode Mode { get; init; } = MediaPlayerMode.Full;
+
+    /// <summary>Gets the native library directories given with <c>--native=</c> (repeatable), highest priority first.</summary>
+    public IReadOnlyList<string> NativeDirectories { get; init; } = [];
 
     /// <summary>
     /// Gets the last <c>--renderer=</c> value as given (trimmed of quotes), or null. Each host
@@ -71,12 +85,20 @@ public sealed record PlayerStartupOptions
     {
         ArgumentNullException.ThrowIfNull(args);
 
+        var positional = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal));
+        Uri? positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out Uri? parsedUrl) ? parsedUrl : null;
+        Uri? networkUri = Values(args, "--url=")
+            .Select(static value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri : null)
+            .FirstOrDefault(static uri => uri is not null);
+
         return new PlayerStartupOptions
         {
-            MediaPath = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal)),
-            NetworkUri = Values(args, "--url=")
-                .Select(static value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri : null)
-                .FirstOrDefault(static uri => uri is not null),
+            MediaPath = positionalUrl is null ? positional : null,
+            NetworkUri = networkUri ?? positionalUrl,
+            Mode = Values(args, "--mode=")
+                .Select(static value => Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode mode) && Enum.IsDefined(mode) ? mode : (MediaPlayerMode?)null)
+                .LastOrDefault(static mode => mode is not null) ?? MediaPlayerMode.Full,
+            NativeDirectories = [.. Values(args, "--native=").Where(static path => path.Length > 0)],
             Renderer = Values(args, "--renderer=").LastOrDefault(),
             SoftwareRenderer = HasFlag(args, "--software"),
             ResetPitchOnLoad = HasFlag(args, "--reset-pitch-on-load"),
@@ -96,6 +118,12 @@ public sealed record PlayerStartupOptions
             EqualizerGains = Values(args, "--eq=", trimQuotes: false).Select(ParseGains).FirstOrDefault(),
         };
     }
+
+    /// <summary>
+    /// Gets these options for a second or later player in the same process: the same settings,
+    /// without the startup media, URL and prepared item, which belong to the first player.
+    /// </summary>
+    public PlayerStartupOptions WithoutStartupMedia() => this with { MediaPath = null, NetworkUri = null, PrepareNextPath = null };
 
     /// <summary>Gets whether <paramref name="flag"/> was given (case-insensitive).</summary>
     public static bool HasFlag(IReadOnlyList<string> args, string flag) =>

@@ -423,6 +423,18 @@
                             Margin="10,0,6,0"
                             VerticalAlignment="Center"
                             Style="{StaticResource LabelTextStyle}"
+                            Text="PLAYER" />
+                        <ComboBox
+                            MinWidth="104"
+                            IsEnabled="{Binding CanSwitchMode}"
+                            ItemsSource="{Binding PlayerModes}"
+                            SelectedItem="{Binding PlayerMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Player mode (Stage 043A): Full, Background (video only, always loops) or Audio (sound only, no picture). Switches on the fly with a short gap, like a seek; --mode= sets the startup mode." />
+                        <TextBlock
+                            Margin="10,0,6,0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource LabelTextStyle}"
                             Text="BG" />
                         <Slider
                             Width="80"

@@ -99,7 +99,28 @@ internal sealed class TestPlayerFilePicker : IPlayerFilePicker
 /// <summary>Creates real <see cref="MediaControlPlayer"/>s over <see cref="TestMediaEngine"/>s.</summary>
 internal sealed class TestPlayerEngineFactory : IPlayerEngineFactory
 {
-    public PlayerModeSwitchTests.SwitchTestPlatformFactory Platform { get; } = new();
+    public TestPlayerEngineFactory()
+    {
+        Platform = new PlayerModeSwitchTests.SwitchTestPlatformFactory
+        {
+            BeforeCreateServiceProvider = _ =>
+            {
+                if (Interlocked.Exchange(ref _failNextServiceProvider, 0) == 1)
+                    throw new InvalidOperationException("Test: the engine graph could not be built.");
+            },
+        };
+    }
+
+    private int _failNextServiceProvider;
+
+    public PlayerModeSwitchTests.SwitchTestPlatformFactory Platform { get; }
+
+    /// <summary>Makes the next engine graph build fail once (a mode switch that cannot build its mode).</summary>
+    public bool FailNextServiceProvider
+    {
+        get => Volatile.Read(ref _failNextServiceProvider) == 1;
+        set => Volatile.Write(ref _failNextServiceProvider, value ? 1 : 0);
+    }
 
     public PlayerRendererInfo Renderer { get; init; } = new(
         "Test renderer",
@@ -167,6 +188,14 @@ internal sealed class PlayerViewModelHarness : IAsyncDisposable
         var harness = new PlayerViewModelHarness(options, engine);
         await harness.ViewModel.StartAsync();
         return harness;
+    }
+
+    /// <summary>Loads <paramref name="path"/> and waits until the view model shows its duration.</summary>
+    public async Task LoadAsync(string path)
+    {
+        await ViewModel.LoadMediaAsync(path);
+        Assert.True(Player.IsOpen);
+        await Dispatcher.UntilAsync(() => ViewModel.DurationSeconds > 0 && ViewModel.PlaybackState != Core.Abstractions.MediaPlayerState.Null);
     }
 
     public async ValueTask DisposeAsync() => await ViewModel.DisposeAsync();

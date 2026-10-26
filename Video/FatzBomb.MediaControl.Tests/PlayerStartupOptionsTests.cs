@@ -1,4 +1,6 @@
+using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 
 namespace FatzBomb.MediaControl.Tests;
 
@@ -10,13 +12,80 @@ public sealed class PlayerStartupOptionsTests
     {
         PlayerStartupOptions options = PlayerStartupOptions.Parse([]);
 
-        Assert.Equal(new PlayerStartupOptions(), options with { EqualizerGains = null });
         Assert.Null(options.MediaPath);
         Assert.Null(options.NetworkUri);
         Assert.Null(options.Renderer);
         Assert.False(options.SoftwareRenderer);
         Assert.Equal(TimeSpan.Zero, options.FadeNext);
         Assert.Null(options.EqualizerGains);
+        Assert.Equal(MediaPlayerMode.Full, options.Mode);
+        Assert.Empty(options.NativeDirectories);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/live.m3u8")]
+    [InlineData("http://example.com/a.mp4")]
+    public void Parse_APositionalUrlIsTheStartupStream(string url)
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse(["--players=2", url, "second.mp3"]);
+
+        Assert.Null(options.MediaPath);
+        Assert.Equal(new Uri(url), options.NetworkUri);
+    }
+
+    [Fact]
+    public void Parse_UrlFlagWinsOverAPositionalUrl()
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse(["https://example.com/a.m3u8", "--url=https://example.com/b.m3u8"]);
+
+        Assert.Null(options.MediaPath);
+        Assert.Equal(new Uri("https://example.com/b.m3u8"), options.NetworkUri);
+    }
+
+    [Theory]
+    [InlineData("--mode=audio", MediaPlayerMode.Audio)]
+    [InlineData("--MODE=Background", MediaPlayerMode.Background)]
+    [InlineData("--mode=karaoke", MediaPlayerMode.Full)]
+    [InlineData("--mode=7", MediaPlayerMode.Full)]
+    public void Parse_ReadsTheMode(string argument, MediaPlayerMode expected) =>
+        Assert.Equal(expected, PlayerStartupOptions.Parse([argument]).Mode);
+
+    [Fact]
+    public void Parse_NativeDirectoriesKeepTheirOrder() =>
+        Assert.Equal(["/opt/ffmpeg", "C:\\bass"], PlayerStartupOptions.Parse(["--native=/opt/ffmpeg", "--native=", "--native=\"C:\\bass\""]).NativeDirectories);
+
+    [Fact]
+    public void WithoutStartupMedia_KeepsTheSettingsForAnotherPlayer()
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--url=https://example.com/a.m3u8", "--prepare-next=next.mp3", "--mode=audio", "--auto-next"]);
+
+        PlayerStartupOptions other = options.WithoutStartupMedia();
+
+        Assert.Null(other.MediaPath);
+        Assert.Null(other.NetworkUri);
+        Assert.Null(other.PrepareNextPath);
+        Assert.Equal(MediaPlayerMode.Audio, other.Mode);
+        Assert.True(other.AutoNext);
+    }
+
+    [Fact]
+    public void NativePaths_KeepExistingDirectoriesInOrderWithoutDuplicates()
+    {
+        var first = Directory.CreateTempSubdirectory("fatzbomb-native-a").FullName;
+        var second = Directory.CreateTempSubdirectory("fatzbomb-native-b").FullName;
+        try
+        {
+            IReadOnlyList<string> paths = PlayerNativePaths.Combine(
+                [second, Path.Combine(first, "missing")],
+                [first, second + Path.DirectorySeparatorChar, ""]);
+
+            Assert.Equal([second, first], paths);
+        }
+        finally
+        {
+            Directory.Delete(first);
+            Directory.Delete(second);
+        }
     }
 
     [Fact]

@@ -15,7 +15,9 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
     private PlayerRendererSelection? _selection;
     private IMediaControlPlatformFactory? _platformFactory;
 
-    public IReadOnlyList<string> NativeLibraryPaths { get; } = PlayerNativeLibraries.ResolveSearchPaths();
+    // --native= directories first, then the Windows defaults (or the app's native/ drop folder).
+    public IReadOnlyList<string> NativeLibraryPaths { get; } =
+        PlayerNativePaths.Combine(App.StartupOptions.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths());
 
     public NativeDependencyReport? NativeDependenciesAfterFailure => _platformFactory?.NativeDependencies;
 

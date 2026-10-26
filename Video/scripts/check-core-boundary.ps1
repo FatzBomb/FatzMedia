@@ -81,6 +81,7 @@ $projectReferences = @{
     'FatzBomb.MediaControl.Player.Avalonia\FatzBomb.MediaControl.Player.Avalonia.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
         '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',

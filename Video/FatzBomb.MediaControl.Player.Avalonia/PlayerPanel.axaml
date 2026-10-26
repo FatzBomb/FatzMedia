@@ -1,61 +1,311 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Avalonia;assembly=FatzBomb.MediaControl.Avalonia"
-             x:Class="FatzBomb.MediaControl.Player.Avalonia.PlayerPanel">
-  <Border Margin="2" BorderThickness="1" BorderBrush="#40808080" Padding="6">
+             xmlns:vm="clr-namespace:FatzBomb.MediaControl.Player.Shared.ViewModels;assembly=FatzBomb.MediaControl.Player.Shared"
+             xmlns:local="clr-namespace:FatzBomb.MediaControl.Player.Avalonia"
+             x:Class="FatzBomb.MediaControl.Player.Avalonia.PlayerPanel"
+             x:DataType="vm:PlayerViewModel">
+  <UserControl.Resources>
+    <local:DiagnosticLevelBrushConverter x:Key="LevelBrush" />
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="Border.flyout">
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="Background" Value="#18808080" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Opacity" Value="0.75" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.value">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.small, ToggleButton.small">
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="StackPanel.parameter">
+      <Setter Property="Width" Value="150" />
+      <Setter Property="Margin" Value="0,0,10,4" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="Frame" Margin="2" BorderThickness="1" BorderBrush="#40808080" Padding="6">
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
 
-      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
-        <Button x:Name="OpenButton" Content="Open..." Click="OnOpenClick" />
-        <TextBlock x:Name="FileText" Grid.Column="1" Margin="2,0,0,0" VerticalAlignment="Center"
-                   TextTrimming="CharacterEllipsis" Text="(no file)" />
-        <TextBox x:Name="UrlBox" Grid.Column="2" Width="240" PlaceholderText="http(s)://... (MP4, MKV, HLS)" KeyDown="OnUrlKeyDown" />
-        <Button x:Name="OpenUrlButton" Grid.Column="3" Content="URL..." Click="OnOpenUrlClick" />
+      <!-- Open, what is loaded, and the URL box (Stage 039A: MP4/MKV progressive or HLS). -->
+      <Grid x:Name="TopBar" Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+        <Button Content="Open..." Command="{Binding OpenFileCommand}" ToolTip.Tip="Open a media file (or drop one on the player)" />
+        <TextBlock Grid.Column="1" Margin="2,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   Text="{Binding LoadedMediaText}" ToolTip.Tip="{Binding LoadedMediaText}" />
+        <TextBox Grid.Column="2" Width="240" PlaceholderText="http(s)://... (MP4, MKV, HLS)" Text="{Binding NetworkUrl}"
+                 IsEnabled="{Binding CanOpen}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding OpenUrlCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="3" Content="URL..." Command="{Binding OpenUrlCommand}" ToolTip.Tip="Load the URL as the current item" />
       </Grid>
 
-      <Border Grid.Row="1" Background="Black" MinHeight="80">
-        <fbm:MediaSurface x:Name="Surface" VideoDisplayMode="Zoom" />
+      <!-- Double-click (or F11) for full screen; Escape leaves it. -->
+      <Border x:Name="SurfaceHost" Grid.Row="1" Background="Black" MinHeight="80">
+        <fbm:MediaSurface x:Name="Surface" Player="{Binding Player}" VideoDisplayMode="{Binding VideoDisplayMode}" />
       </Border>
 
-      <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-        <TextBlock x:Name="PositionText" VerticalAlignment="Center" Text="0:00" />
-        <Slider x:Name="SeekSlider" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="OnSeekValueChanged" />
-        <TextBlock x:Name="DurationText" Grid.Column="2" VerticalAlignment="Center" Text="0:00" />
+      <Grid x:Name="SeekRow" Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <TextBlock Classes="value" MinWidth="44" TextAlignment="Right" Text="{Binding ElapsedText}" />
+        <!-- Driven from code-behind: a drag scrubs (BeginScrub, drag seeks, EndScrub), a key steps once. -->
+        <Slider x:Name="SeekSlider" Grid.Column="1" Minimum="0" Maximum="1" IsEnabled="{Binding CanSeek}" />
+        <TextBlock Grid.Column="2" Classes="value" MinWidth="44" Text="{Binding RemainingText}" />
       </Grid>
 
-      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
-        <Button x:Name="PlayPauseButton" Content="Play" MinWidth="70" Click="OnPlayPauseClick" />
-        <Button x:Name="StopButton" Content="Stop" Click="OnStopClick" />
-        <CheckBox x:Name="LoopBox" Content="Loop" IsCheckedChanged="OnLoopChanged" />
-        <TextBlock Text="Mode" VerticalAlignment="Center" Margin="8,0,0,0" />
-        <ComboBox x:Name="ModeBox" MinWidth="110" SelectionChanged="OnModeSelectionChanged" />
-        <CheckBox x:Name="SecondScreenBox" Content="Second screen" Margin="8,0,0,0" IsCheckedChanged="OnSecondScreenChanged" />
-        <Button x:Name="CopyLogButton" Content="Copy log" Margin="8,0,0,0" Click="OnCopyLogClick"
-                ToolTip.Tip="Copies this player's whole log (oldest first) to the clipboard" />
-      </StackPanel>
+      <WrapPanel x:Name="TransportRow" Grid.Row="3" ItemSpacing="6" LineSpacing="4">
+        <Button Classes="small" MinWidth="64" Command="{Binding TogglePlayPauseCommand}" ToolTip.Tip="Play or pause">
+          <Panel>
+            <TextBlock Text="Pause" IsVisible="{Binding IsPlaying}" />
+            <TextBlock Text="Play" IsVisible="{Binding !IsPlaying}" />
+          </Panel>
+        </Button>
+        <Button Classes="small" Content="Stop" Command="{Binding StopCommand}" />
+        <ToggleButton Classes="small" Content="Loop" IsChecked="{Binding LoopPlayback}" ToolTip.Tip="Loop playback (Background mode always loops)" />
+        <TextBlock Classes="label" Text="Mode" Margin="6,0,0,0" />
+        <ComboBox MinWidth="110" ItemsSource="{Binding PlayerModes}" SelectedItem="{Binding PlayerMode}" IsEnabled="{Binding CanSwitchMode}"
+                  ToolTip.Tip="Player mode (Stage 043A): Full, Background (video only, loops) or Audio (no picture); switches on the fly" />
+        <CheckBox x:Name="SecondScreenBox" Content="Second screen" Margin="6,0,0,0" IsEnabled="{Binding CanOpen}"
+                  ToolTip.Tip="Show this player on a second screen too (--second-screen=n picks the screen)" />
+        <Border Width="8" />
+        <ToggleButton Classes="small" Content="Sync" Command="{Binding ToggleFlyoutCommand}" CommandParameter="Sync" IsChecked="{Binding IsSyncFlyoutActive, Mode=OneWay}" ToolTip.Tip="Sync offsets and subtitles" />
+        <ToggleButton Classes="small" Content="Video" Command="{Binding ToggleFlyoutCommand}" CommandParameter="Video" IsChecked="{Binding IsVideoFlyoutActive, Mode=OneWay}" ToolTip.Tip="Video color and visual transforms" />
+        <ToggleButton Classes="small" Content="Audio" Command="{Binding ToggleFlyoutCommand}" CommandParameter="Audio" IsChecked="{Binding IsAudioFlyoutActive, Mode=OneWay}" ToolTip.Tip="Pitch, tempo, normalization and the equalizer" />
+        <ToggleButton Classes="small" Content="A/V" Command="{Binding ToggleFlyoutCommand}" CommandParameter="AV" IsChecked="{Binding IsAVFlyoutActive, Mode=OneWay}" ToolTip.Tip="Playback and display settings" />
+        <ToggleButton Classes="small" Content="Next" Command="{Binding ToggleFlyoutCommand}" CommandParameter="Next" IsChecked="{Binding IsNextFlyoutActive, Mode=OneWay}" ToolTip.Tip="Prepared next item, fades, and the stream" />
+        <ToggleButton Classes="small" Content="Log" Command="{Binding ToggleFlyoutCommand}" CommandParameter="Log" IsChecked="{Binding IsLogFlyoutActive, Mode=OneWay}" ToolTip.Tip="Engine diagnostics: every info, warning and error" />
+        <Border Width="8" />
+        <TextBlock Classes="label" Text="Vol" />
+        <Slider Width="110" Minimum="0" Maximum="1" Value="{Binding Volume}" VerticalAlignment="Center" />
+        <TextBlock Classes="value" MinWidth="38" Text="{Binding Volume, StringFormat='{}{0:P0}'}" />
+        <Button x:Name="FullScreenButton" Classes="small" Content="Full screen" ToolTip.Tip="Full screen (double-click the picture or F11; Escape leaves it)" />
+      </WrapPanel>
 
-      <Grid Grid.Row="4" ColumnDefinitions="Auto,*,70" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8">
-        <TextBlock Grid.Row="0" Text="Volume" VerticalAlignment="Center" />
-        <Slider x:Name="VolumeSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="80" ValueChanged="OnVolumeChanged" />
-        <TextBlock x:Name="VolumeText" Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" />
+      <Panel x:Name="FlyoutHost" Grid.Row="4">
+        <!-- Sync -->
+        <Border Classes="flyout" IsVisible="{Binding IsSyncFlyoutActive}">
+          <WrapPanel ItemSpacing="6" LineSpacing="4">
+            <TextBlock Classes="label" Text="A/V" />
+            <Button Classes="small" Content="−" Command="{Binding AdjustSyncCommand}" CommandParameter="audio:-" ToolTip.Tip="Delay video 100 ms relative to audio" />
+            <TextBlock Classes="value" MinWidth="40" TextAlignment="Center" Text="{Binding AudioVideoSyncText}" />
+            <Button Classes="small" Content="+" Command="{Binding AdjustSyncCommand}" CommandParameter="audio:+" ToolTip.Tip="Advance video 100 ms relative to audio" />
+            <TextBlock Classes="label" Text="CDG" Margin="8,0,0,0" />
+            <Button Classes="small" Content="−" Command="{Binding AdjustSyncCommand}" CommandParameter="cdg:-" ToolTip.Tip="Delay CD+G 100 ms" />
+            <TextBlock Classes="value" MinWidth="40" TextAlignment="Center" Text="{Binding CdgSyncText}" />
+            <Button Classes="small" Content="+" Command="{Binding AdjustSyncCommand}" CommandParameter="cdg:+" ToolTip.Tip="Advance CD+G 100 ms" />
+            <TextBlock Classes="label" Text="SUB" Margin="8,0,0,0" />
+            <Button Classes="small" Content="−" Command="{Binding AdjustSyncCommand}" CommandParameter="subtitle:-" ToolTip.Tip="Delay subtitles 100 ms" />
+            <TextBlock Classes="value" MinWidth="40" TextAlignment="Center" Text="{Binding SubtitleSyncText}" />
+            <Button Classes="small" Content="+" Command="{Binding AdjustSyncCommand}" CommandParameter="subtitle:+" ToolTip.Tip="Advance subtitles 100 ms" />
+            <Button Classes="small" Content="Reset" Command="{Binding ResetSyncCommand}" ToolTip.Tip="Reset the per-item sync offsets" />
+            <TextBlock Classes="label" Text="SUBTITLES" Margin="8,0,0,0" />
+            <ComboBox MinWidth="170" ItemsSource="{Binding SubtitleChoices}" SelectedItem="{Binding SelectedSubtitle}" IsEnabled="{Binding HasSubtitleChoices}"
+                      ToolTip.Tip="Embedded tracks and sidecar files (.srt, .ass, .ssa) next to the media">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SubtitleChoice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </WrapPanel>
+        </Border>
 
-        <TextBlock Grid.Row="1" Text="Pitch" VerticalAlignment="Center" />
-        <Slider x:Name="PitchSlider" Grid.Row="1" Grid.Column="1" Minimum="-12" Maximum="12" Value="0"
-                TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="OnPitchChanged" />
-        <TextBlock x:Name="PitchText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" />
+        <!-- Video: base-visual transforms (Stage 030A) -->
+        <Border Classes="flyout" IsVisible="{Binding IsVideoFlyoutActive}">
+          <StackPanel Spacing="4">
+            <WrapPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding HueDegrees, StringFormat='{}{0:+0;-0;0}°'}" />
+                  <TextBlock Classes="label" Text="HUE" />
+                </DockPanel>
+                <Slider Minimum="-180" Maximum="180" TickFrequency="15" IsSnapToTickEnabled="True" Value="{Binding HueDegrees}" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding Saturation, StringFormat='{}{0:0.00}×'}" />
+                  <TextBlock Classes="label" Text="SATURATION" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="2" Value="{Binding Saturation}" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding Brightness, StringFormat='{}{0:+0.00;-0.00;0.00}'}" />
+                  <TextBlock Classes="label" Text="BRIGHTNESS" />
+                </DockPanel>
+                <Slider Minimum="-0.25" Maximum="0.25" Value="{Binding Brightness}" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding Contrast, StringFormat='{}{0:0.00}×'}" />
+                  <TextBlock Classes="label" Text="CONTRAST" />
+                </DockPanel>
+                <Slider Minimum="0.5" Maximum="1.5" Value="{Binding Contrast}" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding RedGain, StringFormat='{}{0:0.00}×'}" />
+                  <TextBlock Classes="label" Foreground="#FF7777" Text="RED" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="2" Value="{Binding RedGain}" ToolTip.Tip="Red channel gain: 0 removes red, 1 is neutral, 2 doubles red" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding GreenGain, StringFormat='{}{0:0.00}×'}" />
+                  <TextBlock Classes="label" Foreground="#70DB88" Text="GREEN" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="2" Value="{Binding GreenGain}" ToolTip.Tip="Green channel gain: 0 removes green, 1 is neutral, 2 doubles green" />
+              </StackPanel>
+              <StackPanel Classes="parameter">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="value" Text="{Binding BlueGain, StringFormat='{}{0:0.00}×'}" />
+                  <TextBlock Classes="label" Foreground="#72A7FF" Text="BLUE" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="2" Value="{Binding BlueGain}" ToolTip.Tip="Blue channel gain: 0 removes blue, 1 is neutral, 2 doubles blue" />
+              </StackPanel>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <CheckBox Content="Include overlays" IsChecked="{Binding IncludeOverlays}" ToolTip.Tip="Apply the transforms to subtitle, karaoke and CD+G overlays as well" />
+              <Button Classes="small" Content="Reset visual" Command="{Binding ResetBaseVisualTransformCommand}" ToolTip.Tip="Restore every transform to identity" />
+              <TextBlock Classes="label" Text="{Binding BaseVisualTransformState}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
 
-        <TextBlock Grid.Row="2" Text="Tempo" VerticalAlignment="Center" />
-        <Slider x:Name="TempoSlider" Grid.Row="2" Grid.Column="1" Minimum="50" Maximum="200" Value="100"
-                TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="OnTempoChanged" />
-        <TextBlock x:Name="TempoText" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" />
-      </Grid>
+        <!-- Audio: effects and the 10-band equalizer (Stage 020A) -->
+        <Border Classes="flyout" IsVisible="{Binding IsAudioFlyoutActive}">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="Auto,*,52,16,Auto,*,44" ColumnSpacing="6">
+              <TextBlock Classes="label" Text="PITCH" />
+              <Slider Grid.Column="1" Minimum="-12" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding Pitch}" />
+              <TextBlock Grid.Column="2" Classes="value" Text="{Binding Pitch, StringFormat='{}{0:+0;-0;0} st'}" />
+              <TextBlock Grid.Column="4" Classes="label" Text="TEMPO" />
+              <Slider Grid.Column="5" Minimum="50" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding Tempo}" />
+              <TextBlock Grid.Column="6" Classes="value" Text="{Binding Tempo, StringFormat='{}{0}%'}" />
+            </Grid>
+            <WrapPanel ItemSpacing="12">
+              <CheckBox Content="Normalize" IsChecked="{Binding Normalize}" />
+              <CheckBox Content="Reset pitch on load" IsChecked="{Binding ResetPitchOnMediaLoad}" ToolTip.Tip="Reset pitch to 0 after the next successful load" />
+              <CheckBox Content="Reset tempo on load" IsChecked="{Binding ResetTempoOnMediaLoad}" ToolTip.Tip="Reset tempo to 100% after the next successful load" />
+              <CheckBox Content="Silent drag" IsChecked="{Binding SilentDrag}" ToolTip.Tip="Mute audio while the seek bar is dragged; it plays again when the drag rests or is released" />
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <StackPanel VerticalAlignment="Center" Spacing="6">
+                <CheckBox Content="EQ" IsChecked="{Binding EqualizerEnabled}" ToolTip.Tip="10-band graphic equalizer (before normalization and fades); off or flat attaches nothing" />
+                <Button Classes="small" Content="Flat" Command="{Binding FlattenEqualizerCommand}" ToolTip.Tip="Set every band to 0 dB" />
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding EqualizerBands}" IsEnabled="{Binding EqualizerEnabled}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:EqualizerBandViewModel">
+                    <StackPanel Width="40">
+                      <TextBlock HorizontalAlignment="Center" Classes="value" Text="{Binding GainDb, StringFormat='{}{0:+0;-0;0}'}" />
+                      <Slider Height="80" HorizontalAlignment="Center" Orientation="Vertical" Minimum="-12" Maximum="12" TickFrequency="1"
+                              IsSnapToTickEnabled="True" Value="{Binding GainDb}" ToolTip.Tip="{Binding ToolTipText}" />
+                      <TextBlock HorizontalAlignment="Center" Classes="label" Text="{Binding Label}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </StackPanel>
+        </Border>
 
-      <TextBlock x:Name="StatusText" Grid.Row="5" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="12"
+        <!-- A/V: playback and display -->
+        <Border Classes="flyout" IsVisible="{Binding IsAVFlyoutActive}">
+          <WrapPanel ItemSpacing="10" LineSpacing="4">
+            <CheckBox Content="Auto play" IsChecked="{Binding AutoPlay}" ToolTip.Tip="Start playback after each successful load" />
+            <CheckBox Content="Display-locked" IsChecked="{Binding DisplayLockedTiming}"
+                      ToolTip.Tip="Time video frames to the display's refreshes (Stage 017A); the log says when it is on or why it is unavailable" />
+            <TextBlock Classes="label" Text="DISPLAY" />
+            <ComboBox MinWidth="110" ItemsSource="{Binding VideoDisplayModes}" SelectedItem="{Binding VideoDisplayMode}"
+                      ToolTip.Tip="Primary video display mode; background videos behind overlays always use ZoomToFill" />
+            <TextBlock Classes="label" Text="CD+G BG" />
+            <Slider Width="100" Minimum="0" Maximum="100" TickFrequency="10" IsSnapToTickEnabled="True" Value="{Binding CdgBackgroundOpacity}"
+                    ToolTip.Tip="CD+G background opacity" />
+            <TextBlock Classes="value" Text="{Binding CdgBackgroundOpacity, StringFormat='{}{0}%'}" />
+          </WrapPanel>
+        </Border>
+
+        <!-- Next: prepared item (Stage 031A), fades (031B) and the stream (014A/039A) -->
+        <Border Classes="flyout" IsVisible="{Binding IsNextFlyoutActive}">
+          <StackPanel Spacing="6">
+            <WrapPanel ItemSpacing="6" LineSpacing="4">
+              <TextBlock Classes="label" Text="NEXT" />
+              <Button Classes="small" Content="Choose..." Command="{Binding ChooseNextCommand}" ToolTip.Tip="Pick the next item; it is analyzed in the background while the current item plays" />
+              <TextBlock Classes="value" MinWidth="200" MaxWidth="420" TextTrimming="CharacterEllipsis" Text="{Binding PreparedNextText}" />
+              <Button Classes="small" Content="Play next now" Command="{Binding PlayNextNowCommand}" ToolTip.Tip="Switch to the prepared item now (fades when FADE is above 0)" />
+              <Button Classes="small" Content="Clear" Command="{Binding ClearNextCommand}" ToolTip.Tip="Forget the prepared item" />
+            </WrapPanel>
+            <WrapPanel ItemSpacing="6" LineSpacing="4">
+              <CheckBox Content="Auto-next" IsChecked="{Binding AutoNext}" ToolTip.Tip="Start the prepared item automatically when the current one ends" />
+              <TextBlock Classes="label" Text="FADE" Margin="6,0,0,0" />
+              <Slider Width="120" Minimum="0" Maximum="10" TickFrequency="0.5" IsSnapToTickEnabled="True" Value="{Binding FadeSeconds}"
+                      ToolTip.Tip="Fade length for transitions to the next item; 0 switches instantly" />
+              <TextBlock Classes="value" MinWidth="32" Text="{Binding FadeSeconds, StringFormat='{}{0:0.#}s'}" />
+              <Button Classes="small" Content="Fade out" Command="{Binding FadeOutCommand}" ToolTip.Tip="{Binding FadeOutToolTip}" />
+              <Button Classes="small" Content="Fade in" Command="{Binding FadeInCommand}" ToolTip.Tip="{Binding FadeInToolTip}" />
+              <Button Classes="small" Content="Cancel" Command="{Binding CancelFadeCommand}" ToolTip.Tip="Stop the running fade; the volume stays where the fade reached" />
+            </WrapPanel>
+            <WrapPanel ItemSpacing="6">
+              <TextBlock Classes="label" Text="STREAM" />
+              <TextBlock Classes="value" MaxWidth="420" TextTrimming="CharacterEllipsis" Text="{Binding StreamInfoText}"
+                         ToolTip.Tip="Buffering, stream title and source class of a network source (URL box above)" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Log: engine diagnostics, newest first -->
+        <Border Classes="flyout" IsVisible="{Binding IsLogFlyoutActive}">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
+              <TextBlock Classes="label" Text="LOG" />
+              <TextBlock Classes="value" Text="{Binding DiagnosticLog.Count, StringFormat='{}{0} entries, newest first'}" />
+              <Button Classes="small" Content="Copy all" Command="{Binding CopyLogCommand}" ToolTip.Tip="Copy every entry, oldest first, to the clipboard (for a bug report)" />
+              <Button Classes="small" Content="Clear" Command="{Binding ClearLogCommand}" ToolTip.Tip="Clear this list (the log file keeps everything)" />
+              <Button Classes="small" Content="Open log file" Command="{Binding OpenLogFileCommand}" ToolTip.Tip="{Binding LogFilePath}" />
+            </StackPanel>
+            <ListBox Height="150" ItemsSource="{Binding DiagnosticLog}" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="11"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="4,0" />
+                  <Setter Property="MinHeight" Value="0" />
+                </Style>
+              </ListBox.Styles>
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:DiagnosticLogEntry">
+                  <Grid ColumnDefinitions="92,62,150,*">
+                    <TextBlock Opacity="0.7" Text="{Binding TimeText}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Level}" Foreground="{Binding Level, Converter={StaticResource LevelBrush}}" />
+                    <TextBlock Grid.Column="2" Foreground="#4FB3FF" TextTrimming="CharacterEllipsis" Text="{Binding Category}" ToolTip.Tip="{Binding Category}" />
+                    <TextBlock Grid.Column="3" TextWrapping="Wrap" Text="{Binding Message}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+      </Panel>
+
+      <TextBlock x:Name="StatusLine" Grid.Row="5" FontSize="12" TextTrimming="CharacterEllipsis" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" />
+
+      <TextBlock x:Name="StatsText" Grid.Row="6" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="11" Opacity="0.8"
                  TextWrapping="Wrap" Text="starting..." />
-
-      <Expander Grid.Row="6" Header="Log (newest first)" IsExpanded="True">
-        <ListBox x:Name="LogList" Height="100" FontFamily="Consolas,Menlo,DejaVu Sans Mono,monospace" FontSize="11" />
-      </Expander>
     </Grid>
   </Border>
 </UserControl>

@@ -31,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj" />
   </ItemGroup>

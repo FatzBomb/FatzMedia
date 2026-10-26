@@ -79,6 +79,7 @@ public partial class PlayerViewModel
         {
             _lastStreamTitle = string.Empty;
             StreamInfoText = "Connecting...";
+            LoadedMediaText = uri.ToString();
         });
         try
         {

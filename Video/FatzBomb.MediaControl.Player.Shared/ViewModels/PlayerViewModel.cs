@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 
@@ -28,7 +29,6 @@ public enum PlayerFlyout
 public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
     private static readonly TimeSpan SeekRefreshHold = TimeSpan.FromMilliseconds(1000);
-    private static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMilliseconds(200);
     // Lets the surface bind to the new player before the startup media loads.
     private static readonly TimeSpan StartupMediaDelay = TimeSpan.FromMilliseconds(500);
 
@@ -52,6 +52,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         LoadMediaCommand = new AsyncRelayCommand<string?>(LoadMediaAsync, CanLoadMedia);
         OpenFileCommand = new AsyncRelayCommand(OpenFileAsync, () => CanOpen);
         PlayCommand = new AsyncRelayCommand(PlayAsync, CanUsePlayer);
+        TogglePlayPauseCommand = new AsyncRelayCommand(TogglePlayPauseAsync, CanUsePlayer);
         PauseCommand = new AsyncRelayCommand(PauseAsync, CanUsePlayer);
         StopCommand = new AsyncRelayCommand(StopAsync, CanUsePlayer);
         ToggleLoopCommand = new RelayCommand(() => LoopPlayback = !LoopPlayback);
@@ -62,6 +63,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         InitializeEqualizerControls();
         InitializePreparedNextControls();
         InitializeNetworkControls();
+        InitializeModeControls();
 
         _positionTimer = host.Dispatcher.CreateTimer(PositionRefreshInterval, OnPositionTimerTick);
         RefreshCommandStates();
@@ -69,6 +71,16 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     /// <summary>Gets the command-line options this player started with.</summary>
     public PlayerStartupOptions Options { get; }
+
+    /// <summary>
+    /// Gets or sets a short name for this player (for example "P2" when a host shows several),
+    /// put before its lines in the debug log file; null for none.
+    /// </summary>
+    public string? Label { get; set; }
+
+    /// <summary>Gets what is loaded: the file name, or the URL of a network source.</summary>
+    [ObservableProperty]
+    public partial string LoadedMediaText { get; private set; } = "(no media)";
 
     /// <summary>Gets the engine, once <see cref="StartAsync"/> created it; bind the host's surface to it.</summary>
     public MediaControlPlayer? Player
@@ -102,6 +114,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     public AsyncRelayCommand PlayCommand { get; }
 
     public AsyncRelayCommand PauseCommand { get; }
+
+    /// <summary>Pauses while playing, else plays (one-button transport).</summary>
+    public AsyncRelayCommand TogglePlayPauseCommand { get; }
 
     public AsyncRelayCommand StopCommand { get; }
 
@@ -240,7 +255,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         get;
         set
         {
-            if (!SetProperty(ref field, value)) return;
+            if (!SetProperty(ref field, value) || _syncingFromPlayer) return;
             if (Player is { } player)
                 player.LoopMedia = field;
         }
@@ -355,6 +370,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         {
             IsBusy = true;
             StatusText = $"Loading: {mediaPath}";
+            LoadedMediaText = Path.GetFileName(mediaPath) is { Length: > 0 } name ? name : mediaPath;
             MediaControlPlayer? player = Player;
             var loaded = player is not null && await player.LoadAsync(mediaPath);
             RefreshPlaybackPosition();
@@ -421,6 +437,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             OnRendererResolved(renderer);
             var configuration = new MediaPlayerConfiguration(renderer.VideoDecoding)
             {
+                Mode = PlayerMode,
                 EnableLogging = true,
                 EnablePerformanceLogging = true,
                 EnableVerboseLogging = false,
@@ -470,11 +487,16 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             player.MediaError += OnPlayerError;
             StartSubtitleTracking(player);
             Player = player;
+            // Background mode forces looping: show what the engine reports.
+            SyncFromPlayer(player);
             RefreshSyncOffsets();
             player.PitchChanged += OnPlayerPitchChanged;
             player.TempoChanged += OnPlayerTempoChanged;
+            StartModeTracking(player);
             StartPreparedNextValidation(player);
             StartNetworkValidation(player);
+            if (player.LastNativeLoadMessage.Length > 0)
+                HandleDiagnostic(MediaDiagnosticLevel.Info, "NativeLibraries", player.LastNativeLoadMessage);
             ReportNativeDependencies(player.NativeDependencies);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
@@ -508,6 +530,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     private Task PauseAsync() =>
         RunTransportCommandAsync("Pausing...", "Paused", "Could not pause playback.", player => player.PauseAsync());
+
+    // State is a plain read (no engine lock), unlike Position: safe on the UI thread.
+    private Task TogglePlayPauseAsync() => (Player?.State ?? PlaybackState) == MediaPlayerState.Playing ? PauseAsync() : PlayAsync();
 
     private Task StopAsync() =>
         RunTransportCommandAsync("Stopping...", "Stopped", "Could not stop playback.", player => player.StopAsync());
@@ -548,11 +573,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         OpenFileCommand.NotifyCanExecuteChanged();
         PlayCommand.NotifyCanExecuteChanged();
         PauseCommand.NotifyCanExecuteChanged();
+        TogglePlayPauseCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         AdjustSyncCommand.NotifyCanExecuteChanged();
         ResetSyncCommand.NotifyCanExecuteChanged();
         RefreshPreparedNextCommandStates();
         OpenUrlCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanSwitchMode));
     }
 
     private void AdjustSync(string? command)
@@ -621,32 +648,6 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
 
     /// <summary>Formats a sync offset as shown in the Sync flyout, for example "+0.1s".</summary>
     public static string FormatSyncOffset(TimeSpan offset) => $"{offset.TotalSeconds:+0.0;-0.0;0.0}s";
-
-    private void OnPositionTimerTick()
-    {
-        if (!_isSeekPreviewActive)
-            RefreshPlaybackPosition();
-    }
-
-    private void RefreshPlaybackPosition()
-    {
-        if (DateTime.UtcNow < _suppressPositionRefresh) return;
-
-        if (Player is null)
-        {
-            PositionSeconds = 0;
-            SeekPositionSeconds = 0;
-            DurationSeconds = 0;
-            return;
-        }
-
-        var duration = Player.Controls.Duration.TotalSeconds;
-        var position = Player.Controls.Position.TotalSeconds;
-
-        DurationSeconds = duration;
-        PositionSeconds = DurationSeconds > 0 ? Math.Clamp(position, 0, DurationSeconds) : CleanSeconds(position);
-        SeekPositionSeconds = PositionSeconds;
-    }
 
     private void SuppressPositionRefresh() => _suppressPositionRefresh = DateTime.UtcNow + SeekRefreshHold;
 
@@ -732,6 +733,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             HandleDiagnostic(index < requiredCount ? MediaDiagnosticLevel.Error : MediaDiagnosticLevel.Warning, "NativeLibraries", lines[index]);
     }
 
+    /// <summary>
+    /// Adds a host line to the log (for example which presentation path a surface took), from any
+    /// thread; a warning or an error also shows in the status line.
+    /// </summary>
+    public void AddLogEntry(MediaDiagnosticLevel level, string category, string message)
+        => HandleDiagnosticOnUiThread(level, category, message);
+
     /// <summary>Adds a line to the log (and the status line when it is a warning or an error). UI thread only.</summary>
     protected void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
     {
@@ -772,6 +780,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         player.MediaError -= OnPlayerError;
         player.PitchChanged -= OnPlayerPitchChanged;
         player.TempoChanged -= OnPlayerTempoChanged;
+        StopModeTracking(player);
         StopSubtitleTracking(player);
         StopPreparedNextValidation(player);
         StopNetworkValidation(player);

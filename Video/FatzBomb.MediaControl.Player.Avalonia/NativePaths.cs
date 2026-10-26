@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
@@ -12,11 +13,11 @@ internal static class NativePaths
 {
     public static IReadOnlyList<string> Resolve(StartupOptions options)
     {
-        List<string> candidates = [.. options.NativeDirectories];
+        List<string> requested = [.. options.Shared.NativeDirectories];
         foreach (var variable in new[] { "FATZBOMB_LINUX_FFMPEG_DIR", "FATZBOMB_LINUX_BASS_DIR" })
         {
             if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } fromEnvironment)
-                candidates.Add(fromEnvironment);
+                requested.Add(fromEnvironment);
         }
 
         var appNative = Path.Combine(AppContext.BaseDirectory, "native");
@@ -30,12 +31,8 @@ internal static class NativePaths
             // Read-only install location: fall through to whatever already exists.
         }
 
-        candidates.Add(appNative);
-        candidates.Add(Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"));
-
-        return [.. candidates
-            .Select(static path => Path.GetFullPath(path))
-            .Where(Directory.Exists)
-            .Distinct(StringComparer.Ordinal)];
+        return PlayerNativePaths.Combine(
+            requested,
+            [appNative, Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native")]);
     }
 }

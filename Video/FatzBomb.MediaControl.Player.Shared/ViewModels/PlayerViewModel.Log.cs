@@ -20,7 +20,7 @@ public partial class PlayerViewModel
 
     private void AppendToLog(DiagnosticLogEntry entry)
     {
-        Trace.WriteLine($"[Diagnostic] {entry.Line}");
+        Trace.WriteLine(Label is { Length: > 0 } label ? $"[Diagnostic] {label} {entry.Line}" : $"[Diagnostic] {entry.Line}");
         DiagnosticLog.Insert(0, entry);
         while (DiagnosticLog.Count > MaxLogEntries)
             DiagnosticLog.RemoveAt(DiagnosticLog.Count - 1);
