@@ -8,7 +8,9 @@
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
-- `FatzBomb.MediaControl.Player`: WPF validation host.
+- `FatzBomb.MediaControl.Player`: WPF validation host. The Avalonia and WinForms test players
+  (`.Player.Avalonia`, `.Player.WinForms`) bind the same view model,
+  `FatzBomb.MediaControl.Player.Shared` (`net10.0`, Core only; Stage 044A).
 
 UI adapters, renderer backends, and platform services are separate projects using the same
 package pattern. Status as of 2026-10-16:

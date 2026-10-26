@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-25
+Updated: 2026-10-26
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -293,6 +293,21 @@ Reconnect follow-up (2026-10-26), not fixed:
 - `python -m http.server`-style servers (no ranges) are never reconnected: only seekable sources.
 - The reconnect window is checked between attempts, so a reconnect seek blocked in a connect can
   overrun `ReconnectFor` by up to the connect timeout (15 s by default).
+
+### ENG-036 - Adapter diagnostics reach every player in the process
+
+Reported: 2026-10-26 (044A, Avalonia test player with `--players=2`). Not fixed: it needs an
+API decision.
+- The Avalonia `MediaSurface` reports its presentation path (`Avalonia.MediaSurface`: "Surface
+  #2 'primary': frame-sink path ...") with `DiagnosticRouter.Raise` on the UI thread. That call
+  has no owner (`EnterOwner` is internal to Core), and an unowned diagnostic goes to every
+  player's `MediaDiagnostic` (ENG-025), so each player's log shows the other players' surfaces.
+- The same applies to any host or adapter code that raises a diagnostic outside the engine.
+- Options: an owner-taking `Raise` overload on `DiagnosticRouter` (the adapter knows its
+  session), or the adapter raising an event the host logs. The engine's own diagnostics are
+  correctly owned.
+- Tests see it too: diagnostics raised without an owner by other tests reach every test player,
+  so the 044A view-model tests run posted UI work explicitly instead of draining it.
 
 ## Completed
 

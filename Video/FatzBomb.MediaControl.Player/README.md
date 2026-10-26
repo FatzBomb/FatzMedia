@@ -26,13 +26,17 @@ using FatzBomb.MediaControl.Wpf;
 
 ## MVVM shape
 
-The player uses a standard WPF MVVM split:
+The player logic is shared with the Avalonia and WinForms test players (Stage 044A): it lives in
+`FatzBomb.MediaControl.Player.Shared` (`PlayerViewModel`), and this project supplies the WPF
+pieces.
 
 | Layer | Responsibility |
 |---|---|
-| `MainWindow.xaml` | Declares buttons, sliders, status text, and the `MediaSurface`. |
-| `MainWindow.xaml.cs` | Handles view-only concerns: file dialog, seek bar, and fullscreen chrome. |
-| `ViewModels/MainWindowViewModel.cs` | Owns WPF `Player`, inherited Core playback commands, effect properties, busy state, and status text. |
+| `MainWindow.xaml`, `Controls/PlayerFlyoutPanel.xaml` | Declare buttons, sliders, flyouts, status text, and the `MediaSurface`. |
+| `MainWindow.xaml.cs` | View-only concerns: seek bar drag, file drops, fullscreen chrome, the secondary window. |
+| `ViewModels/MainWindowViewModel.cs` | Derives from the shared `PlayerViewModel`; adds the WPF-only presentation mode and surface auto-hide. |
+| `Hosting/` | The WPF dispatcher and timer, clipboard, open-file dialog, and the engine factory (renderer chain, Windows platform, native paths). |
+| Shared `PlayerViewModel` | Engine creation, transport, scrubbing, sync, effects, equalizer, subtitles, visual transforms, prepared next, network sources, player mode, log. |
 
 The player owns its display surface in XAML. The WPF adapter supplies native HWND surfaces to the Core session; Core owns composition, swap chains, retained layers, target fan-out, and presentation.
 The test app uses `MediaSurface` as a native HWND interop control:
@@ -102,6 +106,16 @@ The loader also recognizes `runtimes/win-x64/native` beneath the application bas
 A real host may pass separate BASS and FFmpeg directories in search-priority order.
 The MediaControl packages do not copy or redistribute native DLLs. See
 `docs/NATIVE_DEPENDENCIES.md` for the complete host distribution policy.
+
+## Command line
+
+The player understands the flags all test players share (`PlayerStartupOptions`): a media file
+or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--net-retries=`,
+`--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`,
+`--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
+`--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, plus its own
+`--renderer=`/`--software` (below) and `--no-auto-hide`. The **PLAYER** box in the **A/V** flyout
+switches the player mode on the fly (Stage 043A).
 
 ## Renderer choice
 
