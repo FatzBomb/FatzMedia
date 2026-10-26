@@ -200,4 +200,10 @@ Base command:
 
 ## Owner smoke results
 
-Pending.
+2026-10-26, Windows, RTX 5090, Avalonia player `--renderer=auto` (Direct3D11): passed.
+- Renderer line `hardware decoding (D3D11VA)`; AV1 (`av1 via d3d11va`, was libdav1d), 4K HEVC
+  Main 10 and the HDR10/HLG clips (`hevc via d3d11va`, tone mapped on the GPU) all decode on the
+  GPU; status line `via shared GPU image`; `--decoding=software` falls back to libdav1d.
+- Second screen and resizes re-export the shared textures; occasional `Shared texture frame
+  dropped: the compositor has not released a texture yet` Info lines at attach and resize only.
+- The HDR test clips have no audio track (checked with ffprobe), so silence there is expected.

@@ -104,13 +104,27 @@ public class SecondaryPresentationWindow : Form
             Location = CenteredLocation(screen.WorkingArea, Size);
         }
 
-        if (fullScreen)
-            IsFullScreen = true;
-
         if (owner is null)
             Show();
         else
             Show(owner);
+
+        // Maximized only once the window exists on that screen: maximizing before it shows let the
+        // per-monitor DPI rescale move the maximized window, so it covered only part of a screen
+        // whose scale differs from the main one (owner's 046A smoke).
+        if (fullScreen)
+            IsFullScreen = true;
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        if (!_isFullScreen || WindowState != FormWindowState.Maximized)
+            return;
+
+        // Windows applied its suggested bounds for the new scale: cover the screen again.
+        WindowState = FormWindowState.Normal;
+        WindowState = FormWindowState.Maximized;
     }
 
     /// <summary>The top-left position that centres a window of <paramref name="size"/> in <paramref name="area"/> (clamped to it).</summary>

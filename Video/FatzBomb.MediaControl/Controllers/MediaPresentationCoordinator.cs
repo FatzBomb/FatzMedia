@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
@@ -55,6 +56,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
+    // A refused present is reported once per episode: a target going away (a surface unloading
+    // while the engine still stops or clears) refuses every present until one succeeds again.
+    private readonly RendererDiagnosticLatch _presentFailure = new();
     private readonly Lock _lock = new();
     private readonly Lock _cdgSnapshotGate = new();
     private readonly Lock _subtitleGate = new();
@@ -202,6 +206,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
             if (attached)
             {
                 _surfaces[surface.Id] = surface;
+                // A new target starts a new episode: its first refused present is reported.
+                _presentFailure.Reset();
                 TrackPrimarySurface(surface);
                 UpdateSecondarySurfaceCountNoLock();
                 PublishSurfaceSnapshotNoLock();
@@ -1221,6 +1227,13 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private string DescribeBackendPresentFailure() =>
         _rendererBackend.LastPresentFailureReason is { Length: > 0 } reason ? $" ({reason})" : string.Empty;
 
+    // Refused presents repeat every frame: build the message only for the first of an episode.
+    private void ReportPresentFailure(MediaCompositionFrame frame)
+    {
+        if (!_presentFailure.IsLatched)
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+    }
+
     private bool HasCurrentVisualContent() =>
         _mediaEngine.Content.HasFlag(MediaContent.Image)
         || _mediaEngine.Content.HasFlag(MediaContent.Video)
@@ -1307,10 +1320,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+            ReportPresentFailure(frame);
             return CompositionPresentResult.Failed;
         }
 
+        _presentFailure.Reset();
         return CompositionPresentResult.Presented;
     }
 
@@ -1345,10 +1359,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+                ReportPresentFailure(frame);
                 return CompositionPresentResult.Failed;
             }
 
+            _presentFailure.Reset();
             return CompositionPresentResult.Presented;
         }
         finally

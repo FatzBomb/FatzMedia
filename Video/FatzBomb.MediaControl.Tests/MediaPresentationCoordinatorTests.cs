@@ -168,6 +168,47 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void FailedPresents_AreReportedOncePerEpisode()
+    {
+        // A target going away refuses every present until one succeeds (seven lines at once in
+        // the owner's 046A smoke when a smoke window closed): one warning per episode.
+        var backend = new RecordingRendererBackend();
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var messages = new ConcurrentQueue<string>();
+        var owner = new object();
+        void Record(MediaDiagnosticInfo info)
+        {
+            // Only this test's diagnostics: other tests may raise Composition lines in parallel.
+            if (info.Category == "Composition" && ReferenceEquals(info.Owner, owner))
+                messages.Enqueue(info.Message);
+        }
+
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            using var scope = DiagnosticRouter.EnterOwner(owner);
+            backend.PresentFailureReason = "no active D3D11 presentation target";
+            coordinator.RefreshCurrentPosition();
+            coordinator.RefreshCurrentPosition();
+            coordinator.RefreshCurrentPosition();
+            Assert.Single(messages);
+
+            backend.PresentFailureReason = null;
+            coordinator.RefreshCurrentPosition();
+            backend.PresentFailureReason = "no active D3D11 presentation target";
+            coordinator.RefreshCurrentPosition();
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+
+        Assert.Equal(2, messages.Count);
+    }
+
+    [Fact]
     public void DeviceLostDiagnostic_ReinitializesSurfacesAndPresentsRecoveryFrame()
     {
         var backend = new RecordingRendererBackend();

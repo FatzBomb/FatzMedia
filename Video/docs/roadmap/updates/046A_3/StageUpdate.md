@@ -240,3 +240,24 @@ the second screen opens as a window).
    was `software`. Keep?
 3. `--renderer=gpu` in Avalonia's Windows build is Direct3D11 on the GPU; on Linux it is Vulkan.
    `warp` and `direct3d11` off Windows fall back to auto with a warning.
+
+## Owner smoke results (2026-10-26, Windows, RTX 5090, three monitors)
+
+- WPF regression pass (A): passed: `--players=2`, second screens per player on DISPLAY2, AV1 and
+  H.264 via d3d11va in both players.
+- Avalonia (B, with 045A): passed.
+- WinForms (C): passed except two bugs, fixed afterwards:
+  - a seek-bar press off the thumb followed by a drag jumped to unrelated points (the native
+    track bar pages toward a press and repeats while held): the bar now handles the left button
+    itself, jump to the pointer and follow the drag;
+  - the second screen covered only the bottom-right three quarters of a monitor: it was
+    maximized before it showed on that monitor; it is now maximized after, and again after a
+    DPI change.
+  `--renderer=software` (frame-sink path) played cleanly.
+- Lightweight surfaces (D): the background pane (left) and the karaoke pane (right, 4:3) behave
+  as designed. Closing or stopping them logged seven `Composition present failed ... (no active
+  D3D11 presentation target)` warnings at once: a refused present is now reported once per
+  episode (`MediaPresentationCoordinator`, `RendererDiagnosticLatch`). The WPF overlay window
+  caught up with a window drag only when the drag ended (it followed layout refreshes, not the
+  owner's moves): it now follows every `WM_MOVE` of the owner window.
+
