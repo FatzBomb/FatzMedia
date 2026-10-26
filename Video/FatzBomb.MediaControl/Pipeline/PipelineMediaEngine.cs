@@ -77,9 +77,12 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.PlaybackEnded += OnPlaybackEnded;
         _coordinator.PlaybackLooped += OnPlaybackLooped;
         _coordinator.NetworkBufferingChanged += OnNetworkBufferingChanged;
+        _coordinator.NetworkStreamMetadataChanged += OnNetworkStreamMetadataChanged;
     }
 
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
+
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? NetworkStreamMetadataChanged;
 
     public void CancelPendingNetworkOpen()
     {
@@ -95,6 +98,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     }
 
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
+
+    private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
 
     public IVideoEngine? Video => _coordinator.Video;
     public ICdgEngine? Cdg => _coordinator.Cdg;
@@ -264,8 +269,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// <summary>
     /// Opens a direct HTTP/HTTPS source. The host hint, or the URI path extension through the same
     /// <see cref="FileTypes"/> sets as local files (plus HLS <c>.m3u8</c>), selects audio or video.
-    /// Audio goes through the audio engine (Stage 014A); video through FFmpeg's network path
-    /// (Stage 039A), in Audio mode as its soundtrack only.
+    /// Video goes through FFmpeg's network path (Stage 039A), in Audio mode as its soundtrack only.
+    /// Audio goes through the audio engine (Stage 014A) for plain http, and through FFmpeg's
+    /// network path into the soundtrack engine for https and HLS (ENG-034: BASS cannot verify
+    /// certificates; <see cref="NetworkAudioPolicy"/>).
     /// </summary>
     private bool OpenNetwork(MediaInputSource source)
     {
@@ -284,7 +291,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             return RejectAudioUnavailable(source.DisplayName, uri.AbsoluteUri);
 
         if (isVideo)
-            return OpenNetworkVideo(source, route == MediaModeRoute.AudioOnly);
+            return OpenThroughFfmpeg(source, route == MediaModeRoute.AudioOnly ? FfmpegNetworkRoute.Soundtrack : FfmpegNetworkRoute.Video);
+
+        if (NetworkAudioPolicy.OpensThroughFfmpeg(uri))
+            return OpenThroughFfmpeg(source, FfmpegNetworkRoute.Audio);
 
         if (!_coordinator.OpenNetworkAudio(uri))
         {
@@ -300,12 +310,27 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         return true;
     }
 
+    /// <summary>What an FFmpeg network open plays.</summary>
+    private enum FfmpegNetworkRoute
+    {
+        /// <summary>Network video (Stage 039A), picture and sound.</summary>
+        Video,
+
+        /// <summary>The soundtrack of a network video only (Audio mode).</summary>
+        Soundtrack,
+
+        /// <summary>Network audio through FFmpeg (https, HLS; ENG-034).</summary>
+        Audio,
+    }
+
     /// <summary>
-    /// Opens a network video (Stage 039A) under the host's <see cref="NetworkRetryPolicy"/>: each
-    /// attempt is bounded by the connect timeout, and Close or Dispose cancel the attempt and any
-    /// retry delay through <see cref="CancelPendingNetworkOpen"/>.
+    /// Opens a source through FFmpeg's network path (network video, Stage 039A; https and HLS
+    /// audio, ENG-034) under the host's <see cref="NetworkRetryPolicy"/>: each attempt is bounded
+    /// by the connect timeout, and Close or Dispose cancel the attempt and any retry delay through
+    /// <see cref="CancelPendingNetworkOpen"/>. An HLS playlist with no playable video stream (an
+    /// audio-only stream) plays as audio when the soundtrack engine is there (one more connect).
     /// </summary>
-    private bool OpenNetworkVideo(MediaInputSource source, bool soundtrackOnly)
+    private bool OpenThroughFfmpeg(MediaInputSource source, FfmpegNetworkRoute requested)
     {
         Uri uri = source.Uri!;
         var url = uri.AbsoluteUri;
@@ -321,6 +346,8 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         CancellationToken loadCancellation = MediaOpenCancellation.Current;
         using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation);
         Volatile.Write(ref _pendingNetworkOpen, cancellation);
+        FfmpegNetworkRoute route = requested;
+        var audioFallback = requested == FfmpegNetworkRoute.Video && _coordinator.CanOpenSoundtrack && NetworkVideoPolicy.IsSegmentedPlaylist(uri);
         NetworkOpenOutcome outcome;
         int attempts;
         var started = Stopwatch.GetTimestamp();
@@ -332,19 +359,28 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 cancellation.Token,
                 _ =>
                 {
-                    if (soundtrackOnly ? _coordinator.OpenNetworkSoundtrack(uri, options) : _coordinator.OpenNetworkVideo(uri, options))
-                        return NetworkAttemptResult.Opened;
+                    if (route == FfmpegNetworkRoute.Video)
+                    {
+                        if (_coordinator.OpenNetworkVideo(uri, options))
+                            return NetworkAttemptResult.Opened;
 
-                    // No FFmpeg error means it connected but found no usable stream, and a rejected
-                    // certificate is rejected again: neither is retried.
-                    return _coordinator.LastNetworkVideoError is not { } error || NetworkTlsRules.IsCertificateFailureError(error)
-                        ? NetworkAttemptResult.Unusable
-                        : NetworkAttemptResult.Failed;
+                        // A playlist that connected but has no playable video: an audio-only stream
+                        // (HLS radio) plays as audio.
+                        if (!audioFallback || _coordinator.GetLastNetworkError(soundtrack: false) is not null || cancellation.IsCancellationRequested)
+                            return ClassifyFailedAttempt(_coordinator.GetLastNetworkError(soundtrack: false));
+
+                        route = FfmpegNetworkRoute.Audio;
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, NetworkDiagnosticCategory, $"No video stream in {source.DisplayName}; opening it as audio.", sourcePath: url);
+                    }
+
+                    return _coordinator.OpenNetworkSoundtrack(uri, options, audioSource: route == FfmpegNetworkRoute.Audio)
+                        ? NetworkAttemptResult.Opened
+                        : ClassifyFailedAttempt(_coordinator.GetLastNetworkError(soundtrack: true));
                 },
                 (retry, delay) => DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Warning,
                     NetworkDiagnosticCategory,
-                    $"Network retry {retry}/{policy.MaxRetries} in {delay.TotalSeconds:F1}s ({_coordinator.LastNetworkVideoError ?? "no response"})",
+                    $"Network retry {retry}/{policy.MaxRetries} in {delay.TotalSeconds:F1}s ({LastError() ?? "no response"})",
                     sourcePath: url),
                 out attempts);
         }
@@ -362,7 +398,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                     MediaDiagnosticLevel.Info,
                     NetworkDiagnosticCategory,
                     $"Network stream connected: {capabilities.SourceClass}, seekable={capabilities.IsSeekable}, duration={(capabilities.IsDurationKnown ? $"{Duration:F1}s" : "unknown")}, " +
-                    $"{(soundtrackOnly ? "soundtrack only" : "video")}, opened in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms",
+                    $"{Describe(route)}, opened in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms",
                     sourcePath: url);
                 return true;
 
@@ -376,12 +412,16 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 return false;
 
             default:
-                if (_coordinator.LastNetworkVideoError is not { } reason)
+                if (LastError() is not { } reason)
                 {
-                    var unusable = soundtrackOnly
-                        ? $"Audio mode found no playable audio stream in {source.DisplayName}; network video without audio is not accepted."
-                        : $"No playable video stream in {source.DisplayName}.";
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, soundtrackOnly ? MediaPlayerModePolicy.DiagnosticCategory : NetworkDiagnosticCategory, unusable, sourcePath: url);
+                    var unusable = route switch
+                    {
+                        FfmpegNetworkRoute.Soundtrack => $"Audio mode found no playable audio stream in {source.DisplayName}; network video without audio is not accepted.",
+                        FfmpegNetworkRoute.Audio when requested == FfmpegNetworkRoute.Video => $"No playable video or audio stream in {source.DisplayName}.",
+                        FfmpegNetworkRoute.Audio => $"No playable audio stream in {source.DisplayName}.",
+                        _ => $"No playable video stream in {source.DisplayName}.",
+                    };
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, route == FfmpegNetworkRoute.Soundtrack ? MediaPlayerModePolicy.DiagnosticCategory : NetworkDiagnosticCategory, unusable, sourcePath: url);
                     RaiseError(MediaErrorCode.UnsupportedFormat, unusable, url);
                     return false;
                 }
@@ -390,7 +430,23 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
                 RaiseError(MediaErrorCode.OpenFailed, $"Failed to open network stream: {source.DisplayName} ({reason})", url);
                 return false;
         }
+
+        string? LastError() => _coordinator.GetLastNetworkError(soundtrack: route != FfmpegNetworkRoute.Video);
+
+        static string Describe(FfmpegNetworkRoute route) => route switch
+        {
+            FfmpegNetworkRoute.Soundtrack => "soundtrack only",
+            FfmpegNetworkRoute.Audio => "audio",
+            _ => "video",
+        };
     }
+
+    /// <summary>
+    /// A failed attempt with no FFmpeg error connected but found no usable stream; a rejected
+    /// certificate or an MP4 the server cannot stream fails again. None of those is retried.
+    /// </summary>
+    private static NetworkAttemptResult ClassifyFailedAttempt(string? error) =>
+        error is null || NetworkVideoPolicy.IsPermanentOpenError(error) ? NetworkAttemptResult.Unusable : NetworkAttemptResult.Failed;
 
     /// <summary>
     /// Audio mode (043A): opens only the audio of a video file (its soundtrack, no video decoder)
@@ -569,6 +625,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.PlaybackEnded -= OnPlaybackEnded;
         _coordinator.PlaybackLooped -= OnPlaybackLooped;
         _coordinator.NetworkBufferingChanged -= OnNetworkBufferingChanged;
+        _coordinator.NetworkStreamMetadataChanged -= OnNetworkStreamMetadataChanged;
         _coordinator.Dispose();
         _disposed = true;
     }

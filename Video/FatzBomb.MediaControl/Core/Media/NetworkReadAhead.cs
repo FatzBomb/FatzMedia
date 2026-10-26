@@ -76,7 +76,13 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     private readonly Lock _sync = new();
     private readonly ReadAheadBuffer<nint> _buffer = new(ReleasePacket);
     private readonly ManualResetEventSlim _readerWake = new(false);
-    private readonly ManualResetEventSlim _dataArrived = new(false);
+    // One data-arrived event per registered stream (ENG-034: with a shared one, a consumer that
+    // reset it could swallow the other's wake-up). Changed under _sync; the array is replaced, not
+    // mutated, so the lock-free signals (Abort, a superseded wait) can read it.
+    private readonly Dictionary<int, ManualResetEventSlim> _arrivals = [];
+    private ManualResetEventSlim[] _arrivalEvents = [];
+    // Streams to discard again (an unregistered consumer), applied by the reader between reads.
+    private readonly List<int> _pendingDiscards = [];
     private Thread? _thread;
     private bool _stopping;
     private bool _disposed;
@@ -103,6 +109,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     // the outage). Before any seek, the start.
     private SeekRequest _lastSeek = new(-1, 0, ffmpeg.AVSEEK_FLAG_BACKWARD);
     private long _dropStarted;
+    // Reader thread only: the next read is the reconnect's first (bounded by its window).
+    private bool _boundNextReadToReconnectWindow;
     private double _droppedAt;
     private int _reconnectAttempts;
 
@@ -226,19 +234,69 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     /// </summary>
     public static WaitScope AbandonWaitsWhen(Func<bool> abandon) => new(0, CancellationToken.None, abandon ?? throw new ArgumentNullException(nameof(abandon)));
 
-    /// <summary>Keeps the packets of <paramref name="streamIndex"/>; the lead stream's time is what the duration cap measures.</summary>
+    /// <summary>
+    /// Keeps the packets of <paramref name="streamIndex"/>; the lead stream's time is what the
+    /// duration cap measures. A stream whose track ends before the source does is ended there (see
+    /// <see cref="ReadAheadBuffer{T}.StreamEndToleranceSeconds"/>).
+    /// </summary>
     public void Register(int streamIndex, bool lead)
     {
+        if (streamIndex < 0)
+            return;
+
+        var end = StreamEndSeconds(streamIndex);
         lock (_sync)
-            _buffer.Register(streamIndex, lead);
+        {
+            _buffer.Register(streamIndex, lead, end);
+            _ = _pendingDiscards.Remove(streamIndex);
+            if (!_arrivals.ContainsKey(streamIndex))
+            {
+                _arrivals[streamIndex] = new ManualResetEventSlim(false);
+                Volatile.Write(ref _arrivalEvents, [.. _arrivals.Values]);
+            }
+        }
     }
 
-    /// <summary>Stops keeping <paramref name="streamIndex"/> (its consumer closed) and drops its packets.</summary>
-    public void Unregister(int streamIndex)
+    /// <summary>
+    /// Stops keeping <paramref name="streamIndex"/> (its consumer closed) and drops its packets;
+    /// with <paramref name="discard"/> the reader also stops demuxing it (for HLS and DASH, stops
+    /// downloading it).
+    /// </summary>
+    public void Unregister(int streamIndex, bool discard = false)
     {
         lock (_sync)
+        {
             _buffer.Unregister(streamIndex);
+            if (_arrivals.Remove(streamIndex, out ManualResetEventSlim? arrival))
+            {
+                Volatile.Write(ref _arrivalEvents, [.. _arrivals.Values]);
+                // A consumer still waiting finds its stream gone and ends.
+                arrival.Set();
+            }
+
+            if (discard && streamIndex >= 0)
+            {
+                // No reader thread: nothing reads the format context meanwhile.
+                if (_thread is null || _readerExited)
+                    _demuxer.SetStreamDiscard(streamIndex, AVDiscard.AVDISCARD_ALL);
+                else
+                    _pendingDiscards.Add(streamIndex);
+            }
+        }
+
         _readerWake.Set();
+    }
+
+    /// <summary>Where the track of <paramref name="streamIndex"/> ends on the container timeline, or null when unknown.</summary>
+    private double? StreamEndSeconds(int streamIndex)
+    {
+        AVStream* stream = _demuxer.GetStream(streamIndex);
+        if (stream == null || stream->duration <= 0 || stream->duration == ffmpeg.AV_NOPTS_VALUE)
+            return null;
+
+        var start = stream->start_time != ffmpeg.AV_NOPTS_VALUE ? stream->start_time : 0;
+        var end = (start + stream->duration) * ffmpeg.av_q2d(stream->time_base);
+        return double.IsFinite(end) && end > 0 ? end : null;
     }
 
     /// <summary>
@@ -251,6 +309,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         long waitStarted = 0;
         while (true)
         {
+            ManualResetEventSlim? arrival;
             lock (_sync)
             {
                 if (_disposed || _aborted || !_buffer.IsRegistered(streamIndex))
@@ -290,10 +349,13 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 if (ShouldGiveUpWait(waitStarted, now))
                     return ffmpeg.AVERROR_EXIT;
 
-                _dataArrived.Reset();
+                if (!_arrivals.TryGetValue(streamIndex, out arrival))
+                    return ffmpeg.AVERROR_EOF;
+
+                arrival.Reset();
             }
 
-            WaitForData();
+            WaitForData(arrival);
         }
     }
 
@@ -367,7 +429,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             current = seen;
         }
 
-        _dataArrived.Set();
+        SignalAllArrivals();
     }
 
     /// <summary>Aborts the reader's network I/O and every wait, from any thread, without a lock.</summary>
@@ -375,7 +437,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     {
         _aborted = true;
         _demuxer.Abort();
-        _dataArrived.Set();
+        SignalAllArrivals();
         _readerWake.Set();
     }
 
@@ -430,7 +492,14 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         || t_waitCancellation.IsCancellationRequested
         || t_waitAbandon?.Invoke() == true;
 
-    private void WaitForData()
+    /// <summary>Wakes every waiting consumer. Lock-free.</summary>
+    private void SignalAllArrivals()
+    {
+        foreach (ManualResetEventSlim arrival in Volatile.Read(ref _arrivalEvents))
+            arrival.Set();
+    }
+
+    private static void WaitForData(ManualResetEventSlim arrival)
     {
         var timeout = ConsumerWaitSlice;
         if (t_waitDeadline != 0)
@@ -443,7 +512,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
-            _ = _dataArrived.Wait(timeout, t_waitCancellation);
+            _ = arrival.Wait(timeout, t_waitCancellation);
         }
         catch (OperationCanceledException)
         {
@@ -505,7 +574,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 _pendingSeek = null;
             }
 
-            _dataArrived.Set();
+            SignalAllArrivals();
         }
     }
 
@@ -522,6 +591,16 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             {
                 if (_stopping || _aborted)
                     return;
+
+                // The format context is the reader's: stream discards change between its reads,
+                // and under _sync so a consumer that registered again meanwhile is never discarded.
+                foreach (var index in _pendingDiscards)
+                {
+                    if (!_buffer.IsRegistered(index))
+                        _demuxer.SetStreamDiscard(index, AVDiscard.AVDISCARD_ALL);
+                }
+
+                _pendingDiscards.Clear();
 
                 generation = _generation;
                 seek = _pendingSeek;
@@ -568,7 +647,16 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 continue;
             }
 
-            var read = _demuxer.ReadPacket(packet);
+            // The first read after a reconnect (where HLS connects) is bounded by what is left of
+            // the window (ENG-034: a connect that hangs would otherwise hold the reader for
+            // rw_timeout). Once data flows again, reads are not cut short by the window.
+            var dropStarted = Interlocked.Read(ref _dropStarted);
+            TimeSpan? readTimeout = !_boundNextReadToReconnectWindow || dropStarted == 0
+                ? null
+                : TimeSpan.FromSeconds(Math.Max(0.05, _reconnectSeconds - Stopwatch.GetElapsedTime(dropStarted).TotalSeconds));
+            var read = _demuxer.ReadPacket(packet, readTimeout);
+            if (read >= 0)
+                _boundNextReadToReconnectWindow = false;
             var dropped = false;
             string? unreportedFailure = null;
             double? resumedAfter = null;
@@ -626,7 +714,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     {
         _atEnd = true;
         _buffer.AddEndOfStream();
-        _dataArrived.Set();
+        SignalAllArrivals();
     }
 
     /// <summary>
@@ -708,7 +796,12 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             if (!SleepUnlessInterrupted(delay, generation))
                 return true;
 
-            var result = _demuxer.Seek(target.StreamIndex, target.Timestamp, target.Flags);
+            // The attempt's own I/O (a connect that hangs) ends with the window too (ENG-034).
+            var remaining = _reconnectSeconds - Stopwatch.GetElapsedTime(Interlocked.Read(ref _dropStarted)).TotalSeconds;
+            if (remaining <= 0)
+                return false;
+
+            var result = _demuxer.Seek(target.StreamIndex, target.Timestamp, target.Flags, TimeSpan.FromSeconds(remaining));
             lock (_sync)
             {
                 if (generation != _generation || _stopping || _aborted)
@@ -716,6 +809,7 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
 
                 if (result >= 0)
                 {
+                    _boundNextReadToReconnectWindow = true;
                     // Read on from the keyframe before the resume point; what was queued is skipped.
                     _queuedUpTo.Clear();
                     foreach (var (streamIndex, last) in _lastQueued)
@@ -795,8 +889,12 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
         }
 
         ffmpeg.av_packet_move_ref(copy, packet);
+        var endsBefore = _buffer.StreamEndsQueued;
         _ = _buffer.Add((nint)copy, info);
-        _dataArrived.Set();
+        if (_buffer.StreamEndsQueued != endsBefore)
+            SignalAllArrivals();
+        else if (_arrivals.TryGetValue(streamIndex, out ManualResetEventSlim? arrival))
+            arrival.Set();
         return resumedAfter;
     }
 

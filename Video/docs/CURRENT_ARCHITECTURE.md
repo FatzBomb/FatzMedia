@@ -721,11 +721,22 @@ queue. Overlapping two-handle crossfades are deferred. See
 the public `MediaSourceCapabilityMatrix` (LocalFile, Archive, InMemoryImage,
 NetworkFile, NetworkLive), never on URL text. `PipelineMediaEngine` implements internal
 `IMediaSourceCapabilityProvider`; `MediaSourceInfo.Capabilities` and
-`MediaControlPlayer.CurrentSourceCapabilities` expose the row. HTTP audio opens through
+`MediaControlPlayer.CurrentSourceCapabilities` expose the row. Plain http audio opens through
 the BASS `AudioEngine`'s internal `INetworkAudioSource` (`BASS_StreamCreateURL` into the
 normal tempo/gain/fade chain, bounded `NetworkRetryPolicy`, probe -> row, buffering
 monitor and ICY/Ogg metadata syncs) and raises `BufferingChanged` /
-`StreamMetadataChanged` through the control queue. Only buffered rows gate seeking.
+`StreamMetadataChanged` through the control queue. https and HLS audio (BASS does not verify
+certificates; ENG-034, 039A.3) open through FFmpeg's network path instead
+(`NetworkAudioPolicy.OpensThroughFfmpeg`): `PipelineMediaEngine.OpenThroughFfmpeg` runs the same
+retried, cancellable open as network video into the soundtrack engine (`SoundtrackAudioEngine`
+over `VideoAudioEngine`, attached in Full and Audio mode when BASS is there; BASS plays the
+decoded sound), with `NetworkTlsPolicy`, the read-ahead's buffering and the row from
+`NetworkAudioPolicy.Resolve` (014A's metadata rule). ICY titles (FFmpeg's `icy_metadata_packet`)
+and Ogg comment updates are read on the reading thread after each packet, recorded with that
+packet's time, and raised when the played position reaches them
+(`INetworkMediaControl.NetworkStreamMetadataChanged` -> `StreamMetadataChanged`). Without BASS
+https audio is refused like http audio. An `.m3u8` with no playable video plays as audio in Full
+mode. Only buffered rows gate seeking.
 Network sources skip sidecars, silence trim, normalization pre-analysis, and
 prepared-next analysis. See `roadmap/complete/014A_COMPLETED_StreamingNetworkPlayback.md`.
 
@@ -759,6 +770,14 @@ dropped network does not end a seekable source: when a read fails, or the source
 duration with network failures logged (HLS skips the segments it cannot fetch), the reader seeks
 back to the last packets it queued every 0.5-2 s for up to `NetworkReadAheadPolicy.ReconnectFor`
 (30 s) and skips what it already queued; only then does the stream end (`Network read failed`).
+Each reconnect seek, and every read while a reconnect is in progress, is bounded by what is left
+of that window, and a successful seek clears the dropped connection's sticky FFmpeg I/O error (else
+the real end reads as a drop). A track shorter than the source ends 2 s after the reader passed its
+own end (`AVStream.duration`) instead of counting as starved. Picture-only network video (no
+sound, Background mode) holds the playback clock while the picture has no frame and has been
+starved for 250 ms, until the resume threshold (`NetworkClockHold`; the pipeline's
+`HoldableClock` ends a hold on every transport change). A non-seekable MP4 must yield its first
+packet during the open, else it fails with the moov/faststart message and is not retried.
 Without the read-ahead, or with `ReconnectFor` zero, a failed read ends the stream at once. `NetworkBufferingMonitor`
 (250 ms) turns the read-ahead's state into `BufferingChanged` (a consumer starved for 0.5 s
 starts buffering; the resume threshold, 2 s by default, ends it), forwarded through the

@@ -1,6 +1,8 @@
 using FatzBomb.MediaControl.Core.Network;
 using FatzBomb.MediaControl.Core.Video;
 using FFmpeg.AutoGen;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Media;
 
@@ -31,6 +33,19 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// certificate fails the open with "certificate verification failed for &lt;host&gt;" and
 /// FFmpeg's TLS error text.
 /// </para>
+/// <para>
+/// In-stream titles (ENG-034, https audio): a progressive source with ICY headers, or an Ogg
+/// stream, is polled on the reading thread (FFmpeg's HTTP context is not thread-safe) for
+/// FFmpeg's <c>icy_metadata_packet</c> and for Ogg comment updates. Each change is recorded with
+/// the time of the packet read when it was seen, so it can be announced when playback gets there
+/// (<see cref="TryTakeStreamMetadata"/>) rather than when the read-ahead downloaded it.
+/// </para>
+/// <para>
+/// A progressive MP4 on a server without byte ranges is opened only if its first packet can be
+/// read (ENG-034): when the index (<c>moov</c>) follows the media data FFmpeg cannot go back to
+/// it, and the open fails with <see cref="NetworkVideoPolicy.UnstreamableMp4Error"/> instead of
+/// the first read ending the stream. The probed packet is returned by the next read.
+/// </para>
 /// </remarks>
 internal sealed unsafe class MediaDemuxer : IDisposable
 {
@@ -46,6 +61,15 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     private int _networkLogDiagnostics;
     private int _networkFailures;
     private Action<int, string>? _networkLogObserver;
+    // In-stream metadata (ENG-034): polled on the reading thread, taken by a consumer under the gate.
+    private const int MaxStreamMetadataMarks = 16;
+    private readonly Lock _metadataGate = new();
+    private readonly Queue<StreamMetadataMark> _metadataMarks = new();
+    private bool _pollsIcyMetadata;
+    private bool _pollsOggMetadata;
+    private string? _lastIcyPacket;
+    // The packet the open read to check that a non-seekable MP4 streams; the next read returns it.
+    private AVPacket* _probedPacket;
 
     /// <summary>True while a network source is open.</summary>
     public bool IsNetwork => _networkUrl != null && _formatContext != null;
@@ -141,6 +165,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         _networkEndOfStream = false;
         _networkLogDiagnostics = 0;
         _networkFailures = 0;
+        ResetStreamMetadata();
         _networkUrl = url;
         _interrupt ??= new FfmpegInterrupt();
         _interrupt.Reset(options.Cancellation);
@@ -190,12 +215,17 @@ internal sealed unsafe class MediaDemuxer : IDisposable
                     result = ffmpeg.avformat_find_stream_info(_formatContext, null);
                     _ = _interrupt.EndOperation();
                 }
+
+                if (result >= 0)
+                    result = ProbeStreamableMp4(options.Retry.ConnectTimeout);
             }
 
             if (result < 0)
             {
                 LastNetworkError = _interrupt.IsAborted || options.Cancellation.IsCancellationRequested
                     ? "cancelled"
+                    : result == UnstreamableMp4Result
+                        ? NetworkVideoPolicy.UnstreamableMp4Error
                     : _tlsFailureLines.Count > 0
                         ? NetworkTlsRules.DescribeCertificateFailure(
                             Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.Host : url,
@@ -208,12 +238,67 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             }
 
             _interrupt.ReleaseCancellation();
+            StartStreamMetadata();
             return true;
         }
         finally
         {
             ffmpeg.av_dict_free(&dictionary);
         }
+    }
+
+    // ProbeStreamableMp4's result for an MP4 that cannot be streamed from this server.
+    private const int UnstreamableMp4Result = int.MinValue;
+
+    /// <summary>
+    /// A progressive MP4 that the server cannot serve by byte ranges plays only if its media data
+    /// can still be read: reads one packet (bounded by the connect timeout) and keeps it for the
+    /// next <see cref="ReadPacket"/>. Returns 0 (anything else passes),
+    /// <see cref="UnstreamableMp4Result"/>, or FFmpeg's error when the read timed out.
+    /// </summary>
+    private int ProbeStreamableMp4(TimeSpan timeout)
+    {
+        AVIOContext* io = _formatContext->pb;
+        if (io == null || (io->seekable & ffmpeg.AVIO_SEEKABLE_NORMAL) != 0 || !IsDemuxer("mov"))
+            return 0;
+
+        AVPacket* packet = ffmpeg.av_packet_alloc();
+        if (packet == null)
+            return 0;
+
+        var started = Stopwatch.GetTimestamp();
+        _interrupt!.BeginOperation(timeout);
+        var result = ffmpeg.av_read_frame(_formatContext, packet);
+        _ = _interrupt.EndOperation();
+        if (result >= 0)
+        {
+            _probedPacket = packet;
+            return 0;
+        }
+
+        ffmpeg.av_packet_free(&packet);
+        // A slow first packet is a network failure (retried), not an unstreamable file.
+        return Stopwatch.GetElapsedTime(started) >= timeout ? result : UnstreamableMp4Result;
+    }
+
+    private void FreeProbedPacket()
+    {
+        if (_probedPacket == null)
+            return;
+
+        AVPacket* packet = _probedPacket;
+        _probedPacket = null;
+        ffmpeg.av_packet_free(&packet);
+    }
+
+    /// <summary>Whether the open container's demuxer list (e.g. "mov,mp4,m4a,3gp,3g2,mj2") names <paramref name="name"/>.</summary>
+    private bool IsDemuxer(string name)
+    {
+        if (_formatContext == null || _formatContext->iformat == null)
+            return false;
+
+        var names = Marshal.PtrToStringUTF8((nint)_formatContext->iformat->name);
+        return names is not null && names.Split(',').Contains(name, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -265,7 +350,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         var duration = durationTicks > 0 && durationTicks != ffmpeg.AV_NOPTS_VALUE
             ? durationTicks / (double)ffmpeg.AV_TIME_BASE
             : 0;
-        return new NetworkVideoProbe(isSegmented, length, byteSeeking, duration);
+        // The ICY headers as the open read them: the reader may be using the HTTP context by now.
+        return new NetworkVideoProbe(isSegmented, length, byteSeeking, duration, _pollsIcyMetadata);
     }
 
     /// <summary>
@@ -379,9 +465,11 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// <see cref="ffmpeg.AVERROR_EOF"/> at end of stream, other negatives on
     /// error). Returns <see cref="ffmpeg.AVERROR_EOF"/> when closed, and
     /// <see cref="ffmpeg.AVERROR_EXIT"/> for a network read a newer seek superseded
-    /// (<see cref="SupersedeOperationsStartedBefore"/>).
+    /// (<see cref="SupersedeOperationsStartedBefore"/>). A network read gives up after
+    /// <paramref name="timeout"/> when one is given (a reconnect within its window, ENG-034) and
+    /// counts as failed ("timed out").
     /// </summary>
-    public int ReadPacket(AVPacket* packet)
+    public int ReadPacket(AVPacket* packet, TimeSpan? timeout = null)
     {
         if (_formatContext == null)
             return ffmpeg.AVERROR_EOF;
@@ -392,17 +480,29 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         if (_networkReadFailed || _interrupt!.IsAborted)
             return ffmpeg.AVERROR_EOF;
 
+        if (_probedPacket != null)
+        {
+            ffmpeg.av_packet_move_ref(packet, _probedPacket);
+            FreeProbedPacket();
+            return 0;
+        }
+
         int result;
         bool superseded;
+        bool timedOut;
         using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver!))
         {
-            _interrupt.BeginOperation();
+            _interrupt.BeginOperation(timeout);
             result = ffmpeg.av_read_frame(_formatContext, packet);
+            timedOut = result < 0 && _interrupt.IsDeadlinePassed;
             superseded = _interrupt.EndOperation();
         }
 
         if (result >= 0)
+        {
+            PollStreamMetadata(packet);
             return result;
+        }
 
         // A newer seek gave up this read: the stream is fine, the caller seeks next.
         if (superseded && !_interrupt.IsAborted)
@@ -415,7 +515,7 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         // The stream dropped (FFmpeg's reconnects, if enabled, are exhausted): report it once and
         // end the stream instead of retrying a dead connection on every read.
         _networkReadFailed = true;
-        FailedReadError = FfmpegNetwork.DescribeError(result);
+        FailedReadError = timedOut ? "timed out" : FfmpegNetwork.DescribeError(result);
         if (!ReportReadFailures)
             return ffmpeg.AVERROR_EOF;
 
@@ -430,9 +530,10 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// <summary>
     /// Wraps <c>av_seek_frame</c> against <paramref name="streamIndex"/>.
     /// Returns the FFmpeg result code (&lt; 0 on failure). Returns a negative
-    /// value when closed.
+    /// value when closed. A network seek gives up after <paramref name="timeout"/> when one is
+    /// given (a reconnect within its window, ENG-034).
     /// </summary>
-    public int Seek(int streamIndex, long timestamp, int flags)
+    public int Seek(int streamIndex, long timestamp, int flags, TimeSpan? timeout = null)
     {
         if (_formatContext == null)
             return ffmpeg.AVERROR_EOF;
@@ -443,11 +544,12 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         if (_interrupt!.IsAborted)
             return ffmpeg.AVERROR_EXIT;
 
+        FreeProbedPacket();
         // A network seek reconnects with a byte range (or reloads HLS segments): it is a read.
         int result;
         using (FfmpegLogCapture.ObserveNetwork(_networkLogObserver!))
         {
-            _interrupt.BeginOperation();
+            _interrupt.BeginOperation(timeout);
             result = ffmpeg.av_seek_frame(_formatContext, streamIndex, timestamp, flags);
             _ = _interrupt.EndOperation();
         }
@@ -457,6 +559,12 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             _networkReadFailed = false;
             FailedReadError = null;
             _networkEndOfStream = false;
+            // FFmpeg keeps the I/O error of a dropped connection on the context and reports the
+            // real end of the source as that error (demux.c: "a demuxer might have returned EOF
+            // because of an IO error"). The seek reconnected, so the error is over (ENG-034: after
+            // a reconnect, the end of a progressive file read as a new drop).
+            if (_formatContext->pb != null)
+                _formatContext->pb->error = 0;
         }
 
         return result;
@@ -465,6 +573,8 @@ internal sealed unsafe class MediaDemuxer : IDisposable
     /// <summary>Closes the container and releases the format context.</summary>
     public void Close()
     {
+        FreeProbedPacket();
+        ResetStreamMetadata();
         if (_formatContext != null)
         {
             fixed (AVFormatContext** pfmt = &_formatContext)
@@ -485,6 +595,154 @@ internal sealed unsafe class MediaDemuxer : IDisposable
         _tlsIoOpen?.Dispose();
         _tlsIoOpen = null;
     }
+
+    /// <summary>
+    /// Takes the in-stream title change that playback has reached: the latest one recorded at or
+    /// before <paramref name="playedUpToSeconds"/> (the played position on the container's
+    /// timeline). Thread-safe; never waits for network I/O.
+    /// </summary>
+    public bool TryTakeStreamMetadata(double playedUpToSeconds, out StreamMetadata metadata)
+    {
+        metadata = default;
+        var found = false;
+        lock (_metadataGate)
+        {
+            while (_metadataMarks.TryPeek(out StreamMetadataMark mark) && mark.AtSeconds <= playedUpToSeconds)
+            {
+                metadata = _metadataMarks.Dequeue().Metadata;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>Starts polling for in-stream titles after a successful open, and records the title the open already read.</summary>
+    private void StartStreamMetadata()
+    {
+        var isSegmented = _formatContext->iformat != null
+            && NetworkVideoPolicy.IsSegmentedDemuxer(Marshal.PtrToStringUTF8((nint)_formatContext->iformat->name));
+        _pollsIcyMetadata = !isSegmented && ReadIoOption("icy_metadata_headers") is { Length: > 0 };
+        _pollsOggMetadata = IsDemuxer("ogg");
+        if (_pollsOggMetadata)
+        {
+            // The tags read with the header play from the start.
+            for (var index = 0; index < (int)StreamCount; index++)
+                _formatContext->streams[index]->event_flags |= ffmpeg.AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+        }
+
+        PollStreamMetadata(null);
+    }
+
+    private void ResetStreamMetadata()
+    {
+        _pollsIcyMetadata = false;
+        _pollsOggMetadata = false;
+        _lastIcyPacket = null;
+        lock (_metadataGate)
+            _metadataMarks.Clear();
+    }
+
+    /// <summary>
+    /// On the reading thread, after every packet: records a changed ICY title or Ogg comment
+    /// block, timed at <paramref name="packet"/> (null: the start). FFmpeg parses an ICY block
+    /// when its I/O buffer reads past it, so the packet is at most that buffer (32 KB) before it.
+    /// </summary>
+    private void PollStreamMetadata(AVPacket* packet)
+    {
+        if (!_pollsIcyMetadata && !_pollsOggMetadata)
+            return;
+
+        StreamMetadata metadata = default;
+        if (_pollsIcyMetadata)
+        {
+            if (ReadIoOption("icy_metadata_packet") is { Length: > 0 } icy && icy != _lastIcyPacket)
+            {
+                _lastIcyPacket = icy;
+                metadata = IcyMetadataParser.ParseIcy(icy);
+            }
+        }
+
+        if (_pollsOggMetadata && TakeOggCommentUpdate() is { } ogg && metadata == default)
+            metadata = ogg;
+
+        if (metadata == default)
+            return;
+
+        var at = packet == null ? double.NegativeInfinity : PacketSeconds(packet);
+        lock (_metadataGate)
+        {
+            if (_metadataMarks.Count >= MaxStreamMetadataMarks)
+                _ = _metadataMarks.Dequeue();
+            _metadataMarks.Enqueue(new StreamMetadataMark(at, metadata));
+        }
+    }
+
+    /// <summary>The title and artist of a stream whose Ogg comments FFmpeg updated (a new chained stream), clearing the flag.</summary>
+    private StreamMetadata? TakeOggCommentUpdate()
+    {
+        StreamMetadata? update = null;
+        for (var index = 0; index < (int)StreamCount; index++)
+        {
+            AVStream* stream = _formatContext->streams[index];
+            if ((stream->event_flags & ffmpeg.AVSTREAM_EVENT_FLAG_METADATA_UPDATED) == 0)
+                continue;
+
+            stream->event_flags &= ~ffmpeg.AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+            if (stream->discard == AVDiscard.AVDISCARD_ALL || update is not null)
+                continue;
+
+            List<string> comments = [];
+            foreach (var key in OggTitleKeys)
+            {
+                AVDictionaryEntry* entry = ffmpeg.av_dict_get(stream->metadata, key, null, 0);
+                if (entry != null && Marshal.PtrToStringUTF8((nint)entry->value) is { } value)
+                    comments.Add($"{key}={value}");
+            }
+
+            StreamMetadata parsed = IcyMetadataParser.ParseOggComments(comments);
+            if (parsed != default)
+                update = parsed;
+        }
+
+        return update;
+    }
+
+    private double PacketSeconds(AVPacket* packet)
+    {
+        AVStream* stream = GetStream(packet->stream_index);
+        var timestamp = packet->pts != ffmpeg.AV_NOPTS_VALUE ? packet->pts : packet->dts;
+        return stream == null || timestamp == ffmpeg.AV_NOPTS_VALUE
+            ? double.NegativeInfinity
+            : timestamp * ffmpeg.av_q2d(stream->time_base);
+    }
+
+    /// <summary>
+    /// Reads a string option of the open source's I/O context or the protocol under it (FFmpeg's
+    /// HTTP <c>icy_metadata_*</c>). Only on the thread that reads, or before the reader starts.
+    /// </summary>
+    private string? ReadIoOption(string name)
+    {
+        if (_formatContext == null || _formatContext->pb == null)
+            return null;
+
+        byte* value = null;
+        if (ffmpeg.av_opt_get(_formatContext->pb, name, ffmpeg.AV_OPT_SEARCH_CHILDREN, &value) < 0 || value == null)
+            return null;
+
+        try
+        {
+            return Marshal.PtrToStringUTF8((nint)value);
+        }
+        finally
+        {
+            ffmpeg.av_free(value);
+        }
+    }
+
+    private static readonly string[] OggTitleKeys = ["TITLE", "ARTIST"];
+
+    private readonly record struct StreamMetadataMark(double AtSeconds, StreamMetadata Metadata);
 
     private void OnNetworkLog(int level, string line)
     {

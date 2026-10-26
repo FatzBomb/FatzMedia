@@ -43,12 +43,23 @@ internal enum ReadAheadTake
 /// next packet is not after the target (an audio consumer that already took the target's packets
 /// could not play them again). The packets before that keyframe are dropped; the other streams
 /// drop the packets that end at or before it, as a container seek to the keyframe would.
+/// <para>
+/// A stream registered with its own end (a track shorter than the source, ENG-034) gets its
+/// end-of-stream marker once the reader has read <see cref="StreamEndToleranceSeconds"/> past that
+/// end, instead of counting as starved until the reader reaches the end of the source.
+/// </para>
 /// </remarks>
 /// <typeparam name="T">The packet handle (an <c>AVPacket*</c> in the engine).</typeparam>
 internal sealed class ReadAheadBuffer<T>(Action<T> release)
 {
     /// <summary>How far another stream's next packet may start after a seek target and still play it.</summary>
     internal const double OtherStreamToleranceSeconds = 0.05;
+
+    /// <summary>
+    /// How far past a stream's own end the reader must be before that stream is ended: more than
+    /// the interleaving of its last packets with the other streams'.
+    /// </summary>
+    internal const double StreamEndToleranceSeconds = 2.0;
 
     private readonly Action<T> _release = release ?? throw new ArgumentNullException(nameof(release));
     private readonly List<StreamQueue> _streams = [];
@@ -69,14 +80,26 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     /// </summary>
     public bool HasStarvedStream => _streams.Exists(stream => stream.StarvedSince != 0);
 
-    /// <summary>Keeps the packets of <paramref name="streamIndex"/>; the lead stream is the one the duration cap measures.</summary>
-    public void Register(int streamIndex, bool lead)
+    /// <summary>Gets how many streams were ended at their own end so far (the owner wakes their consumers).</summary>
+    public int StreamEndsQueued { get; private set; }
+
+    /// <summary>
+    /// Keeps the packets of <paramref name="streamIndex"/>; the lead stream is the one the duration
+    /// cap measures. <paramref name="endSeconds"/> is where the stream's own track ends, when known.
+    /// </summary>
+    public void Register(int streamIndex, bool lead, double? endSeconds = null)
     {
         if (streamIndex < 0)
             return;
 
-        if (Find(streamIndex) is null)
-            _streams.Add(new StreamQueue(streamIndex));
+        StreamQueue? stream = Find(streamIndex);
+        if (stream is null)
+        {
+            stream = new StreamQueue(streamIndex);
+            _streams.Add(stream);
+        }
+
+        stream.EndSeconds = endSeconds is { } end && double.IsFinite(end) ? end : null;
         if (lead)
             _leadStream = streamIndex;
     }
@@ -108,9 +131,12 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         // Its consumer finds a packet next time: no longer starved, so a paused consumer that
         // starved earlier does not keep the reader going past the caps.
         stream.StarvedSince = 0;
+        // A packet of the stream itself (the next lap of a loop) re-arms its own end.
+        stream.EndQueued = false;
         stream.Bytes += info.Bytes;
         Bytes += info.Bytes;
         stream.NoteAdded(info);
+        EndStreamsReadPast(stream, info.DecodeSeconds ?? info.PresentationSeconds);
         return true;
     }
 
@@ -119,8 +145,33 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
     {
         foreach (StreamQueue stream in _streams)
         {
-            stream.Entries.Enqueue(new Entry(default!, default, IsEnd: true));
+            // A stream already ended at its own end has its marker.
+            if (!stream.EndQueued)
+                stream.Entries.Enqueue(new Entry(default!, default, IsEnd: true));
+            stream.EndQueued = true;
             stream.StarvedSince = 0;
+        }
+    }
+
+    /// <summary>
+    /// Ends the other streams whose own end the reader is now well past (see
+    /// <see cref="StreamEndToleranceSeconds"/>). A stream is never ended by its own packets: they
+    /// show its end was underestimated (a duration FFmpeg estimated from the bitrate).
+    /// </summary>
+    private void EndStreamsReadPast(StreamQueue readStream, double? readSeconds)
+    {
+        if (readSeconds is not { } read)
+            return;
+
+        foreach (StreamQueue stream in _streams)
+        {
+            if (ReferenceEquals(stream, readStream) || stream.EndQueued || stream.Ended || stream.EndSeconds is not { } end || read < end + StreamEndToleranceSeconds)
+                continue;
+
+            stream.Entries.Enqueue(new Entry(default!, default, IsEnd: true));
+            stream.EndQueued = true;
+            stream.StarvedSince = 0;
+            StreamEndsQueued++;
         }
     }
 
@@ -345,6 +396,12 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         /// <summary>The consumer took the end-of-stream marker; reads return the end until cleared.</summary>
         public bool Ended { get; set; }
 
+        /// <summary>Where the stream's own track ends (container timeline), when known.</summary>
+        public double? EndSeconds { get; set; }
+
+        /// <summary>An end-of-stream marker was queued and no packet of the stream followed it.</summary>
+        public bool EndQueued { get; set; }
+
         /// <summary>Re-armed after its end (a loop wrap) and nothing taken since.</summary>
         public bool AwaitingNextLap { get; set; }
 
@@ -415,6 +472,7 @@ internal sealed class ReadAheadBuffer<T>(Action<T> release)
         {
             Bytes = 0;
             Ended = false;
+            EndQueued = false;
             AwaitingNextLap = false;
             StarvedSince = 0;
             LastTakenEnd = null;

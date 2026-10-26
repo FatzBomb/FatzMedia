@@ -883,8 +883,20 @@ public partial class MediaControlPlayer : IMediaControlSession
         // After a failed Reset there is no live graph to compare with.
         ResetChanges? before = _sessionGraphFreed ? null : TryCaptureResetChanges();
         // Loads queued behind Reset run on the new graph and must not inherit the cancellation.
+        CancellationTokenSource previousLifetime = _loadLifetime;
         _loadLifetime = new CancellationTokenSource();
-        RebuildSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue: false, restoreSettings: null);
+        try
+        {
+            RebuildSessionGraph(configuration, resolvedNativeLibraryPaths, keepOperationQueue: false, restoreSettings: null);
+        }
+        finally
+        {
+            // The operation that used it has returned (this runs in its turn) and the old graph is
+            // torn down, so nothing waits on it any more (ENG-034). Reset's give-up path cannot
+            // dispose it: the running open may still wait on it.
+            previousLifetime.Dispose();
+        }
+
         return before;
     }
 

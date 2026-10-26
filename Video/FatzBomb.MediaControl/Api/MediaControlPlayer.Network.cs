@@ -10,7 +10,8 @@ namespace FatzBomb.MediaControl;
 /// Network source surface (Stage 014A): capabilities of the open source plus buffering and
 /// stream-metadata events published through the control queue. Network video (Stage 039A) adds
 /// buffering from the engine's FFmpeg readers, and Close and Dispose cancel a network video open
-/// in progress instead of queueing behind it.
+/// in progress instead of queueing behind it. https and HLS audio (ENG-034) play through the same
+/// FFmpeg path, whose stream titles arrive from the engine as well.
 /// </summary>
 public partial class MediaControlPlayer
 {
@@ -28,7 +29,10 @@ public partial class MediaControlPlayer
     {
         _networkMediaControl = _mediaEngine as INetworkMediaControl;
         if (_networkMediaControl is not null)
+        {
             _networkMediaControl.NetworkBufferingChanged += OnNetworkBufferingChanged;
+            _networkMediaControl.NetworkStreamMetadataChanged += OnNetworkStreamMetadataChanged;
+        }
 
         _networkAudioSource = _serviceProvider.GetService<IAudioEngine>() as INetworkAudioSource;
         if (_networkAudioSource is null)
@@ -43,6 +47,7 @@ public partial class MediaControlPlayer
         if (_networkMediaControl is not null)
         {
             _networkMediaControl.NetworkBufferingChanged -= OnNetworkBufferingChanged;
+            _networkMediaControl.NetworkStreamMetadataChanged -= OnNetworkStreamMetadataChanged;
             _networkMediaControl = null;
         }
 

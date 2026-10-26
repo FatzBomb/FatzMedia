@@ -74,6 +74,53 @@ public sealed class NetworkPipelineTests
         }
     }
 
+    [Theory]
+    [InlineData("https://radio.example/live")]
+    [InlineData("http://radio.example/live/index.m3u8")]
+    public void HttpsAndHlsAudio_DoNotOpenThroughTheAudioEnginesOwnNetworkSupport(string address)
+    {
+        // ENG-034: BASS cannot verify certificates (and has no HLS); these go through FFmpeg's
+        // network path into the soundtrack engine. The portable tests load no FFmpeg, so the open
+        // itself cannot succeed here (Linux native tests cover it); what matters is the route.
+        var audio = new TestAudioEngine();
+        using PipelineMediaEngine engine = CreateEngine(audio);
+
+        try
+        {
+            _ = engine.Open(MediaInputSource.FromUri(new Uri(address), MediaNetworkContent.Audio));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or NotSupportedException)
+        {
+            // FFmpeg is not loaded in the portable tests.
+        }
+
+        Assert.Null(audio.LastNetworkUrl);
+    }
+
+    [Fact]
+    public void HttpsAudio_WithoutBass_IsRejectedAsAudioUnavailable()
+    {
+        var audio = new TestAudioEngine();
+        using var engine = new PipelineMediaEngine(
+            audio,
+            new TestCdgEngine(),
+            new SubtitleEngine(),
+            new NotSupportedArchiveService(),
+            new ClosedVideoFactory(),
+            new NoMidiLyrics(),
+            new SystemPrecisionWaiterFactory(),
+            SoftwareOnlyVideoHardwareAccelerationServices.Instance,
+            MediaPlayerConfiguration.Auto,
+            audioAvailable: false);
+        MediaErrorInfo? error = null;
+        ((IMediaErrorSource)engine).ErrorOccurred += info => error = info;
+
+        Assert.False(engine.Open(MediaInputSource.FromUri(new Uri("https://radio.example/live"))));
+
+        Assert.Equal(MediaErrorCode.NativeLibraryMissing, error!.Code);
+        Assert.Null(audio.LastNetworkUrl);
+    }
+
     [Fact]
     public void ConnectFailure_RaisesOpenFailed()
     {
@@ -167,6 +214,23 @@ public sealed class PlayerNetworkEventTests
         Assert.True(bufferingArgs.IsBuffering);
         Assert.Equal(0.3, bufferingArgs.BufferFill);
         Assert.Equal("Daft Punk", metadataArgs.Artist);
+    }
+
+    [Fact]
+    public async Task NetworkAudioTitles_FromTheEngine_AreForwardedToHost()
+    {
+        // ENG-034: https audio plays through FFmpeg; its titles come from the engine, not BASS.
+        var engine = new TestMediaEngine { CurrentCapabilities = MediaSourceCapabilityMatrix.NetworkUnprobed };
+        using var player = new MediaControlPlayer(new NetworkTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        var metadata = new TaskCompletionSource<MediaStreamMetadataChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.StreamMetadataChanged += (_, e) => metadata.TrySetResult(e);
+        Assert.True(player.Load("radio.mp3"));
+
+        engine.RaiseNetworkStreamMetadata("Around the World", "Daft Punk", "Daft Punk - Around the World");
+
+        MediaStreamMetadataChangedEventArgs args = await metadata.Task.WaitAsync(Timeout);
+        Assert.Equal("Around the World", args.Title);
+        Assert.Equal("Daft Punk", args.Artist);
     }
 
     [Fact]

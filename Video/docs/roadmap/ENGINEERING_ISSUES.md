@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-25
+Updated: 2026-10-26
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -186,8 +186,14 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   Warning diagnostic before connecting; verification is never turned off for it. Linux BtbN
   OpenSSL: default roots from `/etc/ssl` (`SSL_CERT_FILE`/`SSL_CERT_DIR` honoured), host name
   checked. Recommended Windows build (TqkLibrary LGPL3 9.0.2): Schannel, Windows store. BASS
-  (014A audio) exposes no certificate setting, so audio is unchanged; see
-  `docs/NATIVE_DEPENDENCIES.md` for the backend table and the Windows checks.
+  (014A audio) exposes no certificate setting and does not verify (owner smoke); since 039A.3
+  https audio opens through FFmpeg too (below). See `docs/NATIVE_DEPENDENCIES.md` for the backend
+  table and the Windows checks.
+- **https network audio was not verified (BASS).** Resolved 2026-10-26 (039A.3), pending Windows
+  smoke. https and HLS audio open through FFmpeg's network path into the soundtrack engine
+  (`NetworkAudioPolicy`; FFmpeg decode into the BASS output), now attached in Full mode too:
+  `NetworkTlsPolicy`, retries, cancellation, the read-ahead's buffering, ICY and Ogg titles timed
+  to playback. Plain http stays on BASS. See `docs/roadmap/updates/039A_3/StageUpdate.md`.
 - **Multi-variant HLS downloaded every variant.** Resolved 2026-10-25, pending Windows smoke.
   Owner's smoke (`https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`, up to 1080p): long waits
   after a seek and occasional stutter. Confirmed cause: FFmpeg's HLS (and DASH) demuxer fetches
@@ -224,16 +230,20 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   Measured (150 ms per segment): the target segment is fetched once per seek instead of twice.
 - **Live progressive streams are not reconnected mid-stream.** FFmpeg reconnects a streamed (no
   range) source from byte 0, so `reconnect_streamed` stays off; a dropped live MPEG-TS-over-HTTP
-  stream ends. HLS live recovers through its playlist reloads.
-- **A moov-at-end MP4 needs a range-capable server.** Without `Accept-Ranges` FFmpeg cannot seek
-  back from the index to the media data: the load succeeds (NetworkFile, not seekable) and the
-  first read ends the stream (`Network read failed`). Faststart MP4s, MKV and TS stream fine from
-  such servers. A clearer open-time failure is possible (probe a first packet before reporting
-  the open).
-- **Audio-only HLS does not play.** `.m3u8` classifies as video, and the video path needs a
-  video stream ("No playable video stream"); the Audio hint sends it to BASS, which has no HLS
-  support without its add-on. An FFmpeg audio path for network sources (or a fallback from the
-  video open) would cover it.
+  stream ends. HLS live recovers through its playlist reloads. Left (2026-10-26): it would need
+  FFmpeg's option set per source after the open (only a live source may restart at byte 0) and
+  checking FFmpeg's reconnect conditions; BASS does not reconnect live radio either, so https
+  radio through FFmpeg keeps 014A's behaviour.
+- **A moov-at-end MP4 needs a range-capable server.** Resolved 2026-10-26 (039A.3), pending
+  Windows smoke: a non-seekable MP4 must yield its first packet during the open (kept for the
+  first read); otherwise the open fails, not retried, with "this MP4 keeps its index (moov) after
+  the media data and the server does not support byte ranges, so it cannot be streamed; serve it
+  from a server with range support, or remux it with -movflags +faststart". Faststart MP4s, MKV
+  and TS stream fine from such servers.
+- **Audio-only HLS does not play.** Resolved 2026-10-26 (039A.3), pending Windows smoke: an
+  `.m3u8` that connects with no playable video plays as audio through the soundtrack engine in
+  Full mode (one more connect), and the Audio hint on an `.m3u8` opens through FFmpeg instead of
+  BASS. Audio mode already played it.
 - **Network soundtrack buffering (Audio mode) is coarse.** Resolved 2026-10-25 (039A slice 2),
   pending Windows smoke: the soundtrack's own cursor has a read-ahead too, and its buffering comes
   from it (starved for 0.5 s starts, the resume threshold ends) like network video's.
@@ -241,58 +251,92 @@ Reported: 2026-10-24 (039A slice 1). Deferred findings from network video; none 
   - A forward seek is served from the buffer only when the sound has not already taken the
     target's packets. The audio consumer runs up to about 4 s ahead of the picture (the BASS push
     buffer), so with BASS a forward seek shorter than that goes to the network. Keeping a short
-    tail of taken audio packets would cover it.
+    tail of taken audio packets would cover it. Left (2026-10-26): costs one extra request, and
+    sizing the tail needs BASS measurements on Windows.
   - Buffering is still an event only, as in slice 1: the clock is not held while the buffer
-    refills. With sound, BASS runs dry and the position waits naturally; picture-only playback
-    keeps its clock and drops late frames.
+    refills. Resolved 2026-10-26 for picture-only playback (see the reconnect follow-up below);
+    with sound, BASS runs dry and the position waits naturally.
   - The starvation timer restarts with every packet that arrives, so a trickle slower than
-    playback but faster than one packet per 0.5 s stutters without raising buffering.
+    playback but faster than one packet per 0.5 s stutters without raising buffering. Left
+    (2026-10-26): a stricter rule (starved until the queue has a lead) would flag a live stream
+    that plays at its edge; needs real slow-network samples first.
   - A lone network seek now decodes to its exact frame before the pump interval and the settle:
     on localhost (150 ms per segment) a seek outside the buffer takes 370-440 ms against
     305-318 ms before, while downloading half as much. A remote segment download dominates
-    either way.
+    either way. Accepted (a measurement, not a defect).
   - Network Stop shows the first frame only if it arrives within 0.5 s; otherwise the next Play
-    or render shows it. Audio-mode Play still prebuffers on the caller's thread and can wait for
-    a stalled download.
+    or render shows it (by design). Audio-mode Play still prebuffers on the caller's thread and
+    can wait for a stalled download: resolved 2026-10-26 (039A.3), a network soundtrack's Open
+    and Play wait at most 0.5 s there; the pump fills the rest.
 
-Code review 2026-10-25 (batch PR), not fixed:
+Code review 2026-10-25 (batch PR):
 - `NetworkTlsRules.IsCertificateFailure` treats any `[tls @` log line mentioning "certificate" or
   "verify" as a certificate rejection, so an unrelated TLS warning followed by a transient failure
   is reported as a certificate failure and not retried. Tighten it once each backend's real
-  messages are captured (Schannel on Windows, OpenSSL here).
+  messages are captured (Schannel on Windows, OpenSSL here). Left: needs Schannel's messages.
 - The BASS network-audio retry loop (`AudioEngine`) duplicates `NetworkOpenRetry.Run`; the two
   differ (audio always waits the delay). Fold audio into the shared helper when 037A touches it.
+  Left: belongs to 037A (https audio no longer uses it).
 - Reset leaves the previous `_loadLifetime` CancellationTokenSource undisposed (one per Reset);
   disposing it on the timeout path is unsafe while the running open may still wait on it.
+  Resolved 2026-10-26: `ResetCore` disposes it once the new graph is built (the operation that
+  used it has returned and the old graph is torn down); the give-up path still leaves it.
 
-Read-ahead code review (2026-10-25), not fixed:
+Read-ahead code review (2026-10-25):
 - A stream whose track ends before the source does (audio 30 s shorter than video) counts as
   starved until the reader reaches the end: the reader ignores the duration cap (up to the 2x byte
-  limit) and, after a seek into that tail, buffering never ends. Needs a per-stream "ended" signal.
+  limit) and, after a seek into that tail, buffering never ends. Resolved 2026-10-26, pending
+  Windows smoke: a stream registered with its own end (`AVStream.duration`) gets its end marker
+  once the reader is 2 s past that end (`ReadAheadBuffer.StreamEndToleranceSeconds`); a packet
+  of the stream itself (the next lap) re-arms it. Streams without a known duration (TS, HLS) end
+  with the source as before.
 - Picture and sound share one data-arrived event, so one consumer's reset can delay the other's
-  wake-up by up to one 50 ms wait slice.
+  wake-up by up to one 50 ms wait slice. Resolved 2026-10-26: one event per registered stream;
+  abort, a superseded wait, the end and a stream end wake all.
 - If the audio engine fails after re-enabling its stream, that stream is not discarded again, so
-  HLS/DASH keep downloading (and dropping) its segments for the session.
+  HLS/DASH keep downloading (and dropping) its segments for the session. Resolved 2026-10-26:
+  `SharedDemuxer.UnregisterAudioStream` discards it again, applied by the reader between its reads
+  (directly when no reader runs).
 
-Owner smoke (2026-10-25), not fixed:
+Owner smoke (2026-10-25):
 - An MP4 with its index (`moov`) at the end, served without byte ranges (for example
-  `python -m http.server`), cannot play: FFmpeg reads to the index and cannot seek back. The
-  player reports only "Network read failed: I/O error; the stream ends here". Detect it
-  (`seekable=False` plus a mov "partial file" error) and say the server needs range support or
-  the file needs `-movflags +faststart`.
+  `python -m http.server`), cannot play. Resolved 2026-10-26 (039A.3), pending Windows smoke:
+  see "A moov-at-end MP4 needs a range-capable server" above.
 
-Reconnect follow-up (2026-10-26), not fixed:
-- Buffering is an event only: the clock is not held while the picture waits. With sound, BASS
-  waits for data (check on Windows); a network video without sound, or Background mode, runs the
-  clock on and skips what played during the outage. Holding the clock while buffering would fix
-  both (a timing change in Core).
+Reconnect follow-up (2026-10-26):
+- Buffering is an event only: the clock is not held while the picture waits. Resolved
+  2026-10-26 (039A.3), pending Windows smoke: picture-only network video (no sound, Background
+  mode) holds the playback clock while the picture has no frame and its queue has been empty for
+  250 ms, and releases it at the resume threshold (`NetworkClockHold`, `HoldableClock`; every
+  transport change ends a hold). With sound BASS waits by itself (check on Windows).
+- After a reconnect, the end of a progressive file read as a new drop (found with the clock
+  hold): FFmpeg keeps the dropped connection's I/O error on the `AVIOContext` and returns it in
+  place of the end. Resolved 2026-10-26: a successful network seek clears it.
 - When playback ends while buffering (the clock ran out during an outage), no
-  `Buffering=False` follows: the monitor stops sampling once playback stops.
+  `Buffering=False` follows: the monitor stops sampling once playback stops. Resolved 2026-10-26:
+  the sample carries `PlaybackEnded`, which ends a spell in progress.
 - An HLS outage that ends while FFmpeg is still skipping segments makes a gap (the skipped
-  segments) instead of an end, so the reader does not reconnect for them.
+  segments) instead of an end, so the reader does not reconnect for them. Left: decided inside
+  FFmpeg's HLS demuxer (`seg_max_retry`); would need segment-level reconnects.
 - `python -m http.server`-style servers (no ranges) are never reconnected: only seekable sources.
+  Left: a reconnect would have to reopen the source and re-download it from byte 0.
 - The reconnect window is checked between attempts, so a reconnect seek blocked in a connect can
-  overrun `ReconnectFor` by up to the connect timeout (15 s by default).
+  overrun `ReconnectFor` by up to the connect timeout (15 s by default). Resolved 2026-10-26,
+  pending Windows smoke: each reconnect seek, and every read while a reconnect is in progress, is
+  bounded by what is left of the window (measured: ends 3.2 s after the drop with a 2 s window and
+  a hung server, before at least 15 s).
+
+HTTPS-audio code review (2026-10-26), not fixed:
+- The open-time probe of a non-seekable MP4 treats any quick read failure (a connection reset
+  right after the header) as "needs byte ranges or faststart", so that open is not retried.
+  Telling it from a network error needs a check against FFmpeg's behaviour (e.g. a network error
+  when `pb->error < 0` or the deadline passed).
+- An Ogg file with a video track before its audio can announce the video track's comments as the
+  first title (stream selection has not discarded it yet).
+- A seek that fails on a non-seekable MP4 drops the packet kept from the open probe; the picture
+  starts at the next keyframe.
+- The soundtrack engine records the BASS output device when it is built, and Full mode now builds
+  it for https/HLS audio: check on Windows that a device change while playing is followed.
 
 ## Completed
 

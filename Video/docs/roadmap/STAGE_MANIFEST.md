@@ -48,7 +48,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
-- `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26)
+- `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26). Follow-up update `updates/039A_3` (https and HLS audio through FFmpeg so certificates are verified, ENG-034 triage: clock held for picture-only outages, bounded reconnects, moov-at-end message): implemented, pending manual smoke
 - `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
 - `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
 - `complete/014A_COMPLETED_StreamingNetworkPlayback.md` — source capability matrix and HTTP/HTTPS audio with retries; owner smoke passed 2026-10-17; network video deferred to 039A (completed 2026-10-18)
