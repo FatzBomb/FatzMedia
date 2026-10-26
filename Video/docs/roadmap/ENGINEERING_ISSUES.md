@@ -338,22 +338,39 @@ HTTPS-audio code review (2026-10-26), not fixed:
 - The soundtrack engine records the BASS output device when it is built, and Full mode now builds
   it for https/HLS audio: check on Windows that a device change while playing is followed.
 
-### ENG-036 - Adapter diagnostics reach every player in the process
-
-Reported: 2026-10-26 (044A, Avalonia test player with `--players=2`). Not fixed: it needs an
-API decision.
-- The Avalonia `MediaSurface` reports its presentation path (`Avalonia.MediaSurface`: "Surface
-  #2 'primary': frame-sink path ...") with `DiagnosticRouter.Raise` on the UI thread. That call
-  has no owner (`EnterOwner` is internal to Core), and an unowned diagnostic goes to every
-  player's `MediaDiagnostic` (ENG-025), so each player's log shows the other players' surfaces.
-- The same applies to any host or adapter code that raises a diagnostic outside the engine.
-- Options: an owner-taking `Raise` overload on `DiagnosticRouter` (the adapter knows its
-  session), or the adapter raising an event the host logs. The engine's own diagnostics are
-  correctly owned.
-- Tests see it too: diagnostics raised without an owner by other tests reach every test player,
-  so the 044A view-model tests run posted UI work explicitly instead of draining it.
-
 ## Completed
+
+### ENG-036 - Adapter diagnostics reached every player in the process
+
+Resolved: 2026-10-26, pending Windows smoke (steps below).
+
+Reported: 2026-10-26 (044A, Avalonia test player with `--players=2`; on Windows P1's log showed
+P2's `Surface #3 'second-screen-2'` lines). The Avalonia `MediaSurface` raised its path lines with
+`DiagnosticRouter.Raise` on the UI thread, which has no owner (`EnterOwner` is internal to Core),
+so the diagnostic was unowned and every player's `MediaDiagnostic` reported it (ENG-025).
+
+Fix:
+- New public overload `DiagnosticRouter.Raise(IMediaControlSession? owner, level, category,
+  message, sourcePath, innerException)`: the diagnostic belongs to `owner` (only that player's
+  `MediaDiagnostic` reports it; an explicit owner wins over an ambient one); a null owner raises a
+  process-wide diagnostic. Additive; the engine's ambient ownership is unchanged. An adapter knows
+  the session its surface is attached to, so it names it.
+- Avalonia: `MediaSurface` (presentation path, Audio-mode clear) and `AvaloniaSharedImageSurface`
+  (shared images imported; it now takes the session) raise for their session.
+  `SecondaryPresentationWindow` raises through its `MediaSurface`. The WPF and WinForms adapters,
+  the test players and `Player.Shared` raise no diagnostics of their own (they only log
+  `MediaDiagnostic`), so nothing else changed.
+- Tests: Portable (two players: a diagnostic raised for one reaches only it, even under the other's
+  ambient owner; a null owner reaches both); Avalonia headless (two sessions, each with a surface
+  and a second screen: every surface line is owned by its own session). Core now exposes internals
+  to `Avalonia.Tests` (allow-listed in `check-core-boundary.ps1`). The 044A view-model diagnostics
+  test uses the new overload. The harness still leaves posted work to the tests: other tests raise
+  process-wide diagnostics on purpose, and those still reach every player.
+
+Windows smoke: Avalonia test player `--players=2`, open a file in each, open a second screen for
+each. Each player's Log shows only its own `Surface #n` lines (P1: `'primary'` and
+`'second-screen-1'`; P2: `'primary'` and `'second-screen-2'`), and switching P1 to Audio mode adds
+the "cleared" lines only to P1's log. Process-wide lines (native loading) still appear in both.
 
 ### ENG-035 - Network seeks blocked the host's UI thread
 

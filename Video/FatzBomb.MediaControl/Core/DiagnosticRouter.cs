@@ -40,6 +40,15 @@ public static class DiagnosticRouter
     public static void Raise(MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null) =>
         DiagnosticOccurred?.Invoke(new MediaDiagnosticInfo(level, category, message, sourcePath, innerException) { Owner = CurrentOwner.Value });
 
+    /// <summary>
+    /// Raises a diagnostic that belongs to <paramref name="owner"/>: only that session's
+    /// <see cref="IMediaControlSession.MediaDiagnostic"/> reports it. For adapter and host code
+    /// that raises outside the engine (a surface on the UI thread knows the player it is attached
+    /// to). A null <paramref name="owner"/> raises a process-wide diagnostic, which every player reports.
+    /// </summary>
+    public static void Raise(IMediaControlSession? owner, MediaDiagnosticLevel level, string category, string message, string? sourcePath = null, Exception? innerException = null) =>
+        DiagnosticOccurred?.Invoke(new MediaDiagnosticInfo(level, category, message, sourcePath, innerException) { Owner = owner });
+
     internal readonly struct OwnerScope(object? previous) : IDisposable
     {
         public void Dispose() => CurrentOwner.Value = previous;

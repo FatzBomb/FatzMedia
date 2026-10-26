@@ -43,8 +43,7 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzBomb.MediaControl.Player.Shared`), at feature parity with the WPF
-  player, with a shared command line; slice 1 implemented, pending manual smoke
-  (`updates/044A_1`).
+  player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

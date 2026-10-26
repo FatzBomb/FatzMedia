@@ -456,11 +456,8 @@ public sealed class PlayerViewModelTests
                 statuses.Add(viewModel.StatusText);
         };
 
-        using (DiagnosticRouter.EnterOwner(harness.Player))
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Unit", "first");
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Unit", "second");
-        }
+        DiagnosticRouter.Raise(harness.Player, MediaDiagnosticLevel.Info, "Unit", "first");
+        DiagnosticRouter.Raise(harness.Player, MediaDiagnosticLevel.Warning, "Unit", "second");
 
         await harness.Player.FlushControlOperationsAsync();
         await harness.Dispatcher.UntilAsync(() => viewModel.DiagnosticLog.Count(static entry => entry.Category == "Unit") == 2);
