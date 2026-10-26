@@ -326,6 +326,18 @@ Reconnect follow-up (2026-10-26):
   bounded by what is left of the window (measured: ends 3.2 s after the drop with a 2 s window and
   a hung server, before at least 15 s).
 
+HTTPS-audio code review (2026-10-26), not fixed:
+- The open-time probe of a non-seekable MP4 treats any quick read failure (a connection reset
+  right after the header) as "needs byte ranges or faststart", so that open is not retried.
+  Telling it from a network error needs a check against FFmpeg's behaviour (e.g. a network error
+  when `pb->error < 0` or the deadline passed).
+- An Ogg file with a video track before its audio can announce the video track's comments as the
+  first title (stream selection has not discarded it yet).
+- A seek that fails on a non-seekable MP4 drops the packet kept from the open probe; the picture
+  starts at the next keyframe.
+- The soundtrack engine records the BASS output device when it is built, and Full mode now builds
+  it for https/HLS audio: check on Windows that a device change while playing is followed.
+
 ## Completed
 
 ### ENG-035 - Network seeks blocked the host's UI thread
