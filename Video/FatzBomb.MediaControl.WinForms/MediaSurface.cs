@@ -216,6 +216,10 @@ public class MediaSurface : Control
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+
+        // A callback queued on the previous handle is dropped when that handle goes, so the
+        // coalescing flag would stay set and block every later background update.
+        Volatile.Write(ref _contentStateQueued, 0);
         WatchFormResize();
         AttachOrResize();
         UpdateContentState();

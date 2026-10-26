@@ -213,7 +213,6 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         session.MediaLooped += OnMediaLooped;
         session.PresentationFramePresented += OnPresentationFramePresented;
         session.ModeChanged += OnModeChanged;
-        session.HasPresentationChanged += OnHasPresentationChanged;
     }
 
     private void Unsubscribe(IMediaControlSession session)
@@ -227,7 +226,6 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         session.MediaLooped -= OnMediaLooped;
         session.PresentationFramePresented -= OnPresentationFramePresented;
         session.ModeChanged -= OnModeChanged;
-        session.HasPresentationChanged -= OnHasPresentationChanged;
     }
 
     // Under the lock. An event of a replaced session (raised before it was unsubscribed) is dropped.
@@ -263,7 +261,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         var stale = IsStaleTerminalEvent(SessionOf(sender));
         Apply(sender, () =>
         {
-            if (stale && _autoHide)
+            if (stale)
                 return;
 
             _framePresented = false;
@@ -279,7 +277,7 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         var isLooping = session is { IsOpen: true, LoopMedia: true };
         Apply(sender, () =>
         {
-            if (stale && _autoHide)
+            if (stale)
                 return;
 
             if (!isLooping)
@@ -290,7 +288,8 @@ public sealed class MediaSurfaceContentTracker : IDisposable
     }
 
     // A replacement stops the previous item internally; by the time that stop or end arrives the
-    // session may already play the new one, which must not be hidden.
+    // session may already play the new one, which must not be hidden, nor lose its latched frame
+    // (with auto-hide off too, so turning it on later replays that frame).
     private static bool IsStaleTerminalEvent(IMediaControlSession? session) =>
         session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused or MediaPlayerState.Buffering };
 
@@ -342,12 +341,10 @@ public sealed class MediaSurfaceContentTracker : IDisposable
         RaiseChanged();
     }
 
-    private void OnModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e) => OnPresentationAvailabilityChanged(sender);
-
-    private void OnHasPresentationChanged(object? sender, MediaValueChangedEventArgs<bool> e) => OnPresentationAvailabilityChanged(sender);
-
     // HasPresentation is read live, so a handler that marshals sees the session's current mode.
-    private void OnPresentationAvailabilityChanged(object? sender)
+    // ModeChanged covers HasPresentationChanged (raised after it for the same switch) and sessions
+    // that implement only ModeChanged, so one notice per switch is enough.
+    private void OnModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e)
     {
         lock (_lock)
         {
