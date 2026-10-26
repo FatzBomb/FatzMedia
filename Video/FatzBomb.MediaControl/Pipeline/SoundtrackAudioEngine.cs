@@ -24,12 +24,23 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// normalization pre-analysis, never loops (as 014A network audio), and reports buffering from
 /// its read-ahead (slice 2).
 /// </para>
+/// <para>
+/// Network audio that opens through FFmpeg (https, so the certificate is verified, and HLS;
+/// ENG-034) plays here too, in Full and Audio mode: its capability row follows the 014A audio
+/// rule for stream metadata, and in-stream titles (ICY, Ogg comments) are raised through
+/// <see cref="StreamMetadataChanged"/> when playback reaches them. Prebuffering a network source
+/// on the caller's thread waits at most <see cref="NetworkPrebufferWait"/>; the pump fills the
+/// rest.
+/// </para>
 /// </remarks>
 internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide
 {
     internal const double EndToleranceSeconds = 0.05;
     internal const double EndStallSeconds = 1.0;
     private const double StallPositionEpsilonSeconds = 0.0005;
+    // Open and Play prebuffer on the caller's thread (the control queue): a stalled download must
+    // not hold it (ENG-034).
+    private static readonly TimeSpan NetworkPrebufferWait = TimeSpan.FromMilliseconds(500);
 
     private readonly VideoAudioEngine _audio;
     private readonly PlaybackScheduler _pump = new("SoundtrackDecode");
@@ -95,6 +106,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     /// <summary>Raised from a timer thread when the network buffering state changes.</summary>
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 
+    /// <summary>Raised from a timer thread when playback reaches a new in-stream title of network audio (ENG-034).</summary>
+    public event EventHandler<MediaStreamMetadataChangedEventArgs>? StreamMetadataChanged;
+
     public event EventHandler<double>? NormalizationGainChanged;
     public event EventHandler<AudioEngineState>? StateChanged;
     public event EventHandler? Opened;
@@ -109,13 +123,18 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
     public bool Open(IArchiveEntryInfo archiveEntry) => OpenCore(() => _audio.Open(archiveEntry));
 
-    /// <summary>Makes one attempt to open the soundtrack of a network video (Stage 039A).</summary>
-    internal bool OpenNetwork(string url, FfmpegNetworkOptions options)
+    /// <summary>
+    /// Makes one attempt to open the soundtrack of a network video (Stage 039A), or network audio
+    /// through FFmpeg when <paramref name="audioSource"/> is set (ENG-034: its row may carry stream
+    /// metadata, and its titles are raised).
+    /// </summary>
+    internal bool OpenNetwork(string url, FfmpegNetworkOptions options, bool audioSource = false)
     {
         if (!OpenCore(() => _audio.OpenNetwork(url, options), network: true))
             return false;
 
-        Volatile.Write(ref _networkCapabilities, NetworkVideoPolicy.Resolve(_audio.GetNetworkProbe()));
+        NetworkVideoProbe probe = _audio.GetNetworkProbe();
+        Volatile.Write(ref _networkCapabilities, audioSource ? NetworkAudioPolicy.Resolve(probe) : NetworkVideoPolicy.Resolve(probe));
         MediaSourceCapabilities? opened = _networkCapabilities;
         // The soundtrack's own cursor has a read-ahead too (slice 2): buffering starts when its
         // queue runs dry and ends at the resume threshold, as for network video.
@@ -124,14 +143,37 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
                 _audio.State == AudioEngineState.Playing,
                 _audio.NetworkReadStall,
                 _audio.NetworkReadAheadFill,
-                _audio.NetworkEndOfStream),
+                _audio.NetworkEndOfStream,
+                PlaybackEnded: IsEnded),
             args =>
             {
-                if (ReferenceEquals(Volatile.Read(ref _networkCapabilities), opened) && _audio.IsOpen)
+                if (IsCurrent(opened))
                     NetworkBufferingChanged?.Invoke(this, args);
             },
-            NetworkBufferingMonitor.ReadAheadExitFill);
+            NetworkBufferingMonitor.ReadAheadExitFill,
+            opened is { HasStreamMetadata: true } ? () => PublishStreamMetadata(opened) : null);
         return true;
+    }
+
+    private bool IsCurrent(MediaSourceCapabilities? opened) =>
+        ReferenceEquals(Volatile.Read(ref _networkCapabilities), opened) && _audio.IsOpen;
+
+    private bool IsEnded
+    {
+        get
+        {
+            lock (_gate)
+                return _ended;
+        }
+    }
+
+    /// <summary>Raises the in-stream title playback has reached, if it changed (from the monitor's timer thread).</summary>
+    private void PublishStreamMetadata(MediaSourceCapabilities? opened)
+    {
+        if (!IsCurrent(opened) || !_audio.TryTakeStreamMetadata(out StreamMetadata metadata) || !IsCurrent(opened))
+            return;
+
+        StreamMetadataChanged?.Invoke(this, new MediaStreamMetadataChangedEventArgs(metadata.Title, metadata.Artist, metadata.RawTitle));
     }
 
     private bool OpenCore(Func<bool> open, bool network = false)
@@ -147,8 +189,14 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
 
         ResetEndTracking();
         _audio.LoopPlayback = LoopPlayback;
-        _ = _audio.PrebufferAudio();
+        Prebuffer();
         return true;
+    }
+
+    private void Prebuffer()
+    {
+        using (_isNetwork ? NetworkReadAhead.WaitAtMost(NetworkPrebufferWait) : default)
+            _ = _audio.PrebufferAudio();
     }
 
     public bool Play()
@@ -165,7 +213,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
             ResetEndTracking();
         }
 
-        _ = _audio.PrebufferAudio();
+        Prebuffer();
         if (!_audio.Play())
             return false;
 

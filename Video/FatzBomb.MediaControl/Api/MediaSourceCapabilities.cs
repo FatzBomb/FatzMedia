@@ -88,7 +88,9 @@ public readonly record struct NetworkStreamProbe(long? ContentLength, bool Suppo
 /// Network video (Stage 039A) uses the same rows: a progressive file follows the length and range
 /// rule above; an HLS playlist is a seekable NetworkFile when it is complete (VOD) and NetworkLive
 /// otherwise. Video reports duration as known only when FFmpeg found one, and carries no stream
-/// metadata. It loops only when seekable and not live.
+/// metadata. It loops only when seekable and not live. https and HLS audio open through the
+/// same FFmpeg path (certificates verified; Close and Dispose cancel the open) and use the same
+/// rows, with stream metadata as for HTTP audio.
 /// </para>
 /// </remarks>
 public static class MediaSourceCapabilityMatrix

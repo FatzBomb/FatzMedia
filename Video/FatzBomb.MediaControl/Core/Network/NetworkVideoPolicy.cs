@@ -10,7 +10,8 @@ namespace FatzBomb.MediaControl.Core.Network;
 /// <param name="ContentLength">Total length in bytes of a progressive file, or <see langword="null"/> when the server did not report one.</param>
 /// <param name="SupportsByteSeeking">Whether the progressive file accepts byte-range requests.</param>
 /// <param name="DurationSeconds">The container duration, or 0 when unknown (a live playlist or an unindexed stream).</param>
-internal readonly record struct NetworkVideoProbe(bool IsSegmented, long? ContentLength, bool SupportsByteSeeking, double DurationSeconds);
+/// <param name="HasIcyMetadata">Whether the server sent ICY (Shoutcast/Icecast) headers.</param>
+internal readonly record struct NetworkVideoProbe(bool IsSegmented, long? ContentLength, bool SupportsByteSeeking, double DurationSeconds, bool HasIcyMetadata = false);
 
 /// <summary>
 /// Pure decisions for network video (Stage 039A): classification, the capability row, looping,
@@ -81,6 +82,22 @@ internal static class NetworkVideoPolicy
             HasStreamMetadata = false,
         };
     }
+
+    /// <summary>
+    /// The open error for an MP4 whose index (<c>moov</c>) follows its media data on a server
+    /// without byte ranges (ENG-034): FFmpeg reads to the index and cannot go back.
+    /// </summary>
+    public const string UnstreamableMp4Error =
+        "this MP4 keeps its index (moov) after the media data and the server does not support byte ranges, so it cannot be streamed; " +
+        "serve it from a server with range support, or remux it with -movflags +faststart";
+
+    /// <summary>
+    /// Whether a failed open is not worth retrying: a rejected certificate is rejected again, and an
+    /// MP4 that cannot be streamed from this server stays so.
+    /// </summary>
+    public static bool IsPermanentOpenError(string? error) =>
+        error is not null
+        && (NetworkTlsRules.IsCertificateFailureError(error) || error.StartsWith(UnstreamableMp4Error, StringComparison.Ordinal));
 
     /// <summary>Whether a network video can loop: only a finite, seekable source can restart.</summary>
     public static bool CanLoop(MediaSourceCapabilities capabilities)

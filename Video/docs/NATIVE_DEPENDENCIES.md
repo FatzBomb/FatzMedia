@@ -191,10 +191,12 @@ plays after its certificate is imported into the current user's Trusted Root sto
 shipping a different FFmpeg build, read its backend: `ffmpeg -hide_banner -buildconf` (or
 search `avformat-63.dll` for `--enable-openssl` / `--enable-schannel`).
 
-Network audio played through BASS (014A) does not use this policy. ManagedBass 4.0.2 exposes no
-TLS or certificate setting (its network options are agent, proxy, timeouts, buffer, pre-buffer,
-playlist and passive FTP), so the engine cannot change how BASS checks certificates; whether it
-verifies them is not documented in the API surface available here and is a Windows check.
+BASS does not verify https certificates (owner smoke 2026-10-25: it connected to badssl.com's
+expired, self-signed and wrong-host sites) and ManagedBass 4.0.2 exposes no TLS or certificate
+setting. So https network audio no longer goes to BASS (ENG-034, 039A.3): it opens through
+FFmpeg's network path like network video, this policy applies, and BASS only plays the decoded
+sound. Plain http audio stays on BASS (014A); an http URL that redirects to https is followed by
+BASS without verification.
 
 For a proprietary host, the default approved build policy is an LGPL-compatible
 shared build compiled without `--enable-gpl` and without `--enable-nonfree`, followed

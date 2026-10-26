@@ -8,13 +8,13 @@ namespace FatzBomb.MediaControl.Linux.Tests;
 /// Stage 039A slice 2: a network outage longer than the read-ahead. The open connection is reset
 /// and every request during the outage refused, as with an unplugged cable; once it ends the
 /// reader resumes where it stopped and playback carries on to the real end, with no seek from
-/// the host. Without BASS nothing stalls the clock while the picture waits (ENG-034), so the
-/// picture skips what played meanwhile; the timeline in the output shows it.
+/// the host. Without BASS the picture runs on the playback clock, which is held while it waits
+/// for the network (ENG-034), so nothing that played before the outage is skipped; the timeline
+/// in the output shows it.
 /// </summary>
 public sealed partial class LinuxNetworkVideoNativeTests
 {
-    // Longer than what the player holds ahead (the 1 s read-ahead plus decoded frames, about 4 s),
-    // and over well before the 10 s sample ends: nothing stops the clock without BASS.
+    // Longer than what the player holds ahead (the 1 s read-ahead plus decoded frames, about 4 s).
     private static readonly TimeSpan OutageLength = TimeSpan.FromSeconds(5);
 
     [Fact]
@@ -58,6 +58,38 @@ public sealed partial class LinuxNetworkVideoNativeTests
         Assert.True(ended.Wait(TimeSpan.FromSeconds(20)), $"no MediaEnded; position {session.Player.Position}; diagnostics: {string.Join(" | ", session.DiagnosticList)}");
         Assert.True(session.Player.Position < TimeSpan.FromSeconds(9), $"ended at {session.Player.Position}");
         Assert.Contains(session.DiagnosticList, line => line.Contains("Network read failed", StringComparison.Ordinal));
+        // A buffering spell the outage started ends with the stream (ENG-034).
+        Assert.True(SpinWait.SpinUntil(() => session.BufferingList.Count == 0 || !session.BufferingList[^1], TimeSpan.FromSeconds(2)), $"buffering [{string.Join(", ", session.BufferingList)}]");
+    }
+
+    /// <summary>
+    /// ENG-034: a reconnect whose connect hangs (the server accepts and never answers) gives up
+    /// with the reconnect window, not after the connect timeout (15 s here).
+    /// </summary>
+    [Fact]
+    public void ProgressiveMp4_HungReconnects_EndWithinTheReconnectWindow()
+    {
+        if (!TryGetEnvironment(out var ffmpeg, out var media))
+            return;
+
+        using var server = new LocalHttpMediaServer(media);
+        var hung = false;
+        server.Plan = _ => new HttpResponsePlan(DelayBeforeResponse: Volatile.Read(ref hung) ? TimeSpan.FromSeconds(60) : TimeSpan.Zero, BytesPerSecond: 1_500_000);
+
+        var readAhead = new NetworkReadAheadPolicy { MaxDuration = TimeSpan.FromSeconds(1), ReconnectFor = TimeSpan.FromSeconds(2) };
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, new NetworkRetryPolicy { ConnectTimeout = TimeSpan.FromSeconds(15) }, readAhead: readAhead);
+        var ended = new ManualResetEventSlim();
+        session.Player.MediaEnded += (_, _) => ended.Set();
+        Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(Mp4))), session.Errors);
+        Assert.True(session.Player.Play());
+        Assert.True(SpinWait.SpinUntil(() => session.Player.Position >= TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(15)), $"position {session.Player.Position}");
+        Volatile.Write(ref hung, true);
+        var dropped = Stopwatch.StartNew();
+        server.DropConnections();
+
+        Assert.True(ended.Wait(TimeSpan.FromSeconds(12)), $"no MediaEnded {dropped.Elapsed.TotalSeconds:F1} s after the drop; diagnostics: {string.Join(" | ", session.DiagnosticList)}");
+        output.WriteLine($"hung reconnects: ended {dropped.Elapsed.TotalSeconds:F1} s after the drop (window 2 s, connect timeout 15 s)");
+        Assert.Contains(session.DiagnosticList, line => line.Contains("no connection for 2 s", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -109,8 +141,14 @@ public sealed partial class LinuxNetworkVideoNativeTests
         using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, readAhead: new NetworkReadAheadPolicy { MaxDuration = TimeSpan.FromSeconds(1) });
         var ended = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
+        var bufferingPositions = new ConcurrentQueue<(bool IsBuffering, double Position)>();
         session.Player.MediaEnded += (_, _) => { timeline.Enqueue($"{clock.Elapsed.TotalSeconds:F1}s ended"); ended.Set(); };
-        session.Player.BufferingChanged += (_, args) => timeline.Enqueue($"{clock.Elapsed.TotalSeconds:F1}s buffering={args.IsBuffering} fill={args.BufferFill:F2} pos={session.Player.Position.TotalSeconds:F1}");
+        session.Player.BufferingChanged += (_, args) =>
+        {
+            var position = session.Player.Position.TotalSeconds;
+            bufferingPositions.Enqueue((args.IsBuffering, position));
+            timeline.Enqueue($"{clock.Elapsed.TotalSeconds:F1}s buffering={args.IsBuffering} fill={args.BufferFill:F2} pos={position:F1}");
+        };
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(path))), session.Errors);
         Assert.True(session.Player.Play());
         Assert.True(SpinWait.SpinUntil(() => session.Player.Position >= TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(15)), $"position {session.Player.Position}");
@@ -123,6 +161,13 @@ public sealed partial class LinuxNetworkVideoNativeTests
             $"timeline: {string.Join(" | ", timeline)}; diagnostics: {string.Join(" | ", session.DiagnosticList.Where(line => line.Contains("Network", StringComparison.Ordinal) && !line.Contains("FFmpeg (", StringComparison.Ordinal)))}");
         Assert.True(endPosition >= TimeSpan.FromSeconds(9.5), $"ended early at {endPosition}");
         Assert.Contains(true, session.BufferingList);
+        // The clock waited for the picture (ENG-034): the spell ends about where it started.
+        (bool IsBuffering, double Position)[] spells = [.. bufferingPositions];
+        var started = Array.FindIndex(spells, spell => spell.IsBuffering);
+        var endedSpell = Array.FindIndex(spells, started + 1, spell => !spell.IsBuffering);
+        Assert.True(endedSpell > started, $"timeline: {string.Join(" | ", timeline)}");
+        Assert.True(spells[endedSpell].Position - spells[started].Position < 1.5, $"the clock ran on during the outage; timeline: {string.Join(" | ", timeline)}");
+        Assert.Contains(session.DiagnosticList, line => line.Contains("Waiting for the network", StringComparison.Ordinal));
         Assert.Contains(session.DiagnosticList, line => line.Contains("Network back", StringComparison.Ordinal));
         Assert.DoesNotContain(session.DiagnosticList, line => line.Contains("Network read failed", StringComparison.Ordinal));
         Assert.Empty(session.ErrorList);

@@ -393,4 +393,90 @@ public sealed class ReadAheadBufferTests
         Assert.False(tracker.IsBuffering);
         Assert.Equal(1, fill);
     }
+
+    [Fact]
+    public void AStreamShorterThanTheSource_EndsOnceTheReaderIsPastItsEnd()
+    {
+        // ENG-034: audio 3 s shorter than the picture. Without its own end it would count as
+        // starved until the reader reached the end of the source.
+        var buffer = new ReadAheadBuffer<int>(_released.Add);
+        buffer.Register(Video, lead: true);
+        buffer.Register(Audio, lead: false, endSeconds: 3.0);
+        AddMedia(buffer, 0, 3);
+        while (buffer.TryTake(Audio, 1, out _) == ReadAheadTake.Packet)
+        {
+        }
+
+        // The audio consumer found its queue empty: starved, the reader goes on past the caps.
+        Assert.True(buffer.HasStarvedStream);
+        AddMedia(buffer, 3, ReadAheadBuffer<int>.StreamEndToleranceSeconds - 0.5, withAudio: false);
+        Assert.True(buffer.HasStarvedStream);
+        Assert.Equal(0, buffer.StreamEndsQueued);
+
+        AddMedia(buffer, 3 + ReadAheadBuffer<int>.StreamEndToleranceSeconds - 0.5, 1, withAudio: false);
+
+        Assert.Equal(1, buffer.StreamEndsQueued);
+        Assert.False(buffer.HasStarvedStream);
+        Assert.Equal(ReadAheadTake.EndOfStream, buffer.TryTake(Audio, 1, out _));
+        Assert.Equal(ReadAheadTake.EndOfStream, buffer.TryTake(Audio, 1, out _));
+        // The picture plays on.
+        Assert.Equal(0, TakeTime(buffer, Video));
+    }
+
+    [Fact]
+    public void AStreamShorterThanTheSource_SeekIntoItsTail_EndsItInsteadOfBufferingForever()
+    {
+        var buffer = new ReadAheadBuffer<int>(_released.Add);
+        buffer.Register(Video, lead: true);
+        buffer.Register(Audio, lead: false, endSeconds: 3.0);
+        buffer.Flush();
+
+        // The reader sought to 8 s: only picture packets follow.
+        Assert.Equal(ReadAheadTake.Empty, buffer.TryTake(Audio, 1, out _));
+        AddMedia(buffer, 8, 1, withAudio: false);
+
+        Assert.Equal(ReadAheadTake.EndOfStream, buffer.TryTake(Audio, 1, out _));
+        Assert.False(buffer.HasStarvedStream);
+    }
+
+    [Fact]
+    public void AStreamEndedAtItsOwnEnd_GetsNoSecondMarker_AndTheNextLapReArmsIt()
+    {
+        var buffer = new ReadAheadBuffer<int>(_released.Add);
+        buffer.Register(Video, lead: true);
+        buffer.Register(Audio, lead: false, endSeconds: 1.0);
+        AddMedia(buffer, 0, 1);
+        AddMedia(buffer, 1, 3, withAudio: false);
+        buffer.AddEndOfStream();
+        while (buffer.TryTake(Audio, 1, out _) == ReadAheadTake.Packet)
+        {
+        }
+
+        Assert.True(buffer.IsEnded(Audio));
+        // A loop wrap re-arms the audio; the picture's queue is emptied and the reader goes back to 0.
+        buffer.ClearEnd(Audio);
+        buffer.FlushStream(Video);
+        // The rest of the old lap's picture must not end the re-armed audio again.
+        Assert.Equal(1, buffer.StreamEndsQueued);
+        AddMedia(buffer, 0, 1);
+        Assert.Equal(0, TakeTime(buffer, Audio));
+        AddMedia(buffer, 1, 3, withAudio: false);
+        Assert.Equal(2, buffer.StreamEndsQueued);
+    }
+
+    [Fact]
+    public void WithoutItsOwnEnd_AStreamEndsOnlyWithTheSource()
+    {
+        ReadAheadBuffer<int> buffer = CreateBuffer();
+        AddMedia(buffer, 0, 1);
+        AddMedia(buffer, 1, 10, withAudio: false);
+
+        Assert.Equal(0, buffer.StreamEndsQueued);
+        buffer.AddEndOfStream();
+        while (buffer.TryTake(Audio, 1, out _) == ReadAheadTake.Packet)
+        {
+        }
+
+        Assert.True(buffer.IsEnded(Audio));
+    }
 }

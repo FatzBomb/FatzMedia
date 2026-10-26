@@ -24,7 +24,9 @@ internal sealed partial class VideoPipeline(
     IVideoHardwareAccelerationServices hardwareAccelerationServices,
     bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
-    private readonly IClockSource _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
+    private readonly HoldableClock _clock = new(clock ?? throw new ArgumentNullException(nameof(clock)));
+    private long _clockHoldStarted;
     private readonly MediaState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly MediaPlayerConfiguration _configuration = configuration;
     private readonly int _bassDeviceIndex = bassDeviceIndex;
@@ -396,7 +398,12 @@ internal sealed partial class VideoPipeline(
         if (demuxer is null || decoder is null)
             return default;
 
-        return new NetworkBufferingSample(_isPlaying, demuxer.NetworkReadStall, demuxer.ReadAheadResumeFill, decoder.EndOfStream || demuxer.NetworkEndOfStream);
+        return new NetworkBufferingSample(
+            _isPlaying,
+            demuxer.NetworkReadStall,
+            demuxer.ReadAheadResumeFill,
+            decoder.EndOfStream || demuxer.NetworkEndOfStream,
+            PlaybackEnded: Volatile.Read(ref _playbackEndSignaled) != 0);
     }
 
     private bool OpenTempFile(string tempPath)
@@ -1195,6 +1202,7 @@ internal sealed partial class VideoPipeline(
                         // still queued, pre-seek to 0 so position-0 frames are ready before
                         // the audio-driven wrap commits below (audio-backed video only).
                         TryPreSeekLoopStart();
+                        UpdateNetworkClockHold();
 
                         var currentPosition = displayLockedSlot is { } slot && displayLockedTarget is not null
                             ? PresentFrameForDisplayLockedSlot(slot, displayLockedTarget)
@@ -1250,6 +1258,42 @@ internal sealed partial class VideoPipeline(
             pacer.WaitNext(
                 TimeSpan.FromSeconds(targetIntervalSeconds),
                 cancellationToken.WaitHandle);
+        }
+    }
+
+    /// <summary>
+    /// Network video without sound (ENG-034): holds the playback clock while the picture waits for
+    /// the network and releases it once the read-ahead refilled (<see cref="NetworkClockHold"/>),
+    /// so an outage longer than the buffer pauses the picture instead of skipping what played
+    /// meanwhile. With sound the audio output waits by itself. Presentation loop only, under the
+    /// presentation lock; transport changes end a hold through <see cref="HoldableClock"/>.
+    /// </summary>
+    private void UpdateNetworkClockHold()
+    {
+        if (HasAudio || _sharedDemuxer?.ReadAhead is not { } readAhead || _videoDecoder is not { } decoder)
+            return;
+
+        var held = _clock.IsHeld;
+        var hold = NetworkClockHold.ShouldHold(
+            held,
+            decoder.FrameCount > 0,
+            readAhead.ConsumerStall,
+            readAhead.ResumeFill,
+            decoder.EndOfStream || readAhead.IsAtEnd);
+        if (hold == held)
+            return;
+
+        if (hold)
+        {
+            if (_clock.Hold())
+            {
+                _clockHoldStarted = Stopwatch.GetTimestamp();
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Network", $"Waiting for the network: the picture holds at {TimeSpan.FromSeconds(Math.Floor(_clock.PositionSeconds)):g}.", sourcePath: _currentVideoPath);
+            }
+        }
+        else if (_clock.Release())
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Network", $"The picture goes on after waiting {Stopwatch.GetElapsedTime(_clockHoldStarted).TotalSeconds:F1} s for the network.", sourcePath: _currentVideoPath);
         }
     }
 

@@ -96,11 +96,12 @@ internal sealed class AudioPipeline : IDisposable
         Engine is INetworkAudioSource network && OpenNetwork(url, () => network.OpenUrl(url));
 
     /// <summary>
-    /// Opens the soundtrack of a network video (Stage 039A, Audio mode): one attempt, as
-    /// <see cref="OpenUrl"/> does for network audio.
+    /// Opens the soundtrack of a network video (Stage 039A, Audio mode), or network audio through
+    /// FFmpeg (<paramref name="audioSource"/>, ENG-034): one attempt, as <see cref="OpenUrl"/> does
+    /// for network audio.
     /// </summary>
-    internal bool OpenNetworkSoundtrack(string url, FfmpegNetworkOptions options) =>
-        Engine is SoundtrackAudioEngine soundtrack && OpenNetwork(url, () => soundtrack.OpenNetwork(url, options));
+    internal bool OpenNetworkSoundtrack(string url, FfmpegNetworkOptions options, bool audioSource = false) =>
+        Engine is SoundtrackAudioEngine soundtrack && OpenNetwork(url, () => soundtrack.OpenNetwork(url, options, audioSource));
 
     private bool OpenNetwork(string url, Func<bool> open)
     {

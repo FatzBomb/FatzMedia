@@ -53,6 +53,12 @@ if [ -n "$enc" ]; then
       -c:a aac -b:a 64k -f hls -hls_time 2 -hls_playlist_type vod -master_pl_name master.m3u8 \
       -var_stream_map "v:0,a:0 v:1,a:1 v:2,a:2" -hls_segment_filename "v%v/seg%03d.ts" "v%v/index.m3u8")
   fi
+  # Network audio and streaming checks (ENG-034): a 20 s MP3 and Ogg Vorbis tone (the Ogg file
+  # carries title/artist tags) and a copy of the MP4 with its index (moov) first.
+  mkdir -p "$media/audio"
+  gen "$media/audio/tone.mp3" -f lavfi -i "sine=frequency=440:duration=20" -c:a libmp3lame -b:a 128k
+  gen "$media/audio/tone.ogg" -f lavfi -i "sine=frequency=440:duration=20" -c:a libvorbis -metadata title="Ogg Title" -metadata artist="Ogg Artist"
+  gen "$media/faststart.mp4" -i "$media/h264_1080p.mp4" -c copy -movflags +faststart
 fi
 
 echo "export FATZBOMB_LINUX_FFMPEG_DIR=$ff/lib"

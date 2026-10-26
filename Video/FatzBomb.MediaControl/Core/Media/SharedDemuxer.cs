@@ -181,16 +181,25 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     /// <summary>
     /// Forgets the audio consumer (its engine closed or failed to open), so the read-ahead stops
-    /// keeping its packets. Its stream is not discarded again: the reader may be reading.
+    /// keeping its packets and discards its stream again (ENG-034: HLS and DASH otherwise keep
+    /// downloading its segments). The reader applies the discard between its reads.
     /// </summary>
     public void UnregisterAudioStream()
     {
         if (_audioStreamIndex < 0)
             return;
 
-        _readAhead?.Unregister(_audioStreamIndex);
+        // The picture may share the stream index only in theory; never discard what it plays.
+        _readAhead?.Unregister(_audioStreamIndex, discard: _audioStreamIndex != _videoStreamIndex);
         _audioStreamIndex = -1;
     }
+
+    /// <summary>
+    /// Takes the in-stream title change playback has reached (see
+    /// <see cref="MediaDemuxer.TryTakeStreamMetadata"/>). Never waits for network I/O.
+    /// </summary>
+    public bool TryTakeStreamMetadata(double playedUpToSeconds, out StreamMetadata metadata) =>
+        _demuxer.TryTakeStreamMetadata(playedUpToSeconds, out metadata);
 
     /// <summary>
     /// Reads the next video packet into <paramref name="packet"/>. Non-video
