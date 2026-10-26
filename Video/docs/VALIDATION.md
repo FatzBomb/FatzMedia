@@ -647,6 +647,7 @@ Procedure and expected:
 53. Video playback resumes from the settled seek visual without skipping ahead or replaying earlier frames.
 54. An authored MOD/S3M/XM/IT pattern loopback moves the seekbar back to its first-pass loop position even when whole-file looping is disabled.
 55. With Silent Drag on (Player Audio flyout), a seek-bar drag is silent while it moves, plays again within about 120 ms of holding still and on release, for audio, CD+G, and video soundtracks; user volume is unchanged.
+56. Every test player (WPF, Avalonia, WinForms) takes the shared flags: `--players=1..4` (independent players), `--renderer=auto` GPU first (Windows: Direct3D11 GPU, WARP, software; elsewhere Vulkan, software), `--surface=framesink`, `--decoding=software`, `--second-screen=<n>`; full-screen chrome hides after 2.5 s and only a real pointer move shows it; each player has a stats line and seek-bar keys; files drop onto the video (smoke: `updates/046A_3`).
 
 ---
 

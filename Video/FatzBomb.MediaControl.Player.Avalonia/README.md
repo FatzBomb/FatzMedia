@@ -18,8 +18,9 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
 ## What it tests
 
 - `FatzBomb.MediaControl.Avalonia.MediaSurface` bound to a `MediaControlPlayer` (composited frame sink).
-- Software and Vulkan renderers, and Direct3D11 in the Windows build, switched at run time (an
-  unusable renderer is greyed out).
+- Software and Vulkan renderers, and Direct3D11 on the GPU and on WARP in the Windows build,
+  switched at run time (an unusable renderer is greyed out). `--hdr-output` is logged as not
+  available (the surfaces are composited) and ignored.
 - The surface's presentation path (Stage 027A slice 2): the status line ends with `via shared GPU image`
   (frames imported by Avalonia's compositor, no CPU copy) or `via frame sink`, and the log gives the
   reason. `--surface=framesink` forces the frame sink, for comparison.
@@ -62,8 +63,11 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0-windows7.0 -- [media-file] [options]
 ```
 
-Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
-software, also `--software`; `direct3d11` in the Windows build only), `--surface=auto|framesink`
+Options (all shared with the other players since Stage 046A slice 3, see
+`FatzBomb.MediaControl.Player.Shared/README.md`): `--renderer=auto|gpu|warp|software|vulkan|direct3d11`
+(default auto, GPU first: Direct3D11 on the GPU, then WARP, then software in the Windows build;
+Vulkan, then software elsewhere; `--software` is `software`; `warp` and `direct3d11` in the Windows
+build only; an unusable choice falls back to auto with a warning), `--surface=auto|framesink`
 (default auto), `--decoding=auto|software` (default auto: hardware for Direct3D11 on a GPU, as
 above), `--players=1..4`, `--second-screen=<n>` (1-based screen number; opens player 1's
 second screen there at startup, full screen), and the flags every test player shares
