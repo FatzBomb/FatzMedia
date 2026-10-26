@@ -1,16 +1,15 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
 
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 /// <summary>
 /// Validation-host wiring for the Core prepared-next slot (Stage 031A) and its fades (Stage
 /// 031B), driven from the Next flyout. <c>--prepare-next=&lt;path&gt;</c>, <c>--auto-next</c>,
 /// and <c>--fade-next=&lt;seconds&gt;</c> pre-set the same controls at startup.
 /// </summary>
-public sealed partial class MainWindowViewModel
+public partial class PlayerViewModel
 {
     /// <summary>Manual fade length used when the fade slider is at 0 (transitions unfaded).</summary>
     private static readonly TimeSpan DefaultManualFade = TimeSpan.FromSeconds(3);
@@ -24,6 +23,9 @@ public sealed partial class MainWindowViewModel
     public AsyncRelayCommand FadeInCommand { get; private set; } = null!;
 
     public RelayCommand CancelFadeCommand { get; private set; } = null!;
+
+    /// <summary>Asks the host's file picker for the next item and prepares it.</summary>
+    public AsyncRelayCommand ChooseNextCommand { get; private set; } = null!;
 
     [ObservableProperty]
     public partial string PreparedNextText { get; private set; } = "Nothing prepared";
@@ -67,8 +69,9 @@ public sealed partial class MainWindowViewModel
         FadeOutCommand = new AsyncRelayCommand(() => RunManualFadeAsync(fadeOut: true), CanUsePlayer);
         FadeInCommand = new AsyncRelayCommand(() => RunManualFadeAsync(fadeOut: false), CanUsePlayer);
         CancelFadeCommand = new RelayCommand(CancelFade, CanUsePlayer);
-        AutoNext = App.AutoTransitionToPreparedNext;
-        FadeSeconds = App.PreparedNextFadeDuration.TotalSeconds;
+        ChooseNextCommand = new AsyncRelayCommand(ChooseNextAsync);
+        AutoNext = Options.AutoNext;
+        FadeSeconds = Options.FadeNext.TotalSeconds;
     }
 
     private void RefreshPreparedNextCommandStates()
@@ -80,17 +83,17 @@ public sealed partial class MainWindowViewModel
         CancelFadeCommand.NotifyCanExecuteChanged();
     }
 
-    private void StartPreparedNextValidation(FatzMediaPlayer player)
+    private void StartPreparedNextValidation(MediaControlPlayer player)
     {
         player.PreparedNextChanged += OnPreparedNextChanged;
         player.PreparedNextTransitioned += OnPreparedNextTransitioned;
         player.AutoTransitionToPreparedNext = AutoNext;
         player.PreparedNextTransitionFade = new AudioCrossfadeOptions { Duration = TimeSpan.FromSeconds(FadeSeconds) };
-        if (App.PrepareNextPath is { } path)
+        if (Options.PrepareNextPath is { } path)
             _ = PrepareNextAsync(path);
     }
 
-    private void StopPreparedNextValidation(FatzMediaPlayer player)
+    private void StopPreparedNextValidation(MediaControlPlayer player)
     {
         player.PreparedNextChanged -= OnPreparedNextChanged;
         player.PreparedNextTransitioned -= OnPreparedNextTransitioned;
@@ -113,6 +116,29 @@ public sealed partial class MainWindowViewModel
         {
             ReportPreparedNext($"Prepare next failed: {ex.Message}");
         }
+    }
+
+    private async Task ChooseNextAsync()
+    {
+        if (_host.FilePicker is not { } picker)
+        {
+            StatusText = "No file picker is available.";
+            return;
+        }
+
+        string? path;
+        try
+        {
+            path = await picker.PickFileAsync("Choose the next item", Player?.OpenFileDialogFilter ?? "All files|*.*");
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Choose next failed: {ex.Message}";
+            return;
+        }
+
+        if (path is not null)
+            await PrepareNextAsync(path);
     }
 
     private async Task PlayNextNowAsync()
@@ -175,7 +201,7 @@ public sealed partial class MainWindowViewModel
             ? "no analysis"
             : $"effective={analysis.EffectiveDuration:F2}s, gain={analysis.NormalizationGain:F3}";
         ReportPreparedNext($"Prepared next {e.Previous.State} -> {e.Current.State} ({analysisText})");
-        UpdateEffectOnUiThread(() =>
+        RunOnUiThread(() =>
         {
             PreparedNextText = FormatPreparedNext(e.Current);
             RefreshPreparedNextCommandStates();
@@ -204,5 +230,5 @@ public sealed partial class MainWindowViewModel
     }
 
     private void ReportPreparedNext(string message) =>
-        UpdateEffectOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "PreparedNext", message));
+        RunOnUiThread(() => HandleDiagnostic(MediaDiagnosticLevel.Info, "PreparedNext", message));
 }

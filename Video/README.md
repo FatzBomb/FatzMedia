@@ -15,10 +15,11 @@ FatzBomb.MediaControl is a media-control solution with a UI-agnostic Core engine
 | `FatzBomb.MediaControl.Linux` | Linux platform services: host-supplied BASS/FFmpeg shared-library loading, precision waits, BASS device monitoring, software decode. |
 | `FatzBomb.MediaControl.Wpf` | WPF adapter for control/HWND lifecycle interop and WPF-specific input conversions. It receives platform composition from the host and owns no renderer, pipeline, layer, timing, or final presentation logic. |
 | `FatzBomb.MediaControl.Avalonia` | Avalonia adapter: composited `MediaSurface` over the frame-sink contract and bitmap conversions. |
-| `FatzBomb.MediaControl.WinForms` | WinForms adapter: HWND `MediaSurface` attached as the primary presentation surface. |
-| `FatzBomb.MediaControl.Player` | WPF validation host used to exercise the Core engine through the WPF adapter. |
-| `FatzBomb.MediaControl.Player.Avalonia` | Cross-platform (Windows + Linux) Avalonia test player: software or Vulkan renderer, 1-4 players side by side with CPU/memory/fps status lines. |
-| `FatzBomb.MediaControl.Player.WinForms` | Minimal WinForms test player: HWND `MediaSurface` with Direct3D11. |
+| `FatzBomb.MediaControl.WinForms` | WinForms adapter: HWND `MediaSurface` attached as a presentation surface (primary, or a second screen). |
+| `FatzBomb.MediaControl.Player.Shared` | The test players' shared, UI-agnostic view model (`PlayerViewModel`) and command line; hosts supply UI thread, dialogs and engine. |
+| `FatzBomb.MediaControl.Player` | WPF validation host used to exercise the Core engine through the WPF adapter (the reference player). |
+| `FatzBomb.MediaControl.Player.Avalonia` | Cross-platform (Windows + Linux) Avalonia test player at WPF feature parity: software, Vulkan or Direct3D11 renderer, 1-4 players side by side with CPU/memory/fps status lines. |
+| `FatzBomb.MediaControl.Player.WinForms` | WinForms test player at WPF feature parity: HWND `MediaSurface` with Direct3D11. |
 
 Future UI integrations should be separate adapter projects using the same package style, for example `FatzBomb.MediaControl.WinUI`, `FatzBomb.MediaControl.Avalonia`, and `FatzBomb.MediaControl.WinForms`.
 

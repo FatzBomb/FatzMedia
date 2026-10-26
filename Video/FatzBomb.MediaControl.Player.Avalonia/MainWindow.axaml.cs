@@ -1,12 +1,14 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
-/// Hosts 1-4 independent <see cref="PlayerPanel"/>s side by side and feeds each a once-a-second
-/// process reading for its status line. Changing the player count or renderer recreates the
-/// players (loaded files are not kept).
+/// Hosts 1-4 independent <see cref="PlayerPanel"/>s side by side (one shared view model each) and
+/// feeds each a once-a-second process reading for its status line. Changing the player count or
+/// renderer recreates the players (loaded files are not kept). F11 or a double-click on a picture
+/// shows that player alone, full screen; Escape closes its flyout, then leaves full screen.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -21,6 +23,8 @@ public partial class MainWindow : Window
     private bool _rebuildAgain;
     private bool _closing;
     private bool _firstBuild = true;
+    private PlayerPanel? _fullScreenPanel;
+    private WindowState _restoreWindowState;
 
     public MainWindow()
     {
@@ -28,6 +32,7 @@ public partial class MainWindow : Window
         _nativePaths = NativePaths.Resolve(_options);
         _statsTimer.Tick += OnStatsTick;
         Opened += OnOpened;
+        AddHandler(KeyDownEvent, OnWindowKeyDown, global::Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
     private async void OnOpened(object? sender, EventArgs e)
@@ -79,11 +84,19 @@ public partial class MainWindow : Window
 
     private async Task RebuildOnceAsync()
     {
+        ExitFullScreen();
         PlayerPanel[] old = [.. _panels];
         _panels.Clear();
         PlayersGrid.Children.Clear();
         foreach (PlayerPanel panel in old)
+        {
+            panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
             await panel.DisposeAsync();
+        }
+
+        // Closed while the old players were disposed: OnClosing has already run, so build nothing it would miss.
+        if (_closing)
+            return;
 
         var count = PlayersBox.SelectedIndex + 1;
         var kind = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
@@ -92,16 +105,78 @@ public partial class MainWindow : Window
 
         for (var i = 0; i < count; i++)
         {
-            var panel = new PlayerPanel(i + 1, option, _nativePaths);
+            // Only the first player of the first build gets the startup media.
+            var panel = new PlayerPanel(i + 1, option, _nativePaths, _firstBuild ? _options.ForPlayer(i + 1) : _options.Shared.WithoutStartupMedia());
+            panel.FullScreenToggleRequested += OnFullScreenToggleRequested;
             _panels.Add(panel);
             PlayersGrid.Children.Add(panel);
         }
 
         // Created one after the other: native loading is process-wide and happens on the first.
         for (var i = 0; i < _panels.Count && !_closing; i++)
-            await _panels[i].InitializeAsync(_firstBuild && i == 0 ? _options.MediaPath : null);
+            await _panels[i].InitializeAsync();
 
         _firstBuild = false;
+    }
+
+    private void OnFullScreenToggleRequested(object? sender, EventArgs e)
+    {
+        if (sender is not PlayerPanel panel)
+            return;
+
+        if (ReferenceEquals(_fullScreenPanel, panel))
+            ExitFullScreen();
+        else
+            EnterFullScreen(panel);
+    }
+
+    private void EnterFullScreen(PlayerPanel panel)
+    {
+        ExitFullScreen();
+        _fullScreenPanel = panel;
+        _restoreWindowState = WindowState;
+        Toolbar.IsVisible = false;
+        foreach (PlayerPanel other in _panels)
+            other.IsVisible = ReferenceEquals(other, panel);
+        PlayersGrid.Columns = 1;
+        panel.SetFullScreen(true);
+        WindowState = WindowState.FullScreen;
+    }
+
+    private void ExitFullScreen()
+    {
+        if (_fullScreenPanel is not { } panel)
+            return;
+
+        _fullScreenPanel = null;
+        panel.SetFullScreen(false);
+        foreach (PlayerPanel other in _panels)
+            other.IsVisible = true;
+        PlayersGrid.Columns = _panels.Count == 1 ? 1 : 2;
+        Toolbar.IsVisible = true;
+        WindowState = _restoreWindowState == WindowState.FullScreen ? WindowState.Normal : _restoreWindowState;
+    }
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F11 && _panels.Count > 0)
+        {
+            if (_fullScreenPanel is not null)
+                ExitFullScreen();
+            else
+                EnterFullScreen(_panels.FirstOrDefault(static panel => panel.IsKeyboardFocusWithin) ?? _panels[0]);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            if (_fullScreenPanel?.CloseFlyout() == true)
+                e.Handled = true;
+            else if (_fullScreenPanel is not null)
+            {
+                ExitFullScreen();
+                e.Handled = true;
+            }
+        }
     }
 
     private void OnStatsTick(object? sender, EventArgs e)

@@ -53,6 +53,62 @@ public sealed class WinFormsMediaSurfaceTests
         Assert.Equal(["attach 64x64"], secondRecorder.Calls);
     });
 
+    [Fact]
+    public void ProjectorRole_AttachesAsTheSecondarySurfaceWithoutTouchingTheDisplayMode() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface
+        {
+            Size = new System.Drawing.Size(96, 54),
+            Role = MediaPresentationSurfaceRole.Projector,
+            VideoDisplayMode = VideoDisplayMode.Stretch,
+            Player = session,
+        };
+        _ = surface.Handle;
+
+        Assert.True(surface.IsSurfaceAttached);
+        Assert.False(surface.IsPrimarySurfaceAttached);
+        MediaPresentationSurfaceDescriptor attached = recorder.LastAttached!;
+        Assert.Equal(MediaPresentationSurfaceRole.Projector, attached.Role);
+        Assert.Equal(WinFormsMediaSurface.DefaultSecondarySurfaceId, attached.Id);
+        Assert.Equal(0, recorder.VideoDisplayModeSets);
+    });
+
+    [Fact]
+    public void RoleChangeToPrimary_ReattachesAsPrimaryAndSendsTheDisplayMode() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface
+        {
+            Size = new System.Drawing.Size(64, 64),
+            Role = MediaPresentationSurfaceRole.Projector,
+            VideoDisplayMode = VideoDisplayMode.Stretch,
+            Player = session,
+        };
+        _ = surface.Handle;
+
+        surface.Role = MediaPresentationSurfaceRole.Primary;
+
+        Assert.True(surface.IsPrimarySurfaceAttached);
+        Assert.Equal(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, recorder.LastAttached!.Id);
+        Assert.Equal(1, recorder.VideoDisplayModeSets);
+    });
+
+    [Fact]
+    public void SurfaceIdChange_ReattachesAndDetachesTheIdItAttachedWith() => RunSta(() =>
+    {
+        (IMediaControlSession session, SurfaceRecorder recorder) = SurfaceRecorder.Create();
+        using var surface = new WinFormsMediaSurface { Size = new System.Drawing.Size(64, 64), Role = MediaPresentationSurfaceRole.Projector, Player = session };
+        _ = surface.Handle;
+
+        surface.SurfaceId = "screen-2";
+        surface.Player = null;
+
+        Assert.Equal(["attach 64x64", "detach", "attach 64x64", "detach"], recorder.Calls);
+        Assert.Equal([WinFormsMediaSurface.DefaultSecondarySurfaceId, "screen-2"], recorder.DetachedIds);
+        Assert.Equal("screen-2", surface.EffectiveSurfaceId);
+    });
+
     private static void RunSta(Action action)
     {
         Exception? failure = null;
@@ -74,6 +130,10 @@ public sealed class WinFormsMediaSurfaceTests
 
         public MediaPresentationSurfaceDescriptor? LastAttached { get; private set; }
 
+        public ConcurrentQueue<string> DetachedIds { get; } = new();
+
+        public int VideoDisplayModeSets;
+
         public static (IMediaControlSession Session, SurfaceRecorder Recorder) Create()
         {
             IMediaControlSession session = Create<IMediaControlSession, SurfaceRecorder>();
@@ -94,6 +154,10 @@ public sealed class WinFormsMediaSurfaceTests
                     break;
                 case nameof(IMediaControlSession.DetachPresentationSurface):
                     Calls.Enqueue("detach");
+                    DetachedIds.Enqueue((string)args![0]!);
+                    break;
+                case "set_" + nameof(IMediaControlSession.VideoDisplayMode):
+                    _ = Interlocked.Increment(ref VideoDisplayModeSets);
                     break;
             }
 

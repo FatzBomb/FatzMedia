@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
-using FatzBomb.MediaControl.Player.ViewModels;
+using FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 namespace FatzBomb.MediaControl.Player.Converters;
 
@@ -11,18 +11,7 @@ public sealed class FlyoutVisibilityConverter : IValueConverter
     {
         if (value is PlayerFlyout activeFlyout && parameter is string flyoutName)
         {
-            var target = flyoutName switch
-            {
-                "Sync" => PlayerFlyout.Sync,
-                "Video" => PlayerFlyout.Video,
-                "Audio" => PlayerFlyout.Audio,
-                "AV" => PlayerFlyout.AV,
-                "Next" => PlayerFlyout.Next,
-                "Log" => PlayerFlyout.Log,
-                _ => PlayerFlyout.None
-            };
-
-            return activeFlyout == target ? Visibility.Visible : Visibility.Collapsed;
+            return activeFlyout == PlayerViewModel.ParseFlyout(flyoutName) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         return Visibility.Collapsed;

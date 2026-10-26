@@ -4,6 +4,17 @@ Avalonia test player for `FatzBomb.MediaControl`, for Windows and Linux. It exer
 `MediaSurface` adapter with the frame-sink renderers (software and Vulkan) and doubles as a small
 measuring rig for several players in one process.
 
+Each player binds the shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage
+044A), the same view model as the WPF and WinForms players, so it has the WPF player's features:
+the **Sync** (offsets, subtitle picker), **Video** (visual transforms), **Audio** (pitch, tempo,
+normalize, load resets, silent drag, 10-band EQ), **A/V** (auto play, display-locked timing,
+display mode, CD+G background), **Next** (prepared item, auto-next, fades, stream info) and
+**Log** flyouts. The seek bar scrubs while dragging (`BeginScrub`, drag seeks, `EndScrub`); a
+key steps it once. Drop a file on a player to open it there. A double-click on the picture (or
+F11) shows that player alone, full screen, with the controls hidden after 2.5 s without mouse
+movement; Escape closes the open flyout, then leaves full screen. Every diagnostic also goes to
+`%TEMP%/FatzBombMedia/player-avalonia-debug.log` (**Open log file**), overwritten at each start.
+
 ## What it tests
 
 - `FatzBomb.MediaControl.Avalonia.MediaSurface` bound to a `MediaControlPlayer` (composited frame sink).
@@ -20,16 +31,19 @@ measuring rig for several players in one process.
   `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
   screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
   its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
-- A log panel per player: every `MediaDiagnostic` and `MediaError` event, newest first (500 entries).
-  **Copy log** puts the whole log, oldest first, on the clipboard (for a bug report).
+- A **Log** flyout per player (open at start): every `MediaDiagnostic` and `MediaError` event, newest
+  first (1000 entries). **Copy all** puts the whole log, oldest first, on the clipboard (for a bug
+  report).
 - **Players: 1-4** in the toolbar: that many independent players in a grid, each with its own engine,
   surface, file, transport and log. Changing the count or renderer recreates the players (files are not kept).
 - A status line per player: state, frames presented per second (from `PresentationFramePresented`), process CPU
   (share of all cores, plus cores used), managed memory (`GC.GetTotalMemory`) and working set, and the
   surface pixel size. CPU and memory are for the whole process, so they are the same on every line;
-  fps is per player. Sampled once a second. The seek bar's 200 ms timer reads `State`, `Duration` and
-  `Position` off the UI thread (ENG-035), so an engine read that blocks or throws cannot freeze the
-  window: a read slower than 100 ms, blocked for a second, or failing is logged as a Warning.
+  fps is per player. Sampled once a second. Above it, the view model's status line shows the latest
+  status, warning or error. The seek bar's 200 ms timer reads `State`, `Duration` and `Position`
+  off the UI thread (ENG-035, now in the shared view model), so an engine read that blocks or throws
+  cannot freeze the window: a read slower than 100 ms, blocked for a second, or failing is logged
+  as a Warning.
 
 ## Run
 
@@ -43,12 +57,16 @@ dotnet run --project FatzBomb.MediaControl.Player.Avalonia -c Release -f net10.0
 ```
 
 Options: `--renderer=software|vulkan|direct3d11|auto` (auto = Vulkan if usable, else software; default
-software; `direct3d11` in the Windows build only), `--surface=auto|framesink` (default auto),
-`--players=1..4`, `--mode=full|background|audio` (Stage 043A; default full), `--second-screen=<n>`
-(1-based screen number; opens player 1's second screen there at startup, full screen),
-`--native=<dir>` (repeatable), and an optional media file or http/https URL for the first player
-(`--url=<http(s)://...>` does the same). Each player's Mode box switches its mode on the fly
-(`SetModeAsync`); `--mode` sets its initial value.
+software, also `--software`; `direct3d11` in the Windows build only), `--surface=auto|framesink`
+(default auto), `--players=1..4`, `--second-screen=<n>` (1-based screen number; opens player 1's
+second screen there at startup, full screen), and the flags every test player shares
+(`PlayerStartupOptions`): an optional media file or http/https URL for the first player
+(`--url=<http(s)://...>` does the same and wins over a file), `--mode=full|background|audio`
+(Stage 043A; default full), `--native=<dir>` (repeatable), `--net-retries=`, `--net-ca-file=`,
+`--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--trim-silence`,
+`--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`, `--prepare-next=`,
+`--auto-next`, `--fade-next=`, `--visual-transform-demo`. Each player's Mode box switches its mode
+on the fly (`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.
 Vulkan on a machine without a GPU needs Mesa lavapipe (`apt-get install mesa-vulkan-drivers`).
@@ -79,6 +97,10 @@ panels stay disabled and the log lists exactly which library is missing.
 
 ## Notes
 
-- Engine events arrive on background threads and are marshalled with `Dispatcher.UIThread.Post`.
+- Engine events arrive on background threads; the shared view model marshals them with the host's
+  dispatcher (`AvaloniaPlayerHost.cs`: `Dispatcher.UIThread`).
 - Players are created sequentially off the UI thread and disposed off the UI thread (dispose waits for media operations).
-- All code is plain code-behind; the app uses only the public engine API, the Avalonia adapter, a platform package and renderer packages.
+- MVVM: `PlayerPanel.axaml` binds the shared view model (compiled bindings); the code-behind keeps
+  only view behaviour (seek drag, second screen, full screen, drops, surface path, frame rate).
+  The app uses only the public engine API, the Avalonia adapter, a platform package, renderer
+  packages and the shared view model.

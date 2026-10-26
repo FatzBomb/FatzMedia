@@ -45,8 +45,10 @@ not up front.
 - Diagnostics belong to the player that raised them (`DiagnosticRouter.EnterOwner`, an
   `AsyncLocal`). Work that drops the execution context (`ExecutionContext.SuppressFlow`,
   native callbacks) must re-enter the owner; process-wide work must not capture one.
-- The WPF `Player` host uses MVVM (CommunityToolkit.Mvvm); code-behind only for view behaviour
-  and HWND interop. The Avalonia and WinForms test players are plain code-behind.
+- The WPF, Avalonia and WinForms test players bind one view model, `PlayerViewModel` in
+  `FatzBomb.MediaControl.Player.Shared` (CommunityToolkit.Mvvm, Core only; hosts supply UI thread,
+  dialogs and engine through its `Hosting/` interfaces). Player logic goes there; hosts keep
+  code-behind for view behaviour, surfaces and HWND interop.
 
 ## Tests and validation
 - Test pure logic, plus player behaviour through the existing doubles (`TestPlatformFactory`,

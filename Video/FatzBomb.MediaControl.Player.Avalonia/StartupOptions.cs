@@ -1,10 +1,12 @@
-using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Player.Shared;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
-/// Command line: <c>[media-file|http(s)-url] [--url=&lt;http(s)://...&gt;] [--renderer=auto|software|vulkan|direct3d11] [--surface=auto|framesink] [--players=1..4]
-/// [--mode=full|background|audio] [--second-screen=&lt;n&gt;] [--native=&lt;dir&gt;]...</c>
+/// Command line: the flags every test player shares (<see cref="PlayerStartupOptions"/>: media file
+/// or http(s) URL, <c>--url=</c>, <c>--mode=</c>, <c>--native=</c>, <c>--net-*</c>, <c>--eq=</c>, ...)
+/// plus this player's own <c>[--renderer=auto|software|vulkan|direct3d11] [--software]
+/// [--surface=auto|framesink] [--players=1..4] [--second-screen=&lt;n&gt;]</c>.
 /// </summary>
 internal sealed class StartupOptions
 {
@@ -12,13 +14,13 @@ internal sealed class StartupOptions
 
     public static StartupOptions Current { get; set; } = new();
 
-    /// <summary>
-    /// Gets the media file or http/https URL (Stage 039A; also <c>--url=</c>) for the first player,
-    /// when one was passed.
-    /// </summary>
-    public string? MediaPath { get; private init; }
+    /// <summary>Gets the options shared with the other test players. The startup media goes to the first player only.</summary>
+    public PlayerStartupOptions Shared { get; private init; } = new();
 
-    /// <summary>Gets the requested renderer (<c>auto</c> picks Vulkan when it is usable, else software).</summary>
+    /// <summary>
+    /// Gets the requested renderer (<c>auto</c> picks Vulkan when it is usable, else software;
+    /// <c>--software</c> is <c>software</c>); software when not given.
+    /// </summary>
     public string Renderer { get; private init; } = "software";
 
     public int Players { get; private init; } = 1;
@@ -29,9 +31,6 @@ internal sealed class StartupOptions
     /// </summary>
     public bool PreferGpuSurface { get; private init; } = true;
 
-    /// <summary>Gets the mode every player is created in (Stage 043A).</summary>
-    public MediaPlayerMode Mode { get; private init; } = MediaPlayerMode.Full;
-
     /// <summary>
     /// Gets the screen (1-based, in Avalonia's <c>Screens.All</c> order) that player 1's second
     /// screen opens on, full screen, at startup (<c>--second-screen=&lt;n&gt;</c>, Stage 027A slice
@@ -39,61 +38,29 @@ internal sealed class StartupOptions
     /// </summary>
     public int? SecondScreen { get; private init; }
 
-    /// <summary>Gets the directories given with <c>--native=</c>, highest priority first.</summary>
-    public IReadOnlyList<string> NativeDirectories { get; private init; } = [];
-
-    public static StartupOptions Parse(IEnumerable<string> args)
+    public static StartupOptions Parse(IReadOnlyList<string> args)
     {
-        string? media = null;
-        var renderer = "software";
-        var players = 1;
-        var preferGpuSurface = true;
-        var mode = MediaPlayerMode.Full;
-        int? secondScreen = null;
-        List<string> native = [];
-
-        foreach (var argument in args)
-        {
-            if (TryValue(argument, "--renderer=", out var value))
-                renderer = value.ToLowerInvariant();
-            else if (TryValue(argument, "--surface=", out value))
-                preferGpuSurface = !value.Equals("framesink", StringComparison.OrdinalIgnoreCase);
-            else if (TryValue(argument, "--players=", out value) && int.TryParse(value, out var count))
-                players = Math.Clamp(count, 1, MaxPlayers);
-            else if (TryValue(argument, "--mode=", out value) && Enum.TryParse(value, ignoreCase: true, out MediaPlayerMode parsed)
-                && Enum.IsDefined(parsed))
-                mode = parsed;
-            else if (TryValue(argument, "--second-screen=", out value) && int.TryParse(value, out var screen) && screen > 0)
-                secondScreen = screen;
-            else if (TryValue(argument, "--native=", out value) && value.Length > 0)
-                native.Add(value);
-            else if (TryValue(argument, "--url=", out value) && value.Length > 0)
-                media = value;
-            else if (!argument.StartsWith("--", StringComparison.Ordinal))
-                media ??= argument;
-        }
+        PlayerStartupOptions shared = PlayerStartupOptions.Parse(args);
+        // --software asks for the software renderer, which is already the default here.
+        var renderer = shared.Renderer?.ToLowerInvariant() ?? "software";
+        var players = PlayerStartupOptions.Values(args, "--players=")
+            .Select(static value => int.TryParse(value, out var count) ? Math.Clamp(count, 1, MaxPlayers) : (int?)null)
+            .LastOrDefault(static count => count is not null) ?? 1;
+        var surface = PlayerStartupOptions.Values(args, "--surface=").LastOrDefault();
+        var secondScreen = PlayerStartupOptions.Values(args, "--second-screen=")
+            .Select(static value => int.TryParse(value, out var screen) && screen > 0 ? screen : (int?)null)
+            .LastOrDefault(static screen => screen is not null);
 
         return new StartupOptions
         {
-            MediaPath = media,
+            Shared = shared,
             Renderer = renderer,
             Players = players,
-            PreferGpuSurface = preferGpuSurface,
-            Mode = mode,
+            PreferGpuSurface = surface is null || !surface.Equals("framesink", StringComparison.OrdinalIgnoreCase),
             SecondScreen = secondScreen,
-            NativeDirectories = native
         };
     }
 
-    private static bool TryValue(string argument, string prefix, out string value)
-    {
-        if (argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        {
-            value = argument[prefix.Length..].Trim('"');
-            return true;
-        }
-
-        value = string.Empty;
-        return false;
-    }
+    /// <summary>Gets the shared options for player <paramref name="index"/> (1-based): only player 1 gets the startup media.</summary>
+    public PlayerStartupOptions ForPlayer(int index) => index == 1 ? Shared : Shared.WithoutStartupMedia();
 }

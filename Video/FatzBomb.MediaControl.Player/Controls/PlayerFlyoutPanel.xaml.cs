@@ -14,9 +14,6 @@ public partial class PlayerFlyoutPanel : UserControl
 
     public event EventHandler? SecondaryWindowToggleRequested;
 
-    /// <summary>Raised when the user asks to pick the next item; the window owns the file dialog.</summary>
-    public event EventHandler? ChooseNextRequested;
-
     public PlayerFlyoutPanel()
     {
         InitializeComponent();
@@ -37,12 +34,6 @@ public partial class PlayerFlyoutPanel : UserControl
     private void SecondaryWindowCheckBox_Click(object sender, RoutedEventArgs e)
     {
         SecondaryWindowToggleRequested?.Invoke(this, EventArgs.Empty);
-        e.Handled = true;
-    }
-
-    private void ChooseNextButton_Click(object sender, RoutedEventArgs e)
-    {
-        ChooseNextRequested?.Invoke(this, EventArgs.Empty);
         e.Handled = true;
     }
 }

@@ -23,6 +23,7 @@ $projectReferences = @{
     )
     'FatzBomb.MediaControl.Player\FatzBomb.MediaControl.Player.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Wpf\FatzBomb.MediaControl.Wpf.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
@@ -53,10 +54,12 @@ $projectReferences = @{
     )
     'FatzBomb.MediaControl.Portable.Tests\FatzBomb.MediaControl.Portable.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj'
     )
     'FatzBomb.MediaControl.Tests\FatzBomb.MediaControl.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
@@ -66,6 +69,11 @@ $projectReferences = @{
     'FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
+    # The test players' shared view model (Stage 044A): Core only, no UI, adapter, platform or
+    # renderer; each player supplies those through its Hosting/ abstractions.
+    'FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
     # Test players (hosts): public API, adapters, platform and renderer packages only.
     # The Avalonia player multi-targets and references Windows and Windows.Direct3D11
     # (net10.0-windows7.0 only; Direct3D11 feeds the shared GPU image path, Stage 027A slice 2) and
@@ -73,6 +81,7 @@ $projectReferences = @{
     'FatzBomb.MediaControl.Player.Avalonia\FatzBomb.MediaControl.Player.Avalonia.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
         '..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj',
         '..\FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
@@ -81,6 +90,7 @@ $projectReferences = @{
     )
     'FatzBomb.MediaControl.Player.WinForms\FatzBomb.MediaControl.Player.WinForms.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj',
         '..\FatzBomb.MediaControl.WinForms\FatzBomb.MediaControl.WinForms.csproj',
         '..\FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj',
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
@@ -127,6 +137,27 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
 if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests', 'FatzBomb.MediaControl.Linux.Tests') }) {
     throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects.'
+}
+
+# The shared player view model stays UI-agnostic: portable TFM, the MVVM toolkit as its only
+# package, and no UI-framework or Windows namespaces in its sources.
+$sharedPlayerProject = Join-Path $root 'FatzBomb.MediaControl.Player.Shared'
+[xml] $sharedPlayerProjectFile = Get-Content -Raw -Path (Join-Path $sharedPlayerProject 'FatzBomb.MediaControl.Player.Shared.csproj')
+if ($sharedPlayerProjectFile.Project.PropertyGroup.TargetFramework -ne 'net10.0') {
+    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared must target net10.0.'
+}
+
+$sharedPlayerPackages = @($sharedPlayerProjectFile.Project.ItemGroup.PackageReference | ForEach-Object Include | Where-Object { $_ })
+if ($sharedPlayerPackages | Where-Object { $_ -ne 'CommunityToolkit.Mvvm' }) {
+    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared may reference only the CommunityToolkit.Mvvm package.'
+}
+
+$sharedPlayerViolations = @(Get-ChildItem -Path $sharedPlayerProject -Recurse -Filter '*.cs' |
+    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+    Select-String -Pattern 'using (System\.Windows|Avalonia|Microsoft\.Win32)|FatzBomb\.MediaControl\.(Wpf|Avalonia|WinForms|Windows|Linux|Rendering)')
+if ($sharedPlayerViolations.Count -gt 0) {
+    $sharedPlayerViolations | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+    throw 'Core boundary check failed: FatzBomb.MediaControl.Player.Shared contains UI-framework, adapter, platform or renderer references.'
 }
 
 $forbiddenPatterns = @(

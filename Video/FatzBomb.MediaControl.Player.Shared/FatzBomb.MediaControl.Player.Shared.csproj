@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UI-agnostic view model shared by the test players (WPF, Avalonia, WinForms). It is written
+    against the Core MediaControlPlayer only; each host supplies its UI thread, timer, clipboard,
+    file picker and engine (renderer, platform package, native paths) through Hosting/.
+    It must not reference a UI framework, an adapter, a platform package or a renderer.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>FatzBomb.MediaControl.Player.Shared</AssemblyName>
+    <RootNamespace>FatzBomb.MediaControl.Player.Shared</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+  </ItemGroup>
+
+</Project>

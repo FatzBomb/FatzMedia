@@ -166,9 +166,8 @@
                             Grid.Column="0"
                             Orientation="Horizontal">
                             <Button
-                                Click="OpenButton_Click"
+                                Command="{Binding OpenFileCommand}"
                                 Content="&#xE8E5;"
-                                IsEnabled="{Binding CanOpen}"
                                 Style="{StaticResource ChromeButtonStyle}"
                                 ToolTip="Open media" />
                             <Button

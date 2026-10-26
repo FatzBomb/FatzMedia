@@ -215,10 +215,10 @@ on, the HDR settings page shows "SDR content brightness".
 ### Host flag
 
 A host passes `new Direct3D11PresentationOptions { HdrOutput = true }` to
-`WindowsDirect3D11MediaControlPlatformFactory` / `CreatePresentationFactory`. The WPF Player
-takes `--hdr-output` (`App.HdrOutput`, passed to `PlayerRendererSelection.Resolve`). The WinForms
-player can take the same flag; the Avalonia player's Direct3D11 path uses shared textures and
-would only log the SDR reason.
+`WindowsDirect3D11MediaControlPlatformFactory` / `CreatePresentationFactory`. The test players
+share `--hdr-output` (`PlayerStartupOptions.HdrOutput`, stage 044A): the WPF Player passes it to
+`PlayerRendererSelection.Resolve`, the WinForms player to its `Direct3D11PresentationOptions`. The
+Avalonia player's Direct3D11 path uses shared textures and stays SDR, so it does not pass it.
 
 ## Not in this slice
 

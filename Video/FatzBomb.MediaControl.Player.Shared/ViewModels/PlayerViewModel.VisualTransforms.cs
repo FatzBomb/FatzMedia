@@ -1,10 +1,9 @@
 using CommunityToolkit.Mvvm.Input;
 
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
-public sealed partial class MainWindowViewModel
+public partial class PlayerViewModel
 {
-    private bool _autoHideSurfaces;
     private bool _includeOverlays;
     private bool _resetPitchOnMediaLoad;
     private bool _resetTempoOnMediaLoad;
@@ -17,12 +16,6 @@ public sealed partial class MainWindowViewModel
     private double _saturation = 1d;
 
     public string BaseVisualTransformState => CreateBaseVisualTransform().IsIdentity ? "IDENTITY" : "ACTIVE";
-
-    public bool AutoHideSurfaces
-    {
-        get => _autoHideSurfaces;
-        set => _ = SetProperty(ref _autoHideSurfaces, value);
-    }
 
     public bool IncludeOverlays
     {
@@ -112,11 +105,10 @@ public sealed partial class MainWindowViewModel
 
     private void InitializeValidationControls()
     {
-        _autoHideSurfaces = App.AutoHideSurfaces;
-        _resetPitchOnMediaLoad = App.ResetPitchOnMediaLoad;
-        _resetTempoOnMediaLoad = App.ResetTempoOnMediaLoad;
+        _resetPitchOnMediaLoad = Options.ResetPitchOnLoad;
+        _resetTempoOnMediaLoad = Options.ResetTempoOnLoad;
 
-        if (!App.UseVisualTransformDemo)
+        if (!Options.VisualTransformDemo)
         {
             return;
         }
@@ -130,7 +122,7 @@ public sealed partial class MainWindowViewModel
         _saturation = 1.2d;
     }
 
-    private void ApplyValidationControls(FatzBomb.MediaControl.Wpf.Player player)
+    private void ApplyValidationControls(MediaControlPlayer player)
     {
         player.ResetPitchOnMediaLoad = ResetPitchOnMediaLoad;
         player.ResetTempoOnMediaLoad = ResetTempoOnMediaLoad;

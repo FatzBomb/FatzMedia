@@ -1,6 +1,6 @@
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
-public sealed record DiagnosticLogEntry(DateTime Timestamp, MediaControl.MediaDiagnosticLevel Level, string Category, string Message)
+public sealed record DiagnosticLogEntry(DateTime Timestamp, MediaDiagnosticLevel Level, string Category, string Message)
 {
     public string TimeText => Timestamp.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);
 

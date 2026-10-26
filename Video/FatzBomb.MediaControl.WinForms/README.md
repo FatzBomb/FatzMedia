@@ -11,3 +11,12 @@ var surface = new MediaSurface { Dock = DockStyle.Fill, Player = player };
 Use a DPI-aware WinForms application (`ApplicationHighDpiMode.PerMonitorV2`) so
 `ClientSize` is in device pixels. Session events arrive on background threads; marshal
 with `Control.BeginInvoke`.
+
+A second screen of the same session is another `MediaSurface` with `Role =
+MediaPresentationSurfaceRole.Projector` (Stage 044A): it attaches as `SurfaceId`, or
+`DefaultSecondarySurfaceId` ("secondary") when unset, and does not forward its
+`VideoDisplayMode`. Changing `Role` or `SurfaceId` re-attaches the surface.
+
+```csharp
+var second = new MediaSurface { Dock = DockStyle.Fill, Role = MediaPresentationSurfaceRole.Projector, Player = player };
+```

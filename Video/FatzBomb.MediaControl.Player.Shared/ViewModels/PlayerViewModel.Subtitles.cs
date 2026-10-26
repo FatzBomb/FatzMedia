@@ -1,8 +1,7 @@
 using System.Collections.ObjectModel;
 using FatzBomb.MediaControl.Core.Subtitle;
-using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
 
-namespace FatzBomb.MediaControl.Player.ViewModels;
+namespace FatzBomb.MediaControl.Player.Shared.ViewModels;
 
 /// <summary>One entry of the subtitle picker; a null track id turns subtitles off.</summary>
 public sealed record SubtitleChoice(string? TrackId, string Label);
@@ -11,7 +10,7 @@ public sealed record SubtitleChoice(string? TrackId, string Label);
 /// Subtitle picker (Sync flyout): Off plus the loaded media's embedded and sidecar tracks,
 /// refreshed whenever media loads or closes, whichever path loaded it.
 /// </summary>
-public sealed partial class MainWindowViewModel
+public partial class PlayerViewModel
 {
     private static readonly SubtitleChoice SubtitlesOff = new(null, "Off");
     private bool _refreshingSubtitles;
@@ -37,21 +36,21 @@ public sealed partial class MainWindowViewModel
         }
     } = SubtitlesOff;
 
-    private void StartSubtitleTracking(FatzMediaPlayer player)
+    private void StartSubtitleTracking(MediaControlPlayer player)
     {
         player.MediaLoaded += OnSubtitleMediaLoaded;
         player.MediaClosed += OnSubtitleMediaClosed;
     }
 
-    private void StopSubtitleTracking(FatzMediaPlayer player)
+    private void StopSubtitleTracking(MediaControlPlayer player)
     {
         player.MediaLoaded -= OnSubtitleMediaLoaded;
         player.MediaClosed -= OnSubtitleMediaClosed;
     }
 
-    private void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
+    private void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
-    private void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => UpdateEffectOnUiThread(RefreshSubtitleChoices);
+    private void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
     private void RefreshSubtitleChoices()
     {
