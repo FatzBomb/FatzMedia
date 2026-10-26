@@ -35,6 +35,7 @@ internal sealed class MainForm : Form
     private bool _isUpdatingSecondScreen;
     private bool _isFullScreen;
     private bool _cursorHidden;
+    private Point _lastPointer;
     private FormWindowState _restoreWindowState;
     private FormBorderStyle _restoreBorderStyle;
     private bool _closing;
@@ -559,9 +560,13 @@ internal sealed class MainForm : Form
 
     private void OnFullScreenPointerMoved()
     {
-        if (!_isFullScreen)
+        // Hiding the bars resizes the surface under a still pointer, and Windows then sends a
+        // mouse move: only a real move shows the bars again.
+        Point pointer = Cursor.Position;
+        if (!_isFullScreen || pointer == _lastPointer)
             return;
 
+        _lastPointer = pointer;
         ShowChrome(true);
         _chromeTimer.Stop();
         _chromeTimer.Start();
@@ -570,9 +575,22 @@ internal sealed class MainForm : Form
     private void OnChromeTimerTick(object? sender, EventArgs e)
     {
         _chromeTimer.Stop();
-        if (_isFullScreen && !_isDragging && !_bottom.ClientRectangle.Contains(_bottom.PointToClient(Cursor.Position)))
-            ShowChrome(false);
+        if (!_isFullScreen)
+            return;
+
+        // The pointer is on the bars (the Full screen button itself) or a drag is on: look again later.
+        if (_isDragging || IsPointerOver(_bottom) || IsPointerOver(_topBar))
+        {
+            _chromeTimer.Start();
+            return;
+        }
+
+        _lastPointer = Cursor.Position;
+        ShowChrome(false);
     }
+
+    private static bool IsPointerOver(Control control) =>
+        control.Visible && control.ClientRectangle.Contains(control.PointToClient(Cursor.Position));
 
     private void ShowChrome(bool visible)
     {
