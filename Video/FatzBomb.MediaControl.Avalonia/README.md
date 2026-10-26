@@ -24,7 +24,8 @@ Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
 - While the player is in Audio mode (no renderer presents), the surface shows only its
   `Background` instead of the last frame (`IsPresentationSuspended`).
 - Two paths (`PresentationPath`, with the reason in `PresentationPathReason`, plus an Info
-  diagnostic):
+  diagnostic owned by the attached player, so with several players each log shows only its own
+  surfaces):
   - **Shared GPU image** (`PreferGpuSharedSurface`, default true): when Avalonia's
     compositor offers `ICompositionGpuInterop` and the renderer can export a matching
     handle kind (Direct3D11 keyed-mutex textures on Windows, Vulkan opaque-fd images on

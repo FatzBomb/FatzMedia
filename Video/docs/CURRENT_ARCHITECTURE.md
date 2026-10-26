@@ -415,6 +415,20 @@ the two tolerances prevents a small asynchronous video seek from completing agai
 its stale pre-seek position. Stop, natural end, close, reset, and failed seek clear
 pending completion state so stale signals cannot complete an obsolete request.
 
+## Diagnostic Ownership (ENG-025, ENG-036)
+
+Components raise host-routable diagnostics through `DiagnosticRouter`; each
+`MediaControlPlayer` reports a diagnostic on `MediaDiagnostic` only if it owns it or if it
+is process-wide (no owner). Engine code is owned implicitly: a player enters
+`DiagnosticRouter.EnterOwner(this)` (an `AsyncLocal`) while it builds and drives its engine, so
+the owner flows to the threads and tasks it starts; work that drops the execution context
+re-enters the owner it captured. Adapter and host code raises outside the engine (on a UI
+thread, with no owner), so it names the session instead with
+`DiagnosticRouter.Raise(IMediaControlSession? owner, ...)`; the Avalonia `MediaSurface` and its
+shared-image path do this for the session they are attached to. Native loading and other
+process-wide work raise without an owner and reach every player. Diagnostics are delivered on
+each player's serial host-event dispatcher.
+
 ## WPF Surface AutoHide (Stage 029C)
 
 Closed 2026-08-08 — Release 0 warnings/errors, 406 tests, format/Core/WPF/parity

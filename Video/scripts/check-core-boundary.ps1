@@ -135,7 +135,7 @@ if ($corePackageReferences | Where-Object { $_ -like 'Vortice.*' }) {
 }
 
 $coreFriendAssemblies = @($coreProjectFile.Project.ItemGroup.InternalsVisibleTo | ForEach-Object Include)
-if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests', 'FatzBomb.MediaControl.Linux.Tests') }) {
+if ($coreFriendAssemblies | Where-Object { $_ -and $_ -notin @('FatzBomb.MediaControl.Tests', 'FatzBomb.MediaControl.Portable.Tests', 'FatzBomb.MediaControl.Linux.Tests', 'FatzBomb.MediaControl.Avalonia.Tests') }) {
     throw 'Core boundary check failed: Core must not expose internals to platform or renderer projects.'
 }
 

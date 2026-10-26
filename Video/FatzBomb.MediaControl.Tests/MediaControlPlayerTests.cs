@@ -918,6 +918,41 @@ public sealed class MediaControlPlayerTests
         Assert.Equal(["unowned"], seenByB);
     }
 
+    [Fact]
+    public async Task MediaDiagnostic_RaisedForASession_ReachesOnlyThatPlayer_NullOwnerReachesAll()
+    {
+        // ENG-036: adapters raise outside the engine (the UI thread has no ambient owner) and name
+        // the session they belong to; an explicit owner wins over an ambient one.
+        using var playerA = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        var seenByA = new ConcurrentQueue<string>();
+        var seenByB = new ConcurrentQueue<string>();
+        using var bothSawUnowned = new CountdownEvent(2);
+        void Record(ConcurrentQueue<string> seen, MediaDiagnosticEventArgs e)
+        {
+            if (e.Category != "OwnershipTest.Adapter")
+                return;
+            seen.Enqueue(e.Message);
+            if (e.Message == "unowned")
+                bothSawUnowned.Signal();
+        }
+
+        playerA.MediaDiagnostic += (_, e) => Record(seenByA, e);
+        playerB.MediaDiagnostic += (_, e) => Record(seenByB, e);
+
+        DiagnosticRouter.Raise(playerA, MediaDiagnosticLevel.Info, "OwnershipTest.Adapter", "surface of A");
+        using (DiagnosticRouter.EnterOwner(playerA))
+            DiagnosticRouter.Raise(playerB, MediaDiagnosticLevel.Info, "OwnershipTest.Adapter", "surface of B");
+        DiagnosticRouter.Raise(null, MediaDiagnosticLevel.Info, "OwnershipTest.Adapter", "unowned");
+
+        Assert.True(bothSawUnowned.Wait(TestEnvironment.EventuallyTimeout));
+        await playerA.FlushControlOperationsAsync();
+        await playerB.FlushControlOperationsAsync();
+
+        Assert.Equal(["surface of A", "unowned"], seenByA);
+        Assert.Equal(["surface of B", "unowned"], seenByB);
+    }
+
     private sealed class TestPlatformFactory : IMediaControlPlatformFactory
     {
         private readonly Queue<TestMediaEngine> _engines;

@@ -459,7 +459,7 @@ public class MediaSurface : Control
         double scaling,
         out string fallbackReason)
     {
-        var gpuSurface = new AvaloniaSharedImageSurface(this, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
+        var gpuSurface = new AvaloniaSharedImageSurface(this, session, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
         gpuSurface.SetSize(Bounds.Size);
         gpuSurface.SetVisible(!_isPresentationSuspended);
         bool attached;
@@ -540,7 +540,7 @@ public class MediaSurface : Control
             var message = path == MediaSurfacePresentationPath.SharedGpuImage
                 ? $"{surface}: shared GPU image path ({reason})"
                 : $"{surface}: frame-sink path{(reason is null ? string.Empty : $" ({reason})")}";
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DiagnosticCategory, message);
+            DiagnosticRouter.Raise(_attachedSession, MediaDiagnosticLevel.Info, DiagnosticCategory, message);
         }
 
         PresentationPathChanged?.Invoke(this, EventArgs.Empty);
@@ -586,6 +586,7 @@ public class MediaSurface : Control
             // The renderer that drew the last frame is gone: show the background, not that frame.
             _sink?.Clear();
             DiagnosticRouter.Raise(
+                _modeSession,
                 MediaDiagnosticLevel.Info,
                 DiagnosticCategory,
                 $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}': cleared, the player is in Audio mode (nothing presents to it)");

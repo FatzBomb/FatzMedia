@@ -23,6 +23,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
 {
     private readonly Lock _gate = new();
     private readonly Visual _owner;
+    private readonly IMediaControlSession _session;
     private readonly GpuInteropCapabilities _interop;
     private readonly Action<AvaloniaSharedImageSurface, string> _unavailable;
     private readonly MediaSharedGpuImageConsumerHandle _handle;
@@ -38,12 +39,14 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
 
     public AvaloniaSharedImageSurface(
         Visual owner,
+        IMediaControlSession session,
         Compositor compositor,
         GpuInteropCapabilities interop,
         MediaSharedGpuImageRequest request,
         Action<AvaloniaSharedImageSurface, string> unavailable)
     {
         _owner = owner;
+        _session = session;
         _interop = interop;
         Request = request;
         _unavailable = unavailable;
@@ -224,6 +227,7 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
         {
             _reportedSelection = set.Selection;
             DiagnosticRouter.Raise(
+                _session,
                 MediaDiagnosticLevel.Info,
                 MediaSurface.DiagnosticCategory,
                 $"Shared GPU images imported: {set.Width}x{set.Height} {set.Format} x{set.Buffers.Count}, {set.Selection}");
