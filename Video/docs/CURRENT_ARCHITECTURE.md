@@ -771,7 +771,7 @@ a seek request supersedes the consumer waits of the read-ahead (and, for a curso
 its in-flight reads and seeks: `FfmpegInterrupt.SupersedeOperationsStartedBefore`); a superseded
 read returns `AVERROR_EXIT`, not end of stream; Close makes a seek in progress give up before
 aborting the reader.
-See `roadmap/active/039A_ACTIVE_NetworkVideoPlayback.md`.
+See `roadmap/complete/039A_COMPLETED_NetworkVideoPlayback.md`.
 
 ## Linux Platform Services (Stage 026B, implemented — pending BASS/player smoke)
 

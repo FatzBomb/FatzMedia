@@ -3,7 +3,7 @@
 Stage: 039A.2 - Network video: read-ahead
 Date: 2026-10-25
 
-## Status: IMPLEMENTED - owner smoke passed 2026-10-26 except steps 4 and 5
+## Status: IMPLEMENTED - owner smoke passed 2026-10-26
 
 Owner's scope: forward read-ahead only. No back-buffer and no whole-file cache: after a seek
 outside the buffered range the player rebuffers from the new position.
@@ -198,9 +198,9 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
 - Step 7 (Audio mode, mux.dev HLS): plays, seeks, pauses and resumes; each seek shows a short
   `Buffering=True` (250-500 ms). The Avalonia test player seeks on release only (no scrub).
 - Step 4 (network loss, mux.dev HLS): playback went on from the buffer while disconnected, but
-  after reconnecting it stopped and stayed frozen until a seek. Fixed by the follow-up below,
-  pending a re-run.
-- Not run yet: step 5 (close during a stall).
+  after reconnecting it stopped and stayed frozen until a seek. Fixed by the follow-up below; the
+  re-run (short and long drop, seek while disconnected) passed: playback resumes by itself.
+- Step 5 (close during a stall): passed; the window closed in about 3 s.
 
 ## Follow-up: reconnect after a dropped network (2026-10-26)
 

@@ -29,14 +29,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   (`PresentationLeadController`), slice 3 the post-seek recovery state machine
   (`PostSeekRecovery`); owner smoke passed 2026-10-18 (`updates/041A_1` to `updates/041A_3`).
   The 010A/019A, 017A and 022A items are not started.
-- `active/039A_ACTIVE_NetworkVideoPlayback.md` - network video through FFmpeg's network path:
-  HTTP/HTTPS progressive (MP4/MKV, ranges for seek) and HLS (VOD seekable, live not), the 014A
-  retry policy, buffering events and capability rows, cancellable connects, Background and Audio
-  modes; slice 1 owner smoke passed 2026-10-25 (`updates/039A_1`). Slice 2 (network
-  read-ahead: a bounded forward buffer, one connection for picture and sound, seeks inside the
-  buffer without a request, one network seek per seek, Pause/Stop never wait for a stalled read)
-  implemented; owner smoke passed 2026-10-26 except network loss
-  (`updates/039A_2`). Follow-ups in ENG-034.
 - `active/042A_ACTIVE_HdrFollowUps.md` - HDR follow-ups from 038A. Slice 1 (HLG tone mapping:
   inverse OETF, BT.2100 OOTF at 1000 nits, BT.2390 curve; CPU tables and the Direct3D11 shader)
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
@@ -56,6 +48,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26)
 - `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
 - `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
 - `complete/014A_COMPLETED_StreamingNetworkPlayback.md` — source capability matrix and HTTP/HTTPS audio with retries; owner smoke passed 2026-10-17; network video deferred to 039A (completed 2026-10-18)

@@ -1,9 +1,10 @@
-# Active Stage 039A - Network Video Playback
+# Completed Stage 039A - Network Video Playback
 
 Prepared: 2026-10-24 (idea deferred from 014A, completed 2026-10-18, which delivered HTTP/HTTPS audio).
+Completed: 2026-10-26. Follow-ups are in ENG-034.
 Status: slice 1 (HTTP/HTTPS progressive video and HLS, one slice) owner smoke passed 2026-10-25
-(`updates/039A_1`). Slice 2 (network read-ahead) owner smoke passed 2026-10-26 except network
-loss (`updates/039A_2`).
+(`updates/039A_1`). Slice 2 (network read-ahead) owner smoke passed 2026-10-26
+(`updates/039A_2`).
 
 ## Why This Is Worth Doing
 
