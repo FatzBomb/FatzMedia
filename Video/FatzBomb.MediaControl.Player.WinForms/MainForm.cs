@@ -183,7 +183,15 @@ internal sealed class MainForm : Form
         foreach (PlayerPanel panel in _panels)
         {
             panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
-            await panel.DisposeAsync();
+            try
+            {
+                await panel.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                // One player's failed teardown must not keep the others alive or the form open.
+                System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Closing a player failed: {ex}");
+            }
         }
 
         _closed = true;

@@ -167,7 +167,15 @@ public partial class MainWindow : Window
         foreach (PlayerView player in _players)
         {
             player.FullScreenToggleRequested -= Player_FullScreenToggleRequested;
-            await player.DisposeAsync();
+            try
+            {
+                await player.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                // One player's failed teardown must not keep the others alive or the window open.
+                System.Diagnostics.Trace.WriteLine($"[Player] Closing a player failed: {ex}");
+            }
         }
 
         _sampler.Dispose();

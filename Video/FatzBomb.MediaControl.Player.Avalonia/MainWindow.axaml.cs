@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private bool _rebuilding;
     private bool _rebuildAgain;
     private bool _closing;
+    private bool _closed;
     private bool _firstBuild = true;
     private PlayerPanel? _fullScreenPanel;
     private WindowState _restoreWindowState;
@@ -218,20 +219,34 @@ public partial class MainWindow : Window
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
-        if (_closing)
+        if (_closed)
             return;
 
         // Disposing a player blocks until its media operations finish: do it off the UI thread,
-        // then close for real.
-        _closing = true;
+        // then close for real. A second close request waits for the first.
         e.Cancel = true;
+        if (_closing)
+            return;
+
+        _closing = true;
         _statsTimer.Stop();
         PlayerPanel[] panels = [.. _panels];
         _panels.Clear();
         foreach (PlayerPanel panel in panels)
-            await panel.DisposeAsync();
+        {
+            try
+            {
+                await panel.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                // One player's failed teardown must not keep the others alive or the window open.
+                System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Closing a player failed: {ex}");
+            }
+        }
 
         _sampler.Dispose();
+        _closed = true;
         Close();
     }
 }
