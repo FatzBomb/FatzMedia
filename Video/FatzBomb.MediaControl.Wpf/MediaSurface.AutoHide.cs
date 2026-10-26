@@ -1,16 +1,17 @@
 using System.Windows;
-using System.Windows.Threading;
 
 namespace FatzBomb.MediaControl.Wpf;
 
+/// <summary>
+/// Content auto-hide and the Audio-mode clear. The rules live in Core's
+/// <see cref="MediaSurfaceContentTracker"/> (Stage 046A), shared with the Avalonia and WinForms
+/// surfaces; this partial only shows or hides the internal presentation host on the UI thread.
+/// </summary>
 public sealed partial class MediaSurface
 {
-    private readonly SurfaceAutoHidePolicy _autoHidePolicy = new();
-    private int _autoHideFramePresented;
-    private int _autoHideEnabled;
-    private int _autoHideHasVisualContent;
-    private int _autoHidePresentationQueued;
-    private int _autoHideSessionGeneration;
+    private readonly MediaSurfaceContentTracker _contentTracker = new();
+    private int _contentStateQueued;
+    private bool _presentationCleared;
 
     public static readonly DependencyProperty AutoHideProperty = DependencyProperty.Register(
         nameof(AutoHide),
@@ -28,195 +29,122 @@ public sealed partial class MediaSurface
     public static readonly DependencyProperty IsContentVisibleProperty =
         IsContentVisiblePropertyKey.DependencyProperty;
 
+    /// <summary>
+    /// Gets or sets whether the presentation host hides while no frame of the current media is
+    /// shown (default <see langword="true"/>). It never changes this control's own
+    /// <see cref="UIElement.Visibility"/>.
+    /// </summary>
     public bool AutoHide
     {
         get => (bool)GetValue(AutoHideProperty);
         set => SetValue(AutoHideProperty, value);
     }
 
+    /// <summary>Gets whether auto-hide shows the content now (always false while <see cref="AutoHide"/> is off).</summary>
     public bool IsContentVisible => (bool)GetValue(IsContentVisibleProperty);
 
+    /// <summary>
+    /// Gets whether the surface shows only its background because nothing presents to it: the
+    /// session is in <see cref="MediaPlayerMode.Audio"/> mode (Stage 046A). The last video frame
+    /// is not left on screen.
+    /// </summary>
+    public bool IsPresentationSuspended => _presentationCleared;
+
+    /// <summary>Raised on the UI thread when <see cref="IsContentVisible"/> changes.</summary>
     public event EventHandler? ContentVisibilityChanged;
 
     private static void OnAutoHideChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
-        surface.InitializeAutoHide();
+        surface._contentTracker.AutoHide = e.NewValue is true;
+        surface.ApplyContentState(forceVisibilityWrite: true);
+
+        // The second screen hides and shows like this surface.
+        if (surface._secondaryWindow is { } secondary)
+            secondary.Surface.AutoHide = e.NewValue is true;
     }
 
     private void InitializeAutoHide()
     {
-        Volatile.Write(ref _autoHideEnabled, AutoHide ? 1 : 0);
-        ResetAutoHidePolicy(Player);
-        if (AutoHide)
-            ApplyAutoHideVisibility(forceVisibilityWrite: true);
+        _contentTracker.AutoHide = AutoHide;
+        _contentTracker.Changed += CreateWeakContentHandler(this);
     }
 
-    private void OnAutoHideSessionChanged(IMediaControlSession? session)
+    // The tracker follows the session while Player is set, also while this surface is unloaded.
+    // The session must not keep an unloaded, dropped surface alive through it, so the tracker
+    // holds the surface weakly; once the surface is collected, the tracker stops following.
+    private static EventHandler CreateWeakContentHandler(MediaSurface surface)
     {
-        _autoHideSessionGeneration++;
-        _ = Interlocked.Exchange(ref _autoHideFramePresented, 0);
-        Volatile.Write(ref _autoHideHasVisualContent, session?.HasVisualContent == true ? 1 : 0);
-        _ = Interlocked.Exchange(ref _autoHidePresentationQueued, 0);
-        ResetAutoHidePolicy(session);
-    }
-
-    private bool IsAutoHideEnabled => Volatile.Read(ref _autoHideEnabled) != 0;
-
-    private bool IsAutoHidePresentationArmed =>
-        _autoHidePolicy.State == SurfaceAutoHideState.PendingShow
-        && Volatile.Read(ref _autoHideHasVisualContent) != 0;
-
-    private void ResetAutoHidePolicy(IMediaControlSession? session)
-    {
-        var wasVisible = _autoHidePolicy.IsContentVisible;
-        _ = _autoHidePolicy.Reset();
-        if (AutoHide && session?.IsOpen == true)
+        var weakSurface = new WeakReference<MediaSurface>(surface);
+        return (sender, e) =>
         {
-            _ = _autoHidePolicy.MediaLoaded();
-            if (Volatile.Read(ref _autoHideHasVisualContent) != 0
-                && Volatile.Read(ref _autoHideFramePresented) != 0)
-            {
-                _ = _autoHidePolicy.FramePresented();
-            }
+            if (weakSurface.TryGetTarget(out MediaSurface? target))
+                target.OnContentTrackerChanged(sender, e);
+            else
+                (sender as MediaSurfaceContentTracker)?.Dispose();
+        };
+    }
+
+    // Raised on the thread that changed the state (often Core's render or event thread): marshal,
+    // coalesce, then read the tracker's current state.
+    private void OnContentTrackerChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ApplyContentState(forceVisibilityWrite: false);
+            return;
         }
 
-        ApplyAutoHideTransition(wasVisible);
-    }
-
-    private void OnAutoHideMediaLoaded(object? sender, MediaLoadedEventArgs e)
-    {
-        Volatile.Write(
-            ref _autoHideHasVisualContent,
-            sender is IMediaControlSession { HasVisualContent: true } ? 1 : 0);
-        var generation = Volatile.Read(ref _autoHideSessionGeneration);
-        QueueAutoHideTransition(generation, () =>
-        {
-            _ = _autoHidePolicy.MediaLoaded();
-            if (Volatile.Read(ref _autoHideHasVisualContent) != 0
-                && Volatile.Read(ref _autoHideFramePresented) != 0)
-            {
-                _ = _autoHidePolicy.FramePresented();
-            }
-        });
-    }
-
-    private void OnAutoHideMediaClosed(object? sender, MediaClosedEventArgs e)
-    {
-        QueueAutoHideClosed();
-        _ = Dispatcher.BeginInvoke(new Action(() => CoerceValue(PresentationModeProperty)));
-    }
-
-    private void OnAutoHideMediaPaused(object? sender, MediaPausedEventArgs e) =>
-        QueueAutoHideTransportSignal(static policy => policy.MediaPaused());
-
-    private void OnAutoHideMediaLooped(object? sender, MediaLoopedEventArgs e) =>
-        QueueAutoHideTransportSignal(static policy => policy.MediaLooped());
-
-    private void OnAutoHideMediaError(object? sender, MediaErrorEventArgs e) =>
-        QueueAutoHideError();
-
-    private void QueueAutoHideClosed()
-    {
-        Volatile.Write(ref _autoHideHasVisualContent, 0);
-        QueueAutoHideHidden(SurfaceAutoHideHideReason.Closed);
-    }
-
-    private void QueueAutoHideError()
-    {
-        Volatile.Write(ref _autoHideHasVisualContent, 0);
-        QueueAutoHideHidden(SurfaceAutoHideHideReason.Error);
-    }
-
-    private void QueueAutoHideHidden(SurfaceAutoHideHideReason reason)
-    {
-        _ = Interlocked.Exchange(ref _autoHideFramePresented, 0);
-        var generation = Volatile.Read(ref _autoHideSessionGeneration);
-        QueueAutoHideTransition(generation, () =>
-        {
-            _ = reason switch
-            {
-                SurfaceAutoHideHideReason.Stopped => _autoHidePolicy.MediaStopped(),
-                SurfaceAutoHideHideReason.Closed => _autoHidePolicy.MediaClosed(),
-                SurfaceAutoHideHideReason.Error => _autoHidePolicy.MediaError(),
-                _ => false
-            };
-        });
-    }
-
-    private void QueueAutoHideMediaEnded(bool isLooping)
-    {
-        if (!isLooping)
-            _ = Interlocked.Exchange(ref _autoHideFramePresented, 0);
-
-        var generation = Volatile.Read(ref _autoHideSessionGeneration);
-        QueueAutoHideTransition(generation, () => _ = _autoHidePolicy.MediaEnded(isLooping));
-    }
-
-    private void QueueAutoHideTransportSignal(Func<SurfaceAutoHidePolicy, bool> transition)
-    {
-        var generation = Volatile.Read(ref _autoHideSessionGeneration);
-        QueueAutoHideTransition(generation, () => _ = transition(_autoHidePolicy));
-    }
-
-    private void QueueAutoHideFramePresented()
-    {
-        _ = Interlocked.Exchange(ref _autoHideFramePresented, 1);
-        if (Interlocked.Exchange(ref _autoHidePresentationQueued, 1) != 0)
+        if (Interlocked.Exchange(ref _contentStateQueued, 1) != 0)
             return;
 
-        var generation = Volatile.Read(ref _autoHideSessionGeneration);
-        _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
-        {
-            _ = Interlocked.Exchange(ref _autoHidePresentationQueued, 0);
-            if (generation != _autoHideSessionGeneration || !AutoHide)
-                return;
-
-            // A stale clear/present from the replaced item must not reveal a new
-            // audio-only session. Visual capability is updated by MediaLoaded.
-            if (Volatile.Read(ref _autoHideHasVisualContent) == 0)
-                return;
-
-            var wasVisible = _autoHidePolicy.IsContentVisible;
-            _ = _autoHidePolicy.FramePresented();
-            ApplyAutoHideTransition(wasVisible);
-        }));
-    }
-
-    private void QueueAutoHideTransition(int generation, Action transition) =>
         _ = Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (generation != _autoHideSessionGeneration || !AutoHide)
-                return;
-
-            var wasVisible = _autoHidePolicy.IsContentVisible;
-            transition();
-            ApplyAutoHideTransition(wasVisible);
+            Volatile.Write(ref _contentStateQueued, 0);
+            ApplyContentState(forceVisibilityWrite: false);
         }));
+    }
 
-    private void ApplyAutoHideTransition(bool wasVisible)
+    private void ApplyContentState(bool forceVisibilityWrite)
     {
-        var isVisible = _autoHidePolicy.IsContentVisible;
-        if (wasVisible == isVisible)
-        {
-            if (!AutoHide)
-                SetValue(IsContentVisiblePropertyKey, false);
-            else
-                ApplyAutoHideVisibility(forceVisibilityWrite: false);
-            return;
-        }
+        var isVisible = _contentTracker.IsContentVisible;
+        var visibilityChanged = IsContentVisible != isVisible;
+        if (visibilityChanged)
+            SetValue(IsContentVisiblePropertyKey, isVisible);
 
-        SetValue(IsContentVisiblePropertyKey, isVisible);
-        ApplyAutoHideVisibility(forceVisibilityWrite: false);
-        ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+        UpdatePresentationCleared();
+        if (AutoHide)
+            ApplyAutoHideVisibility(forceVisibilityWrite);
+        else
+            UpdateNativeSurfaceVisibility();
+
+        if (visibilityChanged)
+            ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Audio mode (Stage 043A) keeps the surface attached, but whatever drew the last
+    // frame is gone: the host hides (ShowsContent is false) and a composited host drops its frame.
+    private void UpdatePresentationCleared()
+    {
+        var cleared = _contentTracker.Session is not null && !_contentTracker.HasPresentation;
+        if (cleared == _presentationCleared)
+            return;
+
+        _presentationCleared = cleared;
+        if (!cleared)
+            return;
+
+        _compositedHost?.Clear();
+        DiagnosticRouter.Raise(
+            _contentTracker.Session,
+            MediaDiagnosticLevel.Info,
+            DiagnosticCategory,
+            MediaSurfacePresentationPathText.DescribeAudioModeCleared(DescribeSurface()));
     }
 
     private void ApplyAutoHideVisibility(bool forceVisibilityWrite)
     {
-        if (!AutoHide)
-            return;
-
-        var shouldEnableHost = _autoHidePolicy.IsContentVisible || IsAutoHidePresentationArmed;
+        var shouldEnableHost = _contentTracker.ShowsContent;
         var visibility = shouldEnableHost ? Visibility.Visible : Visibility.Hidden;
         if (PresentationMode == WpfPresentationMode.WpfComposited)
         {
@@ -228,12 +156,5 @@ public sealed partial class MediaSurface
         if (_surfaceHost.Visibility != visibility)
             _surfaceHost.Visibility = visibility;
         _surfaceHost.SetNativeVisible(shouldEnableHost);
-    }
-
-    private enum SurfaceAutoHideHideReason
-    {
-        Stopped,
-        Closed,
-        Error
     }
 }

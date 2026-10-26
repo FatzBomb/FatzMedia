@@ -32,6 +32,18 @@ public partial class MediaControlPlayer
     public MediaPlayerMode Mode => _configuration.Mode;
 
     /// <summary>
+    /// Raised on the control queue after <see cref="ModeChanged"/> when a switch turned
+    /// presentation on or off (into or out of <see cref="MediaPlayerMode.Audio"/>; Stage 046A).
+    /// </summary>
+    public event EventHandler<MediaValueChangedEventArgs<bool>>? HasPresentationChanged;
+
+    /// <summary>
+    /// Gets whether a renderer presents to the attached surfaces: <see langword="false"/> in
+    /// <see cref="MediaPlayerMode.Audio"/> mode, which keeps the surfaces but presents nothing.
+    /// </summary>
+    public bool HasPresentation => MediaPlayerModePolicy.UsesPresentation(Mode);
+
+    /// <summary>
     /// Switches the player to <paramref name="mode"/> on the control queue (Stage 043A slice 2): the
     /// new mode's graph is built and the old one freed, then the open media is reopened at its
     /// position and in its transport state (playing, paused or stopped), so there is a short gap,
@@ -173,6 +185,13 @@ public partial class MediaControlPlayer
         {
             var args = new MediaValueChangedEventArgs<MediaPlayerMode>(previousMode, mode);
             _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, ModeChanged, args, nameof(ModeChanged)));
+            var hadPresentation = MediaPlayerModePolicy.UsesPresentation(previousMode);
+            var hasPresentation = MediaPlayerModePolicy.UsesPresentation(mode);
+            if (hadPresentation != hasPresentation)
+            {
+                var presentationArgs = new MediaValueChangedEventArgs<bool>(hadPresentation, hasPresentation);
+                _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, HasPresentationChanged, presentationArgs, nameof(HasPresentationChanged)));
+            }
         }
 
         return switched;

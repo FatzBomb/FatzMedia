@@ -22,6 +22,8 @@ public sealed partial class MediaSurface : Grid
     private Window? _ownerWindow;
     private HwndSource? _ownerHwndSource;
     private bool _primaryAttached;
+    private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
+    private MediaPresentationSurfaceRole _attachedRole = MediaPresentationSurfaceRole.Primary;
     private bool _layoutRefreshQueued;
     private bool _primarySurfaceLiveResize;
     private volatile bool _showPrimarySurfaceAfterPresentation;
@@ -59,6 +61,7 @@ public sealed partial class MediaSurface : Grid
         _ = Children.Add(_surfaceHost);
         _ = Children.Add(_overlayPresenter);
         InitializeAutoHide();
+        ApplyContentState(forceVisibilityWrite: true);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -85,11 +88,61 @@ public sealed partial class MediaSurface : Grid
         typeof(MediaSurface),
         new PropertyMetadata(VideoDisplayMode.Zoom, OnVideoDisplayModeChanged));
 
+    /// <summary>
+    /// Gets or sets how primary video maps into the surface (forwarded to the session by a primary
+    /// surface only, so a second screen does not change it).
+    /// </summary>
     public VideoDisplayMode VideoDisplayMode
     {
         get => (VideoDisplayMode)GetValue(VideoDisplayModeProperty);
         set => SetValue(VideoDisplayModeProperty, value);
     }
+
+    public static readonly DependencyProperty RoleProperty = DependencyProperty.Register(
+        nameof(Role),
+        typeof(MediaPresentationSurfaceRole),
+        typeof(MediaSurface),
+        new PropertyMetadata(MediaPresentationSurfaceRole.Primary, OnSurfaceIdentityChanged));
+
+    /// <summary>
+    /// Gets or sets the surface's role (default <see cref="MediaPresentationSurfaceRole.Primary"/>).
+    /// Use <see cref="MediaPresentationSurfaceRole.Projector"/> for a second screen of a session
+    /// that already has a primary surface (Stage 046A). A change re-attaches the surface.
+    /// </summary>
+    public MediaPresentationSurfaceRole Role
+    {
+        get => (MediaPresentationSurfaceRole)GetValue(RoleProperty);
+        set => SetValue(RoleProperty, value);
+    }
+
+    public static readonly DependencyProperty SurfaceIdProperty = DependencyProperty.Register(
+        nameof(SurfaceId),
+        typeof(string),
+        typeof(MediaSurface),
+        new PropertyMetadata(null, OnSurfaceIdentityChanged));
+
+    /// <summary>
+    /// Gets or sets the surface id sent to the session. Unset, a primary surface uses
+    /// <see cref="MediaPresentationSurfaceDescriptor.PrimarySurfaceId"/> and any other role uses
+    /// <see cref="DefaultSecondarySurfaceId"/>. Surfaces of one session need distinct ids. A change
+    /// re-attaches the surface.
+    /// </summary>
+    public string? SurfaceId
+    {
+        get => (string?)GetValue(SurfaceIdProperty);
+        set => SetValue(SurfaceIdProperty, value);
+    }
+
+    /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
+    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
+        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
+        : SurfaceId.Trim();
+
+    /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
+    public bool IsSurfaceAttached => _primaryAttached;
+
+    /// <summary>Gets whether this surface is attached to a session as its primary surface.</summary>
+    public bool IsPrimarySurfaceAttached => _primaryAttached && _attachedRole == MediaPresentationSurfaceRole.Primary;
 
     public static readonly DependencyProperty PresentationModeProperty = DependencyProperty.Register(
         nameof(PresentationMode),
@@ -160,6 +213,9 @@ public sealed partial class MediaSurface : Grid
             Owner = Window.GetWindow(this),
             Title = "FatzBombMedia Secondary Output"
         };
+
+        // The second screen hides and shows like this surface.
+        _secondaryWindow.Surface.AutoHide = AutoHide;
         if (!bounds.IsEmpty)
         {
             // Placed before it shows, so a reopened window neither jumps nor attaches at the
@@ -214,11 +270,17 @@ public sealed partial class MediaSurface : Grid
 
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
-        surface.OnAutoHideSessionChanged(e.NewValue as IMediaControlSession);
+        surface._attachRefusalReported = false;
+
+        // The content tracker follows the Player property, not the load state, so a surface that
+        // is unloaded and loaded again (a tab switch, a new parent) keeps its auto-hide state, as
+        // in Stage 029C: a paused video stays visible without a new frame.
+        surface._contentTracker.Session = e.NewValue as IMediaControlSession;
         if (e.NewValue is IMediaControlSession session)
         {
             surface.AttachSessionEvents(session);
-            session.VideoDisplayMode = surface.VideoDisplayMode;
+            if (surface.Role == MediaPresentationSurfaceRole.Primary)
+                session.VideoDisplayMode = surface.VideoDisplayMode;
         }
 
         surface.AttachOrResizePrimarySurface();
@@ -228,8 +290,29 @@ public sealed partial class MediaSurface : Grid
     private static void OnVideoDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var surface = (MediaSurface)d;
-        if (surface.Player is IMediaControlSession session && e.NewValue is VideoDisplayMode mode)
+        if (surface.Player is IMediaControlSession session
+            && surface.Role == MediaPresentationSurfaceRole.Primary
+            && e.NewValue is VideoDisplayMode mode)
+        {
             session.VideoDisplayMode = mode;
+        }
+    }
+
+    private static void OnSurfaceIdentityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var surface = (MediaSurface)d;
+        if (surface._isDesignMode)
+            return;
+
+        surface.DetachPrimarySurface(surface._attachedPrimarySession);
+        if (e.Property == RoleProperty
+            && e.NewValue is MediaPresentationSurfaceRole.Primary
+            && surface.Player is IMediaControlSession session)
+        {
+            session.VideoDisplayMode = surface.VideoDisplayMode;
+        }
+
+        surface.AttachOrResizePrimarySurface();
     }
 
     private static object CoercePresentationMode(DependencyObject d, object baseValue)
@@ -238,10 +321,17 @@ public sealed partial class MediaSurface : Grid
         if (surface._isDesignMode)
             return baseValue;
 
-        if (surface.Player is { IsOpen: true })
+        if (surface.Player is { IsOpen: true } session)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[{nameof(MediaSurface)}] PresentationMode change deferred until media is closed.");
+            if (!Equals(baseValue, surface._appliedPresentationMode))
+            {
+                DiagnosticRouter.Raise(
+                    session,
+                    MediaDiagnosticLevel.Info,
+                    DiagnosticCategory,
+                    $"{surface.DescribeSurface()}: PresentationMode {baseValue} is deferred until the media is closed.");
+            }
+
             return surface._appliedPresentationMode;
         }
 
@@ -316,6 +406,17 @@ public sealed partial class MediaSurface : Grid
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
 
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+
+        // Moving to a monitor with another scale keeps the DIP size, so no SizeChanged follows:
+        // the composited surface re-renders at the new pixel size (the HWND host reports its own
+        // bounds change; refreshing it too is harmless).
+        if (!_isDesignMode)
+            RefreshPresentationLayout();
+    }
+
     private void OnNativeSurfaceChanged(object? sender, EventArgs e) => RefreshPresentationLayout();
 
     private void OnSecondaryWindowClosed(object? sender, EventArgs e)
@@ -358,15 +459,17 @@ public sealed partial class MediaSurface : Grid
 
         if (_primaryAttached && ReferenceEquals(session, _attachedPrimarySession))
         {
-            _ = session.ResizePresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, pixelWidth, pixelHeight);
+            _ = session.ResizePresentationSurface(_attachedSurfaceId, pixelWidth, pixelHeight);
             ApplyPrimarySurfaceLiveResize(session);
             return;
         }
 
         DetachPrimarySurface(_attachedPrimarySession);
+        var surfaceId = EffectiveSurfaceId;
+        MediaPresentationSurfaceRole role = Role;
         _primaryAttached = session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
-            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
-            MediaPresentationSurfaceRole.Primary,
+            surfaceId,
+            role,
             nativeSurface,
             pixelWidth,
             pixelHeight,
@@ -374,8 +477,13 @@ public sealed partial class MediaSurface : Grid
             dpi.DpiScaleY));
         _attachedPrimarySession = _primaryAttached ? session : null;
         if (_primaryAttached)
+        {
+            _attachedSurfaceId = surfaceId;
+            _attachedRole = role;
             ApplyPrimarySurfaceLiveResize(session);
+        }
 
+        ReportAttachResult(session, _primaryAttached);
         UpdateNativeSurfaceVisibility();
     }
 
@@ -385,11 +493,12 @@ public sealed partial class MediaSurface : Grid
             return;
 
         if (_primarySurfaceLiveResize)
-            _ = session.SetPresentationSurfaceLiveResize(MediaPresentationSurfaceDescriptor.PrimarySurfaceId, false);
+            _ = session.SetPresentationSurfaceLiveResize(_attachedSurfaceId, false);
 
-        _ = session.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId);
+        _ = session.DetachPresentationSurface(_attachedSurfaceId);
         _primaryAttached = false;
         _attachedPrimarySession = null;
+        SetPresentationPath(MediaSurfacePresentationPath.None, null, null);
         UpdateNativeSurfaceVisibility();
     }
 
@@ -403,11 +512,7 @@ public sealed partial class MediaSurface : Grid
         session.MediaStarted += OnSessionMediaStarted;
         session.MediaStopped += OnSessionMediaStopped;
         session.MediaEnded += OnSessionMediaEnded;
-        session.MediaLoaded += OnAutoHideMediaLoaded;
-        session.MediaClosed += OnAutoHideMediaClosed;
-        session.MediaPaused += OnAutoHideMediaPaused;
-        session.MediaLooped += OnAutoHideMediaLooped;
-        session.MediaError += OnAutoHideMediaError;
+        session.MediaClosed += OnSessionMediaClosed;
         session.PresentationFramePresented += OnSessionPresentationFramePresented;
     }
 
@@ -419,11 +524,7 @@ public sealed partial class MediaSurface : Grid
         session.MediaStarted -= OnSessionMediaStarted;
         session.MediaStopped -= OnSessionMediaStopped;
         session.MediaEnded -= OnSessionMediaEnded;
-        session.MediaLoaded -= OnAutoHideMediaLoaded;
-        session.MediaClosed -= OnAutoHideMediaClosed;
-        session.MediaPaused -= OnAutoHideMediaPaused;
-        session.MediaLooped -= OnAutoHideMediaLooped;
-        session.MediaError -= OnAutoHideMediaError;
+        session.MediaClosed -= OnSessionMediaClosed;
         session.PresentationFramePresented -= OnSessionPresentationFramePresented;
         _showPrimarySurfaceAfterPresentation = false;
         _eventSession = null;
@@ -431,38 +532,32 @@ public sealed partial class MediaSurface : Grid
 
     private void OnSessionMediaStarted(object? sender, EventArgs e)
     {
-        QueueAutoHideTransportSignal(static policy => policy.MediaStarted());
-        _showPrimarySurfaceAfterPresentation = !IsAutoHideEnabled
+        _showPrimarySurfaceAfterPresentation = !_contentTracker.AutoHide
             && !IsLoopingVisualPlayback(sender as IMediaControlSession ?? _eventSession);
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
     private void OnSessionMediaStopped(object? sender, EventArgs e)
     {
-        var session = sender as IMediaControlSession ?? _eventSession;
-        if (!IsStaleTerminalEvent(session))
-            QueueAutoHideHidden(SurfaceAutoHideHideReason.Stopped);
         _showPrimarySurfaceAfterPresentation = false;
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
     private void OnSessionMediaEnded(object? sender, EventArgs e)
     {
-        var session = sender as IMediaControlSession ?? _eventSession;
-        var isLooping = IsLoopingPlayback(session);
-        if (!IsStaleTerminalEvent(session))
-            QueueAutoHideMediaEnded(isLooping);
-        if (isLooping)
+        if (IsLoopingPlayback(sender as IMediaControlSession ?? _eventSession))
             return;
 
         _showPrimarySurfaceAfterPresentation = false;
         _ = Dispatcher.BeginInvoke(UpdateNativeSurfaceVisibility);
     }
 
+    // A deferred PresentationMode applies once the media is closed.
+    private void OnSessionMediaClosed(object? sender, MediaClosedEventArgs e) =>
+        _ = Dispatcher.BeginInvoke(new Action(() => CoerceValue(PresentationModeProperty)));
+
     private void OnSessionPresentationFramePresented(object? sender, EventArgs e)
     {
-        QueueAutoHideFramePresented();
-
         // This event is raised from Core's native present/render thread, NOT the WPF UI thread.
         // Do not touch the Player dependency property here; read the plain, thread-safe _eventSession
         // reference instead. All UI-affine work is marshaled to the UI thread below.
@@ -479,7 +574,7 @@ public sealed partial class MediaSurface : Grid
         var shouldShow = _primaryAttached
             && (session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused } || HasStoppedStandaloneVisual(session))
             && !_showPrimarySurfaceAfterPresentation
-            && (!AutoHide || _autoHidePolicy.IsContentVisible || IsAutoHidePresentationArmed);
+            && _contentTracker.ShowsContent;
 
         if (shouldShow)
         {
@@ -530,10 +625,6 @@ public sealed partial class MediaSurface : Grid
 
     private static bool IsLoopingPlayback(IMediaControlSession? session) =>
         session is { IsOpen: true, LoopMedia: true };
-
-    private bool IsStaleTerminalEvent(IMediaControlSession? session) =>
-        IsAutoHideEnabled
-        && session is { State: MediaPlayerState.Playing or MediaPlayerState.Paused or MediaPlayerState.Buffering };
 
     private void AttachOwnerWindowHook()
     {
@@ -613,7 +704,7 @@ public sealed partial class MediaSurface : Grid
         if (_primaryAttached && _attachedPrimarySession != null)
         {
             _ = _attachedPrimarySession.SetPresentationSurfaceLiveResize(
-                MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+                _attachedSurfaceId,
                 isResizing);
         }
     }
@@ -623,7 +714,7 @@ public sealed partial class MediaSurface : Grid
         if (_primarySurfaceLiveResize)
         {
             _ = session.SetPresentationSurfaceLiveResize(
-                MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
+                _attachedSurfaceId,
                 true);
         }
     }

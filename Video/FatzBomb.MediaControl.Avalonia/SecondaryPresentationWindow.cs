@@ -15,9 +15,9 @@ namespace FatzBomb.MediaControl.Avalonia;
 /// placement on a chosen <see cref="Screen"/> and full screen.
 /// </summary>
 /// <remarks>
-/// F11 or a double-click toggles full screen, and Escape leaves it. A host that wants another
-/// layout can put a <see cref="MediaSurface"/> with a non-primary <see cref="MediaSurface.Role"/>
-/// in any window instead.
+/// F11 or a double-click toggles full screen. Escape leaves full screen, and in a window it
+/// closes the window. A host that wants another layout can put a <see cref="MediaSurface"/> with a
+/// non-primary <see cref="MediaSurface.Role"/> in any window instead.
 /// </remarks>
 public class SecondaryPresentationWindow : Window
 {
@@ -104,9 +104,13 @@ public class SecondaryPresentationWindow : Window
             IsFullScreen = !IsFullScreen;
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape && IsFullScreen)
+        else if (e.Key == Key.Escape)
         {
-            IsFullScreen = false;
+            // Escape leaves full screen; in a window it closes the window (keyboard close).
+            if (IsFullScreen)
+                IsFullScreen = false;
+            else
+                Close();
             e.Handled = true;
         }
     }

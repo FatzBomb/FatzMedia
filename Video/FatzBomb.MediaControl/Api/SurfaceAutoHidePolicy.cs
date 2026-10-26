@@ -1,4 +1,5 @@
-namespace FatzBomb.MediaControl.Wpf;
+#pragma warning disable IDE0130
+namespace FatzBomb.MediaControl;
 
 internal enum SurfaceAutoHideState
 {
@@ -8,6 +9,10 @@ internal enum SurfaceAutoHideState
     Hidden
 }
 
+/// <summary>
+/// The surface auto-hide states (Stage 029C, in Core since 046A). Pure and not thread-safe:
+/// <see cref="MediaSurfaceContentTracker"/> drives it under its lock.
+/// </summary>
 internal sealed class SurfaceAutoHidePolicy
 {
     public SurfaceAutoHideState State { get; private set; }

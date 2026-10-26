@@ -5,9 +5,8 @@ using FatzBomb.MediaControl.Player.Shared.ViewModels;
 namespace FatzBomb.MediaControl.Player.Shared;
 
 /// <summary>
-/// The command-line options every test player understands. Host-only flags (for example the WPF
-/// player's <c>--no-auto-hide</c>) are parsed by the host from the same arguments; flags unknown
-/// here are ignored.
+/// The command-line options every test player understands. Host-only flags are parsed by the host
+/// from the same arguments; flags unknown here are ignored.
 /// </summary>
 public sealed record PlayerStartupOptions
 {
@@ -83,6 +82,12 @@ public sealed record PlayerStartupOptions
     /// <summary>Gets whether https certificate errors are ignored (<c>--net-allow-invalid-certs</c>).</summary>
     public bool NetworkAllowInvalidCertificates { get; init; }
 
+    /// <summary>
+    /// Gets whether the surfaces auto-hide until visual content is ready (default true;
+    /// <c>--no-auto-hide</c> turns it off). Every adapter's surface has the option since Stage 046A.
+    /// </summary>
+    public bool AutoHideSurfaces { get; init; } = true;
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
@@ -124,6 +129,7 @@ public sealed record PlayerStartupOptions
             NetworkCaFile = Values(args, "--net-ca-file=").FirstOrDefault(static path => path.Length > 0),
             NetworkAllowInvalidCertificates = HasFlag(args, "--net-allow-invalid-certs"),
             EqualizerGains = Values(args, "--eq=", trimQuotes: false).Select(ParseGains).FirstOrDefault(),
+            AutoHideSurfaces = !HasFlag(args, "--no-auto-hide"),
         };
     }
 

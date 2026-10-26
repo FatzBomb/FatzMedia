@@ -16,13 +16,24 @@ Avalonia adapter for `FatzBomb.MediaControl` (Stage 027A slices 1, 2 and 5).
   ```csharp
   var singer = new SecondaryPresentationWindow(player);          // surface id "secondary"
   singer.ShowOnScreen(Screens.All[1], fullScreen: true, owner: this);
-  // F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+  // F11 or a double-click toggles full screen; Escape leaves it, or closes a windowed one;
+// closing it detaches.
   ```
 
   Every renderer (software, Vulkan, Direct3D11) renders each frame once per surface at that
   surface's size, and each surface picks its own path below.
 - While the player is in Audio mode (no renderer presents), the surface shows only its
   `Background` instead of the last frame (`IsPresentationSuspended`).
+- **Auto-hide** (Stage 046A, as the WPF and WinForms surfaces, from Core's
+  `MediaSurfaceContentTracker`): with `AutoHide` (default true) the surface shows its
+  `Background` until the first frame of the current media, and after stop, close, an error or a
+  natural end without looping (`IsContentVisible`, `ContentVisibilityChanged`). Only a primary
+  surface forwards `VideoDisplayMode`, so a second screen never changes it. A surface the player
+  refuses raises one Warning.
+- `PresentationPath` is Core's `FatzBomb.MediaControl.MediaSurfacePresentationPath` since Stage
+  046A (it was `FatzBomb.MediaControl.Avalonia.MediaSurfacePresentationPath`). Code with
+  `using FatzBomb.MediaControl;` compiles unchanged; a fully qualified name drops `.Avalonia`;
+  compiled consumers need a rebuild.
 - Two paths (`PresentationPath`, with the reason in `PresentationPathReason`, plus an Info
   diagnostic owned by the attached player, so with several players each log shows only its own
   surfaces):

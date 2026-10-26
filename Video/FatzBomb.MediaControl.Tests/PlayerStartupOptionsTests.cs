@@ -147,7 +147,9 @@ public sealed class PlayerStartupOptionsTests
         Assert.True(options.NetworkAllowInvalidCertificates);
         Assert.Equal([1, -2.5, 0, 4], options.EqualizerGains);
         Assert.True(options.SoftwareRenderer);
+        Assert.False(options.AutoHideSurfaces);
         Assert.Equal("song.mp3", options.MediaPath);
+        Assert.True(PlayerStartupOptions.Parse([]).AutoHideSurfaces);
     }
 
     [Fact]

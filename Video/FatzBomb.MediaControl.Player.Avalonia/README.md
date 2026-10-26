@@ -35,7 +35,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
   `SecondaryPresentationWindow` for that player, full screen on the screen given by
   `--second-screen=<n>`, else on the first screen that is not the main window's, else (one
   screen) in a 960x540 window. The status line adds `2nd screen WxH via <path>`; the log gives
-  its path and reason. F11 or a double-click toggles full screen, Escape leaves it.
+  its path and reason. F11 or a double-click toggles full screen; Escape leaves it,
+  or closes the window when it is not full screen.
 - A **Log** flyout per player (open at start): every `MediaDiagnostic` and `MediaError` event, newest
   first (1000 entries). **Copy all** puts the whole log, oldest first, on the clipboard (for a bug
   report).
@@ -71,8 +72,9 @@ second screen there at startup, full screen), and the flags every test player sh
 (Stage 043A; default full), `--native=<dir>` (repeatable), `--net-retries=`, `--net-ca-file=`,
 `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--trim-silence`,
 `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`, `--prepare-next=`,
-`--auto-next`, `--fade-next=`, `--visual-transform-demo`. Each player's Mode box switches its mode
-on the fly (`SetModeAsync`); `--mode` sets its initial value.
+`--auto-next`, `--fade-next=`, `--visual-transform-demo`, `--no-auto-hide` (surfaces keep the
+last frame after stop; Stage 046A). Each player's Mode box switches its mode on the fly
+(`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.
 Vulkan on a machine without a GPU needs Mesa lavapipe (`apt-get install mesa-vulkan-drivers`).

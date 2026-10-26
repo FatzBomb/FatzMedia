@@ -1,6 +1,5 @@
 using FatzBomb.MediaControl.Core.Configuration;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Windows;
 
 namespace FatzBomb.MediaControl.Wpf;
@@ -35,7 +34,11 @@ internal sealed class LightweightPlayerController(
 
         if (platformFactory == null)
         {
-            Debug.WriteLine($"[{owner.GetType().Name}] PlatformFactory must be set before media is loaded.");
+            DiagnosticRouter.Raise(
+                null,
+                MediaDiagnosticLevel.Warning,
+                $"Wpf.{owner.GetType().Name}",
+                "PlatformFactory must be set before media is loaded; nothing is loaded.");
             return null;
         }
 
@@ -123,7 +126,13 @@ internal sealed class LightweightPlayerController(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[{owner.GetType().Name}] Player initialization failed: {ex.Message}");
+            // No player exists yet, so the diagnostic has no owner: every player's log reports it.
+            DiagnosticRouter.Raise(
+                null,
+                MediaDiagnosticLevel.Error,
+                $"Wpf.{owner.GetType().Name}",
+                $"Creating the player failed: {ex.Message}",
+                innerException: ex);
             return null;
         }
     }

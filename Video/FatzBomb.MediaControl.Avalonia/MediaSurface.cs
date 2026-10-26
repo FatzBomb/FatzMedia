@@ -7,22 +7,6 @@ using FatzBomb.MediaControl.Core.Configuration;
 
 namespace FatzBomb.MediaControl.Avalonia;
 
-/// <summary>How a <see cref="MediaSurface"/> shows the renderer's frames.</summary>
-public enum MediaSurfacePresentationPath
-{
-    /// <summary>No surface is attached.</summary>
-    None,
-
-    /// <summary>The renderer reads each frame back to the CPU and the surface uploads it as a bitmap.</summary>
-    FrameSink,
-
-    /// <summary>
-    /// The renderer exports double-buffered GPU images that Avalonia's compositor imports and
-    /// shows directly (Stage 027A slice 2): no CPU copy.
-    /// </summary>
-    SharedGpuImage,
-}
-
 /// <summary>
 /// Avalonia media surface. It attaches one surface to the bound <see cref="IMediaControlSession"/>,
 /// keeps its pixel size in sync with layout bounds and render scaling, and shows the final frames
@@ -35,6 +19,12 @@ public enum MediaSurfacePresentationPath
 /// session's renderer accepts the surface; otherwise (and whenever that path later reports a
 /// failure) it uses the managed frame sink. The choice and its reason are raised as an Info
 /// diagnostic and exposed through <see cref="PresentationPath"/>.
+/// </para>
+/// <para>
+/// <see cref="PresentationPath"/> is Core's <see cref="MediaSurfacePresentationPath"/> since
+/// Stage 046A (it moved from this namespace to <c>FatzBomb.MediaControl</c>, shared by every
+/// adapter). <see cref="AutoHide"/> hides the frames while no frame of the current media is shown,
+/// with Core's <see cref="MediaSurfaceContentTracker"/>, like the WPF and WinForms surfaces.
 /// </para>
 /// <para>
 /// Several surfaces can show one session (Stage 027A slice 5): the operator view as the
@@ -69,6 +59,12 @@ public class MediaSurface : Control
     public static readonly StyledProperty<string?> SurfaceIdProperty =
         AvaloniaProperty.Register<MediaSurface, string?>(nameof(SurfaceId));
 
+    public static readonly StyledProperty<bool> AutoHideProperty =
+        AvaloniaProperty.Register<MediaSurface, bool>(nameof(AutoHide), true);
+
+    public static readonly DirectProperty<MediaSurface, bool> IsContentVisibleProperty =
+        AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
+
     private static int _nextSurfaceNumber;
 
     private readonly int _surfaceNumber = Interlocked.Increment(ref _nextSurfaceNumber);
@@ -85,8 +81,12 @@ public class MediaSurface : Control
     private IMediaControlSession? _gpuRejectedSession;
     private string? _gpuRejectedReason;
     private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
-    private IMediaControlSession? _modeSession;
+    private readonly MediaSurfaceContentTracker _contentTracker = new();
+    private int _contentStateQueued;
     private bool _isPresentationSuspended;
+    private bool _contentShown;
+    private bool _isContentVisible;
+    private bool _attachRefusalReported;
 
     static MediaSurface()
     {
@@ -94,8 +94,13 @@ public class MediaSurface : Control
         ClipToBoundsProperty.OverrideDefaultValue<MediaSurface>(true);
     }
 
+    public MediaSurface() => _contentTracker.Changed += OnContentTrackerChanged;
+
     /// <summary>Raised on the UI thread when <see cref="PresentationPath"/> or its reason changes.</summary>
     public event EventHandler? PresentationPathChanged;
+
+    /// <summary>Raised on the UI thread when <see cref="IsContentVisible"/> changes.</summary>
+    public event EventHandler? ContentVisibilityChanged;
 
     /// <summary>Gets or sets the session this surface presents.</summary>
     public IMediaControlSession? Player
@@ -104,7 +109,10 @@ public class MediaSurface : Control
         set => SetValue(PlayerProperty, value);
     }
 
-    /// <summary>Gets or sets how primary video maps into the surface (forwarded to the session).</summary>
+    /// <summary>
+    /// Gets or sets how primary video maps into the surface (forwarded to the session by a primary
+    /// surface only, so a second screen does not change it).
+    /// </summary>
     public VideoDisplayMode VideoDisplayMode
     {
         get => GetValue(VideoDisplayModeProperty);
@@ -157,6 +165,22 @@ public class MediaSurface : Control
         ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
         : SurfaceId.Trim();
 
+    /// <summary>
+    /// Gets or sets whether the surface hides its frames (shows only <see cref="Background"/>)
+    /// while no frame of the current media is shown: before the first frame of a load, after
+    /// stop, close, an error, or a natural end without looping (default <see langword="true"/>,
+    /// as in the WPF and WinForms surfaces). <see langword="false"/> shows whatever the renderer
+    /// last presented.
+    /// </summary>
+    public bool AutoHide
+    {
+        get => GetValue(AutoHideProperty);
+        set => SetValue(AutoHideProperty, value);
+    }
+
+    /// <summary>Gets whether auto-hide shows the content now (always false while <see cref="AutoHide"/> is off).</summary>
+    public bool IsContentVisible => _isContentVisible;
+
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     public bool IsSurfaceAttached => _attachedSession is not null;
 
@@ -166,8 +190,9 @@ public class MediaSurface : Control
     /// <summary>
     /// Gets whether the surface shows only its <see cref="Background"/> because no renderer
     /// presents to it: the session is in <see cref="MediaPlayerMode.Audio"/> mode (Stage 043A),
-    /// which keeps surfaces attached but has no presentation. The last video frame is not left on
-    /// screen; frames show again once the session leaves Audio mode.
+    /// which keeps surfaces attached but has no presentation (the session's
+    /// <see cref="IMediaControlSession.HasPresentation"/>, Stage 046A). The last video frame is not
+    /// left on screen; frames show again once the session leaves Audio mode.
     /// </summary>
     public bool IsPresentationSuspended => _isPresentationSuspended;
 
@@ -191,7 +216,7 @@ public class MediaSurface : Control
         if (Background is { } background)
             context.FillRectangle(background, bounds);
 
-        if (!_isPresentationSuspended && _sink?.Bitmap is { } bitmap)
+        if (_contentShown && _sink?.Bitmap is { } bitmap)
         {
             // The renderer already composed for this pixel size (letterboxing included), so the
             // bitmap fills the surface. The shared-image path draws in a child composition visual.
@@ -212,7 +237,7 @@ public class MediaSurface : Control
             _topLevel.ScalingChanged += OnTopLevelScalingChanged;
 
         _compositor = ElementComposition.GetElementVisual(this)?.Compositor;
-        WatchMode(Player);
+        FollowSession(Player);
         QueryGpuInterop();
         AttachOrResize();
     }
@@ -227,7 +252,7 @@ public class MediaSurface : Control
         }
 
         Detach();
-        WatchMode(null);
+        FollowSession(null);
         _sink?.Dispose();
         _sink = null;
         _compositor = null;
@@ -259,20 +284,36 @@ public class MediaSurface : Control
             }
 
             Detach();
+            _attachRefusalReported = false;
             if (_isAttachedToTree)
-                WatchMode(change.NewValue as IMediaControlSession);
-            if (change.NewValue is IMediaControlSession session)
+                FollowSession(change.NewValue as IMediaControlSession);
+            if (change.NewValue is IMediaControlSession session && Role == MediaPresentationSurfaceRole.Primary)
                 session.VideoDisplayMode = VideoDisplayMode;
             AttachOrResize();
         }
         else if (change.Property == RoleProperty || change.Property == SurfaceIdProperty)
         {
             Detach();
+            if (change.Property == RoleProperty
+                && change.NewValue is MediaPresentationSurfaceRole.Primary
+                && Player is { } primarySession)
+            {
+                primarySession.VideoDisplayMode = VideoDisplayMode;
+            }
+
             AttachOrResize();
         }
-        else if (change.Property == VideoDisplayModeProperty && Player is { } session && change.NewValue is VideoDisplayMode mode)
+        else if (change.Property == VideoDisplayModeProperty
+            && Role == MediaPresentationSurfaceRole.Primary
+            && Player is { } session
+            && change.NewValue is VideoDisplayMode mode)
         {
             session.VideoDisplayMode = mode;
+        }
+        else if (change.Property == AutoHideProperty)
+        {
+            _contentTracker.AutoHide = change.NewValue is true;
+            UpdateContentState();
         }
         else if (change.Property == PreferGpuSharedSurfaceProperty)
         {
@@ -389,7 +430,18 @@ public class MediaSurface : Control
             _attachedSession = session;
             _attachedSurfaceId = EffectiveSurfaceId;
             _attachedPixelSize = pixelSize;
+            _attachRefusalReported = false;
             SetPath(MediaSurfacePresentationPath.FrameSink, fallbackReason);
+        }
+        else if (!_attachRefusalReported)
+        {
+            // Layout retries the attach on every resize: report a refusal once per session.
+            _attachRefusalReported = true;
+            DiagnosticRouter.Raise(
+                session,
+                MediaDiagnosticLevel.Warning,
+                DiagnosticCategory,
+                MediaSurfacePresentationPathText.DescribeAttachRefused(DescribeSurface()));
         }
     }
 
@@ -461,7 +513,7 @@ public class MediaSurface : Control
     {
         var gpuSurface = new AvaloniaSharedImageSurface(this, session, _compositor!, _gpuInterop!, request, OnGpuSurfaceUnavailable);
         gpuSurface.SetSize(Bounds.Size);
-        gpuSurface.SetVisible(!_isPresentationSuspended);
+        gpuSurface.SetVisible(_contentShown);
         bool attached;
         try
         {
@@ -536,64 +588,82 @@ public class MediaSurface : Control
         PresentationPathReason = reason;
         if (path != MediaSurfacePresentationPath.None)
         {
-            var surface = $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
-            var message = path == MediaSurfacePresentationPath.SharedGpuImage
-                ? $"{surface}: shared GPU image path ({reason})"
-                : $"{surface}: frame-sink path{(reason is null ? string.Empty : $" ({reason})")}";
-            DiagnosticRouter.Raise(_attachedSession, MediaDiagnosticLevel.Info, DiagnosticCategory, message);
+            DiagnosticRouter.Raise(
+                _attachedSession,
+                MediaDiagnosticLevel.Info,
+                DiagnosticCategory,
+                MediaSurfacePresentationPathText.DescribeChoice(DescribeSurface(), path, reason));
         }
 
         PresentationPathChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private string DescribeSurface() => $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
+
     /// <summary>
-    /// Follows the session's mode while the control is in the visual tree (Stage 027A slice 5,
-    /// 043A): Audio mode keeps surfaces attached but no renderer presents to them, so the last
-    /// video frame would stay on screen.
+    /// Follows the session while the control is in the visual tree (Stage 046A): Core's tracker
+    /// decides auto-hide and reports Audio mode (Stage 043A), which keeps surfaces attached but
+    /// presents nothing, so the last video frame would stay on screen.
     /// </summary>
-    private void WatchMode(IMediaControlSession? session)
+    private void FollowSession(IMediaControlSession? session)
     {
-        if (ReferenceEquals(session, _modeSession))
-        {
-            UpdatePresentationSuspended();
-            return;
-        }
-
-        if (_modeSession is not null)
-            _modeSession.ModeChanged -= OnSessionModeChanged;
-
-        _modeSession = session;
-        if (session is not null)
-            session.ModeChanged += OnSessionModeChanged;
-
-        UpdatePresentationSuspended();
+        _contentTracker.Session = session;
+        UpdateContentState();
     }
 
-    // Raised on the session's control queue: marshal, then read the session's current mode, so a
-    // quick Audio -> Full switch never leaves the surface cleared.
-    private void OnSessionModeChanged(object? sender, MediaValueChangedEventArgs<MediaPlayerMode> e) =>
-        Dispatcher.UIThread.Post(UpdatePresentationSuspended);
-
-    private void UpdatePresentationSuspended()
+    // Raised on the thread that changed the state (a session event or render thread): marshal,
+    // coalesce, then read the tracker's current state, so a quick Audio -> Full switch never
+    // leaves the surface cleared.
+    private void OnContentTrackerChanged(object? sender, EventArgs e)
     {
-        var suspended = _modeSession is { } session && ReferenceEquals(session, Player) && session.Mode == MediaPlayerMode.Audio;
-        if (suspended == _isPresentationSuspended)
+        if (Interlocked.Exchange(ref _contentStateQueued, 1) != 0)
             return;
 
-        _isPresentationSuspended = suspended;
-        if (suspended)
+        Dispatcher.UIThread.Post(() =>
         {
-            // The renderer that drew the last frame is gone: show the background, not that frame.
-            _sink?.Clear();
-            DiagnosticRouter.Raise(
-                _modeSession,
-                MediaDiagnosticLevel.Info,
-                DiagnosticCategory,
-                $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}': cleared, the player is in Audio mode (nothing presents to it)");
+            Volatile.Write(ref _contentStateQueued, 0);
+            UpdateContentState();
+        });
+    }
+
+    private void UpdateContentState()
+    {
+        IMediaControlSession? session = _contentTracker.Session;
+        var suspended = session is not null && !_contentTracker.HasPresentation;
+        if (suspended != _isPresentationSuspended)
+        {
+            _isPresentationSuspended = suspended;
+            if (suspended)
+            {
+                // The renderer that drew the last frame is gone: show the background, not that frame.
+                _sink?.Clear();
+                DiagnosticRouter.Raise(
+                    session,
+                    MediaDiagnosticLevel.Info,
+                    DiagnosticCategory,
+                    MediaSurfacePresentationPathText.DescribeAudioModeCleared(DescribeSurface()));
+            }
         }
 
-        _gpuSurface?.SetVisible(!suspended);
+        var wasShown = _contentShown;
+        _contentShown = _contentTracker.ShowsContent;
+        if (wasShown && !_contentShown)
+        {
+            // Hidden content is dropped, so a later load shows its own first frame, not this one.
+            _sink?.Clear();
+        }
+
+        _gpuSurface?.SetVisible(_contentShown);
         InvalidateVisual();
+
+        var isContentVisible = _contentTracker.IsContentVisible;
+        if (isContentVisible != _isContentVisible)
+        {
+            var wasVisible = _isContentVisible;
+            _isContentVisible = isContentVisible;
+            RaisePropertyChanged(IsContentVisibleProperty, wasVisible, isContentVisible);
+            ContentVisibilityChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void Detach()

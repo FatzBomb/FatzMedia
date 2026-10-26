@@ -37,6 +37,12 @@ function Assert-Match {
 $mediaSurface = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.cs'
 $compositedSurface = Read-Text 'FatzBomb.MediaControl.Wpf/WpfCompositedSurfaceHost.cs'
 $secondaryWindow = Read-Text 'FatzBomb.MediaControl.Wpf/SecondaryPresentationWindow.cs'
+$wpfAutoHide = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.AutoHide.cs'
+$wpfPath = Read-Text 'FatzBomb.MediaControl.Wpf/MediaSurface.PresentationPath.cs'
+$avaloniaSurface = Read-Text 'FatzBomb.MediaControl.Avalonia/MediaSurface.cs'
+$avaloniaSecondary = Read-Text 'FatzBomb.MediaControl.Avalonia/SecondaryPresentationWindow.cs'
+$winFormsSurface = Read-Text 'FatzBomb.MediaControl.WinForms/MediaSurface.cs'
+$winFormsSecondary = Read-Text 'FatzBomb.MediaControl.WinForms/SecondaryPresentationWindow.cs'
 $sessionContract = Read-Text 'FatzBomb.MediaControl/Api/IMediaControlSession.cs'
 $coordinator = Read-Text 'FatzBomb.MediaControl/Controllers/MediaPresentationCoordinator.cs'
 $backendSet = Read-Text 'FatzBomb.MediaControl.Rendering.Direct3D11/Graphics/D3D/Presentation/D3D11PresentationBackendSet.cs'
@@ -53,17 +59,42 @@ Assert-Match $mediaSurface 'DefaultSecondarySurfaceId\s*=\s*"secondary"' 'MediaS
 Assert-Match $mediaSurface 'new\s+SecondaryPresentationWindow\s*\(\s*(Player|session),\s*DefaultSecondarySurfaceId' 'MediaSurface must open secondary output through SecondaryPresentationWindow using the shared session.'
 Assert-Match $mediaSurface 'nativeSurface\s*=\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Native-HWND WPF mode must create a neutral Win32 surface payload.'
 Assert-Match $mediaSurface 'nativeSurface\s*=\s*host\.CreateSurfaceDescriptor\s*\(\s*\)' 'WPF-composited mode must create a neutral managed frame-sink payload.'
-Assert-Match $mediaSurface 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId\s*,\s*MediaPresentationSurfaceRole\.Primary\s*,\s*nativeSurface' 'Primary WPF modes must attach their neutral payload with the Primary role.'
-Assert-Match $mediaSurface 'ResizePresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must resize through the session surface API.'
-Assert-Match $mediaSurface 'DetachPresentationSurface\s*\(\s*MediaPresentationSurfaceDescriptor\.PrimarySurfaceId' 'Primary WPF surface must detach through the session surface API.'
+# Stage 046A: the WPF surface has a Role and SurfaceId like the Avalonia and WinForms surfaces. It
+# attaches as Primary by default, with the id the role implies, and resizes/detaches the id it
+# attached with.
+Assert-Match $mediaSurface 'RoleProperty\s*=\s*DependencyProperty\.Register\s*\([^;]*new\s+PropertyMetadata\s*\(\s*MediaPresentationSurfaceRole\.Primary' 'WPF MediaSurface must default to the Primary role.'
+Assert-Match $mediaSurface 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*surfaceId\s*,\s*role\s*,\s*nativeSurface' 'WPF modes must attach their neutral payload with the surface''s role and effective id.'
+Assert-Match $mediaSurface 'var\s+surfaceId\s*=\s*EffectiveSurfaceId' 'WPF surface must attach with its effective surface id.'
+Assert-Match $mediaSurface 'ResizePresentationSurface\s*\(\s*_attachedSurfaceId' 'WPF surface must resize through the session surface API.'
+Assert-Match $mediaSurface 'DetachPresentationSurface\s*\(\s*_attachedSurfaceId' 'WPF surface must detach through the session surface API.'
 Assert-Match $compositedSurface 'WpfCompositedSurfaceHost\s*:\s*Grid,\s*IMediaPresentationFrameSink' 'WPF-composited output must consume final renderer frames through the neutral frame-sink contract.'
 
 Assert-Match $secondaryWindow 'MediaPresentationSurfaceRole\s+role\s*=\s*MediaPresentationSurfaceRole\.Projector' 'Secondary window must default to the Projector role.'
-Assert-Match $secondaryWindow 'nativeSurface\s*=\s*MediaNativeSurfaceDescriptor\.Win32Hwnd' 'Native-HWND secondary window must create a neutral Win32 surface payload.'
-Assert-Match $secondaryWindow 'nativeSurface\s*=\s*_compositedHost\.CreateSurfaceDescriptor\s*\(\s*\)' 'WPF-composited secondary window must create a neutral managed frame-sink payload (ENG-016).'
-Assert-Match $secondaryWindow 'new\s+MediaPresentationSurfaceDescriptor\s*\(\s*SurfaceId\s*,\s*_role\s*,\s*nativeSurface' 'Secondary window must attach its neutral payload with its role.'
-Assert-Match $secondaryWindow 'ResizePresentationSurface\s*\(\s*SurfaceId' 'Secondary window must resize through the session surface API.'
-Assert-Match $secondaryWindow 'DetachPresentationSurface\s*\(\s*SurfaceId' 'Secondary window must detach through the session surface API.'
+# Stage 046A: the WPF secondary window hosts a MediaSurface in its role (as Avalonia and WinForms
+# do), so it attaches, resizes and detaches through the checks above and shares auto-hide.
+Assert-Match $secondaryWindow 'new\s+MediaSurface\s*\{[^}]*PresentationMode\s*=\s*presentationMode[^}]*Role\s*=\s*role' 'Secondary window must host a MediaSurface in its role and the primary''s presentation mode (ENG-016).'
+Assert-Match $secondaryWindow 'Surface\.Player\s*=\s*null' 'Secondary window must detach its surface when closed.'
+
+# Stage 046A adapter parity: every adapter shares Core's content tracker (auto-hide and the
+# Audio-mode clear), reports Core's presentation path, and offers the same second-screen window.
+foreach ($adapter in @(
+        @{ Name = 'WPF'; Surface = $wpfAutoHide + $wpfPath + $mediaSurface; Secondary = $secondaryWindow },
+        @{ Name = 'Avalonia'; Surface = $avaloniaSurface; Secondary = $avaloniaSecondary },
+        @{ Name = 'WinForms'; Surface = $winFormsSurface; Secondary = $winFormsSecondary })) {
+    $name = $adapter.Name
+    Assert-Match $adapter.Surface 'MediaSurfaceContentTracker' "$name MediaSurface must use Core's MediaSurfaceContentTracker."
+    Assert-Match $adapter.Surface 'public\s+bool\s+AutoHide' "$name MediaSurface must expose AutoHide."
+    Assert-Match $adapter.Surface 'event\s+EventHandler\?\s+ContentVisibilityChanged' "$name MediaSurface must expose ContentVisibilityChanged."
+    Assert-Match $adapter.Surface 'public\s+bool\s+IsPresentationSuspended' "$name MediaSurface must expose IsPresentationSuspended (Audio mode)."
+    Assert-Match $adapter.Surface 'public\s+MediaSurfacePresentationPath\s+PresentationPath' "$name MediaSurface must report Core's MediaSurfacePresentationPath."
+    Assert-Match $adapter.Surface 'event\s+EventHandler\?\s+PresentationPathChanged' "$name MediaSurface must expose PresentationPathChanged."
+    Assert-Match $adapter.Surface 'DescribeAttachRefused' "$name MediaSurface must warn when the session refuses its surface."
+    Assert-Match $adapter.Surface 'public\s+MediaPresentationSurfaceRole\s+Role' "$name MediaSurface must expose Role."
+    Assert-Match $adapter.Surface 'public\s+string\s+EffectiveSurfaceId' "$name MediaSurface must expose EffectiveSurfaceId."
+    Assert-Match $adapter.Secondary 'public\s+bool\s+IsFullScreen' "$name SecondaryPresentationWindow must expose IsFullScreen."
+    Assert-Match $adapter.Secondary 'public\s+void\s+ShowOnScreen\s*\(' "$name SecondaryPresentationWindow must offer ShowOnScreen."
+    Assert-Match $adapter.Secondary 'F11' "$name SecondaryPresentationWindow must toggle full screen with F11."
+}
 
 Assert-Match $coordinator 'Dictionary<string,\s*MediaPresentationSurfaceDescriptor>\s+_surfaces' 'Core coordinator must retain all attached surface descriptors in one registry.'
 Assert-Match $coordinator '_surfaces\s*\[\s*surface\.Id\s*\]\s*=\s*surface' 'Core coordinator must store attached/resized surfaces by id.'
@@ -91,4 +122,4 @@ Assert-Match $compositionPresenter '_targetRegistry\.Capture\s*\(\s*validTargets
 Assert-Match $compositionPresenter 'foreach\s*\(\s*D3D11PresentationTargetSnapshot\s+target\s+in\s+presentationTargets\s*\)' 'D3D11 composition presenter must draw each selected presentation target.'
 Assert-Match $targetRegistry 'Capture\s*\(\s*IEnumerable<CompositionTargetDescriptor>\s+targets\s*\)' 'Core target registry must support renderer-neutral multi-target capture.'
 
-Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
+Write-Host 'Presentation parity check passed: WPF primary/secondary surfaces use the same neutral session contract, the WPF, Avalonia and WinForms surfaces share Core auto-hide, path reporting and the second-screen window, and Core fan-out captures/draws/presents active primary and secondary targets through one target plan.'
