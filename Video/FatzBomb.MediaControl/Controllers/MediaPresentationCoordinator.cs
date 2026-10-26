@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Pipeline;
@@ -55,6 +56,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
     private readonly PlaybackScheduler _recoveryScheduler = new("DeviceLostRecovery");
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly Dictionary<string, MediaPresentationSurfaceDescriptor> _surfaces = new(StringComparer.OrdinalIgnoreCase);
+    // A refused present is reported once per episode: a target going away (a surface unloading
+    // while the engine still stops or clears) refuses every present until one succeeds again.
+    private readonly RendererDiagnosticLatch _presentFailure = new();
     private readonly Lock _lock = new();
     private readonly Lock _cdgSnapshotGate = new();
     private readonly Lock _subtitleGate = new();
@@ -1307,10 +1311,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
 
         if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
             return CompositionPresentResult.Failed;
         }
 
+        _presentFailure.Reset();
         return CompositionPresentResult.Presented;
     }
 
@@ -1345,10 +1350,11 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         {
             if (!_rendererBackend.PresentComposition(ForVideoFrameTargets(frame)))
             {
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
+                _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Composition present failed reason={frame.Reason}{DescribeBackendPresentFailure()}");
                 return CompositionPresentResult.Failed;
             }
 
+            _presentFailure.Reset();
             return CompositionPresentResult.Presented;
         }
         finally

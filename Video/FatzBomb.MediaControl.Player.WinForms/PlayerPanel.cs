@@ -89,9 +89,7 @@ internal sealed class PlayerPanel : UserControl
         _binder.OnChanged(UpdateSeekBar, nameof(PlayerViewModel.SeekPositionSeconds), nameof(PlayerViewModel.DurationSeconds));
 
         _seekBar.PressStarting += OnSeekPressStarting;
-        _seekBar.MouseDown += OnSeekMouseDown;
-        _seekBar.MouseUp += OnSeekMouseUp;
-        _seekBar.MouseCaptureChanged += OnSeekCaptureChanged;
+        _seekBar.PressEnded += (_, _) => EndSeekDrag();
         _seekBar.ValueChanged += OnSeekValueChanged;
         _binder.Text(_stats, () => _viewModel.StatsText, nameof(PlayerViewModel.StatsText));
         _surface.DoubleClick += (_, _) => FullScreenToggleRequested?.Invoke(this, EventArgs.Empty);
@@ -542,25 +540,6 @@ internal sealed class PlayerPanel : UserControl
         _viewModel.BeginSeekPreview();
     }
 
-    private void OnSeekMouseDown(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left || !_isDragging)
-            return;
-
-        var inset = 13 * DeviceDpi / 96.0;
-        var fraction = Math.Clamp((e.X - inset) / Math.Max(1, _seekBar.ClientSize.Width - (2 * inset)), 0, 1);
-        _seekBar.Value = (int)Math.Round(fraction * _seekBar.Maximum);
-    }
-
-    private void OnSeekMouseUp(object? sender, MouseEventArgs e) => EndSeekDrag();
-
-    // The track bar lost the mouse (Alt+Tab, a dialog): end the drag where it is.
-    private void OnSeekCaptureChanged(object? sender, EventArgs e)
-    {
-        if (!_seekBar.Capture)
-            EndSeekDrag();
-    }
-
     private void EndSeekDrag()
     {
         if (!_isDragging)
@@ -703,17 +682,69 @@ internal sealed class PlayerPanel : UserControl
 /// <summary>A track bar that says when the left button goes down, before the native control pages or drags.</summary>
 internal sealed class ScrubTrackBar : TrackBar
 {
+    private const int WmMouseMove = 0x0200;
     private const int WmLeftButtonDown = 0x0201;
+    private const int WmLeftButtonUp = 0x0202;
     private const int WmLeftButtonDoubleClick = 0x0203;
+    private bool _pressed;
 
-    /// <summary>Raised on the left button press, before the native control handles it.</summary>
+    /// <summary>Raised on the left button press, before the value jumps to the pointer.</summary>
     public event EventHandler? PressStarting;
 
+    /// <summary>Raised when the press ends: the button is released or the mouse capture is lost.</summary>
+    public event EventHandler? PressEnded;
+
+    // The bar handles the left button itself, the way media players do: a press jumps to the
+    // pointer and a drag follows it, wherever the press lands. The native track bar pages toward
+    // a press off the thumb and keeps paging while the button is held, so a drag that starts
+    // there jumped to unrelated points.
     protected override void WndProc(ref Message m)
     {
-        // The second press of a quick double click arrives as a double-click message.
-        if (m.Msg is WmLeftButtonDown or WmLeftButtonDoubleClick)
-            PressStarting?.Invoke(this, EventArgs.Empty);
+        switch (m.Msg)
+        {
+            // The second press of a quick double click arrives as a double-click message.
+            case WmLeftButtonDown or WmLeftButtonDoubleClick when Enabled:
+                PressStarting?.Invoke(this, EventArgs.Empty);
+                _pressed = true;
+                _ = Focus();
+                Capture = true;
+                MoveToPointer(m.LParam);
+                return;
+            case WmMouseMove when _pressed:
+                MoveToPointer(m.LParam);
+                return;
+            case WmLeftButtonUp when _pressed:
+                EndPress();
+                return;
+        }
+
         base.WndProc(ref m);
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        // Alt+Tab or a dialog took the mouse: the press ends where it is.
+        if (!Capture)
+            EndPress();
+        base.OnMouseCaptureChanged(e);
+    }
+
+    private void EndPress()
+    {
+        if (!_pressed)
+            return;
+
+        _pressed = false;
+        Capture = false;
+        PressEnded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void MoveToPointer(nint lParam)
+    {
+        // Where the thumb's centre can travel: the channel minus half a thumb at each end.
+        var x = (short)(lParam.ToInt64() & 0xFFFF);
+        var inset = 13 * DeviceDpi / 96.0;
+        var fraction = Math.Clamp((x - inset) / Math.Max(1, ClientSize.Width - (2 * inset)), 0, 1);
+        Value = Math.Clamp(Minimum + (int)Math.Round(fraction * (Maximum - Minimum)), Minimum, Maximum);
     }
 }
