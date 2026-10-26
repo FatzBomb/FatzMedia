@@ -257,6 +257,7 @@ the second screen opens as a window).
 - Lightweight surfaces (D): the background pane (left) and the karaoke pane (right, 4:3) behave
   as designed. Closing or stopping them logged seven `Composition present failed ... (no active
   D3D11 presentation target)` warnings at once: a refused present is now reported once per
-  episode (`MediaPresentationCoordinator`, `RendererDiagnosticLatch`). Open: the overlay only
-  catches up with a window drag when the drag ends (being checked).
+  episode (`MediaPresentationCoordinator`, `RendererDiagnosticLatch`). The WPF overlay window
+  caught up with a window drag only when the drag ended (it followed layout refreshes, not the
+  owner's moves): it now follows every `WM_MOVE` of the owner window.
 

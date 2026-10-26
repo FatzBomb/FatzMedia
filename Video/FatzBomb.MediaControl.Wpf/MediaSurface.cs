@@ -10,6 +10,7 @@ namespace FatzBomb.MediaControl.Wpf;
 public sealed partial class MediaSurface : Grid
 {
     public const string DefaultSecondarySurfaceId = "secondary";
+    private const int WM_MOVE = 0x0003;
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
 
@@ -682,7 +683,14 @@ public sealed partial class MediaSurface : Grid
 
     private IntPtr OnOwnerWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_ENTERSIZEMOVE)
+        if (msg == WM_MOVE)
+        {
+            // The overlay is its own window: follow every move of the owner during a drag, not
+            // only the layout refresh when the drag ends (owner's 046A smoke).
+            if (_overlayWindow is { IsVisible: true } overlay)
+                overlay.UpdateBounds(this);
+        }
+        else if (msg == WM_ENTERSIZEMOVE)
         {
             SetPrimarySurfaceLiveResize(true);
         }
