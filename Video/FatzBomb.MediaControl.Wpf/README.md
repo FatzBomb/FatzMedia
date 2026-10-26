@@ -31,6 +31,31 @@ is selected. Hosts still supply BASS and FFmpeg native DLLs themselves; see
 Set the mode before loading media. Mixed presentation modes within one player session
 and live mode switching while media is open are not supported.
 
+## MediaSurface and the second screen (Stage 046A)
+
+`MediaSurface` has the same surface members as the Avalonia and WinForms adapters:
+
+- `Role` (default `Primary`) and `SurfaceId`, with `EffectiveSurfaceId`, `IsSurfaceAttached` and
+  `IsPrimarySurfaceAttached`. Only a primary surface forwards `VideoDisplayMode`.
+- `AutoHide` (default true), `IsContentVisible` and `ContentVisibilityChanged`, decided by Core's
+  `MediaSurfaceContentTracker`. `IsPresentationSuspended` while the player is in Audio mode:
+  the host hides instead of showing the last frame.
+- `PresentationPath` (`NativeWindow` or `FrameSink`), `PresentationPathReason`,
+  `PresentationPathChanged`, an Info diagnostic owned by the player, and one Warning when the
+  player refuses the surface. Notices use the `Wpf.MediaSurface` diagnostic category.
+
+`SecondaryPresentationWindow` hosts a projector `MediaSurface` (`Surface`) in the primary's
+presentation mode:
+
+```csharp
+var singer = new SecondaryPresentationWindow(player, "secondary");
+PresentationScreen? other = PresentationScreen.All.FirstOrDefault(screen => !screen.Equals(PresentationScreen.FromWindow(this)));
+singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
+// F11 or a double-click toggles full screen, Escape leaves it; closing it detaches.
+```
+
+`MediaSurface.ShowSecondaryOutput()` opens one with the surface's mode and `AutoHide`.
+
 ## BackgroundSurface
 
 `BackgroundSurface` accepts an image path, video path, `ImageSource`, or opaque `Color`.

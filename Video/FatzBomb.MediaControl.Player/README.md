@@ -114,7 +114,7 @@ or http(s) URL, `--url=`, `--mode=full|background|audio`, `--native=<dir>`, `--n
 `--net-ca-file=`, `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`,
 `--trim-silence`, `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`,
 `--prepare-next=`, `--auto-next`, `--fade-next=`, `--visual-transform-demo`, plus its own
-`--renderer=`/`--software` (below) and `--no-auto-hide`. The **PLAYER** box in the **A/V** flyout
+`--renderer=`/`--software` (below) and `--no-auto-hide` (shared by every player since Stage 046A). The **PLAYER** box in the **A/V** flyout
 switches the player mode on the fly (Stage 043A).
 
 ## Renderer choice

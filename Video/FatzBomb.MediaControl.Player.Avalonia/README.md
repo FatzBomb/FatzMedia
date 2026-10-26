@@ -71,8 +71,9 @@ second screen there at startup, full screen), and the flags every test player sh
 (Stage 043A; default full), `--native=<dir>` (repeatable), `--net-retries=`, `--net-ca-file=`,
 `--net-allow-invalid-certs`, `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--trim-silence`,
 `--reset-pitch-on-load`, `--reset-tempo-on-load`, `--eq=g1,...,g10`, `--prepare-next=`,
-`--auto-next`, `--fade-next=`, `--visual-transform-demo`. Each player's Mode box switches its mode
-on the fly (`SetModeAsync`); `--mode` sets its initial value.
+`--auto-next`, `--fade-next=`, `--visual-transform-demo`, `--no-auto-hide` (surfaces keep the
+last frame after stop; Stage 046A). Each player's Mode box switches its mode on the fly
+(`SetModeAsync`); `--mode` sets its initial value.
 
 On a headless Linux box: `xvfb-run -a dotnet .../FatzBomb.MediaControl.Player.Avalonia.dll`.
 Vulkan on a machine without a GPU needs Mesa lavapipe (`apt-get install mesa-vulkan-drivers`).

@@ -49,6 +49,13 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   renderer, on the shared GPU image and the frame sink; HDR tone mapped on the GPU) is
   implemented, pending manual smoke (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
   renderer's device, Linux) is planned in the stage file.
+- `active/046A_ACTIVE_AdapterParity.md` - adapter and player parity (owner direction,
+  2026-10-26: no feature solo for one player). Slice 1 (P1 fixes; Core `HasPresentation`,
+  `MediaSurfaceContentTracker` auto-hide and `MediaSurfacePresentationPath` shared by the WPF,
+  Avalonia and WinForms surfaces; WinForms and WPF second-screen windows with the Avalonia shape;
+  WPF `Role`/`SurfaceId`) is implemented, pending manual smoke (`updates/046A_1`). Slice 2
+  (Karaoke/Background surfaces everywhere, WinForms frame sink and overlay) and slice 3 (shared
+  player helpers, `--renderer=auto`, `--players`) are planned in the stage file.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

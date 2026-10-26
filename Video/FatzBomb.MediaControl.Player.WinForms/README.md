@@ -5,8 +5,9 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 ## What it tests
 
 - The `FatzBomb.MediaControl.WinForms` adapter: an HWND `MediaSurface` bound to a `MediaControlPlayer`
-  (attach, resize, DPI, detach on close), and a second `MediaSurface` in the projector role for the
-  second screen.
+  (attach, resize, DPI, live resize, auto-hide, the Audio-mode clear, detach on close), and the
+  adapter's `SecondaryPresentationWindow` (a projector `MediaSurface`) for the second screen
+  (Stage 046A).
 - The Windows + Direct3D11 platform (`WindowsDirect3D11MediaControlPlatformFactory`) in a non-WPF host.
 - The shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage 044A) through plain
   WinForms bindings (`ViewModelBinder`): the WPF player's features, with its flyouts as tabs.
@@ -19,7 +20,8 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 - Seek bar: dragging scrubs (`BeginScrub`, a seek per move, `EndScrub`; silent while moving when
   **Silent drag** is on), a click jumps there, arrow keys step 5 s. Elapsed and remaining time.
 - **Play**, **Pause**, **Stop**, **Loop**, **Mode** (Full, Background, Audio; switches on the fly),
-  **Second screen** (full screen on another monitor, else a 960x540 window), **Volume**,
+  **Second screen** (full screen on another monitor, else a 960x540 window; in it F11 or a
+  double-click toggles full screen and Escape leaves it), **Volume**,
   **Full screen** (also F11 or a double-click on the picture; Escape leaves it; the controls hide
   after 2.5 s without mouse movement).
 - Tabs: **Sync** (A/V, CD+G, subtitle offsets, reset, subtitle picker), **Video** (visual
@@ -42,7 +44,7 @@ auto with a warning) and the flags every test player shares (`PlayerStartupOptio
 `--mode=`, `--native=<dir>`, `--net-retries=`, `--net-ca-file=`, `--net-allow-invalid-certs`,
 `--no-hdr-tonemap`, `--hdr-tonemap-cpu`, `--hdr-output`, `--trim-silence`, `--reset-pitch-on-load`,
 `--reset-tempo-on-load`, `--eq=`, `--prepare-next=`, `--auto-next`, `--fade-next=`,
-`--visual-transform-demo`.
+`--visual-transform-demo`, `--no-auto-hide` (surfaces keep the last frame after stop; Stage 046A).
 
 ## Native libraries
 

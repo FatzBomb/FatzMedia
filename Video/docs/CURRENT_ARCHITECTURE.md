@@ -465,9 +465,10 @@ the positive proof of visual output — never file extensions or content flags:
   forward the same `AutoHide`, `IsContentVisible`, and `ContentVisibilityChanged`
   surface for their inner media layer; their solid-color / canvas fallbacks are
   independent of inner-media AutoHide.
-- Internal pure `SurfaceAutoHidePolicy` (`Idle → PendingShow → Shown → Hidden`)
-  in `FatzBomb.MediaControl.Wpf/SurfaceAutoHidePolicy.cs`, consumed by
-  `MediaSurface` (the `MediaSurface.AutoHide.cs` partial) with marshaled,
+- Internal pure `SurfaceAutoHidePolicy` (`Idle → PendingShow → Shown → Hidden`),
+  since Stage 046A in Core (`FatzBomb.MediaControl/Api/SurfaceAutoHidePolicy.cs`) behind the
+  public `MediaSurfaceContentTracker` that every adapter uses (see "Adapter Parity" below);
+  originally consumed by the WPF `MediaSurface` (the `MediaSurface.AutoHide.cs` partial) with marshaled,
   coalesced dispatcher transitions. Load only arms `PendingShow`; the surface
   shows on the first presented frame. Explicit stop/close/failure hide; pause
   stays shown; non-loop natural end hides; looping stays shown.
@@ -494,6 +495,41 @@ the positive proof of visual output — never file extensions or content flags:
   deterministically. The `scripts/check-core-boundary.ps1` allow-list was updated
   for the new references. The Player host enables AutoHide by default and exposes
   `--no-auto-hide` for validation of the manual-control opt-out.
+
+## Adapter Parity (Stage 046A, slice 1)
+
+Owner direction (2026-10-26): no feature solo for one player or adapter. Logic two adapters
+would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters bind to it:
+
+- `IMediaControlSession.HasPresentation` / `HasPresentationChanged` (default members; false in
+  Audio mode, raised by `MediaControlPlayer` on the control queue after the `ModeChanged` of a
+  switch into or out of Audio mode). A surface shows its background instead of the last frame
+  while it is false (`IsPresentationSuspended` on every `MediaSurface`).
+- `MediaSurfaceContentTracker`: the 029C auto-hide rules (latch replay, stale-frame filter
+  through `HasVisualContent`, stale stop/end during a replacement ignored) plus the
+  has-presentation signal. It applies session events under a `System.Threading.Lock` (the present
+  notice on the render thread, without allocating), never calls the session under it, and raises
+  `Changed` outside it on the changing thread. Adapters coalesce, marshal, and read
+  `ShowsContent` / `IsContentVisible` / `HasPresentation` on the UI thread; `HasPresentation` is
+  read live, so a quick Audio -> Full switch never leaves a surface cleared.
+- `MediaSurfacePresentationPath` (`None`, `FrameSink`, `SharedGpuImage`, `NativeWindow`; moved
+  from the Avalonia adapter) and `MediaSurfacePresentationPathText` (the shared path Info line
+  and the Warning raised once per session when `AttachPresentationSurface` returns false).
+- Every `MediaSurface` has `Role`, `SurfaceId`, `EffectiveSurfaceId`, `IsSurfaceAttached`,
+  `IsPrimarySurfaceAttached`, `AutoHide` (default true), `IsContentVisible`,
+  `ContentVisibilityChanged`, `IsPresentationSuspended`, `PresentationPath`,
+  `PresentationPathReason`, `PresentationPathChanged`; only a primary surface forwards
+  `VideoDisplayMode`. Every adapter has a `SecondaryPresentationWindow` with `Surface`,
+  `IsFullScreen`, `ShowOnScreen(screen, fullScreen, owner)` and F11 / double-click / Escape (WPF
+  enumerates monitors itself: `PresentationScreen`).
+- The WinForms `MediaSurface` presents through a disabled, hit-transparent child window it can
+  hide (input and drops still reach the control); it sends the live-resize hint from the parent
+  form's `ResizeBegin` / `ResizeEnd`. The WPF secondary window hosts a `MediaSurface`.
+- `scripts/check-presentation-parity.ps1` checks that all three adapters expose these members.
+
+Slices 2 (Karaoke/Background surfaces on every adapter, WinForms frame sink and overlay) and 3
+(shared player helpers, `--renderer=auto`) are planned in
+`roadmap/active/046A_ACTIVE_AdapterParity.md`.
 
 ## Base-Visual Transform Pipeline (Stage 030A)
 
@@ -867,7 +903,8 @@ Since slice 5 its `Role` and `SurfaceId` let a second `MediaSurface` (or the
 `SecondaryPresentationWindow` helper, placed full screen on a chosen screen) show the same
 session on another screen; every renderer accepts secondary frame-sink and shared-image
 surfaces, each rendered at its own size. While the session is in Audio mode (no renderer)
-the surface shows only its background.
+the surface shows only its background. Since Stage 046A its auto-hide, Audio-mode clear and
+path enum come from Core and match the WPF and WinForms surfaces (see "Adapter Parity").
 It follows the same adapter rules as WPF, enforced by
 `scripts/check-adapter-boundary.ps1`. See
 `roadmap/active/027A_ACTIVE_UiAdapterImplementations.md`.
