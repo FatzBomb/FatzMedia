@@ -247,7 +247,13 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         // monitors). Attach also runs from the presentation thread when surfaces are recreated,
         // so this queries Windows only for a new window.
         if (attached)
+        {
             _refreshRates.PrimeIfMissing(hwnd);
+            // HDR output (Stage 042A slice 2) follows the primary window's monitor; a no-op
+            // unless the option is on.
+            if (surface.Role == MediaPresentationSurfaceRole.Primary)
+                _presentation.HdrOutput.PrimeDisplay(hwnd);
+        }
 
         return attached;
     }
@@ -389,7 +395,11 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
 
         if (TryGetWin32Hwnd(surface, out nint hwnd))
+        {
             _refreshRates.Remove(hwnd);
+            if (surface.Role == MediaPresentationSurfaceRole.Primary)
+                _presentation.HdrOutput.ForgetDisplay(hwnd);
+        }
 
         if (surface.Role != MediaPresentationSurfaceRole.Primary)
         {
@@ -508,6 +518,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         }
 
         _refreshRates.Clear();
+        _presentation.HdrOutput.Clear();
         _vblankClocks.Dispose();
 
         if (_configuration.EnableLogging)

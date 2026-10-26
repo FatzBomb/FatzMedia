@@ -35,4 +35,14 @@ public sealed record Direct3D11PresentationOptions
 
     /// <summary>Gets which device to create. <see cref="Direct3D11DeviceSelection.Auto"/> is the default.</summary>
     public Direct3D11DeviceSelection DeviceSelection { get; init; } = Direct3D11DeviceSelection.Auto;
+
+    /// <summary>
+    /// Gets whether HDR video is presented as HDR on a monitor in Windows HDR mode (Stage 042A
+    /// slice 2), instead of being tone mapped to SDR. Default false: output is SDR, as before.
+    /// When on, the primary window's swap chain switches to FP16 scRGB while hardware-decoded HDR10
+    /// or HLG video plays on a monitor with HDR on, and back to SDR otherwise. Secondary windows,
+    /// the WPF composited mode (managed frame sink) and shared-texture surfaces (Avalonia) stay SDR.
+    /// Anything unsupported falls back to SDR tone mapping with one <c>D3D11.HdrOutput</c> diagnostic.
+    /// </summary>
+    public bool HdrOutput { get; init; }
 }

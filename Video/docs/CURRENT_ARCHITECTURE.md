@@ -192,6 +192,24 @@ named `window` handle.
 - Core `VideoDecoder` owns codec selection, decode queues, cloned-frame lifetime, software transfer fallback, seeking, and recovery policy. It contains no D3D11/DXVA device constants or D3D11 FFmpeg-structure parsing.
 - Windows currently supplies D3D11VA, D3D12VA, and DXVA2 preference; only D3D11 frames are exported for zero-copy presentation, while other hardware outputs transfer through Core's software frame path.
 
+## HDR Video (Stages 038A, 042A)
+
+- Core tone maps HDR10 (PQ) and HLG to SDR (BT.2390, SDR white 203 nits): on the CPU for
+  software frames and every renderer, or, for hardware-decoded D3D11 frames, in the Direct3D11
+  renderer's shader (`D3D11HdrToneMapPresenter`) from the frame's `HdrToneMapRequest`, with a
+  CPU fallback the renderer can request (`HdrToneMapFallback`).
+- HDR output (042A slice 2, opt-in `Direct3D11PresentationOptions.HdrOutput`): Core owns the
+  renderer-neutral decision and math (`Core/Video/Hdr/HdrOutputPolicy`, public as a renderer
+  contract). The Direct3D11 renderer owns detection (`Win32MonitorHdr`: `IDXGIOutput6` color
+  space and peak, the SDR white level from `DisplayConfigGetDeviceInfo`, cached per window off
+  the presentation thread), the per-frame decision for the primary window
+  (`D3D11HdrOutputController`) and the swap-chain switch (`ID3D11HdrOutputBackend`: FP16
+  `RGB_FULL_G10_NONE_P709` scRGB or `B8G8R8A8` sRGB, on the DirectComposition base chain or the
+  native HWND chain). On an scRGB target HDR video is drawn as scRGB at the display's peak and
+  SDR layers are linearized at the SDR white level. Secondary windows, offscreen surfaces
+  (WPF composited, shared textures/Avalonia), video effects and software-decoded HDR stay SDR;
+  any failure falls back to SDR tone mapping with one `D3D11.HdrOutput` diagnostic.
+
 ## MIDI Playback
 
 - BASS optional plugins (bassmidi, bassflac, bassopus, etc.) are loaded via `Bass.PluginLoad` so BASS recognizes their formats automatically.

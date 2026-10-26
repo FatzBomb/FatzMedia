@@ -88,6 +88,15 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
     public int TextureWidth { get; private set; }
     public int TextureHeight { get; private set; }
     public int TextureStride { get; private set; }
+
+    /// <summary>
+    /// The format of <see cref="Texture"/>: <c>B8G8R8A8_UNORM</c> (sRGB), or FP16 scRGB for HDR video
+    /// filled for HDR output (Stage 042A slice 2).
+    /// </summary>
+    public Format TextureFormat { get; private set; } = Format.B8G8R8A8_UNorm;
+
+    /// <summary>Whether <see cref="Texture"/> holds scRGB (FP16) rather than sRGB.</summary>
+    public bool HoldsScRgb => Texture != null && TextureFormat == Format.R16G16B16A16_Float;
     public MediaCompositionStretchMode StretchMode { get; private set; } = MediaCompositionStretchMode.UniformFit;
 
     public ID3D11Texture2D? CdgIndexTexture { get; private set; }
@@ -193,14 +202,20 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         }
     }
 
-    public bool EnsureRenderTargetTexture(ID3D11Device device, int width, int height, int stride, MediaCompositionStretchMode stretchMode)
+    public bool EnsureRenderTargetTexture(
+        ID3D11Device device,
+        int width,
+        int height,
+        int stride,
+        MediaCompositionStretchMode stretchMode,
+        Format format = Format.B8G8R8A8_UNorm)
     {
         if (width <= 0 || height <= 0 || stride < width * 4)
             return false;
 
         try
         {
-            EnsureTexture(device, width, height, stride, BindFlags.ShaderResource | BindFlags.RenderTarget);
+            EnsureTexture(device, width, height, stride, BindFlags.ShaderResource | BindFlags.RenderTarget, format);
             StretchMode = stretchMode == MediaCompositionStretchMode.Auto ? MediaCompositionStretchMode.UniformFit : stretchMode;
             return HasTexture;
         }
@@ -398,12 +413,13 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
     private static bool NearlyEquals(double left, double right)
         => Math.Abs(left - right) < 0.000001d;
 
-    private void EnsureTexture(ID3D11Device device, int width, int height, int stride, BindFlags bindFlags)
+    private void EnsureTexture(ID3D11Device device, int width, int height, int stride, BindFlags bindFlags, Format format = Format.B8G8R8A8_UNorm)
     {
         if (Texture != null
             && ShaderResourceView != null
             && TextureWidth == width
-            && TextureHeight == height)
+            && TextureHeight == height
+            && TextureFormat == format)
         {
             TextureStride = stride;
             return;
@@ -412,7 +428,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         ReleaseResources();
 
         var description = new Texture2DDescription(
-            Format.B8G8R8A8_UNorm,
+            format,
             (uint)width,
             (uint)height,
             arraySize: 1,
@@ -429,6 +445,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         TextureWidth = width;
         TextureHeight = height;
         TextureStride = stride;
+        TextureFormat = format;
     }
 
     private void EnsureCdgTextures(ID3D11Device device)
@@ -527,6 +544,7 @@ internal sealed class D3D11CompositionLayerState(MediaCompositionLayerId id) : I
         TextureWidth = 0;
         TextureHeight = 0;
         TextureStride = 0;
+        TextureFormat = Format.B8G8R8A8_UNorm;
         StretchMode = MediaCompositionStretchMode.UniformFit;
     }
 

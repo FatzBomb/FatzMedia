@@ -2,8 +2,10 @@ using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Hdr;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -23,7 +25,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     MediaPlayerConfiguration configuration,
     NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
-    Action resetVideoProcessorState) : ID3D11PresentationBackend
+    Action resetVideoProcessorState) : ID3D11PresentationBackend, ID3D11HdrOutputBackend
 {
     private readonly D3D11DirectCompositionTarget _target = new();
 
@@ -49,6 +51,18 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     public IntPtr Hwnd { get; private set; }
     public bool HasPendingResize { get; private set; }
 
+    /// <inheritdoc />
+    /// <remarks>The base swap chain's; the overlay swap chain (CD+G split) always stays SDR, and DWM composes it at the SDR white level.</remarks>
+    public HdrOutputMode OutputMode { get; private set; }
+
+    /// <inheritdoc />
+    public string? HdrOutputFailure { get; private set; }
+
+    private Hdr10MetadataValues? _hdrMetadata;
+    // Borrowed from the renderer (not owned): re-creates the swap chain in SDR when going back
+    // from scRGB fails.
+    private D3D11DeviceResources? _deviceResources;
+
     // After a failed ResizeBuffers the resize stays pending but is retried only from here on.
     private long _resizeRetryNotBefore;
 
@@ -62,6 +76,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         }
 
         Cleanup();
+        _deviceResources = deviceResources;
 
         try
         {
@@ -86,6 +101,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             }
 
             TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+            OutputMode = D3D11HdrSwapChain.ModeOf(TargetTexture);
             Hwnd = hwnd;
             Width = width;
             Height = height;
@@ -188,6 +204,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
 
             TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
             _target.ReacquireOverlayBackBuffer();
+            if (OutputMode == HdrOutputMode.ScRgb)
+                D3D11HdrSwapChain.ReapplyScRgbColorSpace(_baseSwapChain);
             Width = width;
             Height = height;
             HasPendingResize = false;
@@ -205,6 +223,72 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
             _ = _resizeFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition resize to {width}x{height} failed: {ex.Message}", ex);
             return false;
         }
+    }
+
+    /// <inheritdoc />
+    public bool TrySetOutputMode(HdrOutputMode mode, Hdr10MetadataValues? metadata)
+    {
+        if (!IsActive || _baseSwapChain == null)
+            return false;
+
+        if (mode == OutputMode)
+        {
+            if (mode == HdrOutputMode.ScRgb && metadata != _hdrMetadata)
+            {
+                D3D11HdrSwapChain.SetMetadata(_baseSwapChain, metadata);
+                _hdrMetadata = metadata;
+            }
+
+            return true;
+        }
+
+        // As for ResizeBuffers: no reference to a base back buffer may remain.
+        resetVideoProcessorState();
+        TargetViews.Release();
+        TargetTexture?.Dispose();
+        TargetTexture = null;
+
+        var applied = D3D11HdrSwapChain.TryApply(_baseSwapChain, Width, Height, mode, metadata, out var failure);
+        try
+        {
+            TargetTexture = _baseSwapChain.GetBuffer<ID3D11Texture2D>(0);
+        }
+        catch (Exception ex)
+        {
+            failure ??= $"GetBuffer failed: {ex.Message}";
+            applied = false;
+        }
+
+        OutputMode = D3D11HdrSwapChain.ModeOf(TargetTexture);
+        _hdrMetadata = applied && mode == HdrOutputMode.ScRgb ? metadata : null;
+        if (!applied)
+            HdrOutputFailure = failure ?? "the swap chain could not change its format";
+
+        // Going back to SDR failed and the buffers are still FP16: SDR content cannot be drawn
+        // into them by every path, so re-create the swap chain in SDR, as device-loss recovery
+        // does. The failure stays, keeping this swap chain SDR.
+        if (!applied && mode == HdrOutputMode.Sdr && OutputMode == HdrOutputMode.ScRgb)
+            applied = RecreateInSdr(HdrOutputFailure);
+
+        return applied;
+    }
+
+    private bool RecreateInSdr(string? failure)
+    {
+        if (_deviceResources is not { } deviceResources)
+            return false;
+
+        (IntPtr hwnd, int width, int height) = (Hwnd, Width, Height);
+        (bool pending, int pendingWidth, int pendingHeight) = (HasPendingResize, _pendingWidth, _pendingHeight);
+        if (!Create(deviceResources, hwnd, width, height))
+            return false;
+
+        (HasPendingResize, _pendingWidth, _pendingHeight) = (pending, pendingWidth, pendingHeight);
+        HdrOutputFailure = failure;
+        // As on activation: a new overlay chain starts transparent.
+        ClearOverlayToTransparent(deviceResources);
+        _ = PresentOverlayAndCommit();
+        return OutputMode == HdrOutputMode.Sdr;
     }
 
     private void ReportResizeFailure(Result result, IDXGISwapChain? swapChain, string chainName, int width, int height, ref bool alreadyReported)
@@ -339,6 +423,9 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
         TargetTexture = null;
         _baseSwapChain?.Dispose();
         _baseSwapChain = null;
+        OutputMode = HdrOutputMode.Sdr;
+        HdrOutputFailure = null;
+        _hdrMetadata = null;
         _target.Dispose();
         Hwnd = IntPtr.Zero;
         Width = 0;

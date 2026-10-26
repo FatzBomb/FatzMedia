@@ -4,6 +4,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
@@ -64,7 +65,8 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         HdrToneMapRequest? toneMap,
         int presentationWidth,
         int presentationHeight,
-        MediaCompositionStretchMode stretch)
+        MediaCompositionStretchMode stretch,
+        HdrOutputDecision? hdrOutput = null)
     {
         if (!deviceResources.HasVideoProcessorSupport
             || sourceTexturePointer == IntPtr.Zero
@@ -89,9 +91,16 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             toneMap,
             presentationWidth,
             presentationHeight,
-            stretch);
+            stretch,
+            hdrOutput);
     }
 
+    /// <summary>
+    /// Scales the frame into <paramref name="presentationTexture"/>. HDR video goes through the
+    /// tone-map shader; with <paramref name="hdrOutput"/> set (Stage 042A slice 2) the texture is
+    /// FP16 and receives scRGB, which only the shader can produce: if it fails, the frame is not
+    /// drawn and the decoder's CPU tone mapper takes over, so the next frames are SDR.
+    /// </summary>
     public bool BlitTextureToPresentation(
         D3D11DeviceResources deviceResources,
         ID3D11Texture2D presentationTexture,
@@ -104,7 +113,8 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         HdrToneMapRequest? toneMap,
         int presentationWidth,
         int presentationHeight,
-        MediaCompositionStretchMode stretch)
+        MediaCompositionStretchMode stretch,
+        HdrOutputDecision? hdrOutput = null)
     {
         if (deviceResources.VideoDevice == null
             || deviceResources.VideoContext == null
@@ -118,6 +128,11 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         }
 
         VideoColorSpace resolvedColorSpace = colorSpace.Resolve(width, height);
+        // SDR video on a target still scRGB (only while a failed switch back to SDR is being
+        // recovered): the video processor draws it, unscaled but visible, rather than nothing.
+        if (toneMap == null)
+            hdrOutput = null;
+
         if (toneMap is { } request)
         {
             (Vortice.RawRect hdrSource, Vortice.RawRect hdrDestination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
@@ -131,9 +146,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                     presentationWidth,
                     presentationHeight,
                     hdrSource,
-                    hdrDestination))
+                    hdrDestination,
+                    hdrOutput))
             {
-                ReportHdrPath(MediaDiagnosticLevel.Info, $"{DescribeTransfer(request.Transfer)} video is tone mapped to SDR on the GPU (Direct3D11 shader).");
+                // HDR output reports through D3D11.HdrOutput; this line is for SDR output.
+                if (hdrOutput == null)
+                    ReportHdrPath(MediaDiagnosticLevel.Info, $"{DescribeTransfer(request.Transfer)} video is tone mapped to SDR on the GPU (Direct3D11 shader).");
                 deviceResources.Context.Flush();
                 return true;
             }
@@ -148,6 +166,11 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                     MediaDiagnosticLevel.Warning,
                     $"{DescribeTransfer(request.Transfer)} tone mapping on the GPU is unavailable ({reason}); the engine's CPU tone mapper takes over.");
             }
+
+            // The video processor cannot fill an scRGB target: skip this frame; the CPU tone
+            // mapper's frames are SDR, so the output goes back to SDR.
+            if (hdrOutput != null)
+                return false;
         }
 
         if (!EnsureVideoProcessor(deviceResources, presentationTexture, width, height, framesPerSecond, presentationWidth, presentationHeight))

@@ -1,8 +1,8 @@
 using FatzBomb.MediaControl.Core.Graphics;
 
-// Stage 042A slice 2 (groundwork): the renderer-neutral policy and math for HDR output on HDR
-// displays. The Direct3D11 wiring (scRGB swap chain, SetColorSpace1, SetHDRMetaData, per-monitor
-// detection) is planned in docs/roadmap/active/042A_ACTIVE_HdrFollowUps.md.
+// Stage 042A slice 2: the renderer-neutral policy and math for HDR output on HDR displays. Public
+// as a renderer contract: the Direct3D11 renderer (scRGB swap chain, SetColorSpace1,
+// SetHDRMetaData, per-monitor detection) applies it; see docs/roadmap/updates/042A_2.
 
 namespace FatzBomb.MediaControl.Core.Video.Hdr;
 
@@ -11,10 +11,10 @@ namespace FatzBomb.MediaControl.Core.Video.Hdr;
 /// space <c>RGB_FULL_G2084_NONE_P2020</c>), its peak luminance (<c>DXGI_OUTPUT_DESC1.MaxLuminance</c>)
 /// and the system's SDR white level for it, all in nits. 0 means not reported.
 /// </summary>
-internal readonly record struct HdrDisplayInfo(bool HdrEnabled, double PeakNits, double SdrWhiteNits);
+public readonly record struct HdrDisplayInfo(bool HdrEnabled, double PeakNits, double SdrWhiteNits);
 
 /// <summary>How a target presents.</summary>
-internal enum HdrOutputMode
+public enum HdrOutputMode
 {
     /// <summary>8-bit sRGB (BT.709, gamma 2.2); HDR video is tone mapped to SDR (Stages 038A, 042A slice 1).</summary>
     Sdr = 0,
@@ -27,14 +27,14 @@ internal enum HdrOutputMode
 }
 
 /// <summary>A target's output decision: the mode, the display peak HDR video is mapped to, and the SDR white level SDR layers use.</summary>
-internal readonly record struct HdrOutputDecision(HdrOutputMode Mode, double DisplayPeakNits, double SdrWhiteNits, string Reason);
+public readonly record struct HdrOutputDecision(HdrOutputMode Mode, double DisplayPeakNits, double SdrWhiteNits, string Reason);
 
 /// <summary>
 /// HDR10 static metadata in DXGI's encoding (<c>DXGI_HDR_METADATA_HDR10</c>): chromaticities in
 /// units of 0.00002, maximum mastering luminance in nits, minimum in 0.0001 nits, content light
 /// levels in nits.
 /// </summary>
-internal readonly record struct Hdr10MetadataValues(
+public readonly record struct Hdr10MetadataValues(
     ushort RedX,
     ushort RedY,
     ushort GreenX,
@@ -53,7 +53,7 @@ internal readonly record struct Hdr10MetadataValues(
 /// layers at the system SDR white level, HDR video mapped to the display's peak, and HDR10
 /// metadata (Stage 042A slice 2).
 /// </summary>
-internal static class HdrOutputPolicy
+public static class HdrOutputPolicy
 {
     /// <summary>The luminance of scRGB 1.0.</summary>
     public const double ScRgbUnitNits = 80;
@@ -87,6 +87,17 @@ internal static class HdrOutputPolicy
             sdrWhite,
             $"the monitor is in HDR mode (peak {peak:0} nits{(reported ? string.Empty : ", assumed")}, SDR white {sdrWhite:0} nits)");
     }
+
+    /// <summary>
+    /// <paramref name="decision"/>, or SDR for the reason <paramref name="blocker"/> when something
+    /// the policy does not see rules HDR output out for this target (a surface that cannot show
+    /// it, a failed swap-chain change, a video effect, another window showing the same frame).
+    /// An SDR decision keeps its own reason.
+    /// </summary>
+    public static HdrOutputDecision Restrict(HdrOutputDecision decision, string? blocker) =>
+        blocker is null || decision.Mode == HdrOutputMode.Sdr
+            ? decision
+            : new HdrOutputDecision(HdrOutputMode.Sdr, 0, decision.SdrWhiteNits, blocker);
 
     /// <summary>Whether a target moving from <paramref name="previous"/> to <paramref name="next"/> needs another swap-chain format and color space.</summary>
     public static bool NeedsSwapChainChange(HdrOutputDecision? previous, HdrOutputDecision next) =>

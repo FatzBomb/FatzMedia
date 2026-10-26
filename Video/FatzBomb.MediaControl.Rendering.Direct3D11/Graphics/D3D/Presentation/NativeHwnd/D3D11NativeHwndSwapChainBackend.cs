@@ -4,8 +4,10 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Hdr;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using SharpGen.Runtime;
 
@@ -21,7 +23,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     NativeSwapChainPresentMode presentMode,
     D3D11PresentationDiagnostics diagnostics,
     Action resetVideoProcessorState,
-    Action resetOverlayTransientFailure) : ID3D11PresentationBackend
+    Action resetOverlayTransientFailure) : ID3D11PresentationBackend, ID3D11HdrOutputBackend
 {
     private IDXGISwapChain? _swapChain;
     private int _pendingWidth;
@@ -41,6 +43,17 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     public IntPtr Hwnd { get; private set; }
     public D3D11TargetViewCache TargetViews { get; } = new();
 
+    /// <inheritdoc />
+    public HdrOutputMode OutputMode { get; private set; }
+
+    /// <inheritdoc />
+    public string? HdrOutputFailure { get; private set; }
+
+    private Hdr10MetadataValues? _hdrMetadata;
+    // Borrowed from the renderer (not owned): re-creates the swap chain in SDR when going back
+    // from scRGB fails.
+    private D3D11DeviceResources? _deviceResources;
+
     public bool Matches(IntPtr hwnd, int width, int height) => IsActive && hwnd == Hwnd && width == Width && height == Height;
 
     public bool Create(D3D11DeviceResources deviceResources, IntPtr hwnd, int width, int height)
@@ -51,6 +64,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         }
 
         Cleanup();
+        _deviceResources = deviceResources;
 
         try
         {
@@ -66,6 +80,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             }
 
             TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            OutputMode = D3D11HdrSwapChain.ModeOf(TargetTexture);
             Hwnd = hwnd;
             Width = width;
             Height = height;
@@ -129,6 +144,69 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             return true;
 
         return pending && hwnd != IntPtr.Zero && Create(deviceResources, hwnd, width, height);
+    }
+
+    /// <inheritdoc />
+    public bool TrySetOutputMode(HdrOutputMode mode, Hdr10MetadataValues? metadata)
+    {
+        if (!IsActive || _swapChain == null)
+            return false;
+
+        if (mode == OutputMode)
+        {
+            if (mode == HdrOutputMode.ScRgb && metadata != _hdrMetadata)
+            {
+                D3D11HdrSwapChain.SetMetadata(_swapChain, metadata);
+                _hdrMetadata = metadata;
+            }
+
+            return true;
+        }
+
+        // As for ResizeBuffers: no reference to a back buffer may remain.
+        resetVideoProcessorState();
+        TargetViews.Release();
+        TargetTexture?.Dispose();
+        TargetTexture = null;
+
+        var applied = D3D11HdrSwapChain.TryApply(_swapChain, Width, Height, mode, metadata, out var failure);
+        try
+        {
+            TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+        }
+        catch (Exception ex)
+        {
+            failure ??= $"GetBuffer failed: {ex.Message}";
+            applied = false;
+        }
+
+        OutputMode = D3D11HdrSwapChain.ModeOf(TargetTexture);
+        _hdrMetadata = applied && mode == HdrOutputMode.ScRgb ? metadata : null;
+        if (!applied)
+            HdrOutputFailure = failure ?? "the swap chain could not change its format";
+
+        // Going back to SDR failed and the buffers are still FP16: SDR content cannot be drawn
+        // into them by every path, so re-create the swap chain in SDR, as device-loss recovery
+        // does. The failure stays, keeping this swap chain SDR.
+        if (!applied && mode == HdrOutputMode.Sdr && OutputMode == HdrOutputMode.ScRgb)
+            applied = RecreateInSdr(HdrOutputFailure);
+
+        return applied;
+    }
+
+    private bool RecreateInSdr(string? failure)
+    {
+        if (_deviceResources is not { } deviceResources)
+            return false;
+
+        (IntPtr hwnd, int width, int height) = (Hwnd, Width, Height);
+        (bool pending, int pendingWidth, int pendingHeight) = (_resizePending, _pendingWidth, _pendingHeight);
+        if (!Create(deviceResources, hwnd, width, height))
+            return false;
+
+        (_resizePending, _pendingWidth, _pendingHeight) = (pending, pendingWidth, pendingHeight);
+        HdrOutputFailure = failure;
+        return OutputMode == HdrOutputMode.Sdr;
     }
 
     public bool Present(int liveResizeFlag, bool syncImmediate) => D3D11SwapChainPresenter.Present(
@@ -200,6 +278,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             }
 
             TargetTexture = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            if (OutputMode == HdrOutputMode.ScRgb)
+                D3D11HdrSwapChain.ReapplyScRgbColorSpace(_swapChain);
             Width = width;
             Height = height;
             _resizePending = false;
@@ -230,6 +310,9 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
         TargetTexture = null;
         _swapChain?.Dispose();
         _swapChain = null;
+        OutputMode = HdrOutputMode.Sdr;
+        HdrOutputFailure = null;
+        _hdrMetadata = null;
         Hwnd = IntPtr.Zero;
         Width = 0;
         Height = 0;

@@ -38,6 +38,22 @@ public sealed class HdrOutputPolicyTests
     }
 
     [Fact]
+    public void ABlocker_TurnsOnlyAnHdrDecisionIntoSdr()
+    {
+        HdrOutputDecision hdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);
+        HdrOutputDecision sdr = HdrOutputPolicy.Choose(true, null, HdrMonitor);
+
+        HdrOutputDecision blocked = HdrOutputPolicy.Restrict(hdr, "a video effect is on");
+        Assert.Equal(HdrOutputMode.Sdr, blocked.Mode);
+        Assert.Equal("a video effect is on", blocked.Reason);
+        Assert.Equal(200, blocked.SdrWhiteNits);
+
+        // No blocker, or an SDR decision: unchanged, with its own reason.
+        Assert.Equal(hdr, HdrOutputPolicy.Restrict(hdr, null));
+        Assert.Equal(sdr, HdrOutputPolicy.Restrict(sdr, "a video effect is on"));
+    }
+
+    [Fact]
     public void MovingBetweenMonitors_ChangesTheSwapChainOnlyWhenTheModeChanges()
     {
         HdrOutputDecision onHdr = HdrOutputPolicy.Choose(true, HdrTransferFunction.Pq, HdrMonitor);

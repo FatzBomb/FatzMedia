@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
@@ -19,7 +20,8 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     string backendName,
     long revision,
     CompositionTargetKind compositionTargetKind,
-    D3D11TargetViewCache? targetViews = null)
+    D3D11TargetViewCache? targetViews = null,
+    HdrOutputMode outputMode = HdrOutputMode.Sdr)
 {
     public string TargetId { get; } = targetId;
 
@@ -44,6 +46,9 @@ internal readonly struct D3D11PresentationTargetSnapshot(
     /// when the view is created for the draw.
     /// </summary>
     public D3D11TargetViewCache? TargetViews { get; } = targetViews;
+
+    /// <summary>What <see cref="Texture"/> holds: SDR (8-bit sRGB) or FP16 scRGB (Stage 042A slice 2).</summary>
+    public HdrOutputMode OutputMode { get; } = outputMode;
 
     public bool IsValid => !string.IsNullOrWhiteSpace(TargetId)
         && Texture != null

@@ -32,9 +32,10 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/042A_ACTIVE_HdrFollowUps.md` - HDR follow-ups from 038A. Slice 1 (HLG tone mapping:
   inverse OETF, BT.2100 OOTF at 1000 nits, BT.2390 curve; CPU tables and the Direct3D11 shader)
   is implemented, pending manual smoke (`updates/042A_1`). Slice 2 (HDR output on HDR displays,
-  Direct3D11, opt-in) is planned; its renderer-neutral policy and math are implemented and
-  tested (`updates/042A_2`), the Direct3D11 wiring waits for ENG-026. The Avalonia GPU-shared
-  surface stays SDR.
+  Direct3D11, opt-in `Direct3D11PresentationOptions.HdrOutput`: FP16 scRGB swap chain for the
+  primary window, SDR layers at the system SDR white level, SDR fallback) is implemented,
+  pending manual smoke (`updates/042A_2`); the WPF Player turns it on with `--hdr-output`.
+  Secondary windows, offscreen surfaces and the Avalonia GPU-shared surface stay SDR.
 - `active/043A_ACTIVE_PlayerModes.md` - player modes (Full, Background, Audio); slice 1 (mode at
   creation, light loading, `AutoBackground`, `TransparentBackground`, `FromColor`) and slice 2
   (`SetModeAsync`, switching on the fly, `ModeChanged`) implemented, pending manual smoke

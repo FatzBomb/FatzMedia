@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -16,7 +17,9 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 /// YCbCr to RGB, PQ (or HLG through its inverse OETF and the BT.2100 OOTF) to display light,
 /// applies the curve to the brightest channel, converts BT.2020 to BT.709 primaries and encodes
 /// gamma 2.4, drawing into the target the video processor would have filled, at the same
-/// rectangles.
+/// rectangles. For HDR output (Stage 042A slice 2) the same shader writes scRGB into an FP16
+/// target instead: PQ through the BT.2390 curve with the display's peak as target, HLG through
+/// the OOTF for the display's peak, BT.2020 to BT.709 unclipped, 1.0 = 80 nits.
 /// </summary>
 internal sealed class D3D11HdrToneMapPresenter : IDisposable
 {
@@ -39,7 +42,8 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
 
     /// <summary>
     /// Draws the frame into <paramref name="target"/>: black, then the tone-mapped
-    /// <paramref name="sourceRect"/> of the frame into <paramref name="destinationRect"/>.
+    /// <paramref name="sourceRect"/> of the frame into <paramref name="destinationRect"/>; as
+    /// scRGB for the display in <paramref name="hdrOutput"/> when it is set (an FP16 target).
     /// False (nothing drawn) when the frame is not P010 or the GPU path is unavailable; the
     /// caller then uses the video processor.
     /// </summary>
@@ -53,7 +57,8 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         int targetWidth,
         int targetHeight,
         Vortice.RawRect sourceRect,
-        Vortice.RawRect destinationRect)
+        Vortice.RawRect destinationRect,
+        HdrOutputDecision? hdrOutput = null)
     {
         if (deviceResources.Device is not { } device || deviceResources.Context is not { } context)
             return false;
@@ -85,7 +90,7 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
             var sourceSubresource = (uint)Math.Max(0, sourceArraySlice) * Math.Max(1u, sourceDescription.MipLevels);
             context.CopySubresourceRegion(_source!, 0, 0, 0, 0, sourceTexture, sourceSubresource);
 
-            WriteConstants(context, colorSpace, toneMap, sourceDescription, targetWidth, targetHeight, sourceRect, destinationRect);
+            WriteConstants(context, colorSpace, toneMap, sourceDescription, targetWidth, targetHeight, sourceRect, destinationRect, hdrOutput);
 
             context.OMSetRenderTargets(_targetView!);
             context.ClearRenderTargetView(_targetView!, new Color4(0f, 0f, 0f, 1f));
@@ -244,7 +249,8 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         int targetWidth,
         int targetHeight,
         Vortice.RawRect sourceRect,
-        Vortice.RawRect destinationRect)
+        Vortice.RawRect destinationRect,
+        HdrOutputDecision? hdrOutput)
     {
         ToneMapConstants constants = CreateConstants(
             colorSpace,
@@ -254,9 +260,21 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
             targetWidth,
             targetHeight,
             sourceRect,
-            destinationRect);
+            destinationRect,
+            hdrOutput);
         context.UpdateSubresource(in constants, _constantBuffer!, 0, 0, 0, null);
     }
+
+    /// <summary>
+    /// The mapping for scRGB output on a display peaking at <paramref name="displayPeakNits"/>
+    /// (Stage 042A slice 2, <see cref="HdrOutputPolicy"/>): PQ keeps its peak and is compressed
+    /// only above the display's; HLG's OOTF is evaluated for the display's peak, so its system
+    /// gamma adapts and no curve applies.
+    /// </summary>
+    internal static HdrToneMapRequest ForScRgbOutput(HdrToneMapRequest toneMap, double displayPeakNits) =>
+        toneMap.Transfer == HdrTransferFunction.Hlg
+            ? new HdrToneMapRequest(displayPeakNits, displayPeakNits) { Transfer = HdrTransferFunction.Hlg }
+            : new HdrToneMapRequest(toneMap.SourcePeakNits, displayPeakNits) { Transfer = HdrTransferFunction.Pq };
 
     /// <summary>The shader constants for a frame (pure; tested).</summary>
     internal static ToneMapConstants CreateConstants(
@@ -267,8 +285,13 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
         int targetWidth,
         int targetHeight,
         Vortice.RawRect sourceRect,
-        Vortice.RawRect destinationRect)
+        Vortice.RawRect destinationRect,
+        HdrOutputDecision? hdrOutput = null)
     {
+        var scRgb = hdrOutput is { Mode: HdrOutputMode.ScRgb };
+        if (scRgb)
+            toneMap = ForScRgbOutput(toneMap, hdrOutput!.Value.DisplayPeakNits);
+
         // P010 keeps 10-bit codes in the top bits of 16: a sampled value v is code * 64 / 65535.
         const double codeScale = 65535.0 / 64;
         var full = colorSpace.Range == VideoColorRange.Full;
@@ -314,11 +337,12 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
                 (float)maxLum,
                 (float)Math.Max((1.5 * maxLum) - 0.5, 0),
                 compress ? 1f : 0f),
+            // scRGB (Stage 042A slice 2): nits / 80, unclipped and linear.
             Output = new Vector4(
-                (float)(1 / toneMap.TargetPeakNits),
+                (float)(1 / (scRgb ? HdrOutputPolicy.ScRgbUnitNits : toneMap.TargetPeakNits)),
                 (float)(1 / HdrToneMapRequest.SdrGamma),
                 (float)toneMap.TargetPeakNits,
-                0f),
+                scRgb ? 1f : 0f),
             // HLG (Stage 042A): the OOTF's nominal peak and system gamma - 1.
             Transfer = new Vector4(
                 hlg ? 1f : 0f,
@@ -356,7 +380,7 @@ cbuffer ToneMapConstants : register(b0)
     float4 YuvScaleOffset;    // luma scale, luma offset, chroma scale, chroma offset
     float4 YuvMatrix;         // rCr, gCb, gCr, bCb
     float4 Curve;             // source peak (PQ), target peak / source peak (PQ), knee start, compress
-    float4 Output;            // 1 / target nits, 1 / SDR gamma, target nits
+    float4 Output;            // 1 / target nits (1 / 80 for scRGB), 1 / SDR gamma, target nits, scRGB output (1)
     float4 SampleClamp;       // normalized sampling bounds inside the crop: left, top, right, bottom
     float4 Transfer;          // HLG (1) or PQ (0), HLG nominal peak nits, HLG system gamma - 1
 };
@@ -481,6 +505,10 @@ float4 PSToneMap(VertexOut input) : SV_TARGET
         dot(linear2020, float3(1.660491, -0.587641, -0.072850)),
         dot(linear2020, float3(-0.124550, 1.132900, -0.008349)),
         dot(linear2020, float3(-0.018151, -0.100579, 1.118730)));
+
+    // scRGB keeps BT.2020 colors outside BT.709 as values below 0 and above 1.
+    if (Output.w > 0.5)
+        return float4(linear709, 1.0);
 
     return float4(pow(saturate(linear709), Output.y), 1.0);
 }

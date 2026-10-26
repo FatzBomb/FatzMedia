@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
+using FatzBomb.MediaControl.Core.Video.Hdr;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 
@@ -28,7 +29,8 @@ internal sealed class D3D11PresentationFramePresenter(
         double framesPerSecond,
         VideoColorSpace colorSpace,
         HdrToneMapRequest? toneMap,
-        Func<int, int, bool> notifyPresented) =>
+        Func<int, int, bool> notifyPresented,
+        HdrOutputDecision? hdrOutput = null) =>
         !isDisposed
             && deviceResources.Context != null
             && deviceResources.HasVideoProcessorSupport
@@ -51,5 +53,7 @@ internal sealed class D3D11PresentationFramePresenter(
             target.Width,
             target.Height,
             presentationState.NativePresentationStretch,
-            notifyPresented);
+            notifyPresented,
+            // Only an scRGB target takes scRGB (the snapshot is taken after the output was chosen).
+            target.OutputMode == HdrOutputMode.ScRgb ? hdrOutput : null);
 }
