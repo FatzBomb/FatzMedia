@@ -92,7 +92,11 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            PlayerView? target = _fullScreenPlayer ?? FocusedPlayer() ?? _players.FirstOrDefault(static player => player.ViewModel.ActiveFlyout != Shared.ViewModels.PlayerFlyout.None);
+            // The full-screen player's flyout, else the focused player's, else any open one.
+            PlayerView? target = _fullScreenPlayer
+                ?? _players.Where(static player => player.ViewModel.ActiveFlyout != Shared.ViewModels.PlayerFlyout.None)
+                    .OrderByDescending(static player => player.IsKeyboardFocusWithin)
+                    .FirstOrDefault();
             if (target?.CloseFlyout() == true)
                 e.Handled = true;
             else if (_fullScreenPlayer is not null)
