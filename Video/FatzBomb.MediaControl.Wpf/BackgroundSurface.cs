@@ -10,6 +10,9 @@ namespace FatzBomb.MediaControl.Wpf;
 /// </summary>
 public sealed class BackgroundSurface : Grid, IDisposable
 {
+    /// <summary>The diagnostic category of this control's own notices (Stage 046A).</summary>
+    public const string DiagnosticCategory = "Wpf.BackgroundSurface";
+
     private readonly MediaSurface _surface;
     private readonly LightweightPlayerController _playerController;
     private readonly Border _colorLayer;
@@ -215,8 +218,15 @@ public sealed class BackgroundSurface : Grid, IDisposable
         var surface = (BackgroundSurface)d;
         if (surface._playerController.IsMediaOpen)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[{nameof(BackgroundSurface)}] PresentationMode change deferred until media is closed.");
+            if (!Equals(baseValue, surface._appliedPresentationMode))
+            {
+                DiagnosticRouter.Raise(
+                    surface._playerController.Session,
+                    MediaDiagnosticLevel.Info,
+                    DiagnosticCategory,
+                    $"PresentationMode {baseValue} is deferred until the media is closed.");
+            }
+
             return surface._appliedPresentationMode;
         }
 
@@ -272,7 +282,12 @@ public sealed class BackgroundSurface : Grid, IDisposable
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[{nameof(BackgroundSurface)}] Reload failed: {ex.Message}");
+                DiagnosticRouter.Raise(
+                    _playerController.Session,
+                    MediaDiagnosticLevel.Warning,
+                    DiagnosticCategory,
+                    $"Reloading the source failed: {ex.Message}",
+                    innerException: ex);
             }
         });
     }

@@ -1,20 +1,8 @@
-using FatzBomb.MediaControl.Wpf;
-
 namespace FatzBomb.MediaControl.Tests;
 
+/// <summary>The auto-hide states, in Core since Stage 046A (portable).</summary>
 public sealed class SurfaceAutoHidePolicyTests
 {
-    [Fact]
-    public void SurfaceAutoHideDependencyPropertiesDefaultOnAndExposeReadOnlyState()
-    {
-        Assert.True((bool)MediaSurface.AutoHideProperty.DefaultMetadata.DefaultValue);
-        Assert.True((bool)BackgroundSurface.AutoHideProperty.DefaultMetadata.DefaultValue);
-        Assert.True((bool)KaraokeSurface.AutoHideProperty.DefaultMetadata.DefaultValue);
-        Assert.True(MediaSurface.IsContentVisibleProperty.ReadOnly);
-        Assert.True(BackgroundSurface.IsContentVisibleProperty.ReadOnly);
-        Assert.True(KaraokeSurface.IsContentVisibleProperty.ReadOnly);
-    }
-
     [Fact]
     public void LoadRequiresPresentedFrameBeforeShowing()
     {

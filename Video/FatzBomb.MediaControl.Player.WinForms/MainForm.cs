@@ -29,7 +29,8 @@ internal sealed class MainForm : Form
     private readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
     private readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
     private readonly System.Windows.Forms.Timer _chromeTimer = new() { Interval = (int)FullScreenChromeDelay.TotalMilliseconds };
-    private SecondScreenForm? _secondScreen;
+    private readonly bool _autoHideSurfaces;
+    private SecondaryPresentationWindow? _secondScreen;
     private bool _isDragging;
     private bool _isUpdatingSeek;
     private bool _isUpdatingSecondScreen;
@@ -54,6 +55,8 @@ internal sealed class MainForm : Form
             options,
             new PlayerHost(new WinFormsPlayerDispatcher(), new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath));
         _binder = new ViewModelBinder(_viewModel);
+        _autoHideSurfaces = options.AutoHideSurfaces;
+        _surface.AutoHide = _autoHideSurfaces;
 
         _topBar = BuildTopBar();
         _bottom = BuildBottom();
@@ -629,18 +632,19 @@ internal sealed class MainForm : Form
 
         Screen current = Screen.FromControl(this);
         Screen? other = Screen.AllScreens.FirstOrDefault(screen => !screen.Equals(current));
-        var window = new SecondScreenForm(player, other);
+        var window = new SecondaryPresentationWindow(player) { Text = "WinForms player - second screen", ShowInTaskbar = false };
+        window.Surface.AutoHide = _autoHideSurfaces;
         window.FormClosed += OnSecondScreenClosed;
         _secondScreen = window;
         _viewModel.AddLogEntry(MediaDiagnosticLevel.Info, "Surface", other is null
             ? "Second screen opens in a window (one screen)"
             : $"Second screen opens full screen on {other.DeviceName}");
-        window.Show(this);
+        window.ShowOnScreen(other, fullScreen: other is not null, this);
     }
 
     private void CloseSecondScreen()
     {
-        SecondScreenForm? window = _secondScreen;
+        SecondaryPresentationWindow? window = _secondScreen;
         if (window is null)
             return;
 
@@ -712,48 +716,6 @@ internal sealed class MainForm : Form
         if (disposing)
             _chromeTimer.Dispose();
         base.Dispose(disposing);
-    }
-}
-
-/// <summary>
-/// The second screen: a borderless maximized window on another monitor (a 960x540 window with one
-/// monitor) whose HWND surface joins the player as its projector surface.
-/// </summary>
-internal sealed class SecondScreenForm : Form
-{
-    private readonly MediaSurface _surface = new() { Dock = DockStyle.Fill, Role = MediaPresentationSurfaceRole.Projector, SurfaceId = MediaSurface.DefaultSecondarySurfaceId };
-
-    public SecondScreenForm(MediaControlPlayer player, Screen? screen)
-    {
-        Text = "WinForms player - second screen";
-        BackColor = Color.Black;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        if (screen is not null)
-        {
-            FormBorderStyle = FormBorderStyle.None;
-            Bounds = screen.Bounds;
-        }
-        else
-        {
-            ClientSize = new Size(960, 540);
-            Location = new Point(80, 80);
-        }
-
-        Controls.Add(_surface);
-        _surface.Player = player;
-        KeyPreview = true;
-        KeyDown += (_, e) =>
-        {
-            if (e.KeyCode == Keys.Escape)
-                Close();
-        };
-    }
-
-    protected override void OnFormClosed(FormClosedEventArgs e)
-    {
-        _surface.Player = null;
-        base.OnFormClosed(e);
     }
 }
 

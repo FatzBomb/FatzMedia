@@ -68,6 +68,7 @@ public partial class PlayerPanel : UserControl
 
         // --surface=framesink forces the readback path for comparison (Stage 027A slice 2).
         Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
+        Surface.AutoHide = StartupOptions.Current.Shared.AutoHideSurfaces;
         Surface.PresentationPathChanged += OnPresentationPathChanged;
         Surface.Tapped += OnSurfaceTapped;
         Surface.DoubleTapped += OnSurfaceDoubleTapped;
@@ -339,6 +340,7 @@ public partial class PlayerPanel : UserControl
         (Screen? screen, var fullScreen, var where) = ChooseSecondScreen(owner);
         var window = new SecondaryPresentationWindow(player, $"second-screen-{_index}") { Title = $"Player {_index} - second screen" };
         window.Surface.PreferGpuSharedSurface = StartupOptions.Current.PreferGpuSurface;
+        window.Surface.AutoHide = StartupOptions.Current.Shared.AutoHideSurfaces;
         window.Surface.PresentationPathChanged += OnSecondScreenPathChanged;
         window.Closed += OnSecondScreenClosed;
         _secondScreen = window;

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 
 namespace FatzBomb.MediaControl.Avalonia.Tests;
@@ -29,6 +30,27 @@ public class RecordingSession : DispatchProxy
 
     /// <summary>Gets or sets what <see cref="IMediaControlSession.Mode"/> returns.</summary>
     public MediaPlayerMode Mode { get; set; }
+
+    /// <summary>
+    /// Gets or sets what <see cref="IMediaControlSession.IsOpen"/> returns (default true: media with
+    /// visual content is loaded, so an auto-hiding surface shows the frames).
+    /// </summary>
+    public bool IsOpen { get; set; } = true;
+
+    /// <summary>Gets or sets what <see cref="IMediaControlSession.HasVisualContent"/> returns (default true).</summary>
+    public bool HasVisualContent { get; set; } = true;
+
+    /// <summary>Gets or sets what <see cref="IMediaControlSession.State"/> returns.</summary>
+    public MediaPlayerState State { get; set; } = MediaPlayerState.Stopped;
+
+    private readonly ConcurrentDictionary<string, Delegate?> _handlers = new();
+
+    /// <summary>Raises a session event (by name) to its subscribers, as the session would.</summary>
+    public void Raise(string eventName, object args)
+    {
+        if (_handlers.TryGetValue(eventName, out Delegate? handler) && handler is not null)
+            _ = handler.DynamicInvoke(this, args);
+    }
 
     private EventHandler<MediaValueChangedEventArgs<MediaPlayerMode>>? _modeChanged;
 
@@ -82,6 +104,20 @@ public class RecordingSession : DispatchProxy
             case "set_VideoDisplayMode":
                 LastDisplayMode = (VideoDisplayMode)args![0]!;
                 break;
+            case "get_IsOpen":
+                return IsOpen;
+            case "get_HasVisualContent":
+                return HasVisualContent;
+            case "get_State":
+                return State;
+            case "get_HasPresentation":
+                return Mode != MediaPlayerMode.Audio;
+            case var add when add.StartsWith("add_", StringComparison.Ordinal):
+                _ = _handlers.AddOrUpdate(add[4..], _ => (Delegate)args![0]!, (_, existing) => Delegate.Combine(existing, (Delegate)args![0]!));
+                return null;
+            case var remove when remove.StartsWith("remove_", StringComparison.Ordinal):
+                _ = _handlers.AddOrUpdate(remove[7..], _ => null, (_, existing) => Delegate.Remove(existing, (Delegate)args![0]!));
+                return null;
         }
 
         Type returnType = targetMethod.ReturnType;

@@ -28,7 +28,7 @@ public partial class App : Application
     /// </summary>
     internal static Task<PlayerRendererSelection> RendererSelection { get; private set; } = null!;
 
-    /// <summary>Gets whether the surface hides until visual content is ready (WPF only; <c>--no-auto-hide</c> turns it off).</summary>
+    /// <summary>Gets whether the surface hides until visual content is ready (<c>--no-auto-hide</c> turns it off, as in every player).</summary>
     public static bool AutoHideSurfaces { get; private set; } = true;
 
     protected override void OnStartup(StartupEventArgs e)

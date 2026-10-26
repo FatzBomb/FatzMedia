@@ -100,4 +100,47 @@ internal static partial class NativeMethods
     internal static int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong) => IntPtr.Size == 8
         ? (int)SetWindowLongPtr64(hWnd, nIndex, new IntPtr(dwNewLong)).ToInt64()
         : SetWindowLong32(hWnd, nIndex, dwNewLong);
+    // Monitor enumeration and placement for SecondaryPresentationWindow (Stage 046A).
+    internal const int MONITORINFOF_PRIMARY = 0x00000001;
+    internal const int MONITOR_DEFAULTTONEAREST = 0x00000002;
+    internal const int MDT_EFFECTIVE_DPI = 0;
+    internal const int SWP_NOSIZE = 0x0001;
+    internal const int SWP_NOZORDER = 0x0004;
+    internal const int SWP_NOACTIVATE = 0x0010;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct MONITORINFOEX
+    {
+        public int Size;
+        public RECT Monitor;
+        public RECT Work;
+        public int Flags;
+        public fixed ushort Device[32];
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool EnumDisplayMonitors(
+        IntPtr hdc,
+        IntPtr lprcClip,
+        delegate* unmanaged<IntPtr, IntPtr, RECT*, IntPtr, int> lpfnEnum,
+        IntPtr dwData);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool GetMonitorInfo(IntPtr hMonitor, MONITORINFOEX* lpmi);
+
+    [LibraryImport("user32.dll")]
+    internal static partial IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+    [LibraryImport("shcore.dll")]
+    internal static partial int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, int uFlags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 }

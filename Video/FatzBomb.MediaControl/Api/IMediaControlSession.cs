@@ -253,6 +253,26 @@ public interface IMediaControlSession : IDisposable
     }
 
     /// <summary>
+    /// Gets whether a renderer presents to the session's surfaces (Stage 046A).
+    /// <see langword="false"/> in <see cref="MediaPlayerMode.Audio"/> mode: the surfaces stay
+    /// attached but nothing presents to them, so an adapter shows its background instead of the
+    /// last frame. Sessions without modes always present.
+    /// </summary>
+    bool HasPresentation => MediaPlayerModePolicy.UsesPresentation(Mode);
+
+    /// <summary>
+    /// Raised when <see cref="HasPresentation"/> changes: on the control queue, after the
+    /// <see cref="ModeChanged"/> of the switch. Like every session event it arrives on a
+    /// background thread; read <see cref="HasPresentation"/> again after marshaling, since a
+    /// quick switch back may already have changed it. Sessions without modes never raise it.
+    /// </summary>
+    event EventHandler<MediaValueChangedEventArgs<bool>>? HasPresentationChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Gets or sets whether loads search for sidecar and archive backgrounds (Stage 043A, default
     /// <see langword="true"/>). An explicit background passed to a load still applies. Sessions
     /// without the choice always search.

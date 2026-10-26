@@ -1,18 +1,35 @@
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 
 namespace FatzBomb.MediaControl.Wpf;
 
+/// <summary>
+/// A window that shows a session on another screen: the singer or projector screen of a karaoke
+/// host. It holds one <see cref="MediaSurface"/> with a non-primary <see cref="MediaSurface.Role"/>
+/// (<see cref="MediaPresentationSurfaceRole.Projector"/> by default), so the session keeps its
+/// primary surface and renders every frame for this window too, at this window's size. Closing
+/// the window detaches the surface. Same shape as the Avalonia and WinForms adapters' windows
+/// (Stage 046A): placement on a chosen <see cref="PresentationScreen"/> and full screen.
+/// </summary>
+/// <remarks>
+/// F11 or a double-click toggles full screen, and Escape leaves it. A host that wants another
+/// layout can put a <see cref="MediaSurface"/> with a non-primary role in any window instead.
+/// </remarks>
 public sealed class SecondaryPresentationWindow : Window
 {
+    /// <summary>The default size (DIPs) when the window is not full screen.</summary>
+    public static readonly Size DefaultSize = new(960, 540);
+
     private readonly IMediaControlSession _session;
-    private readonly MediaPresentationSurfaceRole _role;
-    private readonly NativeHwndSurfaceHost? _surfaceHost;
-    private readonly WpfCompositedSurfaceHost? _compositedHost;
-    private bool _surfaceAttached;
+    private bool _isFullScreen;
+    private WindowStyle _restoreWindowStyle;
+    private ResizeMode _restoreResizeMode;
+    private WindowState _restoreWindowState;
 
     /// <param name="session">The session to present from.</param>
-    /// <param name="surfaceId">The secondary surface id.</param>
+    /// <param name="surfaceId">The secondary surface id; distinct per secondary window of one session.</param>
     /// <param name="role">The surface role.</param>
     /// <param name="presentationMode">
     /// Match the primary surface: a native HWND for swap-chain presentation, or a WPF-composited
@@ -25,116 +42,148 @@ public sealed class SecondaryPresentationWindow : Window
         WpfPresentationMode presentationMode = WpfPresentationMode.NativeHwndOverlay)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
-        SurfaceId = string.IsNullOrWhiteSpace(surfaceId) ? MediaSurface.DefaultSecondarySurfaceId : surfaceId.Trim();
-        _role = role;
+        Surface = new MediaSurface
+        {
+            PresentationMode = presentationMode,
+            Role = role,
+            SurfaceId = string.IsNullOrWhiteSpace(surfaceId) ? MediaSurface.DefaultSecondarySurfaceId : surfaceId.Trim(),
+        };
 
-        Width = 960;
-        Height = 540;
+        Title = "FatzBombMedia Secondary Output";
+        Width = DefaultSize.Width;
+        Height = DefaultSize.Height;
         MinWidth = 320;
         MinHeight = 180;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = Brushes.Black;
         Foreground = Brushes.White;
-        if (presentationMode == WpfPresentationMode.WpfComposited)
-        {
-            Content = _compositedHost = new WpfCompositedSurfaceHost();
-            _compositedHost.SizeChanged += OnCompositedHostSizeChanged;
-        }
-        else
-        {
-            Content = _surfaceHost = new NativeHwndSurfaceHost(startVisible: true);
-            _surfaceHost.NativeHandleChanged += OnNativeSurfaceChanged;
-            _surfaceHost.NativeBoundsChanged += OnNativeSurfaceChanged;
-            SizeChanged += OnWindowSizeChanged;
-        }
-
+        Content = Surface;
         Closed += OnWindowClosed;
     }
 
-    public string SurfaceId { get; }
+    /// <summary>
+    /// Gets the surface this window shows. It takes the session when the window gets its handle
+    /// (shown), so a window that is never shown does not follow the session.
+    /// </summary>
+    public MediaSurface Surface { get; }
 
-    private void OnNativeSurfaceChanged(object? sender, EventArgs e) => AttachOrResizeSurface();
+    /// <summary>Gets the surface id the window attaches with.</summary>
+    public string SurfaceId => Surface.EffectiveSurfaceId;
 
-    private void OnCompositedHostSizeChanged(object sender, SizeChangedEventArgs e) => AttachOrResizeSurface();
-
-    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e) => AttachOrResizeSurface();
-
-    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    /// <summary>Gets or sets whether the window covers its whole screen (borderless, maximized).</summary>
+    public bool IsFullScreen
     {
-        base.OnDpiChanged(oldDpi, newDpi);
+        get => _isFullScreen;
+        set
+        {
+            if (_isFullScreen == value)
+                return;
 
-        // Moving to a monitor with another scale keeps the DIP size, so no SizeChanged follows:
-        // re-render the composited frame at the new pixel size. The HWND host reports its own
-        // bounds change.
-        if (_compositedHost != null)
-            AttachOrResizeSurface();
+            _isFullScreen = value;
+            if (value)
+            {
+                _restoreWindowStyle = WindowStyle;
+                _restoreResizeMode = ResizeMode;
+                _restoreWindowState = WindowState;
+                WindowStyle = WindowStyle.None;
+                ResizeMode = ResizeMode.NoResize;
+
+                // Maximizing again after the style change makes the borderless window cover the
+                // taskbar too.
+                WindowState = WindowState.Normal;
+                WindowState = WindowState.Maximized;
+            }
+            else
+            {
+                WindowStyle = _restoreWindowStyle;
+                ResizeMode = _restoreResizeMode;
+                WindowState = _restoreWindowState == WindowState.Minimized ? WindowState.Normal : _restoreWindowState;
+            }
+        }
     }
 
-    private void AttachOrResizeSurface()
+    /// <summary>
+    /// Places the window on <paramref name="screen"/> (centred in its working area, or covering
+    /// it when <paramref name="fullScreen"/>) and shows it, owned by <paramref name="owner"/> when
+    /// given. Call it instead of <see cref="Window.Show"/>.
+    /// </summary>
+    public void ShowOnScreen(PresentationScreen? screen, bool fullScreen, Window? owner = null)
     {
-        DpiScale dpi = VisualTreeHelper.GetDpi(this);
-        int pixelWidth;
-        int pixelHeight;
-        if (_compositedHost != null)
-        {
-            if (_compositedHost.ActualWidth <= 0 || _compositedHost.ActualHeight <= 0)
-                return;
+        if (owner is not null)
+            Owner = owner;
 
-            pixelWidth = Math.Max(1, (int)Math.Round(_compositedHost.ActualWidth * dpi.DpiScaleX));
-            pixelHeight = Math.Max(1, (int)Math.Round(_compositedHost.ActualHeight * dpi.DpiScaleY));
+        if (screen is not null)
+        {
+            // Placed in device pixels before it shows, so it neither jumps nor attaches on another
+            // monitor first. WPF rescales the window itself when that monitor's DPI differs.
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            var hwnd = new WindowInteropHelper(this).EnsureHandle();
+            if (NativeMethods.GetWindowRect(hwnd, out NativeMethods.RECT rect))
+            {
+                var width = (int)Math.Round(Width * screen.Scaling);
+                var height = (int)Math.Round(Height * screen.Scaling);
+                if (width <= 0 || height <= 0 || !double.IsFinite(Width) || !double.IsFinite(Height))
+                    (width, height) = (rect.Right - rect.Left, rect.Bottom - rect.Top);
+
+                (int x, int y) = PresentationScreen.CenteredPosition(screen.WorkingArea, width, height);
+                _ = NativeMethods.SetWindowPos(
+                    hwnd,
+                    IntPtr.Zero,
+                    x,
+                    y,
+                    0,
+                    0,
+                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            }
         }
-        else
-        {
-            if (_surfaceHost == null || _surfaceHost.WindowHandle == IntPtr.Zero)
-                return;
 
-            pixelWidth = Math.Max(1, _surfaceHost.NativeClientWidth);
-            pixelHeight = Math.Max(1, _surfaceHost.NativeClientHeight);
-        }
+        if (fullScreen)
+            IsFullScreen = true;
 
-        if (_surfaceAttached)
-        {
-            _ = _session.ResizePresentationSurface(SurfaceId, pixelWidth, pixelHeight);
+        Show();
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        // The mode was set before the player: a surface defers a mode change while media is open.
+        Surface.Player ??= _session;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled)
             return;
+
+        if (e.Key == Key.F11)
+        {
+            IsFullScreen = !IsFullScreen;
+            e.Handled = true;
         }
+        else if (e.Key == Key.Escape && IsFullScreen)
+        {
+            IsFullScreen = false;
+            e.Handled = true;
+        }
+    }
 
-        MediaNativeSurfaceDescriptor nativeSurface;
-        if (_compositedHost != null)
-            nativeSurface = _compositedHost.CreateSurfaceDescriptor();
-        else
-            nativeSurface = MediaNativeSurfaceDescriptor.Win32Hwnd(_surfaceHost!.WindowHandle);
+    protected override void OnMouseDoubleClick(MouseButtonEventArgs e)
+    {
+        base.OnMouseDoubleClick(e);
+        if (e.Handled || e.ChangedButton != MouseButton.Left)
+            return;
 
-        _surfaceAttached = _session.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
-            SurfaceId,
-            _role,
-            nativeSurface,
-            pixelWidth,
-            pixelHeight,
-            dpi.DpiScaleX,
-            dpi.DpiScaleY));
+        IsFullScreen = !IsFullScreen;
+        e.Handled = true;
     }
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
-        SizeChanged -= OnWindowSizeChanged;
         Closed -= OnWindowClosed;
-        if (_surfaceHost != null)
-        {
-            _surfaceHost.NativeHandleChanged -= OnNativeSurfaceChanged;
-            _surfaceHost.NativeBoundsChanged -= OnNativeSurfaceChanged;
-        }
 
-        if (_compositedHost != null)
-            _compositedHost.SizeChanged -= OnCompositedHostSizeChanged;
-
-        if (_surfaceAttached)
-        {
-            _ = _session.DetachPresentationSurface(SurfaceId);
-            _surfaceAttached = false;
-        }
-
-        // Detached first, so later presents skip this window; a present already in flight sees
-        // the disposed host and drops its frame.
-        _compositedHost?.Dispose();
+        // Detached before the window's resources go, so later presents skip this surface.
+        Surface.Player = null;
     }
 }
