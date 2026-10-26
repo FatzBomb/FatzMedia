@@ -755,7 +755,11 @@ attempts under the policy (`NetworkOpenRetry`, cancellable) and implements inter
 before queueing, and `VideoPipeline.Close` aborts blocked reads first. The capability row comes
 from FFmpeg (`NetworkVideoPolicy.Resolve`: progressive by length and byte seeking, HLS by
 whether FFmpeg reports a duration); a network video loops only when seekable and not live. A
-non-EOF read error ends the stream once (`Network read failed`). `NetworkBufferingMonitor`
+dropped network does not end a seekable source: when a read fails, or the source ends before its
+duration with network failures logged (HLS skips the segments it cannot fetch), the reader seeks
+back to the last packets it queued every 0.5-2 s for up to `NetworkReadAheadPolicy.ReconnectFor`
+(30 s) and skips what it already queued; only then does the stream end (`Network read failed`).
+Without the read-ahead, or with `ReconnectFor` zero, a failed read ends the stream at once. `NetworkBufferingMonitor`
 (250 ms) turns the read-ahead's state into `BufferingChanged` (a consumer starved for 0.5 s
 starts buffering; the resume threshold, 2 s by default, ends it), forwarded through the
 coordinator and engine to the player. Modes: Background plays network video (picture only),

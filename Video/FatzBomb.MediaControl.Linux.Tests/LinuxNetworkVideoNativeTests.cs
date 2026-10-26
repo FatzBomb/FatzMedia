@@ -352,7 +352,7 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
     }
 
     [Fact]
-    public void ServerGoneMidStream_WithoutRetries_EndsThePlayback()
+    public void ServerGoneMidStream_WithoutReconnects_EndsThePlayback()
     {
         if (!TryGetEnvironment(out var ffmpeg, out var media))
             return;
@@ -363,7 +363,8 @@ public sealed partial class LinuxNetworkVideoNativeTests(ITestOutputHelper outpu
             ? new HttpResponsePlan(TruncateAfterBytes: fileLength * 30 / 100)
             : new HttpResponsePlan();
 
-        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full);
+        // No FFmpeg retries and no read-ahead reconnects (see the Outage tests for those).
+        using var session = PlayerSession.Create(ffmpeg, MediaPlayerMode.Full, readAhead: new NetworkReadAheadPolicy { ReconnectFor = TimeSpan.Zero });
         var ended = new ManualResetEventSlim();
         session.Player.MediaEnded += (_, _) => ended.Set();
         Assert.True(session.Player.Load(MediaInputSource.FromUri(server.UriFor(Mp4))), session.Errors);

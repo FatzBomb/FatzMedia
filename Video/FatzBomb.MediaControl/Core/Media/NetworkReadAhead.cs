@@ -34,6 +34,13 @@ namespace FatzBomb.MediaControl.Core.Media;
 /// hard limit. Lock order: this object's lock is a leaf, held for queue work only, never across
 /// FFmpeg I/O.
 /// </para>
+/// <para>
+/// A seekable source survives a dropped network: when a read fails, or the source ends early
+/// (before its duration, with network failures logged), the reader reconnects by seeking back to
+/// the last packet it queued, with growing pauses, for up to
+/// <see cref="NetworkReadAheadPolicy.ReconnectFor"/>. Packets it already queued are skipped, so
+/// playback goes on where the buffer ran out. Only when the window passes does the stream end.
+/// </para>
 /// </remarks>
 internal sealed unsafe class NetworkReadAhead : IDisposable
 {
@@ -44,6 +51,13 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     private static readonly TimeSpan ConsumerWaitSlice = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan ReaderIdleSlice = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ReaderJoinWarning = TimeSpan.FromSeconds(2);
+    // An end this far before the duration, with network failures logged, is a dropped network.
+    private const double EarlyEndToleranceSeconds = 1.0;
+    private const double FirstReconnectDelaySeconds = 0.5;
+    private const double MaxReconnectDelaySeconds = 2.0;
+    // A reconnect counts once this much new media was read: bytes FFmpeg had already received
+    // before the drop do not end it.
+    private const double ReconnectedAfterSeconds = 1.0;
 
     // The calling thread's wait limits (WaitScope): a Stopwatch deadline (0 = none), a token and a condition.
     [ThreadStatic] private static long t_waitDeadline;
@@ -77,21 +91,42 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     private int _readerGeneration;
     private SeekRequest? _pendingSeek;
     private long _supersededBefore;
+    private readonly double _reconnectSeconds;
+    private readonly double _endSeconds;
+    // Reader state for reconnecting, under _sync. The last packet queued per stream since the
+    // reader's last seek; after a reconnect, per stream, the timestamp up to which packets are
+    // already queued; when the drop started (Stopwatch ticks, 0 = none) and the retries so far.
+    private readonly Dictionary<int, LastPacket> _lastQueued = [];
+    private readonly Dictionary<int, long> _queuedUpTo = [];
+    private int _failuresAtSeek;
+    // The reader's last seek: where a reconnect goes when nothing was queued since (a seek during
+    // the outage). Before any seek, the start.
+    private SeekRequest _lastSeek = new(-1, 0, ffmpeg.AVSEEK_FLAG_BACKWARD);
+    private long _dropStarted;
+    private double _droppedAt;
+    private int _reconnectAttempts;
 
     /// <param name="demuxer">The open network source; the reader takes over its I/O.</param>
     /// <param name="policy">The caps and the resume threshold.</param>
     /// <param name="sourcePath">The URL, for diagnostics.</param>
-    /// <param name="reportSeekFailures">
-    /// Whether a failed reader seek is reported: not for a live source, where Stop's seek to the
-    /// start fails by design and playback goes on at the live edge.
+    /// <param name="seekable">
+    /// Whether the source is seekable with a known duration. Only then is a failed reader seek
+    /// reported (a live source's Stop seeks to the start, which fails by design and playback goes
+    /// on at the live edge) and a dropped network reconnected.
     /// </param>
-    public NetworkReadAhead(MediaDemuxer demuxer, NetworkReadAheadPolicy policy, string? sourcePath, bool reportSeekFailures = true)
+    public NetworkReadAhead(MediaDemuxer demuxer, NetworkReadAheadPolicy policy, string? sourcePath, bool seekable = true)
     {
         ArgumentNullException.ThrowIfNull(demuxer);
         ArgumentNullException.ThrowIfNull(policy);
         _demuxer = demuxer;
         _sourcePath = sourcePath;
-        _reportSeekFailures = reportSeekFailures;
+        _reportSeekFailures = seekable;
+        // Packet timestamps are absolute: the source ends at its start time plus the duration.
+        _endSeconds = (demuxer.FormatStartTicks + demuxer.FormatDurationTicks) / (double)ffmpeg.AV_TIME_BASE;
+        _reconnectSeconds = seekable && demuxer.FormatDurationTicks > 0 ? policy.ReconnectFor.TotalSeconds : 0;
+        // The reader reports a dropped stream itself, once it gives up reconnecting. Set either
+        // way: the demuxer outlives this reader and is reopened for the next source.
+        demuxer.ReportReadFailures = _reconnectSeconds <= 0;
         _maxSeconds = policy.MaxDuration.TotalSeconds;
         _maxBytes = policy.MaxBytes;
         _resumeSeconds = policy.ResumeDuration.TotalSeconds;
@@ -491,6 +526,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
                 generation = _generation;
                 seek = _pendingSeek;
                 _pendingSeek = null;
+                if (seek is { } next)
+                    ForgetQueuedNoLock(next);
                 idle = seek is null && (_atEnd || ShouldPauseNoLock(out reportHardCap));
                 _readerPaused = idle;
                 bytes = _buffer.Bytes;
@@ -532,6 +569,9 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
             }
 
             var read = _demuxer.ReadPacket(packet);
+            var dropped = false;
+            string? unreportedFailure = null;
+            double? resumedAfter = null;
             lock (_sync)
             {
                 if (generation != _generation || _stopping)
@@ -542,33 +582,222 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
 
                 if (read >= 0)
                 {
-                    EnqueueNoLock(packet);
+                    resumedAfter = EnqueueNoLock(packet);
                 }
                 else if (read != ffmpeg.AVERROR_EXIT)
                 {
-                    // End of file, a dropped stream (reported once by the demuxer) or an abort.
-                    _atEnd = true;
-                    _buffer.AddEndOfStream();
-                    _dataArrived.Set();
+                    // End of file, a dropped stream or an abort.
+                    dropped = !_aborted && IsDroppedNoLock();
+                    if (!dropped)
+                    {
+                        // The demuxer leaves failures to this reader while it can reconnect;
+                        // one it cannot reconnect (nothing read since a seek) is reported here.
+                        if (!_aborted && _reconnectSeconds > 0)
+                            unreportedFailure = _demuxer.FailedReadError;
+                        EndNoLock();
+                    }
+                }
+            }
+
+            if (unreportedFailure is not null)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DiagnosticCategory, $"Network read failed: {unreportedFailure}; the stream ends here.", sourcePath: _sourcePath);
+
+            if (resumedAfter is { } seconds)
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, DiagnosticCategory, $"Network back: reading again after {seconds:F1} s.", sourcePath: _sourcePath);
+
+            if (dropped && !Reconnect(generation))
+            {
+                var error = _demuxer.FailedReadError ?? "the connection was lost";
+                DiagnosticRouter.Raise(
+                    MediaDiagnosticLevel.Error,
+                    DiagnosticCategory,
+                    $"Network read failed: {error}; no connection for {_reconnectSeconds:F0} s, the stream ends here.",
+                    sourcePath: _sourcePath);
+                lock (_sync)
+                {
+                    if (generation == _generation && !_stopping)
+                        EndNoLock();
                 }
             }
         }
     }
 
-    private void EnqueueNoLock(AVPacket* packet)
+    private void EndNoLock()
+    {
+        _atEnd = true;
+        _buffer.AddEndOfStream();
+        _dataArrived.Set();
+    }
+
+    /// <summary>
+    /// Whether a failed or ended read is a dropped network the reader can reconnect: the source
+    /// is seekable and the read failed, or the source ended with network failures logged since
+    /// the reader's last seek, before its duration (an HLS demuxer skips the segments it cannot
+    /// fetch and then ends) or before anything was read. After a reconnect the count starts
+    /// again, so a source whose real end falls short of its duration ends after one try.
+    /// </summary>
+    private bool IsDroppedNoLock()
+    {
+        if (_reconnectSeconds <= 0)
+            return false;
+
+        if (_demuxer.FailedReadError is not null)
+            return true;
+
+        if (_demuxer.NetworkFailureCount == _failuresAtSeek)
+            return false;
+
+        if (_lastQueued.Count == 0)
+            return true;
+
+        var readUpTo = 0.0;
+        foreach (LastPacket last in _lastQueued.Values)
+            readUpTo = Math.Max(readUpTo, last.EndSeconds);
+        return readUpTo < _endSeconds - EarlyEndToleranceSeconds;
+    }
+
+    /// <summary>
+    /// Seeks back to the last packets queued (or repeats the reader's last seek when nothing was
+    /// queued since) until the source answers, pausing between attempts (0.5 s, doubling up to
+    /// 2 s) within the reconnect window. Returns true to read on (it reconnected, or a consumer
+    /// seek or a stop took over), false when the window passed.
+    /// </summary>
+    private bool Reconnect(int generation)
+    {
+        var now = Stopwatch.GetTimestamp();
+        bool firstDrop;
+        double resumeAt;
+        int attempt;
+        SeekRequest target;
+        lock (_sync)
+        {
+            resumeAt = double.MaxValue;
+            foreach (LastPacket last in _lastQueued.Values)
+                resumeAt = Math.Min(resumeAt, last.StartSeconds);
+            target = _lastQueued.Count > 0
+                ? new SeekRequest(-1, (long)(Math.Max(0, resumeAt) * ffmpeg.AV_TIME_BASE), ffmpeg.AVSEEK_FLAG_BACKWARD)
+                : _lastSeek;
+            if (_lastQueued.Count == 0)
+                resumeAt = ToSeconds(target.StreamIndex, target.Timestamp);
+
+            firstDrop = _dropStarted == 0;
+            if (firstDrop)
+            {
+                _dropStarted = now;
+                _droppedAt = double.IsFinite(resumeAt) ? resumeAt : 0;
+            }
+            attempt = _reconnectAttempts++;
+        }
+
+        if (firstDrop)
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                DiagnosticCategory,
+                $"Network lost at {FormatTime(resumeAt)}: {_demuxer.FailedReadError ?? "the source stopped answering"}; reconnecting for up to {_reconnectSeconds:F0} s.",
+                sourcePath: _sourcePath);
+        }
+
+        while (true)
+        {
+            var delay = Math.Min(MaxReconnectDelaySeconds, FirstReconnectDelaySeconds * Math.Pow(2, attempt));
+            var elapsed = Stopwatch.GetElapsedTime(Interlocked.Read(ref _dropStarted)).TotalSeconds;
+            if (elapsed + delay > _reconnectSeconds)
+                return false;
+
+            if (!SleepUnlessInterrupted(delay, generation))
+                return true;
+
+            var result = _demuxer.Seek(target.StreamIndex, target.Timestamp, target.Flags);
+            lock (_sync)
+            {
+                if (generation != _generation || _stopping || _aborted)
+                    return true;
+
+                if (result >= 0)
+                {
+                    // Read on from the keyframe before the resume point; what was queued is skipped.
+                    _queuedUpTo.Clear();
+                    foreach (var (streamIndex, last) in _lastQueued)
+                        _queuedUpTo[streamIndex] = last.Timestamp;
+                    _failuresAtSeek = _demuxer.NetworkFailureCount;
+                    return true;
+                }
+
+                attempt = _reconnectAttempts++;
+            }
+        }
+    }
+
+    /// <summary>Waits <paramref name="seconds"/>; false as soon as a stop or a newer seek needs the reader.</summary>
+    private bool SleepUnlessInterrupted(double seconds, int generation)
+    {
+        var deadline = Stopwatch.GetTimestamp() + (long)(seconds * Stopwatch.Frequency);
+        while (true)
+        {
+            if (_stopping || _aborted || Volatile.Read(ref _generation) != generation)
+                return false;
+
+            var remaining = deadline - Stopwatch.GetTimestamp();
+            if (remaining <= 0)
+                return true;
+
+            Thread.Sleep(TimeSpan.FromSeconds(Math.Min(remaining / (double)Stopwatch.Frequency, ConsumerWaitSlice.TotalSeconds)));
+        }
+    }
+
+    private void ForgetQueuedNoLock(SeekRequest seek)
+    {
+        _lastSeek = seek;
+        _lastQueued.Clear();
+        _queuedUpTo.Clear();
+        _failuresAtSeek = _demuxer.NetworkFailureCount;
+        _dropStarted = 0;
+        _reconnectAttempts = 0;
+    }
+
+    private static string FormatTime(double seconds) =>
+        seconds is >= 0 and < double.MaxValue ? TimeSpan.FromSeconds(Math.Floor(seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss") : "?";
+
+    /// <summary>
+    /// Queues a packet of a registered stream. Returns how long the network was lost when this
+    /// packet completes a reconnect (see <see cref="ReconnectedAfterSeconds"/>), otherwise null.
+    /// </summary>
+    private double? EnqueueNoLock(AVPacket* packet)
     {
         var streamIndex = packet->stream_index;
-        AVPacket* copy = _buffer.IsRegistered(streamIndex) ? ffmpeg.av_packet_alloc() : null;
+        var timestamp = packet->dts != ffmpeg.AV_NOPTS_VALUE ? packet->dts : packet->pts;
+        if (!_buffer.IsRegistered(streamIndex)
+            || (timestamp != ffmpeg.AV_NOPTS_VALUE && _queuedUpTo.TryGetValue(streamIndex, out var queuedUpTo) && timestamp <= queuedUpTo))
+        {
+            ffmpeg.av_packet_unref(packet);
+            return null;
+        }
+
+        AVPacket* copy = ffmpeg.av_packet_alloc();
         if (copy == null)
         {
             ffmpeg.av_packet_unref(packet);
-            return;
+            return null;
         }
 
         ReadAheadPacketInfo info = Describe(packet);
+        _ = _queuedUpTo.Remove(streamIndex);
+        if (timestamp != ffmpeg.AV_NOPTS_VALUE && (info.DecodeSeconds ?? info.PresentationSeconds) is { } start)
+            _lastQueued[streamIndex] = new LastPacket(timestamp, start, start + info.DurationSeconds);
+
+        double? resumedAfter = null;
+        if (_dropStarted != 0 && (info.DecodeSeconds ?? info.PresentationSeconds) >= _droppedAt + ReconnectedAfterSeconds)
+        {
+            resumedAfter = Stopwatch.GetElapsedTime(_dropStarted).TotalSeconds;
+            _dropStarted = 0;
+            _reconnectAttempts = 0;
+        }
+
         ffmpeg.av_packet_move_ref(copy, packet);
         _ = _buffer.Add((nint)copy, info);
         _dataArrived.Set();
+        return resumedAfter;
     }
 
     private ReadAheadPacketInfo Describe(AVPacket* packet)
@@ -603,6 +832,8 @@ internal sealed unsafe class NetworkReadAhead : IDisposable
     }
 
     private readonly record struct SeekRequest(int StreamIndex, long Timestamp, int Flags);
+
+    private readonly record struct LastPacket(long Timestamp, double StartSeconds, double EndSeconds);
 
     /// <summary>
     /// Limits how long consumer reads on the current thread wait for the network (see

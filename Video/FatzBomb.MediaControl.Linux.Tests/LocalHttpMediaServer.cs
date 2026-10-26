@@ -11,7 +11,9 @@ namespace FatzBomb.MediaControl.Linux.Tests;
 /// <summary>How the server answers one request (Stage 039A native tests).</summary>
 /// <param name="DelayBeforeResponse">Wait before sending anything.</param>
 /// <param name="TruncateAfterBytes">Send at most this many body bytes, then close the connection.</param>
-internal sealed record HttpResponsePlan(TimeSpan DelayBeforeResponse = default, long? TruncateAfterBytes = null);
+/// <param name="Refuse">Close the connection without answering, as a lost network does.</param>
+/// <param name="BytesPerSecond">Send the body at about this rate (0 = as fast as possible).</param>
+internal sealed record HttpResponsePlan(TimeSpan DelayBeforeResponse = default, long? TruncateAfterBytes = null, bool Refuse = false, long BytesPerSecond = 0);
 
 /// <summary>One request the server received.</summary>
 internal sealed record HttpRequestRecord(int Number, string Path, long? RangeStart);
@@ -53,6 +55,21 @@ internal sealed class LocalHttpMediaServer : IDisposable
     public int Handshakes => Volatile.Read(ref _handshakes);
 
     public Uri UriFor(string relativePath) => new($"{(_certificate is null ? "http" : "https")}://127.0.0.1:{Port}/{relativePath.TrimStart('/')}");
+
+    /// <summary>Resets every open connection, as a lost network does to a download in progress.</summary>
+    public void DropConnections()
+    {
+        foreach (TcpClient client in _clients)
+        {
+            try
+            {
+                client.Client?.Close(0);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+    }
 
     /// <summary>Serves <paramref name="content"/> for <paramref name="relativePath"/> instead of the file.</summary>
     public void Override(string relativePath, string content) => _overrides["/" + relativePath.TrimStart('/')] = Encoding.UTF8.GetBytes(content);
@@ -113,6 +130,12 @@ internal sealed class LocalHttpMediaServer : IDisposable
                 var record = new HttpRequestRecord(Interlocked.Increment(ref _requestCount), path, rangeStart);
                 _requests.Enqueue(record);
                 HttpResponsePlan plan = Plan(record);
+                if (plan.Refuse)
+                {
+                    client.Client.Close(0);
+                    return;
+                }
+
                 if (plan.DelayBeforeResponse > TimeSpan.Zero)
                     await Task.Delay(plan.DelayBeforeResponse, _stop.Token).ConfigureAwait(false);
 
@@ -159,6 +182,8 @@ internal sealed class LocalHttpMediaServer : IDisposable
                             break;
                         await stream.WriteAsync(buffer.AsMemory(0, read), _stop.Token).ConfigureAwait(false);
                         remaining -= read;
+                        if (plan.BytesPerSecond > 0)
+                            await Task.Delay(TimeSpan.FromSeconds(read / (double)plan.BytesPerSecond), _stop.Token).ConfigureAwait(false);
                     }
                 }
 

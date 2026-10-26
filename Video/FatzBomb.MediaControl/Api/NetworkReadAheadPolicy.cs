@@ -39,6 +39,20 @@ public sealed record NetworkReadAheadPolicy
         init => field = ClampTime(value, TimeSpan.FromSeconds(0.1), TimeSpan.FromMinutes(10));
     } = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Gets how long the reader keeps reconnecting after the network drops mid-stream (clamped to
+    /// <c>0..5 min</c>; default 30 s). Playback goes on from the buffer meanwhile, then reports
+    /// buffering; once the source answers again the reader resumes where it stopped. Only a
+    /// seekable source (a file with a known duration, an HLS/DASH VOD) can resume. Zero ends the
+    /// stream at the first failed read, unless FFmpeg's own reconnects (<see cref="NetworkRetryPolicy"/>)
+    /// recover it.
+    /// </summary>
+    public TimeSpan ReconnectFor
+    {
+        get;
+        init => field = ClampTime(value, TimeSpan.Zero, TimeSpan.FromMinutes(5));
+    } = TimeSpan.FromSeconds(30);
+
     private static TimeSpan ClampTime(TimeSpan value, TimeSpan min, TimeSpan max) =>
         value < min ? min : value > max ? max : value;
 }
