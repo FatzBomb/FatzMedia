@@ -88,9 +88,10 @@ internal sealed class AvaloniaPlayerShell(Control owner) : IPlayerClipboard, IPl
 }
 
 /// <summary>
-/// One player's engine: the renderer picked in the toolbar and the platform package of this build
-/// (<see cref="PlatformComposition"/>). Every renderer here decodes in software, so CPU comparisons
-/// isolate the presentation path.
+/// One player's engine: the renderer picked in the toolbar, the platform package of this build
+/// (<see cref="PlatformComposition"/>), and the decoding that renderer can present
+/// (<see cref="RendererOption.Decoding"/>, Stage 045A: hardware for Direct3D11 on a GPU, software
+/// otherwise; <c>--decoding=software</c> forces software for CPU comparisons).
 /// </summary>
 internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IReadOnlyList<string> nativePaths, string label) : IPlayerEngineFactory
 {
@@ -100,14 +101,24 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
 
     public NativeDependencyReport? NativeDependenciesAfterFailure => _platformFactory?.NativeDependencies;
 
-    public Task<PlayerRendererInfo> ResolveRendererAsync() => Task.FromResult(new PlayerRendererInfo(
-        $"{renderer.Kind} ({PlatformComposition.Name})",
-        VideoDecodingMethod.Software,
-        RequiresFrameSinkSurface: renderer.Kind == RendererKind.Software,
+    public Task<PlayerRendererInfo> ResolveRendererAsync()
+    {
+        var forcedSoftware = StartupOptions.Current.SoftwareDecoding && renderer.Decoding != VideoDecodingMethod.Software;
+        VideoDecodingMethod decoding = forcedSoftware ? VideoDecodingMethod.Software : renderer.Decoding;
+        List<(MediaDiagnosticLevel, string)> lines =
         [
             (MediaDiagnosticLevel.Info, $"{label}: {PlatformComposition.Name} platform, renderer {renderer.Kind}: {renderer.Detail}"),
             (MediaDiagnosticLevel.Info, $"Native search paths: {(NativeLibraryPaths.Count == 0 ? "(none exist)" : string.Join("; ", NativeLibraryPaths))}"),
-        ]));
+        ];
+        if (forcedSoftware)
+            lines.Add((MediaDiagnosticLevel.Info, $"{label}: software decoding (--decoding=software)"));
+
+        return Task.FromResult(new PlayerRendererInfo(
+            $"{renderer.Kind} ({PlatformComposition.Name})",
+            decoding,
+            RequiresFrameSinkSurface: renderer.Kind == RendererKind.Software,
+            lines));
+    }
 
     public Task<MediaControlPlayer> CreatePlayerAsync(PlayerRendererInfo info, MediaPlayerConfiguration configuration)
     {

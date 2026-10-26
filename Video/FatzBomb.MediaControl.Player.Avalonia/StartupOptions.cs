@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 /// Command line: the flags every test player shares (<see cref="PlayerStartupOptions"/>: media file
 /// or http(s) URL, <c>--url=</c>, <c>--mode=</c>, <c>--native=</c>, <c>--net-*</c>, <c>--eq=</c>, ...)
 /// plus this player's own <c>[--renderer=auto|software|vulkan|direct3d11] [--software]
-/// [--surface=auto|framesink] [--players=1..4] [--second-screen=&lt;n&gt;]</c>.
+/// [--surface=auto|framesink] [--decoding=auto|software] [--players=1..4] [--second-screen=&lt;n&gt;]</c>.
 /// </summary>
 internal sealed class StartupOptions
 {
@@ -32,6 +32,13 @@ internal sealed class StartupOptions
     public bool PreferGpuSurface { get; private init; } = true;
 
     /// <summary>
+    /// Gets whether video is decoded in software for every renderer (<c>--decoding=software</c>), for
+    /// CPU comparisons; otherwise (<c>--decoding=auto</c>, the default) each renderer decodes as
+    /// <see cref="Renderers.ChooseDecoding"/> says. Stage 045A.
+    /// </summary>
+    public bool SoftwareDecoding { get; private init; }
+
+    /// <summary>
     /// Gets the screen (1-based, in Avalonia's <c>Screens.All</c> order) that player 1's second
     /// screen opens on, full screen, at startup (<c>--second-screen=&lt;n&gt;</c>, Stage 027A slice
     /// 5); null when not given. The toggles use it too.
@@ -47,6 +54,7 @@ internal sealed class StartupOptions
             .Select(static value => int.TryParse(value, out var count) ? Math.Clamp(count, 1, MaxPlayers) : (int?)null)
             .LastOrDefault(static count => count is not null) ?? 1;
         var surface = PlayerStartupOptions.Values(args, "--surface=").LastOrDefault();
+        var decoding = PlayerStartupOptions.Values(args, "--decoding=").LastOrDefault();
         var secondScreen = PlayerStartupOptions.Values(args, "--second-screen=")
             .Select(static value => int.TryParse(value, out var screen) && screen > 0 ? screen : (int?)null)
             .LastOrDefault(static screen => screen is not null);
@@ -57,6 +65,7 @@ internal sealed class StartupOptions
             Renderer = renderer,
             Players = players,
             PreferGpuSurface = surface is null || !surface.Equals("framesink", StringComparison.OrdinalIgnoreCase),
+            SoftwareDecoding = decoding is not null && decoding.Equals("software", StringComparison.OrdinalIgnoreCase),
             SecondScreen = secondScreen,
         };
     }
