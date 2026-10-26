@@ -193,5 +193,4 @@ network monitor open (Resource Monitor, Network tab, or `netstat -b`) to count c
 - Step 6 (progressive MP4 with ranges, `avsync.mp4` flash and beep): in sync, also after seeks;
   Loop restarts once per lap with sound. `python -m http.server` has no range support and cannot
   serve an MP4 whose index is at the end (recorded in ENG-034); a range-capable server works.
-- Close during a stalled network load: closes at once.
-- Not run yet: steps 4 and 5 (network loss) and step 7 (Audio mode).
+- Not run yet: steps 4 and 5 (network loss, close during a stall) and step 7 (Audio mode).
