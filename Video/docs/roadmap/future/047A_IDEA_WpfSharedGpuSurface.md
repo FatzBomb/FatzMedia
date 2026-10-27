@@ -57,6 +57,10 @@ Work by layer:
 
 R1 and R5 decide the stage: both are about correctness, not speed.
 
+Evidence for R10 (owner, 2026-10-27): the WPF CPU-copy path dropped frames in earlier use, and
+moving to the native hardware path fixed them. The cost is real; step 0 measures how large it is
+at 4K today, with hardware decoding (earlier drops may also have included software decoding).
+
 ## Step 0: measure today's cost (owner, no code)
 
 On the owner's machine, WPF player, `C:\media\4k-hevc.mkv`, then a 1080p clip:
