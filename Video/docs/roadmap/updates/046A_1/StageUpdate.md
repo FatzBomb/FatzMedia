@@ -3,10 +3,10 @@
 Stage: 046A.1 - Adapter parity: P1 fixes, shared adapter logic in Core, second screen
 Date: 2026-10-26
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27
 
 Owner direction (2026-10-26): "No features solo for one player. All players should share the
-same functionality (our wrappers more so)." See `active/046A_ACTIVE_AdapterParity.md` for the
+same functionality (our wrappers more so)." See `complete/046A_COMPLETED_AdapterParity.md` for the
 owner decisions and the acceptance criteria of all three slices.
 
 Delivered:

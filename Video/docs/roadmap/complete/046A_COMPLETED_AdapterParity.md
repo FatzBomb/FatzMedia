@@ -1,12 +1,13 @@
-# Active Stage 046A - Adapter and Player Parity
-
-Prepared: 2026-10-26
-Status: slice 1 (P1 fixes, shared adapter logic in Core, second-screen parity) implemented,
-pending manual smoke (`updates/046A_1`). Slice 2 (KaraokeSurface and BackgroundSurface on every
-adapter, WinForms frame sink, overlay and bitmap input) implemented, pending manual smoke
-(`updates/046A_2`). Slice 3 (shared player helpers, GPU-first `--renderer=auto`, `--players` in
-every player, `Player` facades in the Avalonia and WinForms adapters) implemented, pending manual
-smoke (`updates/046A_3`). **The whole stage is implemented, pending manual smoke.**
+# Completed Stage 046A - Adapter and Player ParitPrepared: 2026-10-26
+Completed: 2026-10-27.
+Status: slice 1 (P1 fixes, shared adapter logic in Core, second-screen parity), slice 2
+(KaraokeSurface and BackgroundSurface on every adapter, WinForms frame sink, overlay and bitmap
+input) and slice 3 (shared player helpers, GPU-first `--renderer=auto`, `--players` in every
+player, `Player` facades in the Avalonia and WinForms adapters): owner smoke passed 2026-10-26/27
+(`updates/046A_1` to `046A_3`). The retest fixes (WinForms seek bar drawn by the player, second
+screen maximized after it shows, the WPF overlay following window drags, one warning per refused
+present) and the player-count and renderer toolbar in every player passed the owner's retest
+on 2026-10-27..**
 
 Owner direction (2026-10-26): "No features solo for one player. All players should share the
 same functionality (our wrappers more so)." The wrappers are the adapters
