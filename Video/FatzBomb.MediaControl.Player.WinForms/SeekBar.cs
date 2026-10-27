@@ -20,6 +20,8 @@ internal sealed class SeekBar : Control
     private int _maximum = 1;
     private int _value;
     private bool _pressed;
+    // Focus shows only after the keyboard is used (Tab or a key), never for a mouse press or drag.
+    private bool _keyboardFocus;
 
     public SeekBar()
     {
@@ -103,8 +105,12 @@ internal sealed class SeekBar : Control
         using (var thumb = new SolidBrush(Enabled ? SystemColors.ControlText : SystemColors.GrayText))
             graphics.FillEllipse(thumb, thumbX - radius, centreY - radius, 2 * radius, 2 * radius);
 
-        if (Focused && ShowFocusCues)
-            ControlPaint.DrawFocusRectangle(graphics, ClientRectangle);
+        if (Focused && _keyboardFocus)
+        {
+            using var ring = new Pen(Accent, Math.Max(1f, 2f * DeviceDpi / 96f));
+            var ringRadius = radius + (3f * DeviceDpi / 96f);
+            graphics.DrawEllipse(ring, thumbX - ringRadius, centreY - ringRadius, 2 * ringRadius, 2 * ringRadius);
+        }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -113,6 +119,7 @@ internal sealed class SeekBar : Control
         if (e.Button != MouseButtons.Left || !Enabled)
             return;
 
+        _keyboardFocus = false;
         _ = Focus();
         PressStarting?.Invoke(this, EventArgs.Empty);
         _pressed = true;
@@ -163,7 +170,9 @@ internal sealed class SeekBar : Control
         };
         if (target is { } value)
         {
+            _keyboardFocus = true;
             SetValue(value);
+            Invalidate();
             e.Handled = true;
         }
     }
@@ -171,6 +180,9 @@ internal sealed class SeekBar : Control
     protected override void OnGotFocus(EventArgs e)
     {
         base.OnGotFocus(e);
+        // Focus without a button down came from the keyboard (Tab).
+        if (MouseButtons == MouseButtons.None)
+            _keyboardFocus = true;
         Invalidate();
     }
 
