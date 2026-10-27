@@ -715,7 +715,7 @@ internal sealed class ScrubTrackBar : TrackBar
             case WmLeftButtonDown or WmLeftButtonDoubleClick when Enabled:
                 PressStarting?.Invoke(this, EventArgs.Empty);
                 _pressed = true;
-                MoveThumbUnder(m.LParam);
+                m.LParam = MoveThumbUnder(m.LParam);
                 break;
             case WmLeftButtonUp:
                 base.WndProc(ref m);
@@ -743,19 +743,30 @@ internal sealed class ScrubTrackBar : TrackBar
         PressEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    private void MoveThumbUnder(nint lParam)
+    /// <summary>Moves the thumb under the press; returns the press point, inside the thumb, for the native control.</summary>
+    private nint MoveThumbUnder(nint lParam)
     {
         var x = (short)(lParam.ToInt64() & 0xFFFF);
         var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
         var thumb = GetNativeRect(TbmGetThumbRect);
         if (thumb.Contains(x, y))
-            return;
+            return lParam;
 
-        // The thumb's centre travels the channel minus half a thumb at each end.
-        var channel = GetNativeRect(TbmGetChannelRect);
-        var travel = Math.Max(1, channel.Width - thumb.Width);
-        var fraction = Math.Clamp((x - channel.Left - (thumb.Width / 2.0)) / travel, 0, 1);
-        Value = Math.Clamp(Minimum + (int)Math.Round(fraction * (Maximum - Minimum)), Minimum, Maximum);
+        if (x < thumb.Left || x >= thumb.Right)
+        {
+            // The thumb's centre travels the channel minus half a thumb at each end.
+            var channel = GetNativeRect(TbmGetChannelRect);
+            var travel = Math.Max(1, channel.Width - thumb.Width);
+            var fraction = Math.Clamp((x - channel.Left - (thumb.Width / 2.0)) / travel, 0, 1);
+            Value = Math.Clamp(Minimum + (int)Math.Round(fraction * (Maximum - Minimum)), Minimum, Maximum);
+            thumb = GetNativeRect(TbmGetThumbRect);
+        }
+
+        // A press above or below the thumb, or past the channel's ends, would page: hand the native
+        // control a press on the thumb so it drags.
+        var pressX = Math.Clamp(x, thumb.Left, Math.Max(thumb.Left, thumb.Right - 1));
+        var pressY = Math.Clamp(y, thumb.Top, Math.Max(thumb.Top, thumb.Bottom - 1));
+        return (nint)((pressY << 16) | (pressX & 0xFFFF));
     }
 
     private Rectangle GetNativeRect(int message)

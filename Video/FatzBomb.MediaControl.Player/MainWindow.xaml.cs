@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _firstBuild = true;
     private bool _rebuilding;
     private bool _rebuildAgain;
+    private Task _rebuild = Task.CompletedTask;
     private bool _closing;
     private bool _closed;
 
@@ -71,15 +72,21 @@ public partial class MainWindow : Window
         await RebuildAsync();
     }
 
-    private async Task RebuildAsync()
+    private Task RebuildAsync()
     {
         if (_rebuilding)
         {
             _rebuildAgain = true;
-            return;
+            return _rebuild;
         }
 
         _rebuilding = true;
+        _rebuild = RebuildLoopAsync();
+        return _rebuild;
+    }
+
+    private async Task RebuildLoopAsync()
+    {
         try
         {
             do
@@ -104,7 +111,7 @@ public partial class MainWindow : Window
         foreach (PlayerView player in old)
             await DisposePlayerAsync(player);
 
-        // Closed while the old players were disposed: OnClosing has already run, so build nothing it would miss.
+        // Closing started while the old players were disposed: build nothing (OnClosing waits for this rebuild).
         if (_closing)
             return;
 
@@ -259,6 +266,17 @@ public partial class MainWindow : Window
         _closing = true;
         _statsTimer.Stop();
         ExitFullScreen();
+        // A toolbar rebuild may still be disposing the old players or starting the new ones: let it
+        // finish (it stops at _closing) so no player outlives the window.
+        try
+        {
+            await _rebuild;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Player] Rebuilding the players failed: {ex}");
+        }
+
         PlayerView[] players = [.. _players];
         _players.Clear();
         foreach (PlayerView player in players)

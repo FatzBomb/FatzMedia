@@ -31,6 +31,7 @@ internal sealed class MainForm : Form
     private bool _firstBuild = true;
     private bool _rebuilding;
     private bool _rebuildAgain;
+    private Task _rebuild = Task.CompletedTask;
     private bool _closing;
     private bool _closed;
 
@@ -91,15 +92,21 @@ internal sealed class MainForm : Form
         await RebuildAsync();
     }
 
-    private async Task RebuildAsync()
+    private Task RebuildAsync()
     {
         if (_rebuilding)
         {
             _rebuildAgain = true;
-            return;
+            return _rebuild;
         }
 
         _rebuilding = true;
+        _rebuild = RebuildLoopAsync();
+        return _rebuild;
+    }
+
+    private async Task RebuildLoopAsync()
+    {
         try
         {
             do
@@ -127,7 +134,7 @@ internal sealed class MainForm : Form
             panel.Dispose();
         }
 
-        // Closed while the old players were disposed: the closing handler has already run, so build nothing it would miss.
+        // Closing started while the old players were disposed: build nothing (the closing handler waits for this rebuild).
         if (_closing)
             return;
 
@@ -297,6 +304,17 @@ internal sealed class MainForm : Form
         _closing = true;
         _statsTimer.Stop();
         ExitFullScreen();
+        // A toolbar rebuild may still be disposing the old players or starting the new ones: let it
+        // finish (it stops at _closing) so no player outlives the window.
+        try
+        {
+            await _rebuild;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Rebuilding the players failed: {ex}");
+        }
+
         foreach (PlayerPanel panel in _panels.ToList())
             await DisposePanelAsync(panel);
 
