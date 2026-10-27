@@ -192,4 +192,15 @@ dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- --rende
     gets the same protection.
   - Retest: step 3 (drag the window edge quickly, maximize and restore, the second screen): the
     status stays `via shared GPU image`.
-- WinForms with two players: seeking one player struggled. To be clarified with the owner.
+- Step 3 retest after the fix: over 130 re-exports during fast resizes of the main window and
+  the second screen, and the surface stayed `via shared GPU image`. Passed.
+- WinForms with two players, Vulkan and software renderers (the frame-sink path), not Direct3D11:
+  seeking one player stalled the other, and the seeking player was slow when a seek started.
+  - Cause: the WinForms surface published each frame with `Invalidate()`, and Windows sends
+    `WM_PAINT` only when no other message waits. A seek drag's mouse moves and both players'
+    frame publishes kept the UI thread's queue busy, so paints were postponed. Direct3D11
+    presents into the child window and never needs the UI thread.
+  - Fix (`WinForms/MediaSurface.PublishFrame`): `Update()` after `Invalidate()` paints the
+    published frame at once. Publishes stay coalesced (latest frame wins).
+  - Retest: `--players=2 --renderer=vulkan` (and `--renderer=software`), play both, drag one
+    seek bar: the other keeps playing smoothly and the dragged one follows the drag.
