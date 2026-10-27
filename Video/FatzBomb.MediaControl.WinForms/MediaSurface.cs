@@ -556,8 +556,15 @@ public class MediaSurface : Control
         if (!ReferenceEquals(sink, _sink) || !sink.Publish())
             return;
 
-        if (_framesShown)
-            Invalidate();
+        if (!_framesShown)
+            return;
+
+        Invalidate();
+        // Paint now: Windows sends WM_PAINT only when no other message waits, so while a seek
+        // drag (mouse moves) or another player's publishes keep the UI thread busy, frames
+        // stayed unshown (owner's 045A smoke: seeking one player stalled the other). Publishes
+        // are coalesced (latest frame wins), so this paints at most once per published frame.
+        Update();
     }
 
     private void ShowPresentationWindow(bool show)
