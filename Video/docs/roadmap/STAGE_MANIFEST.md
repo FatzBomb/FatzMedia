@@ -47,8 +47,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/045A_ACTIVE_GpuDecodingEveryPath.md` - GPU decoding on every presentation path (owner
   direction, 2026-10-26). Slice 1 (the Avalonia player decodes with D3D11VA for the Direct3D11
   renderer, on the shared GPU image and the frame sink; HDR tone mapped on the GPU) is
-  implemented, pending manual smoke (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
-  renderer's device, Linux) is planned in the stage file.
+  owner smoke passed 2026-10-26 (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
+  renderer's device, Linux) and slice 3 (Vulkan on Windows, including the Avalonia shared image
+  for Vulkan frames; owner 2026-10-27: full compatibility) are planned in the stage file.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -107,6 +108,9 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
+- `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
+  (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27); risk assessment,
+  a no-code measurement and a go/no-go spike first.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 

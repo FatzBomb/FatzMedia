@@ -1,14 +1,20 @@
 # Active Stage 045A - GPU Decoding on Every Presentation Path
 
 Prepared: 2026-10-26
-Status: slice 1 (Direct3D11 on the Avalonia surface) implemented, pending manual smoke
-(`updates/045A_1`). Slice 2 (Vulkan on Linux) is planned below, not implemented.
+Status: slice 1 (Direct3D11 on the Avalonia surface) owner smoke passed 2026-10-26
+(`updates/045A_1`). Slice 2 (Vulkan on Linux) and slice 3 (Vulkan on Windows, owner 2026-10-27)
+are planned below, not implemented.
 
 Owner direction (2026-10-26): "The point of the whole control is GPU video rendering on all
 stages, hence the shared control base." WPF and WinForms (native HWND, Direct3D11) decode with
 D3D11VA and compose on the GPU. The Avalonia player decoded in software even with
 `--renderer=direct3d11` on its GPU-shared surface. Vulkan (Linux, and Avalonia's Vulkan path)
-decodes in software too. No Vulkan on Windows: Direct3D11 is the better path there.
+decodes in software too.
+
+Owner decision (2026-10-27): full compatibility. Every GPU renderer decodes on the GPU on every
+platform it runs on, Vulkan on Windows included (slice 3), and the Avalonia surface takes Vulkan
+frames on Windows as a shared GPU image instead of a frame-sink copy (the 027A slice 2 deferral,
+folded in here). Direct3D11 stays the Windows default.
 
 ## Why the Avalonia paths decoded in software
 
@@ -179,6 +185,35 @@ the import path can run here. A copy-back stopgap was considered and rejected (s
   - it cannot be measured here.
   It could become an opt-in for the software renderer later.
 
+## Slice 3 plan: Vulkan on Windows (owner 2026-10-27)
+
+Not implemented. It builds on slice 2's decoder (FFmpeg Vulkan Video on the renderer's own
+`VkDevice`); the decode code is shared, only the platform edges differ. The owner's machine is
+Windows (RTX 5090), so slice 3 is the first place the slice 2 decoder can be smoke tested on real
+hardware; consider building slices 2 and 3 together and validating on Windows first.
+
+1. **Decode.** `--renderer=vulkan` on Windows decodes with Vulkan Video (H.264, HEVC, AV1, VP9
+   where the driver reports them), with the slice 2 fallbacks to software decoding. The Windows
+   FFmpeg build must include Vulkan (`docs/NATIVE_DEPENDENCIES.md` names the expected build; check
+   `av_hwdevice_ctx_create(VULKAN)` and log the reason when it is missing).
+2. **Avalonia shared image on Windows** (deferred in `updates/027A_2`). Export the Vulkan images
+   as `VulkanOpaqueNtHandle` (`VK_KHR_external_memory_win32`), which the Core contract already
+   names, and import them in Avalonia:
+   - into the default ANGLE/Direct3D11 compositor: open the NT handle as a D3D11 texture, with
+     `VK_KHR_win32_keyed_mutex` so the existing keyed-mutex consumer path applies unchanged;
+   - into Avalonia's Vulkan backend: semaphores (`VK_KHR_external_semaphore_win32`,
+     `MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle`);
+   - queue-family ownership transfer to `VK_QUEUE_FAMILY_EXTERNAL` on hand-over;
+   - same-GPU check by LUID (`VkPhysicalDeviceIDProperties.deviceLUID`); a mismatch keeps the
+     frame sink with a logged reason, as today.
+3. **WPF and WinForms with `--renderer=vulkan`** keep the frame sink in this slice (GPU decode,
+   one readback). A Vulkan swap chain on the native window (`VK_KHR_win32_surface`) is a
+   possible later step; Direct3D11 already covers the native window.
+
+Acceptance: on the owner's RTX 5090, `--renderer=vulkan` in the Avalonia player logs Vulkan
+Video decoding and `via shared GPU image`; WPF and WinForms log Vulkan Video decoding; CPU use is
+measured against `--decoding=software`; every fallback logs its reason.
+
 ## Not in this stage (deferred, ENG-037)
 
 - **A Core safety net when the renderer cannot present a hardware frame** (the renderer's
@@ -206,5 +241,5 @@ the import path can run here. A copy-back stopgap was considered and rejected (s
     (a renderer change in the test player).
   - Telling a transient device-removed failure from a permanent one in `OnUnavailable` is
     deferred.
-- **Hardware decode for the software and Vulkan renderers on Windows** (copy-back). The
-  software renderer is the no-GPU fallback, and Vulkan is not a Windows target.
+- **Hardware decode for the software renderer** (copy-back). The software renderer is the
+  no-GPU fallback. (Vulkan on Windows moved into slice 3, owner 2026-10-27.)
