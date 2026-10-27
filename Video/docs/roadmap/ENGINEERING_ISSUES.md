@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -337,6 +337,47 @@ HTTPS-audio code review (2026-10-26), not fixed:
   starts at the next keyframe.
 - The soundtrack engine records the BASS output device when it is built, and Full mode now builds
   it for https/HLS audio: check on Windows that a device change while playing is followed.
+
+### ENG-038 - Vulkan Video follow-ups from 045A slices 2-3
+
+Reported: 2026-10-27 (045A slices 2 and 3, GPU decoding for the Vulkan renderer). Not fixed.
+- **Not verified on a real decode queue in the sandbox.** Lavapipe has no video queue. The
+  owner's Windows smoke (`updates/045A_3`) is the first real run. Mesa RADV and ANV and NVIDIA
+  on Linux (X11, Wayland; Avalonia's OpenGL and Vulkan backends) are still to check.
+- **Frames from a replaced device.** After a renderer device loss the compositor gets a new
+  device. A decoder whose old device still decodes (a false alarm, so no decode failures) keeps
+  producing frames the renderer skips (one warning), and nothing triggers the decoder's
+  recovery. A real loss fails the decoder too and recovers. Possible fix: have the renderer
+  request a decoder swap, through the per-decoder fallback token proposed in ENG-037.
+- **Scaling quality.** The video layer is composed with the Vulkan renderer's nearest blit, as
+  software frames are, to match the software renderer pixel for pixel. Large downscales (4K into
+  a small window) alias. A linear blit, or drawing the layer with a filtered quad, is the fix
+  for both paths.
+- **Chroma siting.** The shader samples chroma centre-sited with bilinear filtering, as the
+  Direct3D11 tone-map shader does. MPEG-style left-sited chroma is shifted by a quarter of a
+  chroma sample; the video processor and swscale honour the siting.
+- **VAAPI with DRM PRIME import** (the plan's alternative) stays a later option for Linux
+  drivers without Vulkan Video.
+- **Windows export paths not run here.** The keyed-mutex Direct3D11 texture import (ANGLE) and
+  the opaque NT-handle export (Avalonia's Vulkan backend) compile and negotiate in tests, but
+  only the owner's smoke runs them. The Avalonia test player does not offer Avalonia's Vulkan
+  backend on Windows, so the NT-handle path has no smoke yet; a host option for
+  `Win32RenderingMode.Vulkan` would cover it.
+- **WPF and WinForms with `--renderer=vulkan`** decode on the GPU but read each frame back for
+  their frame sink. A Vulkan swap chain on the native window (`VK_KHR_win32_surface`) remains a
+  possible later step; Direct3D11 already covers the native window.
+- **Keyed-mutex wait under the shared queue lock** (code review). On the Windows ANGLE path the
+  render submit acquires the Direct3D11 texture's keyed mutex inside `vkQueueSubmit` (up to
+  `KeyedMutexTimeoutMilliseconds`, 500 ms) while holding the queue lock FFmpeg also takes for
+  decode submissions. A compositor that releases late stalls decoding with it. Watch for
+  stutter in the owner's smoke; the fix is to wait for the mutex before taking the queue lock
+  (or a separate render queue).
+- **R16 plane filtering required for every stream.** The probe requires linear filtering on
+  `R16`/`R16G16` (P010 planes) even when only 8-bit NV12 would be decoded, so a GPU without it
+  gets no Vulkan Video at all. Requiring it only for 10-bit streams is the refinement.
+- **Renderer-device decoding is reached through downcasts.** `VideoDecoder` and the coordinator
+  test for `RendererVideoDecodeServices` and `PipelineMediaEngine` instead of a contract member,
+  so another services wrapper or engine silently keeps platform decoding.
 
 ### ENG-037 - Hardware-frame follow-ups from 045A slice 1
 

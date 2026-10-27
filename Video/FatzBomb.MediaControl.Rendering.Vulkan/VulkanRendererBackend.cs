@@ -1,21 +1,28 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
+/// <summary>What a Vulkan device can share with a UI compositor (Stage 027A slice 2; Windows: Stage 045A slice 3).</summary>
+internal readonly record struct VulkanExportSupport(bool MemoryFd, bool SemaphoreFd, bool MemoryWin32, bool SemaphoreWin32, bool D3D11KeyedMutex);
+
 /// <summary>
 /// Vulkan renderer backend, preview slices 1-2: managed BGRA frame-sink surfaces, GPU clear,
 /// background blit, wash and CDG overlay draws, CPU readback into each sink. Stage 027A slice 2
 /// adds the shared GPU image surface: the composed frame is blitted into one of two exported
-/// images (opaque POSIX descriptors, optional exported semaphores) that the UI compositor
-/// imports, with no readback. Stage 027A slice 5: any number of surfaces, of any role, each of
+/// images (opaque POSIX descriptors, optional exported semaphores; on Windows, Stage 045A slice 3,
+/// opaque NT handles or keyed-mutex Direct3D11 textures) that the UI compositor imports, with no
+/// readback. Stage 027A slice 5: any number of surfaces, of any role, each of
 /// either kind; every composition is rendered once per target at the target's size.
-/// Window-system swapchains, subtitles, base-visual transforms and native video resources are
-/// later slices; frames that need them are rejected with a diagnostic instead of being drawn
+/// Stage 045A slice 2: FFmpeg decodes on the renderer's device (Vulkan Video,
+/// <see cref="IMediaRendererVideoDecodeDevice"/>), and decoded frames are converted on the GPU into
+/// the composition's video layer. Window-system swapchains, subtitles and base-visual transforms
+/// are later slices; frames that need them are rejected with a diagnostic instead of being drawn
 /// incorrectly.
 /// </summary>
-internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
+internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
 {
     private readonly Lock _sync = new();
     private bool _initializationFailed;
@@ -29,6 +36,8 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     private readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
     private long _sharedGeneration;
     private VulkanFrameSupport _lastReportedUnsupported = VulkanFrameSupport.Supported;
+    private MediaCompositionStretchMode _stretchMode = MediaCompositionStretchMode.UniformFit;
+    private bool _foreignFrameReported;
     private bool _disposed;
 
     public event EventHandler? FramePresented;
@@ -37,7 +46,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     public string DeviceLostDiagnosticCategory => "Vulkan.DeviceLost";
     public string DeviceLostRecoveryFailedDiagnosticCategory => "Vulkan.DeviceLost.RecoveryFailed";
     public bool IsInitialized { get; private set; }
-    public nint NativeDeviceHandle => 0;
+    public nint NativeDeviceHandle => _compositor?.DeviceHandle ?? 0;
 
     /// <summary>Gets the selected Vulkan device name, once initialized.</summary>
     public string? DeviceName => _compositor?.DeviceName;
@@ -98,14 +107,49 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     public void SetPresentationStretch(MediaCompositionStretchMode stretchMode)
     {
-        // Each composition frame carries its effective stretch mode.
+        // Composition frames carry their own stretch mode; native frames use this one.
+        lock (_sync)
+            _stretchMode = stretchMode;
     }
 
-    public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
+    /// <summary>
+    /// Presents a decoded frame on its own (Core's path when only the primary surface is attached):
+    /// composed like any other frame, the video over black, at the presentation stretch.
+    /// </summary>
+    public bool PresentNativeFrame(VideoFrameEventArgs frame)
+    {
+        if (frame.NativeResource is not { IsValid: true } resource)
+            return false;
+
+        MediaCompositionStretchMode stretch;
+        lock (_sync)
+            stretch = _stretchMode;
+
+        return PresentComposition(new MediaCompositionFrame
+        {
+            ClearMode = MediaCompositionClearMode.Black,
+            ClearArgb = 0xFF000000,
+            BackgroundNativeResource = resource,
+            BackgroundNativeWidth = frame.Width,
+            BackgroundNativeHeight = frame.Height,
+            BackgroundNativeFramesPerSecond = frame.FramesPerSecond,
+            BackgroundWidth = frame.Width,
+            BackgroundHeight = frame.Height,
+            BackgroundStride = frame.Width * 4,
+            BackgroundStretchMode = stretch,
+            // Each call is a new frame.
+            BackgroundRevision = -1,
+            BaseVisualTransform = BaseVisualTransform.Identity,
+            Reason = "native video frame",
+        });
+    }
 
     public void ClearCompositionBackgroundFrame()
     {
-        // No retained background resource exists in this slice.
+        VulkanOffscreenCompositor? compositor;
+        lock (_sync)
+            compositor = _compositor;
+        compositor?.ClearVideoLayer();
     }
 
     public bool PresentComposition(MediaCompositionFrame frame)
@@ -212,17 +256,19 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             }
             catch (VulkanException exception)
             {
-                return ReportRenderFailure(exception);
+                return ReportRenderFailure(exception, compositor);
             }
         }
     }
 
-    private PresentResult ReportRenderFailure(VulkanException exception)
+    private PresentResult ReportRenderFailure(VulkanException exception, VulkanOffscreenCompositor compositor)
     {
         // Device loss is always reported: it drives recovery. Other failures repeat per frame, so
         // they are reported once until a frame presents again (ENG-026).
         if (exception.IsDeviceLost)
         {
+            // A decoder on the same device finds it lost too (Stage 045A slice 2).
+            compositor.MarkDeviceLost();
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, exception.Message, innerException: exception);
             return PresentResult.DeviceLost;
         }
@@ -248,11 +294,85 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
+    /// <summary>
+    /// Decoded frames are drawn only when FFmpeg decoded them on this renderer's device; nothing is
+    /// adopted (the decoder uses the renderer's device, Stage 045A slice 2). A frame from another
+    /// device (one replaced after a device loss, until the decoder recovers) is skipped.
+    /// </summary>
     public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
     {
         deviceAdopted = false;
+        lock (_sync)
+        {
+            if (_disposed || !Initialize() || frame.NativeResource is not { IsValid: true } resource)
+                return false;
+
+            if (_compositor!.IsOnThisDevice(resource))
+            {
+                _foreignFrameReported = false;
+                return true;
+            }
+
+            if (_foreignFrameReported)
+                return false;
+            _foreignFrameReported = true;
+        }
+
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            "Vulkan",
+            $"A hardware video frame from another device ({frame.NativeResource.BackendId}) cannot be drawn; it is skipped until the decoder moves to this renderer's device.");
         return false;
     }
+
+    // Stage 045A slice 2: FFmpeg decodes on the renderer's Vulkan device.
+    public string? VideoDecodeDeviceType
+    {
+        get
+        {
+            lock (_sync)
+                return !_disposed && Initialize() && _compositor!.VideoDecode is not null ? VideoDecodeDeviceTypeName : null;
+        }
+    }
+
+    public string? VideoDecodeUnavailableReason
+    {
+        get
+        {
+            lock (_sync)
+            {
+                if (_disposed || !Initialize())
+                    return "no usable Vulkan device";
+                return _compositor!.VideoDecode is null ? _compositor.VideoDecodeUnavailableReason ?? "the Vulkan device does not decode video" : null;
+            }
+        }
+    }
+
+    /// <summary>The FFmpeg hardware device type the renderer decodes with.</summary>
+    internal const string VideoDecodeDeviceTypeName = "vulkan";
+
+    public nint CreateVideoDecodeDeviceContext(out string? failureReason)
+    {
+        lock (_sync)
+        {
+            if (_disposed || !Initialize())
+            {
+                failureReason = "no usable Vulkan device";
+                return 0;
+            }
+
+            return _compositor!.CreateVideoDecodeDeviceContext(out failureReason);
+        }
+    }
+
+    public NativeVideoDeviceResource? CreateVideoDecodeDeviceResource(nint ffmpegHardwareDeviceContext) =>
+        VulkanOffscreenCompositor.CreateDeviceResource(ffmpegHardwareDeviceContext);
+
+    public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) =>
+        VulkanOffscreenCompositor.CreateFrameResource(device, ffmpegFrame);
+
+    public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) =>
+        VulkanSharedDevice.Find(device.DeviceHandle)?.ProbeLost() ?? true;
 
     public void Dispose()
     {
@@ -286,7 +406,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Warning,
             "Vulkan",
-            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA backgrounds, wash and CDG overlays are supported.");
+            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA and Vulkan-decoded backgrounds, wash and CDG overlays are supported.");
     }
 
     private bool IsCurrentNoLock(Target target) =>
@@ -376,19 +496,47 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// <summary>The producer side of what this device can export (for the consumer's negotiation).</summary>
     internal static (MediaSharedGpuImageCapability[] Images, MediaSharedGpuSemaphoreHandleKind[] Semaphores) GetExportCapabilities(
         bool canExportMemoryFd,
-        bool canExportSemaphoreFd)
-    {
-        if (!canExportMemoryFd)
-            return ([], []);
+        bool canExportSemaphoreFd) =>
+        GetExportCapabilities(new VulkanExportSupport(canExportMemoryFd, canExportSemaphoreFd, false, false, false));
 
-        // Every frame completes on the GPU before it is announced, so host synchronization always
-        // works; exported semaphores additionally let the compositor wait on the GPU.
-        MediaSharedGpuImageSyncKinds sync = MediaSharedGpuImageSyncKinds.HostSynchronized
-            | (canExportSemaphoreFd ? MediaSharedGpuImageSyncKinds.Semaphores : MediaSharedGpuImageSyncKinds.None);
-        return (
-            [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, sync)],
-            canExportSemaphoreFd ? [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd] : []);
+    /// <summary>
+    /// The producer side of every kind this device can share (Stage 045A slice 3 adds Windows):
+    /// opaque descriptors or NT handles, with host synchronization (every frame completes on the GPU
+    /// before it is announced) and, when semaphores export, GPU waits; and keyed-mutex Direct3D11
+    /// textures, which Avalonia's default compositor on Windows imports.
+    /// </summary>
+    internal static (MediaSharedGpuImageCapability[] Images, MediaSharedGpuSemaphoreHandleKind[] Semaphores) GetExportCapabilities(VulkanExportSupport support)
+    {
+        List<MediaSharedGpuImageCapability> images = [];
+        List<MediaSharedGpuSemaphoreHandleKind> semaphores = [];
+        if (support.D3D11KeyedMutex)
+            images.Add(new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex));
+
+        if (support.MemoryWin32)
+        {
+            images.Add(new MediaSharedGpuImageCapability(
+                MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle,
+                MediaSharedGpuImageSyncKinds.HostSynchronized | (support.SemaphoreWin32 ? MediaSharedGpuImageSyncKinds.Semaphores : MediaSharedGpuImageSyncKinds.None)));
+            if (support.SemaphoreWin32)
+                semaphores.Add(MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle);
+        }
+
+        if (support.MemoryFd)
+        {
+            images.Add(new MediaSharedGpuImageCapability(
+                MediaSharedGpuImageHandleKind.VulkanOpaqueFd,
+                MediaSharedGpuImageSyncKinds.HostSynchronized | (support.SemaphoreFd ? MediaSharedGpuImageSyncKinds.Semaphores : MediaSharedGpuImageSyncKinds.None)));
+            if (support.SemaphoreFd)
+                semaphores.Add(MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd);
+        }
+
+        return ([.. images], [.. semaphores]);
     }
+
+    /// <summary>The export buffer of one image, with the handles its kind uses.</summary>
+    internal static MediaSharedGpuImageBuffer ToBuffer(VulkanExportedImage image, MediaSharedGpuImageHandleKind kind) => kind == MediaSharedGpuImageHandleKind.VulkanOpaqueFd
+        ? new MediaSharedGpuImageBuffer(image.MemoryFd, image.MemorySize, 0, image.RenderCompleteFd, image.ConsumerReleaseFd)
+        : new MediaSharedGpuImageBuffer(image.MemoryNtHandle, image.MemorySize, 0, image.RenderCompleteNtHandle, image.ConsumerReleaseNtHandle);
 
     private bool TryCreateSharedNoLock(Target target, int width, int height, out string? reason)
     {
@@ -400,15 +548,19 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             return false;
         }
 
-        if (!compositor.CanExportMemoryFd)
+        if (!compositor.CanExport)
         {
             reason = compositor.ExportUnavailableReason ?? "Vulkan memory export is unavailable";
             return false;
         }
 
         MediaSharedGpuImageRequest request = consumer.Request;
-        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) =
-            GetExportCapabilities(compositor.CanExportMemoryFd, compositor.CanExportSemaphoreFd);
+        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) = GetExportCapabilities(new VulkanExportSupport(
+            compositor.CanExportMemoryFd,
+            compositor.CanExportSemaphoreFd,
+            compositor.CanExportMemoryWin32,
+            compositor.CanExportSemaphoreWin32,
+            compositor.CanShareD3D11Textures));
         if (!request.TrySelect(images, semaphores, out MediaSharedGpuImageSelection selection, out reason)
             || !request.MatchesDevice(compositor.DeviceLuid, compositor.DeviceUuid, out reason))
         {
@@ -418,7 +570,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         VulkanExportedImageSet exported;
         try
         {
-            exported = compositor.CreateExportedImages(width, height, SharedTarget.BufferCount, selection.SyncKind == MediaSharedGpuImageSyncKinds.Semaphores);
+            exported = compositor.CreateExportedImages(width, height, SharedTarget.BufferCount, selection.SyncKind == MediaSharedGpuImageSyncKinds.Semaphores, selection.HandleKind);
         }
         catch (Exception exception) when (exception is VulkanException or InvalidOperationException)
         {
@@ -436,12 +588,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             width,
             height,
             MediaSharedGpuImageFormat.Rgba8Unorm,
-            exported.Images.Select(static image => new MediaSharedGpuImageBuffer(
-                image.MemoryFd,
-                image.MemorySize,
-                0,
-                image.RenderCompleteFd,
-                image.ConsumerReleaseFd)),
+            exported.Images.Select(image => ToBuffer(image, exported.Kind)),
             (frame, consumed) =>
             {
                 // A render-complete signal nobody waited on would make the next signal invalid:
@@ -451,17 +598,23 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             },
             consumed =>
             {
-                if (consumed)
-                    return;
-
                 foreach (VulkanExportedImage image in exported.Images)
                 {
+                    // NT handles stay with the producer (importers open their own references);
+                    // descriptors belong to the importer once consumed.
+                    VulkanOffscreenCompositor.CloseNtHandle(image.MemoryNtHandle);
+                    VulkanOffscreenCompositor.CloseNtHandle(image.RenderCompleteNtHandle);
+                    VulkanOffscreenCompositor.CloseNtHandle(image.ConsumerReleaseNtHandle);
+                    if (consumed)
+                        continue;
+
                     VulkanOffscreenCompositor.CloseDescriptor(image.MemoryFd);
                     VulkanOffscreenCompositor.CloseDescriptor(image.RenderCompleteFd);
                     VulkanOffscreenCompositor.CloseDescriptor(image.ConsumerReleaseFd);
                 }
             },
-            (int)VulkanOffscreenCompositor.ExportLayout);
+            // Direct3D11 textures have no Vulkan layout for the compositor (it never sees Vulkan).
+            exported.Kind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle ? 0 : (int)VulkanOffscreenCompositor.ExportLayout);
         target.Shared = new SharedTarget(exported, set, ring);
         Volatile.Write(ref target.RecreateShared, 0);
         target.DropReported = false;
@@ -519,14 +672,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
             try
             {
-                compositor.RenderToExport(VulkanCompositionPlanner.Plan(frame, width, height), shared.Images, write.BufferIndex, write.WaitForConsumerRelease);
+                compositor.RenderToExport(VulkanCompositionPlanner.Plan(frame, width, height), shared.Images, write.BufferIndex, write.WaitForConsumerRelease, write.AcquireKey);
                 consumer.OnFrameReady(shared.Ring.CompleteWrite(write.BufferIndex));
                 return PresentResult.Presented;
             }
             catch (VulkanException exception)
             {
                 shared.Ring.AbortWrite(write.BufferIndex);
-                return ReportRenderFailure(exception);
+                return ReportRenderFailure(exception, compositor);
             }
         }
     }

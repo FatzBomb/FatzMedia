@@ -5,6 +5,7 @@ using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -59,11 +60,16 @@ public static class MediaControlServiceProvider
 
     private static void RegisterMediaEngine(IServiceCollection services, MediaPlayerConfiguration configuration, bool audioAvailable)
     {
+        // Every decoder of the player uses the platform's hardware-decode services, unless the
+        // presentation renderer decodes on its own device (Stage 045A slice 2): the coordinator
+        // attaches it through the engine.
+        _ = services.AddSingleton(provider =>
+            new RendererVideoDecodeServices(provider.GetRequiredService<IVideoHardwareAccelerationServices>()));
         _ = services.AddSingleton<IVideoEngineFactory>(provider =>
             new VideoPipelineFactory(
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
                 provider.GetRequiredService<IVideoPipelinePlatformServices>(),
-                provider.GetRequiredService<IVideoHardwareAccelerationServices>(),
+                provider.GetRequiredService<RendererVideoDecodeServices>(),
                 audioAvailable));
 
         _ = services.AddSingleton<IMediaEngine>(provider =>
@@ -75,7 +81,7 @@ public static class MediaControlServiceProvider
                 provider.GetRequiredService<IVideoEngineFactory>(),
                 provider.GetRequiredService<IMidiLyricProvider>(),
                 provider.GetRequiredService<IPrecisionWaiterFactory>(),
-                provider.GetRequiredService<IVideoHardwareAccelerationServices>(),
+                provider.GetRequiredService<RendererVideoDecodeServices>(),
                 configuration,
                 audioAvailable: audioAvailable));
     }

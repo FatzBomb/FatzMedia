@@ -5,6 +5,9 @@ public readonly record struct MediaGraphicsBackendId(string Value)
 {
     public static MediaGraphicsBackendId Direct3D11 { get; } = new("d3d11");
 
+    /// <summary>A Vulkan device (Stage 045A slice 2: FFmpeg Vulkan Video on the renderer's device).</summary>
+    public static MediaGraphicsBackendId Vulkan { get; } = new("vulkan");
+
     public override string ToString() => Value ?? string.Empty;
 }
 

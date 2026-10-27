@@ -221,11 +221,11 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         ShaderModule cdg = default;
         try
         {
-            vertex = CreateShaderModule("quad.vert");
-            wash = CreateShaderModule("wash.frag");
-            cdg = CreateShaderModule("cdg.frag");
-            _washPipeline = CreatePipeline(vertex, wash);
-            _cdgPipeline = CreatePipeline(vertex, cdg);
+            vertex = CreateShaderModule(_vk, _device, "quad.vert");
+            wash = CreateShaderModule(_vk, _device, "wash.frag");
+            cdg = CreateShaderModule(_vk, _device, "cdg.frag");
+            _washPipeline = CreateGraphicsPipeline(_vk, _device, _layout, _renderPass, vertex, wash, blend: true);
+            _cdgPipeline = CreateGraphicsPipeline(_vk, _device, _layout, _renderPass, vertex, cdg, blend: true);
         }
         finally
         {
@@ -274,7 +274,19 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         _renderPass = renderPass;
     }
 
-    private VkPipeline CreatePipeline(ShaderModule vertex, ShaderModule fragment)
+    /// <summary>
+    /// A triangle-strip pipeline for <c>quad.vert</c> with dynamic viewport and scissor, blending
+    /// premultiplied colour ONE / ONE_MINUS_SRC_ALPHA when <paramref name="blend"/> (otherwise
+    /// writing every channel as is).
+    /// </summary>
+    internal static VkPipeline CreateGraphicsPipeline(
+        Vk vk,
+        Device device,
+        PipelineLayout layout,
+        RenderPass renderPass,
+        ShaderModule vertex,
+        ShaderModule fragment,
+        bool blend)
     {
         var entryPoint = (byte*)SilkMarshal.StringToPtr("main");
         try
@@ -318,7 +330,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
             // Premultiplied source over premultiplied target, for colour and alpha alike.
             var blendAttachment = new PipelineColorBlendAttachmentState
             {
-                BlendEnable = true,
+                BlendEnable = blend,
                 SrcColorBlendFactor = BlendFactor.One,
                 DstColorBlendFactor = BlendFactor.OneMinusSrcAlpha,
                 ColorBlendOp = BlendOp.Add,
@@ -352,12 +364,12 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
                 PMultisampleState = &multisample,
                 PColorBlendState = &colorBlend,
                 PDynamicState = &dynamicState,
-                Layout = _layout,
-                RenderPass = _renderPass,
+                Layout = layout,
+                RenderPass = renderPass,
                 Subpass = 0,
             };
             VkPipeline pipeline;
-            Check(_vk.CreateGraphicsPipelines(_device, default, 1, &info, null, &pipeline), "vkCreateGraphicsPipelines");
+            Check(vk.CreateGraphicsPipelines(device, default, 1, &info, null, &pipeline), "vkCreateGraphicsPipelines");
             return pipeline;
         }
         finally
@@ -366,7 +378,8 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         }
     }
 
-    private ShaderModule CreateShaderModule(string name)
+    /// <summary>Creates a module from embedded SPIR-V (<c>Shaders/&lt;name&gt;.spv</c>); the caller destroys it.</summary>
+    internal static ShaderModule CreateShaderModule(Vk vk, Device device, string name)
     {
         uint[] code = LoadSpirv(name);
         fixed (uint* pCode = code)
@@ -378,7 +391,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
                 PCode = pCode,
             };
             ShaderModule module;
-            Check(_vk.CreateShaderModule(_device, &info, null, &module), "vkCreateShaderModule");
+            Check(vk.CreateShaderModule(device, &info, null, &module), "vkCreateShaderModule");
             return module;
         }
     }

@@ -6,7 +6,11 @@ using VkSemaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
-/// <summary>One exported image: its memory (an opaque POSIX descriptor) and optional exported semaphores.</summary>
+/// <summary>
+/// One exported image: its memory (an opaque POSIX descriptor, or on Windows an NT handle) and
+/// optional exported semaphores. A Direct3D11 keyed-mutex texture imported as the memory (Stage 045A
+/// slice 3) has <see cref="D3D11Texture"/> set.
+/// </summary>
 internal sealed record VulkanExportedImage(
     VkImage Image,
     DeviceMemory Memory,
@@ -15,15 +19,38 @@ internal sealed record VulkanExportedImage(
     VkSemaphore RenderComplete,
     int RenderCompleteFd,
     VkSemaphore ConsumerRelease,
-    int ConsumerReleaseFd);
+    int ConsumerReleaseFd)
+{
+    /// <summary>The memory's NT handle (Windows): opaque Vulkan memory or a DXGI shared texture; 0 otherwise.</summary>
+    public nint MemoryNtHandle { get; init; }
+
+    public nint RenderCompleteNtHandle { get; init; }
+
+    public nint ConsumerReleaseNtHandle { get; init; }
+
+    /// <summary>The Direct3D11 texture (a COM reference) whose memory this image imports, or 0.</summary>
+    public nint D3D11Texture { get; init; }
+
+    /// <summary>Gets whether submissions take the image's keyed mutex.</summary>
+    public bool HasKeyedMutex => D3D11Texture != 0;
+}
 
 /// <summary>Double-buffered exported images of one size (Stage 027A slice 2). Owned by the compositor that created them.</summary>
-internal sealed class VulkanExportedImageSet(int width, int height, IReadOnlyList<VulkanExportedImage> images, bool hasSemaphores)
+internal sealed class VulkanExportedImageSet(
+    int width,
+    int height,
+    IReadOnlyList<VulkanExportedImage> images,
+    bool hasSemaphores,
+    MediaSharedGpuImageHandleKind kind = MediaSharedGpuImageHandleKind.VulkanOpaqueFd)
 {
     public int Width { get; } = width;
     public int Height { get; } = height;
     public IReadOnlyList<VulkanExportedImage> Images { get; } = images;
     public bool HasSemaphores { get; } = hasSemaphores;
+
+    /// <summary>Gets how the images' memory is handed over.</summary>
+    public MediaSharedGpuImageHandleKind Kind { get; } = kind;
+
     public bool IsDestroyed { get; set; }
 }
 
@@ -67,15 +94,26 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// <summary>Gets the device LUID (8 bytes), or empty when not valid (always on Linux).</summary>
     public byte[] DeviceLuid { get; private set; } = [];
 
-    /// <summary>Gets why export is unavailable, or null when <see cref="CanExportMemoryFd"/>.</summary>
+    /// <summary>Gets why export is unavailable, or null when <see cref="CanExport"/>.</summary>
     public string? ExportUnavailableReason { get; private set; }
+
+    /// <summary>Gets whether any shared image kind can be produced on this device.</summary>
+    public bool CanExport => CanExportMemoryFd || CanExportMemoryWin32 || CanShareD3D11Textures;
 
     /// <summary>
     /// Creates <paramref name="count"/> exportable images of the given size, with exported
     /// render-complete and consumer-release semaphores when <paramref name="withSemaphores"/>.
     /// The descriptors in the result are new; ownership passes to whoever imports them.
     /// </summary>
-    public VulkanExportedImageSet CreateExportedImages(int width, int height, int count, bool withSemaphores)
+    public VulkanExportedImageSet CreateExportedImages(int width, int height, int count, bool withSemaphores) =>
+        CreateExportedImages(width, height, count, withSemaphores, MediaSharedGpuImageHandleKind.VulkanOpaqueFd);
+
+    /// <summary>
+    /// As <see cref="CreateExportedImages(int, int, int, bool)"/> for a handle kind: opaque POSIX
+    /// descriptors, or on Windows opaque NT handles or keyed-mutex Direct3D11 textures (Stage 045A
+    /// slice 3; no semaphores, the keyed mutex orders the two sides).
+    /// </summary>
+    public VulkanExportedImageSet CreateExportedImages(int width, int height, int count, bool withSemaphores, MediaSharedGpuImageHandleKind kind)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
@@ -83,16 +121,30 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!CanExportMemoryFd)
-                throw new InvalidOperationException(ExportUnavailableReason ?? "Vulkan memory export is unavailable.");
-            if (withSemaphores && !CanExportSemaphoreFd)
+            var (available, semaphores) = kind switch
+            {
+                MediaSharedGpuImageHandleKind.VulkanOpaqueFd => (CanExportMemoryFd, CanExportSemaphoreFd),
+                MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle => (CanExportMemoryWin32, CanExportSemaphoreWin32),
+                MediaSharedGpuImageHandleKind.D3D11TextureNtHandle => (CanShareD3D11Textures, false),
+                _ => (false, false),
+            };
+            if (!available)
+                throw new InvalidOperationException(ExportUnavailableReason ?? $"Vulkan cannot share {kind} images here.");
+            if (withSemaphores && !semaphores)
                 throw new InvalidOperationException("Vulkan semaphore export is unavailable.");
 
             List<VulkanExportedImage> images = [];
             try
             {
                 for (var i = 0; i < count; i++)
-                    images.Add(CreateExportedImage((uint)width, (uint)height, withSemaphores));
+                {
+                    images.Add(kind switch
+                    {
+                        MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle => CreateWin32ExportedImage((uint)width, (uint)height, withSemaphores),
+                        MediaSharedGpuImageHandleKind.D3D11TextureNtHandle => CreateD3D11SharedImage((uint)width, (uint)height),
+                        _ => CreateExportedImage((uint)width, (uint)height, withSemaphores),
+                    });
+                }
             }
             catch
             {
@@ -101,7 +153,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 throw;
             }
 
-            var set = new VulkanExportedImageSet(width, height, images, withSemaphores);
+            var set = new VulkanExportedImageSet(width, height, images, withSemaphores, kind);
             _exportedSets.Add(set);
             return set;
         }
@@ -111,14 +163,15 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// Composes <paramref name="plan"/> into image <paramref name="index"/> of <paramref name="set"/>
     /// and completes the GPU work before returning. With semaphores it first waits on the image's
     /// consumer-release semaphore (when <paramref name="waitForConsumerRelease"/>) and signals its
-    /// render-complete semaphore.
+    /// render-complete semaphore. A keyed-mutex image is acquired with <paramref name="acquireKey"/>
+    /// and released with <see cref="MediaSharedGpuImageRing.ConsumerKey"/> by the submission.
     /// </summary>
-    public void RenderToExport(in VulkanFramePlan plan, VulkanExportedImageSet set, int index, bool waitForConsumerRelease)
+    public void RenderToExport(in VulkanFramePlan plan, VulkanExportedImageSet set, int index, bool waitForConsumerRelease, ulong acquireKey = MediaSharedGpuImageRing.ProducerKey)
     {
         ArgumentNullException.ThrowIfNull(set);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, set.Images.Count);
-        _ = RenderCore(plan, new ExportTarget(set, set.Images[index], waitForConsumerRelease));
+        _ = RenderCore(plan, new ExportTarget(set, set.Images[index], waitForConsumerRelease, acquireKey));
     }
 
     /// <summary>
@@ -135,7 +188,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
             set.IsDestroyed = true;
             if (_device.Handle != 0)
-                _ = _vk.QueueWaitIdle(_queue);
+            {
+                lock (QueueLock)
+                    _ = _vk.QueueWaitIdle(_queue);
+            }
+
             foreach (VulkanExportedImage image in set.Images)
                 DestroyExportedImage(image, closeDescriptors);
         }
@@ -160,7 +217,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             if (!CanExportMemoryFd)
                 throw new InvalidOperationException(ExportUnavailableReason);
 
-            VkImage image = CreateExternalImage((uint)width, (uint)height);
+            VkImage image = CreateExternalImage((uint)width, (uint)height, ExternalMemoryHandleTypeFlags.OpaqueFDBit, ExportUsage);
             DeviceMemory memory = default;
             BufferResource? readback = null;
             try
@@ -200,8 +257,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 CommandBuffer commandBuffer = _commandBuffer;
                 var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
                 Fence fence = _fence;
-                Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
-                Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
+                Submit(&submit);
                 Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
 
                 var length = width * height * 4;
@@ -240,11 +296,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         DeviceUuid = new ReadOnlySpan<byte>(idProperties.DeviceUuid, 16).ToArray();
         DeviceLuid = idProperties.DeviceLuidvalid ? new ReadOnlySpan<byte>(idProperties.DeviceLuid, 8).ToArray() : [];
 
+        // Windows (Stage 045A slice 3): opaque NT handles, or Direct3D11 keyed-mutex textures.
         if (OperatingSystem.IsWindows())
-        {
-            ExportUnavailableReason = "Vulkan image export on Windows (opaque NT handles) is not implemented yet";
-            return [];
-        }
+            return ProbeWin32ExportSupport();
 
         if (!_vk.IsDeviceExtensionPresent(_physicalDevice, ExternalMemoryFdExtension))
         {
@@ -311,6 +365,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// <summary>Resolves the descriptor-export entry points of the enabled extensions.</summary>
     private void LoadExportFunctions()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            LoadWin32ExportFunctions();
+            return;
+        }
+
         if (_exportMemoryCandidate)
         {
             _getMemoryFd = (delegate* unmanaged<Device, MemoryGetFdInfoKHR*, int*, Result>)LoadDeviceFunction("vkGetMemoryFdKHR");
@@ -341,7 +401,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
     private VulkanExportedImage CreateExportedImage(uint width, uint height, bool withSemaphores)
     {
-        VkImage image = CreateExternalImage(width, height);
+        VkImage image = CreateExternalImage(width, height, ExternalMemoryHandleTypeFlags.OpaqueFDBit, ExportUsage);
         DeviceMemory memory = default;
         var memoryFd = -1;
         VkSemaphore renderComplete = default;
@@ -428,12 +488,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         return (semaphore, fd);
     }
 
-    private VkImage CreateExternalImage(uint width, uint height)
+    private VkImage CreateExternalImage(uint width, uint height, ExternalMemoryHandleTypeFlags handleType, ImageUsageFlags usage)
     {
         var external = new ExternalMemoryImageCreateInfo
         {
             SType = StructureType.ExternalMemoryImageCreateInfo,
-            HandleTypes = ExternalMemoryHandleTypeFlags.OpaqueFDBit,
+            HandleTypes = handleType,
         };
         var info = new ImageCreateInfo
         {
@@ -446,7 +506,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             ArrayLayers = 1,
             Samples = SampleCountFlags.Count1Bit,
             Tiling = ImageTiling.Optimal,
-            Usage = ExportUsage,
+            Usage = usage,
             SharingMode = SharingMode.Exclusive,
             InitialLayout = ImageLayout.Undefined,
         };
@@ -465,11 +525,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             _vk.DestroyImage(_device, image.Image, null);
         if (image.Memory.Handle != 0)
             _vk.FreeMemory(_device, image.Memory, null);
+        if (image.D3D11Texture != 0 && OperatingSystem.IsWindows())
+            VulkanD3D11Interop.Release(image.D3D11Texture);
         if (closeDescriptors)
         {
             CloseDescriptor(image.MemoryFd);
             CloseDescriptor(image.RenderCompleteFd);
             CloseDescriptor(image.ConsumerReleaseFd);
+            CloseNtHandle(image.MemoryNtHandle);
+            CloseNtHandle(image.RenderCompleteNtHandle);
+            CloseNtHandle(image.ConsumerReleaseNtHandle);
         }
     }
 
@@ -487,15 +552,74 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     {
         VkImage destination = export.Image.Image;
         // The previous contents are discarded; with semaphore sync the submit waits for the
-        // compositor's release before this stage.
-        Barrier(destination, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TransferBit, PipelineStageFlags.TransferBit);
+        // compositor's release before this stage. A Direct3D11 texture is taken back from the
+        // external queue family (the keyed mutex orders it against Direct3D11).
+        if (export.Image.HasKeyedMutex)
+            OwnershipBarrier(destination, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, Vk.QueueFamilyExternal, _queueFamily, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
+        else
+            Barrier(destination, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TransferBit, PipelineStageFlags.TransferBit);
         var blit = new ImageBlit { SrcSubresource = ColorLayers(), DstSubresource = ColorLayers() };
         blit.SrcOffsets[0] = default;
         blit.SrcOffsets[1] = new Offset3D((int)width, (int)height, 1);
         blit.DstOffsets[0] = default;
         blit.DstOffsets[1] = new Offset3D(export.Set.Width, export.Set.Height, 1);
         _vk.CmdBlitImage(_commandBuffer, target, ImageLayout.TransferSrcOptimal, destination, ImageLayout.TransferDstOptimal, 1, &blit, Filter.Nearest);
-        Barrier(destination, ImageLayout.TransferDstOptimal, ExportLayout, AccessFlags.TransferWriteBit, 0, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
+        if (export.Image.HasKeyedMutex)
+            OwnershipBarrier(destination, ImageLayout.TransferDstOptimal, ImageLayout.General, _queueFamily, Vk.QueueFamilyExternal, AccessFlags.TransferWriteBit, 0, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
+        else
+            Barrier(destination, ImageLayout.TransferDstOptimal, ExportLayout, AccessFlags.TransferWriteBit, 0, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
+    }
+
+    /// <summary>A layout transition that also moves the image between queue families (the colour aspect unless <paramref name="range"/> says otherwise).</summary>
+    private void OwnershipBarrier(
+        VkImage image,
+        ImageLayout from,
+        ImageLayout to,
+        uint srcFamily,
+        uint dstFamily,
+        AccessFlags srcAccess,
+        AccessFlags dstAccess,
+        PipelineStageFlags srcStage,
+        PipelineStageFlags dstStage,
+        ImageSubresourceRange? range = null)
+    {
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = from,
+            NewLayout = to,
+            SrcAccessMask = srcAccess,
+            DstAccessMask = dstAccess,
+            SrcQueueFamilyIndex = srcFamily,
+            DstQueueFamilyIndex = dstFamily,
+            Image = image,
+            SubresourceRange = range ?? ColorRange(),
+        };
+        _vk.CmdPipelineBarrier(_commandBuffer, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
+    }
+
+    /// <summary>
+    /// Chains the keyed-mutex acquire (<paramref name="acquireKey"/>) and release
+    /// (<see cref="MediaSharedGpuImageRing.ConsumerKey"/>) of an exported Direct3D11 texture into a
+    /// submission. Every pointer must stay valid until the submit returns.
+    /// </summary>
+    private static void ChainKeyedMutex(SubmitInfo* submit, Win32KeyedMutexAcquireReleaseInfoKHR* keyedMutex, DeviceMemory* memory, ulong* acquireKey, ulong* releaseKey, uint* timeout)
+    {
+        *releaseKey = MediaSharedGpuImageRing.ConsumerKey;
+        *timeout = KeyedMutexTimeoutMilliseconds;
+        *keyedMutex = new Win32KeyedMutexAcquireReleaseInfoKHR
+        {
+            SType = StructureType.Win32KeyedMutexAcquireReleaseInfoKhr,
+            PNext = submit->PNext,
+            AcquireCount = 1,
+            PAcquireSyncs = memory,
+            PAcquireKeys = acquireKey,
+            PAcquireTimeouts = timeout,
+            ReleaseCount = 1,
+            PReleaseSyncs = memory,
+            PReleaseKeys = releaseKey,
+        };
+        submit->PNext = keyedMutex;
     }
 
     private void DestroyExportedSets()
@@ -513,5 +637,5 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     [LibraryImport("libc", EntryPoint = "close")]
     private static partial int PosixClose(int fd);
 
-    private readonly record struct ExportTarget(VulkanExportedImageSet Set, VulkanExportedImage Image, bool WaitForConsumerRelease);
+    private readonly record struct ExportTarget(VulkanExportedImageSet Set, VulkanExportedImage Image, bool WaitForConsumerRelease, ulong AcquireKey = MediaSharedGpuImageRing.ProducerKey);
 }

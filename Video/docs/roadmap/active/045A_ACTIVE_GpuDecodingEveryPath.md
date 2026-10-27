@@ -2,8 +2,10 @@
 
 Prepared: 2026-10-26
 Status: slice 1 (Direct3D11 on the Avalonia surface) owner smoke passed 2026-10-26
-(`updates/045A_1`). Slice 2 (Vulkan on Linux) and slice 3 (Vulkan on Windows, owner 2026-10-27)
-are planned below, not implemented.
+(`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan renderer's device, Linux and Windows)
+and slice 3 (Vulkan on Windows: the Avalonia shared GPU image for Vulkan frames; owner
+2026-10-27) implemented, pending manual smoke (`updates/045A_2`, `updates/045A_3`; the Windows
+smoke steps for both are in `updates/045A_3`).
 
 Owner direction (2026-10-26): "The point of the whole control is GPU video rendering on all
 stages, hence the shared control base." WPF and WinForms (native HWND, Direct3D11) decode with
@@ -77,8 +79,11 @@ It was the host's choice. The shared-texture path has no limitation behind it.
 
 ## Slice 2 plan: GPU decoding for the Vulkan renderer (Linux)
 
-Not implemented. The sandbox has only lavapipe and no VAAPI driver, so neither the decode nor
-the import path can run here. A copy-back stopgap was considered and rejected (see below).
+Implemented 2026-10-27, pending manual smoke (`updates/045A_2`, with the deviations from this
+plan). The sandbox has only lavapipe and no VAAPI driver, so the decode itself cannot run here;
+FFmpeg accepting the renderer's device, the conversion and the frame synchronization are tested
+with frames FFmpeg allocates and uploads on it. A copy-back stopgap was considered and rejected
+(see below).
 
 ### What the sandbox shows (FFmpeg 9.0.2 LGPL build in `/opt/fatzbomb-native`)
 
@@ -187,7 +192,10 @@ the import path can run here. A copy-back stopgap was considered and rejected (s
 
 ## Slice 3 plan: Vulkan on Windows (owner 2026-10-27)
 
-Not implemented. It builds on slice 2's decoder (FFmpeg Vulkan Video on the renderer's own
+Implemented 2026-10-27, pending manual smoke (`updates/045A_3`). Deviation: Direct3D11 cannot
+open Vulkan's opaque memory handles, so for the ANGLE compositor Direct3D11 creates the
+keyed-mutex texture and Vulkan imports it (the plan had it the other way round). It builds on
+slice 2's decoder (FFmpeg Vulkan Video on the renderer's own
 `VkDevice`); the decode code is shared, only the platform edges differ. The owner's machine is
 Windows (RTX 5090), so slice 3 is the first place the slice 2 decoder can be smoke tested on real
 hardware; consider building slices 2 and 3 together and validating on Windows first.

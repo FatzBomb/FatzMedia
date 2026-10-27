@@ -140,12 +140,15 @@ internal sealed class PlayerRendererSelection
                     MediaPresentationAvailability vulkan = new VulkanPresentationCoordinatorFactory().ProbeAvailability();
                     if (vulkan.IsAvailable)
                     {
+                        // Stage 045A slice 3: hardware decoding (Vulkan Video on the renderer's
+                        // device) when the device has it, software decoding otherwise.
+                        var decoding = vulkan.RequiresSoftwareDecoding ? "software decoding" : "hardware decoding (Vulkan Video) where the GPU supports the codec";
                         return new PlayerRendererSelection(
                             static () => new VulkanPresentationCoordinatorFactory(),
                             usesFrameSinkRenderer: true,
-                            usesSoftwareDecoding: true,
+                            usesSoftwareDecoding: vulkan.RequiresSoftwareDecoding,
                             "Vulkan (forced)",
-                            [(MediaDiagnosticLevel.Info, $"Vulkan forced (--renderer=vulkan): {vulkan.Detail}; shown through frame sinks, with software decoding.")]);
+                            [(MediaDiagnosticLevel.Info, $"Vulkan forced (--renderer=vulkan): {vulkan.Detail}; shown through frame sinks, with {decoding}.")]);
                     }
 
                     PlayerRendererSelection auto = Resolve(PlayerRendererRequest.Auto, hdrOutput);
