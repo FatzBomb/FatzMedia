@@ -23,6 +23,20 @@ namespace FatzBomb.MediaControl.Player.Configuration;
 /// </remarks>
 internal sealed class PlayerRendererSelection
 {
+    /// <summary>
+    /// The renderers the Windows players' toolbar offers (the Avalonia player's toolbar lists its
+    /// probes). A choice that is not usable here falls back to auto, with a warning in the Log panel.
+    /// </summary>
+    public static IReadOnlyList<(PlayerRendererRequest Request, string Label)> Choices { get; } =
+    [
+        (PlayerRendererRequest.Auto, "Auto (GPU first)"),
+        (PlayerRendererRequest.Gpu, "Direct3D11 GPU"),
+        (PlayerRendererRequest.Warp, "Direct3D11 WARP"),
+        (PlayerRendererRequest.Software, "Software"),
+        (PlayerRendererRequest.Vulkan, "Vulkan"),
+        (PlayerRendererRequest.Direct3D11, "Direct3D11 (GPU, else WARP)"),
+    ];
+
     private readonly Func<IMediaPresentationCoordinatorFactory> _createFactory;
     private readonly List<(MediaDiagnosticLevel Level, string Message)> _logLines;
 
@@ -170,12 +184,19 @@ internal sealed class PlayerRendererSelection
     /// probe device), never throwing: a failure gives the software renderer. The command line's
     /// unknown values are logged first.
     /// </summary>
-    public static Task<PlayerRendererSelection> ResolveInBackground(PlayerStartupOptions options) => Task.Run(() =>
+    public static Task<PlayerRendererSelection> ResolveInBackground(PlayerStartupOptions options) =>
+        ResolveInBackground(options, options.RendererRequest);
+
+    /// <summary>
+    /// Resolves <paramref name="request"/> (the toolbar's choice, or the command line's) off the
+    /// calling thread, as <see cref="ResolveInBackground(PlayerStartupOptions)"/> does.
+    /// </summary>
+    public static Task<PlayerRendererSelection> ResolveInBackground(PlayerStartupOptions options, PlayerRendererRequest request) => Task.Run(() =>
     {
         PlayerRendererSelection selection;
         try
         {
-            selection = Resolve(options.RendererRequest, options.HdrOutput);
+            selection = Resolve(request, options.HdrOutput);
         }
         catch (Exception ex)
         {

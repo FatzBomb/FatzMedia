@@ -22,10 +22,11 @@ public partial class App : Application
     public static bool ExpectsSoftwareRenderer { get; private set; }
 
     /// <summary>
-    /// Gets the renderer chosen at startup (Stage 036A: GPU, then WARP, then software; the shared
-    /// request since Stage 046A slice 3). The auto chain creates a probe device, so it resolves off
-    /// the UI thread and the window shows at once; each player's view model waits for it before
-    /// creating its engine.
+    /// Gets the renderer for new players (Stage 036A: GPU, then WARP, then software; the shared
+    /// request since Stage 046A slice 3; the toolbar's choice once it changes, see
+    /// <see cref="UseRenderer"/>). The auto chain creates a probe device, so it resolves off the UI
+    /// thread and the window shows at once; each player's view model waits for it before creating
+    /// its engine.
     /// </summary>
     internal static Task<PlayerRendererSelection> RendererSelection { get; private set; } = null!;
 
@@ -42,9 +43,7 @@ public partial class App : Application
 
         _debugLog = PlayerDebugLog.Attach(LogFilePath, "Player");
 
-        // Only an explicit frame-sink renderer is known up front; auto may still land on software.
-        ExpectsSoftwareRenderer = options.RendererRequest is PlayerRendererRequest.Software or PlayerRendererRequest.Vulkan;
-        RendererSelection = ResolveRendererAsync(options);
+        UseRenderer(options.RendererRequest);
         if (options.LightweightSurfacesWindow)
             _ = ShowLightweightSurfacesWindowAsync();
     }
@@ -73,9 +72,20 @@ public partial class App : Application
         window.Show();
     }
 
-    private static async Task<PlayerRendererSelection> ResolveRendererAsync(PlayerStartupOptions options)
+    /// <summary>
+    /// Starts resolving <paramref name="request"/> for the players created from now on: at startup
+    /// the command line's choice, later the toolbar's (the window then recreates its players).
+    /// </summary>
+    internal static void UseRenderer(PlayerRendererRequest request)
     {
-        PlayerRendererSelection selection = await PlayerRendererSelection.ResolveInBackground(options).ConfigureAwait(false);
+        // Only an explicit frame-sink renderer is known up front; auto may still land on software.
+        ExpectsSoftwareRenderer = request is PlayerRendererRequest.Software or PlayerRendererRequest.Vulkan;
+        RendererSelection = ResolveRendererAsync(StartupOptions, request);
+    }
+
+    private static async Task<PlayerRendererSelection> ResolveRendererAsync(PlayerStartupOptions options, PlayerRendererRequest request)
+    {
+        PlayerRendererSelection selection = await PlayerRendererSelection.ResolveInBackground(options, request).ConfigureAwait(false);
         Trace.WriteLine($"[Player] Renderer: {selection.Summary}");
         return selection;
     }

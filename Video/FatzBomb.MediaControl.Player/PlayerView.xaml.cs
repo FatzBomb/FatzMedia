@@ -26,6 +26,7 @@ public partial class PlayerView : UserControl
     private const double SeekKeyPageSeconds = 10;
 
     private readonly int _index;
+    private readonly bool _atStartup;
     private readonly FullScreenChromeController _chrome;
     private readonly Thickness _standardMediaMargin;
     private readonly Thickness _standardMediaBorderThickness;
@@ -40,9 +41,16 @@ public partial class PlayerView : UserControl
     private bool _isSeekBarDragging;
     private bool _disposed;
 
-    internal PlayerView(Window owner, int index)
+    /// <param name="owner">The window that owns this player's dialogs.</param>
+    /// <param name="index">The player's number (1-based).</param>
+    /// <param name="atStartup">
+    /// Whether the players are the window's first ones: then player 1 gets the startup media and its
+    /// <c>--second-screen=</c>; players recreated from the toolbar start empty.
+    /// </param>
+    internal PlayerView(Window owner, int index, bool atStartup)
     {
         _index = index;
+        _atStartup = atStartup;
         InitializeComponent();
 
         _standardMediaMargin = MediaViewportBorder.Margin;
@@ -54,7 +62,10 @@ public partial class PlayerView : UserControl
         _bottomChromeWindowedParent = (Panel)BottomChrome.Parent;
         _bottomChromeWindowedIndex = _bottomChromeWindowedParent.Children.IndexOf(BottomChrome);
 
-        ViewModel = new MainWindowViewModel(owner, index);
+        ViewModel = new MainWindowViewModel(
+            owner,
+            index,
+            atStartup ? App.StartupOptions.ForPlayer(index) : App.StartupOptions.WithoutStartupMedia());
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
@@ -73,11 +84,11 @@ public partial class PlayerView : UserControl
     /// <summary>Raised when the user asks for full screen (double-click, button); the window owns the window state.</summary>
     public event EventHandler? FullScreenToggleRequested;
 
-    /// <summary>Creates the engine and loads the startup media; then opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
+    /// <summary>Creates the engine and loads the startup media; then, at startup, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
     internal async Task InitializeAsync()
     {
         await ViewModel.StartAsync();
-        if (_index == 1 && App.StartupOptions.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
+        if (_atStartup && _index == 1 && App.StartupOptions.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
             OpenSecondScreen();
     }
 

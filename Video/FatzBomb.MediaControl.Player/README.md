@@ -32,7 +32,7 @@ pieces.
 
 | Layer | Responsibility |
 |---|---|
-| `MainWindow.xaml(.cs)` | Hosts 1-4 `PlayerView`s (`--players=`), the window's full-screen state, F11 / Escape, the once-a-second process reading. |
+| `MainWindow.xaml(.cs)` | Hosts 1-4 `PlayerView`s (`--players=`, and the toolbar's Players and Renderer boxes, which recreate them), the window's full-screen state, F11 / Escape, the once-a-second process reading. |
 | `PlayerView.xaml`, `Controls/PlayerFlyoutPanel.xaml` | One player: buttons, sliders, flyouts, status and stats lines, and the `MediaSurface`. |
 | `PlayerView.xaml.cs` | View-only concerns: seek bar drag and keys, file drops, the full-screen layout (shared chrome controller), the second screen. |
 | `ViewModels/MainWindowViewModel.cs` | One per player; derives from the shared `PlayerViewModel`; adds the WPF-only presentation mode and surface auto-hide. |

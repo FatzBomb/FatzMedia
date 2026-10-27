@@ -12,7 +12,8 @@ WinForms test player for `FatzBomb.MediaControl`. Windows only (`net10.0-windows
 - The Windows platform with the renderer choice shared with the WPF player
   (`PlayerRendererSelection`, compiled by link): Direct3D11, WARP, software or Vulkan in a non-WPF host,
   through the adapter's `Player.CreateAsync` (Stage 046A slice 3).
-- `--players=1..4` independent players side by side (one `PlayerPanel` and view model each).
+- `--players=1..4` independent players side by side (one `PlayerPanel` and view model each); the
+  toolbar changes the player count and the renderer at run time (the players are recreated).
 - The shared `PlayerViewModel` (`FatzBomb.MediaControl.Player.Shared`, Stage 044A) through plain
   WinForms bindings (`ViewModelBinder`): the WPF player's features, with its flyouts as tabs.
   It runs in WinForms' dark mode (`Application.SetColorMode`), like the other players.

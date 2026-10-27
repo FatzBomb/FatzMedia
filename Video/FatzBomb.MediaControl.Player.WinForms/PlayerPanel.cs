@@ -28,12 +28,13 @@ internal sealed class PlayerPanel : UserControl
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
-    private readonly ScrubTrackBar _seekBar = new() { Dock = DockStyle.Fill, TickStyle = TickStyle.None, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, AutoSize = false, Height = 28 };
+    private readonly SeekBar _seekBar = new() { Dock = DockStyle.Fill, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, Height = 28 };
     private readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
     private readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
     private readonly Label _stats = new() { Dock = DockStyle.Fill, AutoSize = false, Height = 18, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(FontFamily.GenericMonospace, 8f) };
     private readonly FullScreenChromeController _chrome;
     private readonly PlayerStartupOptions _options;
+    private readonly bool _atStartup;
     private readonly int _index;
     private SecondaryPresentationWindow? _secondScreen;
     private bool _isDragging;
@@ -42,14 +43,19 @@ internal sealed class PlayerPanel : UserControl
     private bool _cursorHidden;
     private bool _disposed;
 
-    /// <param name="index">The player's number (1-based); only player 1 gets the startup media.</param>
+    /// <param name="index">The player's number (1-based).</param>
     /// <param name="options">The command line (shared by every player of the form).</param>
+    /// <param name="atStartup">
+    /// Whether the panels are the form's first ones: then player 1 gets the startup media and its
+    /// <c>--second-screen=</c>; panels recreated from the toolbar start empty.
+    /// </param>
     /// <param name="dispatcher">The form's UI thread.</param>
     /// <param name="owner">The window that owns this player's dialogs.</param>
-    public PlayerPanel(int index, PlayerStartupOptions options, WinFormsPlayerDispatcher dispatcher, IWin32Window owner)
+    public PlayerPanel(int index, PlayerStartupOptions options, bool atStartup, WinFormsPlayerDispatcher dispatcher, IWin32Window owner)
     {
         _index = index;
         _options = options;
+        _atStartup = atStartup;
         // The form lays the panels out (one, side by side, or 2x2); a small gap between them.
         Padding = new Padding(2);
         // Drops onto the panel and onto the video (the surface's window or frame sink) load a file.
@@ -58,7 +64,7 @@ internal sealed class PlayerPanel : UserControl
 
         var shell = new WinFormsPlayerShell(owner);
         _viewModel = new PlayerViewModel(
-            options.ForPlayer(index),
+            atStartup ? options.ForPlayer(index) : options.WithoutStartupMedia(),
             new PlayerHost(dispatcher, new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath))
         {
             Label = $"P{index}",
@@ -107,11 +113,11 @@ internal sealed class PlayerPanel : UserControl
     /// <summary>Raised when the user asks for full screen (double-click, button); the form owns the window state.</summary>
     public event EventHandler? FullScreenToggleRequested;
 
-    /// <summary>Creates the engine and loads the startup media; then opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
+    /// <summary>Creates the engine and loads the startup media; then, at startup, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
     public async Task InitializeAsync()
     {
         await _viewModel.StartAsync();
-        if (_index == 1 && _options.SecondScreen is not null && _viewModel.Player is not null && !_disposed)
+        if (_atStartup && _index == 1 && _options.SecondScreen is not null && _viewModel.Player is not null && !_disposed)
             _secondScreenBox.Checked = true;
     }
 
@@ -529,7 +535,7 @@ internal sealed class PlayerPanel : UserControl
         }
     }
 
-    // A press starts a scrub (before the native track bar pages, so that step is a drag seek too)
+    // A press starts a scrub (before the value jumps to the pointer, so that step is a drag seek too)
     // and jumps to the pointer; dragging the thumb seeks as it moves.
     private void OnSeekPressStarting(object? sender, EventArgs e)
     {
@@ -676,75 +682,5 @@ internal sealed class PlayerPanel : UserControl
         }
 
         base.Dispose(disposing);
-    }
-}
-
-/// <summary>A track bar that says when the left button goes down, before the native control pages or drags.</summary>
-internal sealed class ScrubTrackBar : TrackBar
-{
-    private const int WmMouseMove = 0x0200;
-    private const int WmLeftButtonDown = 0x0201;
-    private const int WmLeftButtonUp = 0x0202;
-    private const int WmLeftButtonDoubleClick = 0x0203;
-    private bool _pressed;
-
-    /// <summary>Raised on the left button press, before the value jumps to the pointer.</summary>
-    public event EventHandler? PressStarting;
-
-    /// <summary>Raised when the press ends: the button is released or the mouse capture is lost.</summary>
-    public event EventHandler? PressEnded;
-
-    // The bar handles the left button itself, the way media players do: a press jumps to the
-    // pointer and a drag follows it, wherever the press lands. The native track bar pages toward
-    // a press off the thumb and keeps paging while the button is held, so a drag that starts
-    // there jumped to unrelated points.
-    protected override void WndProc(ref Message m)
-    {
-        switch (m.Msg)
-        {
-            // The second press of a quick double click arrives as a double-click message.
-            case WmLeftButtonDown or WmLeftButtonDoubleClick when Enabled:
-                PressStarting?.Invoke(this, EventArgs.Empty);
-                _pressed = true;
-                _ = Focus();
-                Capture = true;
-                MoveToPointer(m.LParam);
-                return;
-            case WmMouseMove when _pressed:
-                MoveToPointer(m.LParam);
-                return;
-            case WmLeftButtonUp when _pressed:
-                EndPress();
-                return;
-        }
-
-        base.WndProc(ref m);
-    }
-
-    protected override void OnMouseCaptureChanged(EventArgs e)
-    {
-        // Alt+Tab or a dialog took the mouse: the press ends where it is.
-        if (!Capture)
-            EndPress();
-        base.OnMouseCaptureChanged(e);
-    }
-
-    private void EndPress()
-    {
-        if (!_pressed)
-            return;
-
-        _pressed = false;
-        Capture = false;
-        PressEnded?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void MoveToPointer(nint lParam)
-    {
-        // Where the thumb's centre can travel: the channel minus half a thumb at each end.
-        var x = (short)(lParam.ToInt64() & 0xFFFF);
-        var inset = 13 * DeviceDpi / 96.0;
-        var fraction = Math.Clamp((x - inset) / Math.Max(1, ClientSize.Width - (2 * inset)), 0, 1);
-        Value = Math.Clamp(Minimum + (int)Math.Round(fraction * (Maximum - Minimum)), Minimum, Maximum);
     }
 }

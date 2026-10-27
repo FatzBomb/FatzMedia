@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using FatzBomb.MediaControl.Player.Hosting;
+using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Player.Shared.ViewModels;
 using FatzBomb.MediaControl.Wpf;
@@ -25,10 +26,11 @@ public sealed class MainWindowViewModel : PlayerViewModel
     private bool _usesSoftwareRenderer = App.ExpectsSoftwareRenderer;
 
     /// <param name="owner">The window that owns this player's dialogs.</param>
-    /// <param name="index">The player's number (1-based); only player 1 gets the startup media.</param>
-    public MainWindowViewModel(Window owner, int index)
+    /// <param name="index">The player's number (1-based).</param>
+    /// <param name="options">This player's options: the startup media only for player 1 of the first build.</param>
+    public MainWindowViewModel(Window owner, int index, PlayerStartupOptions options)
         : base(
-            App.StartupOptions.ForPlayer(index),
+            options,
             new PlayerHost(
                 new WpfPlayerDispatcher(),
                 new WpfPlayerEngineFactory(),
