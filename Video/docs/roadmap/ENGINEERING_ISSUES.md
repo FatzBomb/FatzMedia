@@ -366,6 +366,18 @@ Reported: 2026-10-27 (045A slices 2 and 3, GPU decoding for the Vulkan renderer)
 - **WPF and WinForms with `--renderer=vulkan`** decode on the GPU but read each frame back for
   their frame sink. A Vulkan swap chain on the native window (`VK_KHR_win32_surface`) remains a
   possible later step; Direct3D11 already covers the native window.
+- **Keyed-mutex wait under the shared queue lock** (code review). On the Windows ANGLE path the
+  render submit acquires the Direct3D11 texture's keyed mutex inside `vkQueueSubmit` (up to
+  `KeyedMutexTimeoutMilliseconds`, 500 ms) while holding the queue lock FFmpeg also takes for
+  decode submissions. A compositor that releases late stalls decoding with it. Watch for
+  stutter in the owner's smoke; the fix is to wait for the mutex before taking the queue lock
+  (or a separate render queue).
+- **R16 plane filtering required for every stream.** The probe requires linear filtering on
+  `R16`/`R16G16` (P010 planes) even when only 8-bit NV12 would be decoded, so a GPU without it
+  gets no Vulkan Video at all. Requiring it only for 10-bit streams is the refinement.
+- **Renderer-device decoding is reached through downcasts.** `VideoDecoder` and the coordinator
+  test for `RendererVideoDecodeServices` and `PipelineMediaEngine` instead of a contract member,
+  so another services wrapper or engine silently keeps platform decoding.
 
 ### ENG-037 - Hardware-frame follow-ups from 045A slice 1
 

@@ -570,7 +570,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             Barrier(destination, ImageLayout.TransferDstOptimal, ExportLayout, AccessFlags.TransferWriteBit, 0, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
     }
 
-    /// <summary>A layout transition that also moves the image between queue families.</summary>
+    /// <summary>A layout transition that also moves the image between queue families (the colour aspect unless <paramref name="range"/> says otherwise).</summary>
     private void OwnershipBarrier(
         VkImage image,
         ImageLayout from,
@@ -580,7 +580,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         AccessFlags srcAccess,
         AccessFlags dstAccess,
         PipelineStageFlags srcStage,
-        PipelineStageFlags dstStage)
+        PipelineStageFlags dstStage,
+        ImageSubresourceRange? range = null)
     {
         var barrier = new ImageMemoryBarrier
         {
@@ -592,7 +593,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             SrcQueueFamilyIndex = srcFamily,
             DstQueueFamilyIndex = dstFamily,
             Image = image,
-            SubresourceRange = ColorRange(),
+            SubresourceRange = range ?? ColorRange(),
         };
         _vk.CmdPipelineBarrier(_commandBuffer, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
     }

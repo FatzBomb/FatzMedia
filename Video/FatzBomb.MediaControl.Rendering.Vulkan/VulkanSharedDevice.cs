@@ -117,7 +117,11 @@ internal sealed unsafe class VulkanSharedDevice
     public void AddRef()
     {
         if (Interlocked.Increment(ref _references) <= 1)
+        {
+            // Already released: undo the increment so the count stays at zero.
+            _ = Interlocked.Decrement(ref _references);
             throw new ObjectDisposedException(nameof(VulkanSharedDevice));
+        }
     }
 
     /// <summary>Drops a reference; the last one destroys the device, the instance and the loader.</summary>

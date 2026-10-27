@@ -303,8 +303,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         if (!TryDescribeFrame(resource, out FrameDescription description, out var failure))
         {
             ReportVideoFailure(failure!);
-            // HDR the renderer cannot draw comes back tone mapped on the CPU (Stage 038A).
-            resource.HdrToneMap?.Fallback?.RequestCpuToneMapping(failure!);
+            // HDR the renderer cannot draw comes back tone mapped on the CPU (Stage 038A); a frame
+            // from another device (until the decoder moves) is not a reason to give up the GPU.
+            if (IsOnThisDevice(resource))
+                resource.HdrToneMap?.Fallback?.RequestCpuToneMapping(failure!);
             return false;
         }
 
@@ -540,22 +542,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         AccessFlags dstAccess,
         PipelineStageFlags srcStage,
         PipelineStageFlags dstStage,
-        ImageSubresourceRange range)
-    {
-        var barrier = new ImageMemoryBarrier
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            OldLayout = from,
-            NewLayout = to,
-            SrcAccessMask = srcAccess,
-            DstAccessMask = dstAccess,
-            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            Image = image,
-            SubresourceRange = range,
-        };
-        _vk.CmdPipelineBarrier(_commandBuffer, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
-    }
+        ImageSubresourceRange range) =>
+        OwnershipBarrier(image, from, to, Vk.QueueFamilyIgnored, Vk.QueueFamilyIgnored, srcAccess, dstAccess, srcStage, dstStage, range);
 
     /// <summary>
     /// A decoded frame's lock and synchronization state for one submission (FFmpeg's

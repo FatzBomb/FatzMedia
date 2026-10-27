@@ -1061,22 +1061,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         AccessFlags srcAccess,
         AccessFlags dstAccess,
         PipelineStageFlags srcStage,
-        PipelineStageFlags dstStage)
-    {
-        var barrier = new ImageMemoryBarrier
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            OldLayout = from,
-            NewLayout = to,
-            SrcAccessMask = srcAccess,
-            DstAccessMask = dstAccess,
-            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            Image = image,
-            SubresourceRange = ColorRange(),
-        };
-        _vk.CmdPipelineBarrier(_commandBuffer, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
-    }
+        PipelineStageFlags dstStage) =>
+        Barrier(image, from, to, srcAccess, dstAccess, srcStage, dstStage, ColorRange());
 
     /// <summary>Destroys a render target: the framebuffer before the image view it references.</summary>
     private void DestroyRenderTarget(RenderTarget target)

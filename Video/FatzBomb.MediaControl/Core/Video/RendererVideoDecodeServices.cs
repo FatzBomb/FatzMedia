@@ -18,6 +18,11 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     private IMediaRendererVideoDecodeDevice? _renderer;
     private string? _reportedReason;
 
+    // The device type of the last context the attached renderer supplied: its frames and device
+    // stay the renderer's even while the renderer briefly has no device (recovering from a loss),
+    // and routing them does not query the renderer for every frame.
+    private string? _suppliedDeviceType;
+
     /// <summary>Gets the attached renderer device, or null.</summary>
     public IMediaRendererVideoDecodeDevice? Renderer => Volatile.Read(ref _renderer);
 
@@ -28,6 +33,7 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     public void Attach(IMediaRendererVideoDecodeDevice? renderer)
     {
         Volatile.Write(ref _renderer, renderer);
+        Volatile.Write(ref _suppliedDeviceType, null);
         lock (_reportGate)
             _reportedReason = null;
     }
@@ -57,6 +63,8 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
         context = renderer!.CreateVideoDecodeDeviceContext(out var reason);
         if (context == 0)
             ReportUnavailable(reason ?? "the renderer's device could not be shared with FFmpeg");
+        else
+            Volatile.Write(ref _suppliedDeviceType, deviceTypeName);
         return true;
     }
 
@@ -71,17 +79,17 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
     }
 
     public NativeVideoDeviceResource? CreateDeviceResource(string deviceTypeName, nint ffmpegHardwareDeviceContext) =>
-        IsRendererType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
             ? renderer!.CreateVideoDecodeDeviceResource(ffmpegHardwareDeviceContext)
             : _platform.CreateDeviceResource(deviceTypeName, ffmpegHardwareDeviceContext);
 
     public NativeVideoFrameResource? CreateFrameResource(string deviceTypeName, NativeVideoDeviceResource device, nint ffmpegFrame) =>
-        IsRendererType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
             ? renderer!.CreateVideoDecodeFrameResource(device, ffmpegFrame)
             : _platform.CreateFrameResource(deviceTypeName, device, ffmpegFrame);
 
     public bool IsDeviceLost(NativeVideoDeviceResource device) =>
-        IsRendererType(device.BackendId.Value, out IMediaRendererVideoDecodeDevice? renderer)
+        IsSuppliedType(device.BackendId.Value, out IMediaRendererVideoDecodeDevice? renderer)
             ? renderer!.IsVideoDecodeDeviceLost(device)
             : _platform.IsDeviceLost(device);
 
@@ -91,6 +99,22 @@ internal sealed class RendererVideoDecodeServices(IVideoHardwareAccelerationServ
         return renderer is not null
             && deviceTypeName is not null
             && string.Equals(renderer.VideoDecodeDeviceType, deviceTypeName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="deviceTypeName"/> belongs to the attached renderer: the type of a
+    /// context it supplied, or the type it offers now.
+    /// </summary>
+    private bool IsSuppliedType(string? deviceTypeName, out IMediaRendererVideoDecodeDevice? renderer)
+    {
+        renderer = Renderer;
+        if (renderer is not null && deviceTypeName is not null
+            && string.Equals(Volatile.Read(ref _suppliedDeviceType), deviceTypeName, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return IsRendererType(deviceTypeName, out renderer);
     }
 
     private void ReportUnavailable(string reason)
