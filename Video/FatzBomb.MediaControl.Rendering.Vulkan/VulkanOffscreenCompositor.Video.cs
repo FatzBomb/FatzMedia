@@ -185,8 +185,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             return NoVideo("the Vulkan device has no synchronization2");
         if (!supported.Vulkan11->SamplerYcbcrConversion)
             return NoVideo("the Vulkan device has no sampler YCbCr conversion");
-        if (!SamplesPlanes(Format.R8Unorm) || !SamplesPlanes(Format.R8G8Unorm))
-            return NoVideo("the Vulkan device cannot sample R8 and R8G8 plane views with linear filtering");
+        if (!SamplesPlanes(Format.R8Unorm) || !SamplesPlanes(Format.R8G8Unorm) || !SamplesPlanes(Format.R16Unorm) || !SamplesPlanes(Format.R16G16Unorm))
+            return NoVideo("the Vulkan device cannot sample R8/R8G8 and R16/R16G16 plane views with linear filtering");
 
         if (hasMaintenance1)
             extensions.Add(VideoMaintenance1Extension);
@@ -420,9 +420,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
     private ImageView CreateFrameView(VkImage image, Format format, ImageAspectFlags aspect)
     {
+        // Decoder images also carry video usages; the view is for sampling only (as FFmpeg's own
+        // plane views are).
+        var usage = new ImageViewUsageCreateInfo { SType = StructureType.ImageViewUsageCreateInfo, Usage = ImageUsageFlags.SampledBit };
         var info = new ImageViewCreateInfo
         {
             SType = StructureType.ImageViewCreateInfo,
+            PNext = &usage,
             Image = image,
             ViewType = ImageViewType.Type2D,
             Format = format,

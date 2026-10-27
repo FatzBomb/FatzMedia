@@ -39,7 +39,8 @@ the owner's RTX 5090 is the first machine with a video decode queue to test on.
     with one extra queue on the video decode family. "What it needs" is: a 1.3 device;
     `VK_KHR_video_queue`, `VK_KHR_video_decode_queue` and the H.264/H.265/AV1/VP9 decode
     extensions it has; a decode queue family for those codecs; timeline semaphores,
-    synchronization2 and sampler YCbCr conversion; R8/R8G8 plane views with linear filtering.
+    synchronization2 and sampler YCbCr conversion; R8/R8G8 and R16/R16G16 plane views with linear
+    filtering.
   - It also enables `VK_KHR_video_maintenance1` and `VK_KHR_push_descriptor` when present, and
     the features FFmpeg enables on devices it creates itself (`device_features_copy_needed`)
     as far as they are supported.
@@ -66,9 +67,9 @@ the owner's RTX 5090 is the first machine with a video decode queue to test on.
     multi-planar images with `MUTABLE_FORMAT | EXTENDED_USAGE`, and shares them `CONCURRENT`
     across the families it was given. No frames-context hook and no queue-family ownership
     transfer is needed.
-  - The renderer reads the frame through per-plane views: R8/R8G8 for 8-bit, R16/R16G16 for
-    10- to 16-bit. This works for one multi-planar image (aspect planes 0 and 1) and for one
-    image per plane, FFmpeg's other layout.
+  - The renderer reads the frame through per-plane views (sampling usage only, as FFmpeg's own
+    views): R8/R8G8 for 8-bit, R16/R16G16 for 10- to 16-bit. This works for one multi-planar
+    image (aspect planes 0 and 1) and for one image per plane, FFmpeg's other layout.
   - `video.frag` converts the frame into the **video layer**, a BGRA image at the display
     size. The layer is then composed like an uploaded software frame (nearest blit, wash, CDG)
     and kept as the retained background for CD+G refreshes and paused redraws.
