@@ -267,10 +267,10 @@ the second screen opens as a window).
 
 - WinForms seek drag from off the thumb, second screen on DISPLAY2, WPF overlay during a drag:
   passed. Closing the lightweight-surfaces window logged one warning (was seven).
-- New: a small white rectangle flashed at the left end of the WinForms seek bar while seeking.
-  The hand-made drag swallowed the native track bar's mouse messages, which left its hot and
-  pressed thumb state stale. The bar now moves the thumb under the pointer and passes the press
-  on, so the native control drags the thumb itself.
+- New: a small white rectangle flashed at the left end of the WinForms seek bar, while playing and
+  more while dragging: the native track bar repainting. The player now draws its own seek bar
+  (`Player.WinForms/SeekBar.cs`: dark track, accent fill, round thumb; press jumps to the pointer,
+  drag follows, arrows 5 s, Page Up / Page Down 10 s, Home / End), so no native track bar is left.
 - Toolbar added to the WPF and WinForms players (decision above). Smoke: in each, change Players
   to 2 and the renderer to Software, then WARP, then Auto: the players are recreated, the Renderer
   lines and the toolbar summary name the choice; full screen hides the toolbar; close: no errors.

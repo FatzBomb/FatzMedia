@@ -1,5 +1,4 @@
 using System.Collections.Specialized;
-using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
@@ -29,7 +28,7 @@ internal sealed class PlayerPanel : UserControl
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly Control _topBar;
     private readonly Control _bottom;
-    private readonly ScrubTrackBar _seekBar = new() { Dock = DockStyle.Fill, TickStyle = TickStyle.None, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, AutoSize = false, Height = 28 };
+    private readonly SeekBar _seekBar = new() { Dock = DockStyle.Fill, Maximum = SeekScale, SmallChange = 5 * SeekScale, LargeChange = 10 * SeekScale, Height = 28 };
     private readonly CheckBox _secondScreenBox = new() { Text = "Second screen", AutoSize = true, Margin = new Padding(8, 7, 0, 0) };
     private readonly ListView _log = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Font = new Font(FontFamily.GenericMonospace, 8.5f) };
     private readonly Label _stats = new() { Dock = DockStyle.Fill, AutoSize = false, Height = 18, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(FontFamily.GenericMonospace, 8f) };
@@ -536,7 +535,7 @@ internal sealed class PlayerPanel : UserControl
         }
     }
 
-    // A press starts a scrub (before the native track bar pages, so that step is a drag seek too)
+    // A press starts a scrub (before the value jumps to the pointer, so that step is a drag seek too)
     // and jumps to the pointer; dragging the thumb seeks as it moves.
     private void OnSeekPressStarting(object? sender, EventArgs e)
     {
@@ -683,105 +682,5 @@ internal sealed class PlayerPanel : UserControl
         }
 
         base.Dispose(disposing);
-    }
-}
-
-/// <summary>A track bar that says when the left button goes down, before the native control pages or drags.</summary>
-internal sealed class ScrubTrackBar : TrackBar
-{
-    private const int WmLeftButtonDown = 0x0201;
-    private const int WmLeftButtonUp = 0x0202;
-    private const int WmLeftButtonDoubleClick = 0x0203;
-    private const int TbmGetThumbRect = 0x0419;
-    private const int TbmGetChannelRect = 0x041A;
-    private bool _pressed;
-
-    /// <summary>Raised on the left button press, before the value jumps to the pointer.</summary>
-    public event EventHandler? PressStarting;
-
-    /// <summary>Raised when the press ends: the button is released or the mouse capture is lost.</summary>
-    public event EventHandler? PressEnded;
-
-    // A press jumps to the pointer and a drag follows it, wherever the press lands, the way media
-    // players do. The native track bar pages toward a press off the thumb and keeps paging while
-    // the button is held, so the thumb is first moved under the pointer: the native control then
-    // sees a press on the thumb and drags it itself (its own capture, hot state and painting; the
-    // earlier hand-made drag left a stale thumb flashing at the left end).
-    protected override void WndProc(ref Message m)
-    {
-        switch (m.Msg)
-        {
-            // The second press of a quick double click arrives as a double-click message.
-            case WmLeftButtonDown or WmLeftButtonDoubleClick when Enabled:
-                PressStarting?.Invoke(this, EventArgs.Empty);
-                _pressed = true;
-                m.LParam = MoveThumbUnder(m.LParam);
-                break;
-            case WmLeftButtonUp:
-                base.WndProc(ref m);
-                EndPress();
-                return;
-        }
-
-        base.WndProc(ref m);
-    }
-
-    protected override void OnMouseCaptureChanged(EventArgs e)
-    {
-        // The native drag ended, or Alt+Tab or a dialog took the mouse: the press ends where it is.
-        if (!Capture)
-            EndPress();
-        base.OnMouseCaptureChanged(e);
-    }
-
-    private void EndPress()
-    {
-        if (!_pressed)
-            return;
-
-        _pressed = false;
-        PressEnded?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>Moves the thumb under the press; returns the press point, inside the thumb, for the native control.</summary>
-    private nint MoveThumbUnder(nint lParam)
-    {
-        var x = (short)(lParam.ToInt64() & 0xFFFF);
-        var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-        var thumb = GetNativeRect(TbmGetThumbRect);
-        if (thumb.Contains(x, y))
-            return lParam;
-
-        if (x < thumb.Left || x >= thumb.Right)
-        {
-            // The thumb's centre travels the channel minus half a thumb at each end.
-            var channel = GetNativeRect(TbmGetChannelRect);
-            var travel = Math.Max(1, channel.Width - thumb.Width);
-            var fraction = Math.Clamp((x - channel.Left - (thumb.Width / 2.0)) / travel, 0, 1);
-            Value = Math.Clamp(Minimum + (int)Math.Round(fraction * (Maximum - Minimum)), Minimum, Maximum);
-            thumb = GetNativeRect(TbmGetThumbRect);
-        }
-
-        // A press above or below the thumb, or past the channel's ends, would page: hand the native
-        // control a press on the thumb so it drags.
-        var pressX = Math.Clamp(x, thumb.Left, Math.Max(thumb.Left, thumb.Right - 1));
-        var pressY = Math.Clamp(y, thumb.Top, Math.Max(thumb.Top, thumb.Bottom - 1));
-        return (nint)((pressY << 16) | (pressX & 0xFFFF));
-    }
-
-    private Rectangle GetNativeRect(int message)
-    {
-        // RECT: left, top, right, bottom.
-        var buffer = Marshal.AllocHGlobal(16);
-        try
-        {
-            var query = Message.Create(Handle, message, 0, buffer);
-            DefWndProc(ref query);
-            return Rectangle.FromLTRB(Marshal.ReadInt32(buffer), Marshal.ReadInt32(buffer, 4), Marshal.ReadInt32(buffer, 8), Marshal.ReadInt32(buffer, 12));
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
     }
 }
