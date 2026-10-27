@@ -3,9 +3,9 @@
 Stage: 046A.2 - Adapter parity: KaraokeSurface and BackgroundSurface everywhere, WinForms catch-up
 Date: 2026-10-26
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27
 
-Owner decisions 2 and 3 of `active/046A_ACTIVE_AdapterParity.md`: the karaoke and background
+Owner decisions 2 and 3 of `complete/046A_COMPLETED_AdapterParity.md`: the karaoke and background
 controls on every adapter, their rules moved into Core first; WinForms gets a frame-sink fallback
 and overlay content. Slice 1 (`updates/046A_1`) is the base.
 

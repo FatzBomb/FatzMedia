@@ -3,9 +3,9 @@
 Stage: 046A.3 - Adapter parity: shared player helpers, GPU-first renderer choice, `--players` everywhere
 Date: 2026-10-26
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27
 
-The last slice of `active/046A_ACTIVE_AdapterParity.md` (owner decision 4 and the test-player
+The last slice of `complete/046A_COMPLETED_AdapterParity.md` (owner decision 4 and the test-player
 items of the audit). Slices 1 (`updates/046A_1`) and 2 (`updates/046A_2`) are the base. With this
 slice the whole stage is implemented, pending manual smoke.
 

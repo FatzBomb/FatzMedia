@@ -49,19 +49,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   renderer, on the shared GPU image and the frame sink; HDR tone mapped on the GPU) is
   implemented, pending manual smoke (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
   renderer's device, Linux) is planned in the stage file.
-- `active/046A_ACTIVE_AdapterParity.md` - adapter and player parity (owner direction,
-  2026-10-26: no feature solo for one player). Slice 1 (P1 fixes; Core `HasPresentation`,
-  `MediaSurfaceContentTracker` auto-hide and `MediaSurfacePresentationPath` shared by the WPF,
-  Avalonia and WinForms surfaces; WinForms and WPF second-screen windows with the Avalonia shape;
-  WPF `Role`/`SurfaceId`) is implemented, pending manual smoke (`updates/046A_1`). Slice 2
-  (Core `LightweightPlayerPolicy` / `LightweightPlayerController`; `KaraokeSurface` and
-  `BackgroundSurface` in WPF, Avalonia and WinForms, the background in Background mode without
-  audio; WinForms frame-sink fallback, `OverlayContent` and `FromBitmap`; `--lightweight-surfaces`
-  in every player) is implemented, pending manual smoke (`updates/046A_2`). Slice 3 (Player.Shared
-  chrome controller, stats line, screen rule and renderer request; GPU-first `--renderer=auto`;
-  `--players`, `--surface`, `--decoding`, `--second-screen` in every player; `Player` facades in
-  the Avalonia and WinForms adapters) is implemented, pending manual smoke (`updates/046A_3`). The
-  whole stage is implemented, pending manual smoke.
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -71,6 +58,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/046A_COMPLETED_AdapterParity.md` — adapter and player parity (no feature solo for one player): shared Core auto-hide, presentation path and lightweight player controller; `SecondaryPresentationWindow`, `KaraokeSurface` and `BackgroundSurface` in WPF, Avalonia and WinForms; WinForms frame sink and overlay; Player.Shared chrome, stats, screen rule and renderer request; GPU-first `--renderer=auto`; the player-count and renderer toolbar in every player; owner smoke passed 2026-10-26/27 (`updates/046A_1` to `046A_3`)
 - `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26). Follow-up update `updates/039A_3` (https and HLS audio through FFmpeg so certificates are verified, ENG-034 triage: clock held for picture-only outages, bounded reconnects, moov-at-end message): implemented, pending manual smoke
 - `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
 - `complete/010A_COMPLETED_SoftwareVideoUploadCopyPath.md` — copy map, repeatable software-video benchmark, per-composition snapshot copy removed; owner smoke passed 2026-10-17; follow-ups in 041A (completed 2026-10-18)
