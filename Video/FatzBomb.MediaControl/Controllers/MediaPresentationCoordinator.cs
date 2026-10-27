@@ -121,6 +121,9 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _presentationTimingSource = FillPresentationTimingGroups;
         _wipeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().WipeTransitionMilliseconds);
         _rendererBackend.FramePresented += OnFramePresented;
+        // A renderer that decodes on its own device (Stage 045A slice 2) supplies every decoder's
+        // hardware device; any other renderer leaves the platform's.
+        (_mediaEngine as PipelineMediaEngine)?.AttachRendererVideoDecodeDevice(_rendererBackend as IMediaRendererVideoDecodeDevice);
         _diagnosticOwner = DiagnosticRouter.Owner;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
@@ -1708,6 +1711,8 @@ public sealed class MediaPresentationCoordinator : IMediaPresentationCoordinator
         _ = Interlocked.Exchange(ref _recoveryInProgress, 0);
 
         DetachAllEngines();
+        if (_rendererBackend is IMediaRendererVideoDecodeDevice decodeDevice)
+            (_mediaEngine as PipelineMediaEngine)?.DetachRendererVideoDecodeDevice(decodeDevice);
         lock (_lock)
         {
             _rendererBackend.CleanupResources();

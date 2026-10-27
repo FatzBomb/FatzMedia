@@ -40,7 +40,9 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     /// Available when <see cref="IsSupported"/> finds a usable device, so a fallback chain moves
     /// past Vulkan on machines without a loader or driver. Like the software renderer it draws
     /// only into managed frame-sink surfaces (or, Stage 027A slice 2, into exported shared GPU
-    /// images an adapter's compositor imports; never native windows) and presents only CPU frames.
+    /// images an adapter's compositor imports; never native windows). It takes hardware frames
+    /// when FFmpeg can decode on its device (Stage 045A slice 2: Vulkan Video); otherwise it asks
+    /// for software decoding, and the detail says why.
     /// </summary>
     public MediaPresentationAvailability ProbeAvailability()
     {
@@ -49,8 +51,9 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
             using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out var reason);
             MediaPresentationAvailability availability = compositor is null
                 ? MediaPresentationAvailability.Unavailable(reason ?? "Vulkan initialization failed.")
-                : MediaPresentationAvailability.Available($"{compositor.DeviceName} ({compositor.DeviceType})");
-            return availability with { RequiresSoftwareDecoding = true, RequiresFrameSinkSurface = true };
+                : MediaPresentationAvailability.Available($"{compositor.DeviceName} ({compositor.DeviceType}), {DescribeVideoDecode(compositor)}");
+            // Stage 045A slice 2: hardware frames when FFmpeg can decode on the device.
+            return availability with { RequiresSoftwareDecoding = compositor?.VideoDecode is null, RequiresFrameSinkSurface = true };
         }
         catch (Exception ex)
         {
@@ -72,9 +75,15 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
         if (compositor is null)
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Vulkan", failure ?? "Vulkan initialization failed.");
         else
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Vulkan device: {compositor.DeviceName} ({compositor.DeviceType})");
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Vulkan device: {compositor.DeviceName} ({compositor.DeviceType}), {DescribeVideoDecode(compositor)}");
         return compositor;
     }
+
+    /// <summary>Whether the device decodes with Vulkan Video, and which codecs, or why not.</summary>
+    private static string DescribeVideoDecode(VulkanOffscreenCompositor compositor) =>
+        compositor.VideoDecode is { } decode
+            ? $"Vulkan Video decoding: {decode.Describe()}"
+            : $"no Vulkan Video decoding: {compositor.VideoDecodeUnavailableReason ?? "unknown"}";
 
     /// <summary>Subtitle rasterization (DirectWrite/Skia) is a later slice.</summary>
     private sealed class NullSubtitleRasterizer : ISubtitleRasterizer

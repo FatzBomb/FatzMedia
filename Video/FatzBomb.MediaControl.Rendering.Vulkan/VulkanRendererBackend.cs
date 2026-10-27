@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
 
@@ -11,11 +12,13 @@ namespace FatzBomb.MediaControl.Rendering.Vulkan;
 /// images (opaque POSIX descriptors, optional exported semaphores) that the UI compositor
 /// imports, with no readback. Stage 027A slice 5: any number of surfaces, of any role, each of
 /// either kind; every composition is rendered once per target at the target's size.
-/// Window-system swapchains, subtitles, base-visual transforms and native video resources are
-/// later slices; frames that need them are rejected with a diagnostic instead of being drawn
+/// Stage 045A slice 2: FFmpeg decodes on the renderer's device (Vulkan Video,
+/// <see cref="IMediaRendererVideoDecodeDevice"/>), and decoded frames are converted on the GPU into
+/// the composition's video layer. Window-system swapchains, subtitles and base-visual transforms
+/// are later slices; frames that need them are rejected with a diagnostic instead of being drawn
 /// incorrectly.
 /// </summary>
-internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend
+internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
 {
     private readonly Lock _sync = new();
     private bool _initializationFailed;
@@ -29,6 +32,8 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     private readonly Dictionary<string, Target> _targets = new(StringComparer.OrdinalIgnoreCase);
     private long _sharedGeneration;
     private VulkanFrameSupport _lastReportedUnsupported = VulkanFrameSupport.Supported;
+    private MediaCompositionStretchMode _stretchMode = MediaCompositionStretchMode.UniformFit;
+    private bool _foreignFrameReported;
     private bool _disposed;
 
     public event EventHandler? FramePresented;
@@ -37,7 +42,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     public string DeviceLostDiagnosticCategory => "Vulkan.DeviceLost";
     public string DeviceLostRecoveryFailedDiagnosticCategory => "Vulkan.DeviceLost.RecoveryFailed";
     public bool IsInitialized { get; private set; }
-    public nint NativeDeviceHandle => 0;
+    public nint NativeDeviceHandle => _compositor?.DeviceHandle ?? 0;
 
     /// <summary>Gets the selected Vulkan device name, once initialized.</summary>
     public string? DeviceName => _compositor?.DeviceName;
@@ -98,14 +103,49 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     public void SetPresentationStretch(MediaCompositionStretchMode stretchMode)
     {
-        // Each composition frame carries its effective stretch mode.
+        // Composition frames carry their own stretch mode; native frames use this one.
+        lock (_sync)
+            _stretchMode = stretchMode;
     }
 
-    public bool PresentNativeFrame(VideoFrameEventArgs frame) => false;
+    /// <summary>
+    /// Presents a decoded frame on its own (Core's path when only the primary surface is attached):
+    /// composed like any other frame, the video over black, at the presentation stretch.
+    /// </summary>
+    public bool PresentNativeFrame(VideoFrameEventArgs frame)
+    {
+        if (frame.NativeResource is not { IsValid: true } resource)
+            return false;
+
+        MediaCompositionStretchMode stretch;
+        lock (_sync)
+            stretch = _stretchMode;
+
+        return PresentComposition(new MediaCompositionFrame
+        {
+            ClearMode = MediaCompositionClearMode.Black,
+            ClearArgb = 0xFF000000,
+            BackgroundNativeResource = resource,
+            BackgroundNativeWidth = frame.Width,
+            BackgroundNativeHeight = frame.Height,
+            BackgroundNativeFramesPerSecond = frame.FramesPerSecond,
+            BackgroundWidth = frame.Width,
+            BackgroundHeight = frame.Height,
+            BackgroundStride = frame.Width * 4,
+            BackgroundStretchMode = stretch,
+            // Each call is a new frame.
+            BackgroundRevision = -1,
+            BaseVisualTransform = BaseVisualTransform.Identity,
+            Reason = "native video frame",
+        });
+    }
 
     public void ClearCompositionBackgroundFrame()
     {
-        // No retained background resource exists in this slice.
+        VulkanOffscreenCompositor? compositor;
+        lock (_sync)
+            compositor = _compositor;
+        compositor?.ClearVideoLayer();
     }
 
     public bool PresentComposition(MediaCompositionFrame frame)
@@ -212,17 +252,19 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             }
             catch (VulkanException exception)
             {
-                return ReportRenderFailure(exception);
+                return ReportRenderFailure(exception, compositor);
             }
         }
     }
 
-    private PresentResult ReportRenderFailure(VulkanException exception)
+    private PresentResult ReportRenderFailure(VulkanException exception, VulkanOffscreenCompositor compositor)
     {
         // Device loss is always reported: it drives recovery. Other failures repeat per frame, so
         // they are reported once until a frame presents again (ENG-026).
         if (exception.IsDeviceLost)
         {
+            // A decoder on the same device finds it lost too (Stage 045A slice 2).
+            compositor.MarkDeviceLost();
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, exception.Message, innerException: exception);
             return PresentResult.DeviceLost;
         }
@@ -248,11 +290,85 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
+    /// <summary>
+    /// Decoded frames are drawn only when FFmpeg decoded them on this renderer's device; nothing is
+    /// adopted (the decoder uses the renderer's device, Stage 045A slice 2). A frame from another
+    /// device (one replaced after a device loss, until the decoder recovers) is skipped.
+    /// </summary>
     public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)
     {
         deviceAdopted = false;
+        lock (_sync)
+        {
+            if (_disposed || !Initialize() || frame.NativeResource is not { IsValid: true } resource)
+                return false;
+
+            if (_compositor!.IsOnThisDevice(resource))
+            {
+                _foreignFrameReported = false;
+                return true;
+            }
+
+            if (_foreignFrameReported)
+                return false;
+            _foreignFrameReported = true;
+        }
+
+        DiagnosticRouter.Raise(
+            MediaDiagnosticLevel.Warning,
+            "Vulkan",
+            $"A hardware video frame from another device ({frame.NativeResource.BackendId}) cannot be drawn; it is skipped until the decoder moves to this renderer's device.");
         return false;
     }
+
+    // Stage 045A slice 2: FFmpeg decodes on the renderer's Vulkan device.
+    public string? VideoDecodeDeviceType
+    {
+        get
+        {
+            lock (_sync)
+                return !_disposed && Initialize() && _compositor!.VideoDecode is not null ? VideoDecodeDeviceTypeName : null;
+        }
+    }
+
+    public string? VideoDecodeUnavailableReason
+    {
+        get
+        {
+            lock (_sync)
+            {
+                if (_disposed || !Initialize())
+                    return "no usable Vulkan device";
+                return _compositor!.VideoDecode is null ? _compositor.VideoDecodeUnavailableReason ?? "the Vulkan device does not decode video" : null;
+            }
+        }
+    }
+
+    /// <summary>The FFmpeg hardware device type the renderer decodes with.</summary>
+    internal const string VideoDecodeDeviceTypeName = "vulkan";
+
+    public nint CreateVideoDecodeDeviceContext(out string? failureReason)
+    {
+        lock (_sync)
+        {
+            if (_disposed || !Initialize())
+            {
+                failureReason = "no usable Vulkan device";
+                return 0;
+            }
+
+            return _compositor!.CreateVideoDecodeDeviceContext(out failureReason);
+        }
+    }
+
+    public NativeVideoDeviceResource? CreateVideoDecodeDeviceResource(nint ffmpegHardwareDeviceContext) =>
+        VulkanOffscreenCompositor.CreateDeviceResource(ffmpegHardwareDeviceContext);
+
+    public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) =>
+        VulkanOffscreenCompositor.CreateFrameResource(device, ffmpegFrame);
+
+    public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) =>
+        VulkanSharedDevice.Find(device.DeviceHandle)?.ProbeLost() ?? true;
 
     public void Dispose()
     {
@@ -286,7 +402,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Warning,
             "Vulkan",
-            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA backgrounds, wash and CDG overlays are supported.");
+            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA and Vulkan-decoded backgrounds, wash and CDG overlays are supported.");
     }
 
     private bool IsCurrentNoLock(Target target) =>
@@ -526,7 +642,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             catch (VulkanException exception)
             {
                 shared.Ring.AbortWrite(write.BufferIndex);
-                return ReportRenderFailure(exception);
+                return ReportRenderFailure(exception, compositor);
             }
         }
     }

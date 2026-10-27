@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Geometry;
 
@@ -15,10 +16,24 @@ internal enum VulkanFrameSupport
 }
 
 /// <summary>
-/// Software BGRA background layer and its blit. <see cref="Revision"/> is the frame's background
+/// Background layer and its blit: software BGRA pixels, or (Stage 045A slice 2) a hardware-decoded
+/// frame (<see cref="Native"/>) converted into the video layer, or the video layer kept from the
+/// last such frame (<see cref="Retained"/>). <see cref="Revision"/> is the frame's background
 /// revision (Core bumps it whenever the pixels change); -1 is unknown, and always uploads.
 /// </summary>
-internal readonly record struct VulkanBackgroundLayer(ReadOnlyMemory<byte> Bgra, int Width, int Height, int Stride, VulkanBlit Blit, long Revision = -1);
+internal readonly record struct VulkanBackgroundLayer(
+    ReadOnlyMemory<byte> Bgra,
+    int Width,
+    int Height,
+    int Stride,
+    VulkanBlit Blit,
+    long Revision = -1,
+    NativeVideoFrameResource? Native = null,
+    bool Retained = false)
+{
+    /// <summary>Gets whether the layer is drawn from the video layer instead of uploaded pixels.</summary>
+    public bool IsVideo => Native is not null || Retained;
+}
 
 /// <summary>
 /// A nearest-sampled overlay drawn as a textured quad over <see cref="Destination"/>, with the
@@ -71,7 +86,9 @@ internal static class VulkanCompositionPlanner
 {
     public static VulkanFrameSupport Classify(in MediaCompositionFrame frame)
     {
-        if (frame.HasNativeBackground || frame.HasRetainedBackground)
+        // Hardware frames on a Vulkan device, and the video layer kept from them, are drawn
+        // (Stage 045A slice 2); another API's frames are not.
+        if (frame.HasNativeBackground && frame.BackgroundNativeResource!.BackendId != MediaGraphicsBackendId.Vulkan)
             return VulkanFrameSupport.NativeOrRetainedBackground;
         if (frame.HasSubtitleOverlay)
             return VulkanFrameSupport.Subtitles;
@@ -87,10 +104,36 @@ internal static class VulkanCompositionPlanner
     public static VulkanFramePlan Plan(in MediaCompositionFrame frame, int outputWidth, int outputHeight)
     {
         VulkanBackgroundLayer? background = null;
-        if (frame.HasBackground
+        if (frame.HasNativeBackground)
+        {
+            if (PlanBackground(frame.BackgroundNativeWidth, frame.BackgroundNativeHeight, outputWidth, outputHeight, frame.EffectiveBackgroundStretchMode) is { } nativeBlit)
+            {
+                background = new VulkanBackgroundLayer(
+                    ReadOnlyMemory<byte>.Empty,
+                    frame.BackgroundNativeWidth,
+                    frame.BackgroundNativeHeight,
+                    frame.BackgroundNativeWidth * 4,
+                    nativeBlit,
+                    frame.BackgroundRevision,
+                    Native: frame.BackgroundNativeResource);
+            }
+        }
+        else if (frame.HasBackground
             && PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, outputWidth, outputHeight, frame.EffectiveBackgroundStretchMode) is { } blit)
         {
             background = new VulkanBackgroundLayer(frame.BackgroundBgra, frame.BackgroundWidth, frame.BackgroundHeight, frame.BackgroundStride, blit, frame.BackgroundRevision);
+        }
+        else if (frame.HasRetainedBackground
+            && PlanBackground(frame.BackgroundWidth, frame.BackgroundHeight, outputWidth, outputHeight, frame.EffectiveBackgroundStretchMode) is { } retainedBlit)
+        {
+            background = new VulkanBackgroundLayer(
+                ReadOnlyMemory<byte>.Empty,
+                frame.BackgroundWidth,
+                frame.BackgroundHeight,
+                frame.BackgroundWidth * 4,
+                retainedBlit,
+                frame.BackgroundRevision,
+                Retained: true);
         }
 
         VulkanCdgLayer? cdg = null;

@@ -6,6 +6,7 @@
 		<IsTestProject>true</IsTestProject>
 		<AssemblyName>FatzBomb.MediaControl.Rendering.Vulkan.Tests</AssemblyName>
 		<RootNamespace>FatzBomb.MediaControl.Rendering.Vulkan.Tests</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<ItemGroup>

@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -337,6 +337,27 @@ HTTPS-audio code review (2026-10-26), not fixed:
   starts at the next keyframe.
 - The soundtrack engine records the BASS output device when it is built, and Full mode now builds
   it for https/HLS audio: check on Windows that a device change while playing is followed.
+
+### ENG-038 - Vulkan Video follow-ups from 045A slices 2-3
+
+Reported: 2026-10-27 (045A slices 2 and 3, GPU decoding for the Vulkan renderer). Not fixed.
+- **Not verified on a real decode queue in the sandbox.** Lavapipe has no video queue. The
+  owner's Windows smoke (`updates/045A_3`) is the first real run. Mesa RADV and ANV and NVIDIA
+  on Linux (X11, Wayland; Avalonia's OpenGL and Vulkan backends) are still to check.
+- **Frames from a replaced device.** After a renderer device loss the compositor gets a new
+  device. A decoder whose old device still decodes (a false alarm, so no decode failures) keeps
+  producing frames the renderer skips (one warning), and nothing triggers the decoder's
+  recovery. A real loss fails the decoder too and recovers. Possible fix: have the renderer
+  request a decoder swap, through the per-decoder fallback token proposed in ENG-037.
+- **Scaling quality.** The video layer is composed with the Vulkan renderer's nearest blit, as
+  software frames are, to match the software renderer pixel for pixel. Large downscales (4K into
+  a small window) alias. A linear blit, or drawing the layer with a filtered quad, is the fix
+  for both paths.
+- **Chroma siting.** The shader samples chroma centre-sited with bilinear filtering, as the
+  Direct3D11 tone-map shader does. MPEG-style left-sited chroma is shifted by a quarter of a
+  chroma sample; the video processor and swscale honour the siting.
+- **VAAPI with DRM PRIME import** (the plan's alternative) stays a later option for Linux
+  drivers without Vulkan Video.
 
 ### ENG-037 - Hardware-frame follow-ups from 045A slice 1
 

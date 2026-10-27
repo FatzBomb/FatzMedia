@@ -135,7 +135,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
             set.IsDestroyed = true;
             if (_device.Handle != 0)
-                _ = _vk.QueueWaitIdle(_queue);
+            {
+                lock (QueueLock)
+                    _ = _vk.QueueWaitIdle(_queue);
+            }
+
             foreach (VulkanExportedImage image in set.Images)
                 DestroyExportedImage(image, closeDescriptors);
         }
@@ -200,8 +204,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 CommandBuffer commandBuffer = _commandBuffer;
                 var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
                 Fence fence = _fence;
-                Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
-                Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
+                Submit(&submit);
                 Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
 
                 var length = width * height * 4;

@@ -2,6 +2,7 @@ using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
+using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Network;
 using FatzBomb.MediaControl.Core.Subtitle;
@@ -79,6 +80,18 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.NetworkBufferingChanged += OnNetworkBufferingChanged;
         _coordinator.NetworkStreamMetadataChanged += OnNetworkStreamMetadataChanged;
     }
+
+    /// <summary>
+    /// Makes every decoder of this engine decode on the presentation renderer's device when the
+    /// renderer offers one (Stage 045A slice 2); null returns to the platform's hardware devices.
+    /// Decoders opened afterwards follow it.
+    /// </summary>
+    internal void AttachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice? device) =>
+        (_hardwareAccelerationServices as RendererVideoDecodeServices)?.Attach(device);
+
+    /// <summary>Detaches <paramref name="device"/> if it is still the attached renderer device.</summary>
+    internal void DetachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice device) =>
+        (_hardwareAccelerationServices as RendererVideoDecodeServices)?.Detach(device);
 
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 

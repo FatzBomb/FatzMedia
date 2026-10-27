@@ -45,6 +45,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private Device _device;
     private Queue _queue;
     private uint _queueFamily;
+    private QueueFlags _queueFamilyFlags;
+    private uint _instanceApiVersion;
+    // The device, shared with FFmpeg when it decodes on it (Stage 045A slice 2).
+    private VulkanSharedDevice? _shared;
     private CommandPool _commandPool;
     private CommandBuffer _commandBuffer;
     private Fence _fence;
@@ -91,7 +95,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     /// Creates the compositor, or returns <see langword="null"/> with a reason when no usable
     /// Vulkan device exists (no loader, no ICD, or no device with the BGRA8 features used here).
     /// </summary>
-    public static VulkanOffscreenCompositor? TryCreate(out string? failure)
+    public static VulkanOffscreenCompositor? TryCreate(out string? failure) => TryCreate(out failure, shareWithFfmpegWithoutDecode: false);
+
+    /// <summary>
+    /// As <see cref="TryCreate(out string?)"/>; <paramref name="shareWithFfmpegWithoutDecode"/>
+    /// (tests) also gives a device without a video decode queue what FFmpeg needs to share it.
+    /// </summary>
+    internal static VulkanOffscreenCompositor? TryCreate(out string? failure, bool shareWithFfmpegWithoutDecode)
     {
         Vk vk;
         try
@@ -106,7 +116,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             return null;
         }
 
-        var compositor = new VulkanOffscreenCompositor(vk);
+        var compositor = new VulkanOffscreenCompositor(vk) { _shareWithFfmpegWithoutDecode = shareWithFfmpegWithoutDecode };
         try
         {
             if (compositor.Initialize(out failure))
@@ -148,7 +158,15 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 ? EnsureBuffer(ref _readbackBuffer, (ulong)outputWidth * (ulong)outputHeight * 4, BufferUsageFlags.TransferDstBit, ReadbackMemoryPreferences)
                 : null;
             var uploadBackground = false;
-            if (plan.Background is { } background)
+            // A hardware-decoded frame, converted into the video layer (Stage 045A slice 2), or the
+            // layer kept from the last one.
+            var drawVideo = false;
+            PendingVideoConversion? conversion = null;
+            if (plan.Background is { IsVideo: true } video)
+            {
+                drawVideo = PrepareVideoLayer(video, out conversion);
+            }
+            else if (plan.Background is { } background)
             {
                 // As for the CDG texture below: an image about to be re-created never counts as
                 // holding the last upload, even if the new handle reuses the old value.
@@ -203,6 +221,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
             Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
 
+            // Locks the decoded frame until its semaphore signal is submitted. Recording commands
+            // does not throw; ending the buffer and submitting can, so the lock is released below.
+            VideoFrameAccess? videoFrame = conversion is { } pending ? RecordVideoConversion(pending) : null;
             VkImage target = targetImage.Image;
             Transition(target, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
             var clearColor = plan.ClearBgraPremultiplied;
@@ -210,9 +231,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             var range = ColorRange();
             _vk.CmdClearColorImage(_commandBuffer, target, ImageLayout.TransferDstOptimal, &clear, 1, &range);
 
-            if (plan.Background is { } layer)
+            if (plan.Background is { } layer && (!layer.IsVideo || drawVideo))
             {
-                VkImage source = _sourceImage!.Value.Image;
+                VkImage source = layer.IsVideo ? _videoLayer!.Value.Image : _sourceImage!.Value.Image;
                 // A background uploaded by an earlier frame (another target, or a repeat of the
                 // same video frame) is still in TransferSrcOptimal, and that submission has
                 // completed (fence wait); its barrier covers reads by later commands.
@@ -314,38 +335,72 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 _vk.CmdPipelineBarrier(_commandBuffer, PipelineStageFlags.TransferBit, PipelineStageFlags.HostBit, 0, 0, null, 1, &hostBarrier, 0, null);
             }
 
-            Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
-
-            CommandBuffer commandBuffer = _commandBuffer;
-            var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
-            VkSemaphore waitSemaphore = default;
-            VkSemaphore signalSemaphore = default;
-            var waitStage = PipelineStageFlags.TransferBit;
-            if (export is { } synchronized)
+            try
             {
-                // Semaphore sync: wait for the compositor's release of this image before the blit
-                // writes it, and tell the compositor when the write is done. The fence below still
-                // completes the frame before it is announced (host synchronization).
-                if (synchronized.WaitForConsumerRelease && synchronized.Image.ConsumerRelease.Handle != 0)
+                Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
+
+                CommandBuffer commandBuffer = _commandBuffer;
+                var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
+                // At most the consumer-release semaphore and a decoded frame's two timeline semaphores.
+                var waitSemaphores = stackalloc VkSemaphore[3];
+                var waitStages = stackalloc PipelineStageFlags[3];
+                var waitValues = stackalloc ulong[3];
+                var signalSemaphores = stackalloc VkSemaphore[3];
+                var signalValues = stackalloc ulong[3];
+                uint waitCount = 0;
+                uint signalCount = 0;
+                if (export is { } synchronized)
                 {
-                    waitSemaphore = synchronized.Image.ConsumerRelease;
-                    submit.WaitSemaphoreCount = 1;
-                    submit.PWaitSemaphores = &waitSemaphore;
-                    submit.PWaitDstStageMask = &waitStage;
+                    // Semaphore sync: wait for the compositor's release of this image before the blit
+                    // writes it, and tell the compositor when the write is done. The fence below still
+                    // completes the frame before it is announced (host synchronization).
+                    if (synchronized.WaitForConsumerRelease && synchronized.Image.ConsumerRelease.Handle != 0)
+                    {
+                        waitStages[waitCount] = PipelineStageFlags.TransferBit;
+                        waitValues[waitCount] = 0;
+                        waitSemaphores[waitCount++] = synchronized.Image.ConsumerRelease;
+                    }
+
+                    if (synchronized.Image.RenderComplete.Handle != 0)
+                    {
+                        signalValues[signalCount] = 0;
+                        signalSemaphores[signalCount++] = synchronized.Image.RenderComplete;
+                    }
                 }
 
-                if (synchronized.Image.RenderComplete.Handle != 0)
+                // A decoded frame (FFmpeg's timeline semaphores): wait until it is decoded, and signal
+                // the next value once the conversion has read it.
+                videoFrame?.AddSemaphores(waitSemaphores, waitStages, waitValues, ref waitCount, signalSemaphores, signalValues, ref signalCount);
+                submit.WaitSemaphoreCount = waitCount;
+                submit.PWaitSemaphores = waitCount == 0 ? null : waitSemaphores;
+                submit.PWaitDstStageMask = waitCount == 0 ? null : waitStages;
+                submit.SignalSemaphoreCount = signalCount;
+                submit.PSignalSemaphores = signalCount == 0 ? null : signalSemaphores;
+                var timeline = new TimelineSemaphoreSubmitInfo
                 {
-                    signalSemaphore = synchronized.Image.RenderComplete;
-                    submit.SignalSemaphoreCount = 1;
-                    submit.PSignalSemaphores = &signalSemaphore;
-                }
+                    SType = StructureType.TimelineSemaphoreSubmitInfo,
+                    WaitSemaphoreValueCount = waitCount,
+                    PWaitSemaphoreValues = waitValues,
+                    SignalSemaphoreValueCount = signalCount,
+                    PSignalSemaphoreValues = signalValues,
+                };
+                if (videoFrame is not null)
+                    submit.PNext = &timeline;
+
+                Submit(&submit);
+                videoFrame?.MarkSubmitted();
+            }
+            finally
+            {
+                // FFmpeg may use the decoded frame again as soon as its semaphore signal is queued.
+                videoFrame?.EndAccess();
             }
 
             Fence fence = _fence;
-            Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
-            Check(_vk.QueueSubmit(_queue, 1, &submit, _fence), "vkQueueSubmit");
             Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
+            DestroyFrameViews();
+            if (conversion is { } converted)
+                CompleteVideoConversion(converted);
             if (uploadCdg && plan.Cdg is { } uploaded)
             {
                 _cdgUploadedSnapshot = uploaded.Snapshot;
@@ -431,7 +486,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             _disposed = true;
             if (_device.Handle != 0)
             {
-                _ = _vk.DeviceWaitIdle(_device);
+                lock (QueueLock)
+                    _ = _vk.DeviceWaitIdle(_device);
+                DestroyVideoResources();
                 DestroyExportedSets();
                 DestroyRenderTargets();
                 _overlay?.Dispose();
@@ -447,9 +504,20 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     _vk.DestroyFence(_device, _fence, null);
                 if (_commandPool.Handle != 0)
                     _vk.DestroyCommandPool(_device, _commandPool, null);
-                _vk.DestroyDevice(_device, null);
             }
 
+            if (_shared is { } shared)
+            {
+                // The device, instance and loader go with the last reference: an FFmpeg decoder
+                // may still decode on them (Stage 045A slice 2).
+                _shared = null;
+                shared.ReleaseFfmpegDeviceContext();
+                shared.Release();
+                return;
+            }
+
+            if (_device.Handle != 0)
+                _vk.DestroyDevice(_device, null);
             if (_instance.Handle != 0)
                 _vk.DestroyInstance(_instance, null);
             _vk.Dispose();
@@ -459,6 +527,20 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private bool Initialize(out string? failure)
     {
         failure = null;
+        // FFmpeg's Vulkan Video needs a 1.3 instance (Stage 045A slice 2); 1.1 is enough otherwise.
+        uint loaderVersion = Vk.Version11;
+        try
+        {
+            if (_vk.EnumerateInstanceVersion(&loaderVersion) != Result.Success)
+                loaderVersion = Vk.Version11;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // A 1.0 loader has no vkEnumerateInstanceVersion.
+            loaderVersion = Vk.Version10;
+        }
+
+        _instanceApiVersion = loaderVersion >= Vk.Version13 ? Vk.Version13 : Vk.Version11;
         var appName = (byte*)SilkMarshal.StringToPtr("FatzBomb.MediaControl");
         try
         {
@@ -469,7 +551,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 ApplicationVersion = Vk.MakeVersion(0, 1, 0),
                 PEngineName = appName,
                 EngineVersion = Vk.MakeVersion(0, 1, 0),
-                ApiVersion = Vk.Version11,
+                ApiVersion = _instanceApiVersion,
             };
             var instanceInfo = new InstanceCreateInfo { SType = StructureType.InstanceCreateInfo, PApplicationInfo = &appInfo };
             Instance instance;
@@ -490,42 +572,36 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         if (!SelectDevice(out failure))
             return false;
 
-        var priority = 1f;
-        var queueInfo = new DeviceQueueCreateInfo
+        string[] exportExtensions = ProbeExportSupport();
+        VideoDecodeSetup? video = ProbeVideoDecodeSupport();
+        Result deviceResult = CreateDevice(exportExtensions, video, out Device device, out string[] extensions);
+        if (deviceResult != Result.Success && video is not null)
         {
-            SType = StructureType.DeviceQueueCreateInfo,
-            QueueFamilyIndex = _queueFamily,
-            QueueCount = 1,
-            PQueuePriorities = &priority,
-        };
-        string[] extensions = ProbeExportSupport();
-        var extensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions);
-        Result deviceResult;
-        Device device;
-        try
-        {
-            var deviceInfo = new DeviceCreateInfo
-            {
-                SType = StructureType.DeviceCreateInfo,
-                QueueCreateInfoCount = 1,
-                PQueueCreateInfos = &queueInfo,
-                EnabledExtensionCount = (uint)extensions.Length,
-                PpEnabledExtensionNames = extensions.Length == 0 ? null : extensionNames,
-            };
-            deviceResult = _vk.CreateDevice(_physicalDevice, &deviceInfo, null, &device);
-        }
-        finally
-        {
-            _ = SilkMarshal.Free((nint)extensionNames);
+            // Rendering does not depend on Vulkan Video: without it the device decodes nothing.
+            VideoDecodeUnavailableReason = $"vkCreateDevice with Vulkan Video failed ({deviceResult})";
+            video.Features.Dispose();
+            video = null;
+            deviceResult = CreateDevice(exportExtensions, null, out device, out extensions);
         }
 
         if (deviceResult != Result.Success)
         {
+            video?.Features.Dispose();
             failure = $"vkCreateDevice failed: {deviceResult}";
             return false;
         }
 
         _device = device;
+        _shared = new VulkanSharedDevice(
+            _vk,
+            _instance,
+            _physicalDevice,
+            _device,
+            _queueFamily,
+            _queueFamilyFlags,
+            extensions,
+            video?.Features,
+            video?.Support);
         LoadExportFunctions();
         Queue queue;
         _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
@@ -561,6 +637,57 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Creates the device with one graphics queue, plus one video decode queue when
+    /// <paramref name="video"/> is set (its extensions and features too).
+    /// </summary>
+    private Result CreateDevice(string[] exportExtensions, VideoDecodeSetup? video, out Device device, out string[] extensions)
+    {
+        extensions = video is null ? exportExtensions : [.. exportExtensions.Concat(video.Extensions).Distinct(StringComparer.Ordinal)];
+        var priority = 1f;
+        var queueInfos = stackalloc DeviceQueueCreateInfo[2];
+        queueInfos[0] = new DeviceQueueCreateInfo
+        {
+            SType = StructureType.DeviceQueueCreateInfo,
+            QueueFamilyIndex = _queueFamily,
+            QueueCount = 1,
+            PQueuePriorities = &priority,
+        };
+        uint queueInfoCount = 1;
+        if (video is not null && video.Support.DecodeFamily != _queueFamily)
+        {
+            queueInfos[queueInfoCount++] = new DeviceQueueCreateInfo
+            {
+                SType = StructureType.DeviceQueueCreateInfo,
+                QueueFamilyIndex = video.Support.DecodeFamily,
+                QueueCount = 1,
+                PQueuePriorities = &priority,
+            };
+        }
+
+        var extensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions);
+        try
+        {
+            var deviceInfo = new DeviceCreateInfo
+            {
+                SType = StructureType.DeviceCreateInfo,
+                PNext = video is null ? null : video.Features.Features,
+                QueueCreateInfoCount = queueInfoCount,
+                PQueueCreateInfos = queueInfos,
+                EnabledExtensionCount = (uint)extensions.Length,
+                PpEnabledExtensionNames = extensions.Length == 0 ? null : extensionNames,
+            };
+            Device created;
+            Result result = _vk.CreateDevice(_physicalDevice, &deviceInfo, null, &created);
+            device = created;
+            return result;
+        }
+        finally
+        {
+            _ = SilkMarshal.Free((nint)extensionNames);
+        }
+    }
+
     private bool SelectDevice(out string? failure)
     {
         uint count = 0;
@@ -575,7 +702,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         fixed (PhysicalDevice* pDevices = devices)
             _ = _vk.EnumeratePhysicalDevices(_instance, &count, pDevices);
 
-        var candidates = new List<(PhysicalDevice Device, uint Family, int Rank, string Name, PhysicalDeviceType Type)>();
+        var candidates = new List<(PhysicalDevice Device, uint Family, QueueFlags FamilyFlags, int Rank, string Name, PhysicalDeviceType Type)>();
         var rejected = new List<string>();
         foreach (PhysicalDevice device in devices)
         {
@@ -591,7 +718,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 continue;
             }
 
-            if (!TryFindGraphicsQueue(device, out var family))
+            if (!TryFindGraphicsQueue(device, out var family, out QueueFlags familyFlags))
             {
                 rejected.Add($"{name}: no graphics queue");
                 continue;
@@ -605,7 +732,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 PhysicalDeviceType.Cpu => 3,
                 _ => 4,
             };
-            candidates.Add((device, family, rank, name, properties.DeviceType));
+            candidates.Add((device, family, familyFlags, rank, name, properties.DeviceType));
         }
 
         if (candidates.Count == 0)
@@ -618,6 +745,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         var selected = candidates.OrderBy(static c => c.Rank).First();
         _physicalDevice = selected.Device;
         _queueFamily = selected.Family;
+        _queueFamilyFlags = selected.FamilyFlags;
         DeviceName = selected.Name;
         DeviceType = selected.Type;
         PhysicalDeviceMemoryProperties memoryProperties;
@@ -627,7 +755,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         return true;
     }
 
-    private bool TryFindGraphicsQueue(PhysicalDevice device, out uint family)
+    private bool TryFindGraphicsQueue(PhysicalDevice device, out uint family, out QueueFlags flags)
     {
         uint count = 0;
         _vk.GetPhysicalDeviceQueueFamilyProperties(device, &count, null);
@@ -640,11 +768,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             if ((families[index].QueueFlags & QueueFlags.GraphicsBit) != 0)
             {
                 family = index;
+                flags = families[index].QueueFlags;
                 return true;
             }
         }
 
         family = 0;
+        flags = QueueFlags.None;
         return false;
     }
 
@@ -971,6 +1101,18 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         _vk.DestroyBuffer(_device, buffer.Buffer, null);
         _vk.FreeMemory(_device, buffer.Memory, null);
         resource = null;
+    }
+
+    /// <summary>The lock every submission to this device's queues takes (FFmpeg's too).</summary>
+    private Lock QueueLock => _shared?.QueueLock ?? _sync;
+
+    /// <summary>Submits to the graphics queue under <see cref="QueueLock"/>, signalling <see cref="_fence"/>.</summary>
+    private void Submit(SubmitInfo* submit)
+    {
+        Fence fence = _fence;
+        Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
+        lock (QueueLock)
+            Check(_vk.QueueSubmit(_queue, 1, submit, _fence), "vkQueueSubmit");
     }
 
     private static ImageSubresourceRange ColorRange() => new(ImageAspectFlags.ColorBit, 0, 1, 0, 1);

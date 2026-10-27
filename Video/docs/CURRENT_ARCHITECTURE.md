@@ -201,8 +201,21 @@ named `window` handle.
   renderer adopts its device (unless that device was removed by a GPU reset) and Core
   re-attaches every surface, so shared textures are re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
   for example, decodes with D3D11VA for Direct3D11 on a GPU, and in software on WARP and for
-  the software and Vulkan renderers, which take no hardware frames. Linux has software-only
-  decode services; Vulkan Video is planned in 045A slice 2.
+  the software renderer, which takes no hardware frames.
+- A renderer may instead decode on its own device (Stage 045A slice 2):
+  - The renderer backend implements the optional `IMediaRendererVideoDecodeDevice`. The
+    coordinator attaches it to the engine, and every decoder of the player then takes its FFmpeg
+    device context from the renderer (`RendererVideoDecodeServices` wraps the platform's
+    services).
+  - Only the renderer's device type is offered, or none when its device cannot decode, so such
+    a renderer never receives frames on a device it cannot draw.
+  - The Vulkan renderer does this with FFmpeg Vulkan Video, on Linux and Windows alike. It
+    creates its device with a decode queue when the GPU has one and fills FFmpeg's
+    `AVVulkanDeviceContext` (`VulkanSharedDevice`: reference counted, one queue lock for both).
+    It converts NV12/P010 frames (with HDR10/HLG tone mapping) on the GPU into a BGRA video layer
+    that it composes like a software frame.
+  - Linux keeps software-only platform decode services: the Vulkan renderer is its hardware
+    path.
 
 ## HDR Video (Stages 038A, 042A)
 
@@ -936,9 +949,11 @@ systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 `FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core only, Silk.NET.Vulkan) offers
 `VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
 1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
-blit using the software renderer's placement rules, and readback. Overlay, transform,
-native-resource, and window-swapchain frames are rejected with a diagnostic until later
-slices. A lavapipe conformance suite compares output with `SoftwareCompositionRenderer`.
+blit using the software renderer's placement rules, and readback. Subtitle, transform and
+window-swapchain frames are rejected with a diagnostic until later slices. A lavapipe
+conformance suite compares output with `SoftwareCompositionRenderer`. Since Stage 045A slice 2
+FFmpeg decodes on the renderer's device (Vulkan Video) and decoded frames are converted on the
+GPU into the background layer (see "Native Video Frames And Hardware Decode").
 See `roadmap/active/026A_ACTIVE_CrossPlatformRendererBackends.md`.
 
 ## Avalonia Adapter (Stage 027A, slice 1)

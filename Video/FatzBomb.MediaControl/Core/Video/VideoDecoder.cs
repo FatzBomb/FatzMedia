@@ -287,7 +287,10 @@ internal sealed unsafe class VideoDecoder(
         var allowHardware = _decodingMethod is VideoDecodingMethod.Auto or VideoDecodingMethod.Hardware;
         AVCodec* hardwareCodec = null;
         if (allowHardware)
+        {
+            (_hardwareAccelerationServices as RendererVideoDecodeServices)?.NoteHardwareDecodingRequested();
             hardwareCodec = FindHardwareCapableDecoder(codecId);
+        }
 
         AVCodec* preferredCodec = hardwareCodec != null ? hardwareCodec : softwareCodec;
 
@@ -585,7 +588,20 @@ internal sealed unsafe class VideoDecoder(
         AVPixelFormat pixelFormat)
     {
         AVBufferRef* deviceContext = null;
-        var result = ffmpeg.av_hwdevice_ctx_create(&deviceContext, deviceType, null, null, 0);
+        int result;
+        // A renderer that decodes on its own device (Stage 045A slice 2) supplies the context, so
+        // frames are decoded on the device that draws them; FFmpeg never creates another one.
+        if (_hardwareAccelerationServices is RendererVideoDecodeServices renderer
+            && renderer.TryCreateRendererDeviceContext(deviceTypeName, out var suppliedContext))
+        {
+            deviceContext = (AVBufferRef*)suppliedContext;
+            result = suppliedContext != 0 ? 0 : -1;
+        }
+        else
+        {
+            result = ffmpeg.av_hwdevice_ctx_create(&deviceContext, deviceType, null, null, 0);
+        }
+
         if (result < 0 || deviceContext == null)
         {
             if (_enableVerboseLogging) Debug.WriteLine($"[VideoDecoder] Failed to create hardware device {ffmpeg.av_hwdevice_get_type_name(deviceType)}: {result}");
