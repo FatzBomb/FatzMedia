@@ -382,7 +382,7 @@ Reported: 2026-10-27 (045A slices 2 and 3, GPU decoding for the Vulkan renderer)
 ### ENG-037 - Hardware-frame follow-ups from 045A slice 1
 
 Reported: 2026-10-26 (045A slice 1, GPU decoding on the Avalonia Direct3D11 path). Not fixed;
-details in `active/045A_ACTIVE_GpuDecodingEveryPath.md` (Not in this stage).
+details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage).
 - **Hardware frame a renderer cannot take.** When `EnsureNativeFrameDevice` returns false (a
   host pairing hardware decoding with the software or Vulkan renderer, or a failed device
   adoption), Core drops the frame on every path. A paused first frame stays black. Proposed

@@ -3,10 +3,10 @@
 Stage: 045A.1 - Hardware decoding on the Avalonia Direct3D11 path
 Date: 2026-10-26
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27 (Windows)
 
 Owner direction (2026-10-26): GPU video rendering on every presentation path. See
-`active/045A_ACTIVE_GpuDecodingEveryPath.md` for the root cause, the acceptance criteria, and the
+`complete/045A_COMPLETED_GpuDecodingEveryPath.md` for the root cause, the acceptance criteria, and the
 plan for slice 2 (Vulkan on Linux).
 
 Root cause: the Avalonia player asked for software decoding for every renderer
