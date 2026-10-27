@@ -271,6 +271,9 @@ the second screen opens as a window).
   more while dragging: the native track bar repainting. The player now draws its own seek bar
   (`Player.WinForms/SeekBar.cs`: dark track, accent fill, round thumb; press jumps to the pointer,
   drag follows, arrows 5 s, Page Up / Page Down 10 s, Home / End), so no native track bar is left.
+  Owner retest: no flash; the toolbar works in WPF and WinForms. The dotted focus rectangle it
+  drew while dragging is gone: focus now shows as an accent ring round the thumb, only after the
+  keyboard is used (Tab or a key).
 - Toolbar added to the WPF and WinForms players (decision above). Smoke: in each, change Players
   to 2 and the renderer to Software, then WARP, then Auto: the players are recreated, the Renderer
   lines and the toolbar summary name the choice; full screen hides the toolbar; close: no errors.
