@@ -169,3 +169,27 @@ dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- --rende
     `Decoder.DeviceLost` with software decoding, then `Hardware video decode restored` within
     seconds, and the picture back on `via shared GPU image`. If it stays black, note the log
     (ENG-038, frames from a replaced device).
+
+## Owner smoke results (2026-10-27, Windows, RTX 5090)
+
+- Steps 1, 2, 4 to 10 passed:
+  - Vulkan Video decodes H.264, HEVC (8- and 10-bit, 4K), AV1 and HDR10 (tone mapped) in the
+    Avalonia, WPF and WinForms players (`via vulkan`);
+  - Avalonia shows them through keyed-mutex Direct3D11 textures (`via shared GPU image`),
+    with two players at once.
+  - One `frame dropped` line at start-up, as on the Direct3D11 path.
+- Step 3 failed: after two quick resizes (two sets exported about 20 ms apart) the surface logged
+  `the compositor could not import a shared image: OpenSharedResource1 failed` and stayed on the
+  frame sink. The same happened on the second screen, and with `--decoding=software` (step 4), so
+  it is the export hand-over, not decoding.
+  - Cause: Avalonia's `ImportImage` returns before the compositor opens the handle on its own
+    thread, but the surface reported `CompleteImport` at once. When a newer set retired the
+    previous one, the renderer closed that set's NT handles before the compositor had opened
+    them. The failure of an already replaced set was then treated as final.
+  - Fix (`AvaloniaSharedImageSurface`): `CompleteImport` runs only when every import of the set
+    has finished, so the renderer keeps the handles open until then; and an import failure of a
+    set a newer one replaced is ignored. The same consumer serves the Direct3D11 renderer, which
+    gets the same protection.
+  - Retest: step 3 (drag the window edge quickly, maximize and restore, the second screen): the
+    status stays `via shared GPU image`.
+- WinForms with two players: seeking one player struggled. To be clarified with the owner.

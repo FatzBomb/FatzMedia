@@ -218,10 +218,19 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             return;
         }
 
-        set.CompleteImport(handlesConsumed: true);
         _current = imported;
-        foreach (ICompositionGpuImportedObject importedObject in imported.Objects)
-            ObserveImport(importedObject);
+        // The compositor opens the handles on its own thread after ImportImage returns: the
+        // renderer keeps them open until every import has finished. Telling it "done" at once let
+        // a quick resize close a set's handles before the compositor opened them (owner's 045A
+        // smoke: OpenSharedResource1 failed, and the surface stayed on the frame sink).
+        ICompositionGpuImportedObject[] objects = [.. imported.Objects];
+        _ = Task.WhenAll(objects.Select(static importedObject => importedObject.ImportCompleted)).ContinueWith(
+            _ => set.CompleteImport(handlesConsumed: true),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        foreach (ICompositionGpuImportedObject importedObject in objects)
+            ObserveImport(imported, importedObject);
 
         if (_reportedSelection != set.Selection)
         {
@@ -277,9 +286,14 @@ internal sealed class AvaloniaSharedImageSurface : IMediaSharedGpuImageConsumer,
             TaskScheduler.Default);
     }
 
-    private void ObserveImport(ICompositionGpuImportedObject importedObject) =>
+    private void ObserveImport(ImportedSet imported, ICompositionGpuImportedObject importedObject) =>
         _ = importedObject.ImportCompleted.ContinueWith(
-            completed => ReportUnavailable($"the compositor could not import a shared image: {completed.Exception?.GetBaseException().Message ?? "cancelled"}"),
+            completed =>
+            {
+                // A set a newer one already replaced is never shown: its failure changes nothing.
+                if (ReferenceEquals(Volatile.Read(ref _current), imported))
+                    ReportUnavailable($"the compositor could not import a shared image: {completed.Exception?.GetBaseException().Message ?? "cancelled"}");
+            },
             CancellationToken.None,
             TaskContinuationOptions.NotOnRanToCompletion,
             TaskScheduler.Default);
