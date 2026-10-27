@@ -111,8 +111,8 @@ Acceptance:
 Status: implemented, pending manual smoke (`updates/046A_3`). Decisions taken there: the WPF and
 WinForms players share one Windows renderer mapping (`PlayerRendererSelection`, compiled by link);
 the Avalonia player's default renderer becomes `auto`; the Avalonia and WinForms adapters get a thin
-`Player` facade without a default platform; runtime renderer / player-count switching stays an
-Avalonia toolbar feature (owner question).
+`Player` facade without a default platform; runtime renderer / player-count switching is a toolbar
+in every player (owner, after the smoke).
 
 Acceptance:
 

@@ -160,6 +160,10 @@ foreach ($player in @(
     Assert-Match $view 'SecondScreen' "$name player must honour --second-screen=."
     Assert-Match $window 'ProcessSampler[^;]*=\s*new' "$name player must sample the process with the shared ProcessSampler."
     Assert-Match $window '\.Players\b|PlayersBox' "$name player must show --players=1..4."
+    # The toolbar: player count and renderer change at run time in every player (owner, 046A smoke).
+    Assert-Match $window '(?i)_?playersBox' "$name player must offer the player count in its toolbar."
+    Assert-Match $window '(?i)_?rendererBox' "$name player must offer the renderer in its toolbar."
+    Assert-Match $window 'RebuildAsync\s*\(' "$name player must recreate its players when the toolbar changes."
     Assert-Match $renderer 'PlayerRendererRequest' "$name player must map the shared renderer request."
 }
 

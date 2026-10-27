@@ -91,9 +91,13 @@ Vulkan is never chosen automatically on Windows; `--renderer=vulkan` asks for it
   for one file.
 - **One factory per player.** The auto chain is resolved once (it creates a probe device) and
   each player gets a fresh factory of the chosen kind.
-- **Players are fixed at startup in WPF and WinForms.** `--players=` and `--renderer=` are read at
-  startup; the Avalonia player's toolbar can also change both at run time (it recreates the
-  players). See open questions.
+- **Player count and renderer change at run time in every player** (owner, after the smoke: the
+  same features on every platform). `--players=` and `--renderer=` set the start; a toolbar above
+  the players changes either and recreates them (loaded files are not kept), as the Avalonia
+  toolbar always did. The WPF and WinForms toolbars list `PlayerRendererSelection.Choices` (auto,
+  Direct3D11 GPU, WARP, software, Vulkan, Direct3D11) and show the resolved summary; a choice that
+  is not usable falls back to auto with a warning in the Log panel. The Avalonia toolbar keeps its
+  probe list (it greys out what is unavailable). The toolbar hides in full screen.
 - **Second screen owned by the player in WPF.** The WPF player no longer uses
   `MediaSurface.ShowSecondaryOutput()` (it stays in the adapter): it places the adapter's window
   itself with `ShowOnScreen`, like the other players, so `--second-screen=` and the placement rule
@@ -146,7 +150,7 @@ Players (`FatzBomb.MediaControl.Player`, `.Player.Avalonia`, `.Player.WinForms`)
 | Seek bar keys (5 s / 10 s) | yes (new) | yes | yes | |
 | File drop onto the player and its video | yes | yes | yes (surface takes drops) | |
 | `--lightweight-surfaces` smoke window | yes | yes | yes | |
-| Change renderer / player count at run time | no | toolbar | no | open question below; all three take both on the command line |
+| Change renderer / player count at run time | toolbar | toolbar | toolbar | all three also take both on the command line |
 | Flyouts | flyouts | flyouts | tabs | the same panels, WinForms' layout |
 
 ## Verification (Linux sandbox)
@@ -233,9 +237,7 @@ the second screen opens as a window).
 
 ## Open questions (defaults taken)
 
-1. Runtime renderer / player-count switching exists only in the Avalonia player's toolbar (it
-   predates this stage). WPF and WinForms take both on the command line. Add the toolbar to them,
-   or keep it as the Avalonia player's renderer-comparison tool?
+1. Answered: the toolbar is in every player (see decisions).
 2. The Avalonia player's default renderer is now `auto` (GPU first), as the owner's rule says; it
    was `software`. Keep?
 3. `--renderer=gpu` in Avalonia's Windows build is Direct3D11 on the GPU; on Linux it is Vulkan.
@@ -260,4 +262,16 @@ the second screen opens as a window).
   episode (`MediaPresentationCoordinator`, `RendererDiagnosticLatch`). The WPF overlay window
   caught up with a window drag only when the drag ended (it followed layout refreshes, not the
   owner's moves): it now follows every `WM_MOVE` of the owner window.
+
+### Retest (2026-10-27)
+
+- WinForms seek drag from off the thumb, second screen on DISPLAY2, WPF overlay during a drag:
+  passed. Closing the lightweight-surfaces window logged one warning (was seven).
+- New: a small white rectangle flashed at the left end of the WinForms seek bar while seeking.
+  The hand-made drag swallowed the native track bar's mouse messages, which left its hot and
+  pressed thumb state stale. The bar now moves the thumb under the pointer and passes the press
+  on, so the native control drags the thumb itself.
+- Toolbar added to the WPF and WinForms players (decision above). Smoke: in each, change Players
+  to 2 and the renderer to Software, then WARP, then Auto: the players are recreated, the Renderer
+  lines and the toolbar summary name the choice; full screen hides the toolbar; close: no errors.
 

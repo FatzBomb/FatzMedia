@@ -68,7 +68,7 @@ internal sealed class WinFormsPlayerShell(IWin32Window owner) : IPlayerClipboard
 }
 
 /// <summary>
-/// One WinForms player's engine: the renderer chosen once at startup (<see cref="Program.RendererSelection"/>,
+/// One WinForms player's engine: the renderer for new players (<see cref="Program.RendererSelection"/>,
 /// the Windows renderer choice shared with the WPF player: <c>--renderer=auto</c> is Direct3D11 on
 /// the GPU, then WARP, then software), a presentation factory and a Windows platform package per
 /// player, and the adapter's <see cref="MediaControl.WinForms.Player"/>. A frame-sink renderer

@@ -1,7 +1,10 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using FatzBomb.MediaControl.Player.Configuration;
+using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Presentation;
 
 namespace FatzBomb.MediaControl.Player;
@@ -9,8 +12,10 @@ namespace FatzBomb.MediaControl.Player;
 /// <summary>
 /// Hosts 1-4 independent <see cref="PlayerView"/>s side by side (<c>--players=1..4</c>, Stage 046A
 /// slice 3; one view model each, like the Avalonia and WinForms players) and feeds each a
-/// once-a-second process reading for its stats line. F11 or a double-click on a picture shows that
-/// player alone, full screen; Escape closes its flyout, then leaves full screen.
+/// once-a-second process reading for its stats line. The toolbar changes the player count and the
+/// renderer at run time, as in every test player: a change recreates the players (loaded files are
+/// not kept). F11 or a double-click on a picture shows that player alone, full screen; Escape
+/// closes its flyout, then leaves full screen.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -22,6 +27,10 @@ public partial class MainWindow : Window
     private WindowStyle _restoreWindowStyle;
     private ResizeMode _restoreResizeMode;
     private bool _restoreTopmost;
+    private bool _ready;
+    private bool _firstBuild = true;
+    private bool _rebuilding;
+    private bool _rebuildAgain;
     private bool _closing;
     private bool _closed;
 
@@ -29,21 +38,16 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        var count = App.StartupOptions.Players;
-        PlayersGrid.Columns = count == 1 ? 1 : 2;
-        if (count > 1)
+        if (App.StartupOptions.Players > 1)
         {
             Width = 1600;
             Height = 1000;
         }
 
-        for (var index = 1; index <= count; index++)
-        {
-            var player = new PlayerView(this, index);
-            player.FullScreenToggleRequested += Player_FullScreenToggleRequested;
-            _players.Add(player);
-            _ = PlayersGrid.Children.Add(player);
-        }
+        foreach ((PlayerRendererRequest request, var label) in PlayerRendererSelection.Choices)
+            _ = RendererBox.Items.Add(new ComboBoxItem { Content = label, Tag = request });
+        RendererBox.SelectedIndex = Math.Max(0, PlayerRendererSelection.Choices.ToList().FindIndex(static choice => choice.Request == App.StartupOptions.RendererRequest));
+        PlayersBox.SelectedIndex = App.StartupOptions.Players - 1;
 
         _statsTimer.Tick += StatsTimer_Tick;
         Loaded += MainWindow_Loaded;
@@ -52,13 +56,102 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         _statsTimer.Start();
+        _ready = true;
+        await RebuildAsync();
+    }
+
+    private async void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready)
+            return;
+
+        // The renderer for the players created from now on; App.RendererSelection resolves it off the UI thread.
+        if (ReferenceEquals(sender, RendererBox) && RendererBox.SelectedItem is ComboBoxItem { Tag: PlayerRendererRequest request })
+            App.UseRenderer(request);
+        await RebuildAsync();
+    }
+
+    private async Task RebuildAsync()
+    {
+        if (_rebuilding)
+        {
+            _rebuildAgain = true;
+            return;
+        }
+
+        _rebuilding = true;
+        try
+        {
+            do
+            {
+                _rebuildAgain = false;
+                await RebuildOnceAsync();
+            }
+            while (_rebuildAgain && !_closing);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+    }
+
+    private async Task RebuildOnceAsync()
+    {
+        ExitFullScreen();
+        PlayerView[] old = [.. _players];
+        _players.Clear();
+        PlayersGrid.Children.Clear();
+        foreach (PlayerView player in old)
+            await DisposePlayerAsync(player);
+
+        // Closed while the old players were disposed: OnClosing has already run, so build nothing it would miss.
+        if (_closing)
+            return;
+
+        var count = PlayersBox.SelectedIndex + 1;
+        PlayersGrid.Columns = count == 1 ? 1 : 2;
+        for (var index = 1; index <= count; index++)
+        {
+            var player = new PlayerView(this, index, _firstBuild);
+            player.FullScreenToggleRequested += Player_FullScreenToggleRequested;
+            _players.Add(player);
+            _ = PlayersGrid.Children.Add(player);
+        }
+
+        _firstBuild = false;
+        _ = ShowRendererSummaryAsync();
+
         // Created one after the other: native loading is process-wide and happens on the first.
         foreach (PlayerView player in _players.ToList())
         {
-            if (_closing)
+            if (_closing || _rebuildAgain || !_players.Contains(player))
                 return;
 
             await player.InitializeAsync();
+        }
+    }
+
+    private async Task ShowRendererSummaryAsync()
+    {
+        Task<PlayerRendererSelection> pending = App.RendererSelection;
+        InfoText.Text = "resolving the renderer...";
+        PlayerRendererSelection selection = await pending;
+        // A later choice owns the text.
+        if (ReferenceEquals(pending, App.RendererSelection))
+            InfoText.Text = selection.Summary;
+    }
+
+    private async Task DisposePlayerAsync(PlayerView player)
+    {
+        player.FullScreenToggleRequested -= Player_FullScreenToggleRequested;
+        try
+        {
+            await player.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            // One player's failed teardown must not keep the others alive or the window open.
+            System.Diagnostics.Trace.WriteLine($"[Player] Closing a player failed: {ex}");
         }
     }
 
@@ -121,6 +214,7 @@ public partial class MainWindow : Window
         foreach (PlayerView other in _players)
             other.Visibility = ReferenceEquals(other, player) ? Visibility.Visible : Visibility.Collapsed;
         PlayersGrid.Columns = 1;
+        Toolbar.Visibility = Visibility.Collapsed;
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -141,6 +235,7 @@ public partial class MainWindow : Window
         foreach (PlayerView other in _players)
             other.Visibility = Visibility.Visible;
         PlayersGrid.Columns = _players.Count == 1 ? 1 : 2;
+        Toolbar.Visibility = Visibility.Visible;
 
         WindowState = WindowState.Normal;
         WindowStyle = _restoreWindowStyle;
@@ -164,19 +259,10 @@ public partial class MainWindow : Window
         _closing = true;
         _statsTimer.Stop();
         ExitFullScreen();
-        foreach (PlayerView player in _players)
-        {
-            player.FullScreenToggleRequested -= Player_FullScreenToggleRequested;
-            try
-            {
-                await player.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                // One player's failed teardown must not keep the others alive or the window open.
-                System.Diagnostics.Trace.WriteLine($"[Player] Closing a player failed: {ex}");
-            }
-        }
+        PlayerView[] players = [.. _players];
+        _players.Clear();
+        foreach (PlayerView player in players)
+            await DisposePlayerAsync(player);
 
         _sampler.Dispose();
         _closed = true;

@@ -13,6 +13,55 @@
     KeyDown="Window_KeyDown"
     WindowStartupLocation="CenterScreen">
 
-    <!--  1-4 independent players (players=N on the command line), each its own view model, side by side.  -->
-    <UniformGrid x:Name="PlayersGrid" Background="{StaticResource WindowBrush}" Columns="1" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  The player count and renderer, as in every test player; a change recreates the players.  -->
+        <Border
+            x:Name="Toolbar"
+            Padding="8"
+            Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    Text="Players:" />
+                <ComboBox
+                    x:Name="PlayersBox"
+                    Width="70"
+                    SelectionChanged="Layout_SelectionChanged">
+                    <ComboBoxItem Content="1" />
+                    <ComboBoxItem Content="2" />
+                    <ComboBoxItem Content="3" />
+                    <ComboBoxItem Content="4" />
+                </ComboBox>
+                <TextBlock
+                    Margin="16,0,8,0"
+                    VerticalAlignment="Center"
+                    Text="Renderer:" />
+                <ComboBox
+                    x:Name="RendererBox"
+                    Width="220"
+                    SelectionChanged="Layout_SelectionChanged" />
+                <TextBlock
+                    x:Name="InfoText"
+                    Margin="16,0,0,0"
+                    VerticalAlignment="Center"
+                    Foreground="{StaticResource MutedTextBrush}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Border>
+
+        <!--  1-4 independent players (players=N on the command line), each its own view model, side by side.  -->
+        <UniformGrid
+            x:Name="PlayersGrid"
+            Grid.Row="1"
+            Background="{StaticResource WindowBrush}"
+            Columns="1" />
+    </Grid>
 </Window>
