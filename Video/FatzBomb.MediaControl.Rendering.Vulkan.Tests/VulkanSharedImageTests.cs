@@ -134,6 +134,58 @@ public sealed class VulkanSharedImageTests
         Assert.Equal([MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd], semaphores);
     }
 
+    [Fact]
+    public void WindowsExport_MeetsAngleWithKeyedMutexTextures_AndAvaloniasVulkanBackendWithNtHandles()
+    {
+        // Stage 045A slice 3: what a Windows device with every path offers.
+        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) =
+            VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(false, false, MemoryWin32: true, SemaphoreWin32: true, D3D11KeyedMutex: true));
+        Assert.Equal(
+            [
+                new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
+                new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle, MediaSharedGpuImageSyncKinds.HostSynchronized | MediaSharedGpuImageSyncKinds.Semaphores),
+            ],
+            images);
+        Assert.Equal([MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle], semaphores);
+
+        // Avalonia's default compositor (ANGLE on Direct3D11) imports DXGI textures with a keyed mutex.
+        var angle = new MediaSharedGpuImageRequest(
+            [
+                new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
+                new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureGlobalSharedHandle, MediaSharedGpuImageSyncKinds.KeyedMutex),
+            ]);
+        Assert.True(angle.TrySelect(images, semaphores, out MediaSharedGpuImageSelection selection, out var reason), reason);
+        Assert.Equal((MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex), (selection.HandleKind, selection.SyncKind));
+
+        // Avalonia's Vulkan backend takes opaque NT handles with exported semaphores.
+        var vulkan = new MediaSharedGpuImageRequest(
+            [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle, MediaSharedGpuImageSyncKinds.Semaphores | MediaSharedGpuImageSyncKinds.HostSynchronized)],
+            [MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle]);
+        Assert.True(vulkan.TrySelect(images, semaphores, out selection, out reason), reason);
+        Assert.Equal(
+            (MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle, MediaSharedGpuImageSyncKinds.Semaphores, MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueNtHandle),
+            (selection.HandleKind, selection.SyncKind, selection.SemaphoreHandleKind));
+
+        // Without the keyed-mutex path ANGLE has nothing in common, and is told so.
+        (images, semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(false, false, MemoryWin32: true, SemaphoreWin32: false, D3D11KeyedMutex: false));
+        Assert.False(angle.TrySelect(images, semaphores, out _, out reason));
+        Assert.False(string.IsNullOrEmpty(reason));
+    }
+
+    [Fact]
+    public void ExportBuffers_CarryTheHandlesOfTheirKind()
+    {
+        var image = new VulkanExportedImage(default, default, 4096, 7, default, 8, default, 9)
+        {
+            MemoryNtHandle = 0x70,
+            RenderCompleteNtHandle = 0x80,
+            ConsumerReleaseNtHandle = 0x90,
+        };
+        Assert.Equal(new MediaSharedGpuImageBuffer(7, 4096, 0, 8, 9), VulkanRendererBackend.ToBuffer(image, MediaSharedGpuImageHandleKind.VulkanOpaqueFd));
+        Assert.Equal(new MediaSharedGpuImageBuffer(0x70, 4096, 0, 0x80, 0x90), VulkanRendererBackend.ToBuffer(image, MediaSharedGpuImageHandleKind.VulkanOpaqueNtHandle));
+        Assert.Equal(new MediaSharedGpuImageBuffer(0x70, 4096, 0, 0x80, 0x90), VulkanRendererBackend.ToBuffer(image, MediaSharedGpuImageHandleKind.D3D11TextureNtHandle));
+    }
+
     /// <summary>A compositor that can export memory descriptors; on Linux (lavapipe in CI) it must.</summary>
     private static VulkanOffscreenCompositor? CreateExportingCompositor()
     {

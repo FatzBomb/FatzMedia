@@ -31,9 +31,15 @@ device (`VulkanSharedDevice`, `FfmpegVulkanInterop.cs`).
 - FFmpeg must be built with `--enable-vulkan` (FFmpeg 9, libavutil 61; the structure layouts
   are pinned by `VulkanVideoDecodeTests`).
 
+## Surfaces
+
 Any number of surfaces can be attached (Stage 027A slice 5: a primary plus secondary screens),
-each a managed frame sink or a shared GPU image consumer (exported opaque-fd images, Stage
-027A slice 2), and each composition is rendered once per surface at that surface's size.
+each a managed frame sink or a shared GPU image consumer, and each composition is rendered once
+per surface at that surface's size. Shared images are exported opaque-fd images on Linux (Stage
+027A slice 2). On Windows (Stage 045A slice 3) they are keyed-mutex Direct3D11 textures, which
+the renderer creates on its device's adapter and imports into Vulkan, for Avalonia's default
+ANGLE compositor; or opaque NT-handle images with NT-handle semaphores for Avalonia's Vulkan
+backend.
 
 ## Shaders
 

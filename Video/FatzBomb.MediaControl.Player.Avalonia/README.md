@@ -27,7 +27,8 @@ movement; Escape closes the open flyout, then leaves full screen. Every diagnost
 - Video decoding (Stage 045A): with Direct3D11 on a GPU the player decodes with D3D11VA where the GPU
   supports the codec (the log's `Decoding ...` line ends `via d3d11va`). The frames stay on the GPU
   into the shared GPU image, or are read back once for the frame sink. With Vulkan on a GPU with Vulkan
-  Video (Stage 045A slice 2) it decodes on the renderer's device (`via vulkan`). On WARP, with the
+  Video (Stage 045A slices 2-3) it decodes on the renderer's device (`via vulkan`); on Windows the
+  Vulkan frames also reach the compositor as a shared GPU image (keyed-mutex Direct3D11 textures). On WARP, with the
   software renderer, and with Vulkan without Vulkan Video, it decodes in software; the renderer line in
   the log says which and why.
   `--decoding=software` forces software decoding, for CPU comparisons.

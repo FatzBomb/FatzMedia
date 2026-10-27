@@ -48,9 +48,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   direction, 2026-10-26). Slice 1 (the Avalonia player decodes with D3D11VA for the Direct3D11
   renderer, on the shared GPU image and the frame sink; HDR tone mapped on the GPU) is
   owner smoke passed 2026-10-26 (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
-  renderer's device, Linux and Windows) implemented, pending manual smoke (`updates/045A_2`).
-  Slice 3 (Vulkan on Windows, including the Avalonia shared image for Vulkan frames; owner
-  2026-10-27: full compatibility) is planned in the stage file.
+  renderer's device, Linux and Windows) and slice 3 (Vulkan on Windows, including the Avalonia
+  shared image for Vulkan frames; owner 2026-10-27: full compatibility) implemented, pending
+  manual smoke (`updates/045A_2`, `updates/045A_3`; Windows smoke steps in `updates/045A_3`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 

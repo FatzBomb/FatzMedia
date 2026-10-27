@@ -358,6 +358,14 @@ Reported: 2026-10-27 (045A slices 2 and 3, GPU decoding for the Vulkan renderer)
   chroma sample; the video processor and swscale honour the siting.
 - **VAAPI with DRM PRIME import** (the plan's alternative) stays a later option for Linux
   drivers without Vulkan Video.
+- **Windows export paths not run here.** The keyed-mutex Direct3D11 texture import (ANGLE) and
+  the opaque NT-handle export (Avalonia's Vulkan backend) compile and negotiate in tests, but
+  only the owner's smoke runs them. The Avalonia test player does not offer Avalonia's Vulkan
+  backend on Windows, so the NT-handle path has no smoke yet; a host option for
+  `Win32RenderingMode.Vulkan` would cover it.
+- **WPF and WinForms with `--renderer=vulkan`** decode on the GPU but read each frame back for
+  their frame sink. A Vulkan swap chain on the native window (`VK_KHR_win32_surface`) remains a
+  possible later step; Direct3D11 already covers the native window.
 
 ### ENG-037 - Hardware-frame follow-ups from 045A slice 1
 

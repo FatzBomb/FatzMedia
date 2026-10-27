@@ -387,6 +387,20 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 if (videoFrame is not null)
                     submit.PNext = &timeline;
 
+                // A Direct3D11 texture (Windows, Stage 045A slice 3): its keyed mutex orders this
+                // write against the compositor's reads.
+                Win32KeyedMutexAcquireReleaseInfoKHR keyedMutex;
+                DeviceMemory keyedMemory;
+                ulong acquireKey;
+                ulong releaseKey;
+                uint keyedTimeout;
+                if (export is { Image.HasKeyedMutex: true } keyed)
+                {
+                    keyedMemory = keyed.Image.Memory;
+                    acquireKey = keyed.AcquireKey;
+                    ChainKeyedMutex(&submit, &keyedMutex, &keyedMemory, &acquireKey, &releaseKey, &keyedTimeout);
+                }
+
                 Submit(&submit);
                 videoFrame?.MarkSubmitted();
             }
@@ -490,6 +504,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     _ = _vk.DeviceWaitIdle(_device);
                 DestroyVideoResources();
                 DestroyExportedSets();
+                DestroyWin32ExportResources();
                 DestroyRenderTargets();
                 _overlay?.Dispose();
                 _overlay = null;

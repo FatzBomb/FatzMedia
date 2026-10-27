@@ -144,6 +144,12 @@ the owner confirms the signed tarball).
   H.264/HEVC/VP9/AV1. As with any third-party build, review its configuration before
   redistributing it.
 - Hosts must use a shared-library build; static executables alone are insufficient.
+- GPU decoding with the Vulkan renderer (Stage 045A slices 2-3, Vulkan Video on the renderer's
+  device) needs a build configured with `--enable-vulkan` (check with `ffmpeg -hide_banner
+  -hwaccels`, which then lists `vulkan`). The Linux BtbN 9.0 LGPL build has it. Without it the
+  player logs `this FFmpeg build has no Vulkan hardware context` and the Vulkan renderer decodes
+  in software. Whether the TqkLibrary package above includes Vulkan is not yet checked; BtbN and
+  Gyan Windows shared builds do.
 - Network video (Stage 039A) uses FFmpeg's own protocols: the build needs the `http`, `tcp`
   and `hls` components (on by default) and a TLS backend for `https` (OpenSSL, GnuTLS,
   mbedTLS or Schannel). Certificate checks are described under HTTPS Certificate Verification.

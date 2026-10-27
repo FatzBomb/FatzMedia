@@ -979,7 +979,10 @@ Shared GPU image surfaces (Stage 027A slice 2):
 - The renderer negotiates against the consumer's `MediaSharedGpuImageRequest` (handle kinds,
   sync kinds, GPU identity). It then exports a double-buffered `MediaSharedGpuImageSet` of
   plain OS handles: Direct3D11 keyed-mutex shared textures, or Vulkan opaque-fd images with
-  optional exported semaphores.
+  optional exported semaphores. On Windows (Stage 045A slice 3) the Vulkan renderer offers
+  keyed-mutex Direct3D11 textures that it creates on its device's adapter and imports into Vulkan
+  (what Avalonia's default ANGLE compositor takes), and opaque NT-handle images with NT-handle
+  semaphores (for Avalonia's Vulkan backend).
 - It announces each frame, and the consumer releases it once its compositor has read it.
   The shared `MediaSharedGpuImageRing` keeps the producer side, so a frame is never written
   while the compositor may sample it.
