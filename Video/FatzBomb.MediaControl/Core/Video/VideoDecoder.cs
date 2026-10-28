@@ -806,8 +806,13 @@ internal sealed unsafe class VideoDecoder(
     private void ProcessVideoFrameFromDecoder()
     {
         // A frame was successfully received from the decoder — the hardware path is working, so
-        // clear the consecutive-failure gate used for device-lost detection.
-        _consecutiveHardwareDecodeFailures = 0;
+        // clear the consecutive-failure gate used for device-lost detection. A hardware frame the
+        // decoder marked corrupt (what it returns after a GPU reset) counts as a failure instead.
+        if (HardwareAccelerationMethod != null
+            && ((_videoFrame->flags & ffmpeg.AV_FRAME_FLAG_CORRUPT) != 0 || _videoFrame->decode_error_flags != 0))
+            NoteHardwareDecodeFailure();
+        else
+            _consecutiveHardwareDecodeFailures = 0;
         if (_logCaptureActive)
         {
             _logCaptureActive = false;
