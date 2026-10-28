@@ -151,17 +151,9 @@ internal sealed class NativeHwndSurfaceHost(bool startVisible = false) : HwndHos
         if (hwnd == IntPtr.Zero || hdc == IntPtr.Zero || !NativeMethods.GetClientRect(hwnd, out NativeMethods.RECT rect))
             return;
 
-        var brush = NativeMethods.CreateSolidBrush(0);
-        if (brush == IntPtr.Zero)
-            return;
-
-        try
-        {
+        // The stock black brush: nothing to create or delete per paint (ENG-039).
+        var brush = NativeMethods.GetStockObject(NativeMethods.BLACK_BRUSH);
+        if (brush != IntPtr.Zero)
             _ = NativeMethods.FillRect(hdc, ref rect, brush);
-        }
-        finally
-        {
-            _ = NativeMethods.DeleteObject(brush);
-        }
     }
 }
