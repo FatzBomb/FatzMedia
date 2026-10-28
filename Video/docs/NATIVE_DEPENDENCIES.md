@@ -115,7 +115,9 @@ FFmpeg is the only required native set. When the BASS core (`bass.dll` + `bass_f
   mode) fails to load: `Load` returns false, with an Error diagnostic and a `MediaError`
   (`NativeLibraryMissing`): "Audio engine unavailable: BASS libraries not found; <file> was
   not loaded."
-- A later player creation retries BASS with its own paths; the loaded FFmpeg is kept.
+- A later player creation with other paths retries BASS; the loaded FFmpeg is kept. One with the
+  same paths reuses the result without scanning them again (ENG-039), so BASS copied into those
+  folders after the first player is found after a restart.
 
 BASS is free only for qualifying non-commercial use. Commercial host developers
 must obtain the appropriate BASS licence. Un4seen states that BASS licences apply to

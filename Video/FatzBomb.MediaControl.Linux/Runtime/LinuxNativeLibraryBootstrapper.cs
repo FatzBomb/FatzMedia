@@ -48,14 +48,18 @@ internal sealed record LinuxNativeLoadResult(
 /// add-ons go through <c>BASS_PluginLoad</c>; FFmpeg libraries are preloaded in dependency order
 /// and then activated through FFmpeg.AutoGen's root path. FFmpeg is required; BASS is optional
 /// (ENG-033): without it the player starts with no audio. A failed attempt, or one without BASS,
-/// can be retried with other paths; what loaded is kept for the process (native libraries cannot
-/// be unloaded safely while in use), so FFmpeg is never activated twice.
+/// can be retried with other paths (the same paths reuse the result without BASS, ENG-039 P5-8:
+/// BASS added to them later is found after a restart); what loaded is kept for the process
+/// (native libraries cannot be unloaded safely while in use), so FFmpeg is never activated twice.
 /// </summary>
 internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations operations, string baseDirectory, string runtimeIdentifier)
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, string> _loadedBassByFileName = new(StringComparer.Ordinal);
     private LinuxNativeLoadResult? _success;
+    // The search paths of _success when it loaded without BASS: a later player with the same paths
+    // takes that result instead of scanning them for BASS again (ENG-039 P5-8).
+    private IReadOnlyList<string>? _successSearchPaths;
     private string? _loadedFfmpegDirectory;
 
     public static LinuxNativeLibraryBootstrapper Default { get; } = new(
@@ -75,6 +79,13 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             List<string> messages = [];
             var rejected = new List<string>();
             IReadOnlyList<string> searchPaths = LinuxNativeLibraryLocator.BuildSearchPaths(hostPaths, baseDirectory, runtimeIdentifier, rejected);
+            if (_success is { } withoutBass && _successSearchPaths is { } scanned && scanned.SequenceEqual(searchPaths, StringComparer.Ordinal))
+            {
+                LastResult = withoutBass;
+                RaiseResult(withoutBass);
+                return withoutBass;
+            }
+
             foreach (var path in rejected)
                 messages.Add($"Native library path does not exist: {path}.");
 
@@ -95,17 +106,24 @@ internal sealed class LinuxNativeLibraryBootstrapper(ILinuxNativeOperations oper
             var result = new LinuxNativeLoadResult(bassLoaded, ffmpegLoaded, bassDirectory, ffmpegDirectory, messages, report);
             LastResult = result;
             if (result.IsInitialized)
+            {
                 _success = result;
+                _successSearchPaths = searchPaths;
+            }
 
-            DiagnosticRouter.Raise(
-                !result.IsInitialized ? MediaDiagnosticLevel.Error
-                    : result.IsAudioAvailable ? MediaDiagnosticLevel.Info
-                    : MediaDiagnosticLevel.Warning,
-                "LinuxBootstrap",
-                result.Message);
+            RaiseResult(result);
             return result;
         }
     }
+
+    // Raised for every player, also when it reuses a result: its diagnostics belong to it.
+    private static void RaiseResult(LinuxNativeLoadResult result) =>
+        DiagnosticRouter.Raise(
+            !result.IsInitialized ? MediaDiagnosticLevel.Error
+                : result.IsAudioAvailable ? MediaDiagnosticLevel.Info
+                : MediaDiagnosticLevel.Warning,
+            "LinuxBootstrap",
+            result.Message);
 
     private bool LoadBass(IReadOnlyList<string> searchPaths, List<string> messages, out string? bassDirectory)
     {
