@@ -521,8 +521,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             lock (_probeGate)
                 _probeClosed = true;
 
-            // A lost device may never go idle (ENG-039); destroying its objects is allowed.
-            if (_device.Handle != 0 && _shared?.IsLost != true)
+            // A device the driver reported lost may never go idle (ENG-039), and destroying its
+            // objects is allowed; one that only timed out is waited for (a slow GPU still uses them).
+            if (_device.Handle != 0 && _shared?.IsLossConfirmed != true)
             {
                 lock (QueueLock)
                     _ = _vk.DeviceWaitIdle(_device);
@@ -1173,7 +1174,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         VulkanStallMeter.Report(start, operation);
         if (result == Result.Timeout)
         {
-            _shared?.MarkLost($"{operation} did not complete within 2 s");
+            _shared?.MarkLost($"{operation} did not complete within 2 s", confirmed: false);
             throw new VulkanException($"{operation} (not completed within 2 s)", Result.ErrorDeviceLost);
         }
 

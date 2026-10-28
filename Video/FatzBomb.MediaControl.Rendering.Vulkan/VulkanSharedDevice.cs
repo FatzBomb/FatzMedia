@@ -50,6 +50,7 @@ internal sealed unsafe class VulkanSharedDevice
     private int _heartbeatTimeouts;
     private int _references = 1;
     private int _lost;
+    private int _lossConfirmed;
     private string? _lostReason;
     private AVBufferRef* _ffmpegContext;
     private string? _ffmpegContextFailure;
@@ -112,10 +113,23 @@ internal sealed unsafe class VulkanSharedDevice
     /// <summary>Gets how the loss was found, once <see cref="IsLost"/>.</summary>
     public string? LostReason => Volatile.Read(ref _lostReason);
 
-    /// <summary>Records that the device is lost (a call returned <c>VK_ERROR_DEVICE_LOST</c>, or it stopped completing work).</summary>
-    public void MarkLost(string reason = "a Vulkan call returned VK_ERROR_DEVICE_LOST")
+    /// <summary>
+    /// Gets whether the driver confirmed the loss (<c>VK_ERROR_DEVICE_LOST</c>, a removed interop
+    /// device), as opposed to work that only stopped completing in time. Only a confirmed loss
+    /// skips waiting for the GPU before objects are destroyed: on a slow but working GPU, freeing
+    /// what the queue still uses would be undefined behaviour.
+    /// </summary>
+    public bool IsLossConfirmed => Volatile.Read(ref _lossConfirmed) != 0;
+
+    /// <summary>
+    /// Records that the device is lost: confirmed by the driver, or (<paramref name="confirmed"/>
+    /// false) because it stopped completing work in time.
+    /// </summary>
+    public void MarkLost(string reason = "a Vulkan call returned VK_ERROR_DEVICE_LOST", bool confirmed = true)
     {
         _ = Interlocked.CompareExchange(ref _lostReason, reason, null);
+        if (confirmed)
+            Volatile.Write(ref _lossConfirmed, 1);
         Volatile.Write(ref _lost, 1);
     }
 
@@ -223,7 +237,7 @@ internal sealed unsafe class VulkanSharedDevice
             return false;
         }
 
-        MarkLost($"{what}, {HeartbeatTimeoutsBeforeLost} heartbeats in a row");
+        MarkLost($"{what}, {HeartbeatTimeoutsBeforeLost} heartbeats in a row", confirmed: false);
         reason = LostReason;
         return true;
     }

@@ -98,6 +98,27 @@ public sealed class VulkanDeviceLossTests
     }
 
     [Fact]
+    public void ATimeout_MarksTheDeviceLost_ButOnlyTheDriverConfirmsIt()
+    {
+        // A slow GPU that misses the 2 s fence timeout is treated as lost, but its objects are still
+        // waited for before they are destroyed: only a driver-confirmed loss skips that wait.
+        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        using (compositor)
+        {
+            VulkanSharedDevice shared = compositor.SharedDevice!;
+            shared.MarkLost("frame did not complete within 2 s", confirmed: false);
+            Assert.True(shared.IsLost);
+            Assert.False(shared.IsLossConfirmed);
+
+            shared.MarkLost();
+            Assert.True(shared.IsLossConfirmed);
+        }
+    }
+
+    [Fact]
     public void OutOfMemory_ThreeTimesInARow_CountsAsALostDevice()
     {
         VulkanOffscreenCompositor? compositor = null;
