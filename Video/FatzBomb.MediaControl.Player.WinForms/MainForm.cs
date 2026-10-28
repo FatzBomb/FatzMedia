@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Player.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Player.Shared.Presentation;
 
 namespace FatzBomb.MediaControl.Player.WinForms;
@@ -10,34 +11,27 @@ namespace FatzBomb.MediaControl.Player.WinForms;
 /// players), each fed a once-a-second process reading for its stats line. The toolbar changes the
 /// player count and the renderer at run time, as in every test player: a change recreates the
 /// players (loaded files are not kept). F11 or a double-click on a picture shows that player alone,
-/// full screen; Escape leaves full screen.
+/// full screen; Escape leaves full screen. The rebuild, full screen, keys, stats tick and closing
+/// are the shared <see cref="PlayerSetController{TSlot}"/>'s; this form creates and lays out the
+/// panels and owns the window state.
 /// </summary>
-internal sealed class MainForm : Form
+internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
 {
     private readonly PlayerStartupOptions _options;
-    private readonly List<PlayerPanel> _panels = [];
     private readonly Panel _grid = new() { Dock = DockStyle.Fill };
-    private readonly ProcessSampler _sampler = new();
-    private readonly System.Windows.Forms.Timer _statsTimer = new() { Interval = 1000 };
     private readonly WinFormsPlayerDispatcher _dispatcher = new();
+    private readonly PlayerSetController<PlayerPanel> _players;
     private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Padding = new Padding(6, 4, 6, 4) };
     private readonly ComboBox _playersBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 60 };
     private readonly ComboBox _rendererBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
     private readonly Label _info = new() { AutoSize = true, Margin = new Padding(16, 8, 3, 3), ForeColor = SystemColors.GrayText };
-    private PlayerPanel? _fullScreenPanel;
     private FormWindowState _restoreWindowState;
     private FormBorderStyle _restoreBorderStyle;
-    private bool _ready;
-    private bool _firstBuild = true;
-    private bool _rebuilding;
-    private bool _rebuildAgain;
-    private Task _rebuild = Task.CompletedTask;
-    private bool _closing;
-    private bool _closed;
 
     public MainForm(PlayerStartupOptions options)
     {
         _options = options;
+        _players = new PlayerSetController<PlayerPanel>(this, _dispatcher);
         Text = "FatzBomb.MediaControl WinForms test player";
         ClientSize = options.Players == 1 ? new Size(1120, 760) : new Size(1600, 1000);
         MinimumSize = new Size(900, 600);
@@ -63,7 +57,6 @@ internal sealed class MainForm : Form
         // The grid first: docking lays out the last-added control (the toolbar, at the top) first.
         Controls.Add(_grid);
         Controls.Add(_toolbar);
-        _statsTimer.Tick += OnStatsTick;
         KeyDown += OnFormKeyDown;
         Shown += OnShown;
         FormClosing += OnFormClosing;
@@ -71,108 +64,27 @@ internal sealed class MainForm : Form
 
     private static Label ToolbarLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(8, 8, 3, 3) };
 
-    private async void OnShown(object? sender, EventArgs e)
+    private void OnShown(object? sender, EventArgs e)
     {
-        _statsTimer.Start();
         if (_options.LightweightSurfacesWindow)
             ShowLightweightSurfaces();
 
-        _ready = true;
-        await RebuildReportingFailureAsync();
+        _ = ShowRendererSummaryAsync();
+        _ = _players.StartAsync();
     }
 
-    private async void OnLayoutChanged(object? sender, EventArgs e)
+    private void OnLayoutChanged(object? sender, EventArgs e)
     {
-        if (!_ready)
+        // The boxes are set in the constructor: nothing is rebuilt before the first build.
+        if (!_players.IsStarted)
             return;
 
         // The renderer for the panels created from now on; Program.RendererSelection resolves it off the UI thread.
         if (ReferenceEquals(sender, _rendererBox) && _rendererBox.SelectedIndex >= 0)
             Program.UseRenderer(_options, PlayerRendererSelection.Choices[_rendererBox.SelectedIndex].Request);
-        await RebuildReportingFailureAsync();
-    }
-
-    // An async void handler must not let a failed rebuild reach the thread-exception dialog.
-    private async Task RebuildReportingFailureAsync()
-    {
-        try
-        {
-            await RebuildAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Rebuilding the players failed: {ex}");
-            _info.Text = $"Rebuilding the players failed: {ex.Message}";
-        }
-    }
-
-    private Task RebuildAsync()
-    {
-        if (_rebuilding)
-        {
-            _rebuildAgain = true;
-            return _rebuild;
-        }
-
-        _rebuilding = true;
-        _rebuild = RebuildLoopAsync();
-        return _rebuild;
-    }
-
-    private async Task RebuildLoopAsync()
-    {
-        try
-        {
-            do
-            {
-                _rebuildAgain = false;
-                await RebuildOnceAsync();
-            }
-            while (_rebuildAgain && !_closing);
-        }
-        finally
-        {
-            _rebuilding = false;
-        }
-    }
-
-    private async Task RebuildOnceAsync()
-    {
-        ExitFullScreen();
-        PlayerPanel[] old = [.. _panels];
-        _panels.Clear();
-        _grid.Controls.Clear();
-        foreach (PlayerPanel panel in old)
-        {
-            await DisposePanelAsync(panel);
-            panel.Dispose();
-        }
-
-        // Closing started while the old players were disposed: build nothing (the closing handler waits for this rebuild).
-        if (_closing)
-            return;
-
-        var count = _playersBox.SelectedIndex + 1;
-        for (var index = 1; index <= count; index++)
-        {
-            var panel = new PlayerPanel(index, _options, _firstBuild, _dispatcher, this);
-            panel.FullScreenToggleRequested += OnFullScreenToggleRequested;
-            _panels.Add(panel);
-            _grid.Controls.Add(panel);
-        }
-
-        _firstBuild = false;
-        _grid.PerformLayout();
         _ = ShowRendererSummaryAsync();
-
-        // Created one after the other: native loading is process-wide and happens on the first.
-        foreach (PlayerPanel panel in _panels.ToList())
-        {
-            if (_closing || _rebuildAgain || !_panels.Contains(panel))
-                return;
-
-            await panel.InitializeAsync();
-        }
+        // A rebuild never throws: the controller reports failures through ReportFailure.
+        _ = _players.RebuildAsync();
     }
 
     private async Task ShowRendererSummaryAsync()
@@ -185,25 +97,11 @@ internal sealed class MainForm : Form
             _info.Text = selection.Summary;
     }
 
-    private async Task DisposePanelAsync(PlayerPanel panel)
-    {
-        panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
-        try
-        {
-            await panel.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            // One player's failed teardown must not keep the others alive or the form open.
-            System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Closing a player failed: {ex}");
-        }
-    }
-
     /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
     private async void ShowLightweightSurfaces()
     {
         var selection = await Program.RendererSelection;
-        if (_closing)
+        if (_players.IsShuttingDown)
             return;
 
         var form = new LightweightSurfacesForm(
@@ -221,129 +119,80 @@ internal sealed class MainForm : Form
     private void LayoutPanels()
     {
         Rectangle area = _grid.ClientRectangle;
-        if (_fullScreenPanel is { } fullScreen)
+        if (_players.FullScreenSlot is { } fullScreen)
         {
             fullScreen.Bounds = area;
             return;
         }
 
-        var columns = _panels.Count == 1 ? 1 : 2;
-        var rows = (_panels.Count + columns - 1) / columns;
-        for (var i = 0; i < _panels.Count; i++)
+        IReadOnlyList<PlayerPanel> panels = _players.Slots;
+        var columns = panels.Count == 1 ? 1 : 2;
+        var rows = (panels.Count + columns - 1) / columns;
+        for (var i = 0; i < panels.Count; i++)
         {
             int column = i % columns, row = i / columns;
             var x = area.Width * column / columns;
             var y = area.Height * row / rows;
-            _panels[i].Bounds = new Rectangle(x, y, (area.Width * (column + 1) / columns) - x, (area.Height * (row + 1) / rows) - y);
+            panels[i].Bounds = new Rectangle(x, y, (area.Width * (column + 1) / columns) - x, (area.Height * (row + 1) / rows) - y);
         }
     }
 
-    private void OnStatsTick(object? sender, EventArgs e)
+    int IPlayerSetHost<PlayerPanel>.RequestedPlayerCount => _playersBox.SelectedIndex + 1;
+
+    PlayerPanel IPlayerSetHost<PlayerPanel>.CreateSlot(int index, bool atStartup) => new(index, _options, atStartup, _dispatcher, this);
+
+    void IPlayerSetHost<PlayerPanel>.Attach(PlayerPanel slot) => _grid.Controls.Add(slot);
+
+    void IPlayerSetHost<PlayerPanel>.Detach(PlayerPanel slot) => _grid.Controls.Remove(slot);
+
+    void IPlayerSetHost<PlayerPanel>.Layout(IReadOnlyList<PlayerPanel> slots, PlayerPanel? fullScreen)
     {
-        ProcessSample sample = _sampler.Sample();
-        foreach (PlayerPanel panel in _panels)
-            panel.UpdateStatus(sample);
+        foreach (PlayerPanel panel in slots)
+            panel.Visible = fullScreen is null || ReferenceEquals(panel, fullScreen);
+        _toolbar.Visible = fullScreen is null;
+        _grid.PerformLayout();
     }
 
-    private void OnFullScreenToggleRequested(object? sender, EventArgs e)
+    void IPlayerSetHost<PlayerPanel>.SetWindowFullScreen(bool fullScreen)
     {
-        if (sender is not PlayerPanel panel)
-            return;
-
-        if (ReferenceEquals(_fullScreenPanel, panel))
-            ExitFullScreen();
+        if (fullScreen)
+        {
+            _restoreWindowState = WindowState == FormWindowState.Minimized ? FormWindowState.Normal : WindowState;
+            _restoreBorderStyle = FormBorderStyle;
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Normal;
+            WindowState = FormWindowState.Maximized;
+        }
         else
-            EnterFullScreen(panel);
+        {
+            FormBorderStyle = _restoreBorderStyle;
+            WindowState = _restoreWindowState;
+        }
+    }
+
+    void IPlayerSetHost<PlayerPanel>.ReportFailure(string what, Exception exception)
+    {
+        System.Diagnostics.Trace.WriteLine($"[Player.WinForms] {what}: {exception}");
+        if (!IsDisposed)
+            _info.Text = $"{what}: {exception.Message}";
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.F11 && _panels.Count > 0)
-        {
-            if (_fullScreenPanel is not null)
-                ExitFullScreen();
-            else
-                EnterFullScreen(_panels.FirstOrDefault(static panel => panel.ContainsFocus) ?? _panels[0]);
+        if ((e.KeyCode == Keys.F11 && _players.HandleFullScreenKey()) || (e.KeyCode == Keys.Escape && _players.HandleEscapeKey()))
             e.Handled = true;
-        }
-        else if (e.KeyCode == Keys.Escape && _fullScreenPanel is not null)
-        {
-            ExitFullScreen();
-            e.Handled = true;
-        }
-    }
-
-    private void EnterFullScreen(PlayerPanel panel)
-    {
-        ExitFullScreen();
-        _fullScreenPanel = panel;
-        _restoreWindowState = WindowState == FormWindowState.Minimized ? FormWindowState.Normal : WindowState;
-        _restoreBorderStyle = FormBorderStyle;
-        foreach (PlayerPanel other in _panels)
-            other.Visible = ReferenceEquals(other, panel);
-        _toolbar.Visible = false;
-        FormBorderStyle = FormBorderStyle.None;
-        WindowState = FormWindowState.Normal;
-        WindowState = FormWindowState.Maximized;
-        _grid.PerformLayout();
-        panel.SetFullScreen(true);
-    }
-
-    private void ExitFullScreen()
-    {
-        if (_fullScreenPanel is not { } panel)
-            return;
-
-        _fullScreenPanel = null;
-        panel.SetFullScreen(false);
-        FormBorderStyle = _restoreBorderStyle;
-        WindowState = _restoreWindowState;
-        foreach (PlayerPanel other in _panels)
-            other.Visible = true;
-        _toolbar.Visible = true;
-        _grid.PerformLayout();
     }
 
     private async void OnFormClosing(object? sender, FormClosingEventArgs e)
     {
-        if (_closed)
+        if (_players.IsShutDown)
             return;
 
-        // Disposing an engine waits for admitted media operations, so the view models run it off
-        // the UI thread; the form closes afterwards. A second close request waits for the first.
+        // Disposing an engine waits for admitted media operations: the controller waits for a toolbar
+        // rebuild and the view models dispose off the UI thread; the form closes afterwards. A second
+        // close request waits for the first.
         e.Cancel = true;
-        if (_closing)
-            return;
-
-        _closing = true;
-        _statsTimer.Stop();
-        ExitFullScreen();
-        // A toolbar rebuild may still be disposing the old players or starting the new ones: let it
-        // finish (it stops at _closing) so no player outlives the window.
-        try
-        {
-            await _rebuild;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Rebuilding the players failed: {ex}");
-        }
-
-        foreach (PlayerPanel panel in _panels.ToList())
-            await DisposePanelAsync(panel);
-
-        _closed = true;
-        Close();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _statsTimer.Dispose();
-            _sampler.Dispose();
-        }
-
-        base.Dispose(disposing);
+        if (await _players.ShutdownAsync())
+            Close();
     }
 }
