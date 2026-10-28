@@ -1188,13 +1188,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         {
             if (_vertexShader == null || _pixelShader == null)
             {
-                var vertexShaderBytecode = CompileShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
-                var pixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
-                var backgroundPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
-                var baseVisualPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
-                var baseVisualPostPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
-                var solidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
-                var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
+                var vertexShaderBytecode = GetShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
+                var pixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
+                var backgroundPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
+                var baseVisualPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
+                var baseVisualPostPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
+                var solidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
+                var premultipliedSolidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
                 _backgroundPixelShader = device.CreatePixelShader(backgroundPixelShaderBytecode);
@@ -1409,6 +1409,19 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _rasterizerState = null;
         ReleasePostProcessTargets();
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Source, string EntryPoint, string Profile), byte[]> ShaderBytecodeCache = new();
+
+    /// <summary>
+    /// The compiled bytecode for one entry point, compiled once per process (ENG-039): the shader
+    /// objects are per device, but the bytecode is not, and each compile took milliseconds on every
+    /// media open and device change. The returned array is shared: callers only read it. A failed
+    /// compile is not cached, so the next call tries again.
+    /// </summary>
+    internal static byte[] GetShaderBytecode(string shaderSource, string entryPoint, string targetProfile) =>
+        ShaderBytecodeCache.GetOrAdd(
+            (shaderSource, entryPoint, targetProfile),
+            static key => CompileShaderBytecode(key.Source, key.EntryPoint, key.Profile));
 
     internal static byte[] CompileShaderBytecode(string shaderSource, string entryPoint, string targetProfile)
     {
