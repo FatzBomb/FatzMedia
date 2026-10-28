@@ -35,6 +35,12 @@ internal sealed class D3D11ManagedFrameSinkBackend : ID3D11PresentationBackend
     /// <summary>Gets the length of the retained readback buffer (tests).</summary>
     internal int ReadbackBufferLength => _pixels.Length;
 
+    /// <summary>
+    /// Whether this backend is serving <paramref name="sink"/> now: a new size for it is a resize,
+    /// whose sink keeps showing its last frame until the next one (ENG-039 G4).
+    /// </summary>
+    public bool Serves(IMediaPresentationFrameSink sink) => IsActive && ReferenceEquals(_sink, sink);
+
     public bool Matches(IMediaPresentationFrameSink sink, int width, int height) =>
         IsActive && ReferenceEquals(_sink, sink) && Width == width && Height == height;
 
