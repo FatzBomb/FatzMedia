@@ -586,7 +586,10 @@ Slice 3 (`updates/046A_3`):
   `--players`, `--surface`, `--decoding`, `--second-screen` flags. Hosts keep factory
   construction and window/control code; the WPF and WinForms players share
   `Configuration/PlayerRendererSelection.cs` (linked).
-- All three players show 1-4 independent players (`--players=`), one view model each.
+- All three players show 1-4 independent players (`--players=`), one view model each. Since
+  ENG-039 R1 one `PlayerSetController<TSlot>` (Player.Shared) rebuilds them on toolbar changes,
+  runs full screen, F11/Escape and the stats tick, and disposes them before the window closes;
+  the windows keep only creation, layout and window state.
 - The Avalonia and WinForms adapters have a thin `Player : MediaControlPlayer` facade like the WPF
   one (`CreateAsync` with a platform factory, `Bitmap` load overloads); only the WPF facade has a
   default platform (Windows).

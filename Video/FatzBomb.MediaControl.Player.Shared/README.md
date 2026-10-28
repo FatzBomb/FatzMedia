@@ -22,7 +22,11 @@ CommunityToolkit.Mvvm only (pinned in `scripts/check-core-boundary.ps1`).
   a flyout open, a drag), `ProcessSampler`, `PresentedFrameCounter` and `PlayerStatsLine` (the
   stats line, `PlayerViewModel.StatsText` / `UpdateStats`; fps from Core's
   `PresentationFramePresented`, the surface description from the host), and `PlayerScreenChooser`
-  (where a second screen opens, over the screens' rectangles).
+  (where a second screen opens, over the screens' rectangles). `PlayerSetController<TSlot>`
+  (ENG-039 R1) drives a window's 1-4 players: the coalescing rebuild when the toolbar changes,
+  full screen with one F11/Escape rule, the 1 s stats tick and the closing sequence (wait for the
+  rebuild, dispose every player, then close). The window implements `IPlayerSetHost<TSlot>`
+  (create, attach, detach, layout, window full screen) and each player view `IPlayerSlot`.
 - `PlayerRendererRequest` / `PlayerRendererRules`: the neutral `--renderer=` names and the GPU-first
   `auto` order; each host maps a request to its factories and logs what it chose.
 
