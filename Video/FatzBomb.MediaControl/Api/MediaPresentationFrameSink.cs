@@ -1,5 +1,4 @@
 #pragma warning disable IDE0130
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
 namespace FatzBomb.MediaControl;
@@ -25,9 +24,8 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     /// Thread-safe registry that strongly roots sinks while they are exposed to unmanaged code.
     /// The dictionary itself serves as the root set — no separate GCHandle is needed.
     /// </summary>
-    private static readonly ConcurrentDictionary<long, IMediaPresentationFrameSink> Registry = new();
-
-    private static long _nextToken;
+    private static readonly OpaqueTokenRegistry<IMediaPresentationFrameSink> Registry =
+        new("The presentation frame-sink token space has been exhausted.");
 
     private long _token;
 
@@ -38,18 +36,7 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     {
         ArgumentNullException.ThrowIfNull(sink);
 
-        // Collision-safe TryAdd loop: generate a fresh nonzero monotonic token and insert.
-        // Overflow wraps after ~9.2e18 allocations — practically unreachable.
-        long token;
-        do
-        {
-            token = Interlocked.Increment(ref _nextToken);
-            if (token <= 0 || (IntPtr.Size == 4 && token > int.MaxValue))
-                throw new InvalidOperationException("The presentation frame-sink token space has been exhausted.");
-        }
-        while (!Registry.TryAdd(token, sink));
-
-        _token = token;
+        _token = Registry.Register(sink);
     }
 
     /// <summary>
@@ -87,18 +74,7 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     /// <returns><see langword="true"/> if the token was valid and the sink was resolved.</returns>
     public static bool TryResolve(nint value, out IMediaPresentationFrameSink? sink)
     {
-        sink = null;
-        if (value == 0)
-            return false;
-
-        long token = (long)value;
-        if (Registry.TryGetValue(token, out var resolved))
-        {
-            sink = resolved;
-            return true;
-        }
-
-        return false;
+        return Registry.TryResolve(value, out sink);
     }
 
     /// <summary>
@@ -126,6 +102,6 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
     {
         long token = Interlocked.Exchange(ref _token, 0);
         if (token != 0)
-            Registry.TryRemove(token, out _);
+            Registry.Remove(token);
     }
 }
