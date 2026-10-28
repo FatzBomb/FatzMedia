@@ -1587,33 +1587,10 @@ internal sealed partial class VideoPipeline(
                 // Kept in a field: a failed attempt leaves no decoder, and a retry must still
                 // adopt the original origin.
                 _swapTimelineOrigin = _videoDecoder?.TimelineOriginSeconds ?? _swapTimelineOrigin;
-                var timelineOrigin = _swapTimelineOrigin;
                 ReleaseCurrentFrame();
-                _videoDecoder?.Dispose();
-                _videoDecoder = new VideoDecoder(
-                    method,
-                    true,
-                    _configuration.EnableLogging,
-                    _configuration.EnablePerformanceLogging,
-                    _configuration.EnableVerboseLogging,
-                    sharedDemuxer: _sharedDemuxer,
-                    hardwareAccelerationServices: _hardwareAccelerationServices,
-                    hdrToneMapping: _configuration.HdrToneMapping);
-
-                if (!_videoDecoder.Open(path))
-                {
-                    _videoDecoder.Dispose();
-                    _videoDecoder = null;
+                if (!TryReplaceDecoder(method, path, position, _swapTimelineOrigin))
                     return false;
-                }
 
-                if (timelineOrigin is { } origin)
-                    _videoDecoder.AdoptTimelineOrigin(origin);
-
-                Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
-                _clock.DurationSeconds = Duration;
-                _ = _videoDecoder.SeekSharedDemuxer(position);
-                _ = _videoDecoder.Seek(position, exact: false);
                 if (wasPlaying && HasAudio && _audioEngine != null)
                     _presentationClock.Start(_audioEngine.Position);
                 else
@@ -1622,6 +1599,42 @@ internal sealed partial class VideoPipeline(
                 _ = PresentFrameForCurrentPosition();
                 return true;
             }
+    }
+
+    /// <summary>
+    /// Disposes the live decoder and opens <paramref name="path"/> with a new one using
+    /// <paramref name="method"/>, positioned at <paramref name="position"/> (keyframe seek) and
+    /// adopting <paramref name="timelineOrigin"/> when given. On failure no decoder is left.
+    /// The caller holds the decode lock (and the presentation lock when frames may be in use).
+    /// </summary>
+    private bool TryReplaceDecoder(VideoDecodingMethod method, string path, double position, double? timelineOrigin)
+    {
+        _videoDecoder?.Dispose();
+        _videoDecoder = new VideoDecoder(
+            method,
+            true,
+            _configuration.EnableLogging,
+            _configuration.EnablePerformanceLogging,
+            _configuration.EnableVerboseLogging,
+            sharedDemuxer: _sharedDemuxer,
+            hardwareAccelerationServices: _hardwareAccelerationServices,
+            hdrToneMapping: _configuration.HdrToneMapping);
+
+        if (!_videoDecoder.Open(path))
+        {
+            _videoDecoder.Dispose();
+            _videoDecoder = null;
+            return false;
+        }
+
+        if (timelineOrigin is { } origin)
+            _videoDecoder.AdoptTimelineOrigin(origin);
+
+        Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
+        _clock.DurationSeconds = Duration;
+        _ = _videoDecoder.SeekSharedDemuxer(position);
+        _ = _videoDecoder.Seek(position, exact: false);
+        return true;
     }
 
     private bool DecodeVideoBatch()
@@ -1674,28 +1687,12 @@ internal sealed partial class VideoPipeline(
             $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}. " +
             $"Stream: {_videoDecoder.DescribeDecodePath()}. Reason: {_videoDecoder.DescribeHardwareStartupFailure()}.",
             sourcePath: path);
-        _videoDecoder.Dispose();
-        _videoDecoder = new VideoDecoder(
-            VideoDecodingMethod.Software,
-            true,
-            _configuration.EnableLogging,
-            _configuration.EnablePerformanceLogging,
-            _configuration.EnableVerboseLogging,
-            sharedDemuxer: _sharedDemuxer,
-            hardwareAccelerationServices: _hardwareAccelerationServices,
-            hdrToneMapping: _configuration.HdrToneMapping);
-        if (!_videoDecoder.Open(path))
+        if (!TryReplaceDecoder(VideoDecodingMethod.Software, path, position: 0, timelineOrigin: null))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
-            _videoDecoder.Dispose();
-            _videoDecoder = null;
             return false;
         }
 
-        Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
-        _clock.DurationSeconds = Duration;
-        _ = _videoDecoder.SeekSharedDemuxer(0);
-        _ = _videoDecoder.Seek(0, exact: false);
         _presentationClock.Reset(HasAudio ? _audioEngine!.Position : _clock.PositionSeconds);
         return DecodeUntilFrameAvailable();
     }
