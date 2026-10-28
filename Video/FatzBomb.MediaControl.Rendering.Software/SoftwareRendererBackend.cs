@@ -83,9 +83,7 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend, IMediaRen
 
         // As Direct3D11 does: with a primary attached, success is the primary's present, so a
         // secondary that presented never hides a failed primary frame.
-        var primaryExpected = false;
-        var primaryPresented = false;
-        var anyPresented = false;
+        var outcome = new CompositionPresentOutcome();
         var anyIncluded = false;
         foreach (Target target in targets)
         {
@@ -95,17 +93,14 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend, IMediaRen
                 continue;
 
             anyIncluded = true;
-            var presented = Present(frame, target);
-            primaryExpected |= isPrimary;
-            primaryPresented |= isPrimary && presented;
-            anyPresented |= presented;
+            outcome.Record(isPrimary, Present(frame, target));
         }
 
         // A filter that matches no attached target (its surface just detached) is nothing to do.
         if (!anyIncluded)
             return frame.Targets is not null;
 
-        var succeeded = primaryExpected ? primaryPresented : anyPresented;
+        var succeeded = outcome.Succeeded;
         if (succeeded)
             FramePresented?.Invoke(this, EventArgs.Empty);
         return succeeded;

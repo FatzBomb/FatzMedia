@@ -394,13 +394,11 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
             step = "target draw";
             var drawnTargets = new List<D3D11PresentationTargetSnapshot>(presentationTargets.Count);
-            var primaryExpected = false;
-            var primaryDrew = false;
+            var outcome = new CompositionPresentOutcome();
             var anyTargetFailed = false;
             foreach (D3D11PresentationTargetSnapshot target in presentationTargets)
             {
                 var isPrimary = target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId;
-                primaryExpected |= isPrimary;
                 // The backend's cached view of its texture (ENG-026); a snapshot without one gets a
                 // view for this draw only.
                 ID3D11RenderTargetView? ownedView = target.TargetViews is null ? deviceResources.Device.CreateRenderTargetView(target.Texture) : null;
@@ -423,6 +421,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     ownedView?.Dispose();
                 }
 
+                outcome.Record(isPrimary, drew);
                 if (!drew)
                 {
                     anyTargetFailed = true;
@@ -433,14 +432,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     continue;
                 }
 
-                primaryDrew |= isPrimary;
                 drawnTargets.Add(target);
             }
 
             if (!anyTargetFailed)
                 _targetDrawFailure.Reset();
 
-            var requiredTargetDrew = primaryExpected ? primaryDrew : drawnTargets.Count > 0;
+            var requiredTargetDrew = outcome.Succeeded;
             if (requiredTargetDrew)
             {
                 _presentFailure.Reset();
