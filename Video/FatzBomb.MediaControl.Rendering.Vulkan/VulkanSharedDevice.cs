@@ -43,9 +43,14 @@ internal sealed unsafe class VulkanSharedDevice
     private readonly byte** _deviceExtensionNames;
     private readonly int _deviceExtensionCount;
     private readonly VulkanFeatureChain? _features;
+    private readonly Lock _heartbeatGate = new();
     private Fence _probeFence;
+    private Fence _heartbeatFence;
+    private bool _heartbeatPending;
+    private int _heartbeatTimeouts;
     private int _references = 1;
     private int _lost;
+    private string? _lostReason;
     private AVBufferRef* _ffmpegContext;
     private string? _ffmpegContextFailure;
 
@@ -54,6 +59,7 @@ internal sealed unsafe class VulkanSharedDevice
         Instance instance,
         PhysicalDevice physicalDevice,
         Device device,
+        Queue graphicsQueue,
         uint graphicsFamily,
         QueueFlags graphicsFamilyFlags,
         string[] deviceExtensions,
@@ -64,6 +70,7 @@ internal sealed unsafe class VulkanSharedDevice
         Instance = instance;
         PhysicalDevice = physicalDevice;
         Device = device;
+        GraphicsQueue = graphicsQueue;
         GraphicsFamily = graphicsFamily;
         GraphicsFamilyFlags = graphicsFamilyFlags;
         _features = features;
@@ -76,6 +83,8 @@ internal sealed unsafe class VulkanSharedDevice
         Fence fence;
         if (vk.CreateFence(device, &fenceInfo, null, &fence) == Result.Success)
             _probeFence = fence;
+        if (vk.CreateFence(device, &fenceInfo, null, &fence) == Result.Success)
+            _heartbeatFence = fence;
 
         Devices[device.Handle] = this;
     }
@@ -84,6 +93,10 @@ internal sealed unsafe class VulkanSharedDevice
     public Instance Instance { get; }
     public PhysicalDevice PhysicalDevice { get; }
     public Device Device { get; }
+
+    /// <summary>Gets the renderer's graphics queue (FFmpeg submits to it too, under <see cref="QueueLock"/>).</summary>
+    public Queue GraphicsQueue { get; }
+
     public uint GraphicsFamily { get; }
     public QueueFlags GraphicsFamilyFlags { get; }
 
@@ -96,8 +109,15 @@ internal sealed unsafe class VulkanSharedDevice
     /// <summary>Gets whether the device was lost (marked by the renderer, or found by <see cref="ProbeLost"/>).</summary>
     public bool IsLost => Volatile.Read(ref _lost) != 0;
 
-    /// <summary>Records that a call on this device returned <c>VK_ERROR_DEVICE_LOST</c>.</summary>
-    public void MarkLost() => Volatile.Write(ref _lost, 1);
+    /// <summary>Gets how the loss was found, once <see cref="IsLost"/>.</summary>
+    public string? LostReason => Volatile.Read(ref _lostReason);
+
+    /// <summary>Records that the device is lost (a call returned <c>VK_ERROR_DEVICE_LOST</c>, or it stopped completing work).</summary>
+    public void MarkLost(string reason = "a Vulkan call returned VK_ERROR_DEVICE_LOST")
+    {
+        _ = Interlocked.CompareExchange(ref _lostReason, reason, null);
+        Volatile.Write(ref _lost, 1);
+    }
 
     /// <summary>Finds the shared device behind a native device handle, while it exists.</summary>
     public static VulkanSharedDevice? Find(nint deviceHandle) =>
@@ -110,8 +130,118 @@ internal sealed unsafe class VulkanSharedDevice
             return true;
 
         if (_probeFence.Handle != 0 && Vk.GetFenceStatus(Device, _probeFence) == Result.ErrorDeviceLost)
-            MarkLost();
+            MarkLost("vkGetFenceStatus reported VK_ERROR_DEVICE_LOST");
         return IsLost;
+    }
+
+    /// <summary>How long a heartbeat waits for the queue lock FFmpeg also takes.</summary>
+    internal static readonly TimeSpan HeartbeatQueueLockTimeout = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>How long a heartbeat waits for its empty submission (ns).</summary>
+    internal const ulong HeartbeatWaitNanoseconds = 250_000_000;
+
+    /// <summary>Heartbeats in a row that may time out before the device counts as lost.</summary>
+    internal const int HeartbeatTimeoutsBeforeLost = 3;
+
+    /// <summary>
+    /// <see cref="ProbeLost"/>, then a heartbeat (ENG-039): an empty submission to the graphics
+    /// queue and a 250 ms wait for it. A lost device fails the submission or the wait; one that
+    /// stopped completing work times out <see cref="HeartbeatTimeoutsBeforeLost"/> times in a row.
+    /// Finds a loss when no frame reaches the device (after an NVIDIA GPU reset the renderer saw
+    /// no <c>VK_ERROR_DEVICE_LOST</c> at all). Bounded (about 350 ms); one heartbeat runs at a
+    /// time, and a concurrent caller gets the current state. The caller holds a reference.
+    /// </summary>
+    public bool Heartbeat(out string? reason)
+    {
+        reason = null;
+        if (ProbeLost())
+        {
+            reason = LostReason;
+            return true;
+        }
+
+        if (_heartbeatFence.Handle == 0 || !_heartbeatGate.TryEnter())
+            return false;
+
+        try
+        {
+            Fence fence = _heartbeatFence;
+            Result result = Result.Success;
+            // A submission that timed out is still pending: wait for it again rather than reset
+            // a fence the queue still holds.
+            if (!_heartbeatPending)
+            {
+                if (!QueueLock.TryEnter(HeartbeatQueueLockTimeout))
+                    return CountTimeout("the device's queue stayed locked for 100 ms", out reason);
+
+                try
+                {
+                    result = Vk.ResetFences(Device, 1, &fence);
+                    if (result == Result.Success)
+                        result = Vk.QueueSubmit(GraphicsQueue, 0, null, fence);
+                }
+                finally
+                {
+                    QueueLock.Exit();
+                }
+
+                _heartbeatPending = result == Result.Success;
+            }
+
+            if (result == Result.Success)
+                result = Vk.WaitForFences(Device, 1, &fence, true, HeartbeatWaitNanoseconds);
+
+            switch (result)
+            {
+                case Result.Success:
+                    _heartbeatPending = false;
+                    _heartbeatTimeouts = 0;
+                    return false;
+                case Result.Timeout:
+                    return CountTimeout("an empty submission did not complete within 250 ms", out reason);
+                case Result.ErrorDeviceLost:
+                    MarkLost("the heartbeat submission reported VK_ERROR_DEVICE_LOST");
+                    reason = LostReason;
+                    return true;
+                default:
+                    // Out of memory and the like: the renderer's failure rules decide.
+                    _heartbeatPending = false;
+                    return false;
+            }
+        }
+        finally
+        {
+            _heartbeatGate.Exit();
+        }
+    }
+
+    private bool CountTimeout(string what, out string? reason)
+    {
+        if (++_heartbeatTimeouts < HeartbeatTimeoutsBeforeLost)
+        {
+            reason = null;
+            return false;
+        }
+
+        MarkLost($"{what}, {HeartbeatTimeoutsBeforeLost} heartbeats in a row");
+        reason = LostReason;
+        return true;
+    }
+
+    /// <summary>Takes a reference unless the device is already released (for callers that may race the last release).</summary>
+    public bool TryAddRef()
+    {
+        var current = Volatile.Read(ref _references);
+        while (current > 0)
+        {
+            var seen = Interlocked.CompareExchange(ref _references, current + 1, current);
+            if (seen == current)
+                return true;
+
+            current = seen;
+        }
+
+        return false;
     }
 
     public void AddRef()
@@ -135,7 +265,10 @@ internal sealed unsafe class VulkanSharedDevice
         {
             if (_probeFence.Handle != 0)
                 Vk.DestroyFence(Device, _probeFence, null);
+            if (_heartbeatFence.Handle != 0)
+                Vk.DestroyFence(Device, _heartbeatFence, null);
             _probeFence = default;
+            _heartbeatFence = default;
             Vk.DestroyDevice(Device, null);
         }
 

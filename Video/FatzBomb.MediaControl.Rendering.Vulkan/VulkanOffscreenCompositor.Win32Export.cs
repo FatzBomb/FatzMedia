@@ -26,8 +26,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     private const string ExternalSemaphoreWin32Extension = "VK_KHR_external_semaphore_win32";
     private const string Win32KeyedMutexExtension = "VK_KHR_win32_keyed_mutex";
 
-    /// <summary>How long a submission waits for an image's keyed mutex before it fails (ms).</summary>
-    internal const uint KeyedMutexTimeoutMilliseconds = 500;
+    /// <summary>
+    /// How long a submission waits for an image's keyed mutex before it fails (ms). The ring hands
+    /// out only textures the compositor released, so the mutex is normally free at once; a long
+    /// wait held the queue lock FFmpeg's decoding also takes (ENG-038, ENG-039).
+    /// </summary>
+    internal const uint KeyedMutexTimeoutMilliseconds = 50;
 
     private delegate* unmanaged<Device, MemoryGetWin32HandleInfoKHR*, nint*, Result> _getMemoryWin32Handle;
     private delegate* unmanaged<Device, SemaphoreGetWin32HandleInfoKHR*, nint*, Result> _getSemaphoreWin32Handle;
@@ -318,7 +322,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             VulkanD3D11Interop.CloseNtHandle(handle);
     }
 
-    /// <summary>Releases what the Windows export holds outside Vulkan (the Direct3D11 device).</summary>
+    /// <summary>Releases what the Windows export holds outside Vulkan (the Direct3D11 device). Disposal only (after the probe gate closed).</summary>
     private void DestroyWin32ExportResources()
     {
         if (_d3d11Device != 0 && OperatingSystem.IsWindows())

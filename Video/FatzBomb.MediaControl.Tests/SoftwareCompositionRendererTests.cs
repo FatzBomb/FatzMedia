@@ -170,6 +170,37 @@ public sealed class SoftwareCompositionRendererTests
         AssertPixel(output, 1, 0, 255, 0, 0, 255);
     }
 
+    /// <summary>
+    /// ENG-039 G7: CD+G before its first memory preset (no background colour index) is transparent
+    /// in every renderer; the Vulkan and Direct3D11 tests use the same snapshot and pixel.
+    /// </summary>
+    [Fact]
+    public void Render_CdgOverlay_BeforeMemoryPreset_ShowsTheClearColour()
+    {
+        var indices = new byte[300 * 216];
+        Array.Fill(indices, (byte)1);
+        var snapshot = new CdgRenderSnapshot(1, 1, indices, new[] { unchecked((int)0xFF000000), unchecked((int)0xFFFF0000) }, 0, -1, []);
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
+
+        SoftwareRenderOutput output = _renderer.Render(frame, 300, 216);
+
+        AssertPixel(output, 0, 0, 255, 0, 0, 255);
+    }
+
+    [Fact]
+    public void Render_InvalidBackgroundBuffer_IsRefused()
+    {
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        {
+            BackgroundBgra = new byte[(4 * 4 * 3) - 1],
+            BackgroundWidth = 4,
+            BackgroundHeight = 3,
+            BackgroundStride = 16,
+        };
+
+        Assert.Equal(SoftwareRenderStatus.InvalidFrame, _renderer.Render(frame, 8, 8).Status);
+    }
+
     [Fact]
     public void Render_CdgOverlay_SkipsPaletteIndexOutsidePalette()
     {

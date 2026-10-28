@@ -65,7 +65,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     internal string? LastVideoFailure => _reportedVideoFailure;
 
     /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
-    public void MarkDeviceLost() => _shared?.MarkLost();
+    public void MarkDeviceLost(string reason) => _shared?.MarkLost(reason);
 
     /// <summary>
     /// A new reference to an FFmpeg Vulkan device context on this device, or 0 with the reason
@@ -371,11 +371,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             AVVkFrame* frame = conversion.Frame;
             for (var i = 0; i < conversion.ImageCount; i++)
             {
-                var range = conversion.ImageCount == 1
-                    ? new ImageSubresourceRange(ImageAspectFlags.Plane0Bit | ImageAspectFlags.Plane1Bit, 0, 1, 0, 1)
-                    : ColorRange();
-                // The semaphore wait covers FFmpeg's writes; images are shared by the queue
-                // families FFmpeg was given (concurrent), so no ownership transfer.
+                // The colour aspect, as FFmpeg's own barriers use: a multi-planar decoded image is
+                // not disjoint, so its barriers may not name planes (ENG-039). The semaphore wait
+                // covers FFmpeg's writes; images are shared by the queue families FFmpeg was given
+                // (concurrent), so no ownership transfer.
                 Barrier(
                     new VkImage(frame->Image[i]),
                     (ImageLayout)frame->Layout[i],
@@ -384,7 +383,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                     AccessFlags.ShaderReadBit,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.FragmentShaderBit,
-                    range);
+                    ColorRange());
             }
 
             VkImage layer = _videoLayer!.Value.Image;

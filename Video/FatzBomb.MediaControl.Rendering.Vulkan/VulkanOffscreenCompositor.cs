@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Cdg;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
@@ -40,6 +41,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     private readonly Vk _vk;
     private readonly Lock _sync = new();
+    // Guards what ProbeDeviceLost reads (the shared device and the Direct3D11 interop device)
+    // against Dispose, without the frame lock (ENG-039).
+    private readonly Lock _probeGate = new();
+    private bool _probeClosed;
     private Instance _instance;
     private PhysicalDevice _physicalDevice;
     private Device _device;
@@ -401,7 +406,22 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     ChainKeyedMutex(&submit, &keyedMutex, &keyedMemory, &acquireKey, &releaseKey, &keyedTimeout);
                 }
 
-                Submit(&submit);
+                try
+                {
+                    Submit(&submit);
+                }
+                catch (VulkanException exception) when (export is { Image.HasKeyedMutex: true } && exception.Result == Result.Timeout)
+                {
+                    // The ring hands out only textures the compositor released, so a keyed mutex
+                    // that stays taken means the compositor stopped (ENG-039: a GPU reset).
+                    throw new VulkanException(
+                        $"vkQueueSubmit (the compositor did not release the shared texture's keyed mutex within {KeyedMutexTimeoutMilliseconds} ms)",
+                        exception.Result)
+                    {
+                        IsConsumerStall = true,
+                    };
+                }
+
                 videoFrame?.MarkSubmitted();
             }
             finally
@@ -410,8 +430,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 videoFrame?.EndAccess();
             }
 
-            Fence fence = _fence;
-            Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
+            WaitForSubmission("vkWaitForFences (frame)");
             DestroyFrameViews();
             if (conversion is { } converted)
                 CompleteVideoConversion(converted);
@@ -498,10 +517,19 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 return;
 
             _disposed = true;
-            if (_device.Handle != 0)
+            // A probe in progress finishes first; later ones find the compositor closed.
+            lock (_probeGate)
+                _probeClosed = true;
+
+            // A lost device may never go idle (ENG-039); destroying its objects is allowed.
+            if (_device.Handle != 0 && _shared?.IsLost != true)
             {
                 lock (QueueLock)
                     _ = _vk.DeviceWaitIdle(_device);
+            }
+
+            if (_device.Handle != 0)
+            {
                 DestroyVideoResources();
                 DestroyExportedSets();
                 DestroyWin32ExportResources();
@@ -607,20 +635,21 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         }
 
         _device = device;
+        Queue queue;
+        _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
+        _queue = queue;
         _shared = new VulkanSharedDevice(
             _vk,
             _instance,
             _physicalDevice,
             _device,
+            _queue,
             _queueFamily,
             _queueFamilyFlags,
             extensions,
             video?.Features,
             video?.Support);
         LoadExportFunctions();
-        Queue queue;
-        _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
-        _queue = queue;
 
         var poolInfo = new CommandPoolCreateInfo
         {
@@ -798,10 +827,17 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         void* mapped;
         var rowBytes = width * 4;
         Check(_vk.MapMemory(_device, upload.Memory, 0, (ulong)rowBytes * (ulong)height, 0, &mapped), "vkMapMemory");
-        var destination = new Span<byte>(mapped, rowBytes * height);
-        for (var y = 0; y < height; y++)
-            sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
-        _vk.UnmapMemory(_device, upload.Memory);
+        try
+        {
+            var destination = new Span<byte>(mapped, rowBytes * height);
+            for (var y = 0; y < height; y++)
+                sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
+        }
+        finally
+        {
+            // A short buffer must not leave the memory mapped: the next vkMapMemory would be invalid (ENG-039).
+            _vk.UnmapMemory(_device, upload.Memory);
+        }
     }
 
     private void CopyBufferToImage(BufferResource upload, VkImage image, int width, int height)
@@ -1112,9 +1148,75 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     {
         Fence fence = _fence;
         Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
+        // Measured with the queue lock: FFmpeg's submissions and a keyed-mutex acquire both wait here.
+        var start = Stopwatch.GetTimestamp();
+        Result result;
         lock (QueueLock)
-            Check(_vk.QueueSubmit(_queue, 1, submit, _fence), "vkQueueSubmit");
+            result = _vk.QueueSubmit(_queue, 1, submit, _fence);
+        VulkanStallMeter.Report(start, "vkQueueSubmit");
+        Check(result, "vkQueueSubmit");
     }
+
+    /// <summary>How long a submission may take before the device counts as lost (ns): the Windows GPU-reset interval.</summary>
+    internal const ulong FenceTimeoutNanoseconds = 2_000_000_000;
+
+    /// <summary>
+    /// Waits for the last <see cref="Submit"/>. Offscreen composition that has not finished in 2 s
+    /// means the GPU stopped: the device is marked lost and the wait throws as a device loss
+    /// (ENG-039), instead of blocking the presentation thread for good.
+    /// </summary>
+    private void WaitForSubmission(string operation)
+    {
+        Fence fence = _fence;
+        var start = Stopwatch.GetTimestamp();
+        Result result = _vk.WaitForFences(_device, 1, &fence, true, FenceTimeoutNanoseconds);
+        VulkanStallMeter.Report(start, operation);
+        if (result == Result.Timeout)
+        {
+            _shared?.MarkLost($"{operation} did not complete within 2 s");
+            throw new VulkanException($"{operation} (not completed within 2 s)", Result.ErrorDeviceLost);
+        }
+
+        Check(result, operation);
+    }
+
+    /// <summary>
+    /// Whether the device is lost (ENG-039): marked lost, the Direct3D11 device the Windows export
+    /// shares textures through was removed, or the heartbeat fails (see
+    /// <see cref="VulkanSharedDevice.Heartbeat"/>). Takes no frame lock and waits at most about
+    /// 350 ms; false once disposed.
+    /// </summary>
+    public bool ProbeDeviceLost(out string? reason)
+    {
+        reason = null;
+        if (!_probeGate.TryEnter(ProbeGateTimeout))
+            return false;
+
+        try
+        {
+            if (_probeClosed || _shared is not { } shared)
+                return false;
+
+            if (OperatingSystem.IsWindows() && _d3d11Device != 0)
+            {
+                var removed = VulkanD3D11Interop.GetDeviceRemovedReason(_d3d11Device);
+                if (removed < 0)
+                {
+                    shared.MarkLost($"the Direct3D11 device that shares textures with the compositor was removed (0x{removed:X8})");
+                    reason = shared.LostReason;
+                    return true;
+                }
+            }
+
+            return shared.Heartbeat(out reason);
+        }
+        finally
+        {
+            _probeGate.Exit();
+        }
+    }
+
+    private static readonly TimeSpan ProbeGateTimeout = TimeSpan.FromMilliseconds(500);
 
     private static ImageSubresourceRange ColorRange() => new(ImageAspectFlags.ColorBit, 0, 1, 0, 1);
 
@@ -1140,4 +1242,10 @@ internal sealed class VulkanException(string operation, Result result)
     public Result Result { get; } = result;
 
     public bool IsDeviceLost => Result == Result.ErrorDeviceLost;
+
+    /// <summary>Gets whether an allocation failed (after a GPU reset, the first failure NVIDIA reports).</summary>
+    public bool IsOutOfMemory => Result is Result.ErrorOutOfDeviceMemory or Result.ErrorOutOfHostMemory;
+
+    /// <summary>Gets whether the compositor did not give a shared image back in time (its keyed mutex stayed taken).</summary>
+    public bool IsConsumerStall { get; init; }
 }
