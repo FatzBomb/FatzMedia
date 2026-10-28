@@ -10,7 +10,7 @@ namespace FatzBomb.MediaControl.Core.Graphics;
 public sealed class VideoDecodeFallback
 {
     private readonly Action<string>? _onRequested;
-    private int _requested;
+    private string? _reason;
 
     public VideoDecodeFallback()
     {
@@ -20,18 +20,19 @@ public sealed class VideoDecodeFallback
     internal VideoDecodeFallback(Action<string> onRequested) => _onRequested = onRequested;
 
     /// <summary>Gets whether software decoding was requested.</summary>
-    public bool IsRequested => Volatile.Read(ref _requested) != 0;
+    public bool IsRequested => Volatile.Read(ref _reason) is not null;
 
     /// <summary>Why software decoding was requested, or null.</summary>
-    public string? Reason { get; private set; }
+    public string? Reason => Volatile.Read(ref _reason);
 
     /// <summary>Asks the decoder to switch to software; only the first request (and its reason) counts.</summary>
     public void RequestSoftwareDecoding(string reason)
     {
-        if (Interlocked.Exchange(ref _requested, 1) != 0)
+        // The reason is the flag, so a reader that sees the request also sees why.
+        reason ??= string.Empty;
+        if (Interlocked.CompareExchange(ref _reason, reason, null) is not null)
             return;
 
-        Reason = reason;
         _onRequested?.Invoke(reason);
     }
 }

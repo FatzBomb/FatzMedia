@@ -38,7 +38,7 @@ Batches:
    failures and the startup delay; karaoke `Source = null` releases the player.
 2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
 3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
-4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b and 4c in progress.
+4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c in progress.
 5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
 
 ## Open
@@ -418,11 +418,12 @@ details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage)
   host pairing hardware decoding with the software or Vulkan renderer, or a failed device
   adoption), Core drops the frame on every path. A paused first frame stays black. Since ENG-039
   batch 1 the software renderer offers no decode device, so its players decode in software
-  whatever the configuration asks (the default `Auto` on Windows was black); the run-time case
-  (a failed adoption, WARP) remains. Proposed
-  fix: a per-decoder fallback token on `NativeVideoFrameResource` (like `HdrToneMapFallback`).
-  The coordinator sets it, and the pipeline swaps to a software decoder at the current
-  position through the device-loss swap path.
+  whatever the configuration asks (the default `Auto` on Windows was black). The run-time case
+  (a failed adoption, WARP) is implemented, pending manual smoke (ENG-039 batch 4b, G3x): a
+  per-decoder `NativeVideoFrameResource.DecodeFallback` token that the coordinator requests and
+  `VideoPipeline` acts on, swapping to software on its recovery worker for the rest of that
+  media. Not covered: the CD+G background video decoder (`PipelineMediaEngine`) sets no token,
+  so a refused background hardware frame is still dropped.
 - **Compositor on another GPU.** The decoder, the renderer and ANGLE all use the default
   adapter. A compositor elsewhere makes the shared textures fail the LUID check, and the
   surface uses its frame sink. Choosing the adapter by the compositor's LUID is deferred.

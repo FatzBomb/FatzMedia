@@ -51,6 +51,9 @@ internal sealed partial class VideoPipeline(
     // (no hardware re-probe) until the next open.
     private volatile bool _hardwareDecodeRefusedByRenderer;
     private SoftwareDecodeRequest? _pendingSoftwareDecodeRequest;
+    // The player that built this pipeline: a renderer's fallback request can start the recovery
+    // worker from a host thread, whose diagnostics would otherwise belong to no player.
+    private readonly object? _diagnosticOwner = DiagnosticRouter.Owner;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
     private SharedDemuxer? _sharedDemuxer;
@@ -935,15 +938,7 @@ internal sealed partial class VideoPipeline(
         // exclusivity for the teardown itself. Cancel any in-flight device-lost recovery the same way
         // (Stop only signals cancellation; so it cannot deadlock on the gate).
         StopSeekWorker();
-        Volatile.Write(ref _pendingSoftwareDecodeRequest, null);
-        _decoderRecoveryScheduler.Stop();
-        // Deterministic join before Dispose: the recovery worker may be in the middle of
-        // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
-        // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
-        _decoderRecoveryScheduler.StopAndWait();
-        _hardwareDecodeDisabledByDeviceLoss = false;
-        _hardwareDecodeRefusedByRenderer = false;
-        _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+        StopDecoderRecovery();
 
         lock (_transportGate)
         {
@@ -983,6 +978,23 @@ internal sealed partial class VideoPipeline(
             RaiseState(VideoEngineState.Closed);
             Closed?.Invoke(this, EventArgs.Empty);
         }
+
+        // A renderer can refuse a frame until the loops stop above, queueing a software fallback
+        // after the first join: cancel that one too, so it cannot outlive this media.
+        StopDecoderRecovery();
+    }
+
+    private void StopDecoderRecovery()
+    {
+        Volatile.Write(ref _pendingSoftwareDecodeRequest, null);
+        _decoderRecoveryScheduler.Stop();
+        // Deterministic join before Dispose: the recovery worker may be in the middle of
+        // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
+        // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
+        _decoderRecoveryScheduler.StopAndWait();
+        _hardwareDecodeDisabledByDeviceLoss = false;
+        _hardwareDecodeRefusedByRenderer = false;
+        _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
     }
 
     public void Dispose()
@@ -1471,7 +1483,9 @@ internal sealed partial class VideoPipeline(
     /// </summary>
     private void OnSoftwareDecodingRequested(VideoDecoder decoder, string reason)
     {
-        if (!_isOpen)
+        // A stale frame of a replaced decoder must not overwrite the live decoder's request: that
+        // decoder's token is spent, so it would never ask again.
+        if (!_isOpen || !ReferenceEquals(decoder, Volatile.Read(ref _videoDecoder)))
             return;
 
         Volatile.Write(ref _pendingSoftwareDecodeRequest, new SoftwareDecodeRequest(decoder, reason));
@@ -1494,7 +1508,12 @@ internal sealed partial class VideoPipeline(
 
         try
         {
-            _decoderRecoveryScheduler.Start(cancellationToken => RunSoftwareDecodeFallback(request, cancellationToken));
+            object? owner = _diagnosticOwner;
+            _decoderRecoveryScheduler.Start(cancellationToken =>
+            {
+                using DiagnosticRouter.OwnerScope scope = DiagnosticRouter.EnterOwner(owner);
+                RunSoftwareDecodeFallback(request, cancellationToken);
+            });
         }
         catch (ObjectDisposedException)
         {
@@ -1512,8 +1531,16 @@ internal sealed partial class VideoPipeline(
         try
         {
             var path = _currentVideoPath;
-            VideoDecoder? decoder = _videoDecoder;
-            var deviceLost = decoder?.HardwareDevice is { } device && _hardwareAccelerationServices.IsDeviceLost(device);
+            VideoDecoder? decoder;
+            bool deviceLost;
+            // Under the decode lock: a seek, the startup fallback or Close may be disposing the
+            // decoder and its device.
+            lock (_decodeLock)
+            {
+                decoder = _videoDecoder;
+                deviceLost = decoder?.HardwareDevice is { } device && _hardwareAccelerationServices.IsDeviceLost(device);
+            }
+
             if (cancellationToken.IsCancellationRequested
                 || string.IsNullOrWhiteSpace(path)
                 || !ShouldFallBackForRenderer(ReferenceEquals(decoder, request.Decoder), _isOpen, deviceLost))
@@ -1582,7 +1609,7 @@ internal sealed partial class VideoPipeline(
         if (!ShouldReprobeHardware(_sharedDemuxer is { IsNetwork: true }, _hardwareDecodeRefusedByRenderer))
             return;
 
-        while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && !_hardwareDecodeRefusedByRenderer && _isOpen)
+        while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && _isOpen)
         {
             if (cancellationToken.WaitHandle.WaitOne(HardwareDecodeReprobeInterval))
                 return;
