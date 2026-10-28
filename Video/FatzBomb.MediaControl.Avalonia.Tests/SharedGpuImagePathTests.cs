@@ -152,6 +152,106 @@ public sealed class SharedGpuImagePathTests
     }
 
     [AvaloniaFact]
+    public void ContextLost_ReportsTheDeviceLoss_AndReturnsToSharedImagesOnceTheInteropWorks()
+    {
+        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        var queries = 0;
+        var surface = new MediaSurface
+        {
+            GpuInteropProvider = _ =>
+            {
+                queries++;
+                return new ValueTask<GpuInteropCapabilities?>(FakeInterop.Direct3D());
+            },
+        };
+        surface.Player = session;
+        Window window = Show(surface);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out IMediaSharedGpuImageConsumer? consumer);
+        List<string> deviceLossReports = [];
+        MediaSharedGpuImageSet set = CountedSet(deviceLossReports.Add);
+        consumer!.OnImagesCreated(set);
+
+        // What a PlatformGraphicsContextLostException from an update reports (ENG-039).
+        ((AvaloniaSharedImageSurface)consumer).ReportContextLost("the compositor failed to show a shared image: context lost");
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(["the compositor failed to show a shared image: context lost"], deviceLossReports);
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Equal("the compositor failed to show a shared image: context lost", surface.PresentationPathReason);
+        Assert.Equal(1, queries);
+
+        // Not ruled out for the session: the next retry asks the compositor again and goes back.
+        surface.RetryGpuAfterContextLoss();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(2, queries);
+        Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
+        Assert.Equal(MediaNativeSurfaceTypeIds.SharedGpuImage, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void ContextLost_RendererStillRecovering_KeepsRetryingInsteadOfGivingUp()
+    {
+        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        var surface = new MediaSurface { GpuInteropProvider = FakeInterop.Provider(FakeInterop.Direct3D()) };
+        surface.Player = session;
+        Window window = Show(surface);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out IMediaSharedGpuImageConsumer? consumer);
+        ((AvaloniaSharedImageSurface)consumer!).ReportContextLost("context lost");
+        Dispatcher.UIThread.RunJobs();
+
+        // The renderer's device is still being re-created: it declines the shared images.
+        var recovering = true;
+        recorder.AttachResult = descriptor =>
+        {
+            if (!recovering || descriptor.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.SharedGpuImage)
+                return true;
+
+            _ = MediaSharedGpuImageConsumerHandle.TryResolve(descriptor, out IMediaSharedGpuImageConsumer? declined);
+            declined!.OnUnavailable("no usable Vulkan device");
+            return false;
+        };
+        surface.RetryGpuAfterContextLoss();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Equal("no usable Vulkan device", surface.PresentationPathReason);
+
+        recovering = false;
+        surface.RetryGpuAfterContextLoss();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(MediaSurfacePresentationPath.SharedGpuImage, surface.PresentationPath);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void ContextLost_InteropNeverReturns_KeepsTheFrameSinkAfterTheRetryLimit()
+    {
+        (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
+        var lost = false;
+        var surface = new MediaSurface
+        {
+            GpuInteropProvider = _ => new ValueTask<GpuInteropCapabilities?>(lost ? null : FakeInterop.Direct3D()),
+        };
+        surface.Player = session;
+        Window window = Show(surface);
+        _ = MediaSharedGpuImageConsumerHandle.TryResolve(recorder.LastAttached, out IMediaSharedGpuImageConsumer? consumer);
+        lost = true;
+        ((AvaloniaSharedImageSurface)consumer!).ReportContextLost("context lost");
+        Dispatcher.UIThread.RunJobs();
+
+        for (var attempt = 0; attempt <= MediaSurface.GpuContextLossRetryAttempts; attempt++)
+            surface.RetryGpuAfterContextLoss();
+        lost = false;
+        surface.RetryGpuAfterContextLoss();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(MediaSurfacePresentationPath.FrameSink, surface.PresentationPath);
+        Assert.Equal(MediaNativeSurfaceTypeIds.ManagedBgraFrameSink, recorder.LastAttached!.NativeSurface.SurfaceTypeId);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void PendingInterop_AttachesOnlyOnceTheCompositorAnswers()
     {
         (IMediaControlSession session, RecordingSession recorder) = RecordingSession.Create();
@@ -209,6 +309,17 @@ public sealed class SharedGpuImagePathTests
         Assert.True(request.DeviceLuid.IsEmpty);
         Assert.Equal([1, 2], request.DeviceUuid.ToArray());
     }
+
+    private static MediaSharedGpuImageSet CountedSet(Action<string> deviceLost) => new(
+        1,
+        new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex, MediaSharedGpuSemaphoreHandleKind.None),
+        320,
+        180,
+        MediaSharedGpuImageFormat.Bgra8Unorm,
+        [new MediaSharedGpuImageBuffer(0x10), new MediaSharedGpuImageBuffer(0x20)],
+        static (_, _) => { },
+        static _ => { },
+        deviceLost);
 
     private static Window Show(MediaSurface surface)
     {
