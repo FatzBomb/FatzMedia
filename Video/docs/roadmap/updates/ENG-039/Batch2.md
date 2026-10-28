@@ -46,8 +46,9 @@ queue. The test players write each diagnostic to the debug log before the UI-thr
   image barrier uses the colour aspect, a partial Avalonia import reports how many handles it
   took (`CompleteImport(int)`).
 - G7 CD+G before a memory preset: parity tests (Software, Direct3D11 WARP, Vulkan lavapipe).
-- WPF: the overlay window follows the surface's visibility; session events only while loaded;
-  the composited host's `Clear` drops a pending frame. The WPF test player starts from a
+- WPF: the overlay window follows the surface's visibility; a deferred `PresentationMode` also
+  applies on load if the media closed while unloaded; the composited host's `Clear` drops a
+  pending frame. The WPF test player starts from a
   read-only install.
 
 Deferred: the per-player audio device monitor (needs BASS device selection on the poll thread;
