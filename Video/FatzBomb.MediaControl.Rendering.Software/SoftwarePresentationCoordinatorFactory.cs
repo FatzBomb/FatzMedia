@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 
 namespace FatzBomb.MediaControl.Rendering.Software;
@@ -38,7 +39,7 @@ public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationC
         IMediaEngine mediaEngine,
         MediaPlayerConfiguration configuration) => new MediaPresentationCoordinator(
             new SoftwareRendererBackend(),
-            new NoOpSubtitleRasterizer(),
+            NullSubtitleRasterizer.Instance,
             mediaEngine,
             configuration,
             _precisionWaiterFactory);

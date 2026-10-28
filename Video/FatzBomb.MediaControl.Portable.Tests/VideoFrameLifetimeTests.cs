@@ -99,7 +99,7 @@ public sealed class VideoFrameLifetimeTests
 
     private static MediaPresentationCoordinator Create(CapturingBackend backend, TestMediaEngine engine) => new(
         backend,
-        new NullRasterizer(),
+        NullSubtitleRasterizer.Instance,
         engine,
         MediaPlayerConfiguration.Auto,
         new SystemPrecisionWaiterFactory());
@@ -167,10 +167,4 @@ public sealed class VideoFrameLifetimeTests
         public void Dispose() => IsInitialized = false;
     }
 
-    private sealed class NullRasterizer : ISubtitleRasterizer
-    {
-        public SubtitleRasterResult Render(string text, int width, int height) => default;
-        public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height) => default;
-        public void Dispose() { }
-    }
 }

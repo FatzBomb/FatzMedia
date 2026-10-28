@@ -1,5 +1,6 @@
 #pragma warning disable IDE0130
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 
 namespace FatzBomb.MediaControl;
 
@@ -98,6 +99,23 @@ public sealed class MediaPresentationFrameSinkHandle : IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Resolves the sink of a valid <see cref="MediaNativeSurfaceTypeIds.ManagedBgraFrameSink"/>
+    /// surface whose owning handle has not been disposed.
+    /// </summary>
+    /// <param name="surface">The presentation surface to resolve.</param>
+    /// <param name="sink">The resolved sink if successful; otherwise <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if the surface carried a live frame-sink token.</returns>
+    public static bool TryResolve(MediaPresentationSurfaceDescriptor? surface, [NotNullWhen(true)] out IMediaPresentationFrameSink? sink)
+    {
+        sink = null;
+        return surface is { IsValid: true }
+            && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
+            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
+            && TryResolve(handle, out sink)
+            && sink != null;
     }
 
     /// <summary>

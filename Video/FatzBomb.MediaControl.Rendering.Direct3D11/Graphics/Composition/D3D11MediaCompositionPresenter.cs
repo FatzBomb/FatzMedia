@@ -854,13 +854,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.Flush();
     }
 
-    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => frame.ClearMode switch
-    {
-        MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
-        MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
-        MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
-        _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
-    };
+    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => ToColor4(frame.ResolveClearArgb());
 
     private void MarkRenderedLayers(MediaCompositionFrame frame)
     {

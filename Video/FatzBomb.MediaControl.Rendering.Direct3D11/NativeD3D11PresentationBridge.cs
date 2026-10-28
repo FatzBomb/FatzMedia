@@ -334,7 +334,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return false;
 
         // Offscreen targets (any role) have no swap chain to hold back during a live resize.
-        if (TryGetManagedFrameSink(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
             return true;
 
         if (!TryGetWin32Hwnd(surface, out _))
@@ -356,7 +356,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
     {
         var isPrimary = surface.Role == MediaPresentationSurfaceRole.Primary;
-        if (TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
         {
             attached = isPrimary
                 ? CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight)
@@ -384,24 +384,6 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.Win32Hwnd
             && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.Window, out hwnd);
-    }
-
-    private static bool TryGetManagedFrameSink(
-        MediaPresentationSurfaceDescriptor? surface,
-        out IMediaPresentationFrameSink sink)
-    {
-        sink = null!;
-        if (surface is not { IsValid: true }
-            || surface.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
-            || !surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
-            || !MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? resolved)
-            || resolved == null)
-        {
-            return false;
-        }
-
-        sink = resolved;
-        return true;
     }
 
     public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)

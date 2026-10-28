@@ -575,7 +575,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
             return SetSharedSurface(surface, consumer!, requireExisting);
 
-        if (!TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink? sink))
+        if (!MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
             return false;
 
         lock (_renderGate)
@@ -976,15 +976,5 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         public VulkanExportedImageSet Images { get; } = images;
         public MediaSharedGpuImageSet Set { get; } = set;
         public MediaSharedGpuImageRing Ring { get; } = ring;
-    }
-
-    private static bool TryGetManagedFrameSink(MediaPresentationSurfaceDescriptor? surface, out IMediaPresentationFrameSink? sink)
-    {
-        sink = null;
-        return surface is { IsValid: true }
-            && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
-            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
-            && MediaPresentationFrameSinkHandle.TryResolve(handle, out sink)
-            && sink != null;
     }
 }
