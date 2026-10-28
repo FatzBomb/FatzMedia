@@ -234,6 +234,27 @@ internal sealed class D3D11RendererPresentationServices
         double framesPerSecond,
         VideoColorSpace colorSpace,
         HdrToneMapRequest? toneMap,
+        Func<int, int, bool> notifyPresented)
+    {
+        var presented = PresentHardwareFrameCore(isDisposed, sourceTexturePointer, sourceArraySlice, width, height, framesPerSecond, colorSpace, toneMap, notifyPresented);
+        // Quoted by Core when a native frame was not presented (ENG-039).
+        LastPresentFailureReason = presented
+            ? null
+            : isDisposed || !_deviceResources.HasDevice
+                ? "renderer disposed or D3D11 device unavailable"
+                : FramePresenter.LastFailureReason ?? "hardware frame was not presented";
+        return presented;
+    }
+
+    private bool PresentHardwareFrameCore(
+        bool isDisposed,
+        IntPtr sourceTexturePointer,
+        int sourceArraySlice,
+        int width,
+        int height,
+        double framesPerSecond,
+        VideoColorSpace colorSpace,
+        HdrToneMapRequest? toneMap,
         Func<int, int, bool> notifyPresented) => FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
@@ -258,8 +279,8 @@ internal sealed class D3D11RendererPresentationServices
 
     public void ClearCompositionBackgroundFrame() => MediaCompositor.ClearBackgroundFrame();
 
-    /// <summary>Why the last visible composition present returned false, or null.</summary>
-    public string? LastCompositionFailureReason { get; private set; }
+    /// <summary>Why the last composition or hardware-frame present returned false, or null.</summary>
+    public string? LastPresentFailureReason { get; private set; }
 
     /// <param name="isDisposed">Read live: the owner can be disposed while a present is in flight.</param>
     public bool PresentMediaCompositionVisible(
@@ -267,10 +288,10 @@ internal sealed class D3D11RendererPresentationServices
         MediaCompositionFrame frame,
         Action<int, int> framePresented)
     {
-        LastCompositionFailureReason = null;
+        LastPresentFailureReason = null;
         if (isDisposed() || !_deviceResources.HasDevice)
         {
-            LastCompositionFailureReason = "renderer disposed or D3D11 device unavailable";
+            LastPresentFailureReason = "renderer disposed or D3D11 device unavailable";
             if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: renderer disposed or D3D11 device unavailable.");
             return false;
         }
@@ -333,7 +354,7 @@ internal sealed class D3D11RendererPresentationServices
             reason: "media composition presentation");
         if (targets.Count == 0)
         {
-            LastCompositionFailureReason = "no active D3D11 presentation target";
+            LastPresentFailureReason = "no active D3D11 presentation target";
             if (_configuration.EnableLogging) Debug.WriteLine("[COMPOSITION] Visible present skipped: no active D3D11 presentation target.");
             return false;
         }
@@ -347,7 +368,7 @@ internal sealed class D3D11RendererPresentationServices
                 hdrOutput,
                 out IReadOnlyList<D3D11PresentationTargetSnapshot> presentedTargets))
         {
-            LastCompositionFailureReason = MediaCompositor.LastFailureReason ?? "media compositor draw failed";
+            LastPresentFailureReason = MediaCompositor.LastFailureReason ?? "media compositor draw failed";
             if (_configuration.EnableLogging) Debug.WriteLine($"[COMPOSITION] Visible present failed in media compositor reason={frame.Reason}.");
             return false;
         }
@@ -359,7 +380,7 @@ internal sealed class D3D11RendererPresentationServices
             isDisposed,
             target => framePresented(target.Width, target.Height));
         if (!presented)
-            LastCompositionFailureReason = "swap chain present was not completed";
+            LastPresentFailureReason = "swap chain present was not completed";
 
         return presented;
     }

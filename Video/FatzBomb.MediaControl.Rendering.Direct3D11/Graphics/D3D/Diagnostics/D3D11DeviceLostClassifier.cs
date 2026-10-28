@@ -87,6 +87,27 @@ internal static class D3D11DeviceLostClassifier
         return $"{ClassificationName(result)}: {result}{reasonSuffix}";
     }
 
+    /// <summary>
+    /// A failure message naming the step that threw (ENG-039), with the removal reason when
+    /// <paramref name="device"/> is gone: after a GPU reset a call can fail with an unrelated code
+    /// (the reset smoke saw <c>E_INVALIDARG</c> from the video processor), so the device is asked.
+    /// </summary>
+    public static string DescribeStepFailure(string step, Exception exception, ID3D11Device? device)
+    {
+        var message = $"{step} failed: {exception.GetType().Name}: {exception.Message}";
+        Result removed = default;
+        try
+        {
+            removed = device?.DeviceRemovedReason ?? default;
+        }
+        catch (SharpGenException)
+        {
+            // The device may already be released; report the step alone.
+        }
+
+        return removed.Failure ? $"{message} ({Describe(removed, swapChain: null)})" : message;
+    }
+
     private static string ClassificationName(Result result) =>
         result == ResultCode.DeviceRemoved
             ? "Device removed"
