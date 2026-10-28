@@ -202,6 +202,14 @@ named `window` handle.
   re-attaches every surface, so shared textures are re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
   for example, decodes with D3D11VA for Direct3D11 on a GPU, and in software on WARP and for
   the software renderer, which takes no hardware frames.
+- A renderer that refuses a hardware frame at run time (`EnsureNativeFrameDevice` false: a
+  failed adoption, a device without a video processor, a frame from another device) while a
+  surface is attached and no device recovery runs asks the decoder to continue in software
+  through the frame's `NativeVideoFrameResource.DecodeFallback` token (ENG-037). `VideoPipeline`
+  switches on its decoder recovery worker, never on the presentation path, at the current
+  position and transport state (a paused first frame is shown instead of black), and keeps
+  that media in software: no hardware re-probe until the next open. A decoder whose device is
+  lost is left to the device-loss recovery below.
 - A renderer may instead decode on its own device (Stage 045A slice 2):
   - The renderer backend implements the optional `IMediaRendererVideoDecodeDevice`. The
     coordinator attaches it to the engine through the internal `IRendererVideoDecodeAttachment`
@@ -320,7 +328,7 @@ pipeline the primary surface's rate through the internal `IRendererRefreshRateSi
 The Direct3D11 renderer and Core video pipeline detect and recover their independently owned D3D11 devices (Stages 005A/005B/005C); adapters are never involved.
 
 - The Direct3D11 backend classifies presentation-device removal/reset conditions. Windows hardware-decode services independently query the FFmpeg-owned D3D11 device.
-- Two independent recovery orchestrators match the two independently owned devices: Core `MediaPresentationCoordinator` drives backend teardown/rebuild through `IMediaRendererBackend`; Core `VideoPipeline` performs runtime software-decode fallback with background hardware re-probe/restore while audio and CDG keep running.
+- Two independent recovery orchestrators match the two independently owned devices: Core `MediaPresentationCoordinator` drives backend teardown/rebuild through `IMediaRendererBackend`; Core `VideoPipeline` performs runtime software-decode fallback with background hardware re-probe/restore while audio and CDG keep running (no re-probe for network sources or media whose hardware frames the renderer refused). The device-loss swap and the startup software fallback share `VideoPipeline.TryReplaceDecoder`.
 - Diagnostic categories follow a fixed naming convention: `"D3D11.DeviceLost"` (presentation) and `"Decoder.DeviceLost"` (decode), raised at Error on loss and Info on successful recovery, with a `.RecoveryFailed` suffix for the terminal diagnostic after bounded retries are exhausted.
 - Both recovery paths reuse existing rebuild machinery (the proven surface-recreate and seek stop-reposition-restart sequences) — no new swap-chain, compositor, or renderer abstraction was introduced.
 

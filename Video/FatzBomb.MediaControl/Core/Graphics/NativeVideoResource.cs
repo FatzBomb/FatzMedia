@@ -50,4 +50,11 @@ public sealed record NativeVideoFrameResource(
     /// frames and when tone mapping is off.
     /// </summary>
     public HdrToneMapRequest? HdrToneMap { get; init; }
+
+    /// <summary>
+    /// Set by the producer (ENG-037): a renderer that cannot take the decoder's frames, for a
+    /// reason other than a lost device, calls <see cref="VideoDecodeFallback.RequestSoftwareDecoding"/>
+    /// and the video continues in software. Null when the producer cannot switch.
+    /// </summary>
+    public VideoDecodeFallback? DecodeFallback { get; init; }
 }

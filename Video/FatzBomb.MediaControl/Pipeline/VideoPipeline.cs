@@ -47,6 +47,10 @@ internal sealed partial class VideoPipeline(
     // Decode thread only: when the decode loop next asks whether the hardware device was lost.
     private long _nextDeviceLossProbe;
     private volatile bool _hardwareDecodeDisabledByDeviceLoss;
+    // ENG-037: the renderer could not take this media's hardware frames, so it stays in software
+    // (no hardware re-probe) until the next open.
+    private volatile bool _hardwareDecodeRefusedByRenderer;
+    private SoftwareDecodeRequest? _pendingSoftwareDecodeRequest;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
     private SharedDemuxer? _sharedDemuxer;
@@ -269,6 +273,7 @@ internal sealed partial class VideoPipeline(
         }
 
         _videoDecoder = VideoDecoder.FromConfiguration(_configuration, _sharedDemuxer, _hardwareAccelerationServices);
+        _videoDecoder.SoftwareDecodingRequested = OnSoftwareDecodingRequested;
         if (!_videoDecoder.Open(path))
         {
             Close();
@@ -930,12 +935,14 @@ internal sealed partial class VideoPipeline(
         // exclusivity for the teardown itself. Cancel any in-flight device-lost recovery the same way
         // (Stop only signals cancellation; so it cannot deadlock on the gate).
         StopSeekWorker();
+        Volatile.Write(ref _pendingSoftwareDecodeRequest, null);
         _decoderRecoveryScheduler.Stop();
         // Deterministic join before Dispose: the recovery worker may be in the middle of
         // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
         // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
         _decoderRecoveryScheduler.StopAndWait();
         _hardwareDecodeDisabledByDeviceLoss = false;
+        _hardwareDecodeRefusedByRenderer = false;
         _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
 
         lock (_transportGate)
@@ -1451,8 +1458,101 @@ internal sealed partial class VideoPipeline(
         finally
         {
             _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            TryStartSoftwareDecodeFallback();
         }
     }
+
+    private sealed record SoftwareDecodeRequest(VideoDecoder Decoder, string Reason);
+
+    /// <summary>
+    /// ENG-037: the renderer cannot take the live decoder's hardware frames (its fallback token).
+    /// Called on the presentation thread that refused the frame, so it only queues the switch on
+    /// the decoder recovery worker; a recovery already running starts it when it ends.
+    /// </summary>
+    private void OnSoftwareDecodingRequested(VideoDecoder decoder, string reason)
+    {
+        if (!_isOpen)
+            return;
+
+        Volatile.Write(ref _pendingSoftwareDecodeRequest, new SoftwareDecodeRequest(decoder, reason));
+        TryStartSoftwareDecodeFallback();
+    }
+
+    private void TryStartSoftwareDecodeFallback()
+    {
+        if (Volatile.Read(ref _pendingSoftwareDecodeRequest) is null
+            || Interlocked.CompareExchange(ref _decoderRecoveryInProgress, 1, 0) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _pendingSoftwareDecodeRequest, null) is not { } request)
+        {
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            return;
+        }
+
+        try
+        {
+            _decoderRecoveryScheduler.Start(cancellationToken => RunSoftwareDecodeFallback(request, cancellationToken));
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed meanwhile: nothing left to switch.
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+        }
+    }
+
+    /// <summary>
+    /// On the decoder recovery worker: reopens the video in software at the current position and
+    /// keeps it there for this media. A lost device is left to the device-loss recovery.
+    /// </summary>
+    private void RunSoftwareDecodeFallback(SoftwareDecodeRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var path = _currentVideoPath;
+            VideoDecoder? decoder = _videoDecoder;
+            var deviceLost = decoder?.HardwareDevice is { } device && _hardwareAccelerationServices.IsDeviceLost(device);
+            if (cancellationToken.IsCancellationRequested
+                || string.IsNullOrWhiteSpace(path)
+                || !ShouldFallBackForRenderer(ReferenceEquals(decoder, request.Decoder), _isOpen, deviceLost))
+            {
+                return;
+            }
+
+            _hardwareDecodeRefusedByRenderer = true;
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "VideoPipeline",
+                $"Decoding {Path.GetFileName(path)} in software until it is opened again: {request.Reason}.",
+                sourcePath: path);
+            if (!FallBackToSoftwareDecode(path, cancellationToken) && !cancellationToken.IsCancellationRequested)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
+                RaiseState(VideoEngineState.Error);
+            }
+        }
+        finally
+        {
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            TryStartSoftwareDecodeFallback();
+        }
+    }
+
+    /// <summary>
+    /// Whether a renderer's request for software decoding is acted on: only for the live decoder
+    /// of open media, and not when its device is lost (the device-loss recovery handles that).
+    /// </summary>
+    internal static bool ShouldFallBackForRenderer(bool isLiveDecoder, bool isOpen, bool deviceLost) =>
+        isLiveDecoder && isOpen && !deviceLost;
+
+    /// <summary>
+    /// Whether the device-loss recovery re-probes for hardware: never for a network source (each
+    /// probe is a new connection), nor for media whose hardware frames the renderer refused.
+    /// </summary>
+    internal static bool ShouldReprobeHardware(bool isNetwork, bool refusedByRenderer) =>
+        !isNetwork && !refusedByRenderer;
 
     private bool FallBackToSoftwareDecode(string path, CancellationToken cancellationToken)
     {
@@ -1477,11 +1577,12 @@ internal sealed partial class VideoPipeline(
     private void ReprobeAndRestoreHardware(string path, CancellationToken cancellationToken)
     {
         // Each probe opens the source again: for a network source that is a new connection every
-        // few seconds. It stays on software decoding until the next open.
-        if (_sharedDemuxer is { IsNetwork: true })
+        // few seconds. It stays on software decoding until the next open, as does media whose
+        // hardware frames the renderer refused (ENG-037).
+        if (!ShouldReprobeHardware(_sharedDemuxer is { IsNetwork: true }, _hardwareDecodeRefusedByRenderer))
             return;
 
-        while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && _isOpen)
+        while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && !_hardwareDecodeRefusedByRenderer && _isOpen)
         {
             if (cancellationToken.WaitHandle.WaitOne(HardwareDecodeReprobeInterval))
                 return;
@@ -1619,6 +1720,7 @@ internal sealed partial class VideoPipeline(
             sharedDemuxer: _sharedDemuxer,
             hardwareAccelerationServices: _hardwareAccelerationServices,
             hdrToneMapping: _configuration.HdrToneMapping);
+        _videoDecoder.SoftwareDecodingRequested = OnSoftwareDecodingRequested;
 
         if (!_videoDecoder.Open(path))
         {

@@ -56,6 +56,8 @@ internal sealed unsafe class VideoDecoder(
     private byte[]? _toneMapScratch;
     private bool _toneMapReported;
     private HdrToneMapFallback _toneMapFallback = new();
+    // ENG-037: handed out on every hardware frame; a renderer that cannot take them requests software.
+    private VideoDecodeFallback? _decodeFallback;
     private bool _toneMapFallbackReported;
     private AVCodecContext_get_format? _getFormatCallback;
 
@@ -982,7 +984,8 @@ internal sealed unsafe class VideoDecoder(
         nativeResource = nativeResource with
         {
             ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE, toneMapped),
-            HdrToneMap = toneMapped ? GetToneMapRequest() : null
+            HdrToneMap = toneMapped ? GetToneMapRequest() : null,
+            DecodeFallback = GetDecodeFallback()
         };
 
         _frameQueue.Enqueue(new VideoFrameData
@@ -999,6 +1002,21 @@ internal sealed unsafe class VideoDecoder(
 
         RecordDecodeDiagnostics(0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         return true;
+    }
+
+    /// <summary>
+    /// Called when the renderer asked this decoder's hardware frames to be decoded in software
+    /// (ENG-037), on the presentation thread that asked: the owner switches decoders elsewhere.
+    /// Null when no owner can switch; the frames then carry no fallback token.
+    /// </summary>
+    internal Action<VideoDecoder, string>? SoftwareDecodingRequested { get; set; }
+
+    private VideoDecodeFallback? GetDecodeFallback()
+    {
+        if (SoftwareDecodingRequested is null)
+            return null;
+
+        return _decodeFallback ??= new VideoDecodeFallback(reason => SoftwareDecodingRequested?.Invoke(this, reason));
     }
 
     private void RecordDecodeDiagnostics(double scaleMs, double totalMs)
@@ -1372,6 +1390,7 @@ internal sealed unsafe class VideoDecoder(
         _toneMapReported = false;
         _toneMapFallback = new HdrToneMapFallback();
         _toneMapFallbackReported = false;
+        _decodeFallback = null;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;

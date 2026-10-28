@@ -527,7 +527,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             ensured = _rendererBackend.EnsureNativeFrameDevice(frame, out deviceAdopted);
 
         if (!ensured)
+        {
+            RequestSoftwareDecodeFallback(frame);
             return false;
+        }
 
         if (deviceAdopted)
         {
@@ -538,6 +541,24 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// ENG-037: the renderer cannot take this decoder's hardware frames, so a paused first frame
+    /// would stay black. Unless the device is lost (recovery reopens the video) or nothing is
+    /// shown, the decoder is asked to continue in software; it switches on its own worker.
+    /// </summary>
+    private void RequestSoftwareDecodeFallback(VideoFrameEventArgs frame)
+    {
+        if (_disposed
+            || IsRecoveringDevice
+            || !HasAttachedSurfaces
+            || frame.NativeResource?.DecodeFallback is not { IsRequested: false } fallback)
+        {
+            return;
+        }
+
+        fallback.RequestSoftwareDecoding($"the {_rendererBackend.BackendName} renderer cannot draw frames from the decoder's device");
     }
 
     private void RecreateAttachedSurfacesNoLock()

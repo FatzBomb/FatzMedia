@@ -715,6 +715,76 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void RefusedHardwareFrame_AsksTheDecoderForSoftwareOnce()
+    {
+        // ENG-037: a renderer that cannot take the decoder's device (a failed adoption, WARP)
+        // dropped every frame, so a paused first frame stayed black.
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = false };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        var reasons = new List<string>();
+        var fallback = new VideoDecodeFallback(reasons.Add);
+
+        video.RaiseFrame(HardwareFrame(fallback));
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.True(fallback.IsRequested);
+        string reason = Assert.Single(reasons);
+        Assert.Contains("Test renderer", reason, StringComparison.Ordinal);
+        Assert.Equal(0, backend.NativeFramePresents);
+    }
+
+    [Fact]
+    public void AcceptedHardwareFrame_KeepsHardwareDecoding()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
+    public void RefusedHardwareFrame_WithoutASurface_KeepsHardwareDecoding()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = false };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
+    public void RefusedHardwareFrame_WhileRecoveringTheDevice_KeepsHardwareDecoding()
+    {
+        // A lost device is not a refusal: recovery reopens the video on the new device.
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true, InitializeSucceeds = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video }, time);
+        coordinator.RecoveryBackoff = [];
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        backend.InitializeSucceeds = false;
+        backend.DeviceLost = true;
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(() => backend.CleanupCount == 1 && !coordinator.IsRecoveryRunning, TimeSpan.FromSeconds(5)));
+        backend.AcceptsNativeFrames = false;
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
     public void DeviceLost_DuringDispose_DoesNotThrow()
     {
         var time = new ManualTimeProvider();
@@ -912,6 +982,21 @@ public sealed class MediaPresentationCoordinatorTests
             ResourceHandle: 303,
             SubresourceIndex: 0),
         Targets = targets,
+    };
+
+    private static VideoFrameEventArgs HardwareFrame(VideoDecodeFallback fallback) => new()
+    {
+        Width = 1920,
+        Height = 1080,
+        Stride = 0,
+        PtsSeconds = 0,
+        NativeResource = new NativeVideoFrameResource(
+            new NativeVideoDeviceResource(MediaGraphicsBackendId.Direct3D11, DeviceHandle: 101),
+            ResourceHandle: 303,
+            SubresourceIndex: 0)
+        {
+            DecodeFallback = fallback,
+        },
     };
 
     private static VideoFrameEventArgs HardwareFrame() => new()
