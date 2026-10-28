@@ -17,7 +17,10 @@ UI frameworks should integrate through adapter projects, for example:
 Logic every adapter would otherwise copy lives here (Stage 046A): `MediaSurfaceContentTracker`
 (surface auto-hide and the Audio-mode clear), `MediaSurfacePresentationPath`, and the karaoke and
 background controls' rules and player helper (`LightweightPlayerPolicy`,
-`LightweightPlayerController`: a background plays in `MediaPlayerMode.Background`, without audio).
+`LightweightPlayerController`: a background plays in `MediaPlayerMode.Background`, without audio),
+plus since ENG-039 the surfaces' path bookkeeping (`MediaSurfaceBookkeeping`), the frame sinks'
+latest-frame hand-off (`LatestFrameMailbox`) and the karaoke fit / window centring math
+(`KaraokeLayout`, `PresentationPlacement`).
 
 ## Current visual pipeline rule
 

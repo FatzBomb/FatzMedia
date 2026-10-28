@@ -539,6 +539,12 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 - `MediaSurfacePresentationPath` (`None`, `FrameSink`, `SharedGpuImage`, `NativeWindow`; moved
   from the Avalonia adapter) and `MediaSurfacePresentationPathText` (the shared path Info line
   and the Warning raised once per session when `AttachPresentationSurface` returns false).
+  ENG-039: `MediaSurfaceBookkeeping` keeps each surface's number, effective-id rule, current
+  path/reason and that once-per-session refusal; `LatestFrameMailbox` is the frame sinks'
+  latest-frame hand-off (latest wins, two circulating arrays, a spare over twice the need
+  dropped, size checked in `long`), each adapter marshalling the publish itself;
+  `KaraokeLayout.Fit` and `PresentationPlacement.Center` are the shared 4:3 fit and
+  second-screen centring.
 - Every `MediaSurface` has `Role`, `SurfaceId`, `EffectiveSurfaceId`, `IsSurfaceAttached`,
   `IsPrimarySurfaceAttached`, `AutoHide` (default true), `IsContentVisible`,
   `ContentVisibilityChanged`, `IsPresentationSuspended`, `PresentationPath`,
@@ -562,7 +568,8 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
   control binds its surface on the UI thread), numbers reloads so a newer source abandons an older
   load after every await, coalesces source changes (`TryQueueReload`), runs the load sequence
   (no sidecars, inspect, close a rejected item, start), and releases (`PlayerChanged`, then a
-  blocking dispose). A release or dispose abandons pending loads and creations; a player created
+  blocking dispose). `RunQueuedReloadAsync` runs a queued reload and turns a failure into the
+  control's Warning (ENG-039). A release or dispose abandons pending loads and creations; a player created
   for an abandoned request is disposed off the UI thread and never adopted. Unlike engine code its
   awaits resume on the caller's context on purpose; it uses a `System.Threading.Lock`.
 - `KaraokeSurface` and `BackgroundSurface` in the WPF (reworked; same API plus
