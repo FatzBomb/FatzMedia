@@ -20,14 +20,17 @@ public sealed class D3D11CdgParityTests
     [InlineData(0)]
     public void CdgOverlay_MatchesTheSoftwareRenderer(int backgroundColorIndex)
     {
-        // Pixel 0 uses palette entry 1 (red); every other pixel entry 0 (black).
+        // Pixel 0 uses palette entry 1 (red); every other pixel entry 0 (black). The renderers
+        // need the full palette.
         var indices = new byte[CdgConstants.TotalPixels];
         indices[0] = 1;
+        var palette = Enumerable.Repeat(unchecked((int)0xFF000000), CdgConstants.ColorCount).ToArray();
+        palette[1] = unchecked((int)0xFFFF0000);
         var snapshot = new CdgRenderSnapshot(
             1,
             1,
             indices,
-            new[] { unchecked((int)0xFF000000), unchecked((int)0xFFFF0000) },
+            palette,
             0,
             backgroundColorIndex,
             []);

@@ -282,10 +282,7 @@ public sealed partial class MediaSurface : Grid
         surface._contentTracker.Session = e.NewValue as IMediaControlSession;
         if (e.NewValue is IMediaControlSession session)
         {
-            // Session events only while loaded (ENG-039 W2): OnLoaded attaches them and OnUnloaded
-            // detaches them, so a surface set up before it is shown holds no handlers on the player.
-            if (surface.IsLoaded)
-                surface.AttachSessionEvents(session);
+            surface.AttachSessionEvents(session);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
                 session.VideoDisplayMode = surface.VideoDisplayMode;
         }
@@ -397,6 +394,8 @@ public sealed partial class MediaSurface : Grid
         AttachOwnerWindowHook();
         ConfigurePresentationHost();
         AttachSessionEvents(Player);
+        // The media may have closed while unloaded (no session events then): apply a deferred mode.
+        CoerceValue(PresentationModeProperty);
         AttachOrResizePrimarySurface();
         UpdateNativeSurfaceVisibility();
         UpdateOverlayWindow();
