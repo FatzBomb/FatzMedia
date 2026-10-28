@@ -62,7 +62,7 @@ package (`net10.0`) that references Core only and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
-no-op `ISubtitleRasterizer` (`NoOpSubtitleRasterizer`), and
+no-op `ISubtitleRasterizer` (Core's `NullSubtitleRasterizer.Instance`, also used by Vulkan), and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
 **Output contract** — `SoftwareCompositionRenderer.Render(MediaCompositionFrame, width,
