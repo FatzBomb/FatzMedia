@@ -949,6 +949,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11CompositionLayerState overlayLayer,
         bool scRgbTarget = false)
     {
+        // Before a memory preset sets the background colour the whole CD+G plane is transparent
+        // (the shader returns transparent too): nothing to draw, as in the software and Vulkan
+        // renderers (ENG-039 G7).
+        if (snapshot.BackgroundColorIndex < 0)
+            return true;
+
         if (!overlayLayer.HasCdgResources || overlayLayer.CdgIndexShaderResourceView == null || overlayLayer.CdgPaletteShaderResourceView == null || _pixelShader == null)
             return false;
 
