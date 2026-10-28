@@ -152,6 +152,45 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         Assert.All(Enumerable.Range(0, 32 * 32), pixel => Assert.Equal(0, cleared[(pixel * 4) + 1]));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NewFramesOfOnePool_ReusePlaneViews_AndAllocateNothing(bool imagePerPlane)
+    {
+        // ENG-039 P5-10: FFmpeg's pool hands the same images out again; their plane views are
+        // created once, and a conversion allocates no holder objects (376 bytes and two
+        // vkCreateImageView per decoded frame before).
+        using VideoFrameFixture? fixture = VideoFrameFixture.Create(AVPixelFormat.AV_PIX_FMT_NV12, 64, 48, imagePerPlane);
+        if (fixture is null)
+            return;
+
+        fixture.Fill(static (x, y) => (40 + x, 128, 128));
+        VideoColorSpace colorSpace = new(VideoColorMatrix.Bt709, VideoColorRange.Limited);
+        var plans = new VulkanFramePlan[40];
+        for (var i = 0; i < plans.Length; i++)
+            plans[i] = fixture.Plan(colorSpace, 64, 48, revision: i + 1);
+
+        byte[] first = fixture.Compositor.Render(plans[0]).ToArray();
+        for (var i = 1; i < 10; i++)
+            _ = fixture.Compositor.Render(plans[i]);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 10; i < plans.Length; i++)
+            _ = fixture.Compositor.Render(plans[i]);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(plans.Length, fixture.Compositor.VideoConversionCount);
+        Assert.Equal(2, fixture.Compositor.FrameViewCreateCount);
+        Assert.Equal(2, fixture.Compositor.PlaneViewCount);
+        Assert.True(allocated < 1024, $"{allocated} bytes for {plans.Length - 10} conversions");
+        Assert.Equal(first, fixture.Compositor.Render(plans[^1] with { Background = plans[^1].Background!.Value with { Revision = 1000 } }).ToArray());
+
+        // Core cleared the background (the decoder may go): the views and the pool's reference go too.
+        fixture.Compositor.ClearVideoLayer();
+        Assert.Equal(0, fixture.Compositor.PlaneViewCount);
+        Assert.Equal(first, fixture.Compositor.Render(plans[0]).ToArray());
+        Assert.Equal(4, fixture.Compositor.FrameViewCreateCount);
+    }
+
     [Fact]
     public void P010SdrFrame_ConvertsLikeSwscale()
     {
@@ -380,6 +419,15 @@ public sealed unsafe class VulkanVideoDecodeTests(ITestOutputHelper output)
         {
             var frame = (AVVkFrame*)_hardware->data[0];
             return (frame->SemaphoreValue[0], frame->Layout[0]);
+        }
+
+        public VulkanFramePlan Plan(VideoColorSpace colorSpace, int width, int height, long revision)
+        {
+            NativeVideoDeviceResource device = VulkanOffscreenCompositor.CreateDeviceResource((nint)_device)!;
+            NativeVideoFrameResource resource = VulkanOffscreenCompositor.CreateFrameResource(device, (nint)_hardware)! with { ColorSpace = colorSpace };
+            var blit = new VulkanBlit(new PixelRect(0, 0, width, height), new PixelRect(0, 0, width, height));
+            var layer = new VulkanBackgroundLayer(ReadOnlyMemory<byte>.Empty, width, height, width * 4, blit, revision, Native: resource);
+            return new VulkanFramePlan(width, height, (0, 0, 0, 255), layer, null, null);
         }
 
         public byte[] Render(VideoColorSpace colorSpace, HdrToneMapRequest? toneMap, int width, int height, long revision)
