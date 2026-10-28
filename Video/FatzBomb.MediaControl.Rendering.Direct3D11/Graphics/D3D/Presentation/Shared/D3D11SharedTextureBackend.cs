@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
@@ -48,6 +50,11 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
     // Failures that can repeat every frame: one report per episode, until a frame goes through.
     private readonly RendererDiagnosticLatch _presentFailure = new();
     private readonly RendererDiagnosticLatch _reexport = new();
+    // ENG-039 G6: the consumer and selection the last Info "exported" line named. A resize re-exports
+    // for the same consumer at every step, which goes to the debug output only. An identity hash,
+    // not a reference, so a detached consumer is not kept alive by this backend.
+    private int _reportedConsumerId;
+    private MediaSharedGpuImageSelection? _reportedSelection;
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.SharedTexture;
     public bool IsActive => _targetTexture != null && _set != null && _consumer != null;
@@ -71,6 +78,12 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), highPart);
         return bytes;
     }
+
+    /// <summary>
+    /// Whether this backend is serving <paramref name="consumer"/> now: a new size for it is a
+    /// resize, whose consumer keeps showing its last frame until the next one (ENG-039 G4).
+    /// </summary>
+    public bool Serves(IMediaSharedGpuImageConsumer consumer) => IsActive && ReferenceEquals(_consumer, consumer);
 
     public bool Matches(IMediaSharedGpuImageConsumer consumer, int width, int height) =>
         IsActive && !_recreate && ReferenceEquals(_consumer, consumer) && Width == width && Height == height;
@@ -120,6 +133,9 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         }
 
         _deviceResources = deviceResources;
+        // The "frame dropped" line is once per consumer: a resize's re-export keeps it latched.
+        if (RuntimeHelpers.GetHashCode(consumer) != _reportedConsumerId)
+            _dropReported = false;
         _consumer = consumer;
         _selection = selection;
         Width = width;
@@ -345,8 +361,9 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
         var ring = new MediaSharedGpuImageRing(BufferCount);
         ring.Reset(generation);
         SharedTexture[] textures = [.. _textures.Select(static texture => texture!)];
+        foreach (SharedTexture texture in textures)
+            texture.MarkPublished();
         _ring = ring;
-        _dropReported = false;
         _set = new MediaSharedGpuImageSet(
             generation,
             _selection,
@@ -361,7 +378,18 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
                 foreach (SharedTexture texture in textures)
                     texture.CloseHandle();
             });
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Shared textures exported: {_set}");
+        var consumerId = RuntimeHelpers.GetHashCode(_consumer!);
+        if (consumerId != _reportedConsumerId || _reportedSelection != _selection)
+        {
+            _reportedConsumerId = consumerId;
+            _reportedSelection = _selection;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "D3D11", $"Shared textures exported: {_set}");
+        }
+        else
+        {
+            Debug.WriteLine($"[D3D11SharedTexture] Re-exported: {_set}");
+        }
+
         _consumer!.OnImagesCreated(_set);
     }
 
@@ -407,6 +435,7 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
     private sealed class SharedTexture(ID3D11Texture2D texture, IDXGIKeyedMutex mutex, nint handle, bool isNtHandle) : IDisposable
     {
         private nint _ntHandle = isNtHandle ? handle : 0;
+        private bool _published;
 
         public ID3D11Texture2D Texture { get; } = texture;
         public IDXGIKeyedMutex Mutex { get; } = mutex;
@@ -420,8 +449,16 @@ internal sealed partial class D3D11SharedTextureBackend : ID3D11PresentationBack
                 _ = D3D11SharedTextureBackend.CloseHandle(ntHandle);
         }
 
+        /// <summary>The handle went to a set, whose release callback closes it once both sides are done.</summary>
+        public void MarkPublished() => _published = true;
+
         public void Dispose()
         {
+            // A texture never published (the next one of its pair failed to create) has no set
+            // to close its NT handle, which would keep the GPU allocation alive (ENG-039 G5).
+            if (!_published)
+                CloseHandle();
+
             Mutex.Dispose();
             Texture.Dispose();
         }

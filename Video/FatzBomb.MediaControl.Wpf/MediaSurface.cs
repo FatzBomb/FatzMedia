@@ -66,6 +66,9 @@ public sealed partial class MediaSurface : Grid
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        // A collapsed surface (or a collapsed parent) stays loaded: the overlay window, a separate
+        // top-level window, must follow visibility too (ENG-039 W1).
+        IsVisibleChanged += OnIsVisibleChanged;
         SizeChanged += OnSizeChanged;
         _surfaceHost.NativeHandleChanged += OnNativeSurfaceChanged;
         _surfaceHost.NativeBoundsChanged += OnNativeSurfaceChanged;
@@ -279,7 +282,10 @@ public sealed partial class MediaSurface : Grid
         surface._contentTracker.Session = e.NewValue as IMediaControlSession;
         if (e.NewValue is IMediaControlSession session)
         {
-            surface.AttachSessionEvents(session);
+            // Session events only while loaded (ENG-039 W2): OnLoaded attaches them and OnUnloaded
+            // detaches them, so a surface set up before it is shown holds no handlers on the player.
+            if (surface.IsLoaded)
+                surface.AttachSessionEvents(session);
             if (surface.Role == MediaPresentationSurfaceRole.Primary)
                 session.VideoDisplayMode = surface.VideoDisplayMode;
         }
@@ -406,6 +412,8 @@ public sealed partial class MediaSurface : Grid
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateOverlayWindow();
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
@@ -729,7 +737,7 @@ public sealed partial class MediaSurface : Grid
 
     private void UpdateOverlayWindow()
     {
-        if (!IsLoaded || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
+        if (!IsLoaded || !IsVisible || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
         {
             CloseOverlayWindow();
             return;

@@ -42,6 +42,12 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
     private ID3D11Multithread? _multithreadProtection;
 
+    // ENG-039: a reference of its own to the current device for ProbeDeviceRemoved, which runs on
+    // Core's health timer without the presentation lock. Swapped and released under _probeGate
+    // only, so a probe never reads a device the presentation thread is disposing.
+    private readonly Lock _probeGate = new();
+    private ID3D11Device? _probeDevice;
+
     public bool HasDevice => Device != null && Context != null;
     public bool HasVideoProcessorSupport => VideoDevice != null && VideoContext != null;
 
@@ -61,6 +67,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
             Context = created.Context;
             InitializeVideoInterfaces(configuration);
             NativeDevicePointer = Device.NativePointer;
+            SetProbeDevice(NativeDevicePointer);
 
             // Stage 036A: name the device every time one is created, so a log always shows whether
             // video ran on the GPU or on WARP, and why.
@@ -239,6 +246,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
             InitializeVideoInterfaces(configuration);
             NativeDevicePointer = devicePointer;
+            SetProbeDevice(devicePointer);
             if (_isSoftwareRasterizer)
             {
                 DiagnosticRouter.Raise(
@@ -249,7 +257,9 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
             }
 
             if (configuration.EnableLogging) Debug.WriteLine("[VorticeD3D11] Attached to FFmpeg D3D11 hardware device for direct texture presentation");
-            return HasVideoProcessorSupport;
+            // Adopted (ENG-039 G5): a device without video support is refused before this
+            // (HasVideoSupport), so false here never leaves the renderer half-switched.
+            return true;
         }
         catch (Exception ex)
         {
@@ -277,6 +287,77 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Whether the device behind <paramref name="devicePointer"/> (a decoder's) and its context can
+    /// run the video processor that draws hardware frames (ENG-039 G5). Checked before adopting
+    /// it, so a device the renderer cannot use never tears down the current one. False for a null
+    /// pointer or when it cannot be asked.
+    /// </summary>
+    public static bool HasVideoSupport(IntPtr devicePointer, IntPtr deviceContextPointer)
+    {
+        if (devicePointer == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            using ID3D11Device device = AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer));
+            using ID3D11VideoDevice? videoDevice = device.QueryInterfaceOrNull<ID3D11VideoDevice>();
+            if (videoDevice == null)
+                return false;
+
+            using ID3D11DeviceContext context = deviceContextPointer != IntPtr.Zero
+                ? AddRefAndWrap(deviceContextPointer, static pointer => new ID3D11DeviceContext(pointer))
+                : device.ImmediateContext;
+            using ID3D11VideoContext? videoContext = context.QueryInterfaceOrNull<ID3D11VideoContext>();
+            return videoContext != null;
+        }
+        catch (SharpGen.Runtime.SharpGenException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the current device was removed (a GPU reset, a driver update), with the removal
+    /// reason (ENG-039). Thread-safe and cheap: it reads <c>GetDeviceRemovedReason</c> without
+    /// the presentation lock. False when there is no device.
+    /// </summary>
+    public bool ProbeDeviceRemoved(out SharpGen.Runtime.Result reason)
+    {
+        lock (_probeGate)
+        {
+            reason = default;
+            if (_probeDevice is not { } device)
+                return false;
+
+            try
+            {
+                reason = device.DeviceRemovedReason;
+            }
+            catch (SharpGen.Runtime.SharpGenException ex)
+            {
+                reason = ex.ResultCode;
+            }
+
+            // Any failure: the device is unusable whatever the code (removed, reset, hung).
+            return reason.Failure;
+        }
+    }
+
+    private void SetProbeDevice(IntPtr devicePointer)
+    {
+        ID3D11Device? previous;
+        lock (_probeGate)
+        {
+            previous = _probeDevice;
+            _probeDevice = devicePointer != IntPtr.Zero
+                ? AddRefAndWrap(devicePointer, static pointer => new ID3D11Device(pointer))
+                : null;
+        }
+
+        previous?.Dispose();
     }
 
     private void InitializeVideoInterfaces(MediaPlayerConfiguration configuration)
@@ -319,6 +400,7 @@ internal sealed class D3D11DeviceResources(Direct3D11DeviceSelection selection =
 
     public void Cleanup()
     {
+        SetProbeDevice(IntPtr.Zero);
         CleanupVideoInterfaces();
         Context?.Dispose();
         Context = null;

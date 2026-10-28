@@ -39,6 +39,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private readonly D3D11HdrToneMapPresenter _hdrToneMapPresenter = new();
     private bool _hdrPathReported;
 
+    /// <summary>
+    /// The step the last hardware-frame draw reached (ENG-039): when a call throws, the caller's
+    /// diagnostic names it (after a GPU reset the exception's own code can be unrelated).
+    /// </summary>
+    public string LastStep { get; private set; } = "video processor";
+
     /// <summary>What every presentation and composition texture holds: full-range sRGB-gamma BT.709 RGB.</summary>
     private const ColorSpaceType OutputColorSpace = ColorSpaceType.RgbFullG22NoneP709;
 
@@ -78,6 +84,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             return false;
         }
 
+        LastStep = "decoder texture";
         using ID3D11Texture2D sourceTexture = AddRefAndWrap(sourceTexturePointer, static pointer => new ID3D11Texture2D(pointer));
         return BlitTextureToPresentation(
             deviceResources,
@@ -135,6 +142,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         if (toneMap is { } request)
         {
+            LastStep = "HDR tone map";
             (Vortice.RawRect hdrSource, Vortice.RawRect hdrDestination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
             if (_hdrToneMapPresenter.TryPresent(
                     deviceResources,
@@ -173,11 +181,13 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                 return false;
         }
 
+        LastStep = "video processor creation";
         if (!EnsureVideoProcessor(deviceResources, presentationTexture, width, height, framesPerSecond, presentationWidth, presentationHeight))
         {
             return false;
         }
 
+        LastStep = "video processor input view";
         using ID3D11VideoProcessorInputView inputView = deviceResources.VideoDevice.CreateVideoProcessorInputView(
             sourceTexture,
             _videoProcessorEnumerator!,
@@ -192,6 +202,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                 }
             });
 
+        LastStep = "video processor setup";
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
         ApplyColorSpaces(deviceResources, sourceTexture, presentationTexture, resolvedColorSpace, toneMap?.Transfer);
@@ -200,6 +211,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
 
         _streams[0].InputSurface = inputView;
+        LastStep = "video processor blit";
 
         Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, _streams);
         if (result.Failure)
