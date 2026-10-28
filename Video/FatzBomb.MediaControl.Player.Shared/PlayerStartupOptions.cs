@@ -207,6 +207,20 @@ public sealed record PlayerStartupOptions
     public PlayerStartupOptions ForPlayer(int index) => index == 1 ? this : WithoutStartupMedia();
 
     /// <summary>
+    /// Gets these options for player <paramref name="index"/> (1-based) of a window build: in the
+    /// first build (<paramref name="atStartup"/>) only player 1 gets the startup media; players
+    /// rebuilt from the toolbar start empty.
+    /// </summary>
+    public PlayerStartupOptions ForBuild(int index, bool atStartup) => atStartup ? ForPlayer(index) : WithoutStartupMedia();
+
+    /// <summary>
+    /// Gets whether player <paramref name="index"/> (1-based) opens its second screen once it has
+    /// started: only player 1 of the window's first build (<paramref name="atStartup"/>), when
+    /// <c>--second-screen=</c> was given.
+    /// </summary>
+    public bool OpensSecondScreenAtStartup(int index, bool atStartup) => atStartup && index == 1 && SecondScreen is not null;
+
+    /// <summary>
     /// Gets how video is decoded: <paramref name="rendererDecoding"/> (what the chosen renderer can
     /// present), or software with <c>--decoding=software</c>, with a short reason.
     /// </summary>
