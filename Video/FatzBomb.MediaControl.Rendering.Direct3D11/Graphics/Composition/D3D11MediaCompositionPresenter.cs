@@ -84,8 +84,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private double _compositionMaxMs;
     private string? _lastCompositionReason;
 
-    public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasCdgResources == true;
-
     /// <summary>
     /// The HDR video (transfer and peak) the background layer last received from a hardware
     /// frame, or null: what a retained refresh of that background shows, for the HDR output

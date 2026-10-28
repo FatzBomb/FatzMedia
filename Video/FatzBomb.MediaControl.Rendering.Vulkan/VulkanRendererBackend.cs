@@ -651,12 +651,6 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
-    /// <summary>The producer side of what this device can export (for the consumer's negotiation).</summary>
-    internal static (MediaSharedGpuImageCapability[] Images, MediaSharedGpuSemaphoreHandleKind[] Semaphores) GetExportCapabilities(
-        bool canExportMemoryFd,
-        bool canExportSemaphoreFd) =>
-        GetExportCapabilities(new VulkanExportSupport(canExportMemoryFd, canExportSemaphoreFd, false, false, false));
-
     /// <summary>
     /// The producer side of every kind this device can share (Stage 045A slice 3 adds Windows):
     /// opaque descriptors or NT handles, with host synchronization (every frame completes on the GPU

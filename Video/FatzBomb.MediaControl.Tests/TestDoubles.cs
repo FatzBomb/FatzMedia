@@ -22,7 +22,6 @@ internal sealed class NullPresentationCoordinator : IMediaPresentationCoordinato
     public bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing) => false;
     public bool DetachPresentationSurface(string surfaceId) => false;
     public void RefreshCurrentPosition() { }
-    public void RunOnRenderThread(Action action) => action();
     public void StartRendering() { }
     public void StopRendering() { }
     public void RefreshAttachments() { }

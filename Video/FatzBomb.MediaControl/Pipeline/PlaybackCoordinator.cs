@@ -266,7 +266,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Audio?.Open(audioPath, ownState: false, analyzeSilence: false) != true || _session.Cdg == null)
             return false;
 
-        _session.Cdg.OpenPaired(cdgPath, _session.Audio.PlayHandle);
+        _session.Cdg.OpenPaired(cdgPath);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg, audioPath, DurationSeconds);
         return true;
     }
@@ -276,7 +276,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Audio?.Open(audioEntry, ownState: false) != true || _session.Cdg == null)
             return false;
 
-        _session.Cdg.OpenPaired(cdgEntry, _session.Audio.PlayHandle);
+        _session.Cdg.OpenPaired(cdgEntry);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg | MediaContent.Archive, audioEntry.Key, DurationSeconds);
         return true;
     }

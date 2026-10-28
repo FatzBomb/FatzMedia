@@ -359,12 +359,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             PresentCurrentComposition("current position refreshed");
     }
 
-    void IMediaRenderCoordinator.RunOnRenderThread(Action action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-        action();
-    }
-
     void IMediaRenderCoordinator.StartRendering() => StartRendering();
 
     void IMediaRenderCoordinator.StopRendering() => StopRendering();
@@ -377,8 +371,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             return;
 
         _isRenderingActive = true;
-        _attachedVideo?.SetHostRenderEventDrivenPresentation(false);
-
         SyncRenderLoop();
 
         if (HasCurrentVisualContent())
@@ -573,7 +565,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         {
             try
             {
-                _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
                 (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
                 (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(null);
@@ -589,7 +580,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             return;
 
         _attachedVideo = _mediaEngine.Video;
-        _attachedVideo.SetHostRenderEventDrivenPresentation(false);
         _attachedVideo.FrameReady += OnVideoFrameReady;
         (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(_primaryRefreshRateSource);
         (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(_presentationTimingSource);
@@ -1708,7 +1698,6 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         {
             try
             {
-                _attachedVideo.SetHostRenderEventDrivenPresentation(false);
                 _attachedVideo.FrameReady -= OnVideoFrameReady;
                 (_attachedVideo as IRendererRefreshRateSink)?.SetRendererRefreshRateSource(null);
                 (_attachedVideo as IPresentationTimingSink)?.SetPresentationTimingSource(null);

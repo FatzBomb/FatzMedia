@@ -93,8 +93,6 @@ internal sealed class D3D11RendererPresentationServices
     }
 
 
-    public bool IsReady => _deviceResources.HasDevice && Surfaces.IsReady;
-
     public bool IsDirectCompositionActive => Surfaces.IsDirectCompositionActive;
 
     public string PresentationBackend => Surfaces.PresentationBackend;
@@ -218,12 +216,6 @@ internal sealed class D3D11RendererPresentationServices
     public void QueueDirectCompositionResize(bool isDisposed, int width, int height) => Surfaces.QueueDirectCompositionResize(isDisposed, width, height);
 
     public void QueueNativeHwndResize(bool isDisposed, int width, int height) => Surfaces.QueueNativeHwndResize(isDisposed, width, height);
-
-    public bool TryGetActiveTargetSnapshot(bool applyPendingNativeResize, string? reason, out D3D11PresentationTargetSnapshot target) => Surfaces.TryGetActiveTargetSnapshot(applyPendingNativeResize, reason, out target);
-
-    public bool TryGetDirectCompositionOverlayTargetSnapshot(out D3D11PresentationTargetSnapshot target) => Surfaces.TryGetDirectCompositionOverlayTargetSnapshot(out target);
-
-
 
     public bool PresentHardwareFrame(
         bool isDisposed,

@@ -1223,7 +1223,6 @@ public sealed class MediaControlPlayerTests
         public event EventHandler? DeviceRecovered;
 
         public void RaiseDeviceRecovered() => DeviceRecovered?.Invoke(this, EventArgs.Empty);
-        public void RunOnRenderThread(Action action) => action();
         public void StartRendering() { }
         public void StopRendering() { }
         public void RefreshAttachments() { }

@@ -55,7 +55,9 @@ singer.ShowOnScreen(other, fullScreen: other is not null, owner: this);
 // closing it detaches.
 ```
 
-`MediaSurface.ShowSecondaryOutput()` opens one with the surface's mode and `AutoHide`.
+`MediaSurface.ShowSecondaryOutput()` (and `CloseSecondaryOutput`, `IsSecondaryOutputOpen`,
+`SecondaryOutputsChanged`) is `[Obsolete]` (ENG-039) and will be removed: open a
+`SecondaryPresentationWindow` as above.
 
 `WpfMediaInputSources.FromImageSource(ImageSource, displayName)` converts a WPF bitmap to a Core
 BGRA source (Stage 046A slice 2; `Player`'s `ImageSource` overloads use it), the same shape as

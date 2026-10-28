@@ -10,9 +10,6 @@ namespace FatzBomb.MediaControl.Controllers;
 /// </remarks>
 public interface IMediaRenderCoordinator
 {
-    /// <summary>Runs the supplied action on the renderer/framework thread when required.</summary>
-    void RunOnRenderThread(Action action);
-
     /// <summary>Starts render coordination for the current media.</summary>
     void StartRendering();
 

@@ -52,12 +52,6 @@ internal sealed class AudioOnlyPresentationCoordinator : IMediaPresentationCoord
     {
     }
 
-    public void RunOnRenderThread(Action action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-        action();
-    }
-
     public void StartRendering()
     {
     }

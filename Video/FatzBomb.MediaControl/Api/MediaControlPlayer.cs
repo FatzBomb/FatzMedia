@@ -93,7 +93,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         StartAudioDeviceMonitor();
     }
 
-    public MediaControls Controls { get; private set; }
+    internal MediaControls Controls { get; private set; }
 
     private MediaFile File { get; set; }
 
@@ -222,14 +222,6 @@ public partial class MediaControlPlayer : IMediaControlSession
         get => TimeSpan.FromSeconds(_mediaEngine.SubtitleOffsetSeconds);
         set => ApplySyncOffset(_mediaEngine.SetSubtitleOffset(value.TotalSeconds));
     }
-
-    public IVideoEngine? Video => _mediaEngine.Video;
-
-    public IAudioEngine Audio => _mediaEngine.Audio;
-
-    public ICdgEngine? Cdg => _mediaEngine.Cdg;
-
-    public ISubtitleEngine? Subtitle => _mediaEngine.Subtitle;
 
     public TimeSpan Position
     {

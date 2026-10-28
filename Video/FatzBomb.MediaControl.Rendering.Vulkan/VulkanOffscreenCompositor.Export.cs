@@ -40,13 +40,11 @@ internal sealed class VulkanExportedImageSet(
     int width,
     int height,
     IReadOnlyList<VulkanExportedImage> images,
-    bool hasSemaphores,
     MediaSharedGpuImageHandleKind kind = MediaSharedGpuImageHandleKind.VulkanOpaqueFd)
 {
     public int Width { get; } = width;
     public int Height { get; } = height;
     public IReadOnlyList<VulkanExportedImage> Images { get; } = images;
-    public bool HasSemaphores { get; } = hasSemaphores;
 
     /// <summary>Gets how the images' memory is handed over.</summary>
     public MediaSharedGpuImageHandleKind Kind { get; } = kind;
@@ -153,7 +151,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 throw;
             }
 
-            var set = new VulkanExportedImageSet(width, height, images, withSemaphores, kind);
+            var set = new VulkanExportedImageSet(width, height, images, kind);
             _exportedSets.Add(set);
             return set;
         }

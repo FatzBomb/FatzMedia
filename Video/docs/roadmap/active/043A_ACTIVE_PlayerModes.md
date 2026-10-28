@@ -65,8 +65,8 @@ Full or Background (see "Slice 2 decisions").
   `SoundtrackAudioEngine` wraps the `VideoAudioEngine` that video playback already uses (FFmpeg
   decode into a BASS push stream, with tempo, pitch, equalizer, fades and normalization) and runs
   its decode pump. Audio mode attaches it as a second `AudioPipeline`, selected while a video
-  file is open, so the file opens as plain audio content (`MediaContent.Audio`, no
-  `player.Video`). No `VideoDecoder` and no `VideoPipeline` exist in Audio mode. Rejected
+  file is open, so the file opens as plain audio content (`MediaContent.Audio`, no video
+  engine). No `VideoDecoder` and no `VideoPipeline` exist in Audio mode. Rejected
   alternatives: a video-disabled `VideoPipeline` (2,300 lines built around decoded frames, too
   risky to make decoder-optional), and the 033A FFmpeg-to-WAV fallback through `AudioEngine`
   (it converts the whole file first: about 21 MB per minute and a long wait for a film).
@@ -91,7 +91,7 @@ Full or Background (see "Slice 2 decisions").
   pipelines); embedded and sidecar subtitles of a video are not loaded. Network sources are
   rejected.
 - **Forced loop.** `MediaControls.ForcesLoop` (internal) turns `LoopMedia` on and ignores
-  `LoopMedia = false` with a Warning, so `player.Controls.LoopMedia` cannot bypass it either.
+  `LoopMedia = false` with a Warning, so the player's `LoopMedia` cannot bypass it either.
 - **Rejected loads** return false, raise a `DiagnosticRouter` Warning in category `PlayerMode`
   ("Background mode does not accept audio files; song.mp3 was not loaded.") and an
   `UnsupportedFormat` error event. A video file with no audio stream in Audio mode gets its own

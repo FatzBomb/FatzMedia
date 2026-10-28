@@ -107,9 +107,7 @@ internal sealed unsafe class VideoDecoder(
     private const int AvErrorAgain = -11;
     private const int HardwareDecodeLossFailureThreshold = 3;
     private int _decodeDiagnosticFrames;
-    private double _decodeDiagnosticTransferMs;
     private double _decodeDiagnosticScaleMs;
-    private double _decodeDiagnosticBufferMs;
     private double _decodeDiagnosticTotalMs;
     private int _packetSendIssueLogs;
     private int _frameReceiveIssueLogs;
@@ -853,16 +851,13 @@ internal sealed unsafe class VideoDecoder(
             return;
         }
 
-        var transferStart = totalStart;
         AVFrame* sourceFrame = GetSoftwareFrameForProcessing();
-        var transferMs = Stopwatch.GetElapsedTime(transferStart).TotalMilliseconds;
         if (sourceFrame == null)
         {
             return;
         }
 
         double scaleMs = 0;
-        double bufferMs = 0;
         byte[]? rentedFrameData = null;
         try
         {
@@ -876,10 +871,8 @@ internal sealed unsafe class VideoDecoder(
             }
 
             var frameSize = _videoLinesize * Height;
-            var bufferStart = Stopwatch.GetTimestamp();
             var frameData = _framePool.Rent(frameSize);
             rentedFrameData = frameData;
-            bufferMs = Stopwatch.GetElapsedTime(bufferStart).TotalMilliseconds;
 
             byte_ptrArray8 dstData = new();
             int_array8 dstLinesize = new();
@@ -940,11 +933,7 @@ internal sealed unsafe class VideoDecoder(
                 ffmpeg.av_frame_unref(_softwareFrame);
             }
 
-            RecordDecodeDiagnostics(
-                transferMs,
-                scaleMs,
-                bufferMs,
-                Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
+            RecordDecodeDiagnostics(scaleMs, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         }
     }
 
@@ -1009,16 +998,14 @@ internal sealed unsafe class VideoDecoder(
             PresentationTime = pts
         });
 
-        RecordDecodeDiagnostics(0, 0, 0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
+        RecordDecodeDiagnostics(0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         return true;
     }
 
-    private void RecordDecodeDiagnostics(double transferMs, double scaleMs, double bufferMs, double totalMs)
+    private void RecordDecodeDiagnostics(double scaleMs, double totalMs)
     {
         _decodeDiagnosticFrames++;
-        _decodeDiagnosticTransferMs += transferMs;
         _decodeDiagnosticScaleMs += scaleMs;
-        _decodeDiagnosticBufferMs += bufferMs;
         _decodeDiagnosticTotalMs += totalMs;
 
         if (_decodeDiagnosticFrames < DecodeDiagnosticsFrameInterval)
@@ -1035,13 +1022,9 @@ internal sealed unsafe class VideoDecoder(
         }
 
         _decodeDiagnosticFrames = 0;
-        _decodeDiagnosticTransferMs = 0;
         _decodeDiagnosticScaleMs = 0;
-        _decodeDiagnosticBufferMs = 0;
         _decodeDiagnosticTotalMs = 0;
     }
-
-    private static double GetElapsedMilliseconds(long startTimestamp) => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     private static bool ShouldLogDecodeIssue(ref int count)
     {

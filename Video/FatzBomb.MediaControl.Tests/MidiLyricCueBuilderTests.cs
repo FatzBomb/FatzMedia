@@ -3,19 +3,19 @@ using FatzBomb.MediaControl.Core.Subtitle;
 
 namespace FatzBomb.MediaControl.Tests;
 
-public sealed class MidiLyricExtractorTests
+public sealed class MidiLyricCueBuilderTests
 {
     [Theory]
     [InlineData("song.kar")]
     [InlineData("song.mid")]
     [InlineData("song.midi")]
     [InlineData("song.rmi")]
-    public void IsMidiFile_RecognizesSupportedMidiExtensions(string path) => Assert.True(MidiLyricExtractor.IsMidiFile(path));
+    public void IsMidiFile_RecognizesSupportedMidiExtensions(string path) => Assert.True(MidiLyricCueBuilder.IsMidiFile(path));
 
     [Fact]
     public void BuildCues_SoftKaraokeFragments_ShowCompleteCurrentAndNextLines()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "\\Twin"),
             new(TimeSpan.FromMilliseconds(300), "kle "),
@@ -27,7 +27,7 @@ public sealed class MidiLyricExtractorTests
             new(TimeSpan.FromSeconds(4.5), "wonder"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(6));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(6));
 
         Assert.Collection(
             cues,
@@ -64,7 +64,7 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_Tune1000Controls_PreserveWordAndParagraphStructure()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "This "),
             new(TimeSpan.FromMilliseconds(300), "is "),
@@ -75,7 +75,7 @@ public sealed class MidiLyricExtractorTests
             new(TimeSpan.FromSeconds(4.1), "New paragraph"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(7));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(7));
 
         Assert.Equal("This is a line\nNext line", cues[0].Text);
         Assert.Equal(TimeSpan.FromSeconds(0.6), cues[0].End);
@@ -104,13 +104,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_SoltonLineMarkers_CreateCompleteLines()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "<THIS IS AN EXAMPLE"),
             new(TimeSpan.FromSeconds(3), "<THE END"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(5));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(5));
 
         Assert.Equal("THIS IS AN EXAMPLE\nTHE END", cues[0].Text);
         Assert.Equal("THIS IS AN EXAMPLE\nTHE END", cues[1].Text);
@@ -124,13 +124,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_ShortLine_ClampsTransitionToCueDuration()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/First"),
             new(TimeSpan.FromMilliseconds(200), "/Second"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(3));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(3));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
         TimeSpan midpoint = timing.TransitionStart + TimeSpan.FromTicks((timing.TransitionComplete - timing.TransitionStart).Ticks / 2);
@@ -141,7 +141,7 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_UsesFiveLineWindowAroundActiveLine()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/Line 1"),
             new(TimeSpan.FromSeconds(3), "/Line 2"),
@@ -151,7 +151,7 @@ public sealed class MidiLyricExtractorTests
             new(TimeSpan.FromSeconds(15), "/Line 6"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(18));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(18));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[2].KaraokeTiming);
 
         Assert.Equal(5, timing.Lines.Count);
@@ -163,13 +163,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_ZeroGapLines_DoNotOverlap()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/First"),
             new(TimeSpan.Zero, "/Second"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(1));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(1));
 
         Assert.Equal(cues[0].End, cues[1].Start);
         Assert.True(cues[0].Start < cues[0].End);
@@ -178,13 +178,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_PageWithLongGap_HoldsAndPreviewsAtPreferredTimes()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "Last lyric"),
             new(TimeSpan.FromSeconds(8), "\nNew page"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(12));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(12));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
         Assert.True(timing.ClearsPage);
@@ -198,13 +198,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_FirstPageFadeCompletesBeforeFirstWipe()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.FromSeconds(5), "/First lyric"),
             new(TimeSpan.FromSeconds(10), "/Second lyric"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(12));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(12));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[0].KaraokeTiming);
 
         Assert.Equal(TimeSpan.Zero, cues[0].Start);
@@ -219,12 +219,12 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_ShortInitialLeadPrioritizesEarliestCompletedFade()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.FromSeconds(2), "/First lyric"),
         ];
 
-        SubtitleCue cue = Assert.Single(MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(4)));
+        SubtitleCue cue = Assert.Single(MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(4)));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cue.KaraokeTiming);
 
         Assert.Equal(TimeSpan.Zero, cue.Start);
@@ -236,12 +236,12 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_FirstWipeAtZero_ShowsImmediatelyWithoutFade()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/Instant lyric"),
         ];
 
-        SubtitleCue cue = Assert.Single(MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(2)));
+        SubtitleCue cue = Assert.Single(MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(2)));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cue.KaraokeTiming);
 
         Assert.Equal(TimeSpan.Zero, cue.Start);
@@ -253,13 +253,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_LongGap_MarksCountdownWithoutChangingLyricTextOrTiming()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/First"),
             new(TimeSpan.FromSeconds(8), "/Second"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(10));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(10));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[0].KaraokeTiming);
         KaraokeLineTiming countdownLine = Assert.Single(timing.Lines, static line => line.Text == "Second");
 
@@ -297,13 +297,13 @@ public sealed class MidiLyricExtractorTests
         double expectedScrollSeconds,
         double expectedCompletionLeadSeconds)
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "/First"),
             new(TimeSpan.FromSeconds(nextLyricSeconds), "/Second"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(
             fragments,
             TimeSpan.FromSeconds(nextLyricSeconds + 2));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
@@ -315,13 +315,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_TightPageGapCrossfadesFullDuration()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "First page"),
             new(TimeSpan.FromSeconds(1.5), "\nSecond page"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(4));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(4));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
         Assert.True(timing.PageFadeOutStart < TimeSpan.FromMilliseconds(1));
@@ -341,13 +341,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_SubsecondPageGapCrossfadesAcrossTheAvailableGap()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "First page"),
             new(TimeSpan.FromMilliseconds(600), "\nSecond page"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(fragments, TimeSpan.FromSeconds(3));
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(fragments, TimeSpan.FromSeconds(3));
         KaraokeCueTiming timing = Assert.IsType<KaraokeCueTiming>(cues[1].KaraokeTiming);
 
         Assert.True(timing.PageFadeOutStart < TimeSpan.FromMilliseconds(1));
@@ -359,13 +359,13 @@ public sealed class MidiLyricExtractorTests
     [Fact]
     public void BuildCues_ZeroTransitionDurationDisablesPageFades()
     {
-        MidiLyricExtractor.MidiLyricFragment[] fragments =
+        MidiLyricCueBuilder.MidiLyricFragment[] fragments =
         [
             new(TimeSpan.Zero, "First page"),
             new(TimeSpan.FromSeconds(3), "\nSecond page"),
         ];
 
-        List<SubtitleCue> cues = MidiLyricExtractor.BuildCues(
+        List<SubtitleCue> cues = MidiLyricCueBuilder.BuildCues(
             fragments,
             TimeSpan.FromSeconds(5),
             TimeSpan.Zero);

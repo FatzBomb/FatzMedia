@@ -30,7 +30,6 @@ internal sealed class D3D11PresentationSurfaceController(
     private readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
     private readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
     public bool LastActivationCreated { get; private set; }
-    public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
     public bool ShouldSuppressDirectCompositionOverlaySplit =>
         backends.DirectComposition.IsActive

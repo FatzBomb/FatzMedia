@@ -213,7 +213,7 @@ does not call renderer or swap-chain APIs directly. Since Stage 046A slice 3 it 
 adapter's `SecondaryPresentationWindow` itself (projector role, the player's presentation mode)
 with `ShowOnScreen`, on the screen the shared rule picks (`--second-screen=<n>`, else the first
 screen that is not the main window's, else a window), as the Avalonia and WinForms players do.
-(`MediaSurface.ShowSecondaryOutput()` remains the adapter's one-call alternative.)
+(`MediaSurface.ShowSecondaryOutput()` is `[Obsolete]` since ENG-039 and will be removed.)
 
 The window's surface supplies its HWND to the shared session as a neutral presentation-surface descriptor. The shared media-control implementation owns the secondary target, swap-chain lifetime, compositor fan-out, and final presents.
 

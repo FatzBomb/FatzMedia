@@ -379,8 +379,6 @@ public sealed class PlayerModeSwitchTests
 
         public void RefreshCurrentPosition() { }
 
-        public void RunOnRenderThread(Action action) => action();
-
         public void StartRendering() { }
 
         public void StopRendering() { }

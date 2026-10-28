@@ -133,8 +133,8 @@ public sealed class MediaControllerEventTests
         file.MediaLoaded += (_, e) => events.Add($"loaded:{e.Source.DisplayName}");
         file.MediaClosed += (_, e) => events.Add($"closed:{e.Source.DisplayName}");
 
-        Assert.True(file.Load(MediaInputSource.FromFile("first.mp3")));
-        Assert.True(file.Load(MediaInputSource.FromFile("second.mp3")));
+        Assert.True(file.Load(MediaInputSource.FromFile("first.mp3"), null, false, CancellationToken.None, out _));
+        Assert.True(file.Load(MediaInputSource.FromFile("second.mp3"), null, false, CancellationToken.None, out _));
         file.Close();
 
         Assert.Equal(

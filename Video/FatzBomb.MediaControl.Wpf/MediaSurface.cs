@@ -187,8 +187,13 @@ public sealed partial class MediaSurface : Grid
         set => SetValue(OverlayHitTestVisibleProperty, value);
     }
 
+    private const string SecondaryOutputObsolete =
+        "Open a SecondaryPresentationWindow with ShowOnScreen instead (the test players do). Removed in a later release (ENG-039).";
+
+    [Obsolete(SecondaryOutputObsolete)]
     public event EventHandler? SecondaryOutputsChanged;
 
+    [Obsolete(SecondaryOutputObsolete)]
     public bool ShowSecondaryOutput()
     {
         if (Player == null)
@@ -237,7 +242,10 @@ public sealed partial class MediaSurface : Grid
         SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool CloseSecondaryOutput()
+    [Obsolete(SecondaryOutputObsolete)]
+    public bool CloseSecondaryOutput() => CloseSecondaryWindow();
+
+    private bool CloseSecondaryWindow()
     {
         if (_secondaryWindow == null)
             return false;
@@ -250,6 +258,7 @@ public sealed partial class MediaSurface : Grid
         return true;
     }
 
+    [Obsolete(SecondaryOutputObsolete)]
     public bool IsSecondaryOutputOpen() => _secondaryWindow is { IsVisible: true };
 
     public void RefreshPresentationLayout()
@@ -370,7 +379,7 @@ public sealed partial class MediaSurface : Grid
 
         Rect bounds = previous.RestoreBounds;
         WindowState state = previous.WindowState;
-        _ = CloseSecondaryOutput();
+        _ = CloseSecondaryWindow();
         OpenSecondaryWindow(session, bounds, state);
     }
 

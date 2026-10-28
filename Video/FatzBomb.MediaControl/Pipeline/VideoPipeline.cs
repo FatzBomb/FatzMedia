@@ -67,7 +67,6 @@ internal sealed partial class VideoPipeline(
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
     private volatile bool _isPlaying;
-    private volatile bool _hostRenderEventDrivenPresentation;
     private volatile int _generation;
 
     // Seek calls are accepted as fast as the host sends them, but the pipeline processes them with
@@ -168,7 +167,7 @@ internal sealed partial class VideoPipeline(
     /// Without the wait the once-per-open report could name the platform's 60 Hz fallback
     /// while timing moved to the monitor's rate a moment later.
     /// </remarks>
-    private void ReportPendingDisplayCadence(bool canWait = true)
+    private void ReportPendingDisplayCadence()
     {
         if (Volatile.Read(ref _cadenceReportPending) == 0)
             return;
@@ -177,7 +176,7 @@ internal sealed partial class VideoPipeline(
         var now = Stopwatch.GetTimestamp();
         var firstAttempt = Interlocked.CompareExchange(ref _cadenceReportFirstAttempt, now, 0);
         var waited = firstAttempt == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(firstAttempt, now);
-        if (canWait && ShouldWaitForRendererRefreshRate(source, Volatile.Read(ref _rendererRefreshRateSource) is not null, waited))
+        if (ShouldWaitForRendererRefreshRate(source, Volatile.Read(ref _rendererRefreshRateSource) is not null, waited))
             return;
 
         if (Interlocked.Exchange(ref _cadenceReportPending, 0) == 1)
@@ -214,40 +213,6 @@ internal sealed partial class VideoPipeline(
             _ => "reported by the platform, or 60 Hz when it cannot tell",
         };
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
-    }
-
-    public void SetHostRenderEventDrivenPresentation(bool enabled)
-    {
-        if (_hostRenderEventDrivenPresentation == enabled)
-        {
-            return;
-        }
-
-        _hostRenderEventDrivenPresentation = enabled;
-
-        if (!_isOpen)
-        {
-            return;
-        }
-
-        if (enabled)
-        {
-            StopPresentationLoop();
-            ResetPresentationDiagnostics();
-            if (_configuration.EnableLogging)
-            {
-                Debug.WriteLine("[VideoPipeline] Host render-event presentation now drives UI-backed video presentation.");
-            }
-        }
-        else if (_isPlaying)
-        {
-            ResetPresentationDiagnostics();
-            StartPresentationLoop();
-            if (_configuration.EnableLogging)
-            {
-                Debug.WriteLine("[VideoPipeline] Independent video presentation loop enabled.");
-            }
-        }
     }
 
     public double Position
@@ -465,10 +430,7 @@ internal sealed partial class VideoPipeline(
             }
 
             StartDecodeLoop();
-            if (!_hostRenderEventDrivenPresentation)
-                StartPresentationLoop();
-            else
-                ReportPendingDisplayCadence(canWait: false); // no presentation loop to report from
+            StartPresentationLoop();
             _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
             _state.SetPlaybackState(MediaPlayerState.Playing);
@@ -864,8 +826,7 @@ internal sealed partial class VideoPipeline(
                 {
                     BeginPostSeekPresentationRecovery();
                     StartDecodeLoop();
-                    if (!_hostRenderEventDrivenPresentation)
-                        StartPresentationLoop();
+                    StartPresentationLoop();
                 }
             }
             finally
@@ -1581,8 +1542,7 @@ internal sealed partial class VideoPipeline(
             var position = GetCurrentTransportPosition();
             _generation++;
             StopDecodeLoopAndWait();
-            if (!_hostRenderEventDrivenPresentation)
-                StopPresentationLoopAndWait();
+            StopPresentationLoopAndWait();
             WaitForPresentationIdle();
 
             var restartLoops = wasPlaying;
@@ -1611,8 +1571,7 @@ internal sealed partial class VideoPipeline(
                 if (restartLoops)
                 {
                     StartDecodeLoop();
-                    if (!_hostRenderEventDrivenPresentation)
-                        StartPresentationLoop();
+                    StartPresentationLoop();
                 }
             }
         }

@@ -253,7 +253,7 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by `MidiLyricExtractor`.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by the internal `MidiLyricCueBuilder` (the public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A).
 - `MidiMetadataExtractor` (internal) reads Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
@@ -999,10 +999,10 @@ Shared GPU image surfaces (Stage 027A slice 2):
 ## Audio Filter Framework (Stage 020A, slice 1)
 
 The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain
--> fade envelope -> channel volume -> output. Internal `IAudioFilter` stages (priority
-order, bypass = no native stage, reported latency, lifecycle per stream) are hosted by
-the `AudioEngine` through `IAudioFilterHost`. The first filter is a BASS_FX PEAKEQ
-equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
+-> fade envelope -> channel volume -> output. Filter stages (fixed priority order in
+`AudioFilterStage`, bypass = no native stage, lifecycle per stream) are hosted by the
+`AudioEngine` through `IAudioFilterHost`. The only filter is a BASS_FX PEAKEQ
+equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
 `IMediaControlSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
@@ -1024,7 +1024,7 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 - Automatic image/video sidecar backgrounds apply to every non-video, non-image playable main: audio (MP3, FLAC, etc.), MIDI/KAR/MID with or without lyrics, MOD/tracker, CDG, audio+CDG pairs, and future non-visual content.
 - Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
-- `ignoreSidecar: true` or `MediaFile.BackgroundAutoDetect = false` disables automatic discovery without disabling an explicitly supplied image/video background.
+- `ignoreSidecar: true` or `MediaControlPlayer.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
 - Image main files never auto-detect a background. Their background must be explicitly supplied through a load overload.
 - Video mains reject backgrounds entirely (both auto and explicit).
 - Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, image/video entries become automatic background candidates rather than taking the main role.

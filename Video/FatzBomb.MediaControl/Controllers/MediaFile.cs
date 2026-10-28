@@ -6,7 +6,7 @@ namespace FatzBomb.MediaControl.Controllers;
 /// <summary>
 /// Handles file loading and management operations.
 /// </summary>
-public sealed class MediaFile
+internal sealed class MediaFile
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly IMediaRenderCoordinator? _mediaRenderer;
@@ -62,49 +62,6 @@ public sealed class MediaFile
     }
 
     /// <summary>
-    /// Loads a media file from the specified path.
-    /// </summary>
-    public Task<bool> LoadAsync(string path) => LoadAsync(path, ignoreSidecar: false);
-
-    /// <summary>
-    /// Loads a media file from the specified path, optionally ignoring sidecar/archive backgrounds.
-    /// </summary>
-    public Task<bool> LoadAsync(string path, bool ignoreSidecar = false) =>
-        LoadAsync(MediaInputSource.FromFile(path), backgroundSource: null, ignoreSidecar);
-
-    /// <summary>
-    /// Loads media from a neutral Core source.
-    /// </summary>
-    public Task<bool> LoadAsync(MediaInputSource source, bool ignoreSidecar = false) =>
-        LoadAsync(source, backgroundSource: null, ignoreSidecar);
-
-    /// <summary>
-    /// Loads a media file with an optional explicit background. Unless ignored, a discovered sidecar/archive
-    /// background takes precedence over the explicit background path.
-    /// </summary>
-    public Task<bool> LoadAsync(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        LoadAsync(
-            MediaInputSource.FromFile(path),
-            string.IsNullOrWhiteSpace(backgroundPath) ? null : MediaInputSource.FromFile(backgroundPath),
-            ignoreSidecar);
-
-    /// <summary>
-    /// Loads a media file with one randomly selected explicit background path. Unless ignored, a
-    /// discovered sidecar/archive background takes precedence over the explicit background paths.
-    /// </summary>
-    public Task<bool> LoadAsync(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        LoadAsync(
-            MediaInputSource.FromFile(path),
-            SelectExplicitBackground(backgroundPaths),
-            ignoreSidecar);
-
-    /// <summary>
-    /// Loads media from a neutral Core source with an optional explicit neutral background source.
-    /// </summary>
-    public Task<bool> LoadAsync(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        LoadAsync(source, backgroundSource, ignoreSidecar, CancellationToken.None);
-
-    /// <summary>
     /// Loads media and honors <see cref="PlayOnLoad"/>. <paramref name="cancellationToken"/> (ENG-024):
     /// cancelled before the load starts, nothing changes; cancelled during the open, the open stops
     /// where it can (network retry delays), the player ends closed and this throws
@@ -149,49 +106,6 @@ public sealed class MediaFile
         _ = BeginLoadOperation();
         return LoadCore(request.Source, request.BackgroundSource, request.IgnoreSidecar, cancellationToken, applyLoadReset: false);
     }
-
-    /// <summary>
-    /// Loads a media file from the specified path (synchronous version).
-    /// </summary>
-    public bool Load(string path) => Load(path, ignoreSidecar: false);
-
-    /// <summary>
-    /// Loads a media file from the specified path, optionally ignoring sidecar/archive backgrounds.
-    /// </summary>
-    public bool Load(string path, bool ignoreSidecar = false) =>
-        Load(MediaInputSource.FromFile(path), backgroundSource: null, ignoreSidecar);
-
-    /// <summary>
-    /// Loads media from a neutral Core source.
-    /// </summary>
-    public bool Load(MediaInputSource source, bool ignoreSidecar = false) =>
-        Load(source, backgroundSource: null, ignoreSidecar);
-
-    /// <summary>
-    /// Loads a media file with an optional explicit background. Unless ignored, a discovered sidecar/archive
-    /// background takes precedence over the explicit background path.
-    /// </summary>
-    public bool Load(string path, string? backgroundPath, bool ignoreSidecar = false) =>
-        Load(
-            MediaInputSource.FromFile(path),
-            string.IsNullOrWhiteSpace(backgroundPath) ? null : MediaInputSource.FromFile(backgroundPath),
-            ignoreSidecar);
-
-    /// <summary>
-    /// Loads a media file with one randomly selected explicit background path. Unless ignored, a
-    /// discovered sidecar/archive background takes precedence over the explicit background paths.
-    /// </summary>
-    public bool Load(string path, IReadOnlyList<string> backgroundPaths, bool ignoreSidecar = false) =>
-        Load(
-            MediaInputSource.FromFile(path),
-            SelectExplicitBackground(backgroundPaths),
-            ignoreSidecar);
-
-    /// <summary>
-    /// Loads media from a neutral Core source with an optional explicit neutral background source.
-    /// </summary>
-    public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        Load(source, backgroundSource, ignoreSidecar, CancellationToken.None, out _);
 
     /// <summary>
     /// The synchronous load; <paramref name="cancellationToken"/> as for

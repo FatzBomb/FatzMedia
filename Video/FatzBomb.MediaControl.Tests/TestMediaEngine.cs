@@ -280,7 +280,6 @@ internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, 
     }
 
     public void SetDisplayRefreshRate(double? refreshHz) { }
-    public void SetHostRenderEventDrivenPresentation(bool enabled) { }
     public void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false) { }
 
     public void RaisePositionChanged(double position)

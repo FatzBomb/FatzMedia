@@ -112,13 +112,6 @@ public interface IVideoEngine : IDisposable
     /// </summary>
     void SetDisplayRefreshRate(double? refreshHz);
 
-    /// <summary>
-    /// When enabled, a UI adapter render event drives frame presentation instead of the
-    /// pipeline's independent presentation thread. This is intended for UI-backed interop
-    /// paths so DirectX surface updates are synchronized with host composition. Native HWND/swap-chain
-    /// presentation should disable this.
-    /// </summary>
-    void SetHostRenderEventDrivenPresentation(bool enabled);
 
     /// <summary>
     /// Reissues the current decoded frame for a newly attached or resized

@@ -6,8 +6,6 @@ namespace FatzBomb.MediaControl.Adapters.Archives;
 
 public sealed class SharpArchiveAdapter : IArchiveService
 {
-    public static bool IsArchive(string path) => ArchiveFactory.IsArchive(path, out _);
-
     public IArchiveHandle Open(string path) => new SharpArchiveHandle(ArchiveFactory.OpenArchive(path, new ReaderOptions()));
 
     private sealed class SharpArchiveHandle(IArchive archive) : IArchiveHandle

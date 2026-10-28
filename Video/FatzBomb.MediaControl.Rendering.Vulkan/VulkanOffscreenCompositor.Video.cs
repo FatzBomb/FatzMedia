@@ -61,9 +61,6 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// <summary>Gets how many decoded frames were converted into the video layer (tests).</summary>
     internal int VideoConversionCount { get; private set; }
 
-    /// <summary>Gets the last reason a decoded frame could not be drawn, or null (tests).</summary>
-    internal string? LastVideoFailure => _reportedVideoFailure;
-
     /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
     public void MarkDeviceLost(string reason) => _shared?.MarkLost(reason);
 

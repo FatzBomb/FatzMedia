@@ -18,28 +18,6 @@ internal static class AudioFilterStage
     public const int GainPriority = 0;
 }
 
-/// <summary>Contract every framework filter follows.</summary>
-internal interface IAudioFilter
-{
-    /// <summary>Gets the stable filter id.</summary>
-    string Id { get; }
-
-    /// <summary>Gets the BASS FX priority (see <see cref="AudioFilterStage"/>).</summary>
-    int Priority { get; }
-
-    /// <summary>Gets the added latency reported to the presentation clock (0 for IIR filters).</summary>
-    double LatencySeconds { get; }
-
-    /// <summary>Gets whether the filter needs a native stage right now (false = bypassed).</summary>
-    bool IsActive { get; }
-
-    /// <summary>Attaches or updates the native stage on <paramref name="playHandle"/>.</summary>
-    bool Apply(int playHandle);
-
-    /// <summary>Removes the native stage (bypass, close, or handle change).</summary>
-    void Remove();
-}
-
 /// <summary>What applying new equalizer settings must do to the native stage.</summary>
 internal enum EqualizerUpdateAction
 {

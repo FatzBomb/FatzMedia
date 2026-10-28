@@ -77,11 +77,4 @@ public class D3D11DeviceLostClassifierTests
 
         Assert.StartsWith("Device lost: ", description, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public void IsDeviceLost_DevicePointerOverload_ReturnsFalse_ForZeroPointer() =>
-        // The decode-side overload must treat a null/zero device pointer as "not lost" (nothing to
-        // check) rather than throwing — this is the only branch of that overload testable without a
-        // real D3D11 device.
-        Assert.False(D3D11DeviceLostClassifier.IsDeviceLost(IntPtr.Zero));
 }
