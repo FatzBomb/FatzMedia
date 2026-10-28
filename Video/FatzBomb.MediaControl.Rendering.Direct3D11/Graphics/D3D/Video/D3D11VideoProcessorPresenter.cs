@@ -74,6 +74,8 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         MediaCompositionStretchMode stretch,
         HdrOutputDecision? hdrOutput = null)
     {
+        // A refusal below must not name the step a previous frame reached.
+        LastStep = "video processor";
         if (!deviceResources.HasVideoProcessorSupport
             || sourceTexturePointer == IntPtr.Zero
             || width <= 0

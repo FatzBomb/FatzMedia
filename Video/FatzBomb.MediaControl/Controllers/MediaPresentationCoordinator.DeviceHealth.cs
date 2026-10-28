@@ -57,6 +57,8 @@ public sealed partial class MediaPresentationCoordinator
     // Set when a recovery gave up (timestamp + 1); cleared by a successful one.
     private long _recoveryFailedAtPlusOne;
     private int _deferredSurfacePresentQueued;
+    // Set by a failed attach: the next tick probes even with no surface attached (ENG-039).
+    private int _probeAfterFailedAttach;
 
     /// <summary>
     /// Raised on the recovery thread after the renderer's device was lost and recovered: frames
@@ -136,6 +138,10 @@ public sealed partial class MediaPresentationCoordinator
 
                         using (BeginRendererCall(_renderCalls, "device recovery"))
                             _rendererBackend.CleanupResources();
+
+                        // The renderer's retained hardware frame went with the device: a retained
+                        // refresh must not ask the new one for it.
+                        _presentedGpuBackground = null;
 
                         // Re-creates the attached surfaces on the new device.
                         recovered = EnsureBackendInitialized(surfaceCall: true);
@@ -223,13 +229,19 @@ public sealed partial class MediaPresentationCoordinator
 
     /// <summary>
     /// A present or surface call failed: ask the renderer about its device now instead of at the
-    /// next tick (at most every 250 ms, and only while a surface is attached). The probe runs on
-    /// the timer's thread, not on the caller's.
+    /// next tick (at most every 250 ms, and only while a surface is attached, or for a failed
+    /// attach: with no surface left nothing else would find the loss). The probe runs on the
+    /// timer's thread, not on the caller's.
     /// </summary>
-    private void KickDeviceProbe()
+    private void KickDeviceProbe(bool attachFailed = false)
     {
         ITimer? timer = Volatile.Read(ref _deviceHealthTimer);
-        if (timer is null || _disposed || !HasAttachedSurfaces)
+        if (timer is null || _disposed)
+            return;
+
+        if (attachFailed)
+            Volatile.Write(ref _probeAfterFailedAttach, 1);
+        else if (!HasAttachedSurfaces)
             return;
 
         var now = _timeProvider.GetTimestamp();
@@ -275,7 +287,8 @@ public sealed partial class MediaPresentationCoordinator
             }
 
             // Nothing is shown without a surface; the next attach finds the loss (it fails and probes).
-            if (!HasAttachedSurfaces || !_rendererBackend.IsInitialized)
+            var attachFailed = Interlocked.Exchange(ref _probeAfterFailedAttach, 0) != 0;
+            if ((!HasAttachedSurfaces && !attachFailed) || !_rendererBackend.IsInitialized)
                 return;
 
             if (TryProbeDeviceLost(out var reason))
@@ -378,23 +391,29 @@ public sealed partial class MediaPresentationCoordinator
             return;
         }
 
-        if (Interlocked.Exchange(ref _deferredSurfacePresentQueued, 1) != 0)
+        // 0 idle, 1 running, 2 queued or asked again while running. One pool thread at most: a
+        // present stuck in the renderer must not take a new pool thread per surface change.
+        if (Interlocked.Exchange(ref _deferredSurfacePresentQueued, 2) != 0)
             return;
 
         _ = ThreadPool.QueueUserWorkItem(
             static state =>
             {
                 (MediaPresentationCoordinator coordinator, string reason) = state;
-                Volatile.Write(ref coordinator._deferredSurfacePresentQueued, 0);
-                try
+                do
                 {
-                    if (!coordinator._disposed)
-                        coordinator.PresentCurrentComposition(reason);
+                    Volatile.Write(ref coordinator._deferredSurfacePresentQueued, 1);
+                    try
+                    {
+                        if (!coordinator._disposed)
+                            coordinator.PresentCurrentComposition(reason);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[MediaPresentationCoordinator] Deferred surface present failed: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[MediaPresentationCoordinator] Deferred surface present failed: {ex.Message}");
-                }
+                while (Interlocked.CompareExchange(ref coordinator._deferredSurfacePresentQueued, 0, 1) != 1);
             },
             (this, reason),
             preferLocal: false);

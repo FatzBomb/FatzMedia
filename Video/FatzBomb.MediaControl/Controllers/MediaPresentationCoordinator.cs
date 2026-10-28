@@ -223,7 +223,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         if (attached)
             PresentAfterSurfaceChange("presentation surface attached");
         else
-            KickDeviceProbe();
+            KickDeviceProbe(attachFailed: true);
 
         return attached;
     }

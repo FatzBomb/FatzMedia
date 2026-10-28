@@ -11,15 +11,15 @@ namespace FatzBomb.MediaControl.Windows.Video;
 /// </summary>
 internal static partial class DwmCompositionTiming
 {
-    /// <summary>
-    /// Returns DWM's global composition refresh interval, or the 60Hz fallback
-    /// when DWM is unavailable or reports an implausible refresh rate.
-    /// </summary>
     private static int s_failureReported;
 
     /// <summary>The size DWM expects in <c>DWM_TIMING_INFO.cbSize</c>: the packed native layout.</summary>
     internal static int TimingInfoSize => Marshal.SizeOf<DwmTimingInfo>();
 
+    /// <summary>
+    /// Returns DWM's global composition refresh interval, or the 60Hz fallback
+    /// when DWM is unavailable or reports an implausible refresh rate.
+    /// </summary>
     public static double GetRefreshIntervalSeconds()
     {
         try
