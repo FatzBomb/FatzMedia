@@ -7,6 +7,7 @@ using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Video;
+using FatzBomb.MediaControl.Rendering.Software;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FatzBomb.MediaControl.Tests;
@@ -109,6 +110,30 @@ public sealed class RendererVideoDecodeServicesTests
         services.Attach(new FakeRendererDevice("vulkan"));
         using MediaPresentationCoordinator plain = Create(new DecodingRendererBackend.Plain(), engine);
         Assert.Null(services.Renderer);
+    }
+
+    [Fact]
+    public void TheSoftwareRenderer_OffersNoHardwareDevice_AndSaysWhyOnce()
+    {
+        // ENG-037: the software renderer draws only CPU frames, so with the default (Auto)
+        // decoding its players must decode in software instead of dropping hardware frames.
+        using ServiceProvider provider = (ServiceProvider)MediaControlServiceProvider.Create(MediaPlayerConfiguration.Auto, [], new TestPlatformServices());
+        IMediaEngine engine = provider.GetRequiredService<IMediaEngine>();
+        RendererVideoDecodeServices services = provider.GetRequiredService<RendererVideoDecodeServices>();
+        var software = new SoftwareRendererBackend();
+        using MediaPresentationCoordinator coordinator = Create(software, engine);
+
+        Assert.Same(software, services.Renderer);
+        Assert.Empty(services.PreferredDeviceTypeNames);
+        Assert.False(services.TryCreateRendererDeviceContext("d3d11va", out _));
+        IReadOnlyList<MediaDiagnosticInfo> diagnostics = Capture(() =>
+        {
+            services.NoteHardwareDecodingRequested();
+            services.NoteHardwareDecodingRequested();
+        });
+
+        MediaDiagnosticInfo diagnostic = Assert.Single(diagnostics, static info => info.Category == "VideoDecoder");
+        Assert.Contains(SoftwareRendererBackend.NoVideoDecodeReason, diagnostic.Message, StringComparison.Ordinal);
     }
 
     private static MediaPresentationCoordinator Create(IMediaRendererBackend backend, IMediaEngine engine) =>
@@ -219,7 +244,7 @@ public sealed class RendererVideoDecodeServicesTests
         public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
         public void Dispose() { }
 
-        /// <summary>The same backend without a decode device (as Direct3D11 and software are).</summary>
+        /// <summary>The same backend without a decode device (as Direct3D11 is).</summary>
         public sealed class Plain : IMediaRendererBackend
         {
             private readonly DecodingRendererBackend _inner = new();

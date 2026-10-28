@@ -107,8 +107,15 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
             return false;
 
         PlayCount++;
+        OnPlay?.Invoke();
         return true;
     }
+
+    /// <summary>Runs inside <see cref="Play"/>, on the thread that runs the engine call.</summary>
+    public Action? OnPlay { get; set; }
+
+    /// <summary>The analyzer the test service provider hands the player, or null for none.</summary>
+    public IMediaFileAnalyzer? Analyzer { get; set; }
 
     public bool Pause()
     {
@@ -317,6 +324,7 @@ internal sealed class TestCdgEngine : ICdgEngine
 
 internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl, IAudioLoopControl, IAudioTrimWindowProvider, FatzBomb.MediaControl.Core.Audio.Fade.IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost
 {
+    private bool _normalizationReady = true;
     public AudioEqualizerSettings Equalizer { get; private set; } = AudioEqualizerSettings.Disabled;
     public int EqualizerApplyCount { get; private set; }
 
@@ -370,7 +378,9 @@ internal sealed class TestAudioEngine : IAudioEngine, IAudioAnalysisOpenControl,
     public int SourceHandle => 0;
     public bool Normalize { get; set; } = true;
     public double NormalizationGain { get; set; } = 1;
-    public bool IsNormalizationReady => true;
+    // Settable so a test can hold a PlayOnLoad start in its wait for the quick analysis.
+    public bool NormalizationReady { get => Volatile.Read(ref _normalizationReady); set => Volatile.Write(ref _normalizationReady, value); }
+    public bool IsNormalizationReady => NormalizationReady;
     public double Duration { get; set; }
     public double Position { get; set; }
     public int CurrentTempo { get; private set; }

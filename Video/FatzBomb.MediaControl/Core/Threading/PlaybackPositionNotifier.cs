@@ -41,7 +41,9 @@ internal sealed class PlaybackPositionNotifier : IDisposable
             _isRunning = true;
             var generation = ++_generation;
             _cancellation = new CancellationTokenSource();
-            _task = Task.Run(() => RunAsync(generation, _cancellation.Token));
+            // Read the token now: a Stop() before the task runs clears (and later disposes) the field.
+            CancellationToken token = _cancellation.Token;
+            _task = Task.Run(() => RunAsync(generation, token));
         }
     }
 

@@ -71,7 +71,7 @@ internal sealed class MediaSession : IDisposable
         Video?.Dispose();
         FileAudio?.Dispose();
         Soundtrack?.Dispose();
-        Cdg?.Close();
+        Cdg?.Dispose();
         Subtitle?.Dispose();
         ClockAudio.Dispose();
     }

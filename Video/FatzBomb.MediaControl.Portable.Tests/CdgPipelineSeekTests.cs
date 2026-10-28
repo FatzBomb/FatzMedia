@@ -30,7 +30,7 @@ public sealed class CdgPipelineSeekTests : IDisposable
         }
         finally
         {
-            pipeline.Close();
+            pipeline.Dispose();
         }
     }
 
@@ -47,8 +47,21 @@ public sealed class CdgPipelineSeekTests : IDisposable
         }
         finally
         {
-            pipeline.Close();
+            pipeline.Dispose();
         }
+    }
+
+    [Fact]
+    public void Dispose_ClosesTheCdg_AndCanRunTwice()
+    {
+        var pipeline = new CdgPipeline(new RecordingCdgEngine(), new PlaybackClock(), new MediaState());
+        pipeline.OpenStandalone(_path);
+        Assert.True(pipeline.Seek(3));
+
+        pipeline.Dispose();
+        pipeline.Dispose();
+
+        Assert.False(pipeline.IsOpen);
     }
 
     [Fact]

@@ -38,5 +38,7 @@ internal sealed class TestServiceProvider(TestMediaEngine engine) : IServiceProv
         ? engine
         : serviceType == typeof(IArchiveService)
             ? _archiveService
-            : null;
+            : serviceType == typeof(IMediaFileAnalyzer)
+                ? engine.Analyzer
+                : null;
 }

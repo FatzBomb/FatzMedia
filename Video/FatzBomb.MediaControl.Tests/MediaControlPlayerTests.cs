@@ -43,6 +43,37 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task SyncLoad_PlayOnLoad_StopIssuedAfterLoadWins()
+    {
+        // The PlayOnLoad start waits for the quick analysis; a Stop issued after a sync Load used to
+        // run first, and the start then played the media anyway.
+        var engine = new TestMediaEngine();
+        engine.TestAudio.NormalizationReady = false;
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
+
+        Assert.True(player.Load("song.mp3"));
+        _ = Task.Delay(200).ContinueWith(_ => engine.TestAudio.NormalizationReady = true, TaskScheduler.Default);
+        _ = player.Stop();
+        await player.FlushControlOperationsAsync();
+        await Task.Delay(300);
+
+        Assert.NotEqual(MediaPlayerState.Playing, player.State);
+    }
+
+    [Fact]
+    public async Task SyncLoad_PlayOnLoad_StartsOnce()
+    {
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []) { PlayOnLoad = true };
+
+        Assert.True(player.Load("song.mp3"));
+        await player.FlushControlOperationsAsync();
+
+        Assert.Equal(1, engine.PlayCount);
+        Assert.Equal(MediaPlayerState.Playing, player.State);
+    }
+
+    [Fact]
     public async Task Stop_RaisesStoppedThenStateThenPosition()
     {
         var engine = new TestMediaEngine();
@@ -951,6 +982,86 @@ public sealed class MediaControlPlayerTests
 
         Assert.Equal(["surface of A", "unowned"], seenByA);
         Assert.Equal(["surface of B", "unowned"], seenByB);
+    }
+
+    [Fact]
+    public async Task SyncControlCall_DiagnosticRaisedByTheEngine_ReachesOnlyItsPlayer()
+    {
+        // ENG-025: a synchronous call runs on the caller's thread, which has no owner.
+        var engineA = new TestMediaEngine();
+        using var playerA = new MediaControlPlayer(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        Assert.True(playerA.Load("song.mp3"));
+        engineA.OnPlay = static () => DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "OwnershipTest.Sync", "from A");
+        (ConcurrentQueue<string> seenByA, ConcurrentQueue<string> seenByB) = await CaptureOwnership(playerA, playerB, "OwnershipTest.Sync", () =>
+        {
+            Assert.True(playerA.Play());
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(["from A", "unowned"], seenByA);
+        Assert.Equal(["unowned"], seenByB);
+    }
+
+    [Fact]
+    public async Task PrepareNext_AnalysisFailure_ReachesOnlyItsPlayer()
+    {
+        var engineA = new TestMediaEngine { Analyzer = new ThrowingAnalyzer() };
+        using var playerA = new MediaControlPlayer(new TestPlatformFactory(engineA), MediaPlayerConfiguration.Auto, []);
+        using var playerB = new MediaControlPlayer(new TestPlatformFactory(new TestMediaEngine()), MediaPlayerConfiguration.Auto, []);
+        var path = Path.Combine(Path.GetTempPath(), $"fb-prepare-{Guid.NewGuid():N}.mp3");
+        await File.WriteAllBytesAsync(path, [0]);
+        try
+        {
+            (ConcurrentQueue<string> seenByA, ConcurrentQueue<string> seenByB) = await CaptureOwnership(playerA, playerB, "PreparedNext", async () =>
+                Assert.True(await playerA.PrepareNextAsync(path)));
+
+            Assert.Contains(seenByA, static message => message.StartsWith("Analysis failed", StringComparison.Ordinal));
+            Assert.Equal(["unowned"], seenByB);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> on a thread with no diagnostic owner, then raises an unowned
+    /// marker; returns what each player received in <paramref name="category"/>.
+    /// </summary>
+    private static async Task<(ConcurrentQueue<string> A, ConcurrentQueue<string> B)> CaptureOwnership(
+        MediaControlPlayer playerA, MediaControlPlayer playerB, string category, Func<Task> action)
+    {
+        var seenByA = new ConcurrentQueue<string>();
+        var seenByB = new ConcurrentQueue<string>();
+        using var bothSawUnowned = new CountdownEvent(2);
+        void Record(ConcurrentQueue<string> seen, MediaDiagnosticEventArgs e)
+        {
+            if (e.Category != category)
+                return;
+            seen.Enqueue(e.Message);
+            if (e.Message == "unowned")
+                bothSawUnowned.Signal();
+        }
+
+        playerA.MediaDiagnostic += (_, e) => Record(seenByA, e);
+        playerB.MediaDiagnostic += (_, e) => Record(seenByB, e);
+
+        await action();
+        DiagnosticRouter.Raise(null, MediaDiagnosticLevel.Info, category, "unowned");
+
+        // Each player delivers in order on its own worker, so "unowned" arriving means the
+        // earlier diagnostic was already delivered (or dropped).
+        Assert.True(bothSawUnowned.Wait(TestEnvironment.EventuallyTimeout));
+        await playerA.FlushControlOperationsAsync();
+        await playerB.FlushControlOperationsAsync();
+        return (seenByA, seenByB);
+    }
+
+    private sealed class ThrowingAnalyzer : IMediaFileAnalyzer
+    {
+        public Task<MediaAnalysisResult?> AnalyzeAsync(string filePath, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("analysis unavailable");
     }
 
     private sealed class TestPlatformFactory : IMediaControlPlatformFactory

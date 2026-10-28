@@ -22,6 +22,8 @@ public class KaraokeSurface : Control
 
     private readonly MediaSurface _surface = new();
     private readonly LightweightSurfaceHost _host;
+    // The player holds a song the Source loaded (not one LoadAsync loaded directly).
+    private bool _sourceLoaded;
     private string? _source;
 
     public KaraokeSurface()
@@ -194,6 +196,22 @@ public class KaraokeSurface : Control
         base.Dispose(disposing);
     }
 
-    private Task ReloadSourceAsync() =>
-        string.IsNullOrWhiteSpace(_source) ? Task.CompletedTask : _host.Controller.LoadAsync(_source, PlatformFactory);
+    // Clearing the source releases the player, so the previous song does not keep playing; a
+    // reload without one (attaching) leaves a song LoadAsync loaded directly alone.
+    private Task ReloadSourceAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_source))
+        {
+            _sourceLoaded = true;
+            return _host.Controller.LoadAsync(_source, PlatformFactory);
+        }
+
+        if (_sourceLoaded)
+        {
+            _sourceLoaded = false;
+            _host.Controller.ReleasePlayer();
+        }
+
+        return Task.CompletedTask;
+    }
 }

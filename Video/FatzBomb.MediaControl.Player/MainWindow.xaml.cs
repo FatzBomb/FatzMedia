@@ -58,7 +58,7 @@ public partial class MainWindow : Window
     {
         _statsTimer.Start();
         _ready = true;
-        await RebuildAsync();
+        await RebuildReportingFailureAsync();
     }
 
     private async void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -69,7 +69,21 @@ public partial class MainWindow : Window
         // The renderer for the players created from now on; App.RendererSelection resolves it off the UI thread.
         if (ReferenceEquals(sender, RendererBox) && RendererBox.SelectedItem is ComboBoxItem { Tag: PlayerRendererRequest request })
             App.UseRenderer(request);
-        await RebuildAsync();
+        await RebuildReportingFailureAsync();
+    }
+
+    // An async void handler must not let a failed rebuild end the process.
+    private async Task RebuildReportingFailureAsync()
+    {
+        try
+        {
+            await RebuildAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Player] Rebuilding the players failed: {ex}");
+            InfoText.Text = $"Rebuilding the players failed: {ex.Message}";
+        }
     }
 
     private Task RebuildAsync()

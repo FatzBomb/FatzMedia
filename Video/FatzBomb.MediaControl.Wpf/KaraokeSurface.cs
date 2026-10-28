@@ -24,6 +24,8 @@ public sealed class KaraokeSurface : Grid, IDisposable
     private bool _restoringPlatformFactory;
     private WpfPresentationMode _appliedPresentationMode = WpfPresentationMode.NativeHwndOverlay;
     private bool _disposed;
+    // The player holds a song the Source loaded (not one LoadAsync loaded directly).
+    private bool _sourceLoaded;
 
     public KaraokeSurface()
     {
@@ -250,8 +252,18 @@ public sealed class KaraokeSurface : Grid, IDisposable
 
             try
             {
+                // Clearing the source releases the player, so the previous song does not keep
+                // playing; a reload without one (Loaded) leaves a song LoadAsync loaded alone.
                 if (!string.IsNullOrWhiteSpace(Source))
+                {
+                    _sourceLoaded = true;
                     _ = await LoadKaraokeAsync(Source);
+                }
+                else if (_sourceLoaded)
+                {
+                    _sourceLoaded = false;
+                    _playerController.ReleasePlayer();
+                }
             }
             catch (Exception ex)
             {

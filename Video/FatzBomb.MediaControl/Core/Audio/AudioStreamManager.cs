@@ -1,4 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Files;
+using FatzBomb.MediaControl.Core.Threading;
 using ManagedBass;
 using ManagedBass.Fx;
 using System.Runtime.CompilerServices;
@@ -163,7 +165,8 @@ internal sealed class AudioStreamManager : IDisposable
     {
         try
         {
-            ConvertedAudio? converted = FfmpegAudioFallback.Take(filePath, CancellationToken.None);
+            // The load's token: Reset, Dispose and the host can stop a long conversion.
+            ConvertedAudio? converted = FfmpegAudioFallback.Take(filePath, MediaOpenCancellation.Current);
             if (converted is null)
                 return false;
 
@@ -184,6 +187,12 @@ internal sealed class AudioStreamManager : IDisposable
             ResetState();
             return PlayHandle != 0;
         }
+        catch (OperationCanceledException)
+        {
+            // The load was cancelled; the caller reports it, not as a failure.
+            Close();
+            return false;
+        }
         catch (Exception ex)
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"FFmpeg fallback failed for '{filePath}': {ex.Message}", sourcePath: filePath, innerException: ex);
@@ -203,6 +212,8 @@ internal sealed class AudioStreamManager : IDisposable
         ArgumentNullException.ThrowIfNull(archiveEntry);
 
         Close();
+        if (FfmpegAudioFallback.RequiresConversion(archiveEntry.Key))
+            return OpenConvertedArchiveEntry(archiveEntry);
 
         try
         {
@@ -231,7 +242,8 @@ internal sealed class AudioStreamManager : IDisposable
 
             if (!ValidateStreamHandles())
             {
-                return false;
+                // A claimed extension BASS cannot decode, as for files on disk.
+                return FfmpegAudioFallback.CanRetryWithFfmpeg(archiveEntry.Key) && OpenConvertedArchiveEntry(archiveEntry);
             }
 
             AttachTempoProcessor();
@@ -245,6 +257,35 @@ internal sealed class AudioStreamManager : IDisposable
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"OpenFromArchive failed: {ex.Message}", innerException: ex);
             Close(); // Ensure cleanup on failure
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Opens archived audio no BASS plugin decodes through the FFmpeg fallback, as for files on
+    /// disk: the entry is copied to a scratch file for FFmpeg, which is deleted once converted
+    /// (the converted WAV holds its own data).
+    /// </summary>
+    private bool OpenConvertedArchiveEntry(IArchiveEntryInfo archiveEntry)
+    {
+        string tempPath;
+        try
+        {
+            tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "AudioStreamManager", $"Extracting '{archiveEntry.Key}' for the FFmpeg fallback failed: {ex.Message}", innerException: ex);
+            Close();
+            return false;
+        }
+
+        try
+        {
+            return OpenConverted(tempPath);
+        }
+        finally
+        {
+            TempMediaFile.TryDelete(tempPath);
         }
     }
 

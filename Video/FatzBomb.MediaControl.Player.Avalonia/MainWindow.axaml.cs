@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private bool _ready;
     private bool _rebuilding;
     private bool _rebuildAgain;
+    private Task _rebuild = Task.CompletedTask;
     private bool _closing;
     private bool _closed;
     private bool _firstBuild = true;
@@ -40,6 +41,19 @@ public partial class MainWindow : Window
     }
 
     private async void OnOpened(object? sender, EventArgs e)
+    {
+        try
+        {
+            await OpenAsync();
+        }
+        catch (Exception ex)
+        {
+            // An async void handler must not let an exception end the process.
+            ReportFailure("Starting the players failed", ex);
+        }
+    }
+
+    private async Task OpenAsync()
     {
         InfoText.Text = "probing renderers...";
         _renderers = await Task.Run(Renderers.Probe);
@@ -79,19 +93,41 @@ public partial class MainWindow : Window
 
     private async void OnLayoutChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_ready)
+        if (!_ready)
+            return;
+
+        try
+        {
             await RebuildAsync();
+        }
+        catch (Exception ex)
+        {
+            ReportFailure("Rebuilding the players failed", ex);
+        }
     }
 
-    private async Task RebuildAsync()
+    private void ReportFailure(string what, Exception ex)
+    {
+        System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] {what}: {ex}");
+        InfoText.Text = $"{what}: {ex.Message}";
+    }
+
+    /// <summary>Rebuilds the players; a request during a rebuild runs once more after it. Returns the rebuild in progress.</summary>
+    private Task RebuildAsync()
     {
         if (_rebuilding)
         {
             _rebuildAgain = true;
-            return;
+            return _rebuild;
         }
 
         _rebuilding = true;
+        _rebuild = RebuildLoopAsync();
+        return _rebuild;
+    }
+
+    private async Task RebuildLoopAsync()
+    {
         try
         {
             do
@@ -114,12 +150,9 @@ public partial class MainWindow : Window
         _panels.Clear();
         PlayersGrid.Children.Clear();
         foreach (PlayerPanel panel in old)
-        {
-            panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
-            await panel.DisposeAsync();
-        }
+            await DisposePanelAsync(panel);
 
-        // Closed while the old players were disposed: OnClosing has already run, so build nothing it would miss.
+        // Closing started while the old players were disposed: build nothing (OnClosing waits for this rebuild).
         if (_closing)
             return;
 
@@ -128,25 +161,45 @@ public partial class MainWindow : Window
         RendererOption option = _renderers.First(candidate => candidate.Kind == kind);
         PlayersGrid.Columns = count == 1 ? 1 : 2;
 
+        var atStartup = _firstBuild;
+        _firstBuild = false;
         for (var i = 0; i < count; i++)
         {
-            // Only the first player of the first build gets the startup media.
+            // Only the first player of the first build gets the startup media and second screen.
             var panel = new PlayerPanel(
                 i + 1,
+                atStartup,
                 option,
                 _nativePaths,
-                _firstBuild ? _options.ForPlayer(i + 1) : _options.WithoutStartupMedia(),
-                _firstBuild ? _startupWarnings : []);
+                atStartup ? _options.ForPlayer(i + 1) : _options.WithoutStartupMedia(),
+                atStartup ? _startupWarnings : []);
             panel.FullScreenToggleRequested += OnFullScreenToggleRequested;
             _panels.Add(panel);
             PlayersGrid.Children.Add(panel);
         }
 
         // Created one after the other: native loading is process-wide and happens on the first.
-        for (var i = 0; i < _panels.Count && !_closing; i++)
-            await _panels[i].InitializeAsync();
+        foreach (PlayerPanel panel in _panels.ToList())
+        {
+            if (_closing || _rebuildAgain || !_panels.Contains(panel))
+                return;
 
-        _firstBuild = false;
+            await panel.InitializeAsync();
+        }
+    }
+
+    private async Task DisposePanelAsync(PlayerPanel panel)
+    {
+        panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
+        try
+        {
+            await panel.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            // One player's failed teardown must not keep the others alive or the window open.
+            System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Closing a player failed: {ex}");
+        }
     }
 
     private void OnFullScreenToggleRequested(object? sender, EventArgs e)
@@ -230,20 +283,22 @@ public partial class MainWindow : Window
 
         _closing = true;
         _statsTimer.Stop();
+        ExitFullScreen();
+        // A toolbar rebuild may still be disposing the old players or starting the new ones: let it
+        // finish (it stops at _closing) so no player outlives the window.
+        try
+        {
+            await _rebuild;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Rebuilding the players failed: {ex}");
+        }
+
         PlayerPanel[] panels = [.. _panels];
         _panels.Clear();
         foreach (PlayerPanel panel in panels)
-        {
-            try
-            {
-                await panel.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                // One player's failed teardown must not keep the others alive or the window open.
-                System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Closing a player failed: {ex}");
-            }
-        }
+            await DisposePanelAsync(panel);
 
         _sampler.Dispose();
         _closed = true;

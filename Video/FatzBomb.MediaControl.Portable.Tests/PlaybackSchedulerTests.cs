@@ -79,9 +79,17 @@ public sealed class PlaybackSchedulerTests
             Volatile.Write(ref returned, true);
         });
         Assert.True(started.Wait(Timeout));
-        scheduler.StopAndWait();
+        Assert.True(scheduler.StopAndWait());
 
         Assert.True(Volatile.Read(ref returned));
+    }
+
+    [Fact]
+    public void StopAndWait_WithNothingRunning_ReportsStopped()
+    {
+        using var scheduler = new PlaybackScheduler("Test");
+
+        Assert.True(scheduler.StopAndWait());
     }
 
     [Fact]
@@ -168,7 +176,8 @@ public sealed class PlaybackSchedulerTests
             release.Wait(); // ignores cancellation
         });
         Assert.True(stuckStarted.Wait(Timeout));
-        scheduler.StopAndWait(TimeSpan.FromMilliseconds(100));
+        // Not stopped: what the loop uses must not be freed (the background video decoder).
+        Assert.False(scheduler.StopAndWait(TimeSpan.FromMilliseconds(100)));
         scheduler.Start(_ => nextRan.Set());
 
         Assert.True(nextRan.Wait(Timeout));

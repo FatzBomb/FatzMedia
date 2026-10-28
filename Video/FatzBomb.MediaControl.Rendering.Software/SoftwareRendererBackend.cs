@@ -1,10 +1,14 @@
 using FatzBomb.MediaControl.Core.Abstractions;
+using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 
 namespace FatzBomb.MediaControl.Rendering.Software;
 
-internal sealed class SoftwareRendererBackend : IMediaRendererBackend
+internal sealed class SoftwareRendererBackend : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
 {
+    /// <summary>Why this renderer offers no hardware decode device.</summary>
+    internal const string NoVideoDecodeReason = "the software renderer draws only CPU frames";
+
     private readonly Lock _sync = new();
     private readonly SoftwareCompositionRenderer _renderer = new();
     // Attached managed frame-sink surfaces by id: the primary plus any secondary/projector
@@ -146,6 +150,25 @@ internal sealed class SoftwareRendererBackend : IMediaRendererBackend
         deviceAdopted = false;
         return false;
     }
+
+    // A renderer that decodes on no device: while it is attached Core offers decoders no hardware
+    // device type, so they open in software instead of producing frames this renderer would drop
+    // (ENG-037). This holds whatever the configuration's VideoDecoding asks for.
+    public string? VideoDecodeDeviceType => null;
+
+    public string? VideoDecodeUnavailableReason => NoVideoDecodeReason;
+
+    public nint CreateVideoDecodeDeviceContext(out string? failureReason)
+    {
+        failureReason = NoVideoDecodeReason;
+        return 0;
+    }
+
+    public NativeVideoDeviceResource? CreateVideoDecodeDeviceResource(nint ffmpegHardwareDeviceContext) => null;
+
+    public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) => null;
+
+    public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
 
     public void Dispose()
     {

@@ -25,6 +25,7 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 public partial class PlayerPanel : UserControl
 {
     private readonly int _index;
+    private readonly bool _atStartup;
     private readonly FullScreenChromeController _chrome;
     private bool _isDragging;
     private bool _isUpdatingSeek;
@@ -34,13 +35,18 @@ public partial class PlayerPanel : UserControl
 
     // Designer/XAML loader constructor.
     public PlayerPanel()
-        : this(1, new RendererOption(RendererKind.Software, true, string.Empty), [], new PlayerStartupOptions(), [])
+        : this(1, atStartup: false, new RendererOption(RendererKind.Software, true, string.Empty), [], new PlayerStartupOptions(), [])
     {
     }
 
-    internal PlayerPanel(int index, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options, IReadOnlyList<string> startupWarnings)
+    /// <param name="atStartup">
+    /// Whether this panel is part of the window's first build: only then does player 1 open the
+    /// <c>--second-screen=</c> screen (rebuilt players start empty, as in the WPF and WinForms players).
+    /// </param>
+    internal PlayerPanel(int index, bool atStartup, RendererOption renderer, IReadOnlyList<string> nativePaths, PlayerStartupOptions options, IReadOnlyList<string> startupWarnings)
     {
         _index = index;
+        _atStartup = atStartup;
         InitializeComponent();
 
         var shell = new AvaloniaPlayerShell(this);
@@ -89,13 +95,13 @@ public partial class PlayerPanel : UserControl
 
     private string Label => $"P{_index}";
 
-    /// <summary>Creates the engine and loads the startup media; then opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
+    /// <summary>Creates the engine and loads the startup media; then, in the first build, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
     internal async Task InitializeAsync()
     {
         await ViewModel.StartAsync();
 
         // --second-screen=<n> opens player 1's second screen at startup.
-        if (_index == 1 && StartupOptions.Current.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
+        if (_atStartup && _index == 1 && StartupOptions.Current.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
             SecondScreenBox.IsChecked = true;
     }
 

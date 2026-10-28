@@ -191,19 +191,28 @@ public sealed class MediaFile
     /// Loads media from a neutral Core source with an optional explicit neutral background source.
     /// </summary>
     public bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar = false) =>
-        Load(source, backgroundSource, ignoreSidecar, CancellationToken.None);
+        Load(source, backgroundSource, ignoreSidecar, CancellationToken.None, out _);
 
-    /// <summary>The synchronous load; <paramref name="cancellationToken"/> as for <see cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>.</summary>
-    internal bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken)
+    /// <summary>
+    /// The synchronous load; <paramref name="cancellationToken"/> as for
+    /// <see cref="LoadAsync(MediaInputSource, MediaInputSource?, bool, CancellationToken)"/>. It never
+    /// starts playback: with <see cref="PlayOnLoad"/> set, the caller runs
+    /// <see cref="StartPlayOnLoadAsync"/> with <paramref name="loadGeneration"/> in order with the
+    /// controls issued after the load (a Pause or Stop right after a load must win).
+    /// </summary>
+    internal bool Load(MediaInputSource source, MediaInputSource? backgroundSource, bool ignoreSidecar, CancellationToken cancellationToken, out int loadGeneration)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var loadGeneration = BeginLoadOperation();
-        var success = LoadCore(source, backgroundSource, ignoreSidecar, cancellationToken);
-        if (success && PlayOnLoad)
-            _ = Task.Run(() => HandlePlayOnLoadAsync(loadGeneration, cancellationToken));
-
-        return success;
+        loadGeneration = BeginLoadOperation();
+        return LoadCore(source, backgroundSource, ignoreSidecar, cancellationToken);
     }
+
+    /// <summary>
+    /// Starts the media of a synchronous <see cref="Load(MediaInputSource, MediaInputSource?, bool, CancellationToken, out int)"/>
+    /// as <see cref="PlayOnLoad"/> asks, unless another load replaced it meanwhile.
+    /// </summary>
+    internal Task StartPlayOnLoadAsync(int loadGeneration, CancellationToken cancellationToken) =>
+        HandlePlayOnLoadAsync(loadGeneration, cancellationToken);
 
     /// <summary>
     /// Handles PlayOnLoad with proper normalization timing.

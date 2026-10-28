@@ -78,7 +78,7 @@ internal sealed class MainForm : Form
             ShowLightweightSurfaces();
 
         _ready = true;
-        await RebuildAsync();
+        await RebuildReportingFailureAsync();
     }
 
     private async void OnLayoutChanged(object? sender, EventArgs e)
@@ -89,7 +89,21 @@ internal sealed class MainForm : Form
         // The renderer for the panels created from now on; Program.RendererSelection resolves it off the UI thread.
         if (ReferenceEquals(sender, _rendererBox) && _rendererBox.SelectedIndex >= 0)
             Program.UseRenderer(_options, PlayerRendererSelection.Choices[_rendererBox.SelectedIndex].Request);
-        await RebuildAsync();
+        await RebuildReportingFailureAsync();
+    }
+
+    // An async void handler must not let a failed rebuild reach the thread-exception dialog.
+    private async Task RebuildReportingFailureAsync()
+    {
+        try
+        {
+            await RebuildAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Player.WinForms] Rebuilding the players failed: {ex}");
+            _info.Text = $"Rebuilding the players failed: {ex.Message}";
+        }
     }
 
     private Task RebuildAsync()
