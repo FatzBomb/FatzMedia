@@ -999,16 +999,32 @@ public partial class MediaControlPlayer : IMediaControlSession
         StartAudioDeviceMonitor();
     }
 
-    /// <summary>Stops and closes the media, unsubscribes, and disposes the session graph.</summary>
+    /// <summary>Holds the surfaces, then stops and closes the media, unsubscribes, and disposes the session graph.</summary>
     private void TearDownSessionGraph()
     {
         HoldPresentationSurfaces();
         if (_sessionGraphFreed)
             return;
 
-        _sessionGraphFreed = true;
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.OnScrubEnded(); } catch { }
+        FreeSessionGraph(stopPlayback: false);
+    }
+
+    /// <summary>
+    /// The one teardown of the session graph, shared by Reset, mode switches and Dispose: closes
+    /// the media, unsubscribes every player handler (including the device-recovery reopen) and
+    /// disposes the graph, once.
+    /// </summary>
+    /// <param name="stopPlayback">Stops the transport before closing (Dispose).</param>
+    private void FreeSessionGraph(bool stopPlayback)
+    {
+        if (_sessionGraphFreed)
+            return;
+
+        _sessionGraphFreed = true;
+        if (stopPlayback)
+            try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
 
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
@@ -1033,10 +1049,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         StopAudioDeviceMonitor();
 
-        try { Controls.Dispose(); } catch { }
-        try { _presentationCoordinator.Dispose(); } catch { }
-        try { _mediaEngine.Dispose(); } catch { }
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
+        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
+        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
     }
 
     private void StartAudioDeviceMonitor()
@@ -1257,38 +1273,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.Dispose(); } catch { }
-        if (_sessionGraphFreed)
-            return;
-
-        _sessionGraphFreed = true;
-        try { _ = Controls.Stop(); } catch { }
-        try { File.Close(); } catch { }
-        try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
-        try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
-        try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
-        try { UnsubscribeNewSessionEvents(); } catch { }
-        try { UnsubscribeNetworkEvents(); } catch { }
-        try { UnsubscribeSeekCompletionSources(); } catch { }
-        try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
-        try { _positionNotifier.Dispose(); } catch { }
-        ClearPendingSeek();
-        try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
-        try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
-        try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
-        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
-        try
-        {
-            if (_mediaEngine is IMediaErrorSource errorSource)
-                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
-        }
-        catch { }
-
-        StopAudioDeviceMonitor();
-
-        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
-        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
-        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
+        FreeSessionGraph(stopPlayback: true);
     }
 
     /// <param name="DuringScrub">
