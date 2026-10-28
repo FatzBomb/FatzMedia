@@ -682,8 +682,14 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     private void OnPlayerError(object? sender, MediaErrorEventArgs e)
         => HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
 
+    // Traced on the raising thread before the hop, so a frozen UI thread does not hide it from
+    // the debug log (ENG-039: a GPU reset froze the UI and the log ended before it).
     private void HandleDiagnosticOnUiThread(MediaDiagnosticLevel level, string category, string message)
-        => RunOnUiThread(() => HandleDiagnostic(level, category, message));
+    {
+        var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
+        TraceLogEntry(entry);
+        RunOnUiThread(() => ShowDiagnostic(entry));
+    }
 
     private void OnPlayerPitchChanged(object? sender, MediaValueChangedEventArgs<int> e)
         => RunOnUiThread(() => SetPitchFromPlayer(e.CurrentValue));
@@ -758,10 +764,16 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     protected void HandleDiagnostic(MediaDiagnosticLevel level, string category, string message)
     {
         var entry = new DiagnosticLogEntry(DateTime.Now, level, category, message);
-        AppendToLog(entry);
+        TraceLogEntry(entry);
+        ShowDiagnostic(entry);
+    }
 
-        if (level >= MediaDiagnosticLevel.Warning)
-            StatusText = $"[{level}] {category}: {message}";
+    // UI thread: the log panel and, for a warning or an error, the status line.
+    private void ShowDiagnostic(DiagnosticLogEntry entry)
+    {
+        AppendToLog(entry);
+        if (entry.Level >= MediaDiagnosticLevel.Warning)
+            StatusText = $"[{entry.Level}] {entry.Category}: {entry.Message}";
     }
 
     /// <summary>Detaches from the engine and disposes it on the calling thread (it blocks until media operations finish).</summary>
