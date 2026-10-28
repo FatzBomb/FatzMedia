@@ -1111,6 +1111,14 @@ rate before reporting the platform one (`ShouldWaitForRendererRefreshRate`, test
 `VideoCadenceReportTimingTests`). Host-render mode, with no presentation loop, reports at once
 as before.
 
+Follow-up (ENG-039 G2, 2026-10-28): the "platform" rate was never DWM's. `DWM_TIMING_INFO` was
+declared with the default layout (320 bytes) instead of the packed native one (292), so
+`DwmGetCompositionTimingInfo` failed every time (`0x88980090`) and the platform rate was always
+the 60 Hz fallback. The struct is now packed (`DwmCompositionTimingTests`), and a failure is
+logged once per process (category `DisplayTiming`). On a 60 Hz monitor nothing changes; on
+another rate, video without a per-monitor rate (no renderer rate source yet) now gets DWM's
+composition rate instead of 60 Hz.
+
 ### ENG-017 - Software renderer drops frames at large output sizes
 
 Fixed: 2026-10-18. Owner smoke passed the same day (`--software` fullscreen on an ultrawide,
