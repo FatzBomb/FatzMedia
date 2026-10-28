@@ -65,7 +65,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     internal string? LastVideoFailure => _reportedVideoFailure;
 
     /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
-    public void MarkDeviceLost() => _shared?.MarkLost();
+    public void MarkDeviceLost(string reason) => _shared?.MarkLost(reason);
 
     /// <summary>
     /// A new reference to an FFmpeg Vulkan device context on this device, or 0 with the reason

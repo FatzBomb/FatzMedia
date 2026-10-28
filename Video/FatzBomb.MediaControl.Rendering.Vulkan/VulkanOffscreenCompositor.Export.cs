@@ -186,13 +186,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             if (set.IsDestroyed || !_exportedSets.Remove(set))
                 return;
 
+            // Every submission of this compositor completed (fence wait) before _sync was released,
+            // so nothing still uses the images (ENG-039: no queue wait, which FFmpeg's work and a
+            // lost device could stretch, on the caller's UI thread).
             set.IsDestroyed = true;
-            if (_device.Handle != 0)
-            {
-                lock (QueueLock)
-                    _ = _vk.QueueWaitIdle(_queue);
-            }
-
             foreach (VulkanExportedImage image in set.Images)
                 DestroyExportedImage(image, closeDescriptors);
         }
@@ -256,9 +253,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
                 CommandBuffer commandBuffer = _commandBuffer;
                 var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
-                Fence fence = _fence;
                 Submit(&submit);
-                Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
+                WaitForSubmission("vkWaitForFences (import read-back)");
 
                 var length = width * height * 4;
                 var pixels = new byte[length];
