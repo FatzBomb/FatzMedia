@@ -54,20 +54,27 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     }
 
     /// <summary>Creates a framebuffer for a target view; the caller owns and destroys it.</summary>
-    public Framebuffer CreateFramebuffer(ImageView targetView, uint width, uint height)
+    public Framebuffer CreateFramebuffer(ImageView targetView, uint width, uint height) =>
+        CreateFramebuffer(_vk, _device, _renderPass, targetView, width, height, "vkCreateFramebuffer");
+
+    /// <summary>
+    /// Creates a single-attachment, single-layer framebuffer of <paramref name="renderPass"/> over
+    /// <paramref name="view"/>; <paramref name="operation"/> names the step in a failure.
+    /// </summary>
+    internal static Framebuffer CreateFramebuffer(Vk vk, Device device, RenderPass renderPass, ImageView view, uint width, uint height, string operation)
     {
         var info = new FramebufferCreateInfo
         {
             SType = StructureType.FramebufferCreateInfo,
-            RenderPass = _renderPass,
+            RenderPass = renderPass,
             AttachmentCount = 1,
-            PAttachments = &targetView,
+            PAttachments = &view,
             Width = width,
             Height = height,
             Layers = 1,
         };
         Framebuffer framebuffer;
-        Check(_vk.CreateFramebuffer(_device, &info, null, &framebuffer), "vkCreateFramebuffer");
+        VulkanResult.Check(vk.CreateFramebuffer(device, &info, null, &framebuffer), operation);
         return framebuffer;
     }
 
@@ -177,7 +184,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
             MaxLod = 0,
         };
         Sampler sampler;
-        Check(_vk.CreateSampler(_device, &samplerInfo, null, &sampler), "vkCreateSampler");
+        VulkanResult.Check(_vk.CreateSampler(_device, &samplerInfo, null, &sampler), "vkCreateSampler");
         _sampler = sampler;
 
         var binding = new DescriptorSetLayoutBinding
@@ -189,7 +196,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         };
         var setLayoutInfo = new DescriptorSetLayoutCreateInfo { SType = StructureType.DescriptorSetLayoutCreateInfo, BindingCount = 1, PBindings = &binding };
         DescriptorSetLayout setLayout;
-        Check(_vk.CreateDescriptorSetLayout(_device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout");
+        VulkanResult.Check(_vk.CreateDescriptorSetLayout(_device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout");
         _setLayout = setLayout;
 
         var pushRange = new PushConstantRange(ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit, 0, PushConstantSize);
@@ -202,18 +209,18 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
             PPushConstantRanges = &pushRange,
         };
         PipelineLayout layout;
-        Check(_vk.CreatePipelineLayout(_device, &layoutInfo, null, &layout), "vkCreatePipelineLayout");
+        VulkanResult.Check(_vk.CreatePipelineLayout(_device, &layoutInfo, null, &layout), "vkCreatePipelineLayout");
         _layout = layout;
 
         var poolSize = new DescriptorPoolSize(DescriptorType.CombinedImageSampler, 1);
         var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 1, PoolSizeCount = 1, PPoolSizes = &poolSize };
         DescriptorPool pool;
-        Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool");
+        VulkanResult.Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool");
         _descriptorPool = pool;
 
         var allocateInfo = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = pool, DescriptorSetCount = 1, PSetLayouts = &setLayout };
         DescriptorSet set;
-        Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, &set), "vkAllocateDescriptorSets");
+        VulkanResult.Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, &set), "vkAllocateDescriptorSets");
         _cdgDescriptorSet = set;
 
         ShaderModule vertex = default;
@@ -270,7 +277,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
             PSubpasses = &subpass,
         };
         RenderPass renderPass;
-        Check(_vk.CreateRenderPass(_device, &info, null, &renderPass), "vkCreateRenderPass");
+        VulkanResult.Check(_vk.CreateRenderPass(_device, &info, null, &renderPass), "vkCreateRenderPass");
         _renderPass = renderPass;
     }
 
@@ -369,7 +376,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
                 Subpass = 0,
             };
             VkPipeline pipeline;
-            Check(vk.CreateGraphicsPipelines(device, default, 1, &info, null, &pipeline), "vkCreateGraphicsPipelines");
+            VulkanResult.Check(vk.CreateGraphicsPipelines(device, default, 1, &info, null, &pipeline), "vkCreateGraphicsPipelines");
             return pipeline;
         }
         finally
@@ -391,7 +398,7 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
                 PCode = pCode,
             };
             ShaderModule module;
-            Check(vk.CreateShaderModule(device, &info, null, &module), "vkCreateShaderModule");
+            VulkanResult.Check(vk.CreateShaderModule(device, &info, null, &module), "vkCreateShaderModule");
             return module;
         }
     }
@@ -417,11 +424,5 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         var code = new uint[stream.Length / sizeof(uint)];
         stream.ReadExactly(MemoryMarshal.AsBytes(code.AsSpan()));
         return code;
-    }
-
-    private static void Check(Result result, string operation)
-    {
-        if (result != Result.Success)
-            throw new VulkanException(operation, result);
     }
 }

@@ -174,8 +174,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 PNext = &dedicated,
                 HandleTypes = ExternalMemoryHandleTypeFlags.OpaqueWin32Bit,
             };
-            memory = AllocateImageMemory(requirements, requirements.MemoryTypeBits, &exportInfo, "vkAllocateMemory (Win32 export)");
-            Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (Win32 export)");
+            memory = AllocateMemory(requirements.MemoryTypeBits, requirements.Size, ImageMemoryPreferences, &exportInfo, "vkAllocateMemory (Win32 export)", out _);
+            VulkanResult.Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (Win32 export)");
 
             var getHandle = new MemoryGetWin32HandleInfoKHR
             {
@@ -183,7 +183,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 Memory = memory,
                 HandleType = ExternalMemoryHandleTypeFlags.OpaqueWin32Bit,
             };
-            Check(_getMemoryWin32Handle(_device, &getHandle, &memoryHandle), "vkGetMemoryWin32HandleKHR");
+            VulkanResult.Check(_getMemoryWin32Handle(_device, &getHandle, &memoryHandle), "vkGetMemoryWin32HandleKHR");
 
             if (withSemaphores)
             {
@@ -221,7 +221,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         };
         var info = new SemaphoreCreateInfo { SType = StructureType.SemaphoreCreateInfo, PNext = &exportInfo };
         VkSemaphore semaphore;
-        Check(_vk.CreateSemaphore(_device, &info, null, &semaphore), "vkCreateSemaphore (Win32 export)");
+        VulkanResult.Check(_vk.CreateSemaphore(_device, &info, null, &semaphore), "vkCreateSemaphore (Win32 export)");
         var getHandle = new SemaphoreGetWin32HandleInfoKHR
         {
             SType = StructureType.SemaphoreGetWin32HandleInfoKhr,
@@ -264,7 +264,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             MemoryRequirements requirements;
             _vk.GetImageMemoryRequirements(_device, image, &requirements);
             var handleProperties = new MemoryWin32HandlePropertiesKHR { SType = StructureType.MemoryWin32HandlePropertiesKhr };
-            Check(_getMemoryWin32HandleProperties(_device, ExternalMemoryHandleTypeFlags.D3D11TextureBit, handle, &handleProperties), "vkGetMemoryWin32HandlePropertiesKHR");
+            VulkanResult.Check(_getMemoryWin32HandleProperties(_device, ExternalMemoryHandleTypeFlags.D3D11TextureBit, handle, &handleProperties), "vkGetMemoryWin32HandlePropertiesKHR");
             // A Direct3D11 texture is always imported as a dedicated allocation; the import does
             // not take the handle.
             var dedicated = new MemoryDedicatedAllocateInfo { SType = StructureType.MemoryDedicatedAllocateInfo, Image = image };
@@ -275,8 +275,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 HandleType = ExternalMemoryHandleTypeFlags.D3D11TextureBit,
                 Handle = handle,
             };
-            memory = AllocateImageMemory(requirements, requirements.MemoryTypeBits & handleProperties.MemoryTypeBits, &import, "vkAllocateMemory (Direct3D11 texture import)");
-            Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (Direct3D11 texture import)");
+            memory = AllocateMemory(requirements.MemoryTypeBits & handleProperties.MemoryTypeBits, requirements.Size, ImageMemoryPreferences, &import, "vkAllocateMemory (Direct3D11 texture import)", out _);
+            VulkanResult.Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (Direct3D11 texture import)");
             return new VulkanExportedImage(image, memory, requirements.Size, -1, default, -1, default, -1)
             {
                 MemoryNtHandle = handle,
@@ -293,26 +293,6 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             VulkanD3D11Interop.CloseNtHandle(handle);
             throw;
         }
-    }
-
-    private DeviceMemory AllocateImageMemory(MemoryRequirements requirements, uint typeBits, void* pNext, string operation)
-    {
-        var typeIndex = FindMemoryType(typeBits, MemoryPropertyFlags.DeviceLocalBit);
-        if (typeIndex < 0)
-            typeIndex = FindMemoryType(typeBits, MemoryPropertyFlags.None);
-        if (typeIndex < 0)
-            throw new VulkanException($"No memory type for a shared image; {operation}", Result.ErrorOutOfDeviceMemory);
-
-        var allocateInfo = new MemoryAllocateInfo
-        {
-            SType = StructureType.MemoryAllocateInfo,
-            PNext = pNext,
-            AllocationSize = requirements.Size,
-            MemoryTypeIndex = (uint)typeIndex,
-        };
-        DeviceMemory memory;
-        Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), operation);
-        return memory;
     }
 
     /// <summary>Closes an NT handle no importer needs any more.</summary>

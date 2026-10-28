@@ -50,22 +50,8 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
     }
 
     /// <summary>Creates a framebuffer for a video layer view; the caller owns and destroys it.</summary>
-    public Framebuffer CreateFramebuffer(ImageView view, uint width, uint height)
-    {
-        var info = new FramebufferCreateInfo
-        {
-            SType = StructureType.FramebufferCreateInfo,
-            RenderPass = _renderPass,
-            AttachmentCount = 1,
-            PAttachments = &view,
-            Width = width,
-            Height = height,
-            Layers = 1,
-        };
-        Framebuffer framebuffer;
-        Check(_vk.CreateFramebuffer(_device, &info, null, &framebuffer), "vkCreateFramebuffer (video)");
-        return framebuffer;
-    }
+    public Framebuffer CreateFramebuffer(ImageView view, uint width, uint height) =>
+        VulkanOverlayPipelines.CreateFramebuffer(_vk, _device, _renderPass, view, width, height, "vkCreateFramebuffer (video)");
 
     /// <summary>
     /// Records the conversion into <paramref name="framebuffer"/> (a layer in
@@ -187,7 +173,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
             PSubpasses = &subpass,
         };
         RenderPass renderPass;
-        Check(_vk.CreateRenderPass(_device, &renderPassInfo, null, &renderPass), "vkCreateRenderPass (video)");
+        VulkanResult.Check(_vk.CreateRenderPass(_device, &renderPassInfo, null, &renderPass), "vkCreateRenderPass (video)");
         _renderPass = renderPass;
 
         var samplerInfo = new SamplerCreateInfo
@@ -202,7 +188,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
             MaxLod = 0,
         };
         Sampler sampler;
-        Check(_vk.CreateSampler(_device, &samplerInfo, null, &sampler), "vkCreateSampler (video)");
+        VulkanResult.Check(_vk.CreateSampler(_device, &samplerInfo, null, &sampler), "vkCreateSampler (video)");
         _sampler = sampler;
 
         var bindings = stackalloc DescriptorSetLayoutBinding[3];
@@ -219,7 +205,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
 
         var setLayoutInfo = new DescriptorSetLayoutCreateInfo { SType = StructureType.DescriptorSetLayoutCreateInfo, BindingCount = 3, PBindings = bindings };
         DescriptorSetLayout setLayout;
-        Check(_vk.CreateDescriptorSetLayout(_device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout (video)");
+        VulkanResult.Check(_vk.CreateDescriptorSetLayout(_device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout (video)");
         _setLayout = setLayout;
 
         var pushRange = new PushConstantRange(ShaderStageFlags.VertexBit, 0, PushConstantSize);
@@ -232,7 +218,7 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
             PPushConstantRanges = &pushRange,
         };
         PipelineLayout layout;
-        Check(_vk.CreatePipelineLayout(_device, &layoutInfo, null, &layout), "vkCreatePipelineLayout (video)");
+        VulkanResult.Check(_vk.CreatePipelineLayout(_device, &layoutInfo, null, &layout), "vkCreatePipelineLayout (video)");
         _layout = layout;
 
         var poolSizes = stackalloc DescriptorPoolSize[2];
@@ -240,12 +226,12 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
         poolSizes[1] = new DescriptorPoolSize(DescriptorType.UniformBuffer, 1);
         var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 1, PoolSizeCount = 2, PPoolSizes = poolSizes };
         DescriptorPool pool;
-        Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool (video)");
+        VulkanResult.Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool (video)");
         _descriptorPool = pool;
 
         var allocateInfo = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = pool, DescriptorSetCount = 1, PSetLayouts = &setLayout };
         DescriptorSet set;
-        Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, &set), "vkAllocateDescriptorSets (video)");
+        VulkanResult.Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, &set), "vkAllocateDescriptorSets (video)");
         _set = set;
 
         ShaderModule vertex = default;
@@ -263,11 +249,5 @@ internal sealed unsafe class VulkanVideoPipeline : IDisposable
             if (vertex.Handle != 0)
                 _vk.DestroyShaderModule(_device, vertex, null);
         }
-    }
-
-    private static void Check(Result result, string operation)
-    {
-        if (result != Result.Success)
-            throw new VulkanException(operation, result);
     }
 }

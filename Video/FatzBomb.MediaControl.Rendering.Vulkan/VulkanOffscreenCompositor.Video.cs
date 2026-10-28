@@ -321,7 +321,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             description.CodedHeight);
         BufferResource constantsBuffer = EnsureBuffer(ref _videoConstants, (ulong)sizeof(VulkanVideoConstants), BufferUsageFlags.UniformBufferBit, UploadMemoryPreferences);
         void* mapped;
-        Check(_vk.MapMemory(_device, constantsBuffer.Memory, 0, (ulong)sizeof(VulkanVideoConstants), 0, &mapped), "vkMapMemory");
+        VulkanResult.Check(_vk.MapMemory(_device, constantsBuffer.Memory, 0, (ulong)sizeof(VulkanVideoConstants), 0, &mapped), "vkMapMemory");
         *(VulkanVideoConstants*)mapped = constants;
         _vk.UnmapMemory(_device, constantsBuffer.Memory);
 
@@ -431,7 +431,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             SubresourceRange = new ImageSubresourceRange(aspect, 0, 1, 0, 1),
         };
         ImageView view;
-        Check(_vk.CreateImageView(_device, &info, null, &view), "vkCreateImageView (decoded frame plane)");
+        VulkanResult.Check(_vk.CreateImageView(_device, &info, null, &view), "vkCreateImageView (decoded frame plane)");
         _frameViews.Add(view);
         return view;
     }
