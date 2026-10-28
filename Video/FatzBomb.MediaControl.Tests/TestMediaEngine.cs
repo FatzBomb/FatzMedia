@@ -51,7 +51,7 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public TestCdgEngine? TestCdg { get; init; }
     public IVideoEngine? Video => TestVideo;
     public ICdgEngine? Cdg => TestCdg;
-    public ISubtitleEngine? Subtitle => null;
+    public ISubtitleEngine? Subtitle { get; set; }
     public IReadOnlyList<SubtitleTrack> SubtitleTracks { get; set; } = [];
     public string? SelectedSubtitleTrackId { get; set; }
     public event EventHandler? SubtitleTracksChanged;
