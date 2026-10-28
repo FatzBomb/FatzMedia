@@ -46,6 +46,28 @@ public partial class MediaControlPlayer
 
     public event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
 
+    public event EventHandler<SubtitleTracksChangedEventArgs>? SubtitleTracksChanged;
+
+    /// <remarks>
+    /// Raised by the engine's embedded subtitle scan (ENG-039 P5-1) on its own thread; delivered
+    /// through the control queue, so hosts see it after the load's <c>MediaLoaded</c>.
+    /// </remarks>
+    private void OnEngineSubtitleTracksChanged(object? sender, EventArgs e) =>
+        RaiseOnControlQueue(() =>
+        {
+            // Queued behind a Close, the change is stale (a newer load drops it in the engine).
+            if (!_mediaEngine.IsOpen)
+                return;
+
+            // A paused video shows the newly selected track at once.
+            RequestPresentationRefresh();
+            HostEventDispatcher.Raise(
+                this,
+                SubtitleTracksChanged,
+                new SubtitleTracksChangedEventArgs(_mediaEngine.SubtitleTracks, _mediaEngine.SelectedSubtitleTrackId),
+                nameof(SubtitleTracksChanged));
+        });
+
     private void OnControlsMediaEnded(object? sender, EventArgs e)
     {
         ClearPendingSeek();
@@ -223,6 +245,8 @@ public partial class MediaControlPlayer
         Effects.TempoChanged += OnEffectsTempoChanged;
         Effects.NormalizeChanged += OnEffectsNormalizeChanged;
         Effects.EqualizerChanged += OnEffectsEqualizerChanged;
+        if (_mediaEngine is ISubtitleTrackSource subtitleTracks)
+            subtitleTracks.SubtitleTracksChanged += OnEngineSubtitleTracksChanged;
     }
 
     private void UnsubscribeNewSessionEvents()
@@ -238,6 +262,8 @@ public partial class MediaControlPlayer
         Effects.TempoChanged -= OnEffectsTempoChanged;
         Effects.NormalizeChanged -= OnEffectsNormalizeChanged;
         Effects.EqualizerChanged -= OnEffectsEqualizerChanged;
+        if (_mediaEngine is ISubtitleTrackSource subtitleTracks)
+            subtitleTracks.SubtitleTracksChanged -= OnEngineSubtitleTracksChanged;
     }
 
     private void SubscribeSeekCompletionSources()
