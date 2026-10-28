@@ -44,13 +44,6 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/044A_ACTIVE_TestPlayerParity.md` - the WPF, Avalonia and WinForms test players on one
   shared view model (`FatzBomb.MediaControl.Player.Shared`), at feature parity with the WPF
   player, with a shared command line; slice 1 owner smoke passed 2026-10-26 (`updates/044A_1`).
-- `active/045A_ACTIVE_GpuDecodingEveryPath.md` - GPU decoding on every presentation path (owner
-  direction, 2026-10-26). Slice 1 (the Avalonia player decodes with D3D11VA for the Direct3D11
-  renderer, on the shared GPU image and the frame sink; HDR tone mapped on the GPU) is
-  owner smoke passed 2026-10-26 (`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan
-  renderer's device, Linux and Windows) and slice 3 (Vulkan on Windows, including the Avalonia
-  shared image for Vulkan frames; owner 2026-10-27: full compatibility) implemented, pending
-  manual smoke (`updates/045A_2`, `updates/045A_3`; Windows smoke steps in `updates/045A_3`).
 
 Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
@@ -60,6 +53,7 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 
 ## Completed
 
+- `complete/045A_COMPLETED_GpuDecodingEveryPath.md` — GPU decoding on every presentation path (full compatibility): D3D11VA on the Avalonia surface, Vulkan Video on the Vulkan renderer's device (Linux and Windows) and the Avalonia shared GPU image for Vulkan frames on Windows; owner smoke passed 2026-10-26/27 on Windows (`updates/045A_1` to `045A_3`); Linux drivers unverified (ENG-038)
 - `complete/046A_COMPLETED_AdapterParity.md` — adapter and player parity (no feature solo for one player): shared Core auto-hide, presentation path and lightweight player controller; `SecondaryPresentationWindow`, `KaraokeSurface` and `BackgroundSurface` in WPF, Avalonia and WinForms; WinForms frame sink and overlay; Player.Shared chrome, stats, screen rule and renderer request; GPU-first `--renderer=auto`; the player-count and renderer toolbar in every player; owner smoke passed 2026-10-26/27 (`updates/046A_1` to `046A_3`)
 - `complete/039A_COMPLETED_NetworkVideoPlayback.md` — network video through FFmpeg (HTTP/HTTPS progressive, HLS VOD and live, certificate checks), a forward read-ahead with one download for picture and sound, and reconnect after a dropped network; owner smoke passed 2026-10-25/26; follow-ups in ENG-034 (completed 2026-10-26). Follow-up update `updates/039A_3` (https and HLS audio through FFmpeg so certificates are verified, ENG-034 triage: clock held for picture-only outages, bounded reconnects, moov-at-end message): implemented, pending manual smoke
 - `complete/038A_COMPLETED_HdrVideoToneMapping.md` — HDR10 to SDR tone mapping (BT.2390, SDR white 203 nits) on the CPU for every renderer and in a Direct3D11 shader for hardware-decoded video, with CPU fallback; owner smoke passed 2026-10-18; HLG and HDR output in 042A (completed 2026-10-18)
@@ -111,7 +105,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27); risk assessment,
-  a no-code measurement and a go/no-go spike first.
+  a no-code measurement and a go/no-go spike first. Kept on the table (owner 2026-10-28);
+  waiting on the owner's step 0 measurement and decision.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 

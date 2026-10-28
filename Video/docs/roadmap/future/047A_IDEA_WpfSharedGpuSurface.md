@@ -1,8 +1,9 @@
 # Idea 047A - WPF Composited Surface from a Shared GPU Image
 
 Prepared: 2026-10-27
-Status: idea. Owner direction (2026-10-27): "We should allow the WPF savings at 4K. We need to
-establish the risks first." This file is the risk assessment and the measurement and spike that
+Status: idea, kept on the table (owner, 2026-10-28). Owner direction (2026-10-27): "We should
+allow the WPF savings at 4K. We need to establish the risks first." Next: the owner's step 0
+measurement, then the owner's go/no-go on the spike. This file is the risk assessment and the measurement and spike that
 decide whether the stage goes ahead.
 
 ## What it changes

@@ -3,7 +3,7 @@
 Stage: 045A.3 - Vulkan on Windows: GPU decoding and the Avalonia shared GPU image
 Date: 2026-10-27
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27 (Windows)
 
 Owner decision (2026-10-27): full compatibility. Slice 2 (`updates/045A_2`) gave the Vulkan
 renderer GPU decoding: FFmpeg Vulkan Video on the renderer's own device. The same code runs on
@@ -204,3 +204,6 @@ dotnet run --project FatzBomb.MediaControl.Player.WinForms -c Release -- --rende
     published frame at once. Publishes stay coalesced (latest frame wins).
   - Retest: `--players=2 --renderer=vulkan` (and `--renderer=software`), play both, drag one
     seek bar: the other keeps playing smoothly and the dragged one follows the drag.
+  - Retest passed (2026-10-27): HEVC 10-bit and AV1 via Vulkan, and H.264 and AV1 on the
+    software renderer, two players, smooth while one seeks.
+- Not run: the optional GPU-reset step (12).

@@ -3,7 +3,7 @@
 Stage: 045A.2 - GPU decoding for the Vulkan renderer (Vulkan Video on the renderer's device)
 Date: 2026-10-27
 
-## Status: IMPLEMENTED - pending manual smoke
+## Status: COMPLETE - owner smoke passed 2026-10-26/27 (Windows)
 
 Owner decision (2026-10-27): full compatibility. Every GPU renderer decodes on the GPU on every
 platform it runs on. This slice gives the Vulkan renderer GPU decoding on Linux and Windows (the

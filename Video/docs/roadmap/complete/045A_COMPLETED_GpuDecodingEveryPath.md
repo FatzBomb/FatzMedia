@@ -1,11 +1,14 @@
-# Active Stage 045A - GPU Decoding on Every Presentation Path
+# Completed Stage 045A - GPU Decoding on Every Presentation Path
 
 Prepared: 2026-10-26
-Status: slice 1 (Direct3D11 on the Avalonia surface) owner smoke passed 2026-10-26
-(`updates/045A_1`). Slice 2 (Vulkan Video on the Vulkan renderer's device, Linux and Windows)
-and slice 3 (Vulkan on Windows: the Avalonia shared GPU image for Vulkan frames; owner
-2026-10-27) implemented, pending manual smoke (`updates/045A_2`, `updates/045A_3`; the Windows
-smoke steps for both are in `updates/045A_3`).
+Completed: 2026-10-27.
+Status: owner smoke passed on Windows (RTX 5090): slice 1 (Direct3D11 on the Avalonia surface,
+2026-10-26, `updates/045A_1`), slice 2 (Vulkan Video on the Vulkan renderer's device) and slice 3
+(Vulkan on Windows, the Avalonia shared GPU image for Vulkan frames), 2026-10-27
+(`updates/045A_2`, `updates/045A_3`). Retest fixes: the Avalonia surface keeps a set's handles
+open until the compositor has imported them (fast resizes), and the WinForms frame-sink surface
+paints each published frame at once (seeking with two players). Not run by the owner: Linux
+drivers (RADV, ANV, NVIDIA) and the optional GPU-reset step; both are in ENG-038.
 
 Owner direction (2026-10-26): "The point of the whole control is GPU video rendering on all
 stages, hence the shared control base." WPF and WinForms (native HWND, Direct3D11) decode with
