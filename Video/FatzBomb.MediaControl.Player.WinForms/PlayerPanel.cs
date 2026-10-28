@@ -152,10 +152,17 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
         foreach (ViewModelBinder binder in _bandBinders)
             binder.Dispose();
         _surface.Player = null;
-        // Dispose waits for admitted media operations: the view model does it off the UI thread.
-        await _viewModel.DisposeAsync();
-        // A rebuild and the closing form are both done with the control by now.
-        Dispose();
+        try
+        {
+            // Dispose waits for admitted media operations: the view model does it off the UI thread.
+            await _viewModel.DisposeAsync();
+        }
+        finally
+        {
+            // A rebuild and the closing form are both done with the control by now, even when the
+            // engine's teardown failed (the controller reports that).
+            Dispose();
+        }
     }
 
     /// <summary>Enters or leaves the full-screen layout: the bars and the cursor auto-hide.</summary>

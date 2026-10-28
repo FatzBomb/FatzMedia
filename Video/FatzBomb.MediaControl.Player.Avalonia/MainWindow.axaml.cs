@@ -29,7 +29,10 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
         _nativePaths = NativePaths.Resolve(_options);
         _players = new PlayerSetController<PlayerPanel>(this, AvaloniaPlayerDispatcher.Instance);
         Opened += OnOpened;
+        // F11 before any control sees it; Escape after, so an open drop-down or text box inside a
+        // flyout handles its own Escape first (WPF's KeyDown bubbles too).
         AddHandler(KeyDownEvent, OnWindowKeyDown, global::Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        KeyDown += OnWindowEscapeKey;
     }
 
     private async void OnOpened(object? sender, EventArgs e)
@@ -129,7 +132,13 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if ((e.Key == Key.F11 && _players.HandleFullScreenKey()) || (e.Key == Key.Escape && _players.HandleEscapeKey()))
+        if (e.Key == Key.F11 && _players.HandleFullScreenKey())
+            e.Handled = true;
+    }
+
+    private void OnWindowEscapeKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && !e.Handled && _players.HandleEscapeKey())
             e.Handled = true;
     }
 
