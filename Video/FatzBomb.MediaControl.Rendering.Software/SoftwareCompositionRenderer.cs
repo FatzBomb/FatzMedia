@@ -130,11 +130,7 @@ public sealed class SoftwareCompositionRenderer
 
     private static string? ValidateFrame(MediaCompositionFrame frame)
     {
-        if (!frame.BackgroundBgra.IsEmpty
-            && (frame.BackgroundWidth <= 0
-                || frame.BackgroundHeight <= 0
-                || frame.BackgroundStride < (long)frame.BackgroundWidth * 4
-                || frame.BackgroundBgra.Length < (long)frame.BackgroundStride * frame.BackgroundHeight))
+        if (!frame.IsBackgroundWellFormed)
         {
             return "The software background buffer is invalid.";
         }

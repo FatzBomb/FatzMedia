@@ -798,10 +798,17 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         void* mapped;
         var rowBytes = width * 4;
         Check(_vk.MapMemory(_device, upload.Memory, 0, (ulong)rowBytes * (ulong)height, 0, &mapped), "vkMapMemory");
-        var destination = new Span<byte>(mapped, rowBytes * height);
-        for (var y = 0; y < height; y++)
-            sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
-        _vk.UnmapMemory(_device, upload.Memory);
+        try
+        {
+            var destination = new Span<byte>(mapped, rowBytes * height);
+            for (var y = 0; y < height; y++)
+                sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
+        }
+        finally
+        {
+            // A short buffer must not leave the memory mapped: the next vkMapMemory would be invalid (ENG-039).
+            _vk.UnmapMemory(_device, upload.Memory);
+        }
     }
 
     private void CopyBufferToImage(BufferResource upload, VkImage image, int width, int height)
