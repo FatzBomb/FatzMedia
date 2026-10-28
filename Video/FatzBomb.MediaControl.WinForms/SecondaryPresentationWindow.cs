@@ -130,9 +130,8 @@ public class SecondaryPresentationWindow : Form
     /// <summary>The top-left position that centres a window of <paramref name="size"/> in <paramref name="area"/> (clamped to it).</summary>
     internal static Point CenteredLocation(Rectangle area, Size size)
     {
-        var width = Math.Min(area.Width, size.Width);
-        var height = Math.Min(area.Height, size.Height);
-        return new Point(area.X + ((area.Width - width) / 2), area.Y + ((area.Height - height) / 2));
+        (int x, int y) = PresentationPlacement.Center(area.X, area.Y, area.Width, area.Height, size.Width, size.Height);
+        return new Point(x, y);
     }
 
     protected override void OnHandleCreated(EventArgs e)

@@ -166,20 +166,8 @@ public class KaraokeSurface : Control
     protected override void OnLayout(LayoutEventArgs levent)
     {
         base.OnLayout(levent);
-        Size size = ClientSize;
-        var width = (double)size.Width;
-        var height = width * 0.75;
-        if (height > size.Height)
-        {
-            height = size.Height;
-            width = height * (4.0 / 3.0);
-        }
-
-        _surface.Bounds = new Rectangle(
-            (int)Math.Max(0, (size.Width - width) / 2),
-            (int)Math.Max(0, (size.Height - height) / 2),
-            (int)Math.Max(0, width),
-            (int)Math.Max(0, height));
+        (double x, double y, double width, double height) = KaraokeLayout.Fit(ClientSize.Width, ClientSize.Height);
+        _surface.Bounds = new Rectangle((int)x, (int)y, (int)width, (int)height);
     }
 
     protected override void OnPaint(PaintEventArgs e)

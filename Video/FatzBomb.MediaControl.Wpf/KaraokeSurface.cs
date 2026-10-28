@@ -217,19 +217,8 @@ public sealed class KaraokeSurface : Grid, IDisposable
     protected override Size ArrangeOverride(Size arrangeSize)
     {
         _ = base.ArrangeOverride(arrangeSize);
-        var width = arrangeSize.Width;
-        var height = width * 0.75;
-        if (height > arrangeSize.Height)
-        {
-            height = arrangeSize.Height;
-            width = height * (4.0 / 3.0);
-        }
-
-        _surface.Arrange(new Rect(
-            Math.Max(0, (arrangeSize.Width - width) / 2),
-            Math.Max(0, (arrangeSize.Height - height) / 2),
-            Math.Max(0, width),
-            Math.Max(0, height)));
+        (double x, double y, double width, double height) = KaraokeLayout.Fit(arrangeSize.Width, arrangeSize.Height);
+        _surface.Arrange(new Rect(x, y, width, height));
         return arrangeSize;
     }
 

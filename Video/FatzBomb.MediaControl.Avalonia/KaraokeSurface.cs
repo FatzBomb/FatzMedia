@@ -190,19 +190,8 @@ public class KaraokeSurface : Panel, IDisposable
     protected override Size ArrangeOverride(Size finalSize)
     {
         _ = base.ArrangeOverride(finalSize);
-        var width = finalSize.Width;
-        var height = width * 0.75;
-        if (height > finalSize.Height)
-        {
-            height = finalSize.Height;
-            width = height * (4.0 / 3.0);
-        }
-
-        _surface.Arrange(new Rect(
-            Math.Max(0, (finalSize.Width - width) / 2),
-            Math.Max(0, (finalSize.Height - height) / 2),
-            Math.Max(0, width),
-            Math.Max(0, height)));
+        (double x, double y, double width, double height) = KaraokeLayout.Fit(finalSize.Width, finalSize.Height);
+        _surface.Arrange(new Rect(x, y, width, height));
         return finalSize;
     }
 

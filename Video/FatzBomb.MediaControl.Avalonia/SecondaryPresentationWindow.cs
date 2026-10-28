@@ -88,9 +88,9 @@ public class SecondaryPresentationWindow : Window
         if (!double.IsFinite(scaling) || scaling <= 0)
             scaling = 1;
 
-        var width = Math.Min(area.Width, (int)Math.Round(size.Width * scaling));
-        var height = Math.Min(area.Height, (int)Math.Round(size.Height * scaling));
-        return new PixelPoint(area.X + ((area.Width - width) / 2), area.Y + ((area.Height - height) / 2));
+        (int x, int y) = PresentationPlacement.Center(
+            area.X, area.Y, area.Width, area.Height, (int)Math.Round(size.Width * scaling), (int)Math.Round(size.Height * scaling));
+        return new PixelPoint(x, y);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

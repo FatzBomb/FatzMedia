@@ -90,12 +90,8 @@ public sealed class PresentationScreen
     /// The top-left pixel position that centres a window of <paramref name="width"/> x
     /// <paramref name="height"/> pixels in <paramref name="area"/> (clamped to the area).
     /// </summary>
-    internal static (int X, int Y) CenteredPosition(Int32Rect area, int width, int height)
-    {
-        width = Math.Min(area.Width, width);
-        height = Math.Min(area.Height, height);
-        return (area.X + ((area.Width - width) / 2), area.Y + ((area.Height - height) / 2));
-    }
+    internal static (int X, int Y) CenteredPosition(Int32Rect area, int width, int height) =>
+        PresentationPlacement.Center(area.X, area.Y, area.Width, area.Height, width, height);
 
     private static unsafe PresentationScreen? FromHandle(IntPtr monitor)
     {
