@@ -105,7 +105,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27); risk assessment,
-  a no-code measurement and a go/no-go spike first.
+  a no-code measurement and a go/no-go spike first. Kept on the table (owner 2026-10-28);
+  waiting on the owner's step 0 measurement and decision.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 
