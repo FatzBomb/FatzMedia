@@ -57,6 +57,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private ICdgEngine? _seekCdgEngine;
     private PendingSeek? _pendingSeek;
     private int _hasPendingSeek;
+    private int _presentationRefreshQueued;
     private int _resetting;
     // A rebuild freed the graph and failed to build the next one: nothing in the fields is live.
     private bool _sessionGraphFreed;
@@ -147,7 +148,14 @@ public partial class MediaControlPlayer : IMediaControlSession
     public VideoDisplayMode VideoDisplayMode
     {
         get => _presentationCoordinator.VideoDisplayMode;
-        set => _presentationCoordinator.VideoDisplayMode = value;
+        set
+        {
+            if (_presentationCoordinator.VideoDisplayMode == value)
+                return;
+
+            _presentationCoordinator.VideoDisplayMode = value;
+            RequestPresentationRefresh();
+        }
     }
 
     public bool Normalize
@@ -193,7 +201,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                 return;
 
             _mediaEngine.ShowMidiLyrics = value;
-            _presentationCoordinator.RefreshCurrentPosition();
+            RequestPresentationRefresh();
         }
     }
 
@@ -561,7 +569,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         var selected = _mediaEngine.SelectSubtitleTrack(trackId);
         if (selected)
-            _presentationCoordinator.RefreshCurrentPosition();
+            RequestPresentationRefresh();
 
         return selected;
     }
@@ -575,7 +583,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     public void ResetSyncOffsets()
     {
         _mediaEngine.ResetSyncOffsets();
-        _presentationCoordinator.RefreshCurrentPosition();
+        RequestPresentationRefresh();
     }
 
     public void Close()
@@ -642,8 +650,30 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private double ApplySyncOffset(double seconds)
     {
-        _presentationCoordinator.RefreshCurrentPosition();
+        RequestPresentationRefresh();
         return seconds;
+    }
+
+    /// <summary>
+    /// Redraws the current position after a host setter changed what is shown (ENG-039): on the
+    /// control queue, in order with seeks, and coalesced, so a burst of changes redraws once and
+    /// the host's thread never waits for a present (a present stuck in the renderer froze the UI).
+    /// </summary>
+    private void RequestPresentationRefresh()
+    {
+        if (_disposed || Interlocked.Exchange(ref _presentationRefreshQueued, 1) != 0)
+            return;
+
+        Task queued = _controlOperations.Enqueue(() =>
+        {
+            Volatile.Write(ref _presentationRefreshQueued, 0);
+            if (!_disposed && !_sessionGraphFreed)
+                _presentationCoordinator.RefreshCurrentPosition();
+        });
+
+        // Refused (the queue is being replaced or disposed): let the next change ask again.
+        if (queued.IsFaulted)
+            Volatile.Write(ref _presentationRefreshQueued, 0);
     }
 
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
@@ -999,6 +1029,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _positionNotifier.Dispose(); } catch { }
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+        try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
         try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
@@ -1091,6 +1122,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         SubscribeNewSessionEvents();
         SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
+        _presentationCoordinator.DeviceRecovered += OnPresentationDeviceRecovered;
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
@@ -1249,6 +1281,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _positionNotifier.Dispose(); } catch { }
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+        try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
         try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try

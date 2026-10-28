@@ -19,6 +19,7 @@ public partial class MediaControlPlayer
             }
 
             _presentationCoordinator.BaseVisualTransform = value;
+            RequestPresentationRefresh();
             HostEventDispatcher.Raise(
                 this,
                 BaseVisualTransformChanged,
