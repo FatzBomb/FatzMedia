@@ -183,11 +183,7 @@ internal sealed unsafe class VideoDecoder(
         // as before.
         if (_ownsDemuxer)
         {
-            for (uint i = 0; i < _demuxer.StreamCount; i++)
-            {
-                if ((int)i != VideoStreamIndex)
-                    _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
-            }
+            _demuxer.DiscardAllStreamsExcept([VideoStreamIndex]);
         }
         else
         {
