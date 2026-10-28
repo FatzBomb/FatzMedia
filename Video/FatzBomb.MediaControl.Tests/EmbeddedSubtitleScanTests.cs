@@ -82,6 +82,26 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
     }
 
     [Fact]
+    public async Task EmbeddedTrackRequestedBeforeItArrived_IsSelectedWhenTheScanDeliversIt()
+    {
+        // A host restoring a saved embedded-track choice on MediaLoaded, before the scan finished.
+        EmbeddedSubtitleTrack[] tracks =
+        [
+            .. EmbeddedTracks,
+            new(3, "ASS", [new SubtitleCue(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "Second")]),
+        ];
+        var decoder = new GatedDecoder(tracks);
+        using PlaybackCoordinator coordinator = CreateCoordinator(decoder.Decode);
+        Assert.True(coordinator.OpenVideo("movie.mkv"));
+
+        Assert.False(coordinator.SelectSubtitleTrack("embedded:3"));
+        decoder.Release();
+        await coordinator.EmbeddedSubtitleScan.WaitAsync(Timeout);
+
+        Assert.Equal("embedded:3", coordinator.SelectedSubtitleTrackId);
+    }
+
+    [Fact]
     public async Task NextOpen_CancelsScan_AndLateResultIsDropped()
     {
         // The first scan ignores its token and returns its tracks after the next open, as a decoder

@@ -138,7 +138,7 @@ internal sealed unsafe class SharedDemuxer : IDisposable
     /// Network sources: discards every stream no consumer registered, and re-enables the
     /// registered ones (a consumer that opened first may have discarded them). FFmpeg's HLS and
     /// DASH demuxers otherwise download the segments of every variant (039A smoke). Local files
-    /// are left as they are: their unregistered packets are read and dropped, as before.
+    /// are left as they are: their one consumer discards the streams it does not play.
     /// </summary>
     public void DiscardUnregisteredNetworkStreams()
     {

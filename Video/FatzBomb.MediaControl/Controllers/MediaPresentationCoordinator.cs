@@ -1647,7 +1647,8 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     private Memory<byte> RentSubtitlePixels(int length)
     {
         RetainedFrameBuffer? buffer = _subtitleBuffer;
-        if (buffer is null || !buffer.IsExclusive || buffer.Length != length)
+        // A karaoke raster's bounds change from frame to frame: any buffer large enough is reused.
+        if (buffer is null || !buffer.IsExclusive || buffer.Length < length)
         {
             buffer?.Release();
             buffer = RetainedFrameBuffer.Rent(SubtitleOverlayPool, length);
@@ -1655,7 +1656,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         }
 
         _subtitleBufferRented = true;
-        return buffer.Memory;
+        return buffer.Memory[..length];
     }
 
     private bool HasCachedSubtitleOverlay()

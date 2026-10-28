@@ -62,6 +62,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             {
                 return RenderTextFrame(text, width, height, rentPixels);
             }
+            catch
+            {
+                // A failure mid-draw leaves the cached target between BeginDraw and EndDraw:
+                // the next frame starts from a new one.
+                ReleaseTarget();
+                throw;
+            }
             finally
             {
                 EndFrame();
@@ -93,6 +100,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             try
             {
                 return RenderKaraokeFrame(timing, position, baseStyle, wipeStyle, width, height, rentPixels);
+            }
+            catch
+            {
+                // A failure mid-draw leaves the cached target between BeginDraw and EndDraw:
+                // the next frame starts from a new one.
+                ReleaseTarget();
+                throw;
             }
             finally
             {

@@ -39,7 +39,15 @@ Batches:
 2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
 3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
 4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c **implemented, pending manual smoke** (`updates/ENG-039/Batch4c.md`): adapter, renderer and audio duplicates moved into shared helpers.
-5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
+5. **Performance: implemented, pending manual smoke** (`updates/ENG-039/Batch5.md`): KAR raster
+   caching and pooled subtitle buffers, embedded subtitles scanned after the open
+   (`SubtitleTracksChanged`), D3D11 shader and video-processor view caches, local demux discard,
+   allocation-free seek checks and display-locked passes, no-BASS bootstrap cached, archive audio
+   held once, Vulkan plane views cached. P5-11 measured and skipped (about 2 KB/frame, D3D11 only;
+   removing it breaks public API). Open: `LinuxNetworkVideoNativeTests` network-timing cases fail
+   now and then under load (seen from the batch 3 base on); the D3D11 video processor's cached
+   input views keep the last decoder texture array alive until a reset or a new array (after a
+   switch to software decoding, until the next open).
 
 ## Open
 

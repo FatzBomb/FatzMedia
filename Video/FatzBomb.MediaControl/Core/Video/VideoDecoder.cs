@@ -331,25 +331,26 @@ internal sealed unsafe class VideoDecoder(
         return false;
     }
 
-    /// <summary>The presentation times of the first two queued frames, when there are two.</summary>
-    public bool TryPeekFirstTwoPresentationTimes(out double first, out double second)
+    /// <summary>
+    /// Takes the head frame when there are two queued frames and <paramref name="predicate"/>
+    /// accepts their presentation times (head, next). The check and the take are one step under
+    /// the queue lock, so a frame taken by the presentation thread in between is never mistaken
+    /// for the head.
+    /// </summary>
+    public VideoFrameData? TryTakeHeadFrame<TState>(TState state, Func<double, double, TState, bool> predicate)
     {
         lock (_frameQueueLock)
         {
             Queue<VideoFrameData>.Enumerator queued = _frameQueue.GetEnumerator();
-            if (queued.MoveNext())
-            {
-                first = queued.Current.PresentationTime;
-                if (queued.MoveNext())
-                {
-                    second = queued.Current.PresentationTime;
-                    return true;
-                }
-            }
-        }
+            if (!queued.MoveNext())
+                return null;
 
-        first = second = 0;
-        return false;
+            var head = queued.Current.PresentationTime;
+            if (!queued.MoveNext() || !predicate(head, queued.Current.PresentationTime, state))
+                return null;
+
+            return _frameQueue.Dequeue();
+        }
     }
 
     public int FrameCount

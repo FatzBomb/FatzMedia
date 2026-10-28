@@ -176,14 +176,17 @@ public sealed class VideoPipelinePerformanceNativeTests(ITestOutputHelper output
 
         Assert.True(decoder.FrameCount >= 4, $"frames {decoder.FrameCount}");
         Func<double, double, bool> earlier = static (time, target) => time < target;
+        // Two frames are inspected and kept: the predicate rejects them.
+        Func<double, double, double, bool> keep = static (head, next, target) => next > head + target;
         _ = decoder.AnyQueuedFrame(10.0, earlier);
+        _ = decoder.TryTakeHeadFrame(1e9, keep);
         var before = GC.GetAllocatedBytesForCurrentThread();
         var found = 0;
         for (var call = 0; call < 1000; call++)
         {
             if (decoder.AnyQueuedFrame(10.0, earlier))
                 found++;
-            if (decoder.TryPeekFirstTwoPresentationTimes(out _, out _))
+            if (decoder.TryTakeHeadFrame(1e9, keep) is null)
                 found++;
         }
 

@@ -2045,8 +2045,9 @@ internal sealed partial class VideoPipeline(
 
             if (HasAudio)
             {
-                // Drain remaining audio packets into the queue, then seek the shared cursor to 0.
-                // This keeps BASS fed while position-zero video frames are prepared.
+                // Seek the picture's cursor to 0 while its audio keeps playing the tail: a network
+                // read-ahead keeps the unplayed audio packets queued; a local file's audio has its
+                // own cursor (ENG-039 P5-5).
                 _sharedDemuxer?.PrepareLoopWrap();
             }
             else if (_sharedDemuxer?.Seek(decoder.VideoStreamIndex, 0, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
@@ -2262,13 +2263,10 @@ internal sealed partial class VideoPipeline(
 
     private static bool TryDropSupersededSeekFrame(VideoDecoder decoder, double target)
     {
-        if (!decoder.TryPeekFirstTwoPresentationTimes(out var head, out var next)
-            || !VideoSeekPolicy.CanDropQueuedSeekFrame(head, next, target))
-        {
+        if (decoder.TryTakeHeadFrame(target, static (head, next, seekTarget) => VideoSeekPolicy.CanDropQueuedSeekFrame(head, next, seekTarget)) is not { } superseded)
             return false;
-        }
 
-        decoder.ReturnFrame(decoder.GetNextFrame());
+        decoder.ReturnFrame(superseded);
         return true;
     }
 

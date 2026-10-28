@@ -22,6 +22,10 @@ internal sealed partial class PlaybackCoordinator
     // The host selected a track (or none) since the video opened: a late scan result never overrides it.
     private bool _subtitleTrackChosen;
 
+    // A track the host asked for before the scan delivered it (an embedded id selected on
+    // MediaLoaded, as hosts restoring a preference do): the scan selects it when it arrives.
+    private string? _requestedSubtitleTrackId;
+
     /// <summary>
     /// Raised on the scan's background thread when embedded subtitle tracks arrived after the open
     /// and were added to <see cref="SubtitleTracks"/> (and, unless the host chose a track, selected).
@@ -45,7 +49,16 @@ internal sealed partial class PlaybackCoordinator
         lock (_subtitleScanGate)
         {
             var selected = _session.Subtitle?.SelectTrack(trackId) == true;
-            _subtitleTrackChosen |= selected;
+            if (selected)
+            {
+                _subtitleTrackChosen = true;
+                _requestedSubtitleTrackId = null;
+            }
+            else if (trackId is not null && !EmbeddedSubtitleScan.IsCompleted)
+            {
+                _requestedSubtitleTrackId = trackId;
+            }
+
             return selected;
         }
     }
@@ -80,6 +93,7 @@ internal sealed partial class PlaybackCoordinator
             _subtitleScan = scan;
             var generation = ++_subtitleScanGeneration;
             _subtitleTrackChosen = false;
+            _requestedSubtitleTrackId = null;
             CancellationToken token = scan.Token;
 
             // The open runs on the player's control queue: its scope and the load's cancellation
@@ -126,9 +140,15 @@ internal sealed partial class PlaybackCoordinator
                 return;
 
             // Embedded tracks take precedence over a sidecar, as when they were decoded during the
-            // open; the sidecar stays selectable. A track the host chose is kept.
+            // open; the sidecar stays selectable. A track the host chose is kept, and one it asked
+            // for before it arrived is selected.
             if (!_subtitleTrackChosen)
-                _ = subtitle.SelectTrack(SubtitlePipeline.EmbeddedTrackId(tracks[0].StreamIndex));
+            {
+                var requested = _requestedSubtitleTrackId;
+                _requestedSubtitleTrackId = null;
+                if (requested is null || !subtitle.SelectTrack(requested))
+                    _ = subtitle.SelectTrack(SubtitlePipeline.EmbeddedTrackId(tracks[0].StreamIndex));
+            }
         }
 
         SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
