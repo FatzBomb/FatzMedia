@@ -77,7 +77,9 @@ public sealed class PollingLoop : IDisposable
         try
         {
             cancellation?.Cancel();
-            if (thread.Join(_interval + TimeSpan.FromSeconds(1)))
+            // Stopped from the callback itself (a change handler disposing its owner): the loop
+            // ends when the callback returns, and joining would only wait out the timeout.
+            if (thread != Thread.CurrentThread && thread.Join(_interval + TimeSpan.FromSeconds(1)))
                 cancellation?.Dispose();
         }
         catch (Exception)

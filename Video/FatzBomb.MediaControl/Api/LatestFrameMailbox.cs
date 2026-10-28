@@ -57,17 +57,7 @@ public sealed class LatestFrameMailbox
                 return false;
 
             if (_pending is null)
-            {
-                // Drop a spare left over from a much larger window (after a maximize).
-                byte[]? spare = _spare ?? _secondSpare;
-                if (ReferenceEquals(spare, _spare))
-                    _spare = null;
-                else
-                    _secondSpare = null;
-
-                if (spare is not null && spare.Length <= 2L * length)
-                    _pending = spare;
-            }
+                _pending = TakeSpare(length);
 
             if (_pending is null || _pending.Length < length)
             {
@@ -161,6 +151,30 @@ public sealed class LatestFrameMailbox
             _secondSpare = null;
             _publishQueued = false;
             return true;
+        }
+    }
+
+    // Under _gate. Takes an idle array that holds `length` bytes without being more than twice
+    // that, trying both slots. When neither fits, one is dropped as before: a too-small array
+    // would be replaced anyway, and one left over from a much larger window (after a maximize)
+    // is not kept.
+    private byte[]? TakeSpare(int length)
+    {
+        if (Fits(_spare, length))
+            return Take(ref _spare);
+        if (Fits(_secondSpare, length))
+            return Take(ref _secondSpare);
+
+        _ = _spare is not null ? Take(ref _spare) : Take(ref _secondSpare);
+        return null;
+
+        static bool Fits(byte[]? array, int length) => array is not null && array.Length >= length && array.Length <= 2L * length;
+
+        static byte[]? Take(ref byte[]? slot)
+        {
+            byte[]? array = slot;
+            slot = null;
+            return array;
         }
     }
 

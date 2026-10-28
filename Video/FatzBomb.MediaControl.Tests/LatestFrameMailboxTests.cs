@@ -165,6 +165,24 @@ public sealed class LatestFrameMailboxTests
         Assert.InRange(mailbox.BufferAllocations, 1, 2);
     }
 
+    [Fact]
+    public void Post_UsesTheSecondSpare_WhenTheFirstIsTooLarge()
+    {
+        var mailbox = new LatestFrameMailbox();
+        Assert.True(mailbox.Post(Frame(8, 8), 8, 8, 32));
+        Assert.True(mailbox.TryTake(out var large, out _, out _, out _));
+        _ = mailbox.Post(Frame(4, 2), 4, 2, 16);
+        mailbox.Return(large);
+        Assert.True(mailbox.TryTake(out var small, out _, out _, out _));
+        mailbox.Return(small);
+        Assert.Equal(2, mailbox.BufferAllocations);
+
+        // The large spare is more than twice the need; the small one fits and is reused.
+        Publish(mailbox, 4, 2);
+
+        Assert.Equal(2, mailbox.BufferAllocations);
+    }
+
     private static void Publish(LatestFrameMailbox mailbox, int width, int height)
     {
         _ = mailbox.Post(Frame(width, height), width, height, width * 4);

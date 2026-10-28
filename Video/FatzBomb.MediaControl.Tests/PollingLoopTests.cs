@@ -140,6 +140,26 @@ public class PollingLoopTests
     }
 
     [Fact]
+    public void Stop_FromTheCallback_ReturnsWithoutWaitingOutTheJoin()
+    {
+        using var stopped = new ManualResetEventSlim();
+        var elapsed = TimeSpan.MaxValue;
+        PollingLoop? loop = null;
+        loop = new PollingLoop("test", TimeSpan.FromSeconds(5), () =>
+        {
+            var started = DateTime.UtcNow;
+            loop!.Stop();
+            elapsed = DateTime.UtcNow - started;
+            stopped.Set();
+        });
+
+        loop.Start();
+
+        Assert.True(stopped.Wait(Timeout));
+        Assert.True(elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public void Stop_WithoutStart_IsANoOp()
     {
         var loop = new PollingLoop("test", TimeSpan.FromMilliseconds(5), () => { });

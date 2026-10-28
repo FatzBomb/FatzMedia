@@ -1065,7 +1065,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         typeFlags = typeFlags[..GetMemoryTypeFlags(typeFlags)];
         var typeIndex = SelectMemoryType(typeFlags, typeBits, preferences);
         if (typeIndex < 0)
-            throw new VulkanException($"No memory type satisfies {preferences[^1]}; {operation}", Result.ErrorOutOfDeviceMemory);
+        {
+            // The image preferences end in None (any allowed type), which names nothing useful.
+            var wanted = preferences[^1] == MemoryPropertyFlags.None ? "the resource's allowed types" : preferences[^1].ToString();
+            throw new VulkanException($"No memory type satisfies {wanted}; {operation}", Result.ErrorOutOfDeviceMemory);
+        }
 
         var allocateInfo = new MemoryAllocateInfo
         {

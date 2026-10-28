@@ -38,7 +38,7 @@ Batches:
    failures and the startup delay; karaoke `Source = null` releases the player.
 2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
 3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
-4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c in progress.
+4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c **implemented, pending manual smoke** (`updates/ENG-039/Batch4c.md`): adapter, renderer and audio duplicates moved into shared helpers.
 5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
 
 ## Open
@@ -67,7 +67,7 @@ Resolved (each re-checked against the code first):
 - **D3D11 failure logs.** Failures a user would need now go through `DiagnosticRouter` with a
   per-site `RendererDiagnosticLatch` (Core, `Core/Graphics/Rendering`): one report per
   episode, re-armed on the next success. Covered: `ResizeBuffers` and resize failures (native
-  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform and
+  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform (removed in ENG-039 R7: it was always identity) and
   overlay present/clear failures, frame-sink readback and creation failures, shared-texture
   present failures and stuck-mutex re-exports (Info), composition layer upload/allocation
   failures, per-target draw failures, the DirectComposition overlay draw, video processor blit
