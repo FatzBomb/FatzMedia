@@ -6,6 +6,7 @@ using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
 using System.Buffers;
 using System.Diagnostics;
@@ -137,7 +138,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _rendererBackend.FramePresented += OnFramePresented;
         // A renderer that decodes on its own device (Stage 045A slice 2) supplies every decoder's
         // hardware device; any other renderer leaves the platform's.
-        (_mediaEngine as PipelineMediaEngine)?.AttachRendererVideoDecodeDevice(_rendererBackend as IMediaRendererVideoDecodeDevice);
+        (_mediaEngine as IRendererVideoDecodeAttachment)?.AttachRendererVideoDecodeDevice(_rendererBackend as IMediaRendererVideoDecodeDevice);
         _diagnosticOwner = DiagnosticRouter.Owner;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
 
@@ -1787,7 +1788,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
         DetachAllEngines();
         if (_rendererBackend is IMediaRendererVideoDecodeDevice decodeDevice)
-            (_mediaEngine as PipelineMediaEngine)?.DetachRendererVideoDecodeDevice(decodeDevice);
+            (_mediaEngine as IRendererVideoDecodeAttachment)?.DetachRendererVideoDecodeDevice(decodeDevice);
 
         // After a present still in progress on a video thread (it took the gate before Dispose
         // detached the engines).

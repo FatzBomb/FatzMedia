@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
 using System.Diagnostics;
 
@@ -256,7 +257,7 @@ public sealed class NetworkVideoPlaybackTests
             new FixedVideoFactory(video),
             new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
-            SoftwareOnlyVideoHardwareAccelerationServices.Instance,
+            new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             configuration ?? MediaPlayerConfiguration.Auto,
             audioAvailable: audioAvailable);
 

@@ -22,7 +22,7 @@ internal sealed unsafe class VideoDecoder(
     bool enableVerboseLogging = false,
     bool scaleMaxFramesByResolution = false,
     SharedDemuxer? sharedDemuxer = null,
-    IVideoHardwareAccelerationServices? hardwareAccelerationServices = null,
+    RendererVideoDecodeServices? hardwareAccelerationServices = null,
     HdrToneMappingOptions hdrToneMapping = default) : IDisposable
 {
     private readonly HdrToneMappingOptions _hdrToneMapping = hdrToneMapping;
@@ -34,8 +34,8 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
     private readonly SharedDemuxer _demuxer = sharedDemuxer ?? new SharedDemuxer();
     private readonly bool _ownsDemuxer = sharedDemuxer == null;
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices =
-        hardwareAccelerationServices ?? SoftwareOnlyVideoHardwareAccelerationServices.Instance;
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices =
+        hardwareAccelerationServices ?? new(SoftwareOnlyVideoHardwareAccelerationServices.Instance);
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
@@ -132,7 +132,7 @@ internal sealed unsafe class VideoDecoder(
 
     public static VideoDecoder FromConfiguration(
         MediaPlayerConfiguration configuration,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         bool enableHardwareFrameOutput = true,
         bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
@@ -147,7 +147,7 @@ internal sealed unsafe class VideoDecoder(
     public static VideoDecoder FromConfiguration(
         MediaPlayerConfiguration configuration,
         SharedDemuxer sharedDemuxer,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         bool enableHardwareFrameOutput = true,
         bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
@@ -320,7 +320,7 @@ internal sealed unsafe class VideoDecoder(
         AVCodec* hardwareCodec = null;
         if (allowHardware)
         {
-            (_hardwareAccelerationServices as RendererVideoDecodeServices)?.NoteHardwareDecodingRequested();
+            _hardwareAccelerationServices.NoteHardwareDecodingRequested();
             hardwareCodec = FindHardwareCapableDecoder(codecId);
         }
 
@@ -623,8 +623,7 @@ internal sealed unsafe class VideoDecoder(
         int result;
         // A renderer that decodes on its own device (Stage 045A slice 2) supplies the context, so
         // frames are decoded on the device that draws them; FFmpeg never creates another one.
-        if (_hardwareAccelerationServices is RendererVideoDecodeServices renderer
-            && renderer.TryCreateRendererDeviceContext(deviceTypeName, out var suppliedContext))
+        if (_hardwareAccelerationServices.TryCreateRendererDeviceContext(deviceTypeName, out var suppliedContext))
         {
             deviceContext = (AVBufferRef*)suppliedContext;
             result = suppliedContext != 0 ? 0 : -1;

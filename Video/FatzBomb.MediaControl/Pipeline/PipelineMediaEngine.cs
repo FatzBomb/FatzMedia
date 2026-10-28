@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment
 {
     private const string NetworkDiagnosticCategory = "Network";
 
@@ -27,7 +27,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private readonly MediaPlayerMode _mode;
     private readonly bool _audioAvailable;
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices;
     private readonly PlaybackScheduler _backgroundVideoScheduler = new("BackgroundVideoPresentation");
     private readonly Lock _backgroundGate = new();
     private VideoDecoder? _backgroundVideoDecoder;
@@ -63,7 +63,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         IVideoEngineFactory videoEngineFactory,
         IMidiLyricProvider midiLyricProvider,
         IPrecisionWaiterFactory precisionWaiterFactory,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false,
         bool audioAvailable = true)
@@ -84,17 +84,13 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.NetworkStreamMetadataChanged += OnNetworkStreamMetadataChanged;
     }
 
-    /// <summary>
-    /// Makes every decoder of this engine decode on the presentation renderer's device when the
-    /// renderer offers one (Stage 045A slice 2); null returns to the platform's hardware devices.
-    /// Decoders opened afterwards follow it.
-    /// </summary>
-    internal void AttachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice? device) =>
-        (_hardwareAccelerationServices as RendererVideoDecodeServices)?.Attach(device);
+    /// <inheritdoc />
+    public void AttachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice? device) =>
+        _hardwareAccelerationServices.Attach(device);
 
-    /// <summary>Detaches <paramref name="device"/> if it is still the attached renderer device.</summary>
-    internal void DetachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice device) =>
-        (_hardwareAccelerationServices as RendererVideoDecodeServices)?.Detach(device);
+    /// <inheritdoc />
+    public void DetachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice device) =>
+        _hardwareAccelerationServices.Detach(device);
 
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 

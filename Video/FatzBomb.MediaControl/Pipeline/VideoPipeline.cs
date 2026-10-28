@@ -21,7 +21,7 @@ internal sealed partial class VideoPipeline(
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
-    IVideoHardwareAccelerationServices hardwareAccelerationServices,
+    RendererVideoDecodeServices hardwareAccelerationServices,
     bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
@@ -33,7 +33,7 @@ internal sealed partial class VideoPipeline(
     private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     private readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
     // False in Background mode (043A) and without BASS (ENG-033): picture only, on the playback clock.
     private readonly bool _usesAudio = usesAudio;
     private readonly AudioPresentationClock _presentationClock = new();

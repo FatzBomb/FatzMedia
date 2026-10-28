@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Video;
@@ -8,7 +9,7 @@ using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment
 {
     private double _position;
     private int _cancelPendingNetworkOpenCount;
@@ -19,6 +20,23 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 
     public void CancelPendingNetworkOpen() => _ = Interlocked.Increment(ref _cancelPendingNetworkOpenCount);
+
+    /// <summary>The renderer decode device the coordinator attached (Stage 045A slice 2), or null.</summary>
+    public IMediaRendererVideoDecodeDevice? AttachedDecodeDevice { get; private set; }
+
+    public int DecodeDeviceAttachCount { get; private set; }
+
+    public void AttachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice? device)
+    {
+        DecodeDeviceAttachCount++;
+        AttachedDecodeDevice = device;
+    }
+
+    public void DetachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice device)
+    {
+        if (ReferenceEquals(AttachedDecodeDevice, device))
+            AttachedDecodeDevice = null;
+    }
 
     public void RaiseNetworkBuffering(bool isBuffering, double fill) =>
         NetworkBufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));

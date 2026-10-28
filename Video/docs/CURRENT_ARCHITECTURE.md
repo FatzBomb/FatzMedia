@@ -204,9 +204,10 @@ named `window` handle.
   the software renderer, which takes no hardware frames.
 - A renderer may instead decode on its own device (Stage 045A slice 2):
   - The renderer backend implements the optional `IMediaRendererVideoDecodeDevice`. The
-    coordinator attaches it to the engine, and every decoder of the player then takes its FFmpeg
+    coordinator attaches it to the engine through the internal `IRendererVideoDecodeAttachment`
+    (implemented by `PipelineMediaEngine`), and every decoder of the player then takes its FFmpeg
     device context from the renderer (`RendererVideoDecodeServices` wraps the platform's
-    services).
+    services; decoders and pipelines take it directly).
   - Only the renderer's device type is offered, or none when its device cannot decode, so such
     a renderer never receives frames on a device it cannot draw.
   - The Vulkan renderer does this with FFmpeg Vulkan Video, on Linux and Windows alike. It

@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Video;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
@@ -11,7 +12,7 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
 {
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory;
     private readonly IVideoPipelinePlatformServices _platformServices;
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices;
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices;
     private readonly bool _audioAvailable;
 
     /// <param name="audioAvailable">
@@ -21,7 +22,7 @@ internal sealed class VideoPipelineFactory : IVideoEngineFactory
     public VideoPipelineFactory(
         IPrecisionWaiterFactory precisionWaiterFactory,
         IVideoPipelinePlatformServices platformServices,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         bool audioAvailable = true)
     {
         _audioAvailable = audioAvailable;

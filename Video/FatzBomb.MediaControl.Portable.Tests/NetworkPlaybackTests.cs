@@ -5,6 +5,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Core.Video;
 using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
@@ -109,7 +110,7 @@ public sealed class NetworkPipelineTests
             new ClosedVideoFactory(),
             new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
-            SoftwareOnlyVideoHardwareAccelerationServices.Instance,
+            new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             MediaPlayerConfiguration.Auto,
             audioAvailable: false);
         MediaErrorInfo? error = null;
@@ -174,7 +175,7 @@ public sealed class NetworkPipelineTests
             new ClosedVideoFactory(),
             new NoMidiLyrics(),
             new SystemPrecisionWaiterFactory(),
-            SoftwareOnlyVideoHardwareAccelerationServices.Instance,
+            new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance),
             MediaPlayerConfiguration.Auto);
 
     private sealed class ClosedVideoFactory : IVideoEngineFactory

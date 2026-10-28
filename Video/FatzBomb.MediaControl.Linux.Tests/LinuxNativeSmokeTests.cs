@@ -58,7 +58,7 @@ public sealed class LinuxNativeSmokeTests
 
         Assert.True(operations.TryActivateFfmpeg(directory));
         var configuration = new MediaPlayerConfiguration(VideoDecodingMethod.Software);
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, SoftwareOnlyVideoHardwareAccelerationServices.Instance);
+        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(sample), "Core VideoDecoder could not open the sample");
 
         VideoFrameData? frame = null;
@@ -111,7 +111,7 @@ public sealed class LinuxNativeSmokeTests
 
     private static int CountFrames(MediaPlayerConfiguration configuration, string sample, bool keepQueueFull)
     {
-        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, SoftwareOnlyVideoHardwareAccelerationServices.Instance);
+        using VideoDecoder decoder = VideoDecoder.FromConfiguration(configuration, new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(sample));
 
         var frames = 0;

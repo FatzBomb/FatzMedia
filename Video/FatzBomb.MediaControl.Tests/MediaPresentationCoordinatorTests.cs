@@ -829,6 +829,23 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void AttachesAndDetachesItsDecodeDevice_ThroughTheEngine()
+    {
+        var engine = new TestMediaEngine();
+        var decoding = new DecodeDeviceRendererBackend();
+        MediaPresentationCoordinator coordinator = CreateCoordinator(decoding, engine);
+        Assert.Same(decoding, engine.AttachedDecodeDevice);
+
+        coordinator.Dispose();
+        Assert.Null(engine.AttachedDecodeDevice);
+
+        // A renderer without its own decode device attaches null: the platform's devices.
+        using MediaPresentationCoordinator plain = CreateCoordinator(new RecordingRendererBackend(), engine);
+        Assert.Equal(2, engine.DecodeDeviceAttachCount);
+        Assert.Null(engine.AttachedDecodeDevice);
+    }
+
+    [Fact]
     public void HardwareBackground_PresentedFrame_IsRetainedForRefresh()
     {
         var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
@@ -1016,7 +1033,23 @@ public sealed class MediaPresentationCoordinatorTests
         public void Dispose() { }
     }
 
-    private sealed class RecordingRendererBackend : IMediaRendererBackend
+    private sealed class DecodeDeviceRendererBackend : RecordingRendererBackend, IMediaRendererVideoDecodeDevice
+    {
+        public string? VideoDecodeDeviceType => "vulkan";
+        public string? VideoDecodeUnavailableReason => null;
+
+        public nint CreateVideoDecodeDeviceContext(out string? failureReason)
+        {
+            failureReason = "test";
+            return 0;
+        }
+
+        public NativeVideoDeviceResource? CreateVideoDecodeDeviceResource(nint ffmpegHardwareDeviceContext) => null;
+        public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) => null;
+        public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
+    }
+
+    private class RecordingRendererBackend : IMediaRendererBackend
     {
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> AttachedSurfaces { get; } = [];
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> ResizedSurfaces { get; } = [];
