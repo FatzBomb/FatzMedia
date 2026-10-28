@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FatzBomb.MediaControl.Player.Hosting;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Player.Shared.Presentation;
 using FatzBomb.MediaControl.Player.Shared.ViewModels;
 using FatzBomb.MediaControl.Player.ViewModels;
@@ -20,7 +21,7 @@ namespace FatzBomb.MediaControl.Player;
 /// surface description. The chrome rule, the stats line and the screen choice are shared with the
 /// Avalonia and WinForms players (Player.Shared).
 /// </summary>
-public partial class PlayerView : UserControl
+public partial class PlayerView : UserControl, IPlayerSlot
 {
     private const double SeekKeyStepSeconds = 5;
     private const double SeekKeyPageSeconds = 10;
@@ -65,7 +66,7 @@ public partial class PlayerView : UserControl
         ViewModel = new MainWindowViewModel(
             owner,
             index,
-            atStartup ? App.StartupOptions.ForPlayer(index) : App.StartupOptions.WithoutStartupMedia());
+            App.StartupOptions.ForBuild(index, atStartup));
         DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         // Keep the controls while a flyout is open, a drag is on or the pointer is on them.
@@ -85,15 +86,15 @@ public partial class PlayerView : UserControl
     public event EventHandler? FullScreenToggleRequested;
 
     /// <summary>Creates the engine and loads the startup media; then, at startup, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
-    internal async Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         await ViewModel.StartAsync();
-        if (_atStartup && _index == 1 && App.StartupOptions.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
+        if (App.StartupOptions.OpensSecondScreenAtStartup(_index, _atStartup) && ViewModel.Player is not null && !_disposed)
             OpenSecondScreen();
     }
 
     /// <summary>Lets go of the surfaces and disposes the engine off the UI thread.</summary>
-    internal async Task DisposeAsync()
+    public async Task DisposeAsync()
     {
         if (_disposed)
             return;
@@ -109,14 +110,17 @@ public partial class PlayerView : UserControl
     }
 
     /// <summary>Refreshes the stats line with the window's process reading.</summary>
-    internal void UpdateStatus(ProcessSample process)
+    public void UpdateStatus(ProcessSample process)
     {
         var surface = DescribeSurface(MediaSurface);
         ViewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, _secondScreen is { } window ? DescribeSurface(window.Surface) : null));
     }
 
+    /// <summary>Gets whether a flyout is open (Escape closes it).</summary>
+    public bool HasOpenFlyout => ViewModel.ActiveFlyout != PlayerFlyout.None;
+
     /// <summary>Escape: closes the open flyout first; returns whether it did.</summary>
-    internal bool CloseFlyout()
+    public bool CloseFlyout()
     {
         if (ViewModel.ActiveFlyout == PlayerFlyout.None)
             return false;
@@ -307,7 +311,7 @@ public partial class PlayerView : UserControl
     /// move into the surface's overlay window (native HWND presentation is above the WPF visual
     /// tree) and auto-hide with the cursor.
     /// </summary>
-    internal void SetFullScreen(bool fullScreen)
+    public void SetFullScreen(bool fullScreen)
     {
         ViewModel.CloseFlyout();
         if (fullScreen)
