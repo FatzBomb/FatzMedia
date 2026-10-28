@@ -65,9 +65,7 @@ public class MediaSurface : Control
     public static readonly DirectProperty<MediaSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
-    private static int _nextSurfaceNumber;
-
-    private readonly int _surfaceNumber = Interlocked.Increment(ref _nextSurfaceNumber);
+    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
     private AvaloniaFrameSink? _sink;
     private AvaloniaSharedImageSurface? _gpuSurface;
     private IMediaControlSession? _attachedSession;
@@ -92,7 +90,6 @@ public class MediaSurface : Control
     private bool _isPresentationSuspended;
     private bool _contentShown;
     private bool _isContentVisible;
-    private bool _attachRefusalReported;
 
     static MediaSurface()
     {
@@ -167,9 +164,7 @@ public class MediaSurface : Control
     }
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
-    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
-        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
-        : SurfaceId.Trim();
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>
     /// Gets or sets whether the surface hides its frames (shows only <see cref="Background"/>)
@@ -206,10 +201,10 @@ public class MediaSurface : Control
     public PixelSize AttachedPixelSize => new(_attachedPixelSize.Width, _attachedPixelSize.Height);
 
     /// <summary>Gets how frames reach the screen now.</summary>
-    public MediaSurfacePresentationPath PresentationPath { get; private set; }
+    public MediaSurfacePresentationPath PresentationPath => _bookkeeping.Path;
 
     /// <summary>Gets why the current path was chosen (for example why the GPU path was not used).</summary>
-    public string? PresentationPathReason { get; private set; }
+    public string? PresentationPathReason => _bookkeeping.Reason;
 
     internal AvaloniaFrameSink? FrameSink => _sink;
 
@@ -299,7 +294,7 @@ public class MediaSurface : Control
             }
 
             Detach();
-            _attachRefusalReported = false;
+            _bookkeeping.ResetAttachRefusal();
             if (_isAttachedToTree)
                 FollowSession(change.NewValue as IMediaControlSession);
             if (change.NewValue is IMediaControlSession session && Role == MediaPresentationSurfaceRole.Primary)
@@ -448,18 +443,13 @@ public class MediaSurface : Control
             _attachedSession = session;
             _attachedSurfaceId = EffectiveSurfaceId;
             _attachedPixelSize = pixelSize;
-            _attachRefusalReported = false;
+            _bookkeeping.ResetAttachRefusal();
             SetPath(MediaSurfacePresentationPath.FrameSink, fallbackReason);
         }
-        else if (!_attachRefusalReported)
+        else
         {
-            // Layout retries the attach on every resize: report a refusal once per session.
-            _attachRefusalReported = true;
-            DiagnosticRouter.Raise(
-                session,
-                MediaDiagnosticLevel.Warning,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeAttachRefused(DescribeSurface()));
+            // Layout retries the attach on every resize: Core reports a refusal once per session.
+            _bookkeeping.ReportAttachRefused(session, EffectiveSurfaceId);
         }
     }
 
@@ -687,25 +677,11 @@ public class MediaSurface : Control
 
     private void SetPath(MediaSurfacePresentationPath path, string? reason)
     {
-        reason = string.IsNullOrEmpty(reason) ? null : reason;
-        if (path == PresentationPath && reason == PresentationPathReason)
-            return;
-
-        PresentationPath = path;
-        PresentationPathReason = reason;
-        if (path != MediaSurfacePresentationPath.None)
-        {
-            DiagnosticRouter.Raise(
-                _attachedSession,
-                MediaDiagnosticLevel.Info,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeChoice(DescribeSurface(), path, reason));
-        }
-
-        PresentationPathChanged?.Invoke(this, EventArgs.Empty);
+        if (_bookkeeping.SetPath(path, reason, _attachedSession, EffectiveSurfaceId))
+            PresentationPathChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private string DescribeSurface() => $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
+    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
     /// <summary>
     /// Follows the session while the control is in the visual tree (Stage 046A): Core's tracker

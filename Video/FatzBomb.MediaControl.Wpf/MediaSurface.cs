@@ -138,9 +138,7 @@ public sealed partial class MediaSurface : Grid
     }
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
-    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
-        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
-        : SurfaceId.Trim();
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     public bool IsSurfaceAttached => _primaryAttached;
@@ -283,7 +281,7 @@ public sealed partial class MediaSurface : Grid
 
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
-        surface._attachRefusalReported = false;
+        surface._bookkeeping.ResetAttachRefusal();
 
         // The content tracker follows the Player property, not the load state, so a surface that
         // is unloaded and loaded again (a tab switch, a new parent) keeps its auto-hide state, as
