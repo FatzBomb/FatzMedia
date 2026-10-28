@@ -1326,19 +1326,26 @@ internal sealed partial class VideoPipeline(
     // queries off the per-frame path (Stage 022A slice 2) and gives one frame one rate.
     private static readonly long DisplayRefreshMemoTicks = Stopwatch.Frequency / 10;
     private ResolvedDisplayRefresh? _resolvedDisplayRefresh;
+    // When the memo was last resolved. Kept apart from the immutable snapshot, so an unchanged
+    // rate is not reallocated every 100 ms (ENG-039 P5-6: the display-locked pass allocates
+    // nothing); a reader seeing the stamp before the snapshot at worst resolves once more.
+    private long _resolvedDisplayRefreshAt;
 
-    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz, long Timestamp);
+    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz);
 
     private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefresh()
     {
         var now = Stopwatch.GetTimestamp();
         var overrideHz = _overrideRefreshHz;
         ResolvedDisplayRefresh? cached = Volatile.Read(ref _resolvedDisplayRefresh);
-        if (cached is not null && cached.OverrideHz == overrideHz && now - cached.Timestamp < DisplayRefreshMemoTicks)
+        if (cached is not null && cached.OverrideHz == overrideHz && now - Volatile.Read(ref _resolvedDisplayRefreshAt) < DisplayRefreshMemoTicks)
             return (cached.IntervalSeconds, cached.Source);
 
         (var interval, DisplayRefreshSource source) = ResolveDisplayRefreshUncached(overrideHz);
-        Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz, now));
+        if (cached is null || cached.IntervalSeconds != interval || cached.Source != source || cached.OverrideHz != overrideHz)
+            Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz));
+
+        Volatile.Write(ref _resolvedDisplayRefreshAt, now);
         return (interval, source);
     }
 
@@ -2255,26 +2262,20 @@ internal sealed partial class VideoPipeline(
 
     private static bool TryDropSupersededSeekFrame(VideoDecoder decoder, double target)
     {
-        using IEnumerator<VideoFrameData> queued = decoder.EnumerateQueuedFrames().GetEnumerator();
-        if (!queued.MoveNext())
+        if (!decoder.TryPeekFirstTwoPresentationTimes(out var head, out var next)
+            || !VideoSeekPolicy.CanDropQueuedSeekFrame(head, next, target))
+        {
             return false;
-
-        VideoFrameData head = queued.Current;
-        if (!queued.MoveNext() || !VideoSeekPolicy.CanDropQueuedSeekFrame(head.PresentationTime, queued.Current.PresentationTime, target))
-            return false;
+        }
 
         decoder.ReturnFrame(decoder.GetNextFrame());
         return true;
     }
 
-    private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
-    {
-        foreach (VideoFrameData frame in decoder.EnumerateQueuedFrames())
-            if (IsSeekFrameAcceptable(frame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
-                return true;
-
-        return false;
-    }
+    private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget) =>
+        decoder.AnyQueuedFrame(
+            (target, maxFrameDistance, requireAtOrAfterTarget),
+            static (frameTime, seek) => IsSeekFrameAcceptable(frameTime, seek.target, seek.maxFrameDistance, seek.requireAtOrAfterTarget));
 
     private bool TryPresentBestSeekFrame(
         double target,

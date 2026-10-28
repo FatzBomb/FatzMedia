@@ -929,7 +929,8 @@ network source has a read-ahead (`NetworkReadAhead`, queues in the pure `ReadAhe
 reader thread owns every network read and seek and demuxes the registered streams ahead of
 playback, up to `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`: 20 s or
 64 MB by default). The video's `VideoAudioEngine` shares that cursor (one connection, one
-download; no normalization pre-analysis); local video keeps audio on its own cursor. A seek to a
+download; no normalization pre-analysis); local video keeps audio on its own cursor, and the
+picture's cursor discards every other stream (ENG-039). A seek to a
 buffered forward target is served from the queues (dropped to the keyframe at or before it); any
 other seek empties them and the reader seeks, giving up its read in progress through an interrupt
 condition. Consumer reads wait for packets except on the playback loops (`NoWait`), Stop (0.5 s)
