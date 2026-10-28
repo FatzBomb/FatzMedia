@@ -233,37 +233,23 @@ public sealed class KaraokeSurface : Grid, IDisposable
         if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
 
-        _ = Dispatcher.BeginInvoke(async () =>
-        {
-            _playerController.ClearQueuedReload();
-            if (_disposed || !IsLoaded)
-                return;
+        _ = Dispatcher.BeginInvoke(() => _playerController.RunQueuedReloadAsync(() => !_disposed && IsLoaded, ReloadSourceAsync));
+    }
 
-            try
-            {
-                // Clearing the source releases the player, so the previous song does not keep
-                // playing; a reload without one (Loaded) leaves a song LoadAsync loaded alone.
-                if (!string.IsNullOrWhiteSpace(Source))
-                {
-                    _sourceLoaded = true;
-                    _ = await LoadKaraokeAsync(Source);
-                }
-                else if (_sourceLoaded)
-                {
-                    _sourceLoaded = false;
-                    _playerController.ReleasePlayer();
-                }
-            }
-            catch (Exception ex)
-            {
-                DiagnosticRouter.Raise(
-                    _playerController.Session,
-                    MediaDiagnosticLevel.Warning,
-                    DiagnosticCategory,
-                    $"Reloading the source failed: {ex.Message}",
-                    innerException: ex);
-            }
-        });
+    // Clearing the source releases the player, so the previous song does not keep playing; a
+    // reload without one (Loaded) leaves a song LoadAsync loaded alone.
+    private async Task ReloadSourceAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Source))
+        {
+            _sourceLoaded = true;
+            _ = await LoadKaraokeAsync(Source);
+        }
+        else if (_sourceLoaded)
+        {
+            _sourceLoaded = false;
+            _playerController.ReleasePlayer();
+        }
     }
 
     private Task<bool> LoadKaraokeAsync(string path)

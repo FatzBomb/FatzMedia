@@ -134,6 +134,36 @@ public sealed class LightweightPlayerController : IDisposable
     public void ClearQueuedReload() => Volatile.Write(ref _reloadQueued, 0);
 
     /// <summary>
+    /// Runs a reload scheduled after <see cref="TryQueueReload"/> (UI thread, ENG-039: shared by the
+    /// adapters' karaoke and background controls): clears the queued mark, then runs
+    /// <paramref name="reload"/> while <paramref name="canRun"/> holds (the control is still
+    /// loaded). A failure is raised as a Warning owned by the player, never thrown, as adapters run
+    /// this from a fire-and-forget UI callback. The await resumes on the caller's context.
+    /// </summary>
+    public async Task RunQueuedReloadAsync(Func<bool> canRun, Func<Task> reload)
+    {
+        ArgumentNullException.ThrowIfNull(canRun);
+        ArgumentNullException.ThrowIfNull(reload);
+        ClearQueuedReload();
+        if (_disposed || !canRun())
+            return;
+
+        try
+        {
+            await reload();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(
+                Session,
+                MediaDiagnosticLevel.Warning,
+                DiagnosticCategory,
+                $"Reloading the source failed: {ex.Message}",
+                innerException: ex);
+        }
+    }
+
+    /// <summary>
     /// Starts a new reload and returns its number; every earlier one is abandoned at its next step.
     /// <see cref="LoadAsync(MediaInputSource, IMediaControlPlatformFactory?, Action{MediaControlPlayer}?)"/>
     /// calls it; a control calls it for a change that loads nothing (a solid colour).

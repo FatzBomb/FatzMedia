@@ -287,26 +287,7 @@ public sealed class BackgroundSurface : Grid, IDisposable
         if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
 
-        _ = Dispatcher.BeginInvoke(async () =>
-        {
-            _playerController.ClearQueuedReload();
-            if (_disposed || !IsLoaded)
-                return;
-
-            try
-            {
-                _ = await ReloadSourceAsync();
-            }
-            catch (Exception ex)
-            {
-                DiagnosticRouter.Raise(
-                    _playerController.Session,
-                    MediaDiagnosticLevel.Warning,
-                    DiagnosticCategory,
-                    $"Reloading the source failed: {ex.Message}",
-                    innerException: ex);
-            }
-        });
+        _ = Dispatcher.BeginInvoke(() => _playerController.RunQueuedReloadAsync(() => !_disposed && IsLoaded, ReloadSourceAsync));
     }
 
     private async Task<bool> ReloadSourceAsync()
