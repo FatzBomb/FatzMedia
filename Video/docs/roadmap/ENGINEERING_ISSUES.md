@@ -36,7 +36,7 @@ Batches:
    disposed; one normalization rule and a bounded gain cache; Avalonia test player close during
    a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
    failures and the startup delay; karaoke `Source = null` releases the player.
-2. Windows/GPU bugs (device loss, freeze, DWM packing, resize flash, log noise): not started.
+2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
 3. Dead code and public API: not started.
 4. Refactors (player controller, decode seam, duplicates): not started.
 5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
