@@ -9,8 +9,9 @@ namespace FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition
 
 /// <summary>
 /// Owns DirectComposition visual-tree state for the optional native layered
-/// presentation backend.  This keeps composition visuals/transforms separate
-/// from the main D3D11 renderer coordinator.
+/// presentation backend.  This keeps composition visuals separate from the main
+/// D3D11 renderer coordinator. Both swap chains are always the window's size, so the
+/// visuals carry no transform.
 /// </summary>
 internal sealed class D3D11DirectCompositionTarget : IDisposable
 {
@@ -19,12 +20,9 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
     private IDCompositionVisual? _rootVisual;
     private IDCompositionVisual? _baseVisual;
     private IDCompositionVisual? _overlayVisual;
-    private int _outputWidth;
-    private int _outputHeight;
     private bool _deviceLostReported;
-    // Commit and transform failures other than device loss repeat every frame: one report each.
+    // Commit failures other than device loss repeat every frame: one report.
     private readonly RendererDiagnosticLatch _commitFailure = new();
-    private readonly RendererDiagnosticLatch _transformFailure = new();
 
     public IDXGISwapChain1? OverlaySwapChain { get; private set; }
     public ID3D11Texture2D? OverlayTexture { get; private set; }
@@ -63,9 +61,7 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
             ThrowIfCompositionCallFailed(_compositionTarget.SetRoot(_rootVisual), "SetRoot");
 
             OverlayTexture = overlaySwapChain.GetBuffer<ID3D11Texture2D>(0);
-            _outputWidth = Math.Max(1, contentWidth);
-            _outputHeight = Math.Max(1, contentHeight);
-            if (!ApplyTransforms(contentWidth, contentHeight) || !CommitCore("Create"))
+            if (contentWidth <= 0 || contentHeight <= 0 || !CommitCore("Create"))
             {
                 Dispose();
                 return false;
@@ -105,17 +101,15 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
 
     private sealed class DirectCompositionDeviceLostException(string message) : Exception(message);
 
+    /// <summary>Commits the visual tree after both swap chains were resized to <paramref name="contentWidth"/> x <paramref name="contentHeight"/>.</summary>
     public void SetContentSize(int contentWidth, int contentHeight)
     {
-        if (!IsActive || _compositionDevice == null || contentWidth <= 0 || contentHeight <= 0)
+        if (!IsActive || contentWidth <= 0 || contentHeight <= 0)
         {
             return;
         }
 
-        _outputWidth = Math.Max(1, contentWidth);
-        _outputHeight = Math.Max(1, contentHeight);
-        if (ApplyTransforms(contentWidth, contentHeight))
-            _ = CommitCore("SetContentSize");
+        _ = CommitCore("SetContentSize");
     }
 
     public void ReleaseOverlayBackBuffer()
@@ -171,41 +165,6 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         return true;
     }
 
-    private bool ApplyTransforms(int contentWidth, int contentHeight)
-    {
-        if (!IsActive || _rootVisual == null || contentWidth <= 0 || contentHeight <= 0)
-        {
-            return false;
-        }
-
-        var outputWidth = _outputWidth > 0 ? _outputWidth : contentWidth;
-        var outputHeight = _outputHeight > 0 ? _outputHeight : contentHeight;
-        var scaleX = (float)outputWidth / contentWidth;
-        var scaleY = (float)outputHeight / contentHeight;
-        var matrix = System.Numerics.Matrix3x2.CreateScale(scaleX, scaleY);
-        Result result = _rootVisual.SetTransform(matrix);
-        if (result.Failure)
-        {
-            if (D3D11DeviceLostClassifier.IsDeviceLost(result))
-            {
-                if (!_deviceLostReported)
-                {
-                    _deviceLostReported = true;
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "D3D11.DeviceLost", $"DirectComposition root transform update detected GPU device lost: {D3D11DeviceLostClassifier.Describe(result, swapChain: null)}");
-                }
-            }
-            else
-            {
-                _ = _transformFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"DirectComposition root transform update failed: {result}");
-            }
-
-            return false;
-        }
-
-        _transformFailure.Reset();
-        return true;
-    }
-
     private static Result GetDeviceRemovedReason(IDXGISwapChain swapChain)
     {
         try
@@ -236,8 +195,6 @@ internal sealed class D3D11DirectCompositionTarget : IDisposable
         _compositionTarget = null;
         _compositionDevice?.Dispose();
         _compositionDevice = null;
-        _outputWidth = 0;
-        _outputHeight = 0;
         _deviceLostReported = false;
     }
 }

@@ -1,39 +1,36 @@
 using System.Diagnostics;
-using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Core.Video.Hdr;
-using Vortice.Direct3D11;
 
 namespace FatzBomb.MediaControl.Core.Graphics.D3D.Frame;
 
 /// <summary>
-/// Coordinates one base media frame through the D3D11 upload/video-processor path,
-/// diagnostics and caller-provided presentation
-/// notification.  This keeps VorticeD3D11Renderer focused on surface/backend state while
-/// this class owns the repeatable frame pipeline:
+/// Presents one hardware-decoded frame on the active primary target:
 ///
-///   upload base frame -> notify/present active backend
+///   active target (applying a pending native resize) -> video processor blit -> present -> record upload
 ///
-/// Presentation backend ownership still remains outside this class; the renderer supplies
-/// the current target texture, target dimensions, and blit callback for the active backend.
+/// The renderer decides when frames arrive and how HDR output is chosen; this class owns the
+/// per-frame plumbing and names the failed step in <see cref="LastFailureReason"/>.
 /// </summary>
-internal sealed class D3D11FramePresenter(
+internal sealed class D3D11HardwareFramePresenter(
     D3D11FrameUploadResources uploadResources,
-    D3D11VideoProcessorPresenter videoProcessorPresenter)
+    D3D11VideoProcessorPresenter videoProcessorPresenter,
+    ID3D11PresentationSurfaceProvider presentationSurfaces,
+    D3D11PresentationState presentationState)
 {
     private readonly RendererDiagnosticLatch _failure = new();
 
-    /// <summary>Why the last <see cref="PresentHardwareFrame"/> returned false, or null.</summary>
+    /// <summary>Why the last <see cref="PresentHardwareFrame"/> returned false, or null (ENG-039).</summary>
     public string? LastFailureReason { get; private set; }
 
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
-        Func<bool> preparePresentationTarget,
-        ID3D11Texture2D? presentationTexture,
+        bool isDisposed,
         IntPtr sourceTexturePointer,
         int sourceArraySlice,
         int width,
@@ -41,18 +38,30 @@ internal sealed class D3D11FramePresenter(
         double framesPerSecond,
         VideoColorSpace colorSpace,
         HdrToneMapRequest? toneMap,
-        int presentationWidth,
-        int presentationHeight,
-        MediaCompositionStretchMode presentationStretch,
         Func<int, int, bool> notifyPresented,
         HdrOutputDecision? hdrOutput = null)
     {
-        if (deviceResources.Context == null
+        if (isDisposed
+            || deviceResources.Context == null
             || !deviceResources.HasVideoProcessorSupport
-            || presentationTexture == null
             || sourceTexturePointer == IntPtr.Zero
             || width <= 0
             || height <= 0)
+        {
+            LastFailureReason = "no D3D11 video processor or frame";
+            return false;
+        }
+
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
+                applyPendingNativeResize: true,
+                reason: "hardware frame presentation",
+                out D3D11PresentationTargetSnapshot target))
+        {
+            LastFailureReason = "no active D3D11 presentation target";
+            return false;
+        }
+
+        if (target.Texture == null)
         {
             LastFailureReason = "no D3D11 video processor, target or frame";
             return false;
@@ -63,15 +72,9 @@ internal sealed class D3D11FramePresenter(
         try
         {
             var presentStart = Stopwatch.GetTimestamp();
-            if (!preparePresentationTarget())
-            {
-                LastFailureReason = "no presentation target";
-                return false;
-            }
-
             var presented = videoProcessorPresenter.PresentHardwareFrame(
                 deviceResources,
-                presentationTexture,
+                target.Texture,
                 sourceTexturePointer,
                 sourceArraySlice,
                 width,
@@ -79,10 +82,11 @@ internal sealed class D3D11FramePresenter(
                 framesPerSecond,
                 colorSpace,
                 toneMap,
-                presentationWidth,
-                presentationHeight,
-                presentationStretch,
-                hdrOutput);
+                target.Width,
+                target.Height,
+                presentationState.NativePresentationStretch,
+                // Only an scRGB target takes scRGB (the snapshot is taken after the output was chosen).
+                target.OutputMode == HdrOutputMode.ScRgb ? hdrOutput : null);
             if (!presented)
             {
                 LastFailureReason = $"{videoProcessorPresenter.LastStep} did not draw the frame";
@@ -96,7 +100,7 @@ internal sealed class D3D11FramePresenter(
                 return false;
             }
 
-            RecordUpload(presentStart, width, height, presentationWidth, presentationHeight);
+            uploadResources.RecordUpload(presentStart, width, height, target.Width, target.Height);
             _failure.Reset();
             return true;
         }
@@ -109,11 +113,4 @@ internal sealed class D3D11FramePresenter(
             return false;
         }
     }
-
-    private void RecordUpload(long startTimestamp, int sourceWidth, int sourceHeight, int presentationWidth, int presentationHeight) => uploadResources.RecordUpload(
-            startTimestamp,
-            sourceWidth,
-            sourceHeight,
-            presentationWidth,
-            presentationHeight);
 }
