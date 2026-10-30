@@ -128,6 +128,32 @@ public sealed class VulkanResourceReuseTests
         Assert.Equal(2, created!.BackgroundUploadCount);
     }
 
+    [Fact]
+    public void RepeatedAndUploadedFrames_AllocateNoManagedMemory()
+    {
+        // ENG-039 P5-10: buffers stay mapped, so neither a repeated frame nor a new background
+        // upload maps memory or allocates (measured 0 bytes per frame on lavapipe).
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        MediaCompositionFrame frame = BackgroundFrame(seed: 3, revision: 1) with { WashArgb = 0x40FF0000, CdgOverlay = CdgFixtures.Snapshot() };
+        var plans = new VulkanFramePlan[30];
+        for (var i = 0; i < plans.Length; i++)
+            plans[i] = VulkanCompositionPlanner.Plan(frame with { BackgroundRevision = 10 + (i / 2) }, 64, 36);
+
+        byte[] expected = compositor.Render(plans[^1]).ToArray();
+        for (var i = 0; i < 4; i++)
+            _ = compositor.Render(plans[i]);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 4; i < plans.Length; i++)
+            _ = compositor.Render(plans[i]);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(allocated < 1024, $"{allocated} bytes for {plans.Length - 4} frames");
+        Assert.Equal(expected, compositor.Render(plans[^1]).ToArray());
+    }
+
     private static byte[] RenderFresh(VulkanOffscreenCompositor reference, MediaCompositionFrame frame, int width, int height) =>
         reference.Render(VulkanCompositionPlanner.Plan(frame with { BackgroundRevision = -1 }, width, height)).ToArray();
 

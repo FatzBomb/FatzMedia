@@ -71,6 +71,7 @@ public class MediaSurface : Control
     private MediaOverlayForm? _overlayForm;
     private readonly List<Control> _overlayAnchors = [];
     private bool _overlayAnchorsWatched;
+    private SolidBrush? _backgroundBrush;
 
     public MediaSurface()
     {
@@ -364,8 +365,7 @@ public class MediaSurface : Control
         // instead of it. On the frame-sink path it is the frame's backdrop (frames may carry
         // alpha), painted into the same back buffer, so nothing flickers.
         Graphics graphics = e.Graphics;
-        using (var brush = new SolidBrush(BackColor))
-            graphics.FillRectangle(brush, ClientRectangle);
+        graphics.FillRectangle(GetBackgroundBrush(), ClientRectangle);
 
         if (!_framesShown || _sink?.Bitmap is not { } frame)
             return;
@@ -389,9 +389,24 @@ public class MediaSurface : Control
             WatchOverlayAnchors(false);
             _contentTracker.Changed -= OnContentTrackerChanged;
             _contentTracker.Dispose();
+            _backgroundBrush?.Dispose();
+            _backgroundBrush = null;
         }
 
         base.Dispose(disposing);
+    }
+
+    // On the frame-sink path OnPaint runs per frame: one brush, recoloured when BackColor changes,
+    // rather than a new one each paint (ENG-039).
+    private SolidBrush GetBackgroundBrush()
+    {
+        Color color = BackColor;
+        if (_backgroundBrush is null)
+            _backgroundBrush = new SolidBrush(color);
+        else if (_backgroundBrush.Color != color)
+            _backgroundBrush.Color = color;
+
+        return _backgroundBrush;
     }
 
     private void AttachOrResize()

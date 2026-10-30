@@ -7,9 +7,13 @@ internal static partial class Bootstrap
     // Serializes loading: a concurrent caller waits for the load in progress and gets its result
     // instead of failing with an empty message. A failed load is retried by the next caller.
     // FFmpeg is required; BASS is optional (ENG-033): without it the player starts with no audio,
-    // and a later caller retries BASS while the loaded FFmpeg stays as it is.
+    // and a later caller with other paths retries BASS while the loaded FFmpeg stays as it is.
     private static readonly Lock InitGate = new();
     private static volatile bool _isInitialized;
+    // The search paths of the last load that found FFmpeg but not BASS: the next player with the
+    // same paths keeps that outcome instead of scanning them for BASS again (ENG-039 P5-8). Other
+    // paths still retry BASS.
+    private static List<string>? _withoutBassSearchPaths;
 
     internal static bool IsBassLoaded { get; private set; } = false;
     internal static bool IsFfmpegLoaded { get; private set; } = false;
@@ -37,8 +41,6 @@ internal static partial class Bootstrap
 
             try
             {
-                // Each loader replaces its own checks, so a BASS retry keeps the FFmpeg ones.
-                _nativeLoadMessages.Clear();
                 List<string> candidatePaths = [];
                 foreach (var nativeLibraryPath in nativeLibraryPaths)
                 {
@@ -53,6 +55,15 @@ internal static partial class Bootstrap
                         candidatePaths.Add(defaultPath);
                 }
 
+                if (IsFfmpegLoaded && _withoutBassSearchPaths is { } scanned && scanned.SequenceEqual(candidatePaths, StringComparer.OrdinalIgnoreCase))
+                {
+                    // This player's diagnostics still say that audio is unavailable.
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Bootstrap", Message);
+                    return true;
+                }
+
+                // Each loader replaces its own checks, so a BASS retry keeps the FFmpeg ones.
+                _nativeLoadMessages.Clear();
                 searchPaths = candidatePaths;
 
 
@@ -60,6 +71,7 @@ internal static partial class Bootstrap
                 IsFfmpegLoaded = LoadFfmpeg();
 
                 _isInitialized = IsBassLoaded && IsFfmpegLoaded;
+                _withoutBassSearchPaths = IsFfmpegLoaded && !IsBassLoaded ? candidatePaths : null;
                 Message = !IsFfmpegLoaded
                     ? BuildFailureMessage()
                     : !IsBassLoaded
@@ -71,6 +83,7 @@ internal static partial class Bootstrap
                 Message = $"[Bootstrap] ❌ Exception during initialization: {ex.Message}";
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Bootstrap", $"Exception during initialization: {ex.Message}", innerException: ex);
                 _isInitialized = false;
+                _withoutBassSearchPaths = null;
                 return false;
             }
             finally

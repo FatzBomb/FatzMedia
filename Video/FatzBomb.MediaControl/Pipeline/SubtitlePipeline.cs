@@ -58,6 +58,9 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
         }
     }
 
+    /// <summary>The track id of embedded stream <paramref name="streamIndex"/>.</summary>
+    public static string EmbeddedTrackId(int streamIndex) => $"embedded:{streamIndex}";
+
     public bool LoadEmbeddedTracks(IReadOnlyList<EmbeddedSubtitleTrack> tracks, bool selectFirstTrack = true)
     {
         try
@@ -73,7 +76,7 @@ internal sealed class SubtitlePipeline(ISubtitleEngine engine, MediaState state)
                 firstTrackId = null;
                 foreach (EmbeddedSubtitleTrack track in tracks)
                 {
-                    var trackId = $"embedded:{track.StreamIndex}";
+                    var trackId = EmbeddedTrackId(track.StreamIndex);
                     _sources[trackId] = new SubtitleSource(
                         new SubtitleTrack(trackId, $"Embedded {track.CodecName} (stream {track.StreamIndex})", IsEmbedded: true),
                         null,

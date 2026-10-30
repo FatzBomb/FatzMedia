@@ -6,13 +6,16 @@ using FFmpeg.AutoGen;
 namespace FatzBomb.MediaControl.Core.Subtitle;
 
 /// <summary>
-/// Extracts the first supported embedded text subtitle stream before playback begins.
-/// It owns a separate demuxer so reading the complete subtitle track cannot consume or buffer
-/// packets needed by the live audio/video demuxer.
+/// Extracts the supported embedded text subtitle streams of a local file. It reads the whole file,
+/// so the player runs it on a background task after the video opened (ENG-039 P5-1). It owns a
+/// separate demuxer so reading the complete subtitle track cannot consume or buffer packets needed
+/// by the live audio/video demuxer.
 /// </summary>
 internal static unsafe class EmbeddedSubtitleDecoder
 {
-    public static IReadOnlyList<EmbeddedSubtitleTrack> DecodeTracks(string path)
+    /// <summary>Decodes the text subtitle tracks of <paramref name="path"/>.</summary>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; checked before every packet.</exception>
+    public static IReadOnlyList<EmbeddedSubtitleTrack> DecodeTracks(string path, CancellationToken cancellationToken = default)
     {
         using var demuxer = new MediaDemuxer();
         if (!demuxer.Open(path))
@@ -37,7 +40,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
         try
         {
             var cuesByStream = streams.Keys.ToDictionary(static index => index, static _ => new List<SubtitleCue>());
-            while (demuxer.ReadPacket(packet) >= 0)
+            while (!cancellationToken.IsCancellationRequested && demuxer.ReadPacket(packet) >= 0)
             {
                 if (streams.TryGetValue(packet->stream_index, out (AVRational TimeBase, AVCodecID CodecId) stream))
                     TryAddCue(packet, stream.TimeBase, stream.CodecId, playbackStartSeconds, cuesByStream[packet->stream_index]);
@@ -45,6 +48,7 @@ internal static unsafe class EmbeddedSubtitleDecoder
                 ffmpeg.av_packet_unref(packet);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             return [.. streams.Select(stream => new EmbeddedSubtitleTrack(
                     stream.Key,
                     GetCodecName(stream.Value.CodecId),

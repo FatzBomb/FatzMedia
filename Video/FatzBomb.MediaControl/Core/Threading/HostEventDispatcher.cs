@@ -23,7 +23,8 @@ internal static class HostEventDispatcher
             return;
         }
 
-        foreach (EventHandler handler in handlers.GetInvocationList())
+        // Walks the invocation list in place (ENG-039): GetInvocationList copied it per raise.
+        foreach (EventHandler handler in Delegate.EnumerateInvocationList(handlers))
             Invoke(handler, sender, EventArgs.Empty, eventName, reportFailures);
     }
 
@@ -45,7 +46,7 @@ internal static class HostEventDispatcher
             return;
         }
 
-        foreach (EventHandler<TEventArgs> handler in handlers.GetInvocationList())
+        foreach (EventHandler<TEventArgs> handler in Delegate.EnumerateInvocationList(handlers))
             Invoke(handler, sender, args, eventName, reportFailures);
     }
 

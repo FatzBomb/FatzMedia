@@ -44,7 +44,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
     private string? _displayLockedPendingState;
     private long _displayLockedPendingSince;
     private string? _displayLockedOnState;
-    private string _displayLockedOnStateKey = string.Empty;
+    private long[] _displayLockedOnStateKey = [];
     private long _displayLockedUnavailableSince;
 
     /// <inheritdoc cref="IVideoFrameTimingControl.FrameTiming"/>
@@ -114,7 +114,7 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             var passTicks = (long)((double.IsNaN(target.WorkSeconds) ? DisplayLockedTiming.InitialBudget.TotalSeconds : target.WorkSeconds) * Stopwatch.Frequency)
                 + (Stopwatch.Frequency / 1000);
             var batchUntil = slot.WakeTimestamp + passTicks;
-            _ = _displayLockedBatch.RemoveAll(member => member.Slot.WakeTimestamp > batchUntil);
+            RemoveBatchMembersWakingAfter(batchUntil);
             _displayLockedBatch.Sort(static (a, b) => a.Slot.VsyncTimestamp.CompareTo(b.Slot.VsyncTimestamp));
         }
 
@@ -128,6 +128,20 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
         _displayLockedUnavailableSince = 0;
         NoteDisplayLockedState(GetDisplayLockedOnState());
         return true;
+    }
+
+    // RemoveAll without its capturing lambda: this runs once per refresh (ENG-039 P5-6).
+    private void RemoveBatchMembersWakingAfter(long batchUntil)
+    {
+        var kept = 0;
+        for (var index = 0; index < _displayLockedBatch.Count; index++)
+        {
+            BatchMember member = _displayLockedBatch[index];
+            if (member.Slot.WakeTimestamp <= batchUntil)
+                _displayLockedBatch[kept++] = member;
+        }
+
+        _displayLockedBatch.RemoveRange(kept, _displayLockedBatch.Count - kept);
     }
 
     private bool QueryTimingGroups()
@@ -186,12 +200,13 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
                 _ = _displayLockedTargets.Remove(key);
     }
 
-    // Built only when the displays or their periods change: this runs once per refresh.
+    // Built only when the displays or their periods change: this runs once per refresh, so the
+    // check compares the periods in place instead of building a key (ENG-039 P5-6).
     private string GetDisplayLockedOnState()
     {
-        var key = string.Join(",", _displayLockedTargets.Values.Select(static display => display.Group.Timing.PeriodTicks / 1000));
-        if (_displayLockedOnState is null || key != _displayLockedOnStateKey)
+        if (_displayLockedOnState is null || !DisplayLockedOnStateKeyMatches())
         {
+            _displayLockedOnStateKey = [.. _displayLockedTargets.Values.Select(static display => display.Group.Timing.PeriodTicks / 1000)];
             var rates = _displayLockedTargets.Values
                 .OrderByDescending(static display => display.IncludesPrimary)
                 .Select(static display => (Stopwatch.Frequency / (double)display.Group.Timing.PeriodTicks).ToString("0.###", CultureInfo.InvariantCulture))
@@ -199,10 +214,22 @@ internal sealed partial class VideoPipeline : IVideoFrameTimingControl, IPresent
             _displayLockedOnState = rates.Length == 1
                 ? $"on: frames follow the {rates[0]} Hz refreshes of the video's display"
                 : $"on: {rates.Length} displays ({string.Join(" Hz, ", rates)} Hz), each following its own refreshes";
-            _displayLockedOnStateKey = key;
         }
 
         return _displayLockedOnState;
+    }
+
+    private bool DisplayLockedOnStateKeyMatches()
+    {
+        if (_displayLockedOnStateKey.Length != _displayLockedTargets.Count)
+            return false;
+
+        var index = 0;
+        foreach (DisplayLockedTarget display in _displayLockedTargets.Values)
+            if (_displayLockedOnStateKey[index++] != display.Group.Timing.PeriodTicks / 1000)
+                return false;
+
+        return true;
     }
 
     /// <summary>

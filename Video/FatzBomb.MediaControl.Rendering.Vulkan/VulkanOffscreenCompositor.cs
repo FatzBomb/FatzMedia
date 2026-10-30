@@ -210,16 +210,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 _cdgUploadedSnapshot = null;
                 var length = (ulong)cdgPlan.Snapshot.Width * (ulong)cdgPlan.Snapshot.Height * 4;
                 BufferResource cdgUpload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit, UploadMemoryPreferences);
-                void* mapped;
-                VulkanResult.Check(_vk.MapMemory(_device, cdgUpload.Memory, 0, length, 0, &mapped), "vkMapMemory");
-                try
-                {
-                    VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>(mapped, (int)length));
-                }
-                finally
-                {
-                    _vk.UnmapMemory(_device, cdgUpload.Memory);
-                }
+                VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>((void*)cdgUpload.Mapped, (int)length));
             }
 
             VulkanResult.Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
@@ -431,7 +422,6 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             }
 
             WaitForSubmission("vkWaitForFences (frame)");
-            DestroyFrameViews();
             if (conversion is { } converted)
                 CompleteVideoConversion(converted);
             if (uploadCdg && plan.Cdg is { } uploaded)
@@ -479,22 +469,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     /// </summary>
     private void ReadBack(BufferResource buffer, Span<byte> destination)
     {
-        void* mapped;
-        VulkanResult.Check(_vk.MapMemory(_device, buffer.Memory, 0, Vk.WholeSize, 0, &mapped), "vkMapMemory");
-        try
+        if ((buffer.Properties & MemoryPropertyFlags.HostCoherentBit) == 0)
         {
-            if ((buffer.Properties & MemoryPropertyFlags.HostCoherentBit) == 0)
-            {
-                var range = new MappedMemoryRange { SType = StructureType.MappedMemoryRange, Memory = buffer.Memory, Offset = 0, Size = Vk.WholeSize };
-                VulkanResult.Check(_vk.InvalidateMappedMemoryRanges(_device, 1, &range), "vkInvalidateMappedMemoryRanges");
-            }
+            var range = new MappedMemoryRange { SType = StructureType.MappedMemoryRange, Memory = buffer.Memory, Offset = 0, Size = Vk.WholeSize };
+            VulkanResult.Check(_vk.InvalidateMappedMemoryRanges(_device, 1, &range), "vkInvalidateMappedMemoryRanges");
+        }
 
-            new ReadOnlySpan<byte>(mapped, destination.Length).CopyTo(destination);
-        }
-        finally
-        {
-            _vk.UnmapMemory(_device, buffer.Memory);
-        }
+        new ReadOnlySpan<byte>((void*)buffer.Mapped, destination.Length).CopyTo(destination);
     }
 
     /// <summary>
@@ -823,22 +804,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         return false;
     }
 
-    private void Upload(BufferResource upload, ReadOnlySpan<byte> sourceBgra, int width, int height, int stride)
+    private static void Upload(BufferResource upload, ReadOnlySpan<byte> sourceBgra, int width, int height, int stride)
     {
-        void* mapped;
         var rowBytes = width * 4;
-        VulkanResult.Check(_vk.MapMemory(_device, upload.Memory, 0, (ulong)rowBytes * (ulong)height, 0, &mapped), "vkMapMemory");
-        try
-        {
-            var destination = new Span<byte>(mapped, rowBytes * height);
-            for (var y = 0; y < height; y++)
-                sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
-        }
-        finally
-        {
-            // A short buffer must not leave the memory mapped: the next vkMapMemory would be invalid (ENG-039).
-            _vk.UnmapMemory(_device, upload.Memory);
-        }
+        var destination = new Span<byte>((void*)upload.Mapped, rowBytes * height);
+        for (var y = 0; y < height; y++)
+            sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
     }
 
     private void CopyBufferToImage(BufferResource upload, VkImage image, int width, int height)
@@ -1033,7 +1004,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             _vk.GetBufferMemoryRequirements(_device, handle, &requirements);
             memory = AllocateMemory(requirements.MemoryTypeBits, requirements.Size, memoryPreferences, null, "vkAllocateMemory", out MemoryPropertyFlags properties);
             VulkanResult.Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
-            BufferResource created = new(handle, memory, size, properties);
+            // Mapped for its lifetime (ENG-039 P5-10): every buffer here is host-visible, and
+            // freeing the memory unmaps it.
+            void* mapped;
+            VulkanResult.Check(_vk.MapMemory(_device, memory, 0, Vk.WholeSize, 0, &mapped), "vkMapMemory");
+            BufferResource created = new(handle, memory, size, properties, (nint)mapped);
             resource = created;
             return created;
         }
@@ -1144,6 +1119,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             return;
 
         _vk.DestroyBuffer(_device, buffer.Buffer, null);
+        _vk.UnmapMemory(_device, buffer.Memory);
         _vk.FreeMemory(_device, buffer.Memory, null);
         resource = null;
     }
@@ -1232,7 +1208,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     private readonly record struct ImageResource(VkImage Image, DeviceMemory Memory, ImageView View, uint Width, uint Height);
 
-    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size, MemoryPropertyFlags Properties);
+    /// <summary>A host-visible buffer, persistently mapped at <see cref="Mapped"/>.</summary>
+    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size, MemoryPropertyFlags Properties, nint Mapped);
 
     private readonly record struct RenderTarget(ImageResource Image, Framebuffer Framebuffer);
 }

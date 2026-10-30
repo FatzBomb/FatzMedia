@@ -31,6 +31,9 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
     private static readonly ArrayPool<byte> CompositionBackgroundPool =
         ArrayPool<byte>.Create(maxArrayLength: 64 * 1024 * 1024, maxArraysPerBucket: 4);
+    // Subtitle rasters (at most the 1920x1080 canvas) go here instead of a new array per frame.
+    private static readonly ArrayPool<byte> SubtitleOverlayPool =
+        ArrayPool<byte>.Create(maxArrayLength: 16 * 1024 * 1024, maxArraysPerBucket: 4);
 
     private readonly IMediaEngine _mediaEngine;
     private readonly MediaPlayerConfiguration _configuration;
@@ -99,6 +102,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     private volatile StrongBox<BaseVisualTransform> _baseVisualTransform = new(default);
     private CdgRenderSnapshot? _lastCdgSnapshot;
     private SubtitleRasterResult? _subtitleOverlay;
+    // The pooled buffer the rasterizer writes into, and the one _subtitleOverlay's pixels lie in
+    // (null when the rasterizer returned its own memory). Compositions take a reference to it.
+    private RetainedFrameBuffer? _subtitleBuffer;
+    private RetainedFrameBuffer? _subtitleOverlayBuffer;
+    private readonly Func<int, Memory<byte>> _rentSubtitlePixels;
+    private bool _subtitleBufferRented;
+    private SubtitleCue[] _subtitleCues = [];
     private string? _subtitleText;
     private int _subtitleProgressRevision = int.MinValue;
     private long _subtitleRevision;
@@ -128,6 +138,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _rendererBackend = rendererBackend ?? throw new ArgumentNullException(nameof(rendererBackend));
         _subtitleRasterizer = subtitleRasterizer ?? throw new ArgumentNullException(nameof(subtitleRasterizer));
+        _rentSubtitlePixels = RentSubtitlePixels;
         _mediaEngine = mediaEngine ?? throw new ArgumentNullException(nameof(mediaEngine));
         _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
         _configuration = configuration;
@@ -1062,12 +1073,13 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         {
             MediaCompositionFrame frame;
             RetainedFrameBuffer? rentedBackground;
+            RetainedFrameBuffer? rentedSubtitle;
             CompositionPresentResult buildResult;
             lock (_lock)
-                buildResult = TryBuildCdgCompositionFrameNoLock(consumeDirtyRegions, retainedRefresh, reason, out frame, out rentedBackground);
+                buildResult = TryBuildCdgCompositionFrameNoLock(consumeDirtyRegions, retainedRefresh, reason, out frame, out rentedBackground, out rentedSubtitle);
 
             return buildResult == CompositionPresentResult.Presented
-                ? PresentToRenderer(frame, rentedBackground)
+                ? PresentToRenderer(frame, rentedBackground, rentedSubtitle)
                 : buildResult;
         }
         finally
@@ -1081,10 +1093,12 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         bool retainedRefresh,
         string reason,
         out MediaCompositionFrame frame,
-        out RetainedFrameBuffer? rentedBackground)
+        out RetainedFrameBuffer? rentedBackground,
+        out RetainedFrameBuffer? rentedSubtitle)
     {
         frame = default;
         rentedBackground = null;
+        rentedSubtitle = null;
 
         if (!TryCreateAndCacheCdgSnapshot(consumeDirtyRegions, out CdgRenderSnapshot? snapshot) || snapshot == null)
             return CompositionPresentResult.Failed;
@@ -1095,7 +1109,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         if (!EnsureBackendInitialized())
             return CompositionPresentResult.Failed;
 
-        frame = BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason, out rentedBackground);
+        frame = BuildCompositionFrameNoLock(snapshot, snapshot.BackgroundWashArgb, retainedRefresh, reason, out rentedBackground, out rentedSubtitle);
         return CompositionPresentResult.Presented;
     }
 
@@ -1117,6 +1131,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
             MediaCompositionFrame compositionFrame;
             long backgroundRevision;
+            RetainedFrameBuffer? rentedSubtitle;
             lock (_lock)
             {
                 if (!EnsureBackendInitialized())
@@ -1124,11 +1139,11 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
 
                 MediaCompositionStretchMode stretch = forceZoomToFill ? MediaCompositionStretchMode.UniformToFill : _primaryStretchMode;
                 backgroundRevision = SetPendingGpuBackgroundNoLock(frame, stretch);
-                compositionFrame = BuildHardwareCompositionFrameNoLock(frame, stretch, backgroundRevision, snapshot, washArgb, reason);
+                compositionFrame = BuildHardwareCompositionFrameNoLock(frame, stretch, backgroundRevision, snapshot, washArgb, reason, out rentedSubtitle);
             }
 
             // The renderer holds the frame only once a present carrying it succeeded.
-            if (PresentToRenderer(compositionFrame, rentedBackground: null) == CompositionPresentResult.Presented)
+            if (PresentToRenderer(compositionFrame, rentedBackground: null, rentedSubtitle) == CompositionPresentResult.Presented)
             {
                 lock (_lock)
                     CommitGpuBackgroundNoLock(backgroundRevision);
@@ -1142,9 +1157,10 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         long backgroundRevision,
         CdgRenderSnapshot? snapshot,
         uint washArgb,
-        string reason)
+        string reason,
+        out RetainedFrameBuffer? rentedSubtitle)
     {
-        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
+        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
 
         (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
@@ -1410,21 +1426,25 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
                 _ = UpdateSubtitleOverlay(subtitlePositionSeconds);
             MediaCompositionFrame frame;
             RetainedFrameBuffer? rentedBackground;
+            RetainedFrameBuffer? rentedSubtitle;
             lock (_lock)
             {
                 if (!EnsureBackendInitialized())
                     return CompositionPresentResult.Failed;
 
-                frame = BuildCompositionFrameNoLock(null, washArgb, retainedRefresh, reason, out rentedBackground);
+                frame = BuildCompositionFrameNoLock(null, washArgb, retainedRefresh, reason, out rentedBackground, out rentedSubtitle);
             }
 
-            return PresentToRenderer(frame, rentedBackground);
+            return PresentToRenderer(frame, rentedBackground, rentedSubtitle);
         }
     }
 
     // Caller holds _presentGate and not _lock: the renderer call, its failure report and the
     // device probe a failure kicks.
-    private CompositionPresentResult PresentToRenderer(MediaCompositionFrame frame, RetainedFrameBuffer? rentedBackground)
+    private CompositionPresentResult PresentToRenderer(
+        MediaCompositionFrame frame,
+        RetainedFrameBuffer? rentedBackground,
+        RetainedFrameBuffer? rentedSubtitle = null)
     {
         try
         {
@@ -1444,6 +1464,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         finally
         {
             rentedBackground?.Release();
+            rentedSubtitle?.Release();
         }
     }
 
@@ -1452,7 +1473,8 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         uint washArgb,
         bool retainedRefresh,
         string reason,
-        out RetainedFrameBuffer? rentedBackground)
+        out RetainedFrameBuffer? rentedBackground,
+        out RetainedFrameBuffer? rentedSubtitle)
     {
         rentedBackground = null;
         ReadOnlyMemory<byte> backgroundBgra;
@@ -1500,7 +1522,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             hasBackground = false;
         }
 
-        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision);
+        SubtitleRasterResult? subtitleOverlay = GetCachedSubtitleOverlay(out var subtitleRevision, out rentedSubtitle);
 
         (MediaCompositionClearMode clearMode, uint clearArgb) = ResolveContentClear(TransparentBackground);
         return new MediaCompositionFrame
@@ -1532,7 +1554,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         };
     }
 
-    private bool UpdateSubtitleOverlay(double? presentationPositionSeconds = null)
+    internal bool UpdateSubtitleOverlay(double? presentationPositionSeconds = null)
     {
         lock (_subtitleGate)
         {
@@ -1546,10 +1568,18 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             subtitlePosition = Math.Max(0, subtitlePosition + subtitleOffset);
 
             IReadOnlyList<SubtitleCue> activeCues = _mediaEngine.Subtitle?.GetActiveCues(subtitlePosition) ?? [];
-            var text = activeCues.Count == 0 ? null : string.Join("\n", activeCues.Select(static cue => cue.Text));
             KaraokeCueTiming? karaokeTiming = activeCues.Count == 1 ? activeCues[0].KaraokeTiming : null;
             var subtitleTime = TimeSpan.FromSeconds(subtitlePosition);
             var progressRevision = karaokeTiming?.GetProgressRevision(subtitleTime, _wipeTransitionDuration) ?? int.MinValue;
+            // The same cues at the same progress draw the same raster: skip it without rebuilding
+            // the cue text (ENG-039 P5-2).
+            var sameCues = IsSameSubtitleCues(activeCues);
+            if (sameCues && progressRevision == _subtitleProgressRevision)
+                return false;
+
+            var text = sameCues ? _subtitleText : JoinCueText(activeCues);
+            if (!sameCues)
+                _subtitleCues = [.. activeCues];
             if (string.Equals(text, _subtitleText, StringComparison.Ordinal)
                 && progressRevision == _subtitleProgressRevision)
                 return false;
@@ -1557,23 +1587,76 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             _subtitleText = text;
             _subtitleProgressRevision = progressRevision;
             _subtitleOverlay = null;
+            _subtitleOverlayBuffer = null;
             _subtitleRevision++;
             if (string.IsNullOrWhiteSpace(text))
                 return true;
 
             try
             {
-                _subtitleOverlay = karaokeTiming == null
-                    ? _subtitleRasterizer.Render(text, SubtitleCanvasWidth, SubtitleCanvasHeight)
-                    : _subtitleRasterizer.RenderKaraoke(karaokeTiming, subtitleTime, SubtitleCanvasWidth, SubtitleCanvasHeight);
+                SubtitleRasterResult overlay = karaokeTiming == null
+                    ? _subtitleRasterizer.Render(text, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels)
+                    : _subtitleRasterizer.RenderKaraoke(karaokeTiming, subtitleTime, SubtitleCanvasWidth, SubtitleCanvasHeight, _rentSubtitlePixels);
+                _subtitleOverlay = overlay;
+                // Pixels in the pooled buffer are shared with compositions by reference; a
+                // rasterizer that returned its own memory keeps owning it.
+                _subtitleOverlayBuffer = _subtitleBufferRented
+                    && _subtitleBuffer is { } buffer
+                    && overlay.Pixels.Span.Overlaps(buffer.Memory.Span)
+                        ? buffer
+                        : null;
             }
             catch (Exception ex)
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Text rasterization failed: {ex.Message}", innerException: ex);
             }
+            finally
+            {
+                _subtitleBufferRented = false;
+            }
 
             return true;
         }
+    }
+
+    // Caller holds _subtitleGate.
+    private bool IsSameSubtitleCues(IReadOnlyList<SubtitleCue> activeCues)
+    {
+        SubtitleCue[] previous = _subtitleCues;
+        if (previous.Length != activeCues.Count)
+            return false;
+
+        for (var i = 0; i < previous.Length; i++)
+        {
+            if (!ReferenceEquals(previous[i], activeCues[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static string? JoinCueText(IReadOnlyList<SubtitleCue> activeCues) => activeCues.Count switch
+    {
+        0 => null,
+        1 => activeCues[0].Text,
+        _ => string.Join("\n", activeCues.Select(static cue => cue.Text)),
+    };
+
+    // The rasterizer's buffer request, made under _subtitleGate during UpdateSubtitleOverlay. The
+    // buffer is overwritten in place only when no composition holds it (as the background is).
+    private Memory<byte> RentSubtitlePixels(int length)
+    {
+        RetainedFrameBuffer? buffer = _subtitleBuffer;
+        // A karaoke raster's bounds change from frame to frame: any buffer large enough is reused.
+        if (buffer is null || !buffer.IsExclusive || buffer.Length < length)
+        {
+            buffer?.Release();
+            buffer = RetainedFrameBuffer.Rent(SubtitleOverlayPool, length);
+            _subtitleBuffer = buffer;
+        }
+
+        _subtitleBufferRented = true;
+        return buffer.Memory[..length];
     }
 
     private bool HasCachedSubtitleOverlay()
@@ -1585,17 +1668,21 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
     private static bool IsHardwareFrame(VideoFrameEventArgs frame) =>
         frame.NativeResource is { IsValid: true };
 
-    private SubtitleRasterResult? GetCachedSubtitleOverlay(out long revision)
+    // A pooled overlay comes with a reference the caller releases once the present is over
+    // (PresentToRenderer does), so a raster on another thread never overwrites pixels in flight.
+    private SubtitleRasterResult? GetCachedSubtitleOverlay(out long revision, out RetainedFrameBuffer? rentedSubtitle)
     {
         lock (_subtitleGate)
         {
             if (_subtitleOverlay is not { Pixels.IsEmpty: false } overlay)
             {
                 revision = -1;
+                rentedSubtitle = null;
                 return null;
             }
 
             revision = _subtitleRevision;
+            rentedSubtitle = _subtitleOverlayBuffer?.AddReference();
             return overlay;
         }
     }
@@ -1708,8 +1795,12 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
         lock (_subtitleGate)
         {
             _subtitleText = null;
+            _subtitleCues = [];
             _subtitleProgressRevision = int.MinValue;
             _subtitleOverlay = null;
+            _subtitleOverlayBuffer = null;
+            _subtitleBuffer?.Release();
+            _subtitleBuffer = null;
             _lastSubtitleOffsetSeconds = double.NaN;
         }
     }
@@ -1823,6 +1914,7 @@ public sealed partial class MediaPresentationCoordinator : IMediaPresentationCoo
             }
         }
         _subtitleRasterizer.Dispose();
+        InvalidateSubtitleOverlayCache();
         _presentationScheduler.Dispose();
         _recoveryScheduler.Dispose();
     }

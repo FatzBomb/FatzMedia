@@ -43,15 +43,14 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
-    [LibraryImport("gdi32.dll", SetLastError = true)]
-    internal static partial IntPtr CreateSolidBrush(int colorRef);
+    internal const int BLACK_BRUSH = 4;
+
+    /// <summary>A stock GDI object: shared by the system, never deleted.</summary>
+    [LibraryImport("gdi32.dll")]
+    internal static partial IntPtr GetStockObject(int index);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial int FillRect(IntPtr hDC, ref RECT lprc, IntPtr hbr);
-
-    [LibraryImport("gdi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool DeleteObject(IntPtr hObject);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT lpPaint);

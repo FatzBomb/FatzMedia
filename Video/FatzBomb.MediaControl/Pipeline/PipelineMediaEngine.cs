@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment
+internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaErrorSource, IClockBackedMediaEngine, IMediaSourceCapabilityProvider, IVideoFrameTimingControl, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource
 {
     private const string NetworkDiagnosticCategory = "Network";
 
@@ -82,6 +82,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.PlaybackLooped += OnPlaybackLooped;
         _coordinator.NetworkBufferingChanged += OnNetworkBufferingChanged;
         _coordinator.NetworkStreamMetadataChanged += OnNetworkStreamMetadataChanged;
+        _coordinator.SubtitleTracksChanged += OnSubtitleTracksChanged;
     }
 
     /// <inheritdoc />
@@ -112,6 +113,11 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
     private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
+
+    /// <inheritdoc />
+    public event EventHandler? SubtitleTracksChanged;
+
+    private void OnSubtitleTracksChanged(object? sender, EventArgs e) => SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
 
     public IVideoEngine? Video => _coordinator.Video;
     public ICdgEngine? Cdg => _coordinator.Cdg;
@@ -180,6 +186,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     public bool Open(string path)
     {
         ThrowIfDisposed();
+        _coordinator.CancelEmbeddedSubtitleScan();
 
         if (IsOpen)
         {
@@ -256,6 +263,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(source);
+        _coordinator.CancelEmbeddedSubtitleScan();
 
         var networkIsVideo = source.IsNetwork && NetworkVideoPolicy.IsVideo(source.Uri!, source.NetworkContent);
         if (!MediaPlayerModePolicy.AcceptsSource(_mode, source.Kind, networkIsVideo))
@@ -637,6 +645,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         _coordinator.PlaybackLooped -= OnPlaybackLooped;
         _coordinator.NetworkBufferingChanged -= OnNetworkBufferingChanged;
         _coordinator.NetworkStreamMetadataChanged -= OnNetworkStreamMetadataChanged;
+        _coordinator.SubtitleTracksChanged -= OnSubtitleTracksChanged;
         _coordinator.Dispose();
         _disposed = true;
     }

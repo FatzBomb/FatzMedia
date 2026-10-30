@@ -8,7 +8,8 @@ public sealed record SubtitleChoice(string? TrackId, string Label);
 
 /// <summary>
 /// Subtitle picker (Sync flyout): Off plus the loaded media's embedded and sidecar tracks,
-/// refreshed whenever media loads or closes, whichever path loaded it.
+/// refreshed whenever media loads or closes, whichever path loaded it, and when embedded tracks
+/// arrive after the load.
 /// </summary>
 public partial class PlayerViewModel
 {
@@ -40,17 +41,22 @@ public partial class PlayerViewModel
     {
         player.MediaLoaded += OnSubtitleMediaLoaded;
         player.MediaClosed += OnSubtitleMediaClosed;
+        player.SubtitleTracksChanged += OnSubtitleTracksChanged;
     }
 
     private void StopSubtitleTracking(MediaControlPlayer player)
     {
         player.MediaLoaded -= OnSubtitleMediaLoaded;
         player.MediaClosed -= OnSubtitleMediaClosed;
+        player.SubtitleTracksChanged -= OnSubtitleTracksChanged;
     }
 
     private void OnSubtitleMediaLoaded(object? sender, MediaLoadedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
     private void OnSubtitleMediaClosed(object? sender, MediaClosedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
+
+    // Embedded tracks are decoded in the background and arrive after MediaLoaded (ENG-039 P5-1).
+    private void OnSubtitleTracksChanged(object? sender, SubtitleTracksChangedEventArgs e) => RunOnUiThread(RefreshSubtitleChoices);
 
     private void RefreshSubtitleChoices()
     {

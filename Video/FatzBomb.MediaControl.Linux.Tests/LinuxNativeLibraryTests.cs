@@ -1,5 +1,6 @@
 using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Linux.Runtime;
+using Xunit.Abstractions;
 
 namespace FatzBomb.MediaControl.Linux.Tests;
 
@@ -117,8 +118,13 @@ public sealed class LinuxNativeLibraryLocatorTests : IDisposable
 public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "fbm-linux-boot-" + Guid.NewGuid().ToString("N"));
+    private readonly ITestOutputHelper _output;
 
-    public LinuxNativeLibraryBootstrapperTests() => Directory.CreateDirectory(_root);
+    public LinuxNativeLibraryBootstrapperTests(ITestOutputHelper output)
+    {
+        _output = output;
+        Directory.CreateDirectory(_root);
+    }
 
     public void Dispose()
     {
@@ -330,6 +336,31 @@ public sealed class LinuxNativeLibraryBootstrapperTests : IDisposable
     {
         var index = soname.LastIndexOf('.');
         return $"{soname[..(index + 1)]}{int.Parse(soname[(index + 1)..], System.Globalization.CultureInfo.InvariantCulture) - 1}";
+    }
+
+    /// <summary>
+    /// ENG-039 P5-8: without BASS, the next player with the same paths reuses the result instead
+    /// of scanning for BASS again; other paths still retry it (see
+    /// <see cref="NoBass_RetriesBassLaterWithoutActivatingFfmpegAgain"/>).
+    /// </summary>
+    [Fact]
+    public void WithoutBass_TheSamePaths_AreNotScannedAgain()
+    {
+        var dir = CreateLibraries([.. LinuxNativeLibraryCatalog.FfmpegInLoadOrder]);
+        var operations = new FakeOperations { FailLoading = "libbass.so" };
+        File.WriteAllText(Path.Combine(dir, "libbass.so"), "");
+        var bootstrapper = new LinuxNativeLibraryBootstrapper(operations, _root, "linux-x64");
+        LinuxNativeLoadResult first = bootstrapper.EnsureInitialized([dir]);
+        Assert.False(first.IsAudioAvailable);
+        var loads = operations.Loaded.Count;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        for (var player = 0; player < 200; player++)
+            Assert.Same(first, bootstrapper.EnsureInitialized([dir]));
+
+        _output.WriteLine($"P5-8 bootstrap without BASS: {stopwatch.Elapsed.TotalMilliseconds / 200:F3} ms per player");
+        Assert.Equal(loads, operations.Loaded.Count);
+        Assert.Same(first, bootstrapper.LastResult);
     }
 
     private string CreateLibraries(IEnumerable<string> fileNames)

@@ -260,6 +260,23 @@ named `window` handle.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
 
+## Embedded Subtitles
+
+- The text subtitle tracks of a local video (SRT, ASS/SSA, WebVTT, mov_text, plain text) are
+  decoded by `EmbeddedSubtitleDecoder` on its own demuxer. That reads the whole file, so since
+  ENG-039 (P5-1) it runs on a background task that `PlaybackCoordinator` starts after the video
+  (and its sidecar, if any) opened: the load returns without the tracks.
+- The scan is cancellable and generation-checked: every open, close and dispose cancels it, and a
+  result that arrives after that is dropped. It runs with the opening player's `DiagnosticRouter`
+  owner and without the control queue's execution context.
+- When the tracks arrive they join `SubtitleTracks`. The first embedded track is selected, taking
+  precedence over an auto-selected sidecar as before, unless the host already chose a track (or
+  none) with `SelectSubtitleTrack`. The engine raises `ISubtitleTrackSource.SubtitleTracksChanged`;
+  the player forwards it as the public `IMediaControlSession.SubtitleTracksChanged` (with the
+  current tracks and selection) through the control queue, after `MediaLoaded` and on a
+  background thread, and not after a close. `PlayerViewModel` refreshes its subtitle picker on it.
+- Network video and archive video have no embedded-subtitle scan.
+
 ## MIDI/KAR Karaoke Lyrics
 
 - Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by the internal `MidiLyricCueBuilder` (the public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A).
@@ -912,7 +929,8 @@ network source has a read-ahead (`NetworkReadAhead`, queues in the pure `ReadAhe
 reader thread owns every network read and seek and demuxes the registered streams ahead of
 playback, up to `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`: 20 s or
 64 MB by default). The video's `VideoAudioEngine` shares that cursor (one connection, one
-download; no normalization pre-analysis); local video keeps audio on its own cursor. A seek to a
+download; no normalization pre-analysis); local video keeps audio on its own cursor, and the
+picture's cursor discards every other stream (ENG-039). A seek to a
 buffered forward target is served from the queues (dropped to the keyframe at or before it); any
 other seek empties them and the reader seeks, giving up its read in progress through an interrupt
 condition. Consumer reads wait for packets except on the playback loops (`NoWait`), Stop (0.5 s)

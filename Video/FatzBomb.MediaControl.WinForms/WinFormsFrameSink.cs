@@ -63,8 +63,16 @@ internal sealed class WinFormsFrameSink : IMediaPresentationFrameSink, IDisposab
         try
         {
             var rowBytes = width * 4;
-            for (var y = 0; y < height; y++)
-                Marshal.Copy(pixels, y * stride, data.Scan0 + (y * data.Stride), rowBytes);
+            // Rows packed on both sides (the usual case): one copy instead of one per row.
+            if (stride == rowBytes && data.Stride == rowBytes)
+            {
+                Marshal.Copy(pixels, 0, data.Scan0, rowBytes * height);
+            }
+            else
+            {
+                for (var y = 0; y < height; y++)
+                    Marshal.Copy(pixels, y * stride, data.Scan0 + (y * data.Stride), rowBytes);
+            }
         }
         finally
         {

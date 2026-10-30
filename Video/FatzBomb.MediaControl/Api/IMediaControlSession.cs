@@ -468,6 +468,16 @@ public interface IMediaControlSession : IDisposable
     /// <summary>Raised when normalization is enabled or disabled.</summary>
     event EventHandler<MediaNormalizeChangedEventArgs>? NormalizeChanged;
 
+    /// <summary>
+    /// Raised when <see cref="SubtitleTracks"/> or <see cref="SelectedSubtitleTrackId"/> change
+    /// after a load completed: the embedded text subtitle tracks of a local video are decoded in
+    /// the background and arrive after <see cref="MediaLoaded"/>. The first embedded track is
+    /// selected then unless the host already selected a track (or none). Not raised when a newer
+    /// load or a close made the result stale. Fires on a background thread; hosts must marshal to
+    /// the UI thread before touching view state.
+    /// </summary>
+    event EventHandler<SubtitleTracksChangedEventArgs>? SubtitleTracksChanged;
+
     /// <summary>Raised when the equalizer settings change.</summary>
     event EventHandler<MediaValueChangedEventArgs<AudioEqualizerSettings>>? EqualizerChanged;
 

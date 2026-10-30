@@ -28,6 +28,22 @@ public sealed class D3D11CompositionLayerStateTests
     }
 
     [Fact]
+    public void ShaderBytecodeIsCompiledOncePerProcess()
+    {
+        byte[] first = D3D11MediaCompositionPresenter.GetShaderBytecode(
+            D3D11MediaCompositionPresenter.CdgShaderSource,
+            "PSSolid",
+            "ps_5_0");
+        byte[] second = D3D11MediaCompositionPresenter.GetShaderBytecode(
+            D3D11MediaCompositionPresenter.CdgShaderSource,
+            "PSSolid",
+            "ps_5_0");
+
+        Assert.NotEmpty(first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
     public void TransformChangeRequiresRenderWithoutUpload()
     {
         using var state = new D3D11CompositionLayerState(MediaCompositionLayerId.Background);

@@ -9,7 +9,7 @@ using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource
 {
     private double _position;
     private int _cancelPendingNetworkOpenCount;
@@ -51,9 +51,13 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public TestCdgEngine? TestCdg { get; init; }
     public IVideoEngine? Video => TestVideo;
     public ICdgEngine? Cdg => TestCdg;
-    public ISubtitleEngine? Subtitle => null;
-    public IReadOnlyList<SubtitleTrack> SubtitleTracks => [];
-    public string? SelectedSubtitleTrackId => null;
+    public ISubtitleEngine? Subtitle { get; set; }
+    public IReadOnlyList<SubtitleTrack> SubtitleTracks { get; set; } = [];
+    public string? SelectedSubtitleTrackId { get; set; }
+    public event EventHandler? SubtitleTracksChanged;
+
+    /// <summary>Raises the engine event of tracks arriving after the open (ENG-039 P5-1), as the embedded scan does.</summary>
+    public void RaiseSubtitleTracksChanged() => SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
     public bool ShowMidiLyrics { get; set; }
     public double AudioVideoOffsetSeconds { get; private set; }
     public double CdgOffsetSeconds { get; private set; }

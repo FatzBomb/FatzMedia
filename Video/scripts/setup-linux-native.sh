@@ -59,6 +59,14 @@ if [ -n "$enc" ]; then
   gen "$media/audio/tone.mp3" -f lavfi -i "sine=frequency=440:duration=20" -c:a libmp3lame -b:a 128k
   gen "$media/audio/tone.ogg" -f lavfi -i "sine=frequency=440:duration=20" -c:a libvorbis -metadata title="Ogg Title" -metadata artist="Ogg Artist"
   gen "$media/faststart.mp4" -i "$media/h264_1080p.mp4" -c copy -movflags +faststart
+  # Embedded subtitle scan (ENG-039 P5-1): the clip with a four-cue SRT track, in Matroska.
+  if [ ! -s "$media/subtitles.mkv" ]; then
+    srt="$(mktemp --suffix=.srt)"
+    printf '%s\n' 1 '00:00:01,000 --> 00:00:02,500' 'First line' '' 2 '00:00:03,000 --> 00:00:04,500' 'Second line' '' \
+      3 '00:00:05,000 --> 00:00:06,500' 'Third line' '' 4 '00:00:07,000 --> 00:00:08,500' 'Fourth line' > "$srt"
+    "$enc" -v error -y -i "$media/h264_1080p.mp4" -i "$srt" -map 0 -map 1 -c copy -c:s srt "$media/subtitles.mkv"
+    rm -f "$srt"
+  fi
 fi
 
 echo "export FATZBOMB_LINUX_FFMPEG_DIR=$ff/lib"
