@@ -41,19 +41,10 @@ public sealed record KaraokeCueTiming(
 
     public int GetProgressRevision(TimeSpan position, TimeSpan wipeDuration)
     {
+        // Called on every presented frame: index loops, since enumerating an IReadOnlyList allocates.
         var hash = new HashCode();
-        foreach (KaraokeLineTiming line in Lines)
-        {
-            hash.Add(line.GetHighlightedLength(position));
-            hash.Add((int)(line.GetSyllableWipeFraction(position, wipeDuration) * 100));
-            hash.Add(line.GetCountdownRevision(position));
-        }
-        foreach (KaraokeLineTiming line in OutgoingPageLines)
-        {
-            hash.Add(line.GetHighlightedLength(position));
-            hash.Add((int)(line.GetSyllableWipeFraction(position, wipeDuration) * 100));
-            hash.Add(line.GetCountdownRevision(position));
-        }
+        AddLineProgress(ref hash, Lines, position, wipeDuration);
+        AddLineProgress(ref hash, OutgoingPageLines, position, wipeDuration);
         hash.Add(ClearsPage);
 
         var transitionFrame = GetTransitionFrame(position);
@@ -67,6 +58,17 @@ public sealed record KaraokeCueTiming(
         hash.Add(MediaDuration > TimeSpan.Zero && position >= MediaDuration);
         hash.Add(EndLyricFadeEnd > EndLyricFadeStart && position >= EndLyricFadeEnd);
         return hash.ToHashCode();
+    }
+
+    private static void AddLineProgress(ref HashCode hash, IReadOnlyList<KaraokeLineTiming> lines, TimeSpan position, TimeSpan wipeDuration)
+    {
+        for (var i = 0; i < lines.Count; i++)
+        {
+            KaraokeLineTiming line = lines[i];
+            hash.Add(line.GetHighlightedLength(position));
+            hash.Add((int)(line.GetSyllableWipeFraction(position, wipeDuration) * 100));
+            hash.Add(line.GetCountdownRevision(position));
+        }
     }
 
     public float GetTransitionProgress(TimeSpan position)
@@ -270,8 +272,9 @@ public sealed record KaraokeLineTiming(
     public int GetHighlightedLength(TimeSpan position)
     {
         var length = 0;
-        foreach (KaraokeTextSegment segment in Segments)
+        for (var i = 0; i < Segments.Count; i++)
         {
+            KaraokeTextSegment segment = Segments[i];
             if (segment.Start > position)
                 break;
             length = Math.Max(length, segment.TextStart + segment.TextLength);
@@ -288,8 +291,9 @@ public sealed record KaraokeLineTiming(
     {
         KaraokeTextSegment? lastSegment = null;
         var length = 0;
-        foreach (KaraokeTextSegment segment in Segments)
+        for (var i = 0; i < Segments.Count; i++)
         {
+            KaraokeTextSegment segment = Segments[i];
             if (segment.Start > position)
                 break;
             lastSegment = segment;
@@ -318,8 +322,9 @@ public sealed record KaraokeLineTiming(
     public float GetSyllableWipeFraction(TimeSpan position, TimeSpan wipeDuration)
     {
         KaraokeTextSegment? currentSegment = null;
-        foreach (KaraokeTextSegment segment in Segments)
+        for (var i = 0; i < Segments.Count; i++)
         {
+            KaraokeTextSegment segment = Segments[i];
             if (segment.Start > position)
                 break;
             currentSegment = segment;
@@ -354,8 +359,9 @@ public sealed record KaraokeLineTiming(
         // Find next segment start
         TimeSpan nextStart = TimeSpan.MaxValue;
         var found = false;
-        foreach (KaraokeTextSegment s in Segments)
+        for (var i = 0; i < Segments.Count; i++)
         {
+            KaraokeTextSegment s = Segments[i];
             if (found)
             {
                 nextStart = s.Start;

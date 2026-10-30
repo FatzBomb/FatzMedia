@@ -121,23 +121,7 @@ internal sealed class LightweightSurfaceHost : IDisposable
     private async void RunQueuedReload()
     {
         _reloadScheduled = false;
-        Controller.ClearQueuedReload();
-        if (_disposed || !_owner.IsHandleCreated)
-            return;
-
-        try
-        {
-            await _reload();
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(
-                Controller.Session,
-                MediaDiagnosticLevel.Warning,
-                Controller.DiagnosticCategory,
-                $"Reloading the source failed: {ex.Message}",
-                innerException: ex);
-        }
+        await Controller.RunQueuedReloadAsync(() => !_disposed && _owner.IsHandleCreated, _reload);
     }
 
     // UI thread: bind the adopted player, or unbind the released one before it is disposed.

@@ -173,8 +173,8 @@ internal sealed class D3D11HdrToneMapPresenter : IDisposable
 
         Reset();
         _device = device;
-        _vertexShader = device.CreateVertexShader(Composition.D3D11MediaCompositionPresenter.CompileShaderBytecode(ShaderSource, "VSMain", "vs_5_0"));
-        _pixelShader = device.CreatePixelShader(Composition.D3D11MediaCompositionPresenter.CompileShaderBytecode(ShaderSource, "PSToneMap", "ps_5_0"));
+        _vertexShader = device.CreateVertexShader(Composition.D3D11MediaCompositionPresenter.GetShaderBytecode(ShaderSource, "VSMain", "vs_5_0"));
+        _pixelShader = device.CreatePixelShader(Composition.D3D11MediaCompositionPresenter.GetShaderBytecode(ShaderSource, "PSToneMap", "ps_5_0"));
         _constantBuffer = device.CreateBuffer(new BufferDescription
         {
             ByteWidth = (uint)Marshal.SizeOf<ToneMapConstants>(),

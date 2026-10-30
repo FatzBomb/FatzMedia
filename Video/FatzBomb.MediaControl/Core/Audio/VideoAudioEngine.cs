@@ -402,11 +402,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         // (and, for HLS/DASH, so the other variants are not downloaded).
         if (_ownsDemuxer)
         {
-            for (uint i = 0; i < _demuxer.StreamCount; i++)
-            {
-                if ((int)i != AudioStreamIndex)
-                    _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
-            }
+            _demuxer.DiscardAllStreamsExcept([AudioStreamIndex]);
         }
         else
         {
@@ -889,38 +885,13 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
 
     private bool InitializeDecoder()
     {
-        AVCodec* codec = ffmpeg.avcodec_find_decoder(_audioStream->codecpar->codec_id);
-        if (codec == null)
+        if (!FfmpegAudioDecoderSetup.TryOpen(_audioStream, out _codecContext, out _resampler, out _sampleRate, out _channels))
             return false;
 
-        _codecContext = ffmpeg.avcodec_alloc_context3(codec);
-        if (_codecContext == null || ffmpeg.avcodec_parameters_to_context(_codecContext, _audioStream->codecpar) < 0)
-            return false;
-
-        if (ffmpeg.avcodec_open2(_codecContext, codec, null) < 0)
-            return false;
+        _sourceChannels = Math.Max(1, _codecContext->ch_layout.nb_channels);
 
         _frame = ffmpeg.av_frame_alloc();
         if (_frame == null)
-            return false;
-
-        _sampleRate = _codecContext->sample_rate;
-        _sourceChannels = Math.Max(1, _codecContext->ch_layout.nb_channels);
-        _channels = _sourceChannels > 2 ? 2 : _sourceChannels;
-
-        AVChannelLayout inputLayout = _codecContext->ch_layout;
-        if (inputLayout.nb_channels <= 0 || ffmpeg.av_channel_layout_check(&inputLayout) == 0)
-            ffmpeg.av_channel_layout_default(&inputLayout, _sourceChannels);
-
-        var outputLayout = new AVChannelLayout();
-        ffmpeg.av_channel_layout_default(&outputLayout, _channels);
-
-        SwrContext* resampler = null;
-        if (ffmpeg.swr_alloc_set_opts2(&resampler, &outputLayout, AVSampleFormat.AV_SAMPLE_FMT_FLT, _sampleRate, &inputLayout, _codecContext->sample_fmt, _sampleRate, 0, null) < 0)
-            return false;
-
-        _resampler = resampler;
-        if (_resampler == null || ffmpeg.swr_init(_resampler) < 0)
             return false;
 
         _audioBufferSize = _sampleRate * _channels * sizeof(float);

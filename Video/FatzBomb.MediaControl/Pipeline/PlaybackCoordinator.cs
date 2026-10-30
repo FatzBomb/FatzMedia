@@ -7,7 +7,7 @@ using FatzBomb.MediaControl.Core.Subtitle;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class PlaybackCoordinator : IDisposable
+internal sealed partial class PlaybackCoordinator : IDisposable
 {
     private const string MidiLyricsDisplayName = "Embedded MIDI Lyrics (stream 0)";
     private readonly MediaSession _session;
@@ -22,9 +22,11 @@ internal sealed class PlaybackCoordinator : IDisposable
         IMidiLyricProvider midiLyricProvider,
         MediaPlayerConfiguration configuration,
         bool ownsAudioEngine = false,
-        bool audioAvailable = true)
+        bool audioAvailable = true,
+        Func<string, CancellationToken, IReadOnlyList<EmbeddedSubtitleTrack>>? embeddedSubtitleDecoder = null)
     {
         ArgumentNullException.ThrowIfNull(videoEngineFactory);
+        _decodeEmbeddedSubtitles = embeddedSubtitleDecoder ?? EmbeddedSubtitleDecoder.DecodeTracks;
         _midiLyricProvider = midiLyricProvider ?? throw new ArgumentNullException(nameof(midiLyricProvider));
         _session = new MediaSession();
         _karaokeTransitionDuration = TimeSpan.FromMilliseconds(configuration.KaraokeStyle.Normalize().LineTransitionMilliseconds);
@@ -234,6 +236,7 @@ internal sealed class PlaybackCoordinator : IDisposable
     /// </summary>
     public bool OpenNetworkVideo(Uri uri, FfmpegNetworkOptions options)
     {
+        CancelEmbeddedSubtitleScan();
         _session.Subtitle?.Close();
         return _session.Video is INetworkVideoEngine video && video.OpenNetwork(uri.AbsoluteUri, options);
     }
@@ -266,7 +269,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Audio?.Open(audioPath, ownState: false, analyzeSilence: false) != true || _session.Cdg == null)
             return false;
 
-        _session.Cdg.OpenPaired(cdgPath, _session.Audio.PlayHandle);
+        _session.Cdg.OpenPaired(cdgPath);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg, audioPath, DurationSeconds);
         return true;
     }
@@ -276,7 +279,7 @@ internal sealed class PlaybackCoordinator : IDisposable
         if (_session.Audio?.Open(audioEntry, ownState: false) != true || _session.Cdg == null)
             return false;
 
-        _session.Cdg.OpenPaired(cdgEntry, _session.Audio.PlayHandle);
+        _session.Cdg.OpenPaired(cdgEntry);
         _session.State.SetOpened(MediaContent.Audio | MediaContent.Cdg | MediaContent.Archive, audioEntry.Key, DurationSeconds);
         return true;
     }
@@ -299,29 +302,36 @@ internal sealed class PlaybackCoordinator : IDisposable
         return true;
     }
 
-    public bool OpenVideo(string videoPath)
+    public bool OpenVideo(string videoPath) => OpenVideo(videoPath, subtitlePath: null);
+
+    /// <summary>
+    /// Opens a local video and its sidecar subtitle file, if any. The embedded text subtitle tracks
+    /// arrive later from a background scan (ENG-039 P5-1), raising <see cref="SubtitleTracksChanged"/>.
+    /// </summary>
+    public bool OpenVideo(string videoPath, string? subtitlePath)
     {
+        CancelEmbeddedSubtitleScan();
         _session.Subtitle?.Close();
         if (_session.Video?.Open(videoPath) != true)
             return false;
 
-        if (_session.Subtitle != null)
-            TryLoadEmbeddedSubtitles(videoPath);
+        if (_session.Subtitle == null)
+            return true;
+
+        // Embedded subtitles take precedence when they arrive; the sidecar remains selectable. A
+        // malformed or unreadable sidecar must not prevent the independently valid video from
+        // opening. The scan starts after the sidecar is attached, so the two never race.
+        if (subtitlePath != null)
+            _ = _session.Subtitle.Open(subtitlePath);
+        StartEmbeddedSubtitleScan(videoPath);
         return true;
     }
 
-    public bool OpenVideo(string videoPath, string subtitlePath)
+    public bool OpenVideo(IArchiveEntryInfo videoEntry)
     {
-        if (!OpenVideo(videoPath))
-            return false;
-
-        // Embedded subtitles take precedence; the sidecar remains selectable. A malformed or unreadable sidecar must not prevent
-        // the independently valid video from opening.
-        _ = _session.Subtitle?.Open(subtitlePath);
-        return true;
+        CancelEmbeddedSubtitleScan();
+        return _session.Video?.Open(videoEntry) == true;
     }
-
-    public bool OpenVideo(IArchiveEntryInfo videoEntry) => _session.Video?.Open(videoEntry) == true;
 
     public bool Play()
     {
@@ -381,8 +391,6 @@ internal sealed class PlaybackCoordinator : IDisposable
         return success;
     }
 
-    public bool SelectSubtitleTrack(string? trackId) => _session.Subtitle?.SelectTrack(trackId) == true;
-
     public double SetAudioVideoOffset(double seconds) => _session.Sync.SetAudioVideoOffset(seconds);
     public double SetCdgOffset(double seconds) => _session.Sync.SetCdgOffset(seconds);
     public double SetSubtitleOffset(double seconds) => _session.Sync.SetSubtitleOffset(seconds);
@@ -391,10 +399,15 @@ internal sealed class PlaybackCoordinator : IDisposable
     public double AdjustSubtitleOffset(double seconds) => _session.Sync.AdjustSubtitleOffset(seconds);
     public void ResetSyncOffsets() => _session.Sync.Reset();
 
-    public void Close() => _session.Clear();
+    public void Close()
+    {
+        CancelEmbeddedSubtitleScan();
+        _session.Clear();
+    }
 
     public void Dispose()
     {
+        CancelEmbeddedSubtitleScan();
         _session.FileAudio?.PlaybackEnded -= OnPlaybackEnded;
         _session.Soundtrack?.PlaybackEnded -= OnPlaybackEnded;
         _session.Cdg?.PlaybackEnded -= OnPlaybackEnded;
@@ -419,20 +432,6 @@ internal sealed class PlaybackCoordinator : IDisposable
     private void OnNetworkBufferingChanged(object? sender, MediaBufferingChangedEventArgs e) => NetworkBufferingChanged?.Invoke(this, e);
 
     private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
-
-    private void TryLoadEmbeddedSubtitles(string videoPath)
-    {
-        try
-        {
-            IReadOnlyList<EmbeddedSubtitleTrack> tracks = EmbeddedSubtitleDecoder.DecodeTracks(videoPath);
-            if (tracks.Count > 0)
-                _ = _session.Subtitle?.LoadEmbeddedTracks(tracks);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Subtitle", $"Failed to decode embedded subtitles: {ex.Message}", sourcePath: videoPath, innerException: ex);
-        }
-    }
 
     private bool TryLoadMidiLyrics(string audioPath)
     {

@@ -62,7 +62,7 @@ package (`net10.0`) that references Core only and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
-no-op `ISubtitleRasterizer` (`NoOpSubtitleRasterizer`), and
+no-op `ISubtitleRasterizer` (Core's `NullSubtitleRasterizer.Instance`, also used by Vulkan), and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
 **Output contract** — `SoftwareCompositionRenderer.Render(MediaCompositionFrame, width,
@@ -202,11 +202,20 @@ named `window` handle.
   re-attaches every surface, so shared textures are re-exported on that device. The host pairs decoding with the renderer. The Avalonia player,
   for example, decodes with D3D11VA for Direct3D11 on a GPU, and in software on WARP and for
   the software renderer, which takes no hardware frames.
+- A renderer that refuses a hardware frame at run time (`EnsureNativeFrameDevice` false: a
+  failed adoption, a device without a video processor, a frame from another device) while a
+  surface is attached and no device recovery runs asks the decoder to continue in software
+  through the frame's `NativeVideoFrameResource.DecodeFallback` token (ENG-037). `VideoPipeline`
+  switches on its decoder recovery worker, never on the presentation path, at the current
+  position and transport state (a paused first frame is shown instead of black), and keeps
+  that media in software: no hardware re-probe until the next open. A decoder whose device is
+  lost is left to the device-loss recovery below.
 - A renderer may instead decode on its own device (Stage 045A slice 2):
   - The renderer backend implements the optional `IMediaRendererVideoDecodeDevice`. The
-    coordinator attaches it to the engine, and every decoder of the player then takes its FFmpeg
+    coordinator attaches it to the engine through the internal `IRendererVideoDecodeAttachment`
+    (implemented by `PipelineMediaEngine`), and every decoder of the player then takes its FFmpeg
     device context from the renderer (`RendererVideoDecodeServices` wraps the platform's
-    services).
+    services; decoders and pipelines take it directly).
   - Only the renderer's device type is offered, or none when its device cannot decode, so such
     a renderer never receives frames on a device it cannot draw.
   - The Vulkan renderer does this with FFmpeg Vulkan Video, on Linux and Windows alike. It
@@ -251,9 +260,26 @@ named `window` handle.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
 
+## Embedded Subtitles
+
+- The text subtitle tracks of a local video (SRT, ASS/SSA, WebVTT, mov_text, plain text) are
+  decoded by `EmbeddedSubtitleDecoder` on its own demuxer. That reads the whole file, so since
+  ENG-039 (P5-1) it runs on a background task that `PlaybackCoordinator` starts after the video
+  (and its sidecar, if any) opened: the load returns without the tracks.
+- The scan is cancellable and generation-checked: every open, close and dispose cancels it, and a
+  result that arrives after that is dropped. It runs with the opening player's `DiagnosticRouter`
+  owner and without the control queue's execution context.
+- When the tracks arrive they join `SubtitleTracks`. The first embedded track is selected, taking
+  precedence over an auto-selected sidecar as before, unless the host already chose a track (or
+  none) with `SelectSubtitleTrack`. The engine raises `ISubtitleTrackSource.SubtitleTracksChanged`;
+  the player forwards it as the public `IMediaControlSession.SubtitleTracksChanged` (with the
+  current tracks and selection) through the control queue, after `MediaLoaded` and on a
+  background thread, and not after a close. `PlayerViewModel` refreshes its subtitle picker on it.
+- Network video and archive video have no embedded-subtitle scan.
+
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by `MidiLyricExtractor`.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by the internal `MidiLyricCueBuilder` (the public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A).
 - `MidiMetadataExtractor` (internal) reads Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
@@ -319,7 +345,7 @@ pipeline the primary surface's rate through the internal `IRendererRefreshRateSi
 The Direct3D11 renderer and Core video pipeline detect and recover their independently owned D3D11 devices (Stages 005A/005B/005C); adapters are never involved.
 
 - The Direct3D11 backend classifies presentation-device removal/reset conditions. Windows hardware-decode services independently query the FFmpeg-owned D3D11 device.
-- Two independent recovery orchestrators match the two independently owned devices: Core `MediaPresentationCoordinator` drives backend teardown/rebuild through `IMediaRendererBackend`; Core `VideoPipeline` performs runtime software-decode fallback with background hardware re-probe/restore while audio and CDG keep running.
+- Two independent recovery orchestrators match the two independently owned devices: Core `MediaPresentationCoordinator` drives backend teardown/rebuild through `IMediaRendererBackend`; Core `VideoPipeline` performs runtime software-decode fallback with background hardware re-probe/restore while audio and CDG keep running (no re-probe for network sources or media whose hardware frames the renderer refused). The device-loss swap and the startup software fallback share `VideoPipeline.TryReplaceDecoder`.
 - Diagnostic categories follow a fixed naming convention: `"D3D11.DeviceLost"` (presentation) and `"Decoder.DeviceLost"` (decode), raised at Error on loss and Info on successful recovery, with a `.RecoveryFailed` suffix for the terminal diagnostic after bounded retries are exhausted.
 - Both recovery paths reuse existing rebuild machinery (the proven surface-recreate and seek stop-reposition-restart sequences) — no new swap-chain, compositor, or renderer abstraction was introduced.
 
@@ -530,6 +556,12 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 - `MediaSurfacePresentationPath` (`None`, `FrameSink`, `SharedGpuImage`, `NativeWindow`; moved
   from the Avalonia adapter) and `MediaSurfacePresentationPathText` (the shared path Info line
   and the Warning raised once per session when `AttachPresentationSurface` returns false).
+  ENG-039: `MediaSurfaceBookkeeping` keeps each surface's number, effective-id rule, current
+  path/reason and that once-per-session refusal; `LatestFrameMailbox` is the frame sinks'
+  latest-frame hand-off (latest wins, two circulating arrays, a spare over twice the need
+  dropped, size checked in `long`), each adapter marshalling the publish itself;
+  `KaraokeLayout.Fit` and `PresentationPlacement.Center` are the shared 4:3 fit and
+  second-screen centring.
 - Every `MediaSurface` has `Role`, `SurfaceId`, `EffectiveSurfaceId`, `IsSurfaceAttached`,
   `IsPrimarySurfaceAttached`, `AutoHide` (default true), `IsContentVisible`,
   `ContentVisibilityChanged`, `IsPresentationSuspended`, `PresentationPath`,
@@ -553,7 +585,8 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
   control binds its surface on the UI thread), numbers reloads so a newer source abandons an older
   load after every await, coalesces source changes (`TryQueueReload`), runs the load sequence
   (no sidecars, inspect, close a rejected item, start), and releases (`PlayerChanged`, then a
-  blocking dispose). A release or dispose abandons pending loads and creations; a player created
+  blocking dispose). `RunQueuedReloadAsync` runs a queued reload and turns a failure into the
+  control's Warning (ENG-039). A release or dispose abandons pending loads and creations; a player created
   for an abandoned request is disposed off the UI thread and never adopted. Unlike engine code its
   awaits resume on the caller's context on purpose; it uses a `System.Threading.Lock`.
 - `KaraokeSurface` and `BackgroundSurface` in the WPF (reworked; same API plus
@@ -586,7 +619,10 @@ Slice 3 (`updates/046A_3`):
   `--players`, `--surface`, `--decoding`, `--second-screen` flags. Hosts keep factory
   construction and window/control code; the WPF and WinForms players share
   `Configuration/PlayerRendererSelection.cs` (linked).
-- All three players show 1-4 independent players (`--players=`), one view model each.
+- All three players show 1-4 independent players (`--players=`), one view model each. Since
+  ENG-039 R1 one `PlayerSetController<TSlot>` (Player.Shared) rebuilds them on toolbar changes,
+  runs full screen, F11/Escape and the stats tick, and disposes them before the window closes;
+  the windows keep only creation, layout and window state.
 - The Avalonia and WinForms adapters have a thin `Player : MediaControlPlayer` facade like the WPF
   one (`CreateAsync` with a platform factory, `Bitmap` load overloads); only the WPF facade has a
   default platform (Windows).
@@ -893,7 +929,8 @@ network source has a read-ahead (`NetworkReadAhead`, queues in the pure `ReadAhe
 reader thread owns every network read and seek and demuxes the registered streams ahead of
 playback, up to `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`: 20 s or
 64 MB by default). The video's `VideoAudioEngine` shares that cursor (one connection, one
-download; no normalization pre-analysis); local video keeps audio on its own cursor. A seek to a
+download; no normalization pre-analysis); local video keeps audio on its own cursor, and the
+picture's cursor discards every other stream (ENG-039). A seek to a
 buffered forward target is served from the queues (dropped to the keyframe at or before it); any
 other seek empties them and the reader seeks, giving up its read in progress through an interrupt
 condition. Consumer reads wait for packets except on the playback loops (`NoWait`), Stop (0.5 s)
@@ -999,10 +1036,10 @@ Shared GPU image surfaces (Stage 027A slice 2):
 ## Audio Filter Framework (Stage 020A, slice 1)
 
 The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalization gain
--> fade envelope -> channel volume -> output. Internal `IAudioFilter` stages (priority
-order, bypass = no native stage, reported latency, lifecycle per stream) are hosted by
-the `AudioEngine` through `IAudioFilterHost`. The first filter is a BASS_FX PEAKEQ
-equalizer driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
+-> fade envelope -> channel volume -> output. Filter stages (fixed priority order in
+`AudioFilterStage`, bypass = no native stage, lifecycle per stream) are hosted by the
+`AudioEngine` through `IAudioFilterHost`. The only filter is a BASS_FX PEAKEQ
+equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
 `IMediaControlSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
 
@@ -1024,7 +1061,7 @@ when nothing changed and shares immutable buffers otherwise where possible. See
 
 - Automatic image/video sidecar backgrounds apply to every non-video, non-image playable main: audio (MP3, FLAC, etc.), MIDI/KAR/MID with or without lyrics, MOD/tracker, CDG, audio+CDG pairs, and future non-visual content.
 - Sidecar discovery is format-agnostic: it checks `FileTypes.Video` and `FileTypes.Image` extensions beside the main file (same base name).
-- `ignoreSidecar: true` or `MediaFile.BackgroundAutoDetect = false` disables automatic discovery without disabling an explicitly supplied image/video background.
+- `ignoreSidecar: true` or `MediaControlPlayer.AutoBackground = false` disables automatic discovery without disabling an explicitly supplied image/video background.
 - Image main files never auto-detect a background. Their background must be explicitly supplied through a load overload.
 - Video mains reject backgrounds entirely (both auto and explicit).
 - Archive classification precedence: matching audio+CDG pair > audio > standalone CDG > video-only. When audio or CDG exists inside an archive, image/video entries become automatic background candidates rather than taking the main role.

@@ -194,6 +194,114 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task PropertySetters_RefreshOnTheControlQueueOnce()
+    {
+        // ENG-039: a setter presented on the host's thread; with a present stuck in the renderer
+        // the UI froze. Setters now ask the control queue for one redraw.
+        var engine = new TestMediaEngine();
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
+        var before = Volatile.Read(ref factory.Coordinator.RefreshCount);
+
+        // Hold the control queue with a seek, so the changes below pile up behind it.
+        using var seekEntered = new ManualResetEventSlim();
+        using var releaseSeek = new ManualResetEventSlim();
+        engine.OnSeek = seconds =>
+        {
+            seekEntered.Set();
+            _ = releaseSeek.Wait(TestEnvironment.EventuallyTimeout);
+        };
+        Task<bool> seek = player.SeekAsync(10);
+        Assert.True(seekEntered.Wait(TestEnvironment.EventuallyTimeout));
+
+        player.AudioSyncOffset = TimeSpan.FromMilliseconds(100);
+        _ = player.AdjustCdgSyncOffset(1);
+        player.ResetSyncOffsets();
+        player.VideoDisplayMode = VideoDisplayMode.Stretch;
+        player.BaseVisualTransform = new BaseVisualTransform { Brightness = 0.25f };
+        player.TransparentBackground = true;
+        Assert.Equal(before, Volatile.Read(ref factory.Coordinator.RefreshCount));
+
+        releaseSeek.Set();
+        Assert.True(await seek.WaitAsync(TestEnvironment.EventuallyTimeout));
+        await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        // The seek's own refresh, then one for all six changes (none ran on this thread: the
+        // count did not move while the queue was held).
+        Assert.Equal(before + 2, Volatile.Read(ref factory.Coordinator.RefreshCount));
+    }
+
+    [Fact]
+    public async Task DeviceRecovered_ReopensVideoAtPositionAndState()
+    {
+        var engine = new TestMediaEngine { Content = MediaContent.Video };
+        var opens = 0;
+        engine.BeforeOpen = () => opens++;
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("clip.mp4"));
+        Assert.True(player.Play());
+        Assert.True(player.Seek(30));
+
+        factory.Coordinator.RaiseDeviceRecovered();
+        await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        Assert.Equal(2, opens);
+        Assert.Equal(30, engine.Position, precision: 3);
+        Assert.Equal(MediaPlayerState.Playing, engine.State);
+    }
+
+    [Fact]
+    public async Task DeviceRecovered_ReopensOnce_EvenIfRaisedTwice()
+    {
+        var engine = new TestMediaEngine { Content = MediaContent.Video };
+        var opens = 0;
+        engine.BeforeOpen = () => opens++;
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("clip.mp4"));
+
+        // Both before the queued reopen runs: hold the queue with a seek.
+        using var seekEntered = new ManualResetEventSlim();
+        using var releaseSeek = new ManualResetEventSlim();
+        engine.OnSeek = seconds =>
+        {
+            seekEntered.Set();
+            _ = releaseSeek.Wait(TestEnvironment.EventuallyTimeout);
+        };
+        Task<bool> seek = player.SeekAsync(10);
+        Assert.True(seekEntered.Wait(TestEnvironment.EventuallyTimeout));
+        factory.Coordinator.RaiseDeviceRecovered();
+        factory.Coordinator.RaiseDeviceRecovered();
+        engine.OnSeek = null;
+        releaseSeek.Set();
+        Assert.True(await seek.WaitAsync(TestEnvironment.EventuallyTimeout));
+        await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        Assert.Equal(2, opens);
+    }
+
+    [Fact]
+    public async Task DeviceRecovered_AudioOnly_DoesNotReopen()
+    {
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        var opens = 0;
+        engine.BeforeOpen = () => opens++;
+        var factory = new TestPlatformFactory(engine);
+        using var player = new MediaControlPlayer(factory, MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.Play());
+
+        factory.Coordinator.RaiseDeviceRecovered();
+        await player.FlushControlOperationsAsync().WaitAsync(TestEnvironment.EventuallyTimeout);
+
+        Assert.Equal(1, opens);
+        Assert.Equal(MediaPlayerState.Playing, engine.State);
+    }
+
+    [Fact]
     public async Task SilentScrub_MutesBeforeTheDragSeek_AndRestoresTheVolumeWhenTheScrubEnds()
     {
         var engine = new TestMediaEngine();
@@ -1111,7 +1219,10 @@ public sealed class MediaControlPlayerTests
         public int RefreshCount;
 
         public void RefreshCurrentPosition() => Interlocked.Increment(ref RefreshCount);
-        public void RunOnRenderThread(Action action) => action();
+
+        public event EventHandler? DeviceRecovered;
+
+        public void RaiseDeviceRecovered() => DeviceRecovered?.Invoke(this, EventArgs.Empty);
         public void StartRendering() { }
         public void StopRendering() { }
         public void RefreshAttachments() { }

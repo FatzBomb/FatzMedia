@@ -1,43 +1,38 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Threading;
 using FatzBomb.MediaControl.Player.Shared;
+using FatzBomb.MediaControl.Player.Shared.Hosting;
 using FatzBomb.MediaControl.Player.Shared.Presentation;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
 
 /// <summary>
-/// Hosts 1-4 independent <see cref="PlayerPanel"/>s side by side (one shared view model each) and
-/// feeds each a once-a-second process reading for its status line. Changing the player count or
-/// renderer recreates the players (loaded files are not kept). F11 or a double-click on a picture
-/// shows that player alone, full screen; Escape closes its flyout, then leaves full screen.
+/// Hosts 1-4 independent <see cref="PlayerPanel"/>s side by side (one shared view model each).
+/// Changing the player count or renderer recreates the players (loaded files are not kept). F11 or
+/// a double-click on a picture shows that player alone, full screen; Escape closes a flyout, then
+/// leaves full screen. The rebuild, full screen, keys, stats tick and closing are the shared
+/// <see cref="PlayerSetController{TSlot}"/>'s; this window creates and places the panels and owns
+/// the window state.
 /// </summary>
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
 {
     private readonly PlayerStartupOptions _options = StartupOptions.Current;
     private readonly IReadOnlyList<string> _nativePaths;
-    private readonly List<PlayerPanel> _panels = [];
-    private readonly ProcessSampler _sampler = new();
-    private readonly DispatcherTimer _statsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly PlayerSetController<PlayerPanel> _players;
     private IReadOnlyList<RendererOption> _renderers = [];
     private IReadOnlyList<string> _startupWarnings = [];
-    private bool _ready;
-    private bool _rebuilding;
-    private bool _rebuildAgain;
-    private Task _rebuild = Task.CompletedTask;
-    private bool _closing;
-    private bool _closed;
-    private bool _firstBuild = true;
-    private PlayerPanel? _fullScreenPanel;
     private WindowState _restoreWindowState;
 
     public MainWindow()
     {
         InitializeComponent();
         _nativePaths = NativePaths.Resolve(_options);
-        _statsTimer.Tick += OnStatsTick;
+        _players = new PlayerSetController<PlayerPanel>(this, AvaloniaPlayerDispatcher.Instance);
         Opened += OnOpened;
+        // F11 before any control sees it; Escape after, so an open drop-down or text box inside a
+        // flyout handles its own Escape first (WPF's KeyDown bubbles too).
         AddHandler(KeyDownEvent, OnWindowKeyDown, global::Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        KeyDown += OnWindowEscapeKey;
     }
 
     private async void OnOpened(object? sender, EventArgs e)
@@ -76,11 +71,9 @@ public partial class MainWindow : Window
         _startupWarnings = warnings;
         PlayersBox.SelectedIndex = _options.Players - 1;
         InfoText.Text = $"{PlatformComposition.Name} platform | native: {string.Join(", ", _nativePaths)}";
-        _ready = true;
-        _statsTimer.Start();
         if (_options.LightweightSurfacesWindow)
             ShowLightweightSurfaces(chosen);
-        await RebuildAsync();
+        await _players.StartAsync();
     }
 
     /// <summary>Stage 046A slice 2: the background and karaoke smoke window, with the startup renderer.</summary>
@@ -91,20 +84,8 @@ public partial class MainWindow : Window
             !_options.PreferFrameSinkSurface,
             _options.AutoHideSurfaces).Show(this);
 
-    private async void OnLayoutChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (!_ready)
-            return;
-
-        try
-        {
-            await RebuildAsync();
-        }
-        catch (Exception ex)
-        {
-            ReportFailure("Rebuilding the players failed", ex);
-        }
-    }
+    // Before the first build (OpenAsync fills the boxes) the controller rebuilds nothing; a rebuild never throws.
+    private void OnLayoutChanged(object? sender, SelectionChangedEventArgs e) => _ = _players.RebuildAsync();
 
     private void ReportFailure(string what, Exception ex)
     {
@@ -112,196 +93,66 @@ public partial class MainWindow : Window
         InfoText.Text = $"{what}: {ex.Message}";
     }
 
-    /// <summary>Rebuilds the players; a request during a rebuild runs once more after it. Returns the rebuild in progress.</summary>
-    private Task RebuildAsync()
+    int IPlayerSetHost<PlayerPanel>.RequestedPlayerCount => PlayersBox.SelectedIndex + 1;
+
+    PlayerPanel IPlayerSetHost<PlayerPanel>.CreateSlot(int index, bool atStartup)
     {
-        if (_rebuilding)
-        {
-            _rebuildAgain = true;
-            return _rebuild;
-        }
-
-        _rebuilding = true;
-        _rebuild = RebuildLoopAsync();
-        return _rebuild;
-    }
-
-    private async Task RebuildLoopAsync()
-    {
-        try
-        {
-            do
-            {
-                _rebuildAgain = false;
-                await RebuildOnceAsync();
-            }
-            while (_rebuildAgain && !_closing);
-        }
-        finally
-        {
-            _rebuilding = false;
-        }
-    }
-
-    private async Task RebuildOnceAsync()
-    {
-        ExitFullScreen();
-        PlayerPanel[] old = [.. _panels];
-        _panels.Clear();
-        PlayersGrid.Children.Clear();
-        foreach (PlayerPanel panel in old)
-            await DisposePanelAsync(panel);
-
-        // Closing started while the old players were disposed: build nothing (OnClosing waits for this rebuild).
-        if (_closing)
-            return;
-
-        var count = PlayersBox.SelectedIndex + 1;
         var kind = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
         RendererOption option = _renderers.First(candidate => candidate.Kind == kind);
-        PlayersGrid.Columns = count == 1 ? 1 : 2;
-
-        var atStartup = _firstBuild;
-        _firstBuild = false;
-        for (var i = 0; i < count; i++)
-        {
-            // Only the first player of the first build gets the startup media and second screen.
-            var panel = new PlayerPanel(
-                i + 1,
-                atStartup,
-                option,
-                _nativePaths,
-                atStartup ? _options.ForPlayer(i + 1) : _options.WithoutStartupMedia(),
-                atStartup ? _startupWarnings : []);
-            panel.FullScreenToggleRequested += OnFullScreenToggleRequested;
-            _panels.Add(panel);
-            PlayersGrid.Children.Add(panel);
-        }
-
-        // Created one after the other: native loading is process-wide and happens on the first.
-        foreach (PlayerPanel panel in _panels.ToList())
-        {
-            if (_closing || _rebuildAgain || !_panels.Contains(panel))
-                return;
-
-            await panel.InitializeAsync();
-        }
+        // Only the first player of the first build gets the startup media and second screen.
+        return new PlayerPanel(index, atStartup, option, _nativePaths, _options.ForBuild(index, atStartup), atStartup ? _startupWarnings : []);
     }
 
-    private async Task DisposePanelAsync(PlayerPanel panel)
+    void IPlayerSetHost<PlayerPanel>.Attach(PlayerPanel slot) => PlayersGrid.Children.Add(slot);
+
+    void IPlayerSetHost<PlayerPanel>.Detach(PlayerPanel slot) => PlayersGrid.Children.Remove(slot);
+
+    void IPlayerSetHost<PlayerPanel>.Layout(IReadOnlyList<PlayerPanel> slots, PlayerPanel? fullScreen)
     {
-        panel.FullScreenToggleRequested -= OnFullScreenToggleRequested;
-        try
-        {
-            await panel.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            // One player's failed teardown must not keep the others alive or the window open.
-            System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Closing a player failed: {ex}");
-        }
+        Toolbar.IsVisible = fullScreen is null;
+        foreach (PlayerPanel panel in slots)
+            panel.IsVisible = fullScreen is null || ReferenceEquals(panel, fullScreen);
+        PlayersGrid.Columns = fullScreen is not null || slots.Count == 1 ? 1 : 2;
     }
 
-    private void OnFullScreenToggleRequested(object? sender, EventArgs e)
+    void IPlayerSetHost<PlayerPanel>.SetWindowFullScreen(bool fullScreen)
     {
-        if (sender is not PlayerPanel panel)
-            return;
-
-        if (ReferenceEquals(_fullScreenPanel, panel))
-            ExitFullScreen();
+        if (fullScreen)
+        {
+            _restoreWindowState = WindowState;
+            WindowState = WindowState.FullScreen;
+        }
         else
-            EnterFullScreen(panel);
+        {
+            WindowState = _restoreWindowState == WindowState.FullScreen ? WindowState.Normal : _restoreWindowState;
+        }
     }
 
-    private void EnterFullScreen(PlayerPanel panel)
-    {
-        ExitFullScreen();
-        _fullScreenPanel = panel;
-        _restoreWindowState = WindowState;
-        Toolbar.IsVisible = false;
-        foreach (PlayerPanel other in _panels)
-            other.IsVisible = ReferenceEquals(other, panel);
-        PlayersGrid.Columns = 1;
-        panel.SetFullScreen(true);
-        WindowState = WindowState.FullScreen;
-    }
-
-    private void ExitFullScreen()
-    {
-        if (_fullScreenPanel is not { } panel)
-            return;
-
-        _fullScreenPanel = null;
-        panel.SetFullScreen(false);
-        foreach (PlayerPanel other in _panels)
-            other.IsVisible = true;
-        PlayersGrid.Columns = _panels.Count == 1 ? 1 : 2;
-        Toolbar.IsVisible = true;
-        WindowState = _restoreWindowState == WindowState.FullScreen ? WindowState.Normal : _restoreWindowState;
-    }
+    void IPlayerSetHost<PlayerPanel>.ReportFailure(string what, Exception exception) => ReportFailure(what, exception);
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F11 && _panels.Count > 0)
-        {
-            if (_fullScreenPanel is not null)
-                ExitFullScreen();
-            else
-                EnterFullScreen(_panels.FirstOrDefault(static panel => panel.IsKeyboardFocusWithin) ?? _panels[0]);
+        if (e.Key == Key.F11 && _players.HandleFullScreenKey())
             e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            if (_fullScreenPanel?.CloseFlyout() == true)
-                e.Handled = true;
-            else if (_fullScreenPanel is not null)
-            {
-                ExitFullScreen();
-                e.Handled = true;
-            }
-        }
     }
 
-    private void OnStatsTick(object? sender, EventArgs e)
+    private void OnWindowEscapeKey(object? sender, KeyEventArgs e)
     {
-        ProcessSample sample = _sampler.Sample();
-        foreach (PlayerPanel panel in _panels)
-            panel.UpdateStatus(sample);
+        if (e.Key == Key.Escape && !e.Handled && _players.HandleEscapeKey())
+            e.Handled = true;
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
-        if (_closed)
+        if (_players.IsShutDown)
             return;
 
-        // Disposing a player blocks until its media operations finish: do it off the UI thread,
-        // then close for real. A second close request waits for the first.
+        // Disposing a player blocks until its media operations finish: the controller waits for a
+        // toolbar rebuild and disposes every player off the UI thread, then the window closes for
+        // real. A second close request waits for the first.
         e.Cancel = true;
-        if (_closing)
-            return;
-
-        _closing = true;
-        _statsTimer.Stop();
-        ExitFullScreen();
-        // A toolbar rebuild may still be disposing the old players or starting the new ones: let it
-        // finish (it stops at _closing) so no player outlives the window.
-        try
-        {
-            await _rebuild;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"[Player.Avalonia] Rebuilding the players failed: {ex}");
-        }
-
-        PlayerPanel[] panels = [.. _panels];
-        _panels.Clear();
-        foreach (PlayerPanel panel in panels)
-            await DisposePanelAsync(panel);
-
-        _sampler.Dispose();
-        _closed = true;
-        Close();
+        if (await _players.ShutdownAsync())
+            Close();
     }
 }

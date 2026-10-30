@@ -110,25 +110,6 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
         return await MediaControl.WinForms.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
 
-    internal static IReadOnlyList<string> ResolveNativePaths(PlayerStartupOptions options)
-    {
-        IReadOnlyList<string> defaults = WindowsNativeLibraryPaths.GetDefaultSearchPaths();
-        if (defaults.Count == 0)
-        {
-            // A stable drop folder even before any binaries are supplied.
-            var nativeFolder = Path.Combine(AppContext.BaseDirectory, WindowsNativeLibraryPaths.AppNativeRelativePath);
-            try
-            {
-                _ = Directory.CreateDirectory(nativeFolder);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Read-only install location: the folder is still searched if it appears later.
-            }
-
-            defaults = [nativeFolder];
-        }
-
-        return PlayerNativePaths.Combine(options.NativeDirectories, defaults);
-    }
+    internal static IReadOnlyList<string> ResolveNativePaths(PlayerStartupOptions options) =>
+        PlayerNativePaths.Combine(options.NativeDirectories, PlayerNativeLibraries.ResolveSearchPaths());
 }

@@ -63,6 +63,18 @@ public readonly partial record struct MediaCompositionFrame
         && BackgroundHeight > 0
         && BackgroundStride >= BackgroundWidth * 4;
 
+    /// <summary>
+    /// Gets whether the CPU background pixels, when there are any, describe a whole image: a
+    /// positive size, a stride of at least one row and a buffer of at least <c>stride * height</c>
+    /// bytes (ENG-039). Renderers refuse a frame whose background is not well formed instead of
+    /// reading past its buffer.
+    /// </summary>
+    public bool IsBackgroundWellFormed => BackgroundBgra.IsEmpty
+        || (BackgroundWidth > 0
+            && BackgroundHeight > 0
+            && BackgroundStride >= (long)BackgroundWidth * 4
+            && BackgroundBgra.Length >= (long)BackgroundStride * BackgroundHeight);
+
     public bool HasNativeBackground => BackgroundNativeResource is { IsValid: true }
         && BackgroundNativeWidth > 0
         && BackgroundNativeHeight > 0;
@@ -92,6 +104,20 @@ public readonly partial record struct MediaCompositionFrame
         && SubtitleStride >= SubtitleWidth * 4;
 
     public bool HasShaderVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay || HasSubtitleOverlay;
+
+    /// <summary>
+    /// Gets the straight-alpha 0xAARRGGBB colour every renderer clears the target to:
+    /// transparent for <see cref="MediaCompositionClearMode.Transparent"/> and
+    /// <see cref="MediaCompositionClearMode.PreservePrevious"/>, <see cref="ClearArgb"/> as given for
+    /// <see cref="MediaCompositionClearMode.ConfiguredColor"/>, and otherwise <see cref="ClearArgb"/>
+    /// with zero meaning opaque black.
+    /// </summary>
+    public uint ResolveClearArgb() => ClearMode switch
+    {
+        MediaCompositionClearMode.Transparent or MediaCompositionClearMode.PreservePrevious => 0u,
+        MediaCompositionClearMode.ConfiguredColor => ClearArgb,
+        _ => ClearArgb == 0 ? 0xFF000000u : ClearArgb
+    };
 
     public MediaCompositionStretchMode EffectiveBackgroundStretchMode => BackgroundStretchMode switch
     {

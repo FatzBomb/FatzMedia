@@ -11,6 +11,11 @@ namespace FatzBomb.MediaControl.Windows.Video;
 /// </summary>
 internal static partial class DwmCompositionTiming
 {
+    private static int s_failureReported;
+
+    /// <summary>The size DWM expects in <c>DWM_TIMING_INFO.cbSize</c>: the packed native layout.</summary>
+    internal static int TimingInfoSize => Marshal.SizeOf<DwmTimingInfo>();
+
     /// <summary>
     /// Returns DWM's global composition refresh interval, or the 60Hz fallback
     /// when DWM is unavailable or reports an implausible refresh rate.
@@ -21,27 +26,49 @@ internal static partial class DwmCompositionTiming
         {
             var timingInfo = new DwmTimingInfo
             {
-                Size = (uint)Marshal.SizeOf<DwmTimingInfo>()
+                Size = (uint)TimingInfoSize
             };
 
-            return DwmGetCompositionTimingInfo(IntPtr.Zero, ref timingInfo) == 0
-                ? DisplayRefreshInterval.FromRefreshRate(timingInfo.RefreshRate.Numerator, timingInfo.RefreshRate.Denominator)
-                : DisplayRefreshInterval.FallbackSeconds;
+            var result = DwmGetCompositionTimingInfo(IntPtr.Zero, ref timingInfo);
+            if (result == 0)
+                return DisplayRefreshInterval.FromRefreshRate(timingInfo.RefreshRate.Numerator, timingInfo.RefreshRate.Denominator);
+
+            ReportFailureOnce($"DwmGetCompositionTimingInfo failed (HRESULT 0x{result:X8})");
+            return DisplayRefreshInterval.FallbackSeconds;
         }
-        catch
+        catch (Exception ex)
         {
+            ReportFailureOnce($"DwmGetCompositionTimingInfo failed ({ex.GetType().Name}: {ex.Message})");
             return DisplayRefreshInterval.FallbackSeconds;
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    /// <summary>
+    /// Once per process, and for no player in particular (the DWM rate is global): a failure here
+    /// used to be silent, and video timing then always used the 60 Hz fallback (ENG-039 G2).
+    /// </summary>
+    private static void ReportFailureOnce(string detail)
+    {
+        if (Interlocked.Exchange(ref s_failureReported, 1) != 0)
+            return;
+
+        DiagnosticRouter.Raise(
+            owner: null,
+            MediaDiagnosticLevel.Warning,
+            "DisplayTiming",
+            $"{detail}; video timing without a per-monitor rate uses the 60 Hz fallback.");
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct UnsignedRatio
     {
         public uint Numerator;
         public uint Denominator;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    // DWM_TIMING_INFO is declared under #pragma pack(1) (dwmapi.h): 292 bytes. The default layout
+    // (320 bytes) made every call fail with E_INVALIDARG (ENG-039 G2).
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct DwmTimingInfo
     {
         public uint Size;

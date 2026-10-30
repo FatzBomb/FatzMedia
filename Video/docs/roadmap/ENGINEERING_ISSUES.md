@@ -36,10 +36,18 @@ Batches:
    disposed; one normalization rule and a bounded gain cache; Avalonia test player close during
    a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
    failures and the startup delay; karaoke `Source = null` releases the player.
-2. Windows/GPU bugs (device loss, freeze, DWM packing, resize flash, log noise): not started.
-3. Dead code and public API: not started.
-4. Refactors (player controller, decode seam, duplicates): not started.
-5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
+2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
+3. **Dead code and public API: implemented** (`updates/ENG-039/Batch3.md`): `MediaControlPlayer.Controls`/`MediaControls`/`MediaFile` internal; `.Video/.Audio/.Cdg/.Subtitle`, `RunOnRenderThread`, the host-render-event mode and `SharpArchiveAdapter.IsArchive` removed; `ShowSecondaryOutput` family, `ICdgEngine.LoadPaired` and `MidiLyricExtractor` `[Obsolete]`; unused internals deleted.
+4. Refactors (player controller, decode seam, duplicates): 4a **implemented, pending manual smoke** (`updates/ENG-039/Batch4a.md`): the three test players share `PlayerSetController`. 4b **implemented, pending manual smoke** (`updates/ENG-039/Batch4b.md`): decode-device seam, one decoder-replace helper, one session teardown, and the ENG-037 run-time software fallback. 4c **implemented, pending manual smoke** (`updates/ENG-039/Batch4c.md`): adapter, renderer and audio duplicates moved into shared helpers.
+5. **Performance: implemented, pending manual smoke** (`updates/ENG-039/Batch5.md`): KAR raster
+   caching and pooled subtitle buffers, embedded subtitles scanned after the open
+   (`SubtitleTracksChanged`), D3D11 shader and video-processor view caches, local demux discard,
+   allocation-free seek checks and display-locked passes, no-BASS bootstrap cached, archive audio
+   held once, Vulkan plane views cached. P5-11 measured and skipped (about 2 KB/frame, D3D11 only;
+   removing it breaks public API). Open: `LinuxNetworkVideoNativeTests` network-timing cases fail
+   now and then under load (seen from the batch 3 base on); the D3D11 video processor's cached
+   input views keep the last decoder texture array alive until a reset or a new array (after a
+   switch to software decoding, until the next open).
 
 ## Open
 
@@ -67,7 +75,7 @@ Resolved (each re-checked against the code first):
 - **D3D11 failure logs.** Failures a user would need now go through `DiagnosticRouter` with a
   per-site `RendererDiagnosticLatch` (Core, `Core/Graphics/Rendering`): one report per
   episode, re-armed on the next success. Covered: `ResizeBuffers` and resize failures (native
-  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform and
+  HWND, DirectComposition base and overlay), DirectComposition `Commit`, root transform (removed in ENG-039 R7: it was always identity) and
   overlay present/clear failures, frame-sink readback and creation failures, shared-texture
   present failures and stuck-mutex re-exports (Info), composition layer upload/allocation
   failures, per-target draw failures, the DirectComposition overlay draw, video processor blit
@@ -418,11 +426,12 @@ details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage)
   host pairing hardware decoding with the software or Vulkan renderer, or a failed device
   adoption), Core drops the frame on every path. A paused first frame stays black. Since ENG-039
   batch 1 the software renderer offers no decode device, so its players decode in software
-  whatever the configuration asks (the default `Auto` on Windows was black); the run-time case
-  (a failed adoption, WARP) remains. Proposed
-  fix: a per-decoder fallback token on `NativeVideoFrameResource` (like `HdrToneMapFallback`).
-  The coordinator sets it, and the pipeline swaps to a software decoder at the current
-  position through the device-loss swap path.
+  whatever the configuration asks (the default `Auto` on Windows was black). The run-time case
+  (a failed adoption, WARP) is implemented, pending manual smoke (ENG-039 batch 4b, G3x): a
+  per-decoder `NativeVideoFrameResource.DecodeFallback` token that the coordinator requests and
+  `VideoPipeline` acts on, swapping to software on its recovery worker for the rest of that
+  media. Not covered: the CD+G background video decoder (`PipelineMediaEngine`) sets no token,
+  so a refused background hardware frame is still dropped.
 - **Compositor on another GPU.** The decoder, the renderer and ANGLE all use the default
   adapter. A compositor elsewhere makes the shared textures fail the LUID check, and the
   surface uses its frame sink. Choosing the adapter by the compositor's LUID is deferred.
@@ -1110,6 +1119,14 @@ comes from the platform and a renderer rate source exists, waits up to 1 s for t
 rate before reporting the platform one (`ShouldWaitForRendererRefreshRate`, tested in
 `VideoCadenceReportTimingTests`). Host-render mode, with no presentation loop, reports at once
 as before.
+
+Follow-up (ENG-039 G2, 2026-10-28): the "platform" rate was never DWM's. `DWM_TIMING_INFO` was
+declared with the default layout (320 bytes) instead of the packed native one (292), so
+`DwmGetCompositionTimingInfo` failed every time (`0x88980090`) and the platform rate was always
+the 60 Hz fallback. The struct is now packed (`DwmCompositionTimingTests`), and a failure is
+logged once per process (category `DisplayTiming`). On a 60 Hz monitor nothing changes; on
+another rate, video without a per-monitor rate (no renderer rate source yet) now gets DWM's
+composition rate instead of 60 Hz.
 
 ### ENG-017 - Software renderer drops frames at large output sizes
 

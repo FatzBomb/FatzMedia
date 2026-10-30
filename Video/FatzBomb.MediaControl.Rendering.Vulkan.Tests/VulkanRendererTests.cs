@@ -417,6 +417,38 @@ public sealed class VulkanConformanceTests
         Assert.Equal(2, attempts);
     }
 
+    [Fact]
+    public void Classify_RejectsABackgroundBufferShorterThanItsRows()
+    {
+        MediaCompositionFrame frame = CreateBackgroundFrame(4, 3, MediaCompositionStretchMode.Fill);
+
+        Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(frame));
+        Assert.Equal(VulkanFrameSupport.InvalidBackground, VulkanCompositionPlanner.Classify(frame with { BackgroundBgra = new byte[(4 * 4 * 3) - 1] }));
+        Assert.Equal(VulkanFrameSupport.InvalidBackground, VulkanCompositionPlanner.Classify(frame with { BackgroundStride = 15 }));
+    }
+
+    /// <summary>
+    /// ENG-039 G7: CD+G before its first memory preset (no background colour index) is transparent
+    /// in every renderer. The same snapshot and expected pixel are used by the software and
+    /// Direct3D11 tests: every index 1 (opaque red), clear colour opaque blue, pixel (0, 0) blue.
+    /// </summary>
+    [Fact]
+    public void CdgBeforeMemoryPreset_ShowsTheClearColour()
+    {
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        var indices = new byte[300 * 216];
+        Array.Fill(indices, (byte)1);
+        var snapshot = new CdgRenderSnapshot(1, 1, indices, new[] { unchecked((int)0xFF000000), unchecked((int)0xFFFF0000) }, 0, -1, []);
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty(MediaCompositionClearMode.ConfiguredColor, 0xFF0000FF) with { CdgOverlay = snapshot };
+
+        ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 300, 216));
+
+        Assert.Equal(new byte[] { 255, 0, 0, 255 }, pixels[..4].ToArray());
+    }
+
     /// <summary>
     /// Renders <paramref name="frame"/> with both renderers. A pixel matches when every channel is
     /// within <paramref name="maxChannelDelta"/>; at least <paramref name="minimumExactRatio"/> of

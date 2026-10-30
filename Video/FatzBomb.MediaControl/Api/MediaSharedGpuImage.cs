@@ -254,7 +254,7 @@ public readonly record struct MediaSharedGpuImageFrame(
 /// </summary>
 /// <remarks>
 /// <para>Handle lifetime: the producer keeps every handle valid until both it has retired the set
-/// (<see cref="Retire"/>) and the consumer has called <see cref="CompleteImport"/> exactly once.
+/// (<see cref="Retire"/>) and the consumer has called <see cref="CompleteImport(int)"/> exactly once.
 /// Handle kinds whose import transfers ownership (POSIX file descriptors) are then closed by the
 /// producer only when the consumer reports that it did not pass them to an importer.</para>
 /// <para>Frames: the consumer submits every frame it receives, in order, and calls
@@ -264,11 +264,13 @@ public sealed class MediaSharedGpuImageSet
 {
     private readonly ReadOnlyCollection<MediaSharedGpuImageBuffer> _buffers;
     private readonly Action<MediaSharedGpuImageFrame, bool> _releaseFrame;
-    private readonly Action<bool>? _releaseHandles;
+    private readonly Action<int>? _releaseHandles;
+    private readonly Action<string>? _deviceLost;
     private int _outstanding = 2;
-    private int _handlesConsumed;
+    private int _consumedBuffers;
     private int _importCompleted;
     private int _retired;
+    private int _deviceLostReported;
 
     /// <param name="generation">Non-decreasing set number; frames carry it.</param>
     /// <param name="selection">The handle kind and synchronization of every image.</param>
@@ -292,12 +294,58 @@ public sealed class MediaSharedGpuImageSet
         Action<MediaSharedGpuImageFrame, bool> releaseFrame,
         Action<bool>? releaseHandles = null,
         int vulkanImageLayout = 0)
+        : this(
+            generation,
+            selection,
+            width,
+            height,
+            format,
+            buffers,
+            releaseFrame,
+            // A partial import keeps every handle: closing one an importer took would be worse
+            // than leaking the rest.
+            releaseHandles is null ? null : consumedBuffers => releaseHandles(consumedBuffers > 0),
+            deviceLost: null,
+            vulkanImageLayout)
+    {
+    }
+
+    /// <summary>
+    /// As the other constructor, with per-buffer handle ownership and the consumer's device-loss
+    /// report (ENG-039).
+    /// </summary>
+    /// <param name="generation">Non-decreasing set number; frames carry it.</param>
+    /// <param name="selection">The handle kind and synchronization of every image.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="format">Pixel format (premultiplied alpha).</param>
+    /// <param name="buffers">The images, at least one.</param>
+    /// <param name="releaseFrame">Producer callback for <see cref="ReleaseFrame"/> (frame, consumed).</param>
+    /// <param name="releaseConsumedHandles">
+    /// Producer callback run once both sides are done with the set; its argument is how many
+    /// buffers, from the first, the consumer passed to an importer (<see cref="ConsumedBufferCount"/>):
+    /// their transferred handles must not be closed, the others' must.
+    /// </param>
+    /// <param name="deviceLost">Producer callback for <see cref="ReportDeviceLost"/>, or null.</param>
+    /// <param name="vulkanImageLayout">The <c>VkImageLayout</c> each image is left in after a frame (0 for other APIs).</param>
+    public MediaSharedGpuImageSet(
+        long generation,
+        MediaSharedGpuImageSelection selection,
+        int width,
+        int height,
+        MediaSharedGpuImageFormat format,
+        IEnumerable<MediaSharedGpuImageBuffer> buffers,
+        Action<MediaSharedGpuImageFrame, bool> releaseFrame,
+        Action<int>? releaseConsumedHandles,
+        Action<string>? deviceLost,
+        int vulkanImageLayout = 0)
     {
         ArgumentNullException.ThrowIfNull(buffers);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         _releaseFrame = releaseFrame ?? throw new ArgumentNullException(nameof(releaseFrame));
-        _releaseHandles = releaseHandles;
+        _releaseHandles = releaseConsumedHandles;
+        _deviceLost = deviceLost;
         _buffers = Array.AsReadOnly<MediaSharedGpuImageBuffer>([.. buffers]);
         if (_buffers.Count == 0)
             throw new ArgumentException("At least one image is required.", nameof(buffers));
@@ -324,8 +372,11 @@ public sealed class MediaSharedGpuImageSet
 
     public IReadOnlyList<MediaSharedGpuImageBuffer> Buffers => _buffers;
 
-    /// <summary>Gets whether the consumer called <see cref="CompleteImport"/> and the handles went to an importer.</summary>
-    public bool HandlesConsumed => Volatile.Read(ref _handlesConsumed) != 0;
+    /// <summary>Gets whether the consumer called <see cref="CompleteImport(bool)"/> and handles went to an importer.</summary>
+    public bool HandlesConsumed => ConsumedBufferCount > 0;
+
+    /// <summary>Gets how many buffers, from the first, the consumer passed to an importer.</summary>
+    public int ConsumedBufferCount => Volatile.Read(ref _consumedBuffers);
 
     /// <summary>Gets whether the producer retired the set.</summary>
     public bool IsRetired => Volatile.Read(ref _retired) != 0;
@@ -335,16 +386,34 @@ public sealed class MediaSharedGpuImageSet
 
     /// <summary>
     /// Consumer, exactly once per set it received: it is done opening the handles.
-    /// <paramref name="handlesConsumed"/> is true when it passed them to an importer (even if an
-    /// import then failed), false when it skipped the set.
+    /// <paramref name="handlesConsumed"/> is true when it passed them all to an importer (even if
+    /// an import then failed), false when it skipped the set.
     /// </summary>
-    public void CompleteImport(bool handlesConsumed)
+    public void CompleteImport(bool handlesConsumed) => CompleteImport(handlesConsumed ? _buffers.Count : 0);
+
+    /// <summary>
+    /// Consumer, exactly once per set it received: it is done opening the handles, and passed the
+    /// first <paramref name="consumedBuffers"/> buffers to an importer (an import that started
+    /// counts, even if it then failed); the producer keeps the handles of the rest (ENG-039).
+    /// </summary>
+    public void CompleteImport(int consumedBuffers)
     {
         if (Interlocked.Exchange(ref _importCompleted, 1) != 0)
             return;
 
-        Volatile.Write(ref _handlesConsumed, handlesConsumed ? 1 : 0);
+        Volatile.Write(ref _consumedBuffers, Math.Clamp(consumedBuffers, 0, _buffers.Count));
         Settle();
+    }
+
+    /// <summary>
+    /// Consumer: its graphics context was lost (a GPU reset), so the producer should check its own
+    /// device and re-create it if it is lost too; the consumer re-attaches once its compositor
+    /// recovers (ENG-039). Only the first report per set reaches the producer. Must not block.
+    /// </summary>
+    public void ReportDeviceLost(string reason)
+    {
+        if (Interlocked.Exchange(ref _deviceLostReported, 1) == 0)
+            _deviceLost?.Invoke(reason);
     }
 
     /// <summary>Producer: the set is replaced or its target detached; no more frames come from it.</summary>
@@ -359,7 +428,7 @@ public sealed class MediaSharedGpuImageSet
     private void Settle()
     {
         if (Interlocked.Decrement(ref _outstanding) == 0)
-            _releaseHandles?.Invoke(HandlesConsumed);
+            _releaseHandles?.Invoke(ConsumedBufferCount);
     }
 }
 

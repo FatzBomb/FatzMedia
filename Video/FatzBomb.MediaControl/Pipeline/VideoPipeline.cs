@@ -21,7 +21,7 @@ internal sealed partial class VideoPipeline(
     PlaybackSyncState sync,
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
-    IVideoHardwareAccelerationServices hardwareAccelerationServices,
+    RendererVideoDecodeServices hardwareAccelerationServices,
     bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
@@ -33,7 +33,7 @@ internal sealed partial class VideoPipeline(
     private readonly PlaybackSyncState _sync = sync ?? throw new ArgumentNullException(nameof(sync));
     private readonly IPrecisionWaiterFactory _precisionWaiterFactory = precisionWaiterFactory ?? throw new ArgumentNullException(nameof(precisionWaiterFactory));
     private readonly IVideoPipelinePlatformServices _platformServices = platformServices ?? throw new ArgumentNullException(nameof(platformServices));
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices = hardwareAccelerationServices ?? throw new ArgumentNullException(nameof(hardwareAccelerationServices));
     // False in Background mode (043A) and without BASS (ENG-033): picture only, on the playback clock.
     private readonly bool _usesAudio = usesAudio;
     private readonly AudioPresentationClock _presentationClock = new();
@@ -44,7 +44,16 @@ internal sealed partial class VideoPipeline(
     private readonly PlaybackScheduler _decoderRecoveryScheduler = new("DecoderDeviceLostRecovery");
     private string? _currentVideoPath;
     private int _decoderRecoveryInProgress;
+    // Decode thread only: when the decode loop next asks whether the hardware device was lost.
+    private long _nextDeviceLossProbe;
     private volatile bool _hardwareDecodeDisabledByDeviceLoss;
+    // ENG-037: the renderer could not take this media's hardware frames, so it stays in software
+    // (no hardware re-probe) until the next open.
+    private volatile bool _hardwareDecodeRefusedByRenderer;
+    private SoftwareDecodeRequest? _pendingSoftwareDecodeRequest;
+    // The player that built this pipeline: a renderer's fallback request can start the recovery
+    // worker from a host thread, whose diagnostics would otherwise belong to no player.
+    private readonly object? _diagnosticOwner = DiagnosticRouter.Owner;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
     private SharedDemuxer? _sharedDemuxer;
@@ -65,7 +74,6 @@ internal sealed partial class VideoPipeline(
     private VideoFrameData? _currentFrame;
     private volatile bool _isOpen;
     private volatile bool _isPlaying;
-    private volatile bool _hostRenderEventDrivenPresentation;
     private volatile int _generation;
 
     // Seek calls are accepted as fast as the host sends them, but the pipeline processes them with
@@ -166,7 +174,7 @@ internal sealed partial class VideoPipeline(
     /// Without the wait the once-per-open report could name the platform's 60 Hz fallback
     /// while timing moved to the monitor's rate a moment later.
     /// </remarks>
-    private void ReportPendingDisplayCadence(bool canWait = true)
+    private void ReportPendingDisplayCadence()
     {
         if (Volatile.Read(ref _cadenceReportPending) == 0)
             return;
@@ -175,7 +183,7 @@ internal sealed partial class VideoPipeline(
         var now = Stopwatch.GetTimestamp();
         var firstAttempt = Interlocked.CompareExchange(ref _cadenceReportFirstAttempt, now, 0);
         var waited = firstAttempt == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(firstAttempt, now);
-        if (canWait && ShouldWaitForRendererRefreshRate(source, Volatile.Read(ref _rendererRefreshRateSource) is not null, waited))
+        if (ShouldWaitForRendererRefreshRate(source, Volatile.Read(ref _rendererRefreshRateSource) is not null, waited))
             return;
 
         if (Interlocked.Exchange(ref _cadenceReportPending, 0) == 1)
@@ -212,40 +220,6 @@ internal sealed partial class VideoPipeline(
             _ => "reported by the platform, or 60 Hz when it cannot tell",
         };
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoCadence", $"{description} (Display rate {rateSource}.)", sourcePath: path);
-    }
-
-    public void SetHostRenderEventDrivenPresentation(bool enabled)
-    {
-        if (_hostRenderEventDrivenPresentation == enabled)
-        {
-            return;
-        }
-
-        _hostRenderEventDrivenPresentation = enabled;
-
-        if (!_isOpen)
-        {
-            return;
-        }
-
-        if (enabled)
-        {
-            StopPresentationLoop();
-            ResetPresentationDiagnostics();
-            if (_configuration.EnableLogging)
-            {
-                Debug.WriteLine("[VideoPipeline] Host render-event presentation now drives UI-backed video presentation.");
-            }
-        }
-        else if (_isPlaying)
-        {
-            ResetPresentationDiagnostics();
-            StartPresentationLoop();
-            if (_configuration.EnableLogging)
-            {
-                Debug.WriteLine("[VideoPipeline] Independent video presentation loop enabled.");
-            }
-        }
     }
 
     public double Position
@@ -302,6 +276,7 @@ internal sealed partial class VideoPipeline(
         }
 
         _videoDecoder = VideoDecoder.FromConfiguration(_configuration, _sharedDemuxer, _hardwareAccelerationServices);
+        _videoDecoder.SoftwareDecodingRequested = OnSoftwareDecodingRequested;
         if (!_videoDecoder.Open(path))
         {
             Close();
@@ -463,10 +438,7 @@ internal sealed partial class VideoPipeline(
             }
 
             StartDecodeLoop();
-            if (!_hostRenderEventDrivenPresentation)
-                StartPresentationLoop();
-            else
-                ReportPendingDisplayCadence(canWait: false); // no presentation loop to report from
+            StartPresentationLoop();
             _ = Interlocked.Exchange(ref _playbackEndSignaled, 0);
             _isPlaying = true;
             _state.SetPlaybackState(MediaPlayerState.Playing);
@@ -862,8 +834,7 @@ internal sealed partial class VideoPipeline(
                 {
                     BeginPostSeekPresentationRecovery();
                     StartDecodeLoop();
-                    if (!_hostRenderEventDrivenPresentation)
-                        StartPresentationLoop();
+                    StartPresentationLoop();
                 }
             }
             finally
@@ -967,13 +938,7 @@ internal sealed partial class VideoPipeline(
         // exclusivity for the teardown itself. Cancel any in-flight device-lost recovery the same way
         // (Stop only signals cancellation; so it cannot deadlock on the gate).
         StopSeekWorker();
-        _decoderRecoveryScheduler.Stop();
-        // Deterministic join before Dispose: the recovery worker may be in the middle of
-        // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
-        // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
-        _decoderRecoveryScheduler.StopAndWait();
-        _hardwareDecodeDisabledByDeviceLoss = false;
-        _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+        StopDecoderRecovery();
 
         lock (_transportGate)
         {
@@ -1013,6 +978,23 @@ internal sealed partial class VideoPipeline(
             RaiseState(VideoEngineState.Closed);
             Closed?.Invoke(this, EventArgs.Empty);
         }
+
+        // A renderer can refuse a frame until the loops stop above, queueing a software fallback
+        // after the first join: cancel that one too, so it cannot outlive this media.
+        StopDecoderRecovery();
+    }
+
+    private void StopDecoderRecovery()
+    {
+        Volatile.Write(ref _pendingSoftwareDecodeRequest, null);
+        _decoderRecoveryScheduler.Stop();
+        // Deterministic join before Dispose: the recovery worker may be in the middle of
+        // HardwareDecodeDeviceAvailable (opening a throwaway VideoDecoder) and must not be torn
+        // down mid-native-call. 2s mirrors the existing scheduler timeout pattern.
+        _decoderRecoveryScheduler.StopAndWait();
+        _hardwareDecodeDisabledByDeviceLoss = false;
+        _hardwareDecodeRefusedByRenderer = false;
+        _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
     }
 
     public void Dispose()
@@ -1344,19 +1326,26 @@ internal sealed partial class VideoPipeline(
     // queries off the per-frame path (Stage 022A slice 2) and gives one frame one rate.
     private static readonly long DisplayRefreshMemoTicks = Stopwatch.Frequency / 10;
     private ResolvedDisplayRefresh? _resolvedDisplayRefresh;
+    // When the memo was last resolved. Kept apart from the immutable snapshot, so an unchanged
+    // rate is not reallocated every 100 ms (ENG-039 P5-6: the display-locked pass allocates
+    // nothing); a reader seeing the stamp before the snapshot at worst resolves once more.
+    private long _resolvedDisplayRefreshAt;
 
-    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz, long Timestamp);
+    private sealed record ResolvedDisplayRefresh(double IntervalSeconds, DisplayRefreshSource Source, double? OverrideHz);
 
     private (double IntervalSeconds, DisplayRefreshSource Source) ResolveDisplayRefresh()
     {
         var now = Stopwatch.GetTimestamp();
         var overrideHz = _overrideRefreshHz;
         ResolvedDisplayRefresh? cached = Volatile.Read(ref _resolvedDisplayRefresh);
-        if (cached is not null && cached.OverrideHz == overrideHz && now - cached.Timestamp < DisplayRefreshMemoTicks)
+        if (cached is not null && cached.OverrideHz == overrideHz && now - Volatile.Read(ref _resolvedDisplayRefreshAt) < DisplayRefreshMemoTicks)
             return (cached.IntervalSeconds, cached.Source);
 
         (var interval, DisplayRefreshSource source) = ResolveDisplayRefreshUncached(overrideHz);
-        Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz, now));
+        if (cached is null || cached.IntervalSeconds != interval || cached.Source != source || cached.OverrideHz != overrideHz)
+            Volatile.Write(ref _resolvedDisplayRefresh, new ResolvedDisplayRefresh(interval, source, overrideHz));
+
+        Volatile.Write(ref _resolvedDisplayRefreshAt, now);
         return (interval, source);
     }
 
@@ -1413,17 +1402,28 @@ internal sealed partial class VideoPipeline(
     private void CheckForHardwareDecodeDeviceLoss()
     {
         VideoDecoder? decoder = _videoDecoder;
-        if (decoder is null || !decoder.IsHardwareDecodeRepeatedlyFailing)
+        if (decoder?.HardwareDevice is not { } hardwareDevice)
             return;
+
+        // After a GPU reset the decoder usually keeps returning (corrupt) frames, so failures alone
+        // never reached the threshold (ENG-039): the device is also checked once a second.
+        var now = Stopwatch.GetTimestamp();
+        if (!ShouldProbeDeviceLoss(decoder.IsHardwareDecodeRepeatedlyFailing, now, _nextDeviceLossProbe))
+            return;
+
+        _nextDeviceLossProbe = now + Stopwatch.Frequency;
 
         // Repeated hardware-decode failure is only a hint; confirm the device is actually gone via
         // its device-removed reason before disrupting playback (avoids falling back on a bad stream).
-        if (decoder.HardwareDevice is not { } hardwareDevice
-            || !_hardwareAccelerationServices.IsDeviceLost(hardwareDevice))
+        if (!_hardwareAccelerationServices.IsDeviceLost(hardwareDevice))
             return;
 
         TriggerDecoderDeviceLostRecovery();
     }
+
+    /// <summary>Whether the decode loop asks the device now: repeated failures, or a second since the last check.</summary>
+    internal static bool ShouldProbeDeviceLoss(bool repeatedlyFailing, long nowTimestamp, long nextProbeTimestamp) =>
+        repeatedlyFailing || nowTimestamp >= nextProbeTimestamp;
 
     private void TriggerDecoderDeviceLostRecovery()
     {
@@ -1477,8 +1477,116 @@ internal sealed partial class VideoPipeline(
         finally
         {
             _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            TryStartSoftwareDecodeFallback();
         }
     }
+
+    private sealed record SoftwareDecodeRequest(VideoDecoder Decoder, string Reason);
+
+    /// <summary>
+    /// ENG-037: the renderer cannot take the live decoder's hardware frames (its fallback token).
+    /// Called on the presentation thread that refused the frame, so it only queues the switch on
+    /// the decoder recovery worker; a recovery already running starts it when it ends.
+    /// </summary>
+    private void OnSoftwareDecodingRequested(VideoDecoder decoder, string reason)
+    {
+        // A stale frame of a replaced decoder must not overwrite the live decoder's request: that
+        // decoder's token is spent, so it would never ask again.
+        if (!_isOpen || !ReferenceEquals(decoder, Volatile.Read(ref _videoDecoder)))
+            return;
+
+        Volatile.Write(ref _pendingSoftwareDecodeRequest, new SoftwareDecodeRequest(decoder, reason));
+        TryStartSoftwareDecodeFallback();
+    }
+
+    private void TryStartSoftwareDecodeFallback()
+    {
+        if (Volatile.Read(ref _pendingSoftwareDecodeRequest) is null
+            || Interlocked.CompareExchange(ref _decoderRecoveryInProgress, 1, 0) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _pendingSoftwareDecodeRequest, null) is not { } request)
+        {
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            return;
+        }
+
+        try
+        {
+            object? owner = _diagnosticOwner;
+            _decoderRecoveryScheduler.Start(cancellationToken =>
+            {
+                using DiagnosticRouter.OwnerScope scope = DiagnosticRouter.EnterOwner(owner);
+                RunSoftwareDecodeFallback(request, cancellationToken);
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed meanwhile: nothing left to switch.
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+        }
+    }
+
+    /// <summary>
+    /// On the decoder recovery worker: reopens the video in software at the current position and
+    /// keeps it there for this media. A lost device is left to the device-loss recovery.
+    /// </summary>
+    private void RunSoftwareDecodeFallback(SoftwareDecodeRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var path = _currentVideoPath;
+            VideoDecoder? decoder;
+            bool deviceLost;
+            // Under the decode lock: a seek, the startup fallback or Close may be disposing the
+            // decoder and its device.
+            lock (_decodeLock)
+            {
+                decoder = _videoDecoder;
+                deviceLost = decoder?.HardwareDevice is { } device && _hardwareAccelerationServices.IsDeviceLost(device);
+            }
+
+            if (cancellationToken.IsCancellationRequested
+                || string.IsNullOrWhiteSpace(path)
+                || !ShouldFallBackForRenderer(ReferenceEquals(decoder, request.Decoder), _isOpen, deviceLost))
+            {
+                return;
+            }
+
+            _hardwareDecodeRefusedByRenderer = true;
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "VideoPipeline",
+                $"Decoding {Path.GetFileName(path)} in software until it is opened again: {request.Reason}.",
+                sourcePath: path);
+            if (!FallBackToSoftwareDecode(path, cancellationToken) && !cancellationToken.IsCancellationRequested)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
+                RaiseState(VideoEngineState.Error);
+            }
+        }
+        finally
+        {
+            _ = Interlocked.Exchange(ref _decoderRecoveryInProgress, 0);
+            TryStartSoftwareDecodeFallback();
+        }
+    }
+
+    /// <summary>
+    /// Whether a renderer's request for software decoding is acted on: only for the live decoder
+    /// of open media, and not when its device is lost (the device-loss recovery handles that).
+    /// </summary>
+    internal static bool ShouldFallBackForRenderer(bool isLiveDecoder, bool isOpen, bool deviceLost) =>
+        isLiveDecoder && isOpen && !deviceLost;
+
+    /// <summary>
+    /// Whether the device-loss recovery re-probes for hardware: never for a network source (each
+    /// probe is a new connection), nor for media whose hardware frames the renderer refused.
+    /// </summary>
+    internal static bool ShouldReprobeHardware(bool isNetwork, bool refusedByRenderer) =>
+        !isNetwork && !refusedByRenderer;
 
     private bool FallBackToSoftwareDecode(string path, CancellationToken cancellationToken)
     {
@@ -1503,8 +1611,9 @@ internal sealed partial class VideoPipeline(
     private void ReprobeAndRestoreHardware(string path, CancellationToken cancellationToken)
     {
         // Each probe opens the source again: for a network source that is a new connection every
-        // few seconds. It stays on software decoding until the next open.
-        if (_sharedDemuxer is { IsNetwork: true })
+        // few seconds. It stays on software decoding until the next open, as does media whose
+        // hardware frames the renderer refused (ENG-037).
+        if (!ShouldReprobeHardware(_sharedDemuxer is { IsNetwork: true }, _hardwareDecodeRefusedByRenderer))
             return;
 
         while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && _isOpen)
@@ -1568,8 +1677,7 @@ internal sealed partial class VideoPipeline(
             var position = GetCurrentTransportPosition();
             _generation++;
             StopDecodeLoopAndWait();
-            if (!_hostRenderEventDrivenPresentation)
-                StopPresentationLoopAndWait();
+            StopPresentationLoopAndWait();
             WaitForPresentationIdle();
 
             var restartLoops = wasPlaying;
@@ -1598,8 +1706,7 @@ internal sealed partial class VideoPipeline(
                 if (restartLoops)
                 {
                     StartDecodeLoop();
-                    if (!_hostRenderEventDrivenPresentation)
-                        StartPresentationLoop();
+                    StartPresentationLoop();
                 }
             }
         }
@@ -1615,33 +1722,10 @@ internal sealed partial class VideoPipeline(
                 // Kept in a field: a failed attempt leaves no decoder, and a retry must still
                 // adopt the original origin.
                 _swapTimelineOrigin = _videoDecoder?.TimelineOriginSeconds ?? _swapTimelineOrigin;
-                var timelineOrigin = _swapTimelineOrigin;
                 ReleaseCurrentFrame();
-                _videoDecoder?.Dispose();
-                _videoDecoder = new VideoDecoder(
-                    method,
-                    true,
-                    _configuration.EnableLogging,
-                    _configuration.EnablePerformanceLogging,
-                    _configuration.EnableVerboseLogging,
-                    sharedDemuxer: _sharedDemuxer,
-                    hardwareAccelerationServices: _hardwareAccelerationServices,
-                    hdrToneMapping: _configuration.HdrToneMapping);
-
-                if (!_videoDecoder.Open(path))
-                {
-                    _videoDecoder.Dispose();
-                    _videoDecoder = null;
+                if (!TryReplaceDecoder(method, path, position, _swapTimelineOrigin))
                     return false;
-                }
 
-                if (timelineOrigin is { } origin)
-                    _videoDecoder.AdoptTimelineOrigin(origin);
-
-                Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
-                _clock.DurationSeconds = Duration;
-                _ = _videoDecoder.SeekSharedDemuxer(position);
-                _ = _videoDecoder.Seek(position, exact: false);
                 if (wasPlaying && HasAudio && _audioEngine != null)
                     _presentationClock.Start(_audioEngine.Position);
                 else
@@ -1650,6 +1734,43 @@ internal sealed partial class VideoPipeline(
                 _ = PresentFrameForCurrentPosition();
                 return true;
             }
+    }
+
+    /// <summary>
+    /// Disposes the live decoder and opens <paramref name="path"/> with a new one using
+    /// <paramref name="method"/>, positioned at <paramref name="position"/> (keyframe seek) and
+    /// adopting <paramref name="timelineOrigin"/> when given. On failure no decoder is left.
+    /// The caller holds the decode lock (and the presentation lock when frames may be in use).
+    /// </summary>
+    private bool TryReplaceDecoder(VideoDecodingMethod method, string path, double position, double? timelineOrigin)
+    {
+        _videoDecoder?.Dispose();
+        _videoDecoder = new VideoDecoder(
+            method,
+            true,
+            _configuration.EnableLogging,
+            _configuration.EnablePerformanceLogging,
+            _configuration.EnableVerboseLogging,
+            sharedDemuxer: _sharedDemuxer,
+            hardwareAccelerationServices: _hardwareAccelerationServices,
+            hdrToneMapping: _configuration.HdrToneMapping);
+        _videoDecoder.SoftwareDecodingRequested = OnSoftwareDecodingRequested;
+
+        if (!_videoDecoder.Open(path))
+        {
+            _videoDecoder.Dispose();
+            _videoDecoder = null;
+            return false;
+        }
+
+        if (timelineOrigin is { } origin)
+            _videoDecoder.AdoptTimelineOrigin(origin);
+
+        Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
+        _clock.DurationSeconds = Duration;
+        _ = _videoDecoder.SeekSharedDemuxer(position);
+        _ = _videoDecoder.Seek(position, exact: false);
+        return true;
     }
 
     private bool DecodeVideoBatch()
@@ -1702,28 +1823,12 @@ internal sealed partial class VideoPipeline(
             $"Hardware video decode produced no usable startup frame; falling back to software for {Path.GetFileName(path)}. " +
             $"Stream: {_videoDecoder.DescribeDecodePath()}. Reason: {_videoDecoder.DescribeHardwareStartupFailure()}.",
             sourcePath: path);
-        _videoDecoder.Dispose();
-        _videoDecoder = new VideoDecoder(
-            VideoDecodingMethod.Software,
-            true,
-            _configuration.EnableLogging,
-            _configuration.EnablePerformanceLogging,
-            _configuration.EnableVerboseLogging,
-            sharedDemuxer: _sharedDemuxer,
-            hardwareAccelerationServices: _hardwareAccelerationServices,
-            hdrToneMapping: _configuration.HdrToneMapping);
-        if (!_videoDecoder.Open(path))
+        if (!TryReplaceDecoder(VideoDecodingMethod.Software, path, position: 0, timelineOrigin: null))
         {
             DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "VideoPipeline", $"Software video fallback failed for {Path.GetFileName(path)}", sourcePath: path);
-            _videoDecoder.Dispose();
-            _videoDecoder = null;
             return false;
         }
 
-        Duration = Math.Max(_videoDecoder.DurationSeconds, _audioEngine?.Duration ?? 0);
-        _clock.DurationSeconds = Duration;
-        _ = _videoDecoder.SeekSharedDemuxer(0);
-        _ = _videoDecoder.Seek(0, exact: false);
         _presentationClock.Reset(HasAudio ? _audioEngine!.Position : _clock.PositionSeconds);
         return DecodeUntilFrameAvailable();
     }
@@ -1940,8 +2045,9 @@ internal sealed partial class VideoPipeline(
 
             if (HasAudio)
             {
-                // Drain remaining audio packets into the queue, then seek the shared cursor to 0.
-                // This keeps BASS fed while position-zero video frames are prepared.
+                // Seek the picture's cursor to 0 while its audio keeps playing the tail: a network
+                // read-ahead keeps the unplayed audio packets queued; a local file's audio has its
+                // own cursor (ENG-039 P5-5).
                 _sharedDemuxer?.PrepareLoopWrap();
             }
             else if (_sharedDemuxer?.Seek(decoder.VideoStreamIndex, 0, ffmpeg.AVSEEK_FLAG_BACKWARD) < 0)
@@ -2157,26 +2263,17 @@ internal sealed partial class VideoPipeline(
 
     private static bool TryDropSupersededSeekFrame(VideoDecoder decoder, double target)
     {
-        using IEnumerator<VideoFrameData> queued = decoder.EnumerateQueuedFrames().GetEnumerator();
-        if (!queued.MoveNext())
+        if (decoder.TryTakeHeadFrame(target, static (head, next, seekTarget) => VideoSeekPolicy.CanDropQueuedSeekFrame(head, next, seekTarget)) is not { } superseded)
             return false;
 
-        VideoFrameData head = queued.Current;
-        if (!queued.MoveNext() || !VideoSeekPolicy.CanDropQueuedSeekFrame(head.PresentationTime, queued.Current.PresentationTime, target))
-            return false;
-
-        decoder.ReturnFrame(decoder.GetNextFrame());
+        decoder.ReturnFrame(superseded);
         return true;
     }
 
-    private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget)
-    {
-        foreach (VideoFrameData frame in decoder.EnumerateQueuedFrames())
-            if (IsSeekFrameAcceptable(frame.PresentationTime, target, maxFrameDistance, requireAtOrAfterTarget))
-                return true;
-
-        return false;
-    }
+    private static bool HasAcceptableSeekFrame(VideoDecoder decoder, double target, double maxFrameDistance, bool requireAtOrAfterTarget) =>
+        decoder.AnyQueuedFrame(
+            (target, maxFrameDistance, requireAtOrAfterTarget),
+            static (frameTime, seek) => IsSeekFrameAcceptable(frameTime, seek.target, seek.maxFrameDistance, seek.requireAtOrAfterTarget));
 
     private bool TryPresentBestSeekFrame(
         double target,

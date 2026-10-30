@@ -54,6 +54,18 @@ public sealed class PlayerPresentationHelperTests
         Assert.Equal([PlayerRendererRequest.Vulkan, PlayerRendererRequest.Software], PlayerRendererRules.AutoOrder(windows: false));
     }
 
+    // ENG-039: one decoding table for every test player; the wording shows in status lines and logs.
+    [Theory]
+    [InlineData(PlayerRendererRequest.Direct3D11, false, VideoDecodingMethod.Auto, "hardware decoding (D3D11VA) where the GPU supports the codec")]
+    [InlineData(PlayerRendererRequest.Vulkan, false, VideoDecodingMethod.Auto, "hardware decoding (Vulkan Video) where the GPU supports the codec")]
+    [InlineData(PlayerRendererRequest.Software, false, VideoDecodingMethod.Auto, "hardware decoding where the GPU supports the codec")]
+    [InlineData(PlayerRendererRequest.Direct3D11, true, VideoDecodingMethod.Software, "software decoding (the renderer runs on a software rasterizer)")]
+    [InlineData(PlayerRendererRequest.Warp, true, VideoDecodingMethod.Software, "software decoding (the renderer runs on a software rasterizer)")]
+    [InlineData(PlayerRendererRequest.Vulkan, true, VideoDecodingMethod.Software, "software decoding (the device has no Vulkan Video decoding)")]
+    [InlineData(PlayerRendererRequest.Software, true, VideoDecodingMethod.Software, "software decoding (the renderer takes no hardware frames)")]
+    public void DescribeDecoding_PinsTheWording(PlayerRendererRequest renderer, bool requiresSoftwareDecoding, VideoDecodingMethod decoding, string detail) =>
+        Assert.Equal((decoding, detail), PlayerRendererRules.DescribeDecoding(renderer, requiresSoftwareDecoding));
+
     // --- shared player flags ---
 
     [Fact]

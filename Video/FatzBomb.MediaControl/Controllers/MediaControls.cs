@@ -7,7 +7,7 @@ namespace FatzBomb.MediaControl.Controllers;
 /// <summary>
 /// Controls media playback operations.
 /// </summary>
-public sealed class MediaControls
+internal sealed class MediaControls
 {
     private readonly IMediaEngine _mediaEngine;
     private readonly IMediaRenderCoordinator? _mediaRenderer;

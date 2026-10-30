@@ -29,6 +29,9 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private ID3D11VideoProcessorEnumerator? _videoProcessorEnumerator;
     private ID3D11VideoProcessor? _videoProcessor;
     private ID3D11VideoProcessorOutputView? _videoOutputView;
+    // Input views per array slice of _inputViewTexturePointer (see GetInputView).
+    private ID3D11VideoProcessorInputView?[] _inputViews = [];
+    private IntPtr _inputViewTexturePointer;
     private int _videoProcessorWidth;
     private int _videoProcessorHeight;
     private int _videoProcessorOutputWidth;
@@ -38,6 +41,12 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     private (VideoColorSpace ColorSpace, HdrTransferFunction? Hdr)? _appliedColorSpace;
     private readonly D3D11HdrToneMapPresenter _hdrToneMapPresenter = new();
     private bool _hdrPathReported;
+
+    /// <summary>
+    /// The step the last hardware-frame draw reached (ENG-039): when a call throws, the caller's
+    /// diagnostic names it (after a GPU reset the exception's own code can be unrelated).
+    /// </summary>
+    public string LastStep { get; private set; } = "video processor";
 
     /// <summary>What every presentation and composition texture holds: full-range sRGB-gamma BT.709 RGB.</summary>
     private const ColorSpaceType OutputColorSpace = ColorSpaceType.RgbFullG22NoneP709;
@@ -68,6 +77,8 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         MediaCompositionStretchMode stretch,
         HdrOutputDecision? hdrOutput = null)
     {
+        // A refusal below must not name the step a previous frame reached.
+        LastStep = "video processor";
         if (!deviceResources.HasVideoProcessorSupport
             || sourceTexturePointer == IntPtr.Zero
             || width <= 0
@@ -78,6 +89,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
             return false;
         }
 
+        LastStep = "decoder texture";
         using ID3D11Texture2D sourceTexture = AddRefAndWrap(sourceTexturePointer, static pointer => new ID3D11Texture2D(pointer));
         return BlitTextureToPresentation(
             deviceResources,
@@ -135,6 +147,7 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
         if (toneMap is { } request)
         {
+            LastStep = "HDR tone map";
             (Vortice.RawRect hdrSource, Vortice.RawRect hdrDestination) = CalculateVideoProcessorRects(width, height, presentationWidth, presentationHeight, stretch);
             if (_hdrToneMapPresenter.TryPresent(
                     deviceResources,
@@ -173,25 +186,16 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
                 return false;
         }
 
+        LastStep = "video processor creation";
         if (!EnsureVideoProcessor(deviceResources, presentationTexture, width, height, framesPerSecond, presentationWidth, presentationHeight))
         {
             return false;
         }
 
-        using ID3D11VideoProcessorInputView inputView = deviceResources.VideoDevice.CreateVideoProcessorInputView(
-            sourceTexture,
-            _videoProcessorEnumerator!,
-            new VideoProcessorInputViewDescription
-            {
-                FourCC = 0,
-                ViewDimension = VideoProcessorInputViewDimension.Texture2D,
-                Texture2D = new Texture2DVideoProcessorInputView
-                {
-                    MipSlice = 0,
-                    ArraySlice = (uint)Math.Max(0, sourceArraySlice)
-                }
-            });
+        LastStep = "video processor input view";
+        ID3D11VideoProcessorInputView inputView = GetInputView(deviceResources.VideoDevice, sourceTexture, Math.Max(0, sourceArraySlice));
 
+        LastStep = "video processor setup";
         deviceResources.VideoContext.VideoProcessorSetStreamFrameFormat(_videoProcessor!, 0, VideoFrameFormat.Progressive);
         deviceResources.VideoContext.VideoProcessorSetStreamAutoProcessingMode(_videoProcessor!, 0, false);
         ApplyColorSpaces(deviceResources, sourceTexture, presentationTexture, resolvedColorSpace, toneMap?.Transfer);
@@ -200,10 +204,13 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
         ClearPresentationTextureToBlack(deviceResources, presentationTexture, flush: false);
 
         _streams[0].InputSurface = inputView;
+        LastStep = "video processor blit";
 
         Result result = deviceResources.VideoContext.VideoProcessorBlt(_videoProcessor!, _videoOutputView!, 0, _streams);
         if (result.Failure)
         {
+            // The next attempt starts from fresh input views.
+            ReleaseInputViews();
             _ = _blitFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Video processor blit failed: {result}");
             return false;
         }
@@ -215,6 +222,8 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
 
     public void Reset()
     {
+        // The input views belong to the enumerator released below.
+        ReleaseInputViews();
         _videoOutputView?.Dispose();
         _videoOutputView = null;
         _videoProcessor?.Dispose();
@@ -246,6 +255,51 @@ internal sealed class D3D11VideoProcessorPresenter(MediaPlayerConfiguration conf
     }
 
     public void Dispose() => ResetDeviceResources();
+
+    /// <summary>
+    /// The input view of one slice of the decoder's texture array, created on first use and kept
+    /// (ENG-039: one view per frame before). The views are for the current enumerator and one
+    /// source texture: another texture (a new decoder pool) or <see cref="Reset"/> (processor
+    /// rebuilt, surface cleanup, device change or loss) releases them. A cached view holds its
+    /// texture alive, so the texture's address cannot be reused while it is the key.
+    /// </summary>
+    private ID3D11VideoProcessorInputView GetInputView(ID3D11VideoDevice videoDevice, ID3D11Texture2D sourceTexture, int arraySlice)
+    {
+        if (sourceTexture.NativePointer != _inputViewTexturePointer)
+        {
+            ReleaseInputViews();
+            _inputViewTexturePointer = sourceTexture.NativePointer;
+        }
+
+        if (arraySlice >= _inputViews.Length)
+            Array.Resize(ref _inputViews, Math.Max(arraySlice + 1, (int)sourceTexture.Description.ArraySize));
+
+        return _inputViews[arraySlice] ??= videoDevice.CreateVideoProcessorInputView(
+            sourceTexture,
+            _videoProcessorEnumerator!,
+            new VideoProcessorInputViewDescription
+            {
+                FourCC = 0,
+                ViewDimension = VideoProcessorInputViewDimension.Texture2D,
+                Texture2D = new Texture2DVideoProcessorInputView
+                {
+                    MipSlice = 0,
+                    ArraySlice = (uint)arraySlice
+                }
+            });
+    }
+
+    private void ReleaseInputViews()
+    {
+        _streams[0].InputSurface = null;
+        for (var i = 0; i < _inputViews.Length; i++)
+        {
+            _inputViews[i]?.Dispose();
+            _inputViews[i] = null;
+        }
+
+        _inputViewTexturePointer = IntPtr.Zero;
+    }
 
     private static string DescribeTransfer(HdrTransferFunction transfer) =>
         transfer == HdrTransferFunction.Hlg ? "HLG" : "HDR10";

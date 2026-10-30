@@ -8,7 +8,7 @@ namespace FatzBomb.MediaControl.Core.Audio.Filters;
 /// Parametric equalizer on BASS_FX <c>BASS_FX_BFX_PEAKEQ</c>: one native FX with one band per
 /// configured band. Native IIR processing (no managed per-sample callback, no added latency).
 /// </summary>
-internal sealed class BassEqualizerFilter : IAudioFilter
+internal sealed class BassEqualizerFilter
 {
     private readonly Lock _gate = new();
     private readonly PeakEQParameters _parameters = new() { lChannel = FXChannelFlags.All };
@@ -16,21 +16,6 @@ internal sealed class BassEqualizerFilter : IAudioFilter
     private int _playHandle;
     private int _fxHandle;
     private int _attachedBands;
-
-    public string Id => "equalizer";
-
-    public int Priority => AudioFilterStage.EqualizerPriority;
-
-    public double LatencySeconds => 0;
-
-    public bool IsActive
-    {
-        get
-        {
-            lock (_gate)
-                return _settings.IsEffective;
-        }
-    }
 
     public AudioEqualizerSettings Settings
     {
@@ -72,15 +57,6 @@ internal sealed class BassEqualizerFilter : IAudioFilter
         }
     }
 
-    public void Remove()
-    {
-        lock (_gate)
-        {
-            RemoveLocked();
-            _playHandle = 0;
-        }
-    }
-
     private bool ApplyLocked(int playHandle)
     {
         if (playHandle != _playHandle)
@@ -106,7 +82,7 @@ internal sealed class BassEqualizerFilter : IAudioFilter
                 RemoveLocked();
                 goto case EqualizerUpdateAction.Create;
             case EqualizerUpdateAction.Create:
-                _fxHandle = MBass.ChannelSetFX(playHandle, EffectType.PeakEQ, Priority);
+                _fxHandle = MBass.ChannelSetFX(playHandle, EffectType.PeakEQ, AudioFilterStage.EqualizerPriority);
                 if (_fxHandle == 0)
                 {
                     DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFilters", $"Equalizer FX unavailable: {MBass.LastError}; audio continues unequalized.");

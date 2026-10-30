@@ -33,10 +33,10 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
     public double DurationSeconds => Engine.TotalDurationSeconds;
     public event EventHandler? PlaybackEnded;
 
-    public void OpenPaired(string path, int audioStreamHandle)
+    public void OpenPaired(string path)
     {
         ThrowIfInvalidPath(path);
-        Engine.LoadPaired(path, audioStreamHandle);
+        Engine.Load(path);
         IsOpen = true;
         _isPairedWithAudio = true;
         _state.SetDuration(Math.Max(_state.DurationSeconds, DurationSeconds));
@@ -44,10 +44,10 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
         StartSeekWorker();
     }
 
-    public void OpenPaired(IArchiveEntryInfo archiveEntry, int audioStreamHandle)
+    public void OpenPaired(IArchiveEntryInfo archiveEntry)
     {
         ArgumentNullException.ThrowIfNull(archiveEntry);
-        Engine.LoadPaired(archiveEntry, audioStreamHandle);
+        Engine.Load(archiveEntry);
         IsOpen = true;
         _isPairedWithAudio = true;
         _state.SetDuration(Math.Max(_state.DurationSeconds, DurationSeconds));
@@ -194,12 +194,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
 
     void ISeekPumpHost.WaitForPumpInterval() => _seekPump.WaitInterval(CdgSeekIntervalMilliseconds);
 
-    private double NormalizeSeekTarget(double seconds) =>
-        !double.IsFinite(seconds) || seconds <= 0
-            ? 0
-            : DurationSeconds > 0
-                ? Math.Clamp(seconds, 0, DurationSeconds)
-                : seconds;
+    private double NormalizeSeekTarget(double seconds) => SeekHelpers.NormalizeSeekTarget(seconds, DurationSeconds);
 
     public void RenderAt(double seconds, bool forceRebuild)
     {

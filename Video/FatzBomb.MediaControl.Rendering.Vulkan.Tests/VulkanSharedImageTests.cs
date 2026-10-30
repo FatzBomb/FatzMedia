@@ -125,11 +125,11 @@ public sealed class VulkanSharedImageTests
     [Fact]
     public void ExportCapabilities_OfferHostSynchronizationAndSemaphoresWhenExportable()
     {
-        Assert.Empty(VulkanRendererBackend.GetExportCapabilities(false, true).Images);
-        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) = VulkanRendererBackend.GetExportCapabilities(true, false);
+        Assert.Empty(VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(false, true, false, false, false)).Images);
+        (MediaSharedGpuImageCapability[] images, MediaSharedGpuSemaphoreHandleKind[] semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(true, false, false, false, false));
         Assert.Equal([new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.HostSynchronized)], images);
         Assert.Empty(semaphores);
-        (images, semaphores) = VulkanRendererBackend.GetExportCapabilities(true, true);
+        (images, semaphores) = VulkanRendererBackend.GetExportCapabilities(new VulkanExportSupport(true, true, false, false, false));
         Assert.Equal(MediaSharedGpuImageSyncKinds.HostSynchronized | MediaSharedGpuImageSyncKinds.Semaphores, images[0].SyncKinds);
         Assert.Equal([MediaSharedGpuSemaphoreHandleKind.VulkanOpaqueFd], semaphores);
     }

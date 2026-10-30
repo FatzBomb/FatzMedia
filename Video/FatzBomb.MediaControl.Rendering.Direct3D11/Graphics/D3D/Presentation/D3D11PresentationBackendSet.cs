@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.Composition.Planning;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
@@ -379,33 +380,23 @@ internal sealed class D3D11PresentationBackendSet(
         Func<bool> isDisposed,
         Action<D3D11PresentationTargetSnapshot> framePresented)
     {
-        // Index loops and no per-target closure: this runs every frame (ENG-026).
-        var primaryExpected = false;
-        for (var i = 0; i < targets.Count; i++)
-            primaryExpected |= targets[i].TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId;
-
-        var primaryPresented = false;
-        var anyPresented = false;
+        // Index loop and no per-target closure: this runs every frame (ENG-026). A target that
+        // cannot present still counts, so a missing primary backend fails the frame.
+        var outcome = new CompositionPresentOutcome();
         for (var i = 0; i < targets.Count; i++)
         {
             D3D11PresentationTargetSnapshot target = targets[i];
-            if (!target.IsValid
-                || !TryGetBackend(target.TargetId, target.BackendKind, out ID3D11PresentationBackend? backend)
-                || backend is null)
-            {
-                continue;
-            }
-
-            if (PresentBackend(backend, liveResizeFlag, syncImmediate, isDisposed))
-            {
+            var presented = target.IsValid
+                && TryGetBackend(target.TargetId, target.BackendKind, out ID3D11PresentationBackend? backend)
+                && backend is not null
+                && PresentBackend(backend, liveResizeFlag, syncImmediate, isDisposed);
+            if (presented)
                 framePresented(target);
-                anyPresented = true;
-                if (target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId)
-                    primaryPresented = true;
-            }
+
+            outcome.Record(target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId, presented);
         }
 
-        return primaryExpected ? primaryPresented : anyPresented;
+        return outcome.Succeeded;
     }
 
     /// <summary>

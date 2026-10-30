@@ -37,6 +37,7 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
     // Failures other than device loss that can repeat every frame or resize retry: one report each.
     private readonly RendererDiagnosticLatch _resizeFailure = new();
     private readonly RendererDiagnosticLatch _overlayPresentFailure = new();
+    private readonly RendererDiagnosticLatch _basePresentFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.DirectCompositionSingleTarget;
     public bool IsActive => _target.IsActive && _baseSwapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -321,7 +322,8 @@ internal sealed class D3D11DirectCompositionSingleTargetBackend(
                 liveResizeFlag,
                 syncImmediate,
                 diagnostics,
-                ref _baseDeviceLostReported))
+                ref _baseDeviceLostReported,
+                _basePresentFailure))
         {
             // A failed base present means the composed frame did not reach the target; skip the
             // DirectComposition commit so the failing present loop does not double-report.

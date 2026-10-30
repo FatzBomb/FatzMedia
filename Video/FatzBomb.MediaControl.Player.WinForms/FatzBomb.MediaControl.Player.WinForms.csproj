@@ -25,6 +25,8 @@
   <ItemGroup>
     <!-- The Windows renderer choice shared with the WPF player (Stage 046A slice 3). -->
     <Compile Include="..\FatzBomb.MediaControl.Player\Configuration\PlayerRendererSelection.cs" Link="Configuration\PlayerRendererSelection.cs" />
+    <!-- The native search paths, with the read-only install guard (ENG-039 W3). -->
+    <Compile Include="..\FatzBomb.MediaControl.Player\Configuration\PlayerNativeLibraries.cs" Link="Configuration\PlayerNativeLibraries.cs" />
   </ItemGroup>
 
   <ItemGroup>

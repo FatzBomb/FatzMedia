@@ -30,7 +30,6 @@ internal sealed class D3D11PresentationSurfaceController(
     private readonly List<D3D11PresentationTargetSnapshot> _frameSnapshots = [];
     private readonly List<D3D11PresentationTargetSnapshot> _probeSnapshots = [];
     public bool LastActivationCreated { get; private set; }
-    public bool IsReady => TryGetActiveTargetSnapshot(applyPendingNativeResize: false, reason: null, out _);
     public bool IsDirectCompositionActive => backends.DirectComposition.IsActive;
     public bool ShouldSuppressDirectCompositionOverlaySplit =>
         backends.DirectComposition.IsActive
@@ -376,6 +375,9 @@ internal sealed class D3D11PresentationSurfaceController(
         Action cleanupBeforeCreate,
         Action onCreated)
     {
+        // A new size for the sink already served (a resize step): no black frame is pushed, the
+        // sink keeps its last frame until the next composition (ENG-039 G4).
+        var resizing = backends.ManagedFrameSink.Serves(sink);
         if (!backends.ManagedFrameSink.Matches(sink, width, height))
         {
             cleanupBeforeCreate();
@@ -393,7 +395,7 @@ internal sealed class D3D11PresentationSurfaceController(
         if (!backends.ManagedFrameSink.IsActive)
             return false;
 
-        if (LastActivationCreated)
+        if (LastActivationCreated && !resizing)
         {
             _ = backends.ClearActiveTargetToBlack(deviceResources);
             onCreated();
@@ -427,6 +429,10 @@ internal sealed class D3D11PresentationSurfaceController(
             onCreated =>
             {
                 D3D11SharedTextureBackend backend = backends.SharedTexture;
+                // A re-export for the consumer already served (a resize step): no black frame is
+                // announced, the consumer keeps its last image until the next real frame
+                // (ENG-039 G4).
+                var resizing = backend.Serves(consumer);
                 if (!backend.Matches(consumer, width, height))
                 {
                     cleanupBeforeCreate();
@@ -440,7 +446,7 @@ internal sealed class D3D11PresentationSurfaceController(
                 if (!backend.IsActive)
                     return false;
 
-                if (LastActivationCreated)
+                if (LastActivationCreated && !resizing)
                 {
                     _ = backends.ClearActiveTargetToBlack(deviceResources);
                     onCreated();

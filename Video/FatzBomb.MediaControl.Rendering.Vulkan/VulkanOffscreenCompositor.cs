@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Cdg;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
@@ -40,6 +41,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     private readonly Vk _vk;
     private readonly Lock _sync = new();
+    // Guards what ProbeDeviceLost reads (the shared device and the Direct3D11 interop device)
+    // against Dispose, without the frame lock (ENG-039).
+    private readonly Lock _probeGate = new();
+    private bool _probeClosed;
     private Instance _instance;
     private PhysicalDevice _physicalDevice;
     private Device _device;
@@ -205,21 +210,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 _cdgUploadedSnapshot = null;
                 var length = (ulong)cdgPlan.Snapshot.Width * (ulong)cdgPlan.Snapshot.Height * 4;
                 BufferResource cdgUpload = EnsureBuffer(ref _cdgUploadBuffer, length, BufferUsageFlags.TransferSrcBit, UploadMemoryPreferences);
-                void* mapped;
-                Check(_vk.MapMemory(_device, cdgUpload.Memory, 0, length, 0, &mapped), "vkMapMemory");
-                try
-                {
-                    VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>(mapped, (int)length));
-                }
-                finally
-                {
-                    _vk.UnmapMemory(_device, cdgUpload.Memory);
-                }
+                VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>((void*)cdgUpload.Mapped, (int)length));
             }
 
-            Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
+            VulkanResult.Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
             var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
-            Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
+            VulkanResult.Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
 
             // Locks the decoded frame until its semaphore signal is submitted. Recording commands
             // does not throw; ending the buffer and submitting can, so the lock is released below.
@@ -337,7 +333,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
             try
             {
-                Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
+                VulkanResult.Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
 
                 CommandBuffer commandBuffer = _commandBuffer;
                 var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
@@ -401,7 +397,22 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     ChainKeyedMutex(&submit, &keyedMutex, &keyedMemory, &acquireKey, &releaseKey, &keyedTimeout);
                 }
 
-                Submit(&submit);
+                try
+                {
+                    Submit(&submit);
+                }
+                catch (VulkanException exception) when (export is { Image.HasKeyedMutex: true } && exception.Result == Result.Timeout)
+                {
+                    // The ring hands out only textures the compositor released, so a keyed mutex
+                    // that stays taken means the compositor stopped (ENG-039: a GPU reset).
+                    throw new VulkanException(
+                        $"vkQueueSubmit (the compositor did not release the shared texture's keyed mutex within {KeyedMutexTimeoutMilliseconds} ms)",
+                        exception.Result)
+                    {
+                        IsConsumerStall = true,
+                    };
+                }
+
                 videoFrame?.MarkSubmitted();
             }
             finally
@@ -410,9 +421,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 videoFrame?.EndAccess();
             }
 
-            Fence fence = _fence;
-            Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
-            DestroyFrameViews();
+            WaitForSubmission("vkWaitForFences (frame)");
             if (conversion is { } converted)
                 CompleteVideoConversion(converted);
             if (uploadCdg && plan.Cdg is { } uploaded)
@@ -460,22 +469,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     /// </summary>
     private void ReadBack(BufferResource buffer, Span<byte> destination)
     {
-        void* mapped;
-        Check(_vk.MapMemory(_device, buffer.Memory, 0, Vk.WholeSize, 0, &mapped), "vkMapMemory");
-        try
+        if ((buffer.Properties & MemoryPropertyFlags.HostCoherentBit) == 0)
         {
-            if ((buffer.Properties & MemoryPropertyFlags.HostCoherentBit) == 0)
-            {
-                var range = new MappedMemoryRange { SType = StructureType.MappedMemoryRange, Memory = buffer.Memory, Offset = 0, Size = Vk.WholeSize };
-                Check(_vk.InvalidateMappedMemoryRanges(_device, 1, &range), "vkInvalidateMappedMemoryRanges");
-            }
+            var range = new MappedMemoryRange { SType = StructureType.MappedMemoryRange, Memory = buffer.Memory, Offset = 0, Size = Vk.WholeSize };
+            VulkanResult.Check(_vk.InvalidateMappedMemoryRanges(_device, 1, &range), "vkInvalidateMappedMemoryRanges");
+        }
 
-            new ReadOnlySpan<byte>(mapped, destination.Length).CopyTo(destination);
-        }
-        finally
-        {
-            _vk.UnmapMemory(_device, buffer.Memory);
-        }
+        new ReadOnlySpan<byte>((void*)buffer.Mapped, destination.Length).CopyTo(destination);
     }
 
     /// <summary>
@@ -498,10 +498,20 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 return;
 
             _disposed = true;
-            if (_device.Handle != 0)
+            // A probe in progress finishes first; later ones find the compositor closed.
+            lock (_probeGate)
+                _probeClosed = true;
+
+            // A device the driver reported lost may never go idle (ENG-039), and destroying its
+            // objects is allowed; one that only timed out is waited for (a slow GPU still uses them).
+            if (_device.Handle != 0 && _shared?.IsLossConfirmed != true)
             {
                 lock (QueueLock)
                     _ = _vk.DeviceWaitIdle(_device);
+            }
+
+            if (_device.Handle != 0)
+            {
                 DestroyVideoResources();
                 DestroyExportedSets();
                 DestroyWin32ExportResources();
@@ -607,20 +617,21 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         }
 
         _device = device;
+        Queue queue;
+        _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
+        _queue = queue;
         _shared = new VulkanSharedDevice(
             _vk,
             _instance,
             _physicalDevice,
             _device,
+            _queue,
             _queueFamily,
             _queueFamilyFlags,
             extensions,
             video?.Features,
             video?.Support);
         LoadExportFunctions();
-        Queue queue;
-        _vk.GetDeviceQueue(_device, _queueFamily, 0, &queue);
-        _queue = queue;
 
         var poolInfo = new CommandPoolCreateInfo
         {
@@ -629,7 +640,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             Flags = CommandPoolCreateFlags.ResetCommandBufferBit,
         };
         CommandPool pool;
-        Check(_vk.CreateCommandPool(_device, &poolInfo, null, &pool), "vkCreateCommandPool");
+        VulkanResult.Check(_vk.CreateCommandPool(_device, &poolInfo, null, &pool), "vkCreateCommandPool");
         _commandPool = pool;
 
         var allocateInfo = new CommandBufferAllocateInfo
@@ -640,12 +651,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             CommandBufferCount = 1,
         };
         CommandBuffer commandBuffer;
-        Check(_vk.AllocateCommandBuffers(_device, &allocateInfo, &commandBuffer), "vkAllocateCommandBuffers");
+        VulkanResult.Check(_vk.AllocateCommandBuffers(_device, &allocateInfo, &commandBuffer), "vkAllocateCommandBuffers");
         _commandBuffer = commandBuffer;
 
         var fenceInfo = new FenceCreateInfo { SType = StructureType.FenceCreateInfo };
         Fence fence;
-        Check(_vk.CreateFence(_device, &fenceInfo, null, &fence), "vkCreateFence");
+        VulkanResult.Check(_vk.CreateFence(_device, &fenceInfo, null, &fence), "vkCreateFence");
         _fence = fence;
 
         _overlay = VulkanOverlayPipelines.Create(_vk, _device, TargetFormat);
@@ -793,15 +804,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         return false;
     }
 
-    private void Upload(BufferResource upload, ReadOnlySpan<byte> sourceBgra, int width, int height, int stride)
+    private static void Upload(BufferResource upload, ReadOnlySpan<byte> sourceBgra, int width, int height, int stride)
     {
-        void* mapped;
         var rowBytes = width * 4;
-        Check(_vk.MapMemory(_device, upload.Memory, 0, (ulong)rowBytes * (ulong)height, 0, &mapped), "vkMapMemory");
-        var destination = new Span<byte>(mapped, rowBytes * height);
+        var destination = new Span<byte>((void*)upload.Mapped, rowBytes * height);
         for (var y = 0; y < height; y++)
             sourceBgra.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
-        _vk.UnmapMemory(_device, upload.Memory);
     }
 
     private void CopyBufferToImage(BufferResource upload, VkImage image, int width, int height)
@@ -902,11 +910,11 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         ImageView view = default;
         try
         {
-            Check(_vk.CreateImage(_device, &info, null, &handle), "vkCreateImage");
+            VulkanResult.Check(_vk.CreateImage(_device, &info, null, &handle), "vkCreateImage");
             MemoryRequirements requirements;
             _vk.GetImageMemoryRequirements(_device, handle, &requirements);
-            memory = Allocate(requirements, MemoryPropertyFlags.DeviceLocalBit, fallback: MemoryPropertyFlags.None);
-            Check(_vk.BindImageMemory(_device, handle, memory, 0), "vkBindImageMemory");
+            memory = AllocateMemory(requirements.MemoryTypeBits, requirements.Size, ImageMemoryPreferences, null, "vkAllocateMemory", out _);
+            VulkanResult.Check(_vk.BindImageMemory(_device, handle, memory, 0), "vkBindImageMemory");
             if ((usage & (ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.SampledBit)) != 0)
             {
                 var viewInfo = new ImageViewCreateInfo
@@ -917,7 +925,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     Format = TargetFormat,
                     SubresourceRange = ColorRange(),
                 };
-                Check(_vk.CreateImageView(_device, &viewInfo, null, &view), "vkCreateImageView");
+                VulkanResult.Check(_vk.CreateImageView(_device, &viewInfo, null, &view), "vkCreateImageView");
             }
 
             ImageResource created = new(handle, memory, view, width, height);
@@ -935,6 +943,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             throw;
         }
     }
+
+    /// <summary>Device-local memory for images, or any allowed type when the device has none.</summary>
+    private static readonly MemoryPropertyFlags[] ImageMemoryPreferences =
+    [
+        MemoryPropertyFlags.DeviceLocalBit,
+        MemoryPropertyFlags.None,
+    ];
 
     /// <summary>Host-visible memory for buffers the CPU writes and the GPU reads once (uploads).</summary>
     private static readonly MemoryPropertyFlags[] UploadMemoryPreferences =
@@ -984,24 +999,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         DeviceMemory memory = default;
         try
         {
-            Check(_vk.CreateBuffer(_device, &info, null, &handle), "vkCreateBuffer");
+            VulkanResult.Check(_vk.CreateBuffer(_device, &info, null, &handle), "vkCreateBuffer");
             MemoryRequirements requirements;
             _vk.GetBufferMemoryRequirements(_device, handle, &requirements);
-            Span<MemoryPropertyFlags> typeFlags = stackalloc MemoryPropertyFlags[32];
-            typeFlags = typeFlags[..GetMemoryTypeFlags(typeFlags)];
-            var typeIndex = SelectMemoryType(typeFlags, requirements.MemoryTypeBits, memoryPreferences);
-            if (typeIndex < 0)
-                throw new VulkanException($"No memory type satisfies {memoryPreferences[^1]}; vkAllocateMemory", Result.ErrorOutOfDeviceMemory);
-
-            var allocateInfo = new MemoryAllocateInfo
-            {
-                SType = StructureType.MemoryAllocateInfo,
-                AllocationSize = requirements.Size,
-                MemoryTypeIndex = (uint)typeIndex,
-            };
-            Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory");
-            Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
-            BufferResource created = new(handle, memory, size, typeFlags[typeIndex]);
+            memory = AllocateMemory(requirements.MemoryTypeBits, requirements.Size, memoryPreferences, null, "vkAllocateMemory", out MemoryPropertyFlags properties);
+            VulkanResult.Check(_vk.BindBufferMemory(_device, handle, memory, 0), "vkBindBufferMemory");
+            // Mapped for its lifetime (ENG-039 P5-10): every buffer here is host-visible, and
+            // freeing the memory unmaps it.
+            void* mapped;
+            VulkanResult.Check(_vk.MapMemory(_device, memory, 0, Vk.WholeSize, 0, &mapped), "vkMapMemory");
+            BufferResource created = new(handle, memory, size, properties, (nint)mapped);
             resource = created;
             return created;
         }
@@ -1015,29 +1022,41 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         }
     }
 
-    private DeviceMemory Allocate(MemoryRequirements requirements, MemoryPropertyFlags preferred, MemoryPropertyFlags? fallback)
+    /// <summary>
+    /// Allocates <paramref name="size"/> bytes from the first memory type allowed by
+    /// <paramref name="typeBits"/> that satisfies the earliest entry of
+    /// <paramref name="preferences"/> it can, chaining <paramref name="next"/> (dedicated, export or
+    /// import info). <paramref name="operation"/> names the step in a failure.
+    /// </summary>
+    private DeviceMemory AllocateMemory(
+        uint typeBits,
+        ulong size,
+        ReadOnlySpan<MemoryPropertyFlags> preferences,
+        void* next,
+        string operation,
+        out MemoryPropertyFlags properties)
     {
-        var typeIndex = FindMemoryType(requirements.MemoryTypeBits, preferred);
-        if (typeIndex < 0 && fallback is { } fallbackFlags)
-            typeIndex = FindMemoryType(requirements.MemoryTypeBits, fallbackFlags);
+        Span<MemoryPropertyFlags> typeFlags = stackalloc MemoryPropertyFlags[32];
+        typeFlags = typeFlags[..GetMemoryTypeFlags(typeFlags)];
+        var typeIndex = SelectMemoryType(typeFlags, typeBits, preferences);
         if (typeIndex < 0)
-            throw new VulkanException($"No memory type satisfies {preferred}; vkAllocateMemory", Result.ErrorOutOfDeviceMemory);
+        {
+            // The image preferences end in None (any allowed type), which names nothing useful.
+            var wanted = preferences[^1] == MemoryPropertyFlags.None ? "the resource's allowed types" : preferences[^1].ToString();
+            throw new VulkanException($"No memory type satisfies {wanted}; {operation}", Result.ErrorOutOfDeviceMemory);
+        }
 
         var allocateInfo = new MemoryAllocateInfo
         {
             SType = StructureType.MemoryAllocateInfo,
-            AllocationSize = requirements.Size,
+            PNext = next,
+            AllocationSize = size,
             MemoryTypeIndex = (uint)typeIndex,
         };
         DeviceMemory memory;
-        Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory");
+        VulkanResult.Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), operation);
+        properties = typeFlags[typeIndex];
         return memory;
-    }
-
-    private int FindMemoryType(uint typeBits, MemoryPropertyFlags flags)
-    {
-        Span<MemoryPropertyFlags> typeFlags = stackalloc MemoryPropertyFlags[32];
-        return SelectMemoryType(typeFlags[..GetMemoryTypeFlags(typeFlags)], typeBits, [flags]);
     }
 
     /// <summary>Writes the selected device's memory type flags into <paramref name="destination"/> (32 entries) and returns the count.</summary>
@@ -1100,6 +1119,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             return;
 
         _vk.DestroyBuffer(_device, buffer.Buffer, null);
+        _vk.UnmapMemory(_device, buffer.Memory);
         _vk.FreeMemory(_device, buffer.Memory, null);
         resource = null;
     }
@@ -1111,24 +1131,85 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private void Submit(SubmitInfo* submit)
     {
         Fence fence = _fence;
-        Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
+        VulkanResult.Check(_vk.ResetFences(_device, 1, &fence), "vkResetFences");
+        // Measured with the queue lock: FFmpeg's submissions and a keyed-mutex acquire both wait here.
+        var start = Stopwatch.GetTimestamp();
+        Result result;
         lock (QueueLock)
-            Check(_vk.QueueSubmit(_queue, 1, submit, _fence), "vkQueueSubmit");
+            result = _vk.QueueSubmit(_queue, 1, submit, _fence);
+        VulkanStallMeter.Report(start, "vkQueueSubmit");
+        VulkanResult.Check(result, "vkQueueSubmit");
     }
+
+    /// <summary>How long a submission may take before the device counts as lost (ns): the Windows GPU-reset interval.</summary>
+    internal const ulong FenceTimeoutNanoseconds = 2_000_000_000;
+
+    /// <summary>
+    /// Waits for the last <see cref="Submit"/>. Offscreen composition that has not finished in 2 s
+    /// means the GPU stopped: the device is marked lost and the wait throws as a device loss
+    /// (ENG-039), instead of blocking the presentation thread for good.
+    /// </summary>
+    private void WaitForSubmission(string operation)
+    {
+        Fence fence = _fence;
+        var start = Stopwatch.GetTimestamp();
+        Result result = _vk.WaitForFences(_device, 1, &fence, true, FenceTimeoutNanoseconds);
+        VulkanStallMeter.Report(start, operation);
+        if (result == Result.Timeout)
+        {
+            _shared?.MarkLost($"{operation} did not complete within 2 s", confirmed: false);
+            throw new VulkanException($"{operation} (not completed within 2 s)", Result.ErrorDeviceLost);
+        }
+
+        VulkanResult.Check(result, operation);
+    }
+
+    /// <summary>
+    /// Whether the device is lost (ENG-039): marked lost, the Direct3D11 device the Windows export
+    /// shares textures through was removed, or the heartbeat fails (see
+    /// <see cref="VulkanSharedDevice.Heartbeat"/>). Takes no frame lock and waits at most about
+    /// 350 ms; false once disposed.
+    /// </summary>
+    public bool ProbeDeviceLost(out string? reason)
+    {
+        reason = null;
+        if (!_probeGate.TryEnter(ProbeGateTimeout))
+            return false;
+
+        try
+        {
+            if (_probeClosed || _shared is not { } shared)
+                return false;
+
+            if (OperatingSystem.IsWindows() && _d3d11Device != 0)
+            {
+                var removed = VulkanD3D11Interop.GetDeviceRemovedReason(_d3d11Device);
+                if (removed < 0)
+                {
+                    shared.MarkLost($"the Direct3D11 device that shares textures with the compositor was removed (0x{removed:X8})");
+                    reason = shared.LostReason;
+                    return true;
+                }
+            }
+
+            return shared.Heartbeat(out reason);
+        }
+        finally
+        {
+            _probeGate.Exit();
+        }
+    }
+
+    private static readonly TimeSpan ProbeGateTimeout = TimeSpan.FromMilliseconds(500);
 
     private static ImageSubresourceRange ColorRange() => new(ImageAspectFlags.ColorBit, 0, 1, 0, 1);
 
     private static ImageSubresourceLayers ColorLayers() => new(ImageAspectFlags.ColorBit, 0, 0, 1);
 
-    private static void Check(Result result, string operation)
-    {
-        if (result != Result.Success)
-            throw new VulkanException(operation, result);
-    }
-
     private readonly record struct ImageResource(VkImage Image, DeviceMemory Memory, ImageView View, uint Width, uint Height);
 
-    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size, MemoryPropertyFlags Properties);
+    /// <summary>A host-visible buffer, persistently mapped at <see cref="Mapped"/>.</summary>
+    private readonly record struct BufferResource(VkBuffer Buffer, DeviceMemory Memory, ulong Size, MemoryPropertyFlags Properties, nint Mapped);
 
     private readonly record struct RenderTarget(ImageResource Image, Framebuffer Framebuffer);
 }
@@ -1140,4 +1221,10 @@ internal sealed class VulkanException(string operation, Result result)
     public Result Result { get; } = result;
 
     public bool IsDeviceLost => Result == Result.ErrorDeviceLost;
+
+    /// <summary>Gets whether an allocation failed (after a GPU reset, the first failure NVIDIA reports).</summary>
+    public bool IsOutOfMemory => Result is Result.ErrorOutOfDeviceMemory or Result.ErrorOutOfHostMemory;
+
+    /// <summary>Gets whether the compositor did not give a shared image back in time (its keyed mutex stayed taken).</summary>
+    public bool IsConsumerStall { get; init; }
 }

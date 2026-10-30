@@ -88,6 +88,29 @@ public sealed class PlayerStartupOptionsTests
         Assert.True(other.AutoNext);
     }
 
+    [Theory]
+    [InlineData(1, true, true)]
+    [InlineData(2, true, false)]
+    [InlineData(1, false, false)]
+    public void ForBuild_GivesTheStartupMediaToPlayerOneOfTheFirstBuildOnly(int index, bool atStartup, bool hasMedia)
+    {
+        PlayerStartupOptions options = PlayerStartupOptions.Parse(["song.mp3", "--prepare-next=next.mp3", "--mode=audio"]);
+
+        PlayerStartupOptions player = options.ForBuild(index, atStartup);
+
+        Assert.Equal(hasMedia ? "song.mp3" : null, player.MediaPath);
+        Assert.Equal(hasMedia ? "next.mp3" : null, player.PrepareNextPath);
+        Assert.Equal(MediaPlayerMode.Audio, player.Mode);
+    }
+
+    [Theory]
+    [InlineData("--second-screen=2", 1, true, true)]
+    [InlineData("--second-screen=2", 2, true, false)]
+    [InlineData("--second-screen=2", 1, false, false)]
+    [InlineData("--players=2", 1, true, false)]
+    public void OpensSecondScreenAtStartup_OnlyPlayerOneOfTheFirstBuildWithTheFlag(string argument, int index, bool atStartup, bool expected) =>
+        Assert.Equal(expected, PlayerStartupOptions.Parse([argument]).OpensSecondScreenAtStartup(index, atStartup));
+
     [Fact]
     public void NativePaths_KeepExistingDirectoriesInOrderWithoutDuplicates()
     {

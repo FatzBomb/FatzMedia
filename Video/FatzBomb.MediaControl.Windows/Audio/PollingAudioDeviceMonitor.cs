@@ -1,7 +1,6 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using ManagedBass;
-using System.Diagnostics;
 using MBass = ManagedBass.Bass;
 
 namespace FatzBomb.MediaControl.Windows.Audio;
@@ -10,10 +9,7 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(1);
 
-    private readonly TimeSpan _pollInterval;
-    private readonly Lock _gate = new();
-    private Thread? _thread;
-    private volatile bool _stopRequested;
+    private readonly PollingLoop _loop;
     private long _lastSampleRate;
     private int _lastDevice;
     private string? _lastDeviceName;
@@ -28,59 +24,16 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
     internal PollingAudioDeviceMonitor(TimeSpan pollInterval)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(pollInterval, TimeSpan.Zero);
-        _pollInterval = pollInterval;
+        _loop = new PollingLoop("AudioDeviceMonitor", pollInterval, CheckForChanges);
     }
 
     public event EventHandler<AudioDeviceChangeInfo>? DeviceChanged;
 
-    public bool IsRunning
-    {
-        get
-        {
-            lock (_gate)
-                return _thread is { IsAlive: true };
-        }
-    }
+    public bool IsRunning => _loop.IsRunning;
 
-    public void Start()
-    {
-        lock (_gate)
-        {
-            if (_thread is { IsAlive: true })
-                return;
+    public void Start() => _loop.Start(CaptureBaseline);
 
-            _stopRequested = false;
-            CaptureBaseline();
-            _thread = new Thread(PollLoop)
-            {
-                IsBackground = true,
-                Name = "AudioDeviceMonitor",
-            };
-            _thread.Start();
-        }
-    }
-
-    public void Stop()
-    {
-        Thread? thread;
-        lock (_gate)
-        {
-            _stopRequested = true;
-            thread = _thread;
-            _thread = null;
-        }
-
-        if (thread == null)
-            return;
-
-        try
-        {
-            _ = thread.Join(_pollInterval + TimeSpan.FromSeconds(1));
-        }
-        catch
-        {
-        }
-    }
+    public void Stop() => _loop.Stop();
 
     public void Dispose() => Stop();
 
@@ -140,24 +93,5 @@ internal sealed class PollingAudioDeviceMonitor : IAudioDeviceMonitor
         _lastDefaultEndpointId = currentDefaultEndpointId;
         _lastDefaultEndpointName = currentDefaultEndpointName;
         DeviceChanged?.Invoke(this, detected);
-    }
-
-    private void PollLoop()
-    {
-        while (!_stopRequested)
-        {
-            try
-            {
-                CheckForChanges();
-            }
-            catch
-            {
-            }
-
-            TimeSpan interval = _pollInterval;
-            var deadline = Stopwatch.GetTimestamp() + (long)(interval.TotalSeconds * Stopwatch.Frequency);
-            while (!_stopRequested && Stopwatch.GetTimestamp() < deadline)
-                Thread.Sleep(50);
-        }
     }
 }

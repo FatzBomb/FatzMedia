@@ -455,7 +455,7 @@ public sealed class MediaPresentationCoordinatorTests
         var first = new Thread(coordinator.RefreshCurrentPosition);
         first.Start();
         Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(10)));
-        var second = new Thread(() => coordinator.BaseVisualTransform = new BaseVisualTransform { Brightness = 0.5f });
+        var second = new Thread(coordinator.StartRendering);
         second.Start();
 
         // Without ordering the second composition is built and presented while the first waits.
@@ -463,10 +463,573 @@ public sealed class MediaPresentationCoordinatorTests
         release.Set();
         first.Join();
         second.Join();
+        coordinator.StopRendering();
 
         Assert.Equal(
-            ["current position refreshed", "base visual transform changed"],
+            ["current position refreshed", "presentation started"],
+            backend.PresentedFrames.Skip(baseline).Take(2).Select(static frame => frame.Reason).ToArray());
+    }
+
+    [Fact]
+    public void Presents_StayInBuildOrder_AcrossPaths()
+    {
+        // ENG-039: every present path takes the present gate, so a clear cannot overtake a
+        // composition still presenting (it took only _lock before, which a software present no
+        // longer held while it presented).
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var baseline = backend.PresentedFrames.Count;
+
+        using var firstEntered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        backend.BeforePresent = frame =>
+        {
+            if (frame.Reason != "current position refreshed")
+                return;
+
+            firstEntered.Set();
+            _ = release.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        var first = new Thread(coordinator.RefreshCurrentPosition);
+        first.Start();
+        Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(10)));
+        // Stopped media: StopRendering clears the composition (a present of its own).
+        var second = new Thread(coordinator.StopRendering);
+        second.Start();
+
+        _ = second.Join(TimeSpan.FromMilliseconds(300));
+        release.Set();
+        first.Join();
+        second.Join();
+
+        Assert.Equal(
+            ["current position refreshed", "presentation stopped"],
             backend.PresentedFrames.Skip(baseline).Select(static frame => frame.Reason).ToArray());
+    }
+
+    [Fact]
+    public void SurfaceCalls_DoNotWaitForABlockedPresent()
+    {
+        // ENG-039 (GPU-reset smoke 3c): a present stuck in the renderer held the coordinator lock,
+        // so the UI thread's next resize waited for it and the player froze.
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle }, time);
+        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1280, 720);
+        Assert.True(coordinator.AttachPresentationSurface(surface));
+
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        backend.BeforePresent = frame =>
+        {
+            if (frame.Reason != "current position refreshed")
+                return;
+
+            entered.Set();
+            _ = release.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        var stuck = new Thread(coordinator.RefreshCurrentPosition);
+        stuck.Start();
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+            time.Advance(TimeSpan.FromMilliseconds(300));
+
+            var results = new ConcurrentQueue<bool>();
+            var surfaceCalls = new Thread(() =>
+            {
+                results.Enqueue(coordinator.ResizePresentationSurface(surface.Id, 1920, 1080));
+                results.Enqueue(coordinator.SetPresentationSurfaceLiveResize(surface.Id, true));
+                results.Enqueue(coordinator.SetPresentationSurfaceLiveResize(surface.Id, false));
+                coordinator.BaseVisualTransform = new BaseVisualTransform { Brightness = 0.5f };
+                results.Enqueue(coordinator.BaseVisualTransform.Brightness == 0.5f);
+            });
+            surfaceCalls.Start();
+            var returned = surfaceCalls.Join(TimeSpan.FromSeconds(2));
+            release.Set();
+            stuck.Join();
+            surfaceCalls.Join();
+
+            Assert.True(returned, "a surface call waited for the blocked present");
+            Assert.Equal([true, true, true, true], results);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        // The resize's present was left to the thread pool and runs once the gate is free.
+        Assert.True(SpinWait.SpinUntil(
+            () => backend.PresentedFrames.Any(static frame => frame.Reason is "presentation surface resized" or "presentation surface live resize ended"),
+            TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void HealthProbe_LostWhileIdle_RecoversWithoutAPresent()
+    {
+        // ENG-039: nothing presented after the GPU reset, so no present ever reported the loss.
+        var owner = new object();
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        var diagnostics = new ConcurrentQueue<MediaDiagnosticInfo>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (ReferenceEquals(info.Owner, owner))
+                diagnostics.Enqueue(info);
+        }
+
+        MediaPresentationCoordinator coordinator;
+        using (DiagnosticRouter.EnterOwner(owner))
+            coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            using (coordinator)
+            {
+                var recovered = 0;
+                coordinator.DeviceRecovered += (_, _) => Interlocked.Increment(ref recovered);
+                Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+                var presents = backend.PresentedFrames.Count;
+                backend.DeviceLost = true;
+
+                time.Advance(TimeSpan.FromSeconds(1));
+
+                Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref recovered) == 1, TimeSpan.FromSeconds(5)));
+                Assert.Equal(presents + 2, backend.PresentedFrames.Count); // the stop clear and the recovery frame
+                Assert.Equal("device-lost recovery completed", backend.PresentedFrames.Last().Reason);
+                Assert.Equal(1, backend.CleanupCount);
+                Assert.Equal(2, backend.InitializeCount);
+                Assert.Equal(2, backend.AttachedSurfaces.Count);
+                Assert.Contains(diagnostics, static info =>
+                    info.Level == MediaDiagnosticLevel.Error && info.Message == "GPU device lost (test loss); recovering.");
+                Assert.Contains(diagnostics, static info => info.Message == "GPU device recovered after 1 attempt(s).");
+            }
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+    }
+
+    [Fact]
+    public void FailedPresent_ProbesImmediately()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle }, time);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        backend.DeviceLost = true;
+        backend.PresentFailureReason = "DXGI_ERROR_DEVICE_REMOVED";
+
+        coordinator.RefreshCurrentPosition();
+        Assert.Equal(0, Volatile.Read(ref backend.ProbeCount));
+
+        // No full health interval passes: the failed present brought the probe forward.
+        time.Advance(TimeSpan.Zero);
+        backend.PresentFailureReason = null;
+
+        Assert.True(Volatile.Read(ref backend.ProbeCount) >= 1);
+        Assert.True(SpinWait.SpinUntil(
+            () => backend.PresentedFrames.Any(static frame => frame.Reason == "device-lost recovery completed"),
+            TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void HealthProbe_NoSurfaces_DoesNotEscalate()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        MediaPresentationSurfaceDescriptor surface = CreatePrimarySurface(1280, 720);
+        Assert.True(coordinator.AttachPresentationSurface(surface));
+        Assert.True(coordinator.DetachPresentationSurface(surface.Id));
+        backend.DeviceLost = true;
+
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, Volatile.Read(ref backend.ProbeCount));
+        Assert.Equal(0, backend.CleanupCount);
+    }
+
+    [Fact]
+    public void HealthProbe_Healthy_NeverCleansUp()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(5, Volatile.Read(ref backend.ProbeCount));
+        Assert.Equal(0, backend.CleanupCount);
+    }
+
+    [Fact]
+    public void FailedRecovery_IsRetriedWhileASurfaceIsAttached()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend { InitializeSucceeds = true };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        coordinator.RecoveryBackoff = [TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1)];
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        backend.InitializeSucceeds = false;
+        backend.DeviceLost = true;
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(() => backend.CleanupCount == 3 && !coordinator.IsRecoveryRunning, TimeSpan.FromSeconds(5)));
+
+        // Given up: retried after 10 s, not at every tick.
+        time.Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(3, backend.CleanupCount);
+        backend.InitializeSucceeds = true;
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        Assert.True(SpinWait.SpinUntil(
+            () => backend.PresentedFrames.Any(static frame => frame.Reason == "device-lost recovery completed"),
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(4, backend.CleanupCount);
+    }
+
+    [Fact]
+    public void HardwareFrames_AreDroppedWhileRecovering()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true, InitializeSucceeds = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video }, time);
+        coordinator.RecoveryBackoff = [];
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        backend.InitializeSucceeds = false;
+        backend.DeviceLost = true;
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(() => backend.CleanupCount == 1 && !coordinator.IsRecoveryRunning, TimeSpan.FromSeconds(5)));
+        var presents = backend.NativeFramePresents;
+
+        video.RaiseFrame(HardwareFrame());
+
+        Assert.Equal(presents, backend.NativeFramePresents);
+    }
+
+    [Fact]
+    public void RefusedHardwareFrame_AsksTheDecoderForSoftwareOnce()
+    {
+        // ENG-037: a renderer that cannot take the decoder's device (a failed adoption, WARP)
+        // dropped every frame, so a paused first frame stayed black.
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = false };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        var reasons = new List<string>();
+        var fallback = new VideoDecodeFallback(reasons.Add);
+
+        video.RaiseFrame(HardwareFrame(fallback));
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.True(fallback.IsRequested);
+        string reason = Assert.Single(reasons);
+        Assert.Contains("Test renderer", reason, StringComparison.Ordinal);
+        Assert.Equal(0, backend.NativeFramePresents);
+    }
+
+    [Fact]
+    public void AcceptedHardwareFrame_KeepsHardwareDecoding()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
+    public void RefusedHardwareFrame_WithoutASurface_KeepsHardwareDecoding()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = false };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video });
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
+    public void RefusedHardwareFrame_WhileRecoveringTheDevice_KeepsHardwareDecoding()
+    {
+        // A lost device is not a refusal: recovery reopens the video on the new device.
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true, InitializeSucceeds = true };
+        var video = new TestVideoEngine();
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine { TestVideo = video, Content = MediaContent.Video }, time);
+        coordinator.RecoveryBackoff = [];
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1920, 1080)));
+        backend.InitializeSucceeds = false;
+        backend.DeviceLost = true;
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(() => backend.CleanupCount == 1 && !coordinator.IsRecoveryRunning, TimeSpan.FromSeconds(5)));
+        backend.AcceptsNativeFrames = false;
+        var fallback = new VideoDecodeFallback();
+
+        video.RaiseFrame(HardwareFrame(fallback));
+
+        Assert.False(fallback.IsRequested);
+    }
+
+    [Fact]
+    public void DeviceLost_DuringDispose_DoesNotThrow()
+    {
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        coordinator.Dispose();
+        backend.DeviceLost = true;
+
+        coordinator.RequestDeviceLostRecovery("after dispose");
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, backend.CleanupCount); // Dispose's own cleanup only
+        Assert.False(coordinator.IsRecoveryRunning);
+    }
+
+    [Fact]
+    public void BlockedRendererCall_RaisesOneStallDiagnostic()
+    {
+        var owner = new object();
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend();
+        var messages = new ConcurrentQueue<string>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (ReferenceEquals(info.Owner, owner) && info.Category == "Presentation")
+                messages.Enqueue(info.Message);
+        }
+
+        MediaPresentationCoordinator coordinator;
+        using (DiagnosticRouter.EnterOwner(owner))
+            coordinator = CreateCoordinator(backend, new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle }, time);
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        try
+        {
+            using (coordinator)
+            {
+                Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+                backend.BeforePresent = frame =>
+                {
+                    if (frame.Reason != "current position refreshed")
+                        return;
+
+                    entered.Set();
+                    _ = release.Wait(TimeSpan.FromSeconds(10));
+                };
+
+                var stuck = new Thread(coordinator.RefreshCurrentPosition);
+                stuck.Start();
+                Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+
+                time.Advance(TimeSpan.FromSeconds(2));
+                Assert.Empty(messages);
+                time.Advance(TimeSpan.FromSeconds(4));
+                release.Set();
+                stuck.Join();
+
+                Assert.Equal(2, messages.Count);
+                Assert.Equal("Renderer call has not returned for 3 s (PresentComposition); presentation is blocked.", messages.First());
+                Assert.StartsWith("Renderer call returned after 6", messages.Last());
+            }
+        }
+        finally
+        {
+            release.Set();
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+    }
+
+    [Fact]
+    public void HardwareBackground_FailedPresent_IsNotRetained()
+    {
+        // ENG-039 (smoke test 6): the background was marked retained before its present, which
+        // failed with no target yet, so the next refresh asked for a background the renderer
+        // never received ("background layer could not be prepared").
+        var owner = new object();
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true, PresentFailureReason = "no active D3D11 presentation target" };
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        var warnings = new ConcurrentQueue<string>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (ReferenceEquals(info.Owner, owner) && info.Category == "Composition")
+                warnings.Enqueue(info.Message);
+        }
+
+        MediaPresentationCoordinator coordinator;
+        using (DiagnosticRouter.EnterOwner(owner))
+            coordinator = CreateCoordinator(backend, engine);
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            using (coordinator)
+            using (DiagnosticRouter.EnterOwner(owner))
+            {
+                engine.RaiseBackgroundFrame(HardwareFrame());
+                backend.PresentFailureReason = null;
+
+                Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+                MediaCompositionFrame attached = backend.PresentedFrames.Last();
+                Assert.Equal("presentation surface attached", attached.Reason);
+                Assert.False(attached.UseRetainedBackground);
+                Assert.Empty(warnings);
+            }
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+    }
+
+    [Fact]
+    public void AttachesAndDetachesItsDecodeDevice_ThroughTheEngine()
+    {
+        var engine = new TestMediaEngine();
+        var decoding = new DecodeDeviceRendererBackend();
+        MediaPresentationCoordinator coordinator = CreateCoordinator(decoding, engine);
+        Assert.Same(decoding, engine.AttachedDecodeDevice);
+
+        coordinator.Dispose();
+        Assert.Null(engine.AttachedDecodeDevice);
+
+        // A renderer without its own decode device attaches null: the platform's devices.
+        using MediaPresentationCoordinator plain = CreateCoordinator(new RecordingRendererBackend(), engine);
+        Assert.Equal(2, engine.DecodeDeviceAttachCount);
+        Assert.Null(engine.AttachedDecodeDevice);
+    }
+
+    [Fact]
+    public void HardwareBackground_PresentedFrame_IsRetainedForRefresh()
+    {
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var engine = new TestMediaEngine { Content = MediaContent.Audio };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        engine.RaiseBackgroundFrame(HardwareFrame());
+        MediaCompositionFrame hardware = backend.PresentedFrames.Last();
+        Assert.Equal("core hardware background frame", hardware.Reason);
+
+        coordinator.RefreshCurrentPosition();
+
+        MediaCompositionFrame refreshed = backend.PresentedFrames.Last();
+        Assert.Equal("current position refreshed", refreshed.Reason);
+        Assert.True(refreshed.UseRetainedBackground);
+        Assert.Equal(hardware.BackgroundRevision, refreshed.BackgroundRevision);
+        Assert.Equal((1920, 1080), (refreshed.BackgroundWidth, refreshed.BackgroundHeight));
+    }
+
+    [Fact]
+    public void StoredHardwareBackground_WithoutPresent_IsNotRetained()
+    {
+        // CD+G waiting to be shown keeps the background frame without presenting it.
+        var backend = new RecordingRendererBackend { AcceptsNativeFrames = true };
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Cdg };
+        using var coordinator = CreateCoordinator(backend, engine);
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        var presents = backend.PresentedFrames.Count;
+
+        engine.RaiseBackgroundFrame(HardwareFrame());
+        Assert.Equal(presents, backend.PresentedFrames.Count);
+
+        engine.Content = MediaContent.Audio;
+        coordinator.RefreshCurrentPosition();
+
+        MediaCompositionFrame refreshed = backend.PresentedFrames.Last();
+        Assert.Equal("current position refreshed", refreshed.Reason);
+        Assert.False(refreshed.UseRetainedBackground);
+    }
+
+    [Fact]
+    public void UnchangedCues_DoNotRasterizeOrAllocateText()
+    {
+        // ENG-039 P5-2: a KAR re-checked its cues on every frame, joining the cue text each time.
+        var karaokeCue = new SubtitleCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(10), "Hello world")
+        {
+            KaraokeTiming = new KaraokeCueTiming(
+                [new KaraokeLineTiming("Hello world", [new KaraokeTextSegment(0, 5, TimeSpan.FromSeconds(1)), new KaraokeTextSegment(6, 5, TimeSpan.FromSeconds(2))])],
+                ActiveLineIndex: 0,
+                TransitionStart: TimeSpan.Zero,
+                TransitionEnd: TimeSpan.FromSeconds(10)),
+        };
+        var subtitles = new FixedSubtitleEngine([karaokeCue]);
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle, Subtitle = subtitles };
+        var rasterizer = new CountingSubtitleRasterizer();
+        using var coordinator = CreateCoordinator(new RecordingRendererBackend(), engine, rasterizer: rasterizer);
+
+        Assert.True(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal((0, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+        Assert.Equal(0, MeasureUnchangedUpdates(coordinator, 5));
+        Assert.Equal((0, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+
+        // Two plain cues are joined into one text; unchanged cues don't join them again.
+        subtitles.Cues = [new SubtitleCue(2, TimeSpan.Zero, TimeSpan.FromSeconds(10), "first"), new SubtitleCue(3, TimeSpan.Zero, TimeSpan.FromSeconds(10), "second")];
+        Assert.True(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal("first\nsecond", rasterizer.LastText);
+        Assert.Equal(0, MeasureUnchangedUpdates(coordinator, 5));
+        Assert.Equal((1, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+
+        // New cue objects with the same text still skip the raster, as before.
+        subtitles.Cues = [new SubtitleCue(4, TimeSpan.Zero, TimeSpan.FromSeconds(10), "first"), new SubtitleCue(5, TimeSpan.Zero, TimeSpan.FromSeconds(10), "second")];
+        Assert.False(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal((1, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+    }
+
+    [Fact]
+    public void SubtitleRaster_IsPresentedFromThePooledBuffer()
+    {
+        var subtitles = new FixedSubtitleEngine([new SubtitleCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(10), "one")]);
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle, Subtitle = subtitles };
+        var rasterizer = new CountingSubtitleRasterizer();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, engine, rasterizer: rasterizer);
+        rasterizer.Fill = 0x11;
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame first = backend.PresentedFrames.Last();
+        Assert.Equal(CountingSubtitleRasterizer.PixelBytes, first.SubtitleBgra.Length);
+        Assert.All(first.SubtitleBgra.ToArray(), value => Assert.Equal(0x11, value));
+
+        rasterizer.Fill = 0x22;
+        subtitles.Cues = [new SubtitleCue(2, TimeSpan.Zero, TimeSpan.FromSeconds(10), "two")];
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame second = backend.PresentedFrames.Last();
+        Assert.Equal(2, rasterizer.TextCount);
+        Assert.True(second.SubtitleRevision > first.SubtitleRevision);
+        Assert.All(second.SubtitleBgra.ToArray(), value => Assert.Equal(0x22, value));
+    }
+
+    private static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
+    {
+        var changed = false;
+        for (var i = 0; i < 16; i++)
+            changed |= coordinator.UpdateSubtitleOverlay(position);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+            changed |= coordinator.UpdateSubtitleOverlay(position);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.False(changed);
+        return allocated;
     }
 
     private static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
@@ -496,6 +1059,21 @@ public sealed class MediaPresentationCoordinatorTests
         Targets = targets,
     };
 
+    private static VideoFrameEventArgs HardwareFrame(VideoDecodeFallback fallback) => new()
+    {
+        Width = 1920,
+        Height = 1080,
+        Stride = 0,
+        PtsSeconds = 0,
+        NativeResource = new NativeVideoFrameResource(
+            new NativeVideoDeviceResource(MediaGraphicsBackendId.Direct3D11, DeviceHandle: 101),
+            ResourceHandle: 303,
+            SubresourceIndex: 0)
+        {
+            DecodeFallback = fallback,
+        },
+    };
+
     private static VideoFrameEventArgs HardwareFrame() => new()
     {
         Width = 1920,
@@ -510,12 +1088,83 @@ public sealed class MediaPresentationCoordinatorTests
 
     private static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
-        TestMediaEngine engine) => new(
+        TestMediaEngine engine,
+        TimeProvider? timeProvider = null,
+        ISubtitleRasterizer? rasterizer = null) => new(
             backend,
-            new StubSubtitleRasterizer(),
+            rasterizer ?? new StubSubtitleRasterizer(),
             engine,
             MediaPlayerConfiguration.Auto,
-            new SystemPrecisionWaiterFactory());
+            new SystemPrecisionWaiterFactory(),
+            // Without a test clock the health timer never fires during a test.
+            timeProvider ?? new ManualTimeProvider());
+
+    /// <summary>A clock that moves only when the test advances it; timers fire on the test thread.</summary>
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private readonly Lock _gate = new();
+        private readonly List<ManualTimer> _timers = [];
+        private long _now;
+
+        public override long TimestampFrequency => 1_000;
+
+        public override long GetTimestamp() => Volatile.Read(ref _now);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(this, callback, state);
+            _ = timer.Change(dueTime, period);
+            lock (_gate)
+                _timers.Add(timer);
+            return timer;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            var target = Volatile.Read(ref _now) + (long)duration.TotalMilliseconds;
+            while (true)
+            {
+                ManualTimer? due;
+                lock (_gate)
+                    due = _timers.Where(timer => timer.DueAt is { } at && at <= target).MinBy(timer => timer.DueAt);
+                if (due is null)
+                    break;
+
+                Volatile.Write(ref _now, Math.Max(Volatile.Read(ref _now), due.DueAt!.Value));
+                due.Fire();
+            }
+
+            Volatile.Write(ref _now, target);
+        }
+
+        private sealed class ManualTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
+        {
+            private long _period;
+
+            public long? DueAt { get; private set; }
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                _period = period == Timeout.InfiniteTimeSpan ? 0 : (long)period.TotalMilliseconds;
+                DueAt = dueTime == Timeout.InfiniteTimeSpan ? null : owner.GetTimestamp() + (long)dueTime.TotalMilliseconds;
+                return true;
+            }
+
+            public void Fire()
+            {
+                DueAt = _period > 0 ? DueAt + _period : null;
+                callback(state);
+            }
+
+            public void Dispose() => DueAt = null;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
 
     private static MediaPresentationSurfaceDescriptor CreatePrimarySurface(int width, int height) => new(
         MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
@@ -545,7 +1194,73 @@ public sealed class MediaPresentationCoordinatorTests
         public void Dispose() { }
     }
 
-    private sealed class RecordingRendererBackend : IMediaRendererBackend
+    /// <summary>Counts raster calls and returns a small fixed raster through the base overloads.</summary>
+    private sealed class CountingSubtitleRasterizer : ISubtitleRasterizer
+    {
+        public const int PixelBytes = 4 * 4 * 2;
+        private readonly byte[] _pixels = new byte[PixelBytes];
+
+        public int TextCount { get; private set; }
+        public int KaraokeCount { get; private set; }
+        public string? LastText { get; private set; }
+        public byte Fill { get; set; } = 0xFF;
+
+        public SubtitleRasterResult Render(string text, int width, int height)
+        {
+            TextCount++;
+            LastText = text;
+            return Result(width, height);
+        }
+
+        public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height)
+        {
+            KaraokeCount++;
+            return Result(width, height);
+        }
+
+        public void Dispose() { }
+
+        private SubtitleRasterResult Result(int width, int height)
+        {
+            Array.Fill(_pixels, Fill);
+            return new SubtitleRasterResult(_pixels, 4, 2, 16, 0, 0, width, height);
+        }
+    }
+
+    private sealed class FixedSubtitleEngine(IReadOnlyList<SubtitleCue> cues) : ISubtitleEngine
+    {
+        public IReadOnlyList<SubtitleCue> Cues { get; set; } = cues;
+        public bool IsOpen => true;
+        public IReadOnlyList<SubtitleCue> GetActiveCues(double positionSeconds) => Cues;
+        public void Load(string filePath) => throw new NotSupportedException();
+        public void LoadCues(IReadOnlyList<SubtitleCue> cues) => Cues = cues;
+        public void Close() => Cues = [];
+        public void Dispose() { }
+
+        public event EventHandler? CuesChanged
+        {
+            add { }
+            remove { }
+        }
+    }
+
+    private sealed class DecodeDeviceRendererBackend : RecordingRendererBackend, IMediaRendererVideoDecodeDevice
+    {
+        public string? VideoDecodeDeviceType => "vulkan";
+        public string? VideoDecodeUnavailableReason => null;
+
+        public nint CreateVideoDecodeDeviceContext(out string? failureReason)
+        {
+            failureReason = "test";
+            return 0;
+        }
+
+        public NativeVideoDeviceResource? CreateVideoDecodeDeviceResource(nint ffmpegHardwareDeviceContext) => null;
+        public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) => null;
+        public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) => false;
+    }
+
+    private class RecordingRendererBackend : IMediaRendererBackend
     {
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> AttachedSurfaces { get; } = [];
         public ConcurrentQueue<MediaPresentationSurfaceDescriptor> ResizedSurfaces { get; } = [];
@@ -562,11 +1277,23 @@ public sealed class MediaPresentationCoordinatorTests
         public bool IsInitialized { get; private set; }
         public nint NativeDeviceHandle => 0;
 
+        public bool InitializeSucceeds { get; set; } = true;
+
         public bool Initialize()
         {
             InitializeCount++;
-            IsInitialized = true;
-            return true;
+            IsInitialized = InitializeSucceeds;
+            return InitializeSucceeds;
+        }
+
+        public volatile bool DeviceLost;
+        public int ProbeCount;
+
+        public bool ProbeDeviceLost(out string? reason)
+        {
+            _ = Interlocked.Increment(ref ProbeCount);
+            reason = DeviceLost ? "test loss" : null;
+            return DeviceLost;
         }
 
         public bool AcceptsSurfaces { get; set; } = true;
@@ -633,6 +1360,8 @@ public sealed class MediaPresentationCoordinatorTests
         {
             CleanupCount++;
             IsInitialized = false;
+            // A new device is a healthy one.
+            DeviceLost = false;
         }
 
         public bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted)

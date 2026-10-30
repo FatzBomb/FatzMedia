@@ -17,7 +17,7 @@ namespace FatzBomb.MediaControl.Player.WinForms;
 /// second screen and file drops. The chrome rule, the stats line and the screen choice are shared
 /// with the WPF and Avalonia players (Player.Shared).
 /// </summary>
-internal sealed class PlayerPanel : UserControl
+internal sealed class PlayerPanel : UserControl, IPlayerSlot
 {
     private const int SeekScale = 10;
 
@@ -64,7 +64,7 @@ internal sealed class PlayerPanel : UserControl
 
         var shell = new WinFormsPlayerShell(owner);
         _viewModel = new PlayerViewModel(
-            atStartup ? options.ForPlayer(index) : options.WithoutStartupMedia(),
+            options.ForBuild(index, atStartup),
             new PlayerHost(dispatcher, new WinFormsPlayerEngineFactory(options), shell, shell, Program.LogFilePath))
         {
             Label = $"P{index}",
@@ -117,7 +117,7 @@ internal sealed class PlayerPanel : UserControl
     public async Task InitializeAsync()
     {
         await _viewModel.StartAsync();
-        if (_atStartup && _index == 1 && _options.SecondScreen is not null && _viewModel.Player is not null && !_disposed)
+        if (_options.OpensSecondScreenAtStartup(_index, _atStartup) && _viewModel.Player is not null && !_disposed)
             _secondScreenBox.Checked = true;
     }
 
@@ -131,7 +131,14 @@ internal sealed class PlayerPanel : UserControl
         _viewModel.UpdateStats(process, PlayerStatsLine.WithSecondScreen(surface, second));
     }
 
-    /// <summary>Lets go of the surfaces and disposes the engine off the UI thread.</summary>
+    /// <summary>This player has no flyouts.</summary>
+    bool IPlayerSlot.HasOpenFlyout => false;
+
+    bool IPlayerSlot.IsKeyboardFocusWithin => ContainsFocus;
+
+    bool IPlayerSlot.CloseFlyout() => false;
+
+    /// <summary>Lets go of the surfaces, disposes the engine off the UI thread, then disposes this control.</summary>
     public async Task DisposeAsync()
     {
         if (_disposed)
@@ -145,8 +152,17 @@ internal sealed class PlayerPanel : UserControl
         foreach (ViewModelBinder binder in _bandBinders)
             binder.Dispose();
         _surface.Player = null;
-        // Dispose waits for admitted media operations: the view model does it off the UI thread.
-        await _viewModel.DisposeAsync();
+        try
+        {
+            // Dispose waits for admitted media operations: the view model does it off the UI thread.
+            await _viewModel.DisposeAsync();
+        }
+        finally
+        {
+            // A rebuild and the closing form are both done with the control by now, even when the
+            // engine's teardown failed (the controller reports that).
+            Dispose();
+        }
     }
 
     /// <summary>Enters or leaves the full-screen layout: the bars and the cursor auto-hide.</summary>

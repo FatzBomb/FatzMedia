@@ -88,7 +88,8 @@ foreach ($adapter in @(
     Assert-Match $adapter.Surface 'public\s+bool\s+IsPresentationSuspended' "$name MediaSurface must expose IsPresentationSuspended (Audio mode)."
     Assert-Match $adapter.Surface 'public\s+MediaSurfacePresentationPath\s+PresentationPath' "$name MediaSurface must report Core's MediaSurfacePresentationPath."
     Assert-Match $adapter.Surface 'event\s+EventHandler\?\s+PresentationPathChanged' "$name MediaSurface must expose PresentationPathChanged."
-    Assert-Match $adapter.Surface 'DescribeAttachRefused' "$name MediaSurface must warn when the session refuses its surface."
+    # ENG-039: the refusal warning (raised once per session) lives in Core's MediaSurfaceBookkeeping.
+    Assert-Match $adapter.Surface '_bookkeeping\.ReportAttachRefused\s*\(' "$name MediaSurface must warn through Core's MediaSurfaceBookkeeping when the session refuses its surface."
     Assert-Match $adapter.Surface 'public\s+MediaPresentationSurfaceRole\s+Role' "$name MediaSurface must expose Role."
     Assert-Match $adapter.Surface 'public\s+string\s+EffectiveSurfaceId' "$name MediaSurface must expose EffectiveSurfaceId."
     Assert-Match $adapter.Secondary 'public\s+bool\s+IsFullScreen' "$name SecondaryPresentationWindow must expose IsFullScreen."
@@ -158,7 +159,9 @@ foreach ($player in @(
     Assert-Match $view 'PlayerScreenChooser\.Choose\s*\(' "$name player must place its second screen with the shared screen rule."
     Assert-Match $view 'UpdateStats\s*\(' "$name player must show the shared stats line."
     Assert-Match $view 'SecondScreen' "$name player must honour --second-screen=."
-    Assert-Match $window 'ProcessSampler[^;]*=\s*new' "$name player must sample the process with the shared ProcessSampler."
+    # ENG-039 R1: the rebuild, full screen and keys, the stats tick (ProcessSampler) and closing.
+    Assert-Match $window 'new\s+PlayerSetController<' "$name player must drive its players with the shared PlayerSetController."
+    Assert-Match $view 'IPlayerSlot' "$name player's view must be the shared controller's IPlayerSlot."
     Assert-Match $window '\.Players\b|PlayersBox' "$name player must show --players=1..4."
     # The toolbar: player count and renderer change at run time in every player (owner, 046A smoke).
     Assert-Match $window '(?i)_?playersBox' "$name player must offer the player count in its toolbar."

@@ -40,13 +40,11 @@ internal sealed class VulkanExportedImageSet(
     int width,
     int height,
     IReadOnlyList<VulkanExportedImage> images,
-    bool hasSemaphores,
     MediaSharedGpuImageHandleKind kind = MediaSharedGpuImageHandleKind.VulkanOpaqueFd)
 {
     public int Width { get; } = width;
     public int Height { get; } = height;
     public IReadOnlyList<VulkanExportedImage> Images { get; } = images;
-    public bool HasSemaphores { get; } = hasSemaphores;
 
     /// <summary>Gets how the images' memory is handed over.</summary>
     public MediaSharedGpuImageHandleKind Kind { get; } = kind;
@@ -153,7 +151,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 throw;
             }
 
-            var set = new VulkanExportedImageSet(width, height, images, withSemaphores, kind);
+            var set = new VulkanExportedImageSet(width, height, images, kind);
             _exportedSets.Add(set);
             return set;
         }
@@ -186,13 +184,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             if (set.IsDestroyed || !_exportedSets.Remove(set))
                 return;
 
+            // Every submission of this compositor completed (fence wait) before _sync was released,
+            // so nothing still uses the images (ENG-039: no queue wait, which FFmpeg's work and a
+            // lost device could stretch, on the caller's UI thread).
             set.IsDestroyed = true;
-            if (_device.Handle != 0)
-            {
-                lock (QueueLock)
-                    _ = _vk.QueueWaitIdle(_queue);
-            }
-
             foreach (VulkanExportedImage image in set.Images)
                 DestroyExportedImage(image, closeDescriptors);
         }
@@ -232,33 +227,22 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                     HandleType = ExternalMemoryHandleTypeFlags.OpaqueFDBit,
                     Fd = memoryFd,
                 };
-                var typeIndex = FindMemoryType(requirements.MemoryTypeBits, MemoryPropertyFlags.DeviceLocalBit);
-                if (typeIndex < 0)
-                    typeIndex = FindMemoryType(requirements.MemoryTypeBits, MemoryPropertyFlags.None);
-                var allocateInfo = new MemoryAllocateInfo
-                {
-                    SType = StructureType.MemoryAllocateInfo,
-                    PNext = &import,
-                    AllocationSize = Math.Max(memorySize, requirements.Size),
-                    MemoryTypeIndex = (uint)typeIndex,
-                };
-                Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory (import)");
-                Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (import)");
+                memory = AllocateMemory(requirements.MemoryTypeBits, Math.Max(memorySize, requirements.Size), ImageMemoryPreferences, &import, "vkAllocateMemory (import)", out _);
+                VulkanResult.Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (import)");
 
                 readback = EnsureBuffer(ref _readbackBuffer, (ulong)width * (ulong)height * 4, BufferUsageFlags.TransferDstBit, ReadbackMemoryPreferences);
-                Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
+                VulkanResult.Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
                 var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
-                Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
+                VulkanResult.Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
                 // The exporter left the contents in ExportLayout.
                 Barrier(image, ExportLayout, ImageLayout.TransferSrcOptimal, 0, AccessFlags.TransferReadBit, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
                 var copy = new BufferImageCopy { ImageSubresource = ColorLayers(), ImageExtent = new Extent3D((uint)width, (uint)height, 1) };
                 _vk.CmdCopyImageToBuffer(_commandBuffer, image, ImageLayout.TransferSrcOptimal, readback.Value.Buffer, 1, &copy);
-                Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
+                VulkanResult.Check(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
                 CommandBuffer commandBuffer = _commandBuffer;
                 var submit = new SubmitInfo { SType = StructureType.SubmitInfo, CommandBufferCount = 1, PCommandBuffers = &commandBuffer };
-                Fence fence = _fence;
                 Submit(&submit);
-                Check(_vk.WaitForFences(_device, 1, &fence, true, ulong.MaxValue), "vkWaitForFences");
+                WaitForSubmission("vkWaitForFences (import read-back)");
 
                 var length = width * height * 4;
                 var pixels = new byte[length];
@@ -420,21 +404,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 PNext = &dedicated,
                 HandleTypes = ExternalMemoryHandleTypeFlags.OpaqueFDBit,
             };
-            var typeIndex = FindMemoryType(requirements.MemoryTypeBits, MemoryPropertyFlags.DeviceLocalBit);
-            if (typeIndex < 0)
-                typeIndex = FindMemoryType(requirements.MemoryTypeBits, MemoryPropertyFlags.None);
-            if (typeIndex < 0)
-                throw new VulkanException("No memory type for an exported image; vkAllocateMemory", Result.ErrorOutOfDeviceMemory);
-
-            var allocateInfo = new MemoryAllocateInfo
-            {
-                SType = StructureType.MemoryAllocateInfo,
-                PNext = &exportInfo,
-                AllocationSize = requirements.Size,
-                MemoryTypeIndex = (uint)typeIndex,
-            };
-            Check(_vk.AllocateMemory(_device, &allocateInfo, null, &memory), "vkAllocateMemory (export)");
-            Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (export)");
+            memory = AllocateMemory(requirements.MemoryTypeBits, requirements.Size, ImageMemoryPreferences, &exportInfo, "vkAllocateMemory (export)", out _);
+            VulkanResult.Check(_vk.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory (export)");
 
             var getFd = new MemoryGetFdInfoKHR
             {
@@ -442,7 +413,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
                 Memory = memory,
                 HandleType = ExternalMemoryHandleTypeFlags.OpaqueFDBit,
             };
-            Check(_getMemoryFd(_device, &getFd, &memoryFd), "vkGetMemoryFdKHR");
+            VulkanResult.Check(_getMemoryFd(_device, &getFd, &memoryFd), "vkGetMemoryFdKHR");
 
             if (withSemaphores)
             {
@@ -470,7 +441,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         };
         var info = new SemaphoreCreateInfo { SType = StructureType.SemaphoreCreateInfo, PNext = &exportInfo };
         VkSemaphore semaphore;
-        Check(_vk.CreateSemaphore(_device, &info, null, &semaphore), "vkCreateSemaphore (export)");
+        VulkanResult.Check(_vk.CreateSemaphore(_device, &info, null, &semaphore), "vkCreateSemaphore (export)");
         var getFd = new SemaphoreGetFdInfoKHR
         {
             SType = StructureType.SemaphoreGetFDInfoKhr,
@@ -511,7 +482,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             InitialLayout = ImageLayout.Undefined,
         };
         VkImage image;
-        Check(_vk.CreateImage(_device, &info, null, &image), "vkCreateImage (export)");
+        VulkanResult.Check(_vk.CreateImage(_device, &info, null, &image), "vkCreateImage (export)");
         return image;
     }
 

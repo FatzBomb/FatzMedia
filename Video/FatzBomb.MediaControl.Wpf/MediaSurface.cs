@@ -66,6 +66,9 @@ public sealed partial class MediaSurface : Grid
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        // A collapsed surface (or a collapsed parent) stays loaded: the overlay window, a separate
+        // top-level window, must follow visibility too (ENG-039 W1).
+        IsVisibleChanged += OnIsVisibleChanged;
         SizeChanged += OnSizeChanged;
         _surfaceHost.NativeHandleChanged += OnNativeSurfaceChanged;
         _surfaceHost.NativeBoundsChanged += OnNativeSurfaceChanged;
@@ -135,9 +138,7 @@ public sealed partial class MediaSurface : Grid
     }
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
-    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
-        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
-        : SurfaceId.Trim();
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     public bool IsSurfaceAttached => _primaryAttached;
@@ -184,8 +185,13 @@ public sealed partial class MediaSurface : Grid
         set => SetValue(OverlayHitTestVisibleProperty, value);
     }
 
+    private const string SecondaryOutputObsolete =
+        "Open a SecondaryPresentationWindow with ShowOnScreen instead (the test players do). Removed in a later release (ENG-039).";
+
+    [Obsolete(SecondaryOutputObsolete)]
     public event EventHandler? SecondaryOutputsChanged;
 
+    [Obsolete(SecondaryOutputObsolete)]
     public bool ShowSecondaryOutput()
     {
         if (Player == null)
@@ -234,7 +240,10 @@ public sealed partial class MediaSurface : Grid
         SecondaryOutputsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool CloseSecondaryOutput()
+    [Obsolete(SecondaryOutputObsolete)]
+    public bool CloseSecondaryOutput() => CloseSecondaryWindow();
+
+    private bool CloseSecondaryWindow()
     {
         if (_secondaryWindow == null)
             return false;
@@ -247,6 +256,7 @@ public sealed partial class MediaSurface : Grid
         return true;
     }
 
+    [Obsolete(SecondaryOutputObsolete)]
     public bool IsSecondaryOutputOpen() => _secondaryWindow is { IsVisible: true };
 
     public void RefreshPresentationLayout()
@@ -271,7 +281,7 @@ public sealed partial class MediaSurface : Grid
 
         surface.DetachSessionEvents(e.OldValue as IMediaControlSession);
         surface.DetachPrimarySurface(e.OldValue as IMediaControlSession);
-        surface._attachRefusalReported = false;
+        surface._bookkeeping.ResetAttachRefusal();
 
         // The content tracker follows the Player property, not the load state, so a surface that
         // is unloaded and loaded again (a tab switch, a new parent) keeps its auto-hide state, as
@@ -364,7 +374,7 @@ public sealed partial class MediaSurface : Grid
 
         Rect bounds = previous.RestoreBounds;
         WindowState state = previous.WindowState;
-        _ = CloseSecondaryOutput();
+        _ = CloseSecondaryWindow();
         OpenSecondaryWindow(session, bounds, state);
     }
 
@@ -391,6 +401,8 @@ public sealed partial class MediaSurface : Grid
         AttachOwnerWindowHook();
         ConfigurePresentationHost();
         AttachSessionEvents(Player);
+        // The media may have closed while unloaded (no session events then): apply a deferred mode.
+        CoerceValue(PresentationModeProperty);
         AttachOrResizePrimarySurface();
         UpdateNativeSurfaceVisibility();
         UpdateOverlayWindow();
@@ -406,6 +418,8 @@ public sealed partial class MediaSurface : Grid
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RefreshPresentationLayout();
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateOverlayWindow();
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
@@ -729,7 +743,7 @@ public sealed partial class MediaSurface : Grid
 
     private void UpdateOverlayWindow()
     {
-        if (!IsLoaded || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
+        if (!IsLoaded || !IsVisible || OverlayContent == null || PresentationMode != WpfPresentationMode.NativeHwndOverlay)
         {
             CloseOverlayWindow();
             return;

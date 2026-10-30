@@ -1,6 +1,4 @@
 #pragma warning disable IDE0130
-using System.Collections.Concurrent;
-
 namespace FatzBomb.MediaControl;
 
 /// <summary>
@@ -10,23 +8,15 @@ namespace FatzBomb.MediaControl;
 /// </summary>
 public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
 {
-    private static readonly ConcurrentDictionary<long, IMediaSharedGpuImageConsumer> Registry = new();
-    private static long _nextToken;
+    private static readonly OpaqueTokenRegistry<IMediaSharedGpuImageConsumer> Registry =
+        new("The shared GPU image consumer token space has been exhausted.");
+
     private long _token;
 
     public MediaSharedGpuImageConsumerHandle(IMediaSharedGpuImageConsumer consumer)
     {
         ArgumentNullException.ThrowIfNull(consumer);
-        long token;
-        do
-        {
-            token = Interlocked.Increment(ref _nextToken);
-            if (token <= 0 || (IntPtr.Size == 4 && token > int.MaxValue))
-                throw new InvalidOperationException("The shared GPU image consumer token space has been exhausted.");
-        }
-        while (!Registry.TryAdd(token, consumer));
-
-        _token = token;
+        _token = Registry.Register(consumer);
     }
 
     /// <summary>Gets whether the handle is registered (not disposed).</summary>
@@ -49,8 +39,7 @@ public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
     /// <summary>Resolves a token to its consumer while the owning handle is not disposed.</summary>
     public static bool TryResolve(nint value, out IMediaSharedGpuImageConsumer? consumer)
     {
-        consumer = null;
-        return value != 0 && Registry.TryGetValue(value, out consumer);
+        return Registry.TryResolve(value, out consumer);
     }
 
     /// <summary>Resolves the consumer of a <see cref="MediaNativeSurfaceTypeIds.SharedGpuImage"/> surface.</summary>
@@ -68,6 +57,6 @@ public sealed class MediaSharedGpuImageConsumerHandle : IDisposable
     {
         long token = Interlocked.Exchange(ref _token, 0);
         if (token != 0)
-            Registry.TryRemove(token, out _);
+            Registry.Remove(token);
     }
 }

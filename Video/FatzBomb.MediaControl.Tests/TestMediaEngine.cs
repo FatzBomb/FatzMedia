@@ -1,6 +1,7 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Cdg;
+using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Media;
 using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Video;
@@ -8,7 +9,7 @@ using FatzBomb.MediaControl.Pipeline;
 
 namespace FatzBomb.MediaControl.Tests;
 
-internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl
+internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMediaLoopEventSource, IMediaSourceCapabilityProvider, INetworkMediaControl, IRendererVideoDecodeAttachment, ISubtitleTrackSource
 {
     private double _position;
     private int _cancelPendingNetworkOpenCount;
@@ -19,6 +20,23 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
 
     public void CancelPendingNetworkOpen() => _ = Interlocked.Increment(ref _cancelPendingNetworkOpenCount);
+
+    /// <summary>The renderer decode device the coordinator attached (Stage 045A slice 2), or null.</summary>
+    public IMediaRendererVideoDecodeDevice? AttachedDecodeDevice { get; private set; }
+
+    public int DecodeDeviceAttachCount { get; private set; }
+
+    public void AttachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice? device)
+    {
+        DecodeDeviceAttachCount++;
+        AttachedDecodeDevice = device;
+    }
+
+    public void DetachRendererVideoDecodeDevice(IMediaRendererVideoDecodeDevice device)
+    {
+        if (ReferenceEquals(AttachedDecodeDevice, device))
+            AttachedDecodeDevice = null;
+    }
 
     public void RaiseNetworkBuffering(bool isBuffering, double fill) =>
         NetworkBufferingChanged?.Invoke(this, new MediaBufferingChangedEventArgs(isBuffering, fill));
@@ -33,9 +51,13 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     public TestCdgEngine? TestCdg { get; init; }
     public IVideoEngine? Video => TestVideo;
     public ICdgEngine? Cdg => TestCdg;
-    public ISubtitleEngine? Subtitle => null;
-    public IReadOnlyList<SubtitleTrack> SubtitleTracks => [];
-    public string? SelectedSubtitleTrackId => null;
+    public ISubtitleEngine? Subtitle { get; set; }
+    public IReadOnlyList<SubtitleTrack> SubtitleTracks { get; set; } = [];
+    public string? SelectedSubtitleTrackId { get; set; }
+    public event EventHandler? SubtitleTracksChanged;
+
+    /// <summary>Raises the engine event of tracks arriving after the open (ENG-039 P5-1), as the embedded scan does.</summary>
+    public void RaiseSubtitleTracksChanged() => SubtitleTracksChanged?.Invoke(this, EventArgs.Empty);
     public bool ShowMidiLyrics { get; set; }
     public double AudioVideoOffsetSeconds { get; private set; }
     public double CdgOffsetSeconds { get; private set; }
@@ -280,7 +302,6 @@ internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, 
     }
 
     public void SetDisplayRefreshRate(double? refreshHz) { }
-    public void SetHostRenderEventDrivenPresentation(bool enabled) { }
     public void RenderCurrentFrame(bool allowWhilePlaying = false, bool forceReissue = false) { }
 
     public void RaisePositionChanged(double position)

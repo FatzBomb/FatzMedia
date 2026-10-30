@@ -39,6 +39,12 @@ internal static unsafe partial class VulkanD3D11Interop
     private const int CreateTexture2DSlot = 5;
     private const int CreateSharedHandleSlot = 13;
 
+    /// <summary>
+    /// <c>ID3D11Device::GetDeviceRemovedReason</c>: after IUnknown (0-2), CreateBuffer (3) through
+    /// GetCreationFlags (38) in <c>d3d11.h</c> order (pinned by <c>D3D11InteropDeviceHealthTests</c>).
+    /// </summary>
+    internal const int GetDeviceRemovedReasonSlot = 39;
+
     private static readonly Guid FactoryId = new("770aae78-f26f-4dba-a829-253c83d1b387");
     private static readonly Guid Resource1Id = new("30961379-4609-4a41-998e-54fe567ee0c1");
 
@@ -161,6 +167,13 @@ internal static unsafe partial class VulkanD3D11Interop
             Release((nint)resource);
         }
     }
+
+    /// <summary>
+    /// <c>ID3D11Device::GetDeviceRemovedReason</c>: S_OK while the device works, a failure code
+    /// (<c>DXGI_ERROR_DEVICE_REMOVED</c>, <c>_RESET</c>, ...) once a GPU reset or removal took it.
+    /// </summary>
+    public static int GetDeviceRemovedReason(nint device) =>
+        ((delegate* unmanaged<void*, int>)Slot((void*)device, GetDeviceRemovedReasonSlot))((void*)device);
 
     /// <summary>Releases a COM reference (no-op for 0).</summary>
     public static void Release(nint unknown)

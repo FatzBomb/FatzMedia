@@ -17,4 +17,15 @@ public interface IMediaPresentationCoordinator : IMediaRenderCoordinator, IDispo
     bool SetPresentationSurfaceLiveResize(string surfaceId, bool isResizing);
     bool DetachPresentationSurface(string surfaceId);
     void RefreshCurrentPosition();
+
+    /// <summary>
+    /// Raised after the renderer's device was lost and recovered (ENG-039). Video decoded on the
+    /// lost device is gone, so the player reopens it. Coordinators without device recovery never
+    /// raise it.
+    /// </summary>
+    event EventHandler? DeviceRecovered
+    {
+        add { }
+        remove { }
+    }
 }

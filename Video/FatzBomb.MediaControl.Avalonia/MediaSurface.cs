@@ -65,9 +65,7 @@ public class MediaSurface : Control
     public static readonly DirectProperty<MediaSurface, bool> IsContentVisibleProperty =
         AvaloniaProperty.RegisterDirect<MediaSurface, bool>(nameof(IsContentVisible), static surface => surface.IsContentVisible);
 
-    private static int _nextSurfaceNumber;
-
-    private readonly int _surfaceNumber = Interlocked.Increment(ref _nextSurfaceNumber);
+    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
     private AvaloniaFrameSink? _sink;
     private AvaloniaSharedImageSurface? _gpuSurface;
     private IMediaControlSession? _attachedSession;
@@ -80,13 +78,18 @@ public class MediaSurface : Control
     private int _gpuInteropQuery;
     private IMediaControlSession? _gpuRejectedSession;
     private string? _gpuRejectedReason;
+    // ENG-039: the compositor's graphics context was lost (a GPU reset). The frame sink is used
+    // and the interop is asked for again until it works, instead of ruling the path out.
+    private string? _gpuContextLostReason;
+    private DispatcherTimer? _gpuRetryTimer;
+    private int _gpuRetryAttempts;
+    private bool _gpuLeavingContextLoss;
     private string _attachedSurfaceId = MediaPresentationSurfaceDescriptor.PrimarySurfaceId;
     private readonly MediaSurfaceContentTracker _contentTracker = new();
     private int _contentStateQueued;
     private bool _isPresentationSuspended;
     private bool _contentShown;
     private bool _isContentVisible;
-    private bool _attachRefusalReported;
 
     static MediaSurface()
     {
@@ -161,9 +164,7 @@ public class MediaSurface : Control
     }
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
-    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(SurfaceId)
-        ? Role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
-        : SurfaceId.Trim();
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(SurfaceId, Role, DefaultSecondarySurfaceId);
 
     /// <summary>
     /// Gets or sets whether the surface hides its frames (shows only <see cref="Background"/>)
@@ -200,15 +201,21 @@ public class MediaSurface : Control
     public PixelSize AttachedPixelSize => new(_attachedPixelSize.Width, _attachedPixelSize.Height);
 
     /// <summary>Gets how frames reach the screen now.</summary>
-    public MediaSurfacePresentationPath PresentationPath { get; private set; }
+    public MediaSurfacePresentationPath PresentationPath => _bookkeeping.Path;
 
     /// <summary>Gets why the current path was chosen (for example why the GPU path was not used).</summary>
-    public string? PresentationPathReason { get; private set; }
+    public string? PresentationPathReason => _bookkeeping.Reason;
 
     internal AvaloniaFrameSink? FrameSink => _sink;
 
     /// <summary>Test seam: how the compositor's GPU interop is obtained.</summary>
     internal Func<Compositor, ValueTask<GpuInteropCapabilities?>> GpuInteropProvider { get; set; } = GpuInteropCapabilities.QueryAsync;
+
+    /// <summary>How often the interop is asked for again after a lost graphics context (ENG-039).</summary>
+    internal static readonly TimeSpan GpuContextLossRetryInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>How many times it is asked before the frame sink is kept for the session.</summary>
+    internal const int GpuContextLossRetryAttempts = 30;
 
     public override void Render(DrawingContext context)
     {
@@ -259,6 +266,9 @@ public class MediaSurface : Control
         _gpuInterop = null;
         _gpuInteropResolved = false;
         _gpuInteropQuery++;
+        // A new attachment asks the (possibly new) compositor afresh.
+        _gpuContextLostReason = null;
+        StopGpuRetry();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -284,7 +294,7 @@ public class MediaSurface : Control
             }
 
             Detach();
-            _attachRefusalReported = false;
+            _bookkeeping.ResetAttachRefusal();
             if (_isAttachedToTree)
                 FollowSession(change.NewValue as IMediaControlSession);
             if (change.NewValue is IMediaControlSession session && Role == MediaPresentationSurfaceRole.Primary)
@@ -320,6 +330,8 @@ public class MediaSurface : Control
             // A host that turns the GPU path back on asks for a new attempt.
             _gpuRejectedSession = null;
             _gpuRejectedReason = null;
+            _gpuContextLostReason = null;
+            StopGpuRetry();
             Detach();
             QueryGpuInterop();
             AttachOrResize();
@@ -391,7 +403,8 @@ public class MediaSurface : Control
 
         _gpuInterop = interop;
         _gpuInteropResolved = true;
-        AttachOrResize();
+        if (!TryLeaveGpuContextLoss())
+            AttachOrResize();
     }
 
     private void AttachOrResize()
@@ -430,18 +443,13 @@ public class MediaSurface : Control
             _attachedSession = session;
             _attachedSurfaceId = EffectiveSurfaceId;
             _attachedPixelSize = pixelSize;
-            _attachRefusalReported = false;
+            _bookkeeping.ResetAttachRefusal();
             SetPath(MediaSurfacePresentationPath.FrameSink, fallbackReason);
         }
-        else if (!_attachRefusalReported)
+        else
         {
-            // Layout retries the attach on every resize: report a refusal once per session.
-            _attachRefusalReported = true;
-            DiagnosticRouter.Raise(
-                session,
-                MediaDiagnosticLevel.Warning,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeAttachRefused(DescribeSurface()));
+            // Layout retries the attach on every resize: Core reports a refusal once per session.
+            _bookkeeping.ReportAttachRefused(session, EffectiveSurfaceId);
         }
     }
 
@@ -458,6 +466,12 @@ public class MediaSurface : Control
         if (!PreferGpuSharedSurface)
         {
             reason = "PreferGpuSharedSurface is off";
+            return GpuPathChoice.FrameSink;
+        }
+
+        if (_gpuContextLostReason is { } contextLost)
+        {
+            reason = contextLost;
             return GpuPathChoice.FrameSink;
         }
 
@@ -543,10 +557,16 @@ public class MediaSurface : Control
 
         gpuSurface.Dispose();
         fallbackReason = unavailable ?? "the session did not accept the shared GPU image surface";
-        // Only a renderer that declined with a reason rules the path out for this session; a
-        // refusal without one (renderer not initialized yet, session busy) is retried next attach.
-        if (unavailable is not null)
+        if (_gpuLeavingContextLoss)
         {
+            // The renderer is still recovering from the same GPU reset: ask again later (ENG-039).
+            _gpuContextLostReason = fallbackReason;
+            StartGpuRetry();
+        }
+        else if (unavailable is not null)
+        {
+            // Only a renderer that declined with a reason rules the path out for this session; a
+            // refusal without one (renderer not initialized yet, session busy) is retried next attach.
             _gpuRejectedSession = session;
             _gpuRejectedReason = fallbackReason;
         }
@@ -554,17 +574,94 @@ public class MediaSurface : Control
         return false;
     }
 
-    /// <summary>The renderer or the compositor gave up on the shared images: re-attach with the frame sink.</summary>
-    private void OnGpuSurfaceUnavailable(AvaloniaSharedImageSurface gpuSurface, string reason)
+    /// <summary>
+    /// The renderer or the compositor gave up on the shared images: re-attach with the frame sink.
+    /// A lost graphics context (<paramref name="contextLost"/>, a GPU reset) rules the path out only
+    /// until the compositor offers a working interop again (ENG-039); anything else, for the session.
+    /// </summary>
+    private void OnGpuSurfaceUnavailable(AvaloniaSharedImageSurface gpuSurface, string reason, bool contextLost)
     {
         if (!ReferenceEquals(gpuSurface, _gpuSurface) || _attachedSession is not { } session)
             return;
 
-        _gpuRejectedSession = session;
-        _gpuRejectedReason = reason;
+        if (contextLost)
+        {
+            _gpuContextLostReason = reason;
+            _gpuRetryAttempts = 0;
+            StartGpuRetry();
+        }
+        else
+        {
+            _gpuRejectedSession = session;
+            _gpuRejectedReason = reason;
+        }
+
         Detach();
         AttachOrResize();
     }
+
+    /// <summary>
+    /// After a lost graphics context: asks the compositor for its interop again (Avalonia makes a
+    /// new one once its device recovers) and returns to the shared images when it works. After
+    /// <see cref="GpuContextLossRetryAttempts"/> tries the frame sink is kept for the session.
+    /// </summary>
+    internal void RetryGpuAfterContextLoss()
+    {
+        if (_gpuContextLostReason is not { } reason || !_isAttachedToTree)
+        {
+            StopGpuRetry();
+            return;
+        }
+
+        if (++_gpuRetryAttempts > GpuContextLossRetryAttempts)
+        {
+            StopGpuRetry();
+            _gpuContextLostReason = null;
+            _gpuRejectedSession = _attachedSession;
+            _gpuRejectedReason = reason;
+            return;
+        }
+
+        _gpuInterop = null;
+        _gpuInteropResolved = false;
+        QueryGpuInterop();
+        _ = TryLeaveGpuContextLoss();
+    }
+
+    /// <summary>Back to the shared images once the compositor's interop works again; true when it re-attached.</summary>
+    private bool TryLeaveGpuContextLoss()
+    {
+        if (_gpuContextLostReason is null || !_gpuInteropResolved || _gpuInterop is not { IsLost: false } interop || !interop.CreateRequest().IsValid)
+            return false;
+
+        _gpuContextLostReason = null;
+        StopGpuRetry();
+        _gpuLeavingContextLoss = true;
+        try
+        {
+            Detach();
+            AttachOrResize();
+        }
+        finally
+        {
+            _gpuLeavingContextLoss = false;
+        }
+
+        return true;
+    }
+
+    private void StartGpuRetry()
+    {
+        if (_gpuRetryTimer is null)
+        {
+            _gpuRetryTimer = new DispatcherTimer { Interval = GpuContextLossRetryInterval };
+            _gpuRetryTimer.Tick += (_, _) => RetryGpuAfterContextLoss();
+        }
+
+        _gpuRetryTimer.Start();
+    }
+
+    private void StopGpuRetry() => _gpuRetryTimer?.Stop();
 
     private MediaPresentationSurfaceDescriptor CreateDescriptor(
         MediaNativeSurfaceDescriptor nativeSurface,
@@ -580,25 +677,11 @@ public class MediaSurface : Control
 
     private void SetPath(MediaSurfacePresentationPath path, string? reason)
     {
-        reason = string.IsNullOrEmpty(reason) ? null : reason;
-        if (path == PresentationPath && reason == PresentationPathReason)
-            return;
-
-        PresentationPath = path;
-        PresentationPathReason = reason;
-        if (path != MediaSurfacePresentationPath.None)
-        {
-            DiagnosticRouter.Raise(
-                _attachedSession,
-                MediaDiagnosticLevel.Info,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeChoice(DescribeSurface(), path, reason));
-        }
-
-        PresentationPathChanged?.Invoke(this, EventArgs.Empty);
+        if (_bookkeeping.SetPath(path, reason, _attachedSession, EffectiveSurfaceId))
+            PresentationPathChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private string DescribeSurface() => $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
+    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
     /// <summary>
     /// Follows the session while the control is in the visual tree (Stage 046A): Core's tracker

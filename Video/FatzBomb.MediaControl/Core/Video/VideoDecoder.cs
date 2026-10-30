@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -22,7 +21,7 @@ internal sealed unsafe class VideoDecoder(
     bool enableVerboseLogging = false,
     bool scaleMaxFramesByResolution = false,
     SharedDemuxer? sharedDemuxer = null,
-    IVideoHardwareAccelerationServices? hardwareAccelerationServices = null,
+    RendererVideoDecodeServices? hardwareAccelerationServices = null,
     HdrToneMappingOptions hdrToneMapping = default) : IDisposable
 {
     private readonly HdrToneMappingOptions _hdrToneMapping = hdrToneMapping;
@@ -34,8 +33,8 @@ internal sealed unsafe class VideoDecoder(
     private readonly bool _scaleMaxFramesByResolution = scaleMaxFramesByResolution;
     private readonly SharedDemuxer _demuxer = sharedDemuxer ?? new SharedDemuxer();
     private readonly bool _ownsDemuxer = sharedDemuxer == null;
-    private readonly IVideoHardwareAccelerationServices _hardwareAccelerationServices =
-        hardwareAccelerationServices ?? SoftwareOnlyVideoHardwareAccelerationServices.Instance;
+    private readonly RendererVideoDecodeServices _hardwareAccelerationServices =
+        hardwareAccelerationServices ?? new(SoftwareOnlyVideoHardwareAccelerationServices.Instance);
     private AVCodecContext* _videoCodecCtx;
     private AVStream* _videoStream;
     private SwsContext* _swsVideo;
@@ -56,6 +55,8 @@ internal sealed unsafe class VideoDecoder(
     private byte[]? _toneMapScratch;
     private bool _toneMapReported;
     private HdrToneMapFallback _toneMapFallback = new();
+    // ENG-037: handed out on every hardware frame; a renderer that cannot take them requests software.
+    private VideoDecodeFallback? _decodeFallback;
     private bool _toneMapFallbackReported;
     private AVCodecContext_get_format? _getFormatCallback;
 
@@ -93,7 +94,11 @@ internal sealed unsafe class VideoDecoder(
     public int MaxFrames { get; private set; } = MaxFramesCap;
     internal int VideoStreamIndex { get; private set; } = -1;
 
-    private readonly ConcurrentQueue<VideoFrameData> _frameQueue = new();
+    // Decode thread enqueues, presentation and seek threads take. A lock, not a ConcurrentQueue:
+    // the seek loop looks through the queue, and enumerating a ConcurrentQueue allocates and
+    // keeps its segments from being reused (ENG-039 P5-6).
+    private readonly Queue<VideoFrameData> _frameQueue = new();
+    private readonly Lock _frameQueueLock = new();
     private readonly ArrayPool<byte> _framePool = ArrayPool<byte>.Shared;
     private const int MaxFramesCap = 24;
     // Queue cap while native hardware frames are output (0 otherwise); sized with the pool reserve.
@@ -107,9 +112,7 @@ internal sealed unsafe class VideoDecoder(
     private const int AvErrorAgain = -11;
     private const int HardwareDecodeLossFailureThreshold = 3;
     private int _decodeDiagnosticFrames;
-    private double _decodeDiagnosticTransferMs;
     private double _decodeDiagnosticScaleMs;
-    private double _decodeDiagnosticBufferMs;
     private double _decodeDiagnosticTotalMs;
     private int _packetSendIssueLogs;
     private int _frameReceiveIssueLogs;
@@ -134,7 +137,7 @@ internal sealed unsafe class VideoDecoder(
 
     public static VideoDecoder FromConfiguration(
         MediaPlayerConfiguration configuration,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         bool enableHardwareFrameOutput = true,
         bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
@@ -149,7 +152,7 @@ internal sealed unsafe class VideoDecoder(
     public static VideoDecoder FromConfiguration(
         MediaPlayerConfiguration configuration,
         SharedDemuxer sharedDemuxer,
-        IVideoHardwareAccelerationServices hardwareAccelerationServices,
+        RendererVideoDecodeServices hardwareAccelerationServices,
         bool enableHardwareFrameOutput = true,
         bool scaleMaxFramesByResolution = false) =>
         new(configuration.VideoDecoding,
@@ -176,18 +179,14 @@ internal sealed unsafe class VideoDecoder(
 
         _videoStream = _demuxer.GetStream(VideoStreamIndex);
 
-        // Discard non-video streams so av_read_frame only returns video packets when we own
-        // the demuxer (single-stream mode: background video, hardware probe). A shared demuxer
-        // dispatches the streams its consumers registered; for a network source it discards the
-        // rest, or HLS/DASH would download every variant (039A). A shared local file is read
-        // as before.
-        if (_ownsDemuxer)
+        // Discard non-video streams so av_read_frame only returns video packets when this cursor
+        // is the picture's alone: an owned demuxer (background video, hardware probe) or a local
+        // file, whose audio has its own cursor (ENG-039 P5-5). A network source's read-ahead
+        // dispatches the streams its consumers registered and discards the rest, or HLS/DASH
+        // would download every variant (039A).
+        if (_ownsDemuxer || !_demuxer.IsNetwork)
         {
-            for (uint i = 0; i < _demuxer.StreamCount; i++)
-            {
-                if ((int)i != VideoStreamIndex)
-                    _demuxer.SetStreamDiscard((int)i, AVDiscard.AVDISCARD_ALL);
-            }
+            _demuxer.DiscardAllStreamsExcept([VideoStreamIndex]);
         }
         else
         {
@@ -222,7 +221,7 @@ internal sealed unsafe class VideoDecoder(
     {
         if (!_demuxer.IsOpen || _packet == null) return false;
         if (EndOfStream) return false;
-        if (_frameQueue.Count >= MaxFrames) return false;
+        if (FrameCount >= MaxFrames) return false;
         if (_packetPending) return ResendPendingPacket();
         if (_drainingAtEndOfStream) return DrainFramesAtEndOfStream();
 
@@ -252,7 +251,7 @@ internal sealed unsafe class VideoDecoder(
     private bool ResendPendingPacket()
     {
         var frameDecoded = DrainDecodedFrames();
-        if (_frameQueue.Count >= MaxFrames)
+        if (FrameCount >= MaxFrames)
             return frameDecoded;
 
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, _packet);
@@ -304,13 +303,64 @@ internal sealed unsafe class VideoDecoder(
         return Math.Clamp(byBudget, MinFrames, MaxFramesCap);
     }
 
-    public VideoFrameData? GetNextFrame() => _frameQueue.TryDequeue(out VideoFrameData? frame) ? frame : null;
+    public VideoFrameData? GetNextFrame()
+    {
+        lock (_frameQueueLock)
+            return _frameQueue.TryDequeue(out VideoFrameData? frame) ? frame : null;
+    }
 
-    public VideoFrameData? PeekNextFrame() => _frameQueue.TryPeek(out VideoFrameData? frame) ? frame : null;
+    public VideoFrameData? PeekNextFrame()
+    {
+        lock (_frameQueueLock)
+            return _frameQueue.TryPeek(out VideoFrameData? frame) ? frame : null;
+    }
 
-    public IEnumerable<VideoFrameData> EnumerateQueuedFrames() => _frameQueue;
+    /// <summary>
+    /// Whether a queued frame's presentation time satisfies <paramref name="predicate"/>. Allocates
+    /// nothing with a static predicate; the predicate runs under the queue lock, so it must be quick.
+    /// </summary>
+    public bool AnyQueuedFrame<TState>(TState state, Func<double, TState, bool> predicate)
+    {
+        lock (_frameQueueLock)
+        {
+            foreach (VideoFrameData frame in _frameQueue)
+                if (predicate(frame.PresentationTime, state))
+                    return true;
+        }
 
-    public int FrameCount => _frameQueue.Count;
+        return false;
+    }
+
+    /// <summary>
+    /// Takes the head frame when there are two queued frames and <paramref name="predicate"/>
+    /// accepts their presentation times (head, next). The check and the take are one step under
+    /// the queue lock, so a frame taken by the presentation thread in between is never mistaken
+    /// for the head.
+    /// </summary>
+    public VideoFrameData? TryTakeHeadFrame<TState>(TState state, Func<double, double, TState, bool> predicate)
+    {
+        lock (_frameQueueLock)
+        {
+            Queue<VideoFrameData>.Enumerator queued = _frameQueue.GetEnumerator();
+            if (!queued.MoveNext())
+                return null;
+
+            var head = queued.Current.PresentationTime;
+            if (!queued.MoveNext() || !predicate(head, queued.Current.PresentationTime, state))
+                return null;
+
+            return _frameQueue.Dequeue();
+        }
+    }
+
+    public int FrameCount
+    {
+        get
+        {
+            lock (_frameQueueLock)
+                return _frameQueue.Count;
+        }
+    }
 
     private bool InitializeVideoDecoder()
     {
@@ -322,7 +372,7 @@ internal sealed unsafe class VideoDecoder(
         AVCodec* hardwareCodec = null;
         if (allowHardware)
         {
-            (_hardwareAccelerationServices as RendererVideoDecodeServices)?.NoteHardwareDecodingRequested();
+            _hardwareAccelerationServices.NoteHardwareDecodingRequested();
             hardwareCodec = FindHardwareCapableDecoder(codecId);
         }
 
@@ -625,8 +675,7 @@ internal sealed unsafe class VideoDecoder(
         int result;
         // A renderer that decodes on its own device (Stage 045A slice 2) supplies the context, so
         // frames are decoded on the device that draws them; FFmpeg never creates another one.
-        if (_hardwareAccelerationServices is RendererVideoDecodeServices renderer
-            && renderer.TryCreateRendererDeviceContext(deviceTypeName, out var suppliedContext))
+        if (_hardwareAccelerationServices.TryCreateRendererDeviceContext(deviceTypeName, out var suppliedContext))
         {
             deviceContext = (AVBufferRef*)suppliedContext;
             result = suppliedContext != 0 ? 0 : -1;
@@ -719,9 +768,9 @@ internal sealed unsafe class VideoDecoder(
     {
         // Filtered first, so a packet kept pending has been filtered once (a resend does not filter).
         if (_av1MetadataFilter != null && !_av1MetadataFilter.Filter(_packet))
-            return _frameQueue.Count < MaxFrames && DrainDecodedFrames();
+            return FrameCount < MaxFrames && DrainDecodedFrames();
 
-        if (_frameQueue.Count >= MaxFrames)
+        if (FrameCount >= MaxFrames)
         {
             _packetPending = true;
             return false;
@@ -733,7 +782,7 @@ internal sealed unsafe class VideoDecoder(
         if (sendResult == AvErrorAgain)
         {
             frameDecoded |= DrainDecodedFrames();
-            if (_frameQueue.Count < MaxFrames)
+            if (FrameCount < MaxFrames)
             {
                 sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, _packet);
             }
@@ -769,7 +818,7 @@ internal sealed unsafe class VideoDecoder(
     private bool DrainDecodedFrames()
     {
         var frameDecoded = false;
-        while (_frameQueue.Count < MaxFrames)
+        while (FrameCount < MaxFrames)
         {
             var receiveResult = ffmpeg.avcodec_receive_frame(_videoCodecCtx, _videoFrame);
             if (receiveResult == 0)
@@ -806,8 +855,13 @@ internal sealed unsafe class VideoDecoder(
     private void ProcessVideoFrameFromDecoder()
     {
         // A frame was successfully received from the decoder — the hardware path is working, so
-        // clear the consecutive-failure gate used for device-lost detection.
-        _consecutiveHardwareDecodeFailures = 0;
+        // clear the consecutive-failure gate used for device-lost detection. A hardware frame the
+        // decoder marked corrupt (what it returns after a GPU reset) counts as a failure instead.
+        if (HardwareAccelerationMethod != null
+            && ((_videoFrame->flags & ffmpeg.AV_FRAME_FLAG_CORRUPT) != 0 || _videoFrame->decode_error_flags != 0))
+            NoteHardwareDecodeFailure();
+        else
+            _consecutiveHardwareDecodeFailures = 0;
         if (_logCaptureActive)
         {
             _logCaptureActive = false;
@@ -848,16 +902,13 @@ internal sealed unsafe class VideoDecoder(
             return;
         }
 
-        var transferStart = totalStart;
         AVFrame* sourceFrame = GetSoftwareFrameForProcessing();
-        var transferMs = Stopwatch.GetElapsedTime(transferStart).TotalMilliseconds;
         if (sourceFrame == null)
         {
             return;
         }
 
         double scaleMs = 0;
-        double bufferMs = 0;
         byte[]? rentedFrameData = null;
         try
         {
@@ -871,10 +922,8 @@ internal sealed unsafe class VideoDecoder(
             }
 
             var frameSize = _videoLinesize * Height;
-            var bufferStart = Stopwatch.GetTimestamp();
             var frameData = _framePool.Rent(frameSize);
             rentedFrameData = frameData;
-            bufferMs = Stopwatch.GetElapsedTime(bufferStart).TotalMilliseconds;
 
             byte_ptrArray8 dstData = new();
             int_array8 dstLinesize = new();
@@ -912,7 +961,7 @@ internal sealed unsafe class VideoDecoder(
                 }
             }
 
-            _frameQueue.Enqueue(new VideoFrameData
+            EnqueueFrame(new VideoFrameData
             {
                 Data = frameData,
                 Length = frameSize,
@@ -935,11 +984,7 @@ internal sealed unsafe class VideoDecoder(
                 ffmpeg.av_frame_unref(_softwareFrame);
             }
 
-            RecordDecodeDiagnostics(
-                transferMs,
-                scaleMs,
-                bufferMs,
-                Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
+            RecordDecodeDiagnostics(scaleMs, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         }
     }
 
@@ -989,10 +1034,11 @@ internal sealed unsafe class VideoDecoder(
         nativeResource = nativeResource with
         {
             ColorSpace = GetFrameColorSpace(_videoCodecCtx != null ? _videoCodecCtx->sw_pix_fmt : AVPixelFormat.AV_PIX_FMT_NONE, toneMapped),
-            HdrToneMap = toneMapped ? GetToneMapRequest() : null
+            HdrToneMap = toneMapped ? GetToneMapRequest() : null,
+            DecodeFallback = GetDecodeFallback()
         };
 
-        _frameQueue.Enqueue(new VideoFrameData
+        EnqueueFrame(new VideoFrameData
         {
             Kind = VideoFrameKind.NativeHardware,
             HardwareFrame = clonedFrame,
@@ -1004,16 +1050,29 @@ internal sealed unsafe class VideoDecoder(
             PresentationTime = pts
         });
 
-        RecordDecodeDiagnostics(0, 0, 0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
+        RecordDecodeDiagnostics(0, Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds);
         return true;
     }
 
-    private void RecordDecodeDiagnostics(double transferMs, double scaleMs, double bufferMs, double totalMs)
+    /// <summary>
+    /// Called when the renderer asked this decoder's hardware frames to be decoded in software
+    /// (ENG-037), on the presentation thread that asked: the owner switches decoders elsewhere.
+    /// Null when no owner can switch; the frames then carry no fallback token.
+    /// </summary>
+    internal Action<VideoDecoder, string>? SoftwareDecodingRequested { get; set; }
+
+    private VideoDecodeFallback? GetDecodeFallback()
+    {
+        if (SoftwareDecodingRequested is null)
+            return null;
+
+        return _decodeFallback ??= new VideoDecodeFallback(reason => SoftwareDecodingRequested?.Invoke(this, reason));
+    }
+
+    private void RecordDecodeDiagnostics(double scaleMs, double totalMs)
     {
         _decodeDiagnosticFrames++;
-        _decodeDiagnosticTransferMs += transferMs;
         _decodeDiagnosticScaleMs += scaleMs;
-        _decodeDiagnosticBufferMs += bufferMs;
         _decodeDiagnosticTotalMs += totalMs;
 
         if (_decodeDiagnosticFrames < DecodeDiagnosticsFrameInterval)
@@ -1030,13 +1089,9 @@ internal sealed unsafe class VideoDecoder(
         }
 
         _decodeDiagnosticFrames = 0;
-        _decodeDiagnosticTransferMs = 0;
         _decodeDiagnosticScaleMs = 0;
-        _decodeDiagnosticBufferMs = 0;
         _decodeDiagnosticTotalMs = 0;
     }
-
-    private static double GetElapsedMilliseconds(long startTimestamp) => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 
     private static bool ShouldLogDecodeIssue(ref int count)
     {
@@ -1305,7 +1360,7 @@ internal sealed unsafe class VideoDecoder(
 
         var frameDecoded = false;
         var processed = 0;
-        while (_frameQueue.Count < MaxFrames && processed < MaxFrames)
+        while (FrameCount < MaxFrames && processed < MaxFrames)
         {
             var receiveResult = ffmpeg.avcodec_receive_frame(_videoCodecCtx, _videoFrame);
             if (receiveResult != 0)
@@ -1385,6 +1440,7 @@ internal sealed unsafe class VideoDecoder(
         _toneMapReported = false;
         _toneMapFallback = new HdrToneMapFallback();
         _toneMapFallbackReported = false;
+        _decodeFallback = null;
         _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
         HardwareDevice = null;
         _hardwareDeviceTypeName = null;
@@ -1506,10 +1562,16 @@ internal sealed unsafe class VideoDecoder(
 
     private void ClearFrameQueue()
     {
-        while (_frameQueue.TryDequeue(out VideoFrameData? frame))
+        while (GetNextFrame() is { } frame)
         {
             ReturnFrame(frame);
         }
+    }
+
+    private void EnqueueFrame(VideoFrameData frame)
+    {
+        lock (_frameQueueLock)
+            _frameQueue.Enqueue(frame);
     }
 
     public bool Seek(double seconds, bool exact = true, bool preserveQueue = false)

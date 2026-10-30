@@ -88,7 +88,7 @@ public sealed class SoftwareCompositionRenderer
                 "Output dimensions exceed the supported buffer size.");
         }
 
-        Fill(buffer, SoftwareCompositionBuffer.PremultipliedClearValue(ResolveClearArgb(frame)));
+        Fill(buffer, ColorMath.PremultiplyBgra(frame.ResolveClearArgb()));
         var transformWholeComposition = frame.BaseVisualTransform is { IsIdentity: false, IncludeOverlays: true };
         if (frame.HasBackground)
         {
@@ -130,11 +130,7 @@ public sealed class SoftwareCompositionRenderer
 
     private static string? ValidateFrame(MediaCompositionFrame frame)
     {
-        if (!frame.BackgroundBgra.IsEmpty
-            && (frame.BackgroundWidth <= 0
-                || frame.BackgroundHeight <= 0
-                || frame.BackgroundStride < (long)frame.BackgroundWidth * 4
-                || frame.BackgroundBgra.Length < (long)frame.BackgroundStride * frame.BackgroundHeight))
+        if (!frame.IsBackgroundWellFormed)
         {
             return "The software background buffer is invalid.";
         }
@@ -155,13 +151,6 @@ public sealed class SoftwareCompositionRenderer
 
         return null;
     }
-
-    private static uint ResolveClearArgb(MediaCompositionFrame frame) => frame.ClearMode switch
-    {
-        MediaCompositionClearMode.Transparent or MediaCompositionClearMode.PreservePrevious => 0,
-        MediaCompositionClearMode.ConfiguredColor => frame.ClearArgb,
-        _ => frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb
-    };
 
     private static void DrawWash(SoftwareCompositionBuffer buffer, uint argb)
     {

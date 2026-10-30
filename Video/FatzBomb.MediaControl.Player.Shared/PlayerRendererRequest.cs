@@ -1,3 +1,5 @@
+using FatzBomb.MediaControl.Core.Configuration;
+
 namespace FatzBomb.MediaControl.Player.Shared;
 
 /// <summary>
@@ -79,6 +81,29 @@ public static class PlayerRendererRules
     public static IReadOnlyList<PlayerRendererRequest> AutoOrder(bool windows) => windows
         ? [PlayerRendererRequest.Gpu, PlayerRendererRequest.Warp, PlayerRendererRequest.Software]
         : [PlayerRendererRequest.Vulkan, PlayerRendererRequest.Software];
+
+    /// <summary>
+    /// How video is decoded for a renderer and the status/log wording for it (Stage 045A; one table
+    /// for every test player since ENG-039). A renderer that presents hardware frames gets
+    /// <see cref="VideoDecodingMethod.Auto"/> (hardware where the GPU decodes the codec, else
+    /// software): Direct3D11 on a GPU (D3D11VA) and Vulkan on a device with Vulkan Video. A renderer
+    /// whose probe says it needs software decoding
+    /// (<see cref="Controllers.MediaPresentationAvailability.RequiresSoftwareDecoding"/>) gets
+    /// <see cref="VideoDecodingMethod.Software"/>, and <paramref name="renderer"/> words why. Pass
+    /// the renderer actually chosen (<see cref="PlayerRendererRequest.Direct3D11"/>,
+    /// <see cref="PlayerRendererRequest.Warp"/>, <see cref="PlayerRendererRequest.Vulkan"/> or
+    /// <see cref="PlayerRendererRequest.Software"/>); any other value gets the generic wording.
+    /// </summary>
+    public static (VideoDecodingMethod Decoding, string Detail) DescribeDecoding(PlayerRendererRequest renderer, bool requiresSoftwareDecoding) =>
+        (requiresSoftwareDecoding, renderer) switch
+        {
+            (false, PlayerRendererRequest.Direct3D11) => (VideoDecodingMethod.Auto, "hardware decoding (D3D11VA) where the GPU supports the codec"),
+            (false, PlayerRendererRequest.Vulkan) => (VideoDecodingMethod.Auto, "hardware decoding (Vulkan Video) where the GPU supports the codec"),
+            (false, _) => (VideoDecodingMethod.Auto, "hardware decoding where the GPU supports the codec"),
+            (true, PlayerRendererRequest.Direct3D11 or PlayerRendererRequest.Warp) => (VideoDecodingMethod.Software, "software decoding (the renderer runs on a software rasterizer)"),
+            (true, PlayerRendererRequest.Vulkan) => (VideoDecodingMethod.Software, "software decoding (the device has no Vulkan Video decoding)"),
+            (true, _) => (VideoDecodingMethod.Software, "software decoding (the renderer takes no hardware frames)"),
+        };
 
     /// <summary>Gets the command-line name of <paramref name="request"/> (<c>auto</c>, <c>gpu</c>, ...).</summary>
     public static string Name(PlayerRendererRequest request) => request.ToString().ToLowerInvariant();

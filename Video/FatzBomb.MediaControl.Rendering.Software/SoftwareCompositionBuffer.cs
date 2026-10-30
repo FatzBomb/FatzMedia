@@ -10,16 +10,6 @@ internal sealed class SoftwareCompositionBuffer(int width, int height)
     public byte[] Pixels { get; } = new byte[checked(width * height * 4)];
     private int[] _columns = [];
 
-    /// <summary>Gets the packed premultiplied pixel a clear to <paramref name="argb"/> writes.</summary>
-    public static uint PremultipliedClearValue(uint argb)
-    {
-        var alpha = (byte)(argb >> 24);
-        var red = (byte)(argb >> 16);
-        var green = (byte)(argb >> 8);
-        var blue = (byte)argb;
-        return Pack(MultiplyByAlpha(blue, alpha), MultiplyByAlpha(green, alpha), MultiplyByAlpha(red, alpha), alpha);
-    }
-
     /// <summary>Gets the pixels as packed BGRA values (blue in the low byte, alpha in the high byte).</summary>
     public Span<uint> Pixels32 => MemoryMarshal.Cast<byte, uint>(Pixels.AsSpan());
 
@@ -64,7 +54,4 @@ internal sealed class SoftwareCompositionBuffer(int width, int height)
 
     private static byte AddAlpha(byte sourceAlpha, byte destinationAlpha, int inverseAlpha) =>
         (byte)Math.Min(255, sourceAlpha + (((destinationAlpha * inverseAlpha) + 127) / 255));
-
-    private static byte MultiplyByAlpha(byte value, byte alpha) =>
-        (byte)(((value * alpha) + 127) / 255);
 }

@@ -2,6 +2,10 @@ using System.IO;
 
 namespace FatzBomb.MediaControl.Player.Configuration;
 
+/// <summary>
+/// The native-library search paths of the Windows test players (WPF, and WinForms through a
+/// linked copy of this file).
+/// </summary>
 public static class PlayerNativeLibraries
 {
     public static IReadOnlyList<string> ResolveSearchPaths()
@@ -19,8 +23,16 @@ public static class PlayerNativeLibraries
             : Path.Combine(AppContext.BaseDirectory, path);
 
         var fullPath = Path.GetFullPath(resolvedPath);
-        // The validation host keeps a stable drop folder even before local native assets are supplied.
-        _ = Directory.CreateDirectory(fullPath);
+        try
+        {
+            // The validation host keeps a stable drop folder even before local native assets are supplied.
+            _ = Directory.CreateDirectory(fullPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Read-only install location (ENG-039 W3): the folder is still searched if it appears later.
+        }
+
         return fullPath;
     }
 }

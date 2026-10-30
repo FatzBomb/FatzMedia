@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using ResultCode = Vortice.DXGI.ResultCode;
@@ -22,36 +21,6 @@ internal static class D3D11DeviceLostClassifier
         || result == ResultCode.DeviceReset
         || result == ResultCode.DeviceHung
         || result == ResultCode.DriverInternalError;
-
-    /// <summary>
-    /// Best-effort check of whether the D3D11 device behind <paramref name="d3d11DevicePointer"/>
-    /// reports a device-removed/reset/hung/driver-error reason. Used by the decode side, which holds
-    /// only the raw FFmpeg-owned native <c>ID3D11Device</c> pointer (not a managed wrapper), to
-    /// confirm a suspected hardware-decode device loss before falling back to software.
-    /// Returns false for a null pointer or if the device state cannot be queried.
-    /// </summary>
-    public static bool IsDeviceLost(IntPtr d3d11DevicePointer)
-    {
-        if (d3d11DevicePointer == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        try
-        {
-            // Balance the AddRef with the wrapper's Dispose (Release) so we do not alter the
-            // FFmpeg-owned device's lifetime — same AddRef-and-wrap pattern as D3D11DeviceResources.
-            _ = Marshal.AddRef(d3d11DevicePointer);
-            using var device = new ID3D11Device(d3d11DevicePointer);
-            return device.DeviceRemovedReason.Failure;
-        }
-        catch
-        {
-            // If the device cannot even be queried, do not force a false positive here; the
-            // caller's repeated-failure gate is what actually drives recovery.
-            return false;
-        }
-    }
 
     /// <summary>
     /// Builds a diagnostic-ready description of a device-lost failure. When
@@ -85,6 +54,27 @@ internal static class D3D11DeviceLostClassifier
         }
 
         return $"{ClassificationName(result)}: {result}{reasonSuffix}";
+    }
+
+    /// <summary>
+    /// A failure message naming the step that threw (ENG-039), with the removal reason when
+    /// <paramref name="device"/> is gone: after a GPU reset a call can fail with an unrelated code
+    /// (the reset smoke saw <c>E_INVALIDARG</c> from the video processor), so the device is asked.
+    /// </summary>
+    public static string DescribeStepFailure(string step, Exception exception, ID3D11Device? device)
+    {
+        var message = $"{step} failed: {exception.GetType().Name}: {exception.Message}";
+        Result removed = default;
+        try
+        {
+            removed = device?.DeviceRemovedReason ?? default;
+        }
+        catch (SharpGenException)
+        {
+            // The device may already be released; report the step alone.
+        }
+
+        return removed.Failure ? $"{message} ({Describe(removed, swapChain: null)})" : message;
     }
 
     private static string ClassificationName(Result result) =>

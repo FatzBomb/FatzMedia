@@ -48,7 +48,7 @@ public sealed class SoftwareVideoCopyBenchmark(ITestOutputHelper output)
     {
         using VideoDecoder decoder = VideoDecoder.FromConfiguration(
             new MediaPlayerConfiguration(VideoDecodingMethod.Software),
-            SoftwareOnlyVideoHardwareAccelerationServices.Instance);
+            new RendererVideoDecodeServices(SoftwareOnlyVideoHardwareAccelerationServices.Instance));
         Assert.True(decoder.Open(path), $"cannot open {path}");
 
         var decodeTicks = 0L;

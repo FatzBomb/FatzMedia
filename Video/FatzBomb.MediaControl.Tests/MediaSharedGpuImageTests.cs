@@ -250,6 +250,65 @@ public sealed class MediaSharedGpuImageSetTests
     }
 
     [Fact]
+    public void CompleteImport_PartialCount_TellsTheProducerWhichBuffersWereConsumed()
+    {
+        List<int> released = [];
+        MediaSharedGpuImageSet set = CreateCounted(released.Add);
+
+        set.CompleteImport(1);
+        set.CompleteImport(2);
+        set.Retire();
+
+        Assert.Equal([1], released);
+        Assert.Equal(1, set.ConsumedBufferCount);
+        Assert.True(set.HandlesConsumed);
+    }
+
+    [Fact]
+    public void CompleteImport_ClampsTheCountAndMapsTheBooleanForm()
+    {
+        List<int> released = [];
+        MediaSharedGpuImageSet all = CreateCounted(released.Add);
+        all.CompleteImport(handlesConsumed: true);
+        all.Retire();
+        MediaSharedGpuImageSet tooMany = CreateCounted(released.Add);
+        tooMany.CompleteImport(7);
+        tooMany.Retire();
+        MediaSharedGpuImageSet none = CreateCounted(released.Add);
+        none.CompleteImport(-1);
+        none.Retire();
+
+        Assert.Equal([2, 2, 0], released);
+        Assert.False(none.HandlesConsumed);
+    }
+
+    [Fact]
+    public void BooleanProducer_KeepsEveryHandleAfterAPartialImport()
+    {
+        List<bool> released = [];
+        MediaSharedGpuImageSet set = Create(releaseHandles: released.Add);
+
+        set.CompleteImport(1);
+        set.Retire();
+
+        // A producer that only knows "all or nothing" must not close a handle an importer took.
+        Assert.Equal([true], released);
+    }
+
+    [Fact]
+    public void ReportDeviceLost_ReachesTheProducerOnce_AndIsIgnoredWithoutACallback()
+    {
+        List<string> reports = [];
+        MediaSharedGpuImageSet set = CreateCounted(static _ => { }, reports.Add);
+
+        set.ReportDeviceLost("context lost");
+        set.ReportDeviceLost("again");
+        Create().ReportDeviceLost("nobody listens");
+
+        Assert.Equal(["context lost"], reports);
+    }
+
+    [Fact]
     public void Constructor_RejectsAnEmptySet() =>
         Assert.Throws<ArgumentException>(() => new MediaSharedGpuImageSet(
             1, default, 4, 4, MediaSharedGpuImageFormat.Bgra8Unorm, [], static (_, _) => { }));
@@ -265,6 +324,17 @@ public sealed class MediaSharedGpuImageSetTests
             [new MediaSharedGpuImageBuffer(11), new MediaSharedGpuImageBuffer(12)],
             releaseFrame ?? (static (_, _) => { }),
             releaseHandles);
+
+    private static MediaSharedGpuImageSet CreateCounted(Action<int> releaseConsumedHandles, Action<string>? deviceLost = null) => new(
+        3,
+        new MediaSharedGpuImageSelection(MediaSharedGpuImageHandleKind.VulkanOpaqueFd, MediaSharedGpuImageSyncKinds.HostSynchronized, MediaSharedGpuSemaphoreHandleKind.None),
+        64,
+        32,
+        MediaSharedGpuImageFormat.Rgba8Unorm,
+        [new MediaSharedGpuImageBuffer(11), new MediaSharedGpuImageBuffer(12)],
+        static (_, _) => { },
+        releaseConsumedHandles,
+        deviceLost);
 }
 
 public sealed class MediaSharedGpuImageConsumerHandleTests

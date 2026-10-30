@@ -22,7 +22,7 @@ namespace FatzBomb.MediaControl.Player.Avalonia;
 /// and the surface's presentation path. The full-screen chrome rule, the stats line and the
 /// second-screen placement are shared with the other players (Player.Shared, Stage 046A slice 3).
 /// </summary>
-public partial class PlayerPanel : UserControl
+public partial class PlayerPanel : UserControl, IPlayerSlot
 {
     private readonly int _index;
     private readonly bool _atStartup;
@@ -96,16 +96,16 @@ public partial class PlayerPanel : UserControl
     private string Label => $"P{_index}";
 
     /// <summary>Creates the engine and loads the startup media; then, in the first build, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
-    internal async Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         await ViewModel.StartAsync();
 
         // --second-screen=<n> opens player 1's second screen at startup.
-        if (_atStartup && _index == 1 && StartupOptions.Current.SecondScreen is not null && ViewModel.Player is not null && !_disposed)
+        if (StartupOptions.Current.OpensSecondScreenAtStartup(_index, _atStartup) && ViewModel.Player is not null && !_disposed)
             SecondScreenBox.IsChecked = true;
     }
 
-    internal async Task DisposeAsync()
+    public async Task DisposeAsync()
     {
         if (_disposed)
             return;
@@ -120,7 +120,7 @@ public partial class PlayerPanel : UserControl
         await ViewModel.DisposeAsync();
     }
 
-    internal void UpdateStatus(ProcessSample process)
+    public void UpdateStatus(ProcessSample process)
     {
         PixelSize size = Surface.AttachedPixelSize;
         var surface = PlayerStatsLine.DescribeSurface(size.Width, size.Height, Surface.PresentationPath, Surface.IsPresentationSuspended);
@@ -128,7 +128,7 @@ public partial class PlayerPanel : UserControl
     }
 
     /// <summary>Enters or leaves full screen: only the picture, with the controls shown while the pointer moves.</summary>
-    internal void SetFullScreen(bool fullScreen)
+    public void SetFullScreen(bool fullScreen)
     {
         ViewModel.CloseFlyout();
         Frame.Margin = fullScreen ? default : new Thickness(2);
@@ -140,8 +140,11 @@ public partial class PlayerPanel : UserControl
             _chrome.Exit();
     }
 
+    /// <summary>Gets whether a flyout is open (Escape closes it).</summary>
+    public bool HasOpenFlyout => ViewModel.ActiveFlyout != PlayerFlyout.None;
+
     /// <summary>Escape: closes the open flyout first; returns whether it did.</summary>
-    internal bool CloseFlyout()
+    public bool CloseFlyout()
     {
         if (ViewModel.ActiveFlyout == PlayerFlyout.None)
             return false;

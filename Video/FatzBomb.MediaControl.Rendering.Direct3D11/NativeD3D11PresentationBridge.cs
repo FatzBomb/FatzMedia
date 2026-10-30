@@ -3,6 +3,7 @@ using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation;
 using System.Diagnostics;
 
@@ -17,6 +18,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private readonly MonitorRefreshRateCache _refreshRates = new(Win32MonitorRefreshRate.TryGet);
     private readonly MonitorVblankClocks _vblankClocks = new();
     private bool _disposed;
+    private bool _videoSupportRefusalReported;
 
     public NativeD3D11PresentationBridge(
         MediaPlayerConfiguration configuration,
@@ -44,6 +46,21 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     public string DeviceLostRecoveryFailedDiagnosticCategory => "D3D11.DeviceLost.RecoveryFailed";
 
     public bool IsInitialized => NativeDeviceHandle != 0;
+
+    /// <summary>
+    /// ENG-039: reads the current device's removal reason (the device a decoder brought, once
+    /// adopted, is the same device). It takes no presentation lock, so a present stuck in the
+    /// driver does not hide the loss.
+    /// </summary>
+    public bool ProbeDeviceLost(out string? reason)
+    {
+        reason = null;
+        if (Volatile.Read(ref _disposed) || !_deviceResources.ProbeDeviceRemoved(out SharpGen.Runtime.Result removed))
+            return false;
+
+        reason = $"Direct3D11 {D3D11DeviceLostClassifier.Describe(removed, swapChain: null)}";
+        return true;
+    }
 
     public bool Initialize()
     {
@@ -317,7 +334,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
             return false;
 
         // Offscreen targets (any role) have no swap chain to hold back during a live resize.
-        if (TryGetManagedFrameSink(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out _) || MediaSharedGpuImageConsumerHandle.TryResolve(surface, out _))
             return true;
 
         if (!TryGetWin32Hwnd(surface, out _))
@@ -339,7 +356,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
     private bool TryAttachOffscreenSurface(MediaPresentationSurfaceDescriptor surface, out bool attached)
     {
         var isPrimary = surface.Role == MediaPresentationSurfaceRole.Primary;
-        if (TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink sink))
+        if (MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
         {
             attached = isPrimary
                 ? CreateManagedFrameSinkSurface(sink, surface.PixelWidth, surface.PixelHeight)
@@ -367,24 +384,6 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         return surface is { IsValid: true }
             && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.Win32Hwnd
             && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.Window, out hwnd);
-    }
-
-    private static bool TryGetManagedFrameSink(
-        MediaPresentationSurfaceDescriptor? surface,
-        out IMediaPresentationFrameSink sink)
-    {
-        sink = null!;
-        if (surface is not { IsValid: true }
-            || surface.NativeSurface.SurfaceTypeId != MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
-            || !surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
-            || !MediaPresentationFrameSinkHandle.TryResolve(handle, out IMediaPresentationFrameSink? resolved)
-            || resolved == null)
-        {
-            return false;
-        }
-
-        sink = resolved;
-        return true;
     }
 
     public bool DetachSurface(MediaPresentationSurfaceDescriptor surface)
@@ -456,10 +455,24 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
 
         // A frame from a removed decoder device (a GPU reset) is not adopted: every surface would
         // be re-created on a dead device, and a shared-texture consumer told it is unavailable
-        // would stay on its frame sink (Stage 045A). The decoder's device-loss recovery moves it
-        // to software decoding, and those frames need no device.
+        // would stay on its frame sink (Stage 045A). Device-loss recovery (ENG-039) must not
+        // adopt it again either; the reopened decoder brings a live device.
         if (D3D11DeviceResources.IsDeviceRemoved(resource.Device.DeviceHandle))
             return false;
+
+        // A device without the video processor cannot draw its frames: refused before the
+        // current device and its surfaces are torn down (ENG-039 G5). Not remembered by pointer,
+        // since a later decoder device can reuse the address; the check is one QueryInterface.
+        if (!D3D11DeviceResources.HasVideoSupport(resource.Device.DeviceHandle, resource.Device.DeviceContextHandle))
+        {
+            if (!_videoSupportRefusalReported)
+            {
+                _videoSupportRefusalReported = true;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", "The decoder's Direct3D11 device has no video processor; its hardware frames are not drawn.");
+            }
+
+            return false;
+        }
 
         if (!InitializeFromNativeDevice(resource.Device.DeviceHandle, resource.Device.DeviceContextHandle))
             return false;
@@ -489,7 +502,7 @@ internal sealed class NativeD3D11PresentationBridge : IMediaRendererBackend
         get
         {
             lock (_lock)
-                return _presentation.LastCompositionFailureReason;
+                return _presentation.LastPresentFailureReason;
         }
     }
 

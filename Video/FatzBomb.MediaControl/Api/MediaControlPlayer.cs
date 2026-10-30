@@ -57,6 +57,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     private ICdgEngine? _seekCdgEngine;
     private PendingSeek? _pendingSeek;
     private int _hasPendingSeek;
+    private int _presentationRefreshQueued;
     private int _resetting;
     // A rebuild freed the graph and failed to build the next one: nothing in the fields is live.
     private bool _sessionGraphFreed;
@@ -92,7 +93,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         StartAudioDeviceMonitor();
     }
 
-    public MediaControls Controls { get; private set; }
+    internal MediaControls Controls { get; private set; }
 
     private MediaFile File { get; set; }
 
@@ -147,7 +148,14 @@ public partial class MediaControlPlayer : IMediaControlSession
     public VideoDisplayMode VideoDisplayMode
     {
         get => _presentationCoordinator.VideoDisplayMode;
-        set => _presentationCoordinator.VideoDisplayMode = value;
+        set
+        {
+            if (_presentationCoordinator.VideoDisplayMode == value)
+                return;
+
+            _presentationCoordinator.VideoDisplayMode = value;
+            RequestPresentationRefresh();
+        }
     }
 
     public bool Normalize
@@ -193,7 +201,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                 return;
 
             _mediaEngine.ShowMidiLyrics = value;
-            _presentationCoordinator.RefreshCurrentPosition();
+            RequestPresentationRefresh();
         }
     }
 
@@ -214,14 +222,6 @@ public partial class MediaControlPlayer : IMediaControlSession
         get => TimeSpan.FromSeconds(_mediaEngine.SubtitleOffsetSeconds);
         set => ApplySyncOffset(_mediaEngine.SetSubtitleOffset(value.TotalSeconds));
     }
-
-    public IVideoEngine? Video => _mediaEngine.Video;
-
-    public IAudioEngine Audio => _mediaEngine.Audio;
-
-    public ICdgEngine? Cdg => _mediaEngine.Cdg;
-
-    public ISubtitleEngine? Subtitle => _mediaEngine.Subtitle;
 
     public TimeSpan Position
     {
@@ -561,7 +561,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     {
         var selected = _mediaEngine.SelectSubtitleTrack(trackId);
         if (selected)
-            _presentationCoordinator.RefreshCurrentPosition();
+            RequestPresentationRefresh();
 
         return selected;
     }
@@ -575,7 +575,7 @@ public partial class MediaControlPlayer : IMediaControlSession
     public void ResetSyncOffsets()
     {
         _mediaEngine.ResetSyncOffsets();
-        _presentationCoordinator.RefreshCurrentPosition();
+        RequestPresentationRefresh();
     }
 
     public void Close()
@@ -642,8 +642,30 @@ public partial class MediaControlPlayer : IMediaControlSession
 
     private double ApplySyncOffset(double seconds)
     {
-        _presentationCoordinator.RefreshCurrentPosition();
+        RequestPresentationRefresh();
         return seconds;
+    }
+
+    /// <summary>
+    /// Redraws the current position after a host setter changed what is shown (ENG-039): on the
+    /// control queue, in order with seeks, and coalesced, so a burst of changes redraws once and
+    /// the host's thread never waits for a present (a present stuck in the renderer froze the UI).
+    /// </summary>
+    private void RequestPresentationRefresh()
+    {
+        if (_disposed || Interlocked.Exchange(ref _presentationRefreshQueued, 1) != 0)
+            return;
+
+        Task queued = _controlOperations.Enqueue(() =>
+        {
+            Volatile.Write(ref _presentationRefreshQueued, 0);
+            if (!_disposed && !_sessionGraphFreed)
+                _presentationCoordinator.RefreshCurrentPosition();
+        });
+
+        // Refused (the queue is being replaced or disposed): let the next change ask again.
+        if (queued.IsFaulted)
+            Volatile.Write(ref _presentationRefreshQueued, 0);
     }
 
     public bool AttachPresentationSurface(MediaPresentationSurfaceDescriptor surface)
@@ -977,16 +999,32 @@ public partial class MediaControlPlayer : IMediaControlSession
         StartAudioDeviceMonitor();
     }
 
-    /// <summary>Stops and closes the media, unsubscribes, and disposes the session graph.</summary>
+    /// <summary>Holds the surfaces, then stops and closes the media, unsubscribes, and disposes the session graph.</summary>
     private void TearDownSessionGraph()
     {
         HoldPresentationSurfaces();
         if (_sessionGraphFreed)
             return;
 
-        _sessionGraphFreed = true;
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.OnScrubEnded(); } catch { }
+        FreeSessionGraph(stopPlayback: false);
+    }
+
+    /// <summary>
+    /// The one teardown of the session graph, shared by Reset, mode switches and Dispose: closes
+    /// the media, unsubscribes every player handler (including the device-recovery reopen) and
+    /// disposes the graph, once.
+    /// </summary>
+    /// <param name="stopPlayback">Stops the transport before closing (Dispose).</param>
+    private void FreeSessionGraph(bool stopPlayback)
+    {
+        if (_sessionGraphFreed)
+            return;
+
+        _sessionGraphFreed = true;
+        if (stopPlayback)
+            try { _ = Controls.Stop(); } catch { }
         try { File.Close(); } catch { }
 
         try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
@@ -999,6 +1037,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _positionNotifier.Dispose(); } catch { }
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
+        try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
         try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
@@ -1010,10 +1049,10 @@ public partial class MediaControlPlayer : IMediaControlSession
 
         StopAudioDeviceMonitor();
 
-        try { Controls.Dispose(); } catch { }
-        try { _presentationCoordinator.Dispose(); } catch { }
-        try { _mediaEngine.Dispose(); } catch { }
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
+        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
+        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
     }
 
     private void StartAudioDeviceMonitor()
@@ -1091,6 +1130,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         SubscribeNewSessionEvents();
         SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
+        _presentationCoordinator.DeviceRecovered += OnPresentationDeviceRecovered;
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;
@@ -1233,37 +1273,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         try { _preparedNext.Dispose(); } catch { }
         try { _fadeRunner.Cancel(); } catch { }
         try { _scrubAudio.Dispose(); } catch { }
-        if (_sessionGraphFreed)
-            return;
-
-        _sessionGraphFreed = true;
-        try { _ = Controls.Stop(); } catch { }
-        try { File.Close(); } catch { }
-        try { Controls.MediaEnded -= OnControlsMediaEnded; } catch { }
-        try { Controls.MediaStarted -= OnControlsMediaStarted; } catch { }
-        try { Controls.MediaStopped -= OnControlsMediaStopped; } catch { }
-        try { UnsubscribeNewSessionEvents(); } catch { }
-        try { UnsubscribeNetworkEvents(); } catch { }
-        try { UnsubscribeSeekCompletionSources(); } catch { }
-        try { _positionNotifier.PositionChanged -= OnPositionNotifierChanged; } catch { }
-        try { _positionNotifier.Dispose(); } catch { }
-        ClearPendingSeek();
-        try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
-        try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
-        try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
-        try
-        {
-            if (_mediaEngine is IMediaErrorSource errorSource)
-                errorSource.ErrorOccurred -= OnEngineErrorOccurred;
-        }
-        catch { }
-
-        StopAudioDeviceMonitor();
-
-        try { Controls.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Controls dispose failed: {ex.Message}"); }
-        try { _presentationCoordinator.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Presentation coordinator dispose failed: {ex.Message}"); }
-        try { _mediaEngine.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Media engine dispose failed: {ex.Message}"); }
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch (Exception ex) { Debug.WriteLine($"[MediaControlPlayer] Service provider dispose failed: {ex.Message}"); }
+        FreeSessionGraph(stopPlayback: true);
     }
 
     /// <param name="DuringScrub">

@@ -633,7 +633,7 @@ Procedure and expected:
 39. ZIP archive with video only opens as video main.
 40. Audio-only media auto-detects matching image and video sidecars.
 41. MIDI with no karaoke lyrics auto-detects matching image and video sidecars.
-42. `ignoreSidecar: true` and `MediaFile.BackgroundAutoDetect = false` each disable automatic sidecar loading.
+42. `ignoreSidecar: true` and `MediaControlPlayer.AutoBackground = false` each disable automatic sidecar loading.
 43. An image main ignores matching sidecars but accepts an explicitly supplied background.
 44. A video main does not load a matching video sidecar or explicit background.
 45. MOD, S3M, XM, and IT tracker files seek forward and backward while stopped, paused, and playing.

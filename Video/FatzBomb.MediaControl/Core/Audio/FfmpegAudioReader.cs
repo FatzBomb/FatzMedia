@@ -131,43 +131,13 @@ internal sealed unsafe class FfmpegAudioReader : IDisposable
         if (_stream == null)
             return false;
 
-        for (var index = 0; index < _demuxer.StreamCount; index++)
-        {
-            if (index != _streamIndex)
-                _demuxer.SetStreamDiscard(index, AVDiscard.AVDISCARD_ALL);
-        }
+        _demuxer.DiscardAllStreamsExcept([_streamIndex]);
 
-        AVCodec* codec = ffmpeg.avcodec_find_decoder(_stream->codecpar->codec_id);
-        if (codec == null)
+        if (!FfmpegAudioDecoderSetup.TryOpen(_stream, out _codecContext, out _resampler, out var sampleRate, out var channels))
             return false;
 
-        _codecContext = ffmpeg.avcodec_alloc_context3(codec);
-        if (_codecContext == null
-            || ffmpeg.avcodec_parameters_to_context(_codecContext, _stream->codecpar) < 0
-            || ffmpeg.avcodec_open2(_codecContext, codec, null) < 0)
-            return false;
-
-        SampleRate = _codecContext->sample_rate;
-        if (SampleRate <= 0)
-            return false;
-
-        var sourceChannels = Math.Max(1, _codecContext->ch_layout.nb_channels);
-        Channels = sourceChannels > 2 ? 2 : sourceChannels;
-
-        AVChannelLayout inputLayout = _codecContext->ch_layout;
-        if (inputLayout.nb_channels <= 0 || ffmpeg.av_channel_layout_check(&inputLayout) == 0)
-            ffmpeg.av_channel_layout_default(&inputLayout, sourceChannels);
-
-        var outputLayout = new AVChannelLayout();
-        ffmpeg.av_channel_layout_default(&outputLayout, Channels);
-
-        SwrContext* resampler = null;
-        if (ffmpeg.swr_alloc_set_opts2(&resampler, &outputLayout, AVSampleFormat.AV_SAMPLE_FMT_FLT, SampleRate, &inputLayout, _codecContext->sample_fmt, SampleRate, 0, null) < 0)
-            return false;
-
-        _resampler = resampler;
-        if (_resampler == null || ffmpeg.swr_init(_resampler) < 0)
-            return false;
+        SampleRate = sampleRate;
+        Channels = channels;
 
         _frame = ffmpeg.av_frame_alloc();
         _packet = ffmpeg.av_packet_alloc();

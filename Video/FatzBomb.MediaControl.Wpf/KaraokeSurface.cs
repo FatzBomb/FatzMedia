@@ -217,19 +217,8 @@ public sealed class KaraokeSurface : Grid, IDisposable
     protected override Size ArrangeOverride(Size arrangeSize)
     {
         _ = base.ArrangeOverride(arrangeSize);
-        var width = arrangeSize.Width;
-        var height = width * 0.75;
-        if (height > arrangeSize.Height)
-        {
-            height = arrangeSize.Height;
-            width = height * (4.0 / 3.0);
-        }
-
-        _surface.Arrange(new Rect(
-            Math.Max(0, (arrangeSize.Width - width) / 2),
-            Math.Max(0, (arrangeSize.Height - height) / 2),
-            Math.Max(0, width),
-            Math.Max(0, height)));
+        (double x, double y, double width, double height) = KaraokeLayout.Fit(arrangeSize.Width, arrangeSize.Height);
+        _surface.Arrange(new Rect(x, y, width, height));
         return arrangeSize;
     }
 
@@ -244,37 +233,23 @@ public sealed class KaraokeSurface : Grid, IDisposable
         if (_disposed || !IsLoaded || !_playerController.TryQueueReload())
             return;
 
-        _ = Dispatcher.BeginInvoke(async () =>
-        {
-            _playerController.ClearQueuedReload();
-            if (_disposed || !IsLoaded)
-                return;
+        _ = Dispatcher.BeginInvoke(() => _playerController.RunQueuedReloadAsync(() => !_disposed && IsLoaded, ReloadSourceAsync));
+    }
 
-            try
-            {
-                // Clearing the source releases the player, so the previous song does not keep
-                // playing; a reload without one (Loaded) leaves a song LoadAsync loaded alone.
-                if (!string.IsNullOrWhiteSpace(Source))
-                {
-                    _sourceLoaded = true;
-                    _ = await LoadKaraokeAsync(Source);
-                }
-                else if (_sourceLoaded)
-                {
-                    _sourceLoaded = false;
-                    _playerController.ReleasePlayer();
-                }
-            }
-            catch (Exception ex)
-            {
-                DiagnosticRouter.Raise(
-                    _playerController.Session,
-                    MediaDiagnosticLevel.Warning,
-                    DiagnosticCategory,
-                    $"Reloading the source failed: {ex.Message}",
-                    innerException: ex);
-            }
-        });
+    // Clearing the source releases the player, so the previous song does not keep playing; a
+    // reload without one (Loaded) leaves a song LoadAsync loaded alone.
+    private async Task ReloadSourceAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Source))
+        {
+            _sourceLoaded = true;
+            _ = await LoadKaraokeAsync(Source);
+        }
+        else if (_sourceLoaded)
+        {
+            _sourceLoaded = false;
+            _playerController.ReleasePlayer();
+        }
     }
 
     private Task<bool> LoadKaraokeAsync(string path)

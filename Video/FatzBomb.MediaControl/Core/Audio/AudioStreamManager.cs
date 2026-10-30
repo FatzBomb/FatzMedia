@@ -217,25 +217,21 @@ internal sealed class AudioStreamManager : IDisposable
 
         try
         {
-            var estimatedSize = (int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue);
-            using var memoryStream = new MemoryStream(estimatedSize);
-
-            archiveEntry.WriteTo(memoryStream);
-            var audioData = memoryStream.ToArray();
+            (var audioData, var length) = ReadArchiveEntry(archiveEntry);
 
             var isTracker = IsTrackerFormat(archiveEntry.Key);
 
             if (isTracker)
             {
-                DecodeHandle = MBass.MusicLoad(audioData, 0, audioData.Length, TrackerDecodeFlags, 0);
-                _sourceHandle = MBass.MusicLoad(audioData, 0, audioData.Length, GetPlaybackSourceFlags(archiveEntry.Key), 0);
+                DecodeHandle = MBass.MusicLoad(audioData, 0, length, TrackerDecodeFlags, 0);
+                _sourceHandle = MBass.MusicLoad(audioData, 0, length, GetPlaybackSourceFlags(archiveEntry.Key), 0);
                 _decodeHandleIsMusic = true;
                 _sourceHandleIsMusic = true;
             }
             else
             {
-                DecodeHandle = MBass.CreateStream(audioData, 0, audioData.Length, DecodeFlags);
-                _sourceHandle = MBass.CreateStream(audioData, 0, audioData.Length, CreateStreamFlags);
+                DecodeHandle = MBass.CreateStream(audioData, 0, length, DecodeFlags);
+                _sourceHandle = MBass.CreateStream(audioData, 0, length, CreateStreamFlags);
                 _decodeHandleIsMusic = false;
                 _sourceHandleIsMusic = false;
             }
@@ -258,6 +254,24 @@ internal sealed class AudioStreamManager : IDisposable
             Close(); // Ensure cleanup on failure
             return false;
         }
+    }
+
+    /// <summary>
+    /// Reads an archive entry into memory once, for both BASS handles (each pins the array until
+    /// it is freed). The stream's own buffer is used when the entry's size was known, instead of
+    /// copying it out with <c>ToArray</c> (ENG-039 P5-9: the audio was held twice while opening);
+    /// a wrong or missing size keeps the copy, so no oversized buffer stays pinned.
+    /// </summary>
+    internal static (byte[] Data, int Length) ReadArchiveEntry(IArchiveEntryInfo archiveEntry)
+    {
+        var estimatedSize = (int)Math.Min(archiveEntry.Size ?? 0, int.MaxValue);
+        using var memoryStream = new MemoryStream(estimatedSize);
+        archiveEntry.WriteTo(memoryStream);
+
+        byte[] buffer = memoryStream.GetBuffer();
+        return buffer.Length == memoryStream.Length
+            ? (buffer, buffer.Length)
+            : (memoryStream.ToArray(), (int)memoryStream.Length);
     }
 
     /// <summary>

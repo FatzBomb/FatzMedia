@@ -44,9 +44,8 @@ public class MediaSurface : Control
     /// <summary>The diagnostic category of the surface's path decisions and attach problems.</summary>
     public const string DiagnosticCategory = "WinForms.MediaSurface";
 
-    private static int s_nextSurfaceNumber;
 
-    private readonly int _surfaceNumber = Interlocked.Increment(ref s_nextSurfaceNumber);
+    private readonly MediaSurfaceBookkeeping _bookkeeping = new(DiagnosticCategory);
     private readonly PresentationHost _host = new();
     private readonly MediaSurfaceContentTracker _contentTracker = new();
     private IMediaControlSession? _player;
@@ -58,7 +57,6 @@ public class MediaSurface : Control
     private string? _surfaceId;
     private Form? _resizeForm;
     private bool _isLiveResizing;
-    private bool _attachRefusalReported;
     private int _contentStateQueued;
     private bool _isContentVisible;
     private bool _isPresentationSuspended;
@@ -73,6 +71,7 @@ public class MediaSurface : Control
     private MediaOverlayForm? _overlayForm;
     private readonly List<Control> _overlayAnchors = [];
     private bool _overlayAnchorsWatched;
+    private SolidBrush? _backgroundBrush;
 
     public MediaSurface()
     {
@@ -104,7 +103,7 @@ public class MediaSurface : Control
 
             Detach();
             _player = value;
-            _attachRefusalReported = false;
+            _bookkeeping.ResetAttachRefusal();
             _contentTracker.Session = value;
             if (value is not null && _role == MediaPresentationSurfaceRole.Primary)
                 value.VideoDisplayMode = _videoDisplayMode;
@@ -272,17 +271,15 @@ public class MediaSurface : Control
     /// <see cref="MediaSurfacePresentationPath.None"/> otherwise.
     /// </summary>
     [Browsable(false)]
-    public MediaSurfacePresentationPath PresentationPath { get; private set; }
+    public MediaSurfacePresentationPath PresentationPath => _bookkeeping.Path;
 
     /// <summary>Gets why the current path was chosen.</summary>
     [Browsable(false)]
-    public string? PresentationPathReason { get; private set; }
+    public string? PresentationPathReason => _bookkeeping.Reason;
 
     /// <summary>Gets the id this surface attaches with (<see cref="SurfaceId"/> or the role's default).</summary>
     [Browsable(false)]
-    public string EffectiveSurfaceId => string.IsNullOrWhiteSpace(_surfaceId)
-        ? _role == MediaPresentationSurfaceRole.Primary ? MediaPresentationSurfaceDescriptor.PrimarySurfaceId : DefaultSecondarySurfaceId
-        : _surfaceId.Trim();
+    public string EffectiveSurfaceId => MediaSurfaceBookkeeping.ResolveSurfaceId(_surfaceId, _role, DefaultSecondarySurfaceId);
 
     /// <summary>Gets whether this surface is attached to a session, in any role.</summary>
     [Browsable(false)]
@@ -368,8 +365,7 @@ public class MediaSurface : Control
         // instead of it. On the frame-sink path it is the frame's backdrop (frames may carry
         // alpha), painted into the same back buffer, so nothing flickers.
         Graphics graphics = e.Graphics;
-        using (var brush = new SolidBrush(BackColor))
-            graphics.FillRectangle(brush, ClientRectangle);
+        graphics.FillRectangle(GetBackgroundBrush(), ClientRectangle);
 
         if (!_framesShown || _sink?.Bitmap is not { } frame)
             return;
@@ -393,9 +389,24 @@ public class MediaSurface : Control
             WatchOverlayAnchors(false);
             _contentTracker.Changed -= OnContentTrackerChanged;
             _contentTracker.Dispose();
+            _backgroundBrush?.Dispose();
+            _backgroundBrush = null;
         }
 
         base.Dispose(disposing);
+    }
+
+    // On the frame-sink path OnPaint runs per frame: one brush, recoloured when BackColor changes,
+    // rather than a new one each paint (ENG-039).
+    private SolidBrush GetBackgroundBrush()
+    {
+        Color color = BackColor;
+        if (_backgroundBrush is null)
+            _backgroundBrush = new SolidBrush(color);
+        else if (_backgroundBrush.Color != color)
+            _backgroundBrush.Color = color;
+
+        return _backgroundBrush;
     }
 
     private void AttachOrResize()
@@ -471,15 +482,10 @@ public class MediaSurface : Control
             }
         }
 
-        if (!attached && !_attachRefusalReported)
+        if (!attached)
         {
-            // Layout retries the attach on every resize: report a refusal once per session.
-            _attachRefusalReported = true;
-            DiagnosticRouter.Raise(
-                session,
-                MediaDiagnosticLevel.Warning,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeAttachRefused(DescribeSurface()));
+            // Layout retries the attach on every resize: Core reports a refusal once per session.
+            _bookkeeping.ReportAttachRefused(session, EffectiveSurfaceId);
         }
 
         UpdateContentState();
@@ -496,7 +502,7 @@ public class MediaSurface : Control
         _attachedSession = session;
         _attachedSurfaceId = surfaceId;
         _attachedPixelSize = pixelSize;
-        _attachRefusalReported = false;
+        _bookkeeping.ResetAttachRefusal();
         if (_isLiveResizing)
             _ = session.SetPresentationSurfaceLiveResize(surfaceId, true);
     }
@@ -601,25 +607,12 @@ public class MediaSurface : Control
         OnContentTrackerChanged(this, EventArgs.Empty);
     }
 
-    private string DescribeSurface() => $"Surface #{_surfaceNumber} '{EffectiveSurfaceId}'";
+    private string DescribeSurface() => _bookkeeping.Describe(EffectiveSurfaceId);
 
     private void SetPath(MediaSurfacePresentationPath path, string? reason)
     {
-        if (path == PresentationPath && reason == PresentationPathReason)
-            return;
-
-        PresentationPath = path;
-        PresentationPathReason = reason;
-        if (path != MediaSurfacePresentationPath.None)
-        {
-            DiagnosticRouter.Raise(
-                _attachedSession,
-                MediaDiagnosticLevel.Info,
-                DiagnosticCategory,
-                MediaSurfacePresentationPathText.DescribeChoice(DescribeSurface(), path, reason));
-        }
-
-        PresentationPathChanged?.Invoke(this, EventArgs.Empty);
+        if (_bookkeeping.SetPath(path, reason, _attachedSession, EffectiveSurfaceId))
+            PresentationPathChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // Raised on the thread that changed the state (often Core's render or event thread): marshal,

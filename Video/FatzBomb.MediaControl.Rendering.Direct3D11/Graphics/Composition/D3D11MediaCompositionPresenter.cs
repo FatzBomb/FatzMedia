@@ -45,6 +45,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     // Failures that repeat every frame: one diagnostic per episode (ENG-026).
     private readonly RendererDiagnosticLatch _targetDrawFailure = new();
     private readonly RendererDiagnosticLatch _overlayDrawFailure = new();
+    private readonly RendererDiagnosticLatch _hardwareBackgroundFailure = new();
+    private readonly RendererDiagnosticLatch _presentFailure = new();
 
     private ID3D11PixelShader? _backgroundPixelShader;
     private ID3D11PixelShader? _baseVisualPixelShader;
@@ -81,8 +83,6 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
     private double _compositionMs;
     private double _compositionMaxMs;
     private string? _lastCompositionReason;
-
-    public bool IsReady => _layerCache.TryGet(MediaCompositionLayerId.Overlay)?.HasCdgResources == true;
 
     /// <summary>
     /// The HDR video (transfer and peak) the background layer last received from a hardware
@@ -184,6 +184,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             }
 
             backgroundLayer.MarkUploaded(backgroundRevision);
+            _hardwareBackgroundFailure.Reset();
             _backgroundHdrContent = toneMap;
             if (scRgb is { } output)
                 _backgroundSdrScale = (float)HdrOutputPolicy.SdrScale(output.SdrWhiteNits);
@@ -191,7 +192,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, "Composition", $"Hardware background copy failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
+            // Every frame while it lasts (a GPU reset): one report per episode, naming the step and
+            // the removal reason (ENG-039). Core's device probe then recovers the device.
+            _ = _hardwareBackgroundFailure.Raise(
+                MediaDiagnosticLevel.Warning,
+                "Composition",
+                $"Hardware background copy failed: {D3D11DeviceLostClassifier.DescribeStepFailure(videoProcessorPresenter.LastStep, ex, deviceResources.Device)}",
+                ex);
             ClearBackgroundFrame();
             return false;
         }
@@ -298,6 +305,8 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
             return false;
         }
 
+        // The step reached, named when a call throws (ENG-039). Constants: no allocation per frame.
+        var step = "target selection";
         try
         {
             var passStart = Stopwatch.GetTimestamp();
@@ -335,6 +344,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 return false;
             }
 
+            step = "layer plan";
             _layerCache.Capture(frame);
             CompositionLayerUpdatePlan updatePlan = _layerCache.CreateUpdatePlan();
             LogClearOnlyResourceGuardrailIfNeeded(updatePlan);
@@ -354,38 +364,41 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                 return true;
             }
 
+            step = "background layer";
             if (!EnsureCompositionBackgroundFrame(deviceResources, frame, videoProcessorPresenter))
             {
                 Fail("background layer could not be prepared", frame);
                 return false;
             }
 
+            step = "CD+G layer";
             if (!EnsureCompositionOverlayFrame(deviceResources, frame))
             {
                 Fail("overlay layer could not be prepared", frame);
                 return false;
             }
 
+            step = "subtitle layer";
             if (!EnsureCompositionSubtitleFrame(deviceResources, frame))
             {
                 Fail("subtitle layer could not be prepared", frame);
                 return false;
             }
 
+            step = "draw pipeline";
             if (frame.HasShaderVisibleLayer && !EnsureDrawPipeline(deviceResources.Device))
             {
                 Fail("shader pipeline is unavailable", frame);
                 return false;
             }
 
+            step = "target draw";
             var drawnTargets = new List<D3D11PresentationTargetSnapshot>(presentationTargets.Count);
-            var primaryExpected = false;
-            var primaryDrew = false;
+            var outcome = new CompositionPresentOutcome();
             var anyTargetFailed = false;
             foreach (D3D11PresentationTargetSnapshot target in presentationTargets)
             {
                 var isPrimary = target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId;
-                primaryExpected |= isPrimary;
                 // The backend's cached view of its texture (ENG-026); a snapshot without one gets a
                 // view for this draw only.
                 ID3D11RenderTargetView? ownedView = target.TargetViews is null ? deviceResources.Device.CreateRenderTargetView(target.Texture) : null;
@@ -408,6 +421,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     ownedView?.Dispose();
                 }
 
+                outcome.Record(isPrimary, drew);
                 if (!drew)
                 {
                     anyTargetFailed = true;
@@ -418,16 +432,16 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     continue;
                 }
 
-                primaryDrew |= isPrimary;
                 drawnTargets.Add(target);
             }
 
             if (!anyTargetFailed)
                 _targetDrawFailure.Reset();
 
-            var requiredTargetDrew = primaryExpected ? primaryDrew : drawnTargets.Count > 0;
+            var requiredTargetDrew = outcome.Succeeded;
             if (requiredTargetDrew)
             {
+                _presentFailure.Reset();
                 MarkRenderedLayers(frame);
                 presentedTargets = drawnTargets;
                 RecordCompositionDiagnostics(
@@ -448,8 +462,10 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         }
         catch (Exception ex)
         {
-            LastFailureReason = $"{ex.GetType().Name}: {ex.Message}";
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Visible target present failed: {ex.GetType().Name}: {ex.Message}", innerException: ex);
+            // Repeats every frame while the device is gone (a GPU reset): one report per episode,
+            // naming the step and the removal reason (ENG-039); Core's device probe recovers.
+            LastFailureReason = D3D11DeviceLostClassifier.DescribeStepFailure(step, ex, deviceResources.Device);
+            _ = _presentFailure.Raise(MediaDiagnosticLevel.Warning, "Composition", $"Visible target present failed: {LastFailureReason}", ex);
             Reset();
             return false;
         }
@@ -836,13 +852,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.Flush();
     }
 
-    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => frame.ClearMode switch
-    {
-        MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
-        MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
-        MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
-        _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
-    };
+    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => ToColor4(frame.ResolveClearArgb());
 
     private void MarkRenderedLayers(MediaCompositionFrame frame)
     {
@@ -929,6 +939,12 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         D3D11CompositionLayerState overlayLayer,
         bool scRgbTarget = false)
     {
+        // Before a memory preset sets the background colour the whole CD+G plane is transparent
+        // (the shader returns transparent too): nothing to draw, as in the software and Vulkan
+        // renderers (ENG-039 G7).
+        if (snapshot.BackgroundColorIndex < 0)
+            return true;
+
         if (!overlayLayer.HasCdgResources || overlayLayer.CdgIndexShaderResourceView == null || overlayLayer.CdgPaletteShaderResourceView == null || _pixelShader == null)
             return false;
 
@@ -1172,13 +1188,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         {
             if (_vertexShader == null || _pixelShader == null)
             {
-                var vertexShaderBytecode = CompileShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
-                var pixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
-                var backgroundPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
-                var baseVisualPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
-                var baseVisualPostPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
-                var solidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
-                var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
+                var vertexShaderBytecode = GetShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
+                var pixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
+                var backgroundPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
+                var baseVisualPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
+                var baseVisualPostPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
+                var solidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
+                var premultipliedSolidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
                 _backgroundPixelShader = device.CreatePixelShader(backgroundPixelShaderBytecode);
@@ -1393,6 +1409,19 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _rasterizerState = null;
         ReleasePostProcessTargets();
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Source, string EntryPoint, string Profile), byte[]> ShaderBytecodeCache = new();
+
+    /// <summary>
+    /// The compiled bytecode for one entry point, compiled once per process (ENG-039): the shader
+    /// objects are per device, but the bytecode is not, and each compile took milliseconds on every
+    /// media open and device change. The returned array is shared: callers only read it. A failed
+    /// compile is not cached, so the next call tries again.
+    /// </summary>
+    internal static byte[] GetShaderBytecode(string shaderSource, string entryPoint, string targetProfile) =>
+        ShaderBytecodeCache.GetOrAdd(
+            (shaderSource, entryPoint, targetProfile),
+            static key => CompileShaderBytecode(key.Source, key.EntryPoint, key.Profile));
 
     internal static byte[] CompileShaderBytecode(string shaderSource, string entryPoint, string targetProfile)
     {

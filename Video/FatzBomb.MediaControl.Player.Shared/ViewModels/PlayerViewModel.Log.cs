@@ -18,9 +18,13 @@ public partial class PlayerViewModel
     /// <summary>Gets the host's debug log file, or an empty string when it has none.</summary>
     public string LogFilePath => _host.LogFilePath ?? string.Empty;
 
+    // Any thread: the debug log file gets the line even while the UI thread is blocked (ENG-039).
+    private void TraceLogEntry(DiagnosticLogEntry entry) =>
+        Trace.WriteLine(Label is { Length: > 0 } label ? $"[Diagnostic] {label} {entry.Line}" : $"[Diagnostic] {entry.Line}");
+
+    // UI thread: the log panel. The entry was traced already.
     private void AppendToLog(DiagnosticLogEntry entry)
     {
-        Trace.WriteLine(Label is { Length: > 0 } label ? $"[Diagnostic] {label} {entry.Line}" : $"[Diagnostic] {entry.Line}");
         DiagnosticLog.Insert(0, entry);
         while (DiagnosticLog.Count > MaxLogEntries)
             DiagnosticLog.RemoveAt(DiagnosticLog.Count - 1);
