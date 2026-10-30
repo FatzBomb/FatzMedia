@@ -83,7 +83,8 @@ public sealed class WpfCompositedSurfaceHostTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA WPF test thread did not complete.");
+        // Cold WPF startup at the start of a parallel test run can be slow; same budget as the other STA tests.
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "STA WPF test thread did not complete.");
         if (threadException != null)
             ExceptionDispatchInfo.Capture(threadException).Throw();
     }

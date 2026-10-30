@@ -152,19 +152,23 @@ public sealed class EmbeddedSubtitleScanTests : IDisposable
         var engine = new TestMediaEngine { Content = MediaContent.Video };
         using var player = new MediaControlPlayer(new ScanTestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
         var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var changed = new TaskCompletionSource<(SubtitleTracksChangedEventArgs Args, bool AfterLoaded, int ThreadId)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var changed = new TaskCompletionSource<(SubtitleTracksChangedEventArgs Args, bool AfterLoaded, bool Inline)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raising = false;
         player.MediaLoaded += (_, _) => loaded.TrySetResult();
-        player.SubtitleTracksChanged += (_, e) => changed.TrySetResult((e, loaded.Task.IsCompleted, Environment.CurrentManagedThreadId));
+        // Inline = raised inside the engine's raise call. A thread id would not do: once this test awaits,
+        // the pool may run the delivery on the thread that raised.
+        player.SubtitleTracksChanged += (_, e) => changed.TrySetResult((e, loaded.Task.IsCompleted, Volatile.Read(ref raising)));
         Assert.True(player.Load("movie.mkv"));
 
         engine.SubtitleTracks = [new SubtitleTrack("embedded:2", "Embedded SUBRIP (stream 2)", IsEmbedded: true)];
         engine.SelectedSubtitleTrackId = "embedded:2";
-        var raisingThread = Environment.CurrentManagedThreadId;
+        Volatile.Write(ref raising, true);
         engine.RaiseSubtitleTracksChanged();
+        Volatile.Write(ref raising, false);
 
-        (SubtitleTracksChangedEventArgs args, var afterLoaded, var threadId) = await changed.Task.WaitAsync(Timeout);
+        (SubtitleTracksChangedEventArgs args, var afterLoaded, var inline) = await changed.Task.WaitAsync(Timeout);
         Assert.True(afterLoaded, "SubtitleTracksChanged arrived before MediaLoaded");
-        Assert.NotEqual(raisingThread, threadId);
+        Assert.False(inline, "SubtitleTracksChanged was raised on the engine's thread, inside its raise call");
         Assert.Equal("embedded:2", Assert.Single(args.Tracks).Id);
         Assert.Equal("embedded:2", args.SelectedTrackId);
     }
