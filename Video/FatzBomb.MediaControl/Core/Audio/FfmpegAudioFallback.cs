@@ -101,8 +101,41 @@ internal static class FfmpegAudioFallback
         return Prepared.Take(identity) ?? Convert(path, identity, cancellationToken);
     }
 
+    /// <summary>Where a conversion writes, decided before decoding from the container's duration.</summary>
+    internal enum ConversionTarget
+    {
+        /// <summary>A memory buffer of the planned capacity (0 when the duration is unknown).</summary>
+        Memory,
+
+        /// <summary>A temp file from the start: the estimate exceeds the in-memory limit.</summary>
+        File,
+
+        /// <summary>Refused: the converted data cannot fit in a WAV (4 GB).</summary>
+        TooLong,
+    }
+
+    /// <summary>
+    /// Plans a conversion from the container's duration: a buffer sized with a little slack for
+    /// durations that run short (so it does not grow by doubling, which could hold twice the
+    /// converted size), a temp file when that exceeds <paramref name="maxInMemory"/>, or a refusal
+    /// when the data cannot fit in a WAV. An unknown duration starts in memory and spills when needed.
+    /// </summary>
+    internal static (ConversionTarget Target, long InitialCapacity) PlanOutput(double durationSeconds, int sampleRate, int channels, long maxInMemory)
+    {
+        if (!(durationSeconds > 0) || !double.IsFinite(durationSeconds) || sampleRate <= 0 || channels <= 0)
+            return (ConversionTarget.Memory, 0);
+
+        var dataBytes = Math.Ceiling(durationSeconds * sampleRate) * channels * sizeof(float);
+        if (dataBytes > MaxWavDataBytes)
+            return (ConversionTarget.TooLong, 0);
+
+        var estimate = (long)((FloatWav.HeaderBytes + dataBytes) * 1.02) + 65536;
+        return estimate > maxInMemory ? (ConversionTarget.File, 0) : (ConversionTarget.Memory, estimate);
+    }
+
     private static ConvertedAudio? Convert(string path, string identity, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var stopwatch = Stopwatch.StartNew();
         using FfmpegAudioReader? reader = FfmpegAudioReader.Open(path);
         if (reader is null)
@@ -111,14 +144,27 @@ internal static class FfmpegAudioFallback
             return null;
         }
 
-        // Sized from the duration, with a little slack for container durations that run short, so
-        // the buffer does not grow by doubling (which could hold twice the converted size).
-        // Unknown or long durations start small and spill to a file.
-        var estimate = reader.DurationSeconds > 0
-            ? (long)((FloatWav.HeaderBytes + (Math.Ceiling(reader.DurationSeconds * reader.SampleRate) * reader.Channels * sizeof(float))) * 1.02) + 65536
-            : 0;
-        Stream output = new MemoryStream(estimate > 0 ? (int)Math.Min(estimate, MaxInMemoryBytes) : 0);
+        (ConversionTarget target, long capacity) = PlanOutput(reader.DurationSeconds, reader.SampleRate, reader.Channels, MaxInMemoryBytes);
+        if (target == ConversionTarget.TooLong)
+        {
+            ReportTooLong(path);
+            return null;
+        }
+
         string? tempPath = null;
+        Stream output;
+        try
+        {
+            output = target == ConversionTarget.File
+                ? CreateSpillFile(out tempPath)
+                : new MemoryStream((int)capacity);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"Converting '{Path.GetFileName(path)}' failed: {ex.Message}", sourcePath: path, innerException: ex);
+            return null;
+        }
+
         try
         {
             output.Write(new byte[FloatWav.HeaderBytes]);
@@ -134,14 +180,14 @@ internal static class FfmpegAudioFallback
                 ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(samples);
                 if (dataBytes + bytes.Length > MaxWavDataBytes)
                 {
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"'{Path.GetFileName(path)}' is too long to convert (WAV is limited to 4 GB).", sourcePath: path);
+                    // The container's duration ran short of the real length.
+                    ReportTooLong(path);
                     return Discard(output, tempPath);
                 }
 
                 if (output is MemoryStream memory && memory.Length + bytes.Length > MaxInMemoryBytes)
                 {
-                    tempPath = TempMediaFile.NewPath(".wav");
-                    var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+                    FileStream file = CreateSpillFile(out tempPath);
                     try
                     {
                         memory.WriteTo(file);
@@ -191,6 +237,15 @@ internal static class FfmpegAudioFallback
             throw;
         }
     }
+
+    private static FileStream CreateSpillFile(out string tempPath)
+    {
+        tempPath = TempMediaFile.NewPath(".wav");
+        return new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+    }
+
+    private static void ReportTooLong(string path) =>
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "AudioFallback", $"'{Path.GetFileName(path)}' is too long to convert (WAV is limited to 4 GB).", sourcePath: path);
 
     private static ConvertedAudio? Discard(Stream output, string? tempPath)
     {

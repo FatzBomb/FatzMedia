@@ -46,6 +46,30 @@ public sealed class FfmpegAudioReaderNativeTests
     }
 
     [Fact]
+    public void RealFfmpeg_CancelledConversion_Throws()
+    {
+        // The load's token reaches the conversion: Reset, Dispose or the host stop it.
+        var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");
+        if (string.IsNullOrWhiteSpace(directory) || !OperatingSystem.IsLinux())
+            return;
+
+        ActivateFfmpeg(directory);
+        var source = Path.Combine(Path.GetTempPath(), $"fatzbomb-cancel-{Guid.NewGuid():N}.wav");
+        try
+        {
+            WriteStereoTone(source, sampleRate: 48000, seconds: 2, amplitude: 0.5, burstAtSeconds: 1, burstAmplitude: 0.75);
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+
+            _ = Assert.ThrowsAny<OperationCanceledException>(() => FfmpegAudioFallback.Take(source, cancelled.Token));
+        }
+        finally
+        {
+            File.Delete(source);
+        }
+    }
+
+    [Fact]
     public void RealFfmpeg_ConvertsToAFloatWavFfmpegReadsBack_InMemoryAndAsTempFile()
     {
         var directory = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR");

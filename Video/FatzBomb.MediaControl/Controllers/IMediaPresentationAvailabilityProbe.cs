@@ -24,6 +24,11 @@ public sealed record MediaPresentationAvailability(bool IsAvailable, string Deta
     /// hardware-decoded frames, or runs on a software rasterizer (WARP), where a hardware decoder's
     /// frames would pull presentation onto another device.
     /// </summary>
+    /// <remarks>
+    /// The software renderer and a Vulkan device without video decoding also enforce this
+    /// themselves: their players' decoders open in software whatever the configuration asks.
+    /// WARP does not, so a host using it must honour this flag.
+    /// </remarks>
     public bool RequiresSoftwareDecoding { get; init; }
 
     /// <summary>

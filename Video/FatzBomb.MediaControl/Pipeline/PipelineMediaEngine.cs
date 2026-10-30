@@ -34,6 +34,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     private string? _backgroundVideoTempPath;
     private VideoFrameEventArgs? _currentImageFrame;
     private volatile int _backgroundGeneration;
+    // A Stop or end asked for the first frame again and no run has rewound yet (under
+    // _backgroundGate): a Play that cancels the queued restart still starts from the beginning.
+    private bool _backgroundRewindPending;
     private bool _disposed;
     // The cancellation of the network video open in progress (Stage 039A), or null.
     private CancellationTokenSource? _pendingNetworkOpen;
@@ -582,8 +585,7 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     {
         ThrowIfDisposed();
         var success = _coordinator.Stop();
-        StopBackgroundVideoPlayback(wait: true);
-        ResetBackgroundVideoToStart();
+        RequestBackgroundRestart(resume: false);
         return success;
     }
 
@@ -976,41 +978,82 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
 
             _backgroundGeneration++;
             var generation = _backgroundGeneration;
-            _backgroundVideoScheduler.Start(token => BackgroundVideoLoop(generation, token));
+            if (_backgroundRewindPending)
+                _backgroundVideoScheduler.Start(token => RestartBackgroundRun(generation, resume: true, token));
+            else
+                _backgroundVideoScheduler.Start(token => BackgroundVideoLoop(generation, token));
         }
     }
 
     private void StopBackgroundVideoPlayback(bool wait)
     {
         if (wait)
-            _backgroundVideoScheduler.StopAndWait();
+            _ = _backgroundVideoScheduler.StopAndWait();
         else
             _backgroundVideoScheduler.Stop();
 
         _backgroundGeneration++;
     }
 
-    private void ResetBackgroundVideoToStart()
+    /// <summary>
+    /// Shows the background video's first frame again and, when <paramref name="resume"/>, plays it
+    /// from there. The work runs on the background scheduler's worker, the only thread that uses
+    /// the decoder after it opened: never on the caller's thread, which may be BASS's mixing
+    /// thread (an end or loop sync) and must not seek, decode or present.
+    /// </summary>
+    private void RequestBackgroundRestart(bool resume)
+    {
+        lock (_backgroundGate)
+        {
+            if (_backgroundVideoDecoder == null)
+                return;
+
+            _backgroundRewindPending = true;
+            var generation = ++_backgroundGeneration;
+            _backgroundVideoScheduler.Start(token => RestartBackgroundRun(generation, resume, token));
+        }
+    }
+
+    private void RestartBackgroundRun(int generation, bool resume, CancellationToken cancellationToken)
     {
         VideoDecoder? decoder;
         lock (_backgroundGate)
+        {
             decoder = _backgroundVideoDecoder;
+            if (decoder == null || cancellationToken.IsCancellationRequested || generation != _backgroundGeneration)
+                return;
 
-        if (decoder == null)
-            return;
+            _backgroundRewindPending = false;
+        }
 
-        VideoFrameData? frame = RestartBackgroundVideo(decoder);
-        if (frame != null)
+        if (RestartBackgroundVideo(decoder) is { } frame)
             RaiseBackgroundFrame(decoder, frame, decoder.FramesPerSecond);
+
+        if (resume)
+            BackgroundVideoLoop(generation, cancellationToken);
     }
 
     private void ClearBackgroundCore(bool raiseEvent)
     {
-        StopBackgroundVideoPlayback(wait: true);
+        // Unpublish the decoder first, so no restart requested meanwhile can start using it.
+        VideoDecoder? decoder;
         lock (_backgroundGate)
         {
-            _backgroundVideoDecoder?.Dispose();
+            decoder = _backgroundVideoDecoder;
             _backgroundVideoDecoder = null;
+            _backgroundRewindPending = false;
+            _backgroundGeneration++;
+        }
+
+        if (_backgroundVideoScheduler.StopAndWait())
+        {
+            decoder?.Dispose();
+        }
+        else if (decoder != null)
+        {
+            // Its worker is still inside a native call: freeing the decoder now would be a use after
+            // free. It stays allocated (a leak) rather than crash.
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "PipelineMediaEngine", "The background video worker did not stop; its decoder is left open.");
         }
 
         if (!string.IsNullOrWhiteSpace(_backgroundVideoTempPath))
@@ -1024,13 +1067,10 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             BackgroundCleared?.Invoke(this, EventArgs.Empty);
     }
 
+    // May run on BASS's mixing thread (a trimmed end or loop sync): only queue work here.
     private void OnPlaybackEnded(object? sender, EventArgs e)
     {
-        StopBackgroundVideoPlayback(wait: true);
-        ResetBackgroundVideoToStart();
-        if (LoopPlayback && HandlesLoopInternally)
-            StartBackgroundVideoPlayback();
-
+        RequestBackgroundRestart(resume: LoopPlayback && HandlesLoopInternally);
         MediaEnded?.Invoke(this, EventArgs.Empty);
     }
 

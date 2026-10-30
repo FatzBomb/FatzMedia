@@ -1054,6 +1054,12 @@ internal sealed partial class VideoPipeline(
             }
         }
 
+        // While playing, a seek in progress presents its own frame and resets the presentation
+        // clock on its thread: presenting here as well (even with the lock free between its steps)
+        // reads that clock mid-reset and can report the pre-seek position.
+        if (_isPlaying && IsSeekSequenceActive())
+            return;
+
         // A seek holds the presentation lock while it decodes to its target (for a network source
         // that includes downloading segments, seconds when the server stalls) and presents that
         // frame itself: do not wait for it. Callers are the control queue (the refresh after a
@@ -1496,6 +1502,11 @@ internal sealed partial class VideoPipeline(
 
     private void ReprobeAndRestoreHardware(string path, CancellationToken cancellationToken)
     {
+        // Each probe opens the source again: for a network source that is a new connection every
+        // few seconds. It stays on software decoding until the next open.
+        if (_sharedDemuxer is { IsNetwork: true })
+            return;
+
         while (!cancellationToken.IsCancellationRequested && _hardwareDecodeDisabledByDeviceLoss && _isOpen)
         {
             if (cancellationToken.WaitHandle.WaitOne(HardwareDecodeReprobeInterval))
@@ -1564,7 +1575,14 @@ internal sealed partial class VideoPipeline(
             var restartLoops = wasPlaying;
             try
             {
-                return SwapVideoDecoderCore(method, path, position, wasPlaying);
+                var swapped = SwapVideoDecoderCore(method, path, position, wasPlaying);
+
+                // A network source's audio reads the same read-ahead, which the swap repositioned
+                // under it: a seek to the same position realigns both.
+                if (swapped && _sharedDemuxer is { IsNetwork: true } && HasAudio)
+                    SeekPump.Request(NormalizeSeekTarget(position));
+
+                return swapped;
             }
             catch
             {

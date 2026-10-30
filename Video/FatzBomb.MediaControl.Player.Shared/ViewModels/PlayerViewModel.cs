@@ -36,6 +36,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
     private readonly IPlayerTimer _positionTimer;
     private readonly Lock _startGate = new();
     private Task? _startTask;
+    // Cancelled when the view model is disposed, so a close right after start does not wait out
+    // the startup media delay.
+    private readonly CancellationTokenSource _disposing = new();
     private bool _isSeekPreviewActive;
     private DateTime _suppressPositionRefresh = DateTime.MinValue;
     private int _pitch;
@@ -357,7 +360,15 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         if (Player is null || Options.MediaPath is not { } path)
             return;
 
-        await Task.Delay(StartupMediaDelay);
+        try
+        {
+            await Task.Delay(StartupMediaDelay, _disposing.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         if (!_disposed && Player is not null)
             await LoadMediaAsync(path);
     }
@@ -786,6 +797,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         if (_disposed) return null;
 
         _disposed = true;
+        _disposing.Cancel();
         _positionTimer.Stop();
         _positionTimer.Dispose();
         if (Player is not { } player)

@@ -42,6 +42,10 @@ internal sealed unsafe class VideoDecoder(
     private AVFrame* _videoFrame;
     private AVFrame* _softwareFrame;
     private AVPacket* _packet;
+    // The decoder refused _packet (EAGAIN) while the frame queue was full: it stays in _packet and
+    // is sent again before the next read, instead of being dropped (a lost packet corrupts the
+    // picture until the next keyframe).
+    private bool _packetPending;
     private AVBufferRef* _hardwareDeviceContext;
     private AVPixelFormat _hardwarePixelFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private string? _hardwareDeviceTypeName;
@@ -219,6 +223,7 @@ internal sealed unsafe class VideoDecoder(
         if (!_demuxer.IsOpen || _packet == null) return false;
         if (EndOfStream) return false;
         if (_frameQueue.Count >= MaxFrames) return false;
+        if (_packetPending) return ResendPendingPacket();
         if (_drainingAtEndOfStream) return DrainFramesAtEndOfStream();
 
         var readResult = _demuxer.ReadVideoPacket(_packet);
@@ -239,8 +244,37 @@ internal sealed unsafe class VideoDecoder(
             frameDecoded = ProcessVideoPacket();
         }
 
-        ffmpeg.av_packet_unref(_packet);
+        if (!_packetPending)
+            ffmpeg.av_packet_unref(_packet);
         return frameDecoded || !isVideoPacket;
+    }
+
+    private bool ResendPendingPacket()
+    {
+        var frameDecoded = DrainDecodedFrames();
+        if (_frameQueue.Count >= MaxFrames)
+            return frameDecoded;
+
+        var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, _packet);
+        if (sendResult == AvErrorAgain)
+            return frameDecoded;
+
+        DropPendingPacket();
+        if (sendResult == 0)
+            return DrainDecodedFrames() || frameDecoded;
+
+        RecordSendFailure(sendResult);
+        return frameDecoded;
+    }
+
+    private void DropPendingPacket()
+    {
+        if (!_packetPending)
+            return;
+
+        _packetPending = false;
+        if (_packet != null)
+            ffmpeg.av_packet_unref(_packet);
     }
 
     /// <summary>
@@ -683,11 +717,17 @@ internal sealed unsafe class VideoDecoder(
 
     private bool ProcessVideoPacket()
     {
-        if (_frameQueue.Count >= MaxFrames) return false;
+        // Filtered first, so a packet kept pending has been filtered once (a resend does not filter).
+        if (_av1MetadataFilter != null && !_av1MetadataFilter.Filter(_packet))
+            return _frameQueue.Count < MaxFrames && DrainDecodedFrames();
+
+        if (_frameQueue.Count >= MaxFrames)
+        {
+            _packetPending = true;
+            return false;
+        }
 
         var frameDecoded = DrainDecodedFrames();
-        if (_av1MetadataFilter != null && !_av1MetadataFilter.Filter(_packet))
-            return frameDecoded;
 
         var sendResult = ffmpeg.avcodec_send_packet(_videoCodecCtx, _packet);
         if (sendResult == AvErrorAgain)
@@ -699,11 +739,24 @@ internal sealed unsafe class VideoDecoder(
             }
         }
 
+        if (sendResult == AvErrorAgain)
+        {
+            // Not taken: keep it for the next call (the AV1 filter already ran on it).
+            _packetPending = true;
+            return frameDecoded;
+        }
+
         if (sendResult == 0)
         {
             return DrainDecodedFrames() || frameDecoded;
         }
 
+        RecordSendFailure(sendResult);
+        return frameDecoded;
+    }
+
+    private void RecordSendFailure(int sendResult)
+    {
         if (sendResult != ffmpeg.AVERROR_EOF)
             _lastDecodeError = sendResult;
 
@@ -711,8 +764,6 @@ internal sealed unsafe class VideoDecoder(
         {
             Debug.WriteLine($"[VideoDecoder] avcodec_send_packet failed: {FormatFFmpegError(sendResult)} ({sendResult})");
         }
-
-        return frameDecoded;
     }
 
     private bool DrainDecodedFrames()
@@ -1307,6 +1358,7 @@ internal sealed unsafe class VideoDecoder(
         CleanupCodecContext();
         CleanupHardwareDevice();
 
+        _packetPending = false;
         if (_packet != null)
         {
             fixed (AVPacket** pkt = &_packet)
@@ -1422,6 +1474,8 @@ internal sealed unsafe class VideoDecoder(
 
     public void Flush(bool clearQueue = true)
     {
+        // A packet from before a seek must not be decoded after it.
+        DropPendingPacket();
         if (_videoCodecCtx != null)
         {
             ffmpeg.avcodec_flush_buffers(_videoCodecCtx);

@@ -3,7 +3,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 
 namespace FatzBomb.MediaControl.Pipeline;
 
-internal sealed class CdgPipeline : ISeekPumpHost
+internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
 {
     // CDG seek is already relatively cheap, but callers may still send many seek requests while
     // scrubbing. The shared seek pump keeps only the latest target and renders it at a small
@@ -17,6 +17,7 @@ internal sealed class CdgPipeline : ISeekPumpHost
     private bool _isPairedWithAudio;
     private int _completionGeneration;
     private int _completionSignaled;
+    private bool _disposed;
 
     public CdgPipeline(ICdgEngine cdgEngine, IClockSource clock, MediaState state)
     {
@@ -204,6 +205,17 @@ internal sealed class CdgPipeline : ISeekPumpHost
     {
         if (IsOpen)
             Engine.RenderAtSeconds(seconds, forceRebuild);
+    }
+
+    /// <summary>Closes the CD+G and frees the seek worker's wait handle.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        Close();
+        _seekPump.Dispose();
     }
 
     public void Close()

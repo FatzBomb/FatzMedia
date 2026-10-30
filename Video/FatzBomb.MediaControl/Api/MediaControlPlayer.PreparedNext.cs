@@ -34,6 +34,8 @@ public partial class MediaControlPlayer
 
     public async Task<MediaAnalysisResult?> AnalyzeAsync(MediaInputSource source, CancellationToken cancellationToken = default)
     {
+        // Called from the host's thread: the analysis and its diagnostics belong to this player.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         ArgumentNullException.ThrowIfNull(source);
         ThrowIfResetting();
         if (!source.IsFile)
@@ -47,6 +49,7 @@ public partial class MediaControlPlayer
 
     public async Task<bool> PrepareNextAsync(MediaInputSource source, CancellationToken cancellationToken = default)
     {
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         ArgumentNullException.ThrowIfNull(source);
         ThrowIfResetting();
         if (source.IsFile ? !System.IO.File.Exists(source.FilePath) : !source.IsBgraImage)
@@ -108,6 +111,8 @@ public partial class MediaControlPlayer
             && Controls.TransportGeneration == transportGeneration
             && File.LoadGeneration == loadGeneration;
 
+        // The transition runs off the queue in the flow started here.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         return RunFadedPreparedNextTransitionAsync(slotGeneration, isAutomatic: false, fade, fadeOutgoing: true, StillValid);
     }
 

@@ -159,7 +159,8 @@ public partial class PlayerViewModel
         }
     }
 
-    private static async Task SendDragSeekAsync(MediaControlPlayer player, double target)
+    // Fire-and-forget from the drag handlers: every failure is handled here, never left unobserved.
+    private async Task SendDragSeekAsync(MediaControlPlayer player, double target)
     {
         try
         {
@@ -172,6 +173,10 @@ public partial class PlayerViewModel
         catch (InvalidOperationException)
         {
             // Resetting mid-drag: the release seek reports any real problem.
+        }
+        catch (Exception ex)
+        {
+            HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Warning, "Player", $"Seek failed: {ex.Message}");
         }
     }
 }

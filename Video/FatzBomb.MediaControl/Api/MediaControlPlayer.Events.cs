@@ -313,16 +313,9 @@ public partial class MediaControlPlayer
 
     private async Task PublishPositionSnapshotAfterAsync(Task prerequisite)
     {
-        try
-        {
-            await prerequisite.ConfigureAwait(false);
-        }
-        catch
-        {
-            // Position delivery is independent of lifecycle handler failures.
-        }
-
-        await Task.Yield();
+        // Always off the caller's thread, and never posted to its SynchronizationContext (a sync
+        // call from a UI thread). Position delivery is independent of lifecycle handler failures.
+        await prerequisite.ConfigureAwait(ConfigureAwaitOptions.ForceYielding | ConfigureAwaitOptions.SuppressThrowing);
         _positionNotifier.PublishNow();
     }
 

@@ -4,7 +4,6 @@ using FatzBomb.MediaControl.Core.Audio.Filters;
 using FatzBomb.MediaControl.Core.Network;
 using FatzBomb.MediaControl.Core.Threading;
 using ManagedBass;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using MBass = ManagedBass.Bass;
@@ -59,7 +58,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private BufferingStateTracker? _bufferingTracker;
     private MediaSourceCapabilities? _networkCapabilities;
     private int _networkGeneration;
-    private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
+    private static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
 
     private volatile bool _disposed;
 
@@ -661,10 +660,12 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             var gainKey = CreatePathNormalizationCacheKey(filePath);
             if (!NormalizationGainCache.TryGetValue(gainKey, out var normalizationGain))
             {
+                // The same final gain as playback's analysis (NormalizationGainPolicy), as it shares the key.
+                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(handle, updateGain: false, cancellationToken: token).ConfigureAwait(false);
                 var peak = await _normalizer.AnalyzePeakAsync(handle, updateGain: false, cancellationToken: token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                normalizationGain = AudioNormalizer.CalculateGainFromPeak(peak);
-                NormalizationGainCache[gainKey] = normalizationGain;
+                normalizationGain = AudioNormalizer.CalculateGainFromPeak(NormalizationGainPolicy.FinalPeak(quickPeak, peak));
+                NormalizationGainCache.Set(gainKey, normalizationGain);
             }
 
             var scan = await _silenceAnalyzer.ScanAsync(handle, sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
@@ -882,7 +883,12 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private void OnNetworkMetadataSync(int handle, int channel, int data, IntPtr user) => PublishNetworkMetadata();
+    private void OnNetworkMetadataSync(int handle, int channel, int data, IntPtr user)
+    {
+        // A BASS callback thread: re-enter the owning player (ENG-025), as the end sync does.
+        using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
+        PublishNetworkMetadata();
+    }
 
     private void PublishNetworkMetadata()
     {
@@ -1186,11 +1192,22 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Quick normalization analysis starting ({sourceLabel})");
                 var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-                ApplyNormalizationPeakIfCurrent(quickPeak, cacheKey, sourceLabel, generation, isFinal: false, cancellationToken: cancellationToken);
+                // Not cached: the quick gain never boosts, so it is not the source's gain.
+                ApplyNormalizationGainIfCurrent(
+                    NormalizationGainPolicy.QuickGain(quickPeak),
+                    cacheKey: null,
+                    NormalizationGainPolicy.QuickPassHeldBackBoost(quickPeak) ? $"Quick normalization complete (boost waits for the full scan) ({sourceLabel})" : $"Quick normalization complete ({sourceLabel})",
+                    generation,
+                    cancellationToken);
 
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Deep normalization analysis starting ({sourceLabel})");
                 var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-                ApplyNormalizationPeakIfCurrent(deepPeak, cacheKey, sourceLabel, generation, isFinal: true, cancellationToken: cancellationToken);
+                ApplyNormalizationGainIfCurrent(
+                    AudioNormalizer.CalculateGainFromPeak(NormalizationGainPolicy.FinalPeak(quickPeak, deepPeak)),
+                    cacheKey,
+                    $"Deep normalization complete ({sourceLabel})",
+                    generation,
+                    cancellationToken);
                 normalizationGain = _normalizer.NormalizationGain;
             }
 
@@ -1246,7 +1263,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     private void ApplyCachedNormalizationGain(string cacheKey, double gain, string sourceLabel)
     {
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Using cached normalization gain {gain:F3} ({sourceLabel})");
-        NormalizationGainCache[cacheKey] = gain;
+        NormalizationGainCache.Set(cacheKey, gain);
         _normalizationReady = true;
         _normalizer.SetNormalizationGain(gain, forceNotify: true);
         if (Normalize)
@@ -1274,19 +1291,20 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _streamManager.SetLoopPlayback(_loopPlayback);
     }
 
-    private void ApplyNormalizationPeakIfCurrent(double peak, string cacheKey, string sourceLabel, int generation, bool isFinal, CancellationToken cancellationToken)
+    private void ApplyNormalizationGainIfCurrent(double gain, string? cacheKey, string message, int generation, CancellationToken cancellationToken)
     {
         if (!IsCurrentNormalizationAnalysis(generation, cancellationToken))
             return;
 
-        var gain = _normalizer.SetNormalizationGainFromPeak(peak, forceNotify: true);
+        _normalizer.SetNormalizationGain(gain, forceNotify: true);
         _normalizationReady = true;
-        NormalizationGainCache[cacheKey] = gain;
+        if (cacheKey is not null)
+            NormalizationGainCache.Set(cacheKey, gain);
 
         if (Normalize)
             _normalizer.SetNormalizeEnabled(true);
 
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"{(isFinal ? "Deep" : "Quick")} normalization complete, gain={gain:F3} ({sourceLabel})");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"{message}, gain={gain:F3}");
     }
 
     private bool IsCurrentNormalizationAnalysis(int generation, CancellationToken cancellationToken) => !_disposed

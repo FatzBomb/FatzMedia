@@ -42,6 +42,45 @@ public sealed class FfmpegAudioFallbackTests
             FloatWav.WriteHeader(new byte[FloatWav.HeaderBytes], 44100, 2, uint.MaxValue));
 
     [Fact]
+    public void PlanOutput_RefusesADurationBeyondTheWavLimit_BeforeDecoding()
+    {
+        // 7 hours of stereo 44.1 kHz float is about 8.9 GB; a WAV holds 4 GB.
+        (FfmpegAudioFallback.ConversionTarget target, _) = FfmpegAudioFallback.PlanOutput(7 * 3600, 44100, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes);
+
+        Assert.Equal(FfmpegAudioFallback.ConversionTarget.TooLong, target);
+    }
+
+    [Fact]
+    public void PlanOutput_GoesToAFile_WhenTheEstimateExceedsTheMemoryLimit()
+    {
+        // An hour of stereo 48 kHz float is about 1.4 GB: it must not start as a 160 MB buffer.
+        (FfmpegAudioFallback.ConversionTarget target, var capacity) = FfmpegAudioFallback.PlanOutput(3600, 48000, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes);
+
+        Assert.Equal(FfmpegAudioFallback.ConversionTarget.File, target);
+        Assert.Equal(0, capacity);
+    }
+
+    [Fact]
+    public void PlanOutput_SizesTheBufferFromTheDuration_WithSlack()
+    {
+        (FfmpegAudioFallback.ConversionTarget target, var capacity) = FfmpegAudioFallback.PlanOutput(10, 48000, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes);
+
+        var data = 10L * 48000 * 2 * sizeof(float);
+        Assert.Equal(FfmpegAudioFallback.ConversionTarget.Memory, target);
+        Assert.InRange(capacity, data + FloatWav.HeaderBytes, (data * 11 / 10) + 65536 + FloatWav.HeaderBytes);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void PlanOutput_UnknownDuration_StartsInMemoryAtZero(double duration)
+    {
+        Assert.Equal((FfmpegAudioFallback.ConversionTarget.Memory, 0L), FfmpegAudioFallback.PlanOutput(duration, 48000, 2, FfmpegAudioFallback.DefaultMaxInMemoryBytes));
+    }
+
+    [Fact]
     public void ExtensionOnlyFfmpegDecodes_RequiresConversionAndIsPlayable()
     {
         const string extension = ".fbfallbacka";
@@ -115,6 +154,56 @@ public sealed class FfmpegAudioFallbackTests
     }
 
     [Fact]
+    public void FileTree_ArchivedFallbackAudio_PairsWithItsCdg()
+    {
+        // A zip of song.flac + song.cdg without bassflac played as a silent CD+G.
+        const string extension = ".fbfallbackd";
+        _ = FileTypes.FfmpegAudio.Add(extension);
+        var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-fallback-{Guid.NewGuid():N}.zip");
+        File.WriteAllBytes(archive, [1]);
+        try
+        {
+            using FileTree tree = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{extension}", "song.cdg"));
+
+            Assert.Equal(FileType.AudioCdgArchive, tree.Type);
+            Assert.Equal($"song{extension}", tree.AudioEntry!.Key);
+            Assert.Equal("song.cdg", tree.CdgEntry!.Key);
+        }
+        finally
+        {
+            _ = FileTypes.FfmpegAudio.Remove(extension);
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
+    public void FileTree_Archive_PrefersAudioABassPluginDecodes()
+    {
+        const string fallback = ".fbfallbacke";
+        const string bass = ".fbfallbackf";
+        _ = FileTypes.FfmpegAudio.Add(fallback);
+        _ = FileTypes.Audio.Add(bass);
+        var archive = Path.Combine(Path.GetTempPath(), $"fatzbomb-fallback-{Guid.NewGuid():N}.zip");
+        File.WriteAllBytes(archive, [1]);
+        try
+        {
+            using FileTree paired = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"song{fallback}", $"song{bass}", "song.cdg"));
+            Assert.Equal(FileType.AudioCdgArchive, paired.Type);
+            Assert.Equal($"song{bass}", paired.AudioEntry!.Key);
+
+            using FileTree audioOnly = FileTreeBuilder.GetFileTree(archive, new EntriesArchiveService($"a{fallback}", $"b{bass}"));
+            Assert.Equal(FileType.AudioArchive, audioOnly.Type);
+            Assert.Equal($"b{bass}", audioOnly.AudioEntry!.Key);
+        }
+        finally
+        {
+            _ = FileTypes.FfmpegAudio.Remove(fallback);
+            _ = FileTypes.Audio.Remove(bass);
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
     public void RegisterFfmpegAudio_AddsCommonFormatsBassMayLack()
     {
         Assert.Contains(".ape", FileTypes.FfmpegAudioExtensions);
@@ -158,5 +247,23 @@ public sealed class FfmpegAudioFallbackTests
     private sealed class NoArchiveService : IArchiveService
     {
         public IArchiveHandle Open(string path) => throw new InvalidOperationException("No archive expected.");
+    }
+
+    private sealed class EntriesArchiveService(params string[] keys) : IArchiveService
+    {
+        public IArchiveHandle Open(string path) => new Handle([.. keys.Select(static key => (IArchiveEntryInfo)new Entry(key))]);
+
+        private sealed class Handle(IReadOnlyList<IArchiveEntryInfo> entries) : IArchiveHandle
+        {
+            public IEnumerable<IArchiveEntryInfo> Entries => entries;
+            public void Dispose() { }
+        }
+
+        private sealed class Entry(string key) : IArchiveEntryInfo
+        {
+            public string Key => key;
+            public long? Size => 1;
+            public void WriteTo(Stream stream) => stream.WriteByte(1);
+        }
     }
 }

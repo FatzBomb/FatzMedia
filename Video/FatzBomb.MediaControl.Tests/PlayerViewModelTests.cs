@@ -95,6 +95,23 @@ public sealed class PlayerViewModelTests
     }
 
     [Fact]
+    public async Task DisposeAsync_DuringTheStartupMediaDelay_DoesNotWaitItOut()
+    {
+        // The startup media loads 500 ms after the engine is ready; closing or rebuilding a player
+        // in that window must not wait for it (and must not load).
+        var harness = new PlayerViewModelHarness(new PlayerStartupOptions { MediaPath = "song.mp3" }, null);
+        Task start = harness.ViewModel.StartAsync();
+        await harness.Dispatcher.UntilAsync(() => harness.ViewModel.Player is not null);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await harness.DisposeAsync();
+        await start;
+
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 400);
+        Assert.False(harness.Engine.Engine.IsOpen);
+    }
+
+    [Fact]
     public async Task OpenFile_LoadsThePickedFileWithTheEngineFilter()
     {
         await using PlayerViewModelHarness harness = await PlayerViewModelHarness.StartAsync();

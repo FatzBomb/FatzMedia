@@ -301,14 +301,29 @@ public partial class MediaControlPlayer : IMediaControlSession
     private static MediaInputSource? FileBackground(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : MediaInputSource.FromFile(path);
 
-    /// <summary>A synchronous load: on the caller's thread in its queue turn, cancelled only by Reset or Dispose.</summary>
+    /// <summary>
+    /// A synchronous load: on the caller's thread in its queue turn, cancelled only by Reset or
+    /// Dispose. The <see cref="PlayOnLoad"/> start is queued from inside the turn, so it runs right
+    /// after it and before any control issued after this call returns.
+    /// </summary>
     private bool LoadOnQueue(Func<MediaInputSource> source, Func<MediaInputSource?> backgroundSource, bool ignoreSidecar) =>
         ExecuteControlOperation(() =>
         {
             CancellationToken lifetime = _loadLifetime.Token;
+            MediaFile file = File;
             try
             {
-                return File.Load(source(), backgroundSource(), ignoreSidecar, lifetime);
+                if (!file.Load(source(), backgroundSource(), ignoreSidecar, lifetime, out var loadGeneration))
+                    return false;
+
+                if (file.PlayOnLoad)
+                    _ = _controlOperations.Enqueue(async () =>
+                    {
+                        await file.StartPlayOnLoadAsync(loadGeneration, lifetime).ConfigureAwait(false);
+                        return true;
+                    });
+
+                return true;
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
             {
@@ -587,6 +602,9 @@ public partial class MediaControlPlayer : IMediaControlSession
             turn = _controlOperations.BeginExclusiveTurn();
         }
 
+        // A synchronous call runs on the caller's thread, which belongs to no player: what the
+        // operation raises, and the workers it starts, belong to this one (ENG-025).
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         return turn.Run(operation);
     }
 
@@ -862,6 +880,7 @@ public partial class MediaControlPlayer : IMediaControlSession
                 }
 
                 turnTaken = true;
+                using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
                 changes = turn.Run(() => ResetCore(configuration, resolvedNativeLibraryPaths));
             }
             finally
@@ -1139,6 +1158,7 @@ public partial class MediaControlPlayer : IMediaControlSession
             }
 
             var teardownRan = false;
+            using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
             try
             {
                 _ = turn.Run(() =>

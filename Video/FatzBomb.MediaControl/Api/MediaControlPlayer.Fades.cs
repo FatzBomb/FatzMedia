@@ -38,6 +38,8 @@ public partial class MediaControlPlayer
     {
         ThrowIfResetting();
         duration = new AudioCrossfadeOptions { Duration = duration }.Duration;
+        // The fade runs off the queue in the flow started here.
+        using DiagnosticRouter.OwnerScope diagnosticOwner = DiagnosticRouter.EnterOwner(this);
         return duration <= TimeSpan.Zero || _mediaEngine.Audio is not IAudioFadeGainTarget target
             ? Task.FromResult(false)
             : _fadeRunner.RunAsync(target, envelope, duration, startPosition, cancellationToken);

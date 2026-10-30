@@ -8,7 +8,6 @@ using FFmpeg.AutoGen;
 using ManagedBass;
 using ManagedBass.Fx;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -19,8 +18,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
     // The quick normalization pass may attenuate but not boost; see RunNormalizationAnalysis.
-    private const double MaxQuickPassGain = 1.0;
-    private static readonly ConcurrentDictionary<string, double> NormalizationGainCache = new(StringComparer.OrdinalIgnoreCase);
+    private static NormalizationGainCache NormalizationGainCache => NormalizationGainCache.Shared;
 
     private readonly IOutputLatencyProvider _outputLatencyProvider;
     private readonly int _bassDeviceIndex;
@@ -1032,13 +1030,12 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     private void PushAudioFrame()
     {
         var framePosition = GetFramePositionSeconds(_frame);
-        if (_discardAudioBeforeSeconds.HasValue)
-        {
-            if (framePosition < _discardAudioBeforeSeconds.Value)
-                return;
-
-            _discardAudioBeforeSeconds = null;
-        }
+        double? discardBefore = _discardAudioBeforeSeconds;
+        // After a seek, frames wholly before the target are dropped; the resampler keeps the rate,
+        // so its output samples line up with the frame's samples.
+        if (discardBefore is { } target
+            && AudioSeekTrim.SamplesToSkip(framePosition, target, _sampleRate, _frame->nb_samples) >= _frame->nb_samples)
+            return;
 
         var output = _audioBuffer;
         var samples = ffmpeg.swr_convert(
@@ -1051,11 +1048,24 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         if (samples <= 0)
             return;
 
+        // The frame that spans the seek target starts at the target, where the clock says playback is.
+        var skip = 0;
+        if (discardBefore is { } seekTarget)
+        {
+            _discardAudioBeforeSeconds = null;
+            skip = AudioSeekTrim.SamplesToSkip(framePosition, seekTarget, _sampleRate, samples);
+            if (skip >= samples)
+                return;
+
+            framePosition += skip / (double)_sampleRate;
+        }
+
+        samples -= skip;
         var byteCount = samples * _channels * sizeof(float);
         var data = ArrayPool<byte>.Shared.Rent(byteCount);
         try
         {
-            Marshal.Copy((IntPtr)output, data, 0, byteCount);
+            Marshal.Copy((IntPtr)output + (skip * _channels * sizeof(float)), data, 0, byteCount);
             var written = Bass.StreamPutData(SourceHandle, data, byteCount);
             if (written > 0)
             {
@@ -1159,18 +1169,16 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
             if (reader is null)
                 return;
 
-            // Film and TV soundtracks often open quietly, so the quick pass (first seconds) can ask
-            // for the full 8x boost the deep pass then withdraws. Only let it attenuate; boosting
-            // waits for the deep pass.
+            // Film and TV soundtracks often open quietly: the quick pass only attenuates
+            // (NormalizationGainPolicy), boosting waits for the deep pass.
             var quickPeak = FfmpegAudioPeakScanner.ScanQuick(reader, cancellationToken);
-            var quickGain = AudioNormalizer.CalculateGainFromPeak(quickPeak);
             ApplyNormalizationGain(
-                Math.Min(quickGain, MaxQuickPassGain),
+                NormalizationGainPolicy.QuickGain(quickPeak),
                 cacheKey: null,
                 generation,
-                quickGain > MaxQuickPassGain ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete");
+                NormalizationGainPolicy.QuickPassHeldBackBoost(quickPeak) ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete");
 
-            var deepPeak = Math.Max(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
+            var deepPeak = NormalizationGainPolicy.FinalPeak(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
             ApplyNormalizationPeak(deepPeak, cacheKey, generation, "Deep normalization complete");
         }
         catch (OperationCanceledException)
@@ -1204,7 +1212,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
 
         if (cacheKey is not null)
-            NormalizationGainCache[cacheKey] = gain;
+            NormalizationGainCache.Set(cacheKey, gain);
 
         DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoAudioEngine", $"{message}, gain={gain:F3}");
         QueueNormalizationGainChanged(gain, generation);

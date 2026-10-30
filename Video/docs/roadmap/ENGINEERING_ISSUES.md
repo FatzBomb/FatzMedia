@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-27
+Updated: 2026-10-28
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -8,7 +8,38 @@ bounded roadmap stage.
 
 ## In Progress
 
-None.
+### ENG-039 - October 2026 code audit, round 2
+
+Reported: 2026-10-28. Plan: `updates/ENG-039/AuditPlan.md` (every finding, verified against a real
+caller, with the owner's Windows smoke results from `scripts/smoke-audit.ps1`). Owner decisions
+(2026-10-28): all section-0 recommendations accepted; 047A not pursued; fix in five PRs.
+
+Smoke results that changed the plan:
+- GPU reset (`dxcap -forcetdr`) never recovers on any renderer and logs no device loss: Direct3D11
+  reports `DXGI_ERROR_DEVICE_REMOVED` as a Composition warning, the Vulkan path reports
+  `ErrorOutOfDeviceMemory` after a 14.5 s stall, and a CD+G run froze the UI (batch 2).
+- `DWM_TIMING_INFO` packing confirmed (320 bytes vs 292; the query always failed: ENG-018).
+- Black flash on every resize step (Avalonia shared texture, WPF frame sink); 423 export log
+  lines in 15 s. KAR lyrics allocate 234 MB/s. An MKV with text subtitles is read whole on open.
+- Not reproduced (ranked lower): the background-video loop glitch, the lightweight-control
+  unload freeze (171 ms worst). CD+G before the first preset is already transparent everywhere.
+
+Batches:
+1. **Core and player bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch1.md`). Software renderer forces software
+   decoding (ENG-037); sync `Load` with PlayOnLoad starts in queue order; diagnostic owner on sync
+   control calls, Reset/Dispose, PrepareNext/Analyze, fades and the BASS metadata callback
+   (ENG-025); FFmpeg audio fallback cancellable, refuses >4 GB before decoding, writes large
+   conversions straight to a file; FFmpeg-only audio inside archives; background-video restart
+   on its worker (never on BASS's thread, never freed while in use); position-notifier start
+   race; audio trimmed to the seek target (no lead after a seek); a refused packet is resent;
+   network decoder swap re-seeks the shared audio, no re-probe reconnects; `CdgPipeline`
+   disposed; one normalization rule and a bounded gain cache; Avalonia test player close during
+   a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
+   failures and the startup delay; karaoke `Source = null` releases the player.
+2. Windows/GPU bugs (device loss, freeze, DWM packing, resize flash, log noise): not started.
+3. Dead code and public API: not started.
+4. Refactors (player controller, decode seam, duplicates): not started.
+5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
 
 ## Open
 
@@ -385,7 +416,10 @@ Reported: 2026-10-26 (045A slice 1, GPU decoding on the Avalonia Direct3D11 path
 details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage).
 - **Hardware frame a renderer cannot take.** When `EnsureNativeFrameDevice` returns false (a
   host pairing hardware decoding with the software or Vulkan renderer, or a failed device
-  adoption), Core drops the frame on every path. A paused first frame stays black. Proposed
+  adoption), Core drops the frame on every path. A paused first frame stays black. Since ENG-039
+  batch 1 the software renderer offers no decode device, so its players decode in software
+  whatever the configuration asks (the default `Auto` on Windows was black); the run-time case
+  (a failed adoption, WARP) remains. Proposed
   fix: a per-decoder fallback token on `NativeVideoFrameResource` (like `HdrToneMapFallback`).
   The coordinator sets it, and the pipeline swaps to a software decoder at the current
   position through the device-loss swap path.
@@ -854,9 +888,12 @@ Tests: `DiagnosticOwnershipTests`, `MediaControlPlayerTests.MediaDiagnostic_Reac
 `MediaPresentationCoordinatorTests.DeviceLostDiagnostic_FromAnotherOwner_IsIgnored`.
 
 Known limits (code review 2026-10-23, not fixed):
-- Synchronous public setters (`LoopMedia`, `Effects.*`, `TransparentBackground`) do not enter the
-  player's owner, so a diagnostic they raise while called from another player's event handler is
-  attributed to that other player. Fix if it shows up: enter the owner on every public entry point.
+- Synchronous public setters that run outside a control operation (`LoopMedia`, `Effects.*`,
+  `TransparentBackground`) do not enter the player's owner, so a diagnostic they raise while
+  called from another player's event handler is attributed to that other player. Since ENG-039
+  batch 1 the synchronous control calls (which run in a queue turn), Reset and Dispose,
+  `PrepareNextAsync`, `AnalyzeAsync`, the fades and the faded manual transition, and the BASS
+  network-metadata callback enter it.
 - Prepared conversions are keyed by file, not by player: two players preparing the same file share
   one entry, and one player's clear disposes it, so the other converts again at transition time.
   Fix if it shows up: reference-count entries per player.

@@ -1,10 +1,10 @@
 # Idea 047A - WPF Composited Surface from a Shared GPU Image
 
 Prepared: 2026-10-27
-Status: idea, kept on the table (owner, 2026-10-28). Owner direction (2026-10-27): "We should
-allow the WPF savings at 4K. We need to establish the risks first." Next: the owner's step 0
-measurement, then the owner's go/no-go on the spike. This file is the risk assessment and the measurement and spike that
-decide whether the stage goes ahead.
+Status: **not pursued** (owner, 2026-10-28). The step 0 measurement found the WPF CPU copy costs
+well under 1% of the CPU at 4K on the owner's machine, with no dropped frames, so the spike's risks
+(R1, R5) are not worth taking. Results below. Kept here as the record; reopen only if a slower
+machine or a 4K60 source shows real cost.
 
 ## What it changes
 
@@ -72,6 +72,23 @@ On the owner's machine, WPF player, `C:\media\4k-hevc.mkv`, then a 1080p clip:
 
 The difference between 1 and 2 is the most this idea can save. A gap of a few percent of CPU at
 4K means stop here; a large gap or dropped frames at 4K means run the spike.
+
+### Step 0 results (owner, 2026-10-28)
+
+WPF player, RTX 5090, 20 logical cores, `smoke-audit.ps1` test 1 (CPU measured by the script over
+30 s; fps from the stats line; the clips are 30 fps):
+
+| Run | CPU (of all cores) | GPU 3D | GPU video decode | fps | Stutter |
+|---|---|---|---|---|---|
+| 4K, native window | 1.2% (0.23 cores) | 4.1% | 19.4% | 27-30 | no |
+| 4K, `--surface=framesink` | 1.5% (0.30 cores) | 10.4% | 21.7% | 29.5-30.7 | no |
+| 1080p, native window | 0.6% (0.13 cores) | 1.7% | 2.8% | 29.5-30.7 | no |
+| 1080p, `--surface=framesink` | 1.0% (0.20 cores) | 5.1% | 2.7% | 29.5-30.8 | no |
+| 4K x2 players, native window | 1.0% (0.20 cores) | 9.9% | 39.6% | 29.5-30.7 | no |
+| 4K x2 players, `--surface=framesink` | 1.8% (0.37 cores) | 13% | 24.6% | 29.5-30.7 | no |
+
+The gap the spike could close is 0.3-0.8% of the CPU: "a few percent means stop here" (above).
+The earlier drops (R10) were most likely software decoding, which 045A removed.
 
 ## Spike (slice 1, opt-in, time-boxed)
 

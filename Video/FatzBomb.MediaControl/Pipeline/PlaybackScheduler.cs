@@ -76,7 +76,11 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
     /// to return. Called from the loop itself, it only cancels. If the loop does not return in
     /// time, its thread is left to finish it and the next start gets a new worker.
     /// </summary>
-    public void StopAndWait(TimeSpan? timeout = null)
+    /// <returns>
+    /// Whether no loop runs any more: false when the loop did not return in time or this was
+    /// called from the loop itself, so what the loop uses must not be freed yet.
+    /// </returns>
+    public bool StopAndWait(TimeSpan? timeout = null)
     {
         (Run? Pending, Run? Running) cancelled;
         Worker? worker;
@@ -88,12 +92,15 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
 
         Cancel(cancelled);
         Run? running = cancelled.Running;
-        if (running is null || ReferenceEquals(Thread.CurrentThread, worker?.Thread))
-            return;
+        if (running is null)
+            return true;
+
+        if (ReferenceEquals(Thread.CurrentThread, worker?.Thread))
+            return false;
 
         TimeSpan waitTimeout = timeout ?? DefaultStopTimeout;
         if (running.Completed.Wait(waitTimeout))
-            return;
+            return true;
 
         lock (_lock)
         {
@@ -109,6 +116,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
         }
 
         Report(MediaDiagnosticLevel.Warning, $"[{name}] Worker did not stop within {waitTimeout.TotalMilliseconds:F0}ms; later starts use a new worker thread.", null);
+        return false;
     }
 
     public void Dispose()
@@ -121,7 +129,7 @@ internal sealed class PlaybackScheduler(string name, TimeSpan? idleTimeout = nul
             _disposed = true;
         }
 
-        StopAndWait();
+        _ = StopAndWait();
         lock (_lock)
             _ = _worker?.Wake.Set(); // a parked worker sees the disposal and exits
     }

@@ -41,6 +41,43 @@ public sealed class PlaybackPositionNotifierTests
     }
 
     [Fact]
+    public void StartStopStorm_FaultsNoRun()
+    {
+        // A Stop() right after Start() runs before the pump's task starts; the task must not read
+        // the cleared cancellation source (it faulted with a NullReferenceException).
+        var faults = 0;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            if (e.Exception.InnerExceptions.Any(static ex => ex.StackTrace?.Contains(nameof(PlaybackPositionNotifier), StringComparison.Ordinal) == true))
+                Interlocked.Increment(ref faults);
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            using (var notifier = new PlaybackPositionNotifier(() => 1, () => 10, interval: TimeSpan.FromMilliseconds(5)))
+            {
+                for (var i = 0; i < 500; i++)
+                {
+                    notifier.Start();
+                    notifier.Stop();
+                }
+            }
+
+            Thread.Sleep(200);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.Equal(0, Volatile.Read(ref faults));
+    }
+
+    [Fact]
     public async Task DisposeFromPositionHandler_DoesNotBlockPump()
     {
         var notifier = new PlaybackPositionNotifier(
