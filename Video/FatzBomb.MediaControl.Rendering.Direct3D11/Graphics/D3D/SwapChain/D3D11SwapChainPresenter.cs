@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 using SharpGen.Runtime;
 using Vortice.DXGI;
@@ -19,7 +20,8 @@ internal static class D3D11SwapChainPresenter
         int liveResizeFlag,
         bool syncImmediate,
         D3D11PresentationDiagnostics diagnostics,
-        ref bool deviceLostReported)
+        ref bool deviceLostReported,
+        RendererDiagnosticLatch presentFailure)
     {
         if (swapChain == null)
         {
@@ -50,18 +52,20 @@ internal static class D3D11SwapChainPresenter
                 }
                 else
                 {
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {result}");
+                    // Repeats every frame while it lasts: one report per episode (ENG-039 G5).
+                    _ = presentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Swap-chain Present failed: {result}");
                 }
 
                 return false;
             }
 
             deviceLostReported = false;
+            presentFailure.Reset();
             return true;
         }
         catch (Exception ex)
         {
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Native HWND swap-chain Present failed: {ex.Message}", innerException: ex);
+            _ = presentFailure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Swap-chain Present failed: {ex.Message}", ex);
             return false;
         }
     }

@@ -44,6 +44,8 @@ internal sealed partial class VideoPipeline(
     private readonly PlaybackScheduler _decoderRecoveryScheduler = new("DecoderDeviceLostRecovery");
     private string? _currentVideoPath;
     private int _decoderRecoveryInProgress;
+    // Decode thread only: when the decode loop next asks whether the hardware device was lost.
+    private long _nextDeviceLossProbe;
     private volatile bool _hardwareDecodeDisabledByDeviceLoss;
     private VideoDecoder? _videoDecoder;
     private VideoAudioEngine? _audioEngine;
@@ -1413,17 +1415,28 @@ internal sealed partial class VideoPipeline(
     private void CheckForHardwareDecodeDeviceLoss()
     {
         VideoDecoder? decoder = _videoDecoder;
-        if (decoder is null || !decoder.IsHardwareDecodeRepeatedlyFailing)
+        if (decoder?.HardwareDevice is not { } hardwareDevice)
             return;
+
+        // After a GPU reset the decoder usually keeps returning (corrupt) frames, so failures alone
+        // never reached the threshold (ENG-039): the device is also checked once a second.
+        var now = Stopwatch.GetTimestamp();
+        if (!ShouldProbeDeviceLoss(decoder.IsHardwareDecodeRepeatedlyFailing, now, _nextDeviceLossProbe))
+            return;
+
+        _nextDeviceLossProbe = now + Stopwatch.Frequency;
 
         // Repeated hardware-decode failure is only a hint; confirm the device is actually gone via
         // its device-removed reason before disrupting playback (avoids falling back on a bad stream).
-        if (decoder.HardwareDevice is not { } hardwareDevice
-            || !_hardwareAccelerationServices.IsDeviceLost(hardwareDevice))
+        if (!_hardwareAccelerationServices.IsDeviceLost(hardwareDevice))
             return;
 
         TriggerDecoderDeviceLostRecovery();
     }
+
+    /// <summary>Whether the decode loop asks the device now: repeated failures, or a second since the last check.</summary>
+    internal static bool ShouldProbeDeviceLoss(bool repeatedlyFailing, long nowTimestamp, long nextProbeTimestamp) =>
+        repeatedlyFailing || nowTimestamp >= nextProbeTimestamp;
 
     private void TriggerDecoderDeviceLostRecovery()
     {

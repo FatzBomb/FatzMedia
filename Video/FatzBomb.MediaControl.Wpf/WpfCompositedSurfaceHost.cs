@@ -89,9 +89,21 @@ internal sealed class WpfCompositedSurfaceHost : Grid, IMediaPresentationFrameSi
             return;
         }
 
+        // A frame presented before the clear and not yet published would bring the old picture
+        // back after it (ENG-039).
+        lock (_frameGate)
+        {
+            if (_pendingPixels is { } pending && _sparePixels == null && !_disposed)
+                _sparePixels = pending;
+            _pendingPixels = null;
+        }
+
         _bitmap = null;
         _image.Source = null;
     }
+
+    /// <summary>Gets whether a frame is shown (tests).</summary>
+    internal bool HasFrame => _image.Source != null;
 
     private void PublishPendingFrame()
     {

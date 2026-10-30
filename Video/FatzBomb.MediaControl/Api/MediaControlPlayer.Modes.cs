@@ -101,7 +101,7 @@ public partial class MediaControlPlayer
                 return;
 
             ApplyTransparentBackground();
-            _presentationCoordinator.RefreshCurrentPosition();
+            RequestPresentationRefresh();
         }
     }
 
@@ -171,7 +171,7 @@ public partial class MediaControlPlayer
             switched = false;
         }
 
-        ReopenAfterModeSwitch(state);
+        ReopenMedia(state, MediaPlayerModePolicy.DiagnosticCategory, $"{Mode} mode");
         if (Controls.LoopMedia != state.LoopMedia)
         {
             HostEventDispatcher.Raise(
@@ -242,10 +242,13 @@ public partial class MediaControlPlayer
     }
 
     /// <summary>
-    /// Opens the media that was open before the switch, as the same item (no autoplay and no
-    /// pitch/tempo reset), then restores its sync offsets, position and transport state.
+    /// Opens the media of <paramref name="state"/> again as the same item (no autoplay and no
+    /// pitch/tempo reset), then restores its sync offsets, position and transport state: after a
+    /// mode switch, and after a GPU device recovery (ENG-039). On the control queue.
     /// </summary>
-    private void ReopenAfterModeSwitch(ModeSwitchState state)
+    /// <param name="diagnosticCategory">The category of the warning when it cannot be reopened.</param>
+    /// <param name="context">Who could not reopen it, for that warning (for example "Audio mode").</param>
+    private void ReopenMedia(ModeSwitchState state, string diagnosticCategory, string context)
     {
         if (state.Load is not { } load)
             return;
@@ -265,8 +268,8 @@ public partial class MediaControlPlayer
         {
             DiagnosticRouter.Raise(
                 MediaDiagnosticLevel.Warning,
-                MediaPlayerModePolicy.DiagnosticCategory,
-                $"{Mode} mode could not reopen {load.Source.DisplayName}; the player is closed.",
+                diagnosticCategory,
+                $"{context} could not reopen {load.Source.DisplayName}; the player is closed.",
                 sourcePath: load.Source.FilePath ?? load.Source.Uri?.AbsoluteUri);
             return;
         }

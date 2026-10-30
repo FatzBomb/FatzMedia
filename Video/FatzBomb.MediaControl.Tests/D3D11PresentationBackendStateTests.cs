@@ -5,6 +5,7 @@ using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.DirectComposition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.Managed;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Presentation.NativeHwnd;
 using FatzBomb.MediaControl.Core.Graphics.D3D.SwapChain;
+using FatzBomb.MediaControl.Core.Graphics.Rendering;
 using FatzBomb.MediaControl.Rendering.Direct3D11;
 
 namespace FatzBomb.MediaControl.Tests;
@@ -124,7 +125,8 @@ public sealed class D3D11PresentationBackendStateTests
             liveResizeFlag: 0,
             syncImmediate: false,
             diagnostics,
-            ref deviceLostReported);
+            ref deviceLostReported,
+            new RendererDiagnosticLatch());
 
         Assert.False(presented);
         Assert.False(deviceLostReported);

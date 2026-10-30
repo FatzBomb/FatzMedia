@@ -13,6 +13,7 @@ internal enum VulkanFrameSupport
     Subtitles,
     BaseVisualTransform,
     InvalidCdgSnapshot,
+    InvalidBackground,
 }
 
 /// <summary>
@@ -94,7 +95,10 @@ internal static class VulkanCompositionPlanner
             return VulkanFrameSupport.Subtitles;
         if (!frame.BaseVisualTransform.IsIdentity)
             return VulkanFrameSupport.BaseVisualTransform;
-        // The software renderer refuses the whole frame for the same snapshot.
+        // The software renderer refuses the whole frame for the same background buffer (ENG-039:
+        // the upload would read past it) and the same snapshot.
+        if (!frame.IsBackgroundWellFormed)
+            return VulkanFrameSupport.InvalidBackground;
         return frame.CdgOverlay is { IsWellFormed: false }
             ? VulkanFrameSupport.InvalidCdgSnapshot
             : VulkanFrameSupport.Supported;

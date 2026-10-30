@@ -36,7 +36,7 @@ Batches:
    disposed; one normalization rule and a bounded gain cache; Avalonia test player close during
    a rebuild and `--second-screen` on rebuilds; test-player handler exceptions, drag-seek
    failures and the startup delay; karaoke `Source = null` releases the player.
-2. Windows/GPU bugs (device loss, freeze, DWM packing, resize flash, log noise): not started.
+2. **Windows/GPU bugs: implemented, pending manual smoke** (`updates/ENG-039/Batch2.md`): device loss probed and recovered on every renderer, video reopened after recovery, no UI wait on a stuck renderer call, DWM packing, resize flash, export log noise, retained background, WPF overlay. Deferred: the per-player audio device monitor.
 3. Dead code and public API: not started.
 4. Refactors (player controller, decode seam, duplicates): not started.
 5. Performance (KAR raster, subtitle scan, shaders, copies): not started.
@@ -1110,6 +1110,14 @@ comes from the platform and a renderer rate source exists, waits up to 1 s for t
 rate before reporting the platform one (`ShouldWaitForRendererRefreshRate`, tested in
 `VideoCadenceReportTimingTests`). Host-render mode, with no presentation loop, reports at once
 as before.
+
+Follow-up (ENG-039 G2, 2026-10-28): the "platform" rate was never DWM's. `DWM_TIMING_INFO` was
+declared with the default layout (320 bytes) instead of the packed native one (292), so
+`DwmGetCompositionTimingInfo` failed every time (`0x88980090`) and the platform rate was always
+the 60 Hz fallback. The struct is now packed (`DwmCompositionTimingTests`), and a failure is
+logged once per process (category `DisplayTiming`). On a 60 Hz monitor nothing changes; on
+another rate, video without a per-monitor rate (no renderer rate source yet) now gets DWM's
+composition rate instead of 60 Hz.
 
 ### ENG-017 - Software renderer drops frames at large output sizes
 

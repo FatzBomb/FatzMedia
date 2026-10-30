@@ -39,6 +39,29 @@ public sealed class WpfCompositedSurfaceHostTests
         Assert.Equal(3, host.BufferAllocations);
     });
 
+    [Fact]
+    public void Clear_DropsPendingFrame() => RunOnSta(() =>
+    {
+        // ENG-039: a frame presented before a clear (from the render thread) but published after
+        // it brought the old picture back.
+        using var host = new WpfCompositedSurfaceHost();
+        host.PresentFrame(new byte[4 * 2 * 4], 4, 2, 16);
+        DrainDispatcher();
+        Assert.True(host.HasFrame);
+
+        host.PresentFrame(new byte[4 * 2 * 4], 4, 2, 16);
+        host.Clear();
+        DrainDispatcher();
+
+        Assert.False(host.HasFrame);
+
+        // The next frame shows again, in the array the dropped one used.
+        host.PresentFrame(new byte[4 * 2 * 4], 4, 2, 16);
+        DrainDispatcher();
+        Assert.True(host.HasFrame);
+        Assert.Equal(1, host.BufferAllocations);
+    });
+
     private static void RunOnSta(Action scenario)
     {
         Exception? threadException = null;

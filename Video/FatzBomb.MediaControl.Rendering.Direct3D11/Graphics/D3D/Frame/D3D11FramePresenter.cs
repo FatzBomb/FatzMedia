@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Device;
+using FatzBomb.MediaControl.Core.Graphics.D3D.Diagnostics;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Upload;
 using FatzBomb.MediaControl.Core.Graphics.D3D.Video;
 using FatzBomb.MediaControl.Core.Graphics.Rendering;
@@ -26,6 +27,9 @@ internal sealed class D3D11FramePresenter(
 {
     private readonly RendererDiagnosticLatch _failure = new();
 
+    /// <summary>Why the last <see cref="PresentHardwareFrame"/> returned false, or null.</summary>
+    public string? LastFailureReason { get; private set; }
+
     public bool PresentHardwareFrame(
         D3D11DeviceResources deviceResources,
         Func<bool> preparePresentationTarget,
@@ -50,14 +54,18 @@ internal sealed class D3D11FramePresenter(
             || width <= 0
             || height <= 0)
         {
+            LastFailureReason = "no D3D11 video processor, target or frame";
             return false;
         }
 
+        LastFailureReason = null;
+        string? step = null;
         try
         {
             var presentStart = Stopwatch.GetTimestamp();
             if (!preparePresentationTarget())
             {
+                LastFailureReason = "no presentation target";
                 return false;
             }
 
@@ -77,11 +85,16 @@ internal sealed class D3D11FramePresenter(
                 hdrOutput);
             if (!presented)
             {
+                LastFailureReason = $"{videoProcessorPresenter.LastStep} did not draw the frame";
                 return false;
             }
 
+            step = "present";
             if (!notifyPresented(width, height))
+            {
+                LastFailureReason = "swap chain present was not completed";
                 return false;
+            }
 
             RecordUpload(presentStart, width, height, presentationWidth, presentationHeight);
             _failure.Reset();
@@ -89,8 +102,10 @@ internal sealed class D3D11FramePresenter(
         }
         catch (Exception ex)
         {
-            // Per frame while it lasts: one diagnostic per episode (ENG-026).
-            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Hardware frame presentation failed: {ex.Message}", ex);
+            // Per frame while it lasts: one diagnostic per episode (ENG-026). The step and, after a
+            // GPU reset, the removal reason are named (ENG-039); Core's device probe recovers.
+            LastFailureReason = D3D11DeviceLostClassifier.DescribeStepFailure(step ?? videoProcessorPresenter.LastStep, ex, deviceResources.Device);
+            _ = _failure.Raise(MediaDiagnosticLevel.Warning, "D3D11", $"Hardware frame presentation failed: {LastFailureReason}", ex);
             return false;
         }
     }

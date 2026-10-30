@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Graphics;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
@@ -40,6 +41,18 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     private bool _foreignFrameReported;
     private bool _disposed;
 
+    // ENG-039: a lost device stays in place (refusing frames and device requests) until Core's
+    // recovery calls CleanupResources, so one loss re-creates the device exactly once.
+    private bool _deviceLost;
+    private string? _deviceLostReason;
+
+    // Allocation failures in a row (guarded by _renderGate): after a GPU reset NVIDIA reported
+    // VK_ERROR_OUT_OF_DEVICE_MEMORY, not a lost device.
+    private int _allocationFailures;
+
+    // When a consumer last reported its graphics context lost (Stopwatch timestamp, 0 = never).
+    private long _consumerLostTimestamp;
+
     public event EventHandler? FramePresented;
 
     public string BackendName => "Vulkan";
@@ -55,7 +68,8 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     {
         lock (_sync)
         {
-            if (_disposed)
+            // A lost device is re-created by CleanupResources first (Core's recovery), never here.
+            if (_disposed || _deviceLost)
                 return false;
             if (_compositor is not null)
                 return IsInitialized = true;
@@ -79,6 +93,31 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     /// also take.
     /// </summary>
     internal static TimeSpan SharedImageWaitTimeout { get; } = TimeSpan.FromMilliseconds(8);
+
+    /// <summary>
+    /// How long the compositor may hold every image before the set is replaced (ENG-039: after a
+    /// GPU reset it never gave them back, and frames were dropped silently for good).
+    /// </summary>
+    internal TimeSpan SharedImageStallTimeout { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>Allocation failures in a row that count as a lost device (ENG-039).</summary>
+    internal const int OutOfMemoryFailuresBeforeLost = 3;
+
+    /// <summary>How long after a consumer's context loss a single allocation failure counts as a lost device.</summary>
+    internal static readonly TimeSpan ConsumerLossWindow = TimeSpan.FromSeconds(5);
+
+    /// <summary>Gets how many exports were logged at Info (tests, G6).</summary>
+    internal int ExportsLogged { get; private set; }
+
+    /// <summary>Gets whether the device is marked lost and waits for <see cref="CleanupResources"/> (tests).</summary>
+    internal bool IsDeviceLostPending
+    {
+        get
+        {
+            lock (_sync)
+                return _deviceLost;
+        }
+    }
 
     public bool AttachSurface(MediaPresentationSurfaceDescriptor surface) => SetSurface(surface, requireExisting: false);
 
@@ -189,11 +228,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             PresentResult result = target.Consumer is not null
                 ? PresentShared(frame, compositor!, target)
                 : PresentSink(frame, compositor!, target);
+            // Core's recovery re-creates the device (ProbeDeviceLost now reports it).
             if (result == PresentResult.DeviceLost)
-            {
-                CleanupResources();
                 return false;
-            }
 
             // Detached since this frame began: not a target of it any more.
             if (result == PresentResult.Detached)
@@ -220,7 +257,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     private readonly RendererDiagnosticLatch _renderFailureLatch = new();
 
-    private enum PresentResult
+    internal enum PresentResult
     {
         Presented,
         Failed,
@@ -252,6 +289,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             {
                 var pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, width, height));
                 sink.PresentFrame(pixels, width, height, width * 4);
+                _allocationFailures = 0;
                 return PresentResult.Presented;
             }
             catch (VulkanException exception)
@@ -261,20 +299,115 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         }
     }
 
-    private PresentResult ReportRenderFailure(VulkanException exception, VulkanOffscreenCompositor compositor)
+    /// <summary>
+    /// Classifies a failed frame (called under <see cref="_renderGate"/>). Device loss is always
+    /// reported: it drives recovery. ENG-039: any other failure probes the device, since after an
+    /// NVIDIA GPU reset the first failure was <c>VK_ERROR_OUT_OF_DEVICE_MEMORY</c>; allocation
+    /// failures count as a loss after <see cref="OutOfMemoryFailuresBeforeLost"/> in a row, or at
+    /// once just after a consumer lost its graphics context. Other failures repeat per frame, so
+    /// they are reported once until a frame presents again (ENG-026).
+    /// </summary>
+    internal PresentResult ReportRenderFailure(VulkanException exception, VulkanOffscreenCompositor compositor)
     {
-        // Device loss is always reported: it drives recovery. Other failures repeat per frame, so
-        // they are reported once until a frame presents again (ENG-026).
         if (exception.IsDeviceLost)
         {
-            // A decoder on the same device finds it lost too (Stage 045A slice 2).
-            compositor.MarkDeviceLost();
-            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, exception.Message, innerException: exception);
+            EnterDeviceLost(compositor, exception.Message, raise: true, exception);
             return PresentResult.DeviceLost;
+        }
+
+        if (compositor.ProbeDeviceLost(out var probed))
+        {
+            EnterDeviceLost(compositor, $"{exception.Message}; {probed}", raise: true, exception);
+            return PresentResult.DeviceLost;
+        }
+
+        if (exception.IsOutOfMemory)
+        {
+            var failures = ++_allocationFailures;
+            var consumerLost = Volatile.Read(ref _consumerLostTimestamp) is var lostAt and not 0
+                && Stopwatch.GetElapsedTime(lostAt) < ConsumerLossWindow;
+            if (failures >= OutOfMemoryFailuresBeforeLost || consumerLost)
+            {
+                var why = consumerLost ? "just after the compositor lost its graphics context" : $"{failures} times in a row";
+                EnterDeviceLost(compositor, $"{exception.Message} {why}; re-creating the device", raise: true, exception);
+                return PresentResult.DeviceLost;
+            }
         }
 
         _ = _renderFailureLatch.Raise(MediaDiagnosticLevel.Error, "Vulkan", exception.Message, exception);
         return PresentResult.Failed;
+    }
+
+    /// <summary>
+    /// Marks <paramref name="compositor"/>'s device lost, once, if it is still the current one: frames
+    /// and device requests are refused until <see cref="CleanupResources"/>, and a decoder on the
+    /// device finds it lost. With <paramref name="raise"/> (a failed frame, on the player's thread)
+    /// the loss is also raised in <see cref="DeviceLostDiagnosticCategory"/>, which Core still
+    /// accepts as a recovery trigger; otherwise Core's probe reports it.
+    /// </summary>
+    private void EnterDeviceLost(VulkanOffscreenCompositor compositor, string reason, bool raise, Exception? exception = null)
+    {
+        lock (_sync)
+        {
+            if (_disposed || _deviceLost || !ReferenceEquals(_compositor, compositor))
+                return;
+
+            _deviceLost = true;
+            _deviceLostReason = reason;
+        }
+
+        // A decoder on the same device finds it lost too (Stage 045A slice 2).
+        compositor.MarkDeviceLost(reason);
+        if (raise)
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Error, DeviceLostDiagnosticCategory, reason, innerException: exception);
+    }
+
+    /// <summary>
+    /// ENG-039: whether the device is lost, marked by a failed frame or found now (the Direct3D11
+    /// interop device's removal, or the heartbeat). Takes no render lock; waits at most about
+    /// 350 ms. Core polls it and calls <see cref="CleanupResources"/> and <see cref="Initialize"/>.
+    /// </summary>
+    public bool ProbeDeviceLost(out string? reason)
+    {
+        VulkanOffscreenCompositor? compositor;
+        lock (_sync)
+        {
+            reason = _deviceLost ? _deviceLostReason : null;
+            if (_disposed || _deviceLost)
+                return _deviceLost && !_disposed;
+
+            compositor = _compositor;
+        }
+
+        if (compositor is null || !compositor.ProbeDeviceLost(out reason))
+        {
+            reason = null;
+            return false;
+        }
+
+        reason ??= "the Vulkan device is lost";
+        EnterDeviceLost(compositor, reason, raise: false);
+        return true;
+    }
+
+    /// <summary>
+    /// A consumer's compositor lost its graphics context (a GPU reset): note it for the
+    /// allocation-failure rule and probe this device off the caller's thread (ENG-039).
+    /// </summary>
+    private void OnConsumerDeviceLost(string consumerReason)
+    {
+        Volatile.Write(ref _consumerLostTimestamp, Stopwatch.GetTimestamp());
+        VulkanOffscreenCompositor? compositor;
+        lock (_sync)
+            compositor = _disposed || _deviceLost ? null : _compositor;
+        if (compositor is null)
+            return;
+
+        _ = Task.Run(() =>
+        {
+            if (compositor.ProbeDeviceLost(out var reason))
+                EnterDeviceLost(compositor, $"the compositor lost its graphics context ({consumerReason}); {reason}", raise: false);
+        });
     }
 
     public void CleanupResources()
@@ -290,6 +423,9 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 _compositor = null;
                 IsInitialized = false;
                 _initializationFailed = false;
+                _deviceLost = false;
+                _deviceLostReason = null;
+                _allocationFailures = 0;
             }
         }
     }
@@ -326,12 +462,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     }
 
     // Stage 045A slice 2: FFmpeg decodes on the renderer's Vulkan device.
+    // While the device is lost, the type stays what it was, so decoders do not give up renderer
+    // decoding for good; device contexts are refused until the device is re-created.
     public string? VideoDecodeDeviceType
     {
         get
         {
             lock (_sync)
-                return !_disposed && Initialize() && _compositor!.VideoDecode is not null ? VideoDecodeDeviceTypeName : null;
+                return !_disposed && (_deviceLost || Initialize()) && _compositor?.VideoDecode is not null ? VideoDecodeDeviceTypeName : null;
         }
     }
 
@@ -341,7 +479,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         {
             lock (_sync)
             {
-                if (_disposed || !Initialize())
+                if (_disposed || _compositor is null || (!_deviceLost && !Initialize()))
                     return "no usable Vulkan device";
                 return _compositor!.VideoDecode is null ? _compositor.VideoDecodeUnavailableReason ?? "the Vulkan device does not decode video" : null;
             }
@@ -355,6 +493,12 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     {
         lock (_sync)
         {
+            if (_deviceLost)
+            {
+                failureReason = "the renderer's Vulkan device was lost and is being re-created";
+                return 0;
+            }
+
             if (_disposed || !Initialize())
             {
                 failureReason = "no usable Vulkan device";
@@ -371,8 +515,22 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     public NativeVideoFrameResource? CreateVideoDecodeFrameResource(NativeVideoDeviceResource device, nint ffmpegFrame) =>
         VulkanOffscreenCompositor.CreateFrameResource(device, ffmpegFrame);
 
-    public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device) =>
-        VulkanSharedDevice.Find(device.DeviceHandle)?.ProbeLost() ?? true;
+    // Called about once a second from the decode thread (ENG-039): the lost mark and a fence
+    // status only, never the heartbeat. A device already released is lost.
+    public bool IsVideoDecodeDeviceLost(NativeVideoDeviceResource device)
+    {
+        if (VulkanSharedDevice.Find(device.DeviceHandle) is not { } shared || !shared.TryAddRef())
+            return true;
+
+        try
+        {
+            return shared.ProbeLost();
+        }
+        finally
+        {
+            shared.Release();
+        }
+    }
 
     public void Dispose()
     {
@@ -593,19 +751,25 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             {
                 // A render-complete signal nobody waited on would make the next signal invalid:
                 // start a fresh set instead. Releases of a retired set change nothing.
-                if (ring.Release(frame, consumed) && !consumed && semaphoreSync)
+                if (!ring.Release(frame, consumed))
+                    return;
+
+                Volatile.Write(ref target.ReleasedSinceReplacement, 1);
+                if (!consumed && semaphoreSync)
                     Volatile.Write(ref target.RecreateShared, 1);
             },
-            consumed =>
+            consumedBuffers =>
             {
-                foreach (VulkanExportedImage image in exported.Images)
+                for (var index = 0; index < exported.Images.Count; index++)
                 {
+                    VulkanExportedImage image = exported.Images[index];
                     // NT handles stay with the producer (importers open their own references);
-                    // descriptors belong to the importer once consumed.
+                    // descriptors belong to the importer once it was handed them (ENG-039: only
+                    // the buffers before the count, when an import failed part way).
                     VulkanOffscreenCompositor.CloseNtHandle(image.MemoryNtHandle);
                     VulkanOffscreenCompositor.CloseNtHandle(image.RenderCompleteNtHandle);
                     VulkanOffscreenCompositor.CloseNtHandle(image.ConsumerReleaseNtHandle);
-                    if (consumed)
+                    if (index < consumedBuffers)
                         continue;
 
                     VulkanOffscreenCompositor.CloseDescriptor(image.MemoryFd);
@@ -613,12 +777,28 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                     VulkanOffscreenCompositor.CloseDescriptor(image.ConsumerReleaseFd);
                 }
             },
+            OnConsumerDeviceLost,
             // Direct3D11 textures have no Vulkan layout for the compositor (it never sees Vulkan).
             exported.Kind == MediaSharedGpuImageHandleKind.D3D11TextureNtHandle ? 0 : (int)VulkanOffscreenCompositor.ExportLayout);
         target.Shared = new SharedTarget(exported, set, ring);
         Volatile.Write(ref target.RecreateShared, 0);
-        target.DropReported = false;
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images exported for '{target.Surface.Id}': {set}");
+        target.StarvedSince = 0;
+        // G6: a resize or re-export for the same consumer and selection is not news (423 lines in
+        // 15 s of resizing); a new consumer or selection is.
+        if (!ReferenceEquals(target.LoggedConsumer, consumer) || target.LoggedSelection != selection)
+        {
+            target.LoggedConsumer = consumer;
+            target.LoggedSelection = selection;
+            target.DropReported = false;
+            target.StallReported = false;
+            ExportsLogged++;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU images exported for '{target.Surface.Id}': {set}");
+        }
+        else
+        {
+            Debug.WriteLine($"Vulkan: shared GPU images re-exported for '{target.Surface.Id}': {set}");
+        }
+
         consumer.OnImagesCreated(set);
         reason = null;
         return true;
@@ -658,30 +838,99 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             }
 
             if (!shared.Ring.TryBeginWrite(SharedImageWaitTimeout, out MediaSharedGpuImageWrite write))
-            {
-                // The compositor still shows both images: it is behind (or not rendering), and a
-                // newer frame follows. Not a failure.
-                if (!target.DropReported)
-                {
-                    target.DropReported = true;
-                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU image frame dropped for '{target.Surface.Id}': the compositor has not released an image yet.");
-                }
+                return OnSharedImagesHeld(target, compositor);
 
-                return PresentResult.Presented;
-            }
-
+            // Any exception before the frame is announced gives the image back (ENG-039: a stuck
+            // Writing slot would starve the ring for good).
+            var completed = false;
             try
             {
                 compositor.RenderToExport(VulkanCompositionPlanner.Plan(frame, width, height), shared.Images, write.BufferIndex, write.WaitForConsumerRelease, write.AcquireKey);
-                consumer.OnFrameReady(shared.Ring.CompleteWrite(write.BufferIndex));
+                MediaSharedGpuImageFrame ready = shared.Ring.CompleteWrite(write.BufferIndex);
+                completed = true;
+                target.StarvedSince = 0;
+                target.StallReported = false;
+                _allocationFailures = 0;
+                consumer.OnFrameReady(ready);
                 return PresentResult.Presented;
+            }
+            catch (VulkanException exception) when (exception.IsConsumerStall)
+            {
+                return ReplaceStalledImages(target, compositor, exception.Message);
             }
             catch (VulkanException exception)
             {
-                shared.Ring.AbortWrite(write.BufferIndex);
                 return ReportRenderFailure(exception, compositor);
             }
+            finally
+            {
+                if (!completed)
+                    shared.Ring.AbortWrite(write.BufferIndex);
+            }
         }
+    }
+
+    /// <summary>
+    /// The compositor holds every image (called under <see cref="_renderGate"/>). Briefly, that is
+    /// a compositor running behind: the frame is dropped, not failed. Past
+    /// <see cref="SharedImageStallTimeout"/> it is not coming back for them (ENG-039: after a GPU
+    /// reset frames were dropped silently for good): the images are replaced.
+    /// </summary>
+    private PresentResult OnSharedImagesHeld(Target target, VulkanOffscreenCompositor compositor)
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (target.StarvedSince == 0)
+            target.StarvedSince = now;
+
+        if (Stopwatch.GetElapsedTime(target.StarvedSince, now) < SharedImageStallTimeout)
+        {
+            if (!target.DropReported)
+            {
+                target.DropReported = true;
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Vulkan", $"Shared GPU image frame dropped for '{target.Surface.Id}': the compositor has not released an image yet.");
+            }
+
+            return PresentResult.Presented;
+        }
+
+        return ReplaceStalledImages(target, compositor, $"the compositor has not released an image for {SharedImageStallTimeout.TotalSeconds:0.#} s");
+    }
+
+    /// <summary>
+    /// The compositor stopped giving shared images back (called under <see cref="_renderGate"/>):
+    /// a lost device is recovered; otherwise the set is retired and the next frame exports a new
+    /// one, which a compositor that recreated its context can import again.
+    /// </summary>
+    private PresentResult ReplaceStalledImages(Target target, VulkanOffscreenCompositor compositor, string why)
+    {
+        // Once per release: a compositor that is only paused (and gives nothing back) must not
+        // make a new set every second; its frames fail, and Core's probe keeps watching the device.
+        if (target.ReplacedStalledSet && Volatile.Read(ref target.ReleasedSinceReplacement) == 0)
+            return PresentResult.Failed;
+
+        target.StarvedSince = 0;
+
+        if (compositor.ProbeDeviceLost(out var reason))
+        {
+            EnterDeviceLost(compositor, $"{why}; {reason}", raise: true);
+            return PresentResult.DeviceLost;
+        }
+
+        target.ReplacedStalledSet = true;
+        Volatile.Write(ref target.ReleasedSinceReplacement, 0);
+        lock (_sync)
+        {
+            if (IsCurrentNoLock(target))
+                RetireSharedNoLock(target);
+        }
+
+        if (!target.StallReported)
+        {
+            target.StallReported = true;
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Vulkan", $"Shared GPU images for '{target.Surface.Id}' replaced: {why}.");
+        }
+
+        return PresentResult.Failed;
     }
 
     private void RetireSharedNoLock(Target target)
@@ -705,11 +954,25 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
     {
         public int RecreateShared;
 
+        // Set by the release callback (ENG-039): the compositor gave an image back since the last
+        // stalled set was replaced.
+        public int ReleasedSinceReplacement;
+
         public MediaPresentationSurfaceDescriptor Surface { get; set; } = surface;
         public IMediaPresentationFrameSink? Sink { get; set; }
         public IMediaSharedGpuImageConsumer? Consumer { get; set; }
         public SharedTarget? Shared { get; set; }
         public bool DropReported { get; set; }
+
+        // ENG-039 (render gate): when every image was first found held (Stopwatch timestamp,
+        // 0 = not held), and whether replacing a stalled set was reported since the last frame.
+        public long StarvedSince { get; set; }
+        public bool StallReported { get; set; }
+        public bool ReplacedStalledSet { get; set; }
+
+        // G6 (both locks): the consumer and selection of the last logged export.
+        public IMediaSharedGpuImageConsumer? LoggedConsumer { get; set; }
+        public MediaSharedGpuImageSelection? LoggedSelection { get; set; }
     }
 
     private sealed class SharedTarget(VulkanExportedImageSet images, MediaSharedGpuImageSet set, MediaSharedGpuImageRing ring)

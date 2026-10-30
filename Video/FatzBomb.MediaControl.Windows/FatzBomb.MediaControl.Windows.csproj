@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="FatzBomb.MediaControl.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
     <PackageReference Include="ManagedBass" Version="4.0.2" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />

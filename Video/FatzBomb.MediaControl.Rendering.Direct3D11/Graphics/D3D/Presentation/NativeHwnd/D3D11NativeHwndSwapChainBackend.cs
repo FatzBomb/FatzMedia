@@ -34,6 +34,7 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
     private bool _deviceLostReported;
     // ResizeBuffers failures other than device loss repeat (retried every half second): one report.
     private readonly RendererDiagnosticLatch _resizeFailure = new();
+    private readonly RendererDiagnosticLatch _presentFailure = new();
 
     public D3D11PresentationBackendKind Kind => D3D11PresentationBackendKind.NativeHwndSwapChain;
     public bool IsActive => _swapChain != null && TargetTexture != null && Hwnd != IntPtr.Zero;
@@ -215,7 +216,8 @@ internal sealed class D3D11NativeHwndSwapChainBackend(
             liveResizeFlag,
             syncImmediate,
             diagnostics,
-            ref _deviceLostReported);
+            ref _deviceLostReported,
+            _presentFailure);
 
     private bool ResizeCore(int width, int height)
     {

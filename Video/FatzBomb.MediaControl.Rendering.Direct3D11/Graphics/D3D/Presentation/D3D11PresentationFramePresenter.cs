@@ -30,16 +30,29 @@ internal sealed class D3D11PresentationFramePresenter(
         VideoColorSpace colorSpace,
         HdrToneMapRequest? toneMap,
         Func<int, int, bool> notifyPresented,
-        HdrOutputDecision? hdrOutput = null) =>
-        !isDisposed
-            && deviceResources.Context != null
-            && deviceResources.HasVideoProcessorSupport
-            && sourceTexturePointer != IntPtr.Zero
-            && width > 0
-            && height > 0 && presentationSurfaces.TryGetActiveTargetSnapshot(
+        HdrOutputDecision? hdrOutput = null)
+    {
+        if (isDisposed
+            || deviceResources.Context == null
+            || !deviceResources.HasVideoProcessorSupport
+            || sourceTexturePointer == IntPtr.Zero
+            || width <= 0
+            || height <= 0)
+        {
+            LastFailureReason = "no D3D11 video processor or frame";
+            return false;
+        }
+
+        if (!presentationSurfaces.TryGetActiveTargetSnapshot(
                 applyPendingNativeResize: true,
                 reason: "hardware frame presentation",
-                out D3D11PresentationTargetSnapshot target) && framePresenter.PresentHardwareFrame(
+                out D3D11PresentationTargetSnapshot target))
+        {
+            LastFailureReason = "no active D3D11 presentation target";
+            return false;
+        }
+
+        var presented = framePresenter.PresentHardwareFrame(
             deviceResources,
             static () => true,
             target.Texture,
@@ -56,4 +69,10 @@ internal sealed class D3D11PresentationFramePresenter(
             notifyPresented,
             // Only an scRGB target takes scRGB (the snapshot is taken after the output was chosen).
             target.OutputMode == HdrOutputMode.ScRgb ? hdrOutput : null);
+        LastFailureReason = presented ? null : framePresenter.LastFailureReason;
+        return presented;
+    }
+
+    /// <summary>Why the last <see cref="PresentHardwareFrame"/> returned false, or null (ENG-039).</summary>
+    public string? LastFailureReason { get; private set; }
 }

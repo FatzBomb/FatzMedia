@@ -55,4 +55,20 @@ public interface IMediaRendererBackend : IDisposable
     void CleanupResources();
 
     bool EnsureNativeFrameDevice(VideoFrameEventArgs frame, out bool deviceAdopted);
+
+    /// <summary>
+    /// Whether the renderer's device (including a decoder device it adopted or shares) is lost,
+    /// with <paramref name="reason"/> saying how it was found (ENG-039). Core calls it about once a
+    /// second while the renderer is initialized and right after a failed present or surface call,
+    /// and recovers the device (<see cref="CleanupResources"/>, then <see cref="Initialize"/>) when
+    /// it returns true: a loss is detected even when no frame reaches a present (paused, CD+G
+    /// only, or a path that fails before presenting). Must be cheap and thread-safe, and must not
+    /// take the renderer's present lock or wait for the GPU without a short bound. A renderer
+    /// that cannot tell returns false (the default).
+    /// </summary>
+    bool ProbeDeviceLost(out string? reason)
+    {
+        reason = null;
+        return false;
+    }
 }
