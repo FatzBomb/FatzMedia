@@ -83,11 +83,9 @@ internal sealed class D3D11RendererPresentationServices
             VideoProcessorPresenter,
             Surfaces);
 
-        var framePresenter = new D3D11FramePresenter(
+        FramePresenter = new D3D11HardwareFramePresenter(
             UploadResources,
-            VideoProcessorPresenter);
-        FramePresenter = new D3D11PresentationFramePresenter(
-            framePresenter,
+            VideoProcessorPresenter,
             Surfaces,
             State);
     }
@@ -228,26 +226,7 @@ internal sealed class D3D11RendererPresentationServices
         HdrToneMapRequest? toneMap,
         Func<int, int, bool> notifyPresented)
     {
-        var presented = PresentHardwareFrameCore(isDisposed, sourceTexturePointer, sourceArraySlice, width, height, framesPerSecond, colorSpace, toneMap, notifyPresented);
-        // Quoted by Core when a native frame was not presented (ENG-039).
-        LastPresentFailureReason = presented
-            ? null
-            : isDisposed || !_deviceResources.HasDevice
-                ? "renderer disposed or D3D11 device unavailable"
-                : FramePresenter.LastFailureReason ?? "hardware frame was not presented";
-        return presented;
-    }
-
-    private bool PresentHardwareFrameCore(
-        bool isDisposed,
-        IntPtr sourceTexturePointer,
-        int sourceArraySlice,
-        int width,
-        int height,
-        double framesPerSecond,
-        VideoColorSpace colorSpace,
-        HdrToneMapRequest? toneMap,
-        Func<int, int, bool> notifyPresented) => FramePresenter.PresentHardwareFrame(
+        var presented = FramePresenter.PresentHardwareFrame(
             _deviceResources,
             isDisposed,
             sourceTexturePointer,
@@ -261,6 +240,14 @@ internal sealed class D3D11RendererPresentationServices
             // Plain hardware video on the primary only (Core composes otherwise): HDR output
             // decides from the frame alone (Stage 042A slice 2).
             isDisposed || !_deviceResources.HasDevice ? null : HdrOutput.PreparePrimary(Backends.Active, toneMap, blocker: null));
+        // Quoted by Core when a native frame was not presented (ENG-039).
+        LastPresentFailureReason = presented
+            ? null
+            : isDisposed || !_deviceResources.HasDevice
+                ? "renderer disposed or D3D11 device unavailable"
+                : FramePresenter.LastFailureReason ?? "hardware frame was not presented";
+        return presented;
+    }
 
     // isDisposed is read live: the owner can be disposed while a present is in flight.
     public bool NotifyFramePresented(Func<bool> isDisposed, bool syncImmediate, Action raiseFramePresented) => Surfaces.NotifyFramePresented(
@@ -620,7 +607,7 @@ internal sealed class D3D11RendererPresentationServices
 
     public D3D11PresentationResourceCleaner ResourceCleaner { get; }
 
-    public D3D11PresentationFramePresenter FramePresenter { get; }
+    public D3D11HardwareFramePresenter FramePresenter { get; }
 
     internal readonly record struct DirectCompositionOverlaySplitBaseState(
         long TargetRevision,

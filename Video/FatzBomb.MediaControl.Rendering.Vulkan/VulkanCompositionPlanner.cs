@@ -159,18 +159,8 @@ internal static class VulkanCompositionPlanner
     /// <summary>Same clear policy as the software renderer, returned premultiplied.</summary>
     public static (byte B, byte G, byte R, byte A) ResolveClear(in MediaCompositionFrame frame)
     {
-        var argb = frame.ClearMode switch
-        {
-            MediaCompositionClearMode.Transparent or MediaCompositionClearMode.PreservePrevious => 0u,
-            MediaCompositionClearMode.ConfiguredColor => frame.ClearArgb,
-            _ => frame.ClearArgb == 0 ? 0xFF000000u : frame.ClearArgb,
-        };
-        var alpha = (byte)(argb >> 24);
-        return (
-            Premultiply((byte)argb, alpha),
-            Premultiply((byte)(argb >> 8), alpha),
-            Premultiply((byte)(argb >> 16), alpha),
-            alpha);
+        var bgra = ColorMath.PremultiplyBgra(frame.ResolveClearArgb());
+        return ((byte)bgra, (byte)(bgra >> 8), (byte)(bgra >> 16), (byte)(bgra >> 24));
     }
 
     /// <summary>
@@ -246,6 +236,4 @@ internal static class VulkanCompositionPlanner
             texel[3] = 255;
         }
     }
-
-    private static byte Premultiply(byte value, byte alpha) => (byte)(((value * alpha) + 127) / 255);
 }

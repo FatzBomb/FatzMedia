@@ -28,8 +28,17 @@ public static class WinFormsMediaInputSources
         BitmapData data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
-            for (var y = 0; y < height; y++)
-                Marshal.Copy(data.Scan0 + (y * data.Stride), pixels, y * stride, stride);
+            // Packed top-down rows (the usual case) copy at once; a padded or bottom-up (negative
+            // stride) lock copies per row.
+            if (data.Stride == stride)
+            {
+                Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
+            }
+            else
+            {
+                for (var y = 0; y < height; y++)
+                    Marshal.Copy(data.Scan0 + (y * data.Stride), pixels, y * stride, stride);
+            }
         }
         finally
         {

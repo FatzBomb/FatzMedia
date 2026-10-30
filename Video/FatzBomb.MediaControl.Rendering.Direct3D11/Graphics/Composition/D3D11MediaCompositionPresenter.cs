@@ -394,13 +394,11 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
 
             step = "target draw";
             var drawnTargets = new List<D3D11PresentationTargetSnapshot>(presentationTargets.Count);
-            var primaryExpected = false;
-            var primaryDrew = false;
+            var outcome = new CompositionPresentOutcome();
             var anyTargetFailed = false;
             foreach (D3D11PresentationTargetSnapshot target in presentationTargets)
             {
                 var isPrimary = target.TargetId == CompositionTargetDescriptor.PrimaryFinalTargetId;
-                primaryExpected |= isPrimary;
                 // The backend's cached view of its texture (ENG-026); a snapshot without one gets a
                 // view for this draw only.
                 ID3D11RenderTargetView? ownedView = target.TargetViews is null ? deviceResources.Device.CreateRenderTargetView(target.Texture) : null;
@@ -423,6 +421,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     ownedView?.Dispose();
                 }
 
+                outcome.Record(isPrimary, drew);
                 if (!drew)
                 {
                     anyTargetFailed = true;
@@ -433,14 +432,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
                     continue;
                 }
 
-                primaryDrew |= isPrimary;
                 drawnTargets.Add(target);
             }
 
             if (!anyTargetFailed)
                 _targetDrawFailure.Reset();
 
-            var requiredTargetDrew = primaryExpected ? primaryDrew : drawnTargets.Count > 0;
+            var requiredTargetDrew = outcome.Succeeded;
             if (requiredTargetDrew)
             {
                 _presentFailure.Reset();
@@ -854,13 +852,7 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         context.Flush();
     }
 
-    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => frame.ClearMode switch
-    {
-        MediaCompositionClearMode.Transparent => new Color4(0, 0, 0, 0),
-        MediaCompositionClearMode.ConfiguredColor => ToColor4(frame.ClearArgb),
-        MediaCompositionClearMode.PreservePrevious => new Color4(0, 0, 0, 0),
-        _ => ToColor4(frame.ClearArgb == 0 ? 0xFF000000 : frame.ClearArgb)
-    };
+    private static Color4 ResolveClearColor(MediaCompositionFrame frame) => ToColor4(frame.ResolveClearArgb());
 
     private void MarkRenderedLayers(MediaCompositionFrame frame)
     {
@@ -1196,13 +1188,13 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         {
             if (_vertexShader == null || _pixelShader == null)
             {
-                var vertexShaderBytecode = CompileShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
-                var pixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
-                var backgroundPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
-                var baseVisualPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
-                var baseVisualPostPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
-                var solidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
-                var premultipliedSolidPixelShaderBytecode = CompileShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
+                var vertexShaderBytecode = GetShaderBytecode(CdgShaderSource, "VSMain", "vs_5_0");
+                var pixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSMain", "ps_5_0");
+                var backgroundPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBackground", "ps_5_0");
+                var baseVisualPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisual", "ps_5_0");
+                var baseVisualPostPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSBaseVisualPremultiplied", "ps_5_0");
+                var solidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolid", "ps_5_0");
+                var premultipliedSolidPixelShaderBytecode = GetShaderBytecode(CdgShaderSource, "PSSolidPremultiplied", "ps_5_0");
                 _vertexShader = device.CreateVertexShader(vertexShaderBytecode);
                 _pixelShader = device.CreatePixelShader(pixelShaderBytecode);
                 _backgroundPixelShader = device.CreatePixelShader(backgroundPixelShaderBytecode);
@@ -1417,6 +1409,19 @@ internal sealed partial class D3D11MediaCompositionPresenter(bool enableLayerDia
         _rasterizerState = null;
         ReleasePostProcessTargets();
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Source, string EntryPoint, string Profile), byte[]> ShaderBytecodeCache = new();
+
+    /// <summary>
+    /// The compiled bytecode for one entry point, compiled once per process (ENG-039): the shader
+    /// objects are per device, but the bytecode is not, and each compile took milliseconds on every
+    /// media open and device change. The returned array is shared: callers only read it. A failed
+    /// compile is not cached, so the next call tries again.
+    /// </summary>
+    internal static byte[] GetShaderBytecode(string shaderSource, string entryPoint, string targetProfile) =>
+        ShaderBytecodeCache.GetOrAdd(
+            (shaderSource, entryPoint, targetProfile),
+            static key => CompileShaderBytecode(key.Source, key.EntryPoint, key.Profile));
 
     internal static byte[] CompileShaderBytecode(string shaderSource, string entryPoint, string targetProfile)
     {

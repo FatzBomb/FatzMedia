@@ -36,7 +36,14 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     private long _videoConvertedRevision = -1;
     private nint _videoConvertedFrame;
     private bool _videoLayerValid;
-    private readonly List<ImageView> _frameViews = [];
+    // Plane views of decoded images, kept per image (ENG-039 P5-10): FFmpeg's frame pool hands
+    // the same images out again, so a view is created once per image and format, not per frame.
+    // The pool's frames context is referenced while views of its images exist, so no image is
+    // destroyed (and its handle reused) under a cached view; a frame from another context
+    // releases them all.
+    private readonly Dictionary<(ulong Image, Format Format, ImageAspectFlags Aspect), ImageView> _planeViews = [];
+    private AVBufferRef* _planeViewFrames;
+    private readonly VideoFrameAccess _videoFrameAccess = new();
     private string? _reportedVideoFailure;
 
     /// <summary>
@@ -60,6 +67,22 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
     /// <summary>Gets how many decoded frames were converted into the video layer (tests).</summary>
     internal int VideoConversionCount { get; private set; }
+
+    /// <summary>The most plane views kept; more (an unexpectedly large pool) releases them all.</summary>
+    internal const int MaxPlaneViews = 128;
+
+    /// <summary>Gets how many decoded-frame plane views were created (tests).</summary>
+    internal int FrameViewCreateCount { get; private set; }
+
+    /// <summary>Gets how many decoded-frame plane views are kept (tests).</summary>
+    internal int PlaneViewCount
+    {
+        get
+        {
+            lock (_sync)
+                return _planeViews.Count;
+        }
+    }
 
     /// <summary>Records that the device was lost, for the decoder's device-loss check.</summary>
     public void MarkDeviceLost(string reason) => _shared?.MarkLost(reason);
@@ -91,6 +114,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             _videoLayerValid = false;
             _videoConvertedRevision = -1;
             _videoConvertedFrame = 0;
+            // The decoder's frames may go with it. Every submission has completed (fence wait
+            // under this lock); after a loss the views wait for Dispose.
+            if (_shared?.IsLost != true)
+                DestroyPlaneViews();
         }
     }
 
@@ -248,7 +275,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     }
 
     /// <summary>What one decoded frame needs to be converted.</summary>
-    private sealed class PendingVideoConversion(
+    private readonly struct PendingVideoConversion(
         nint frameHandle,
         long revision,
         AVHWFramesContext* framesContext,
@@ -280,7 +307,6 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     private bool PrepareVideoLayer(in VulkanBackgroundLayer layer, out PendingVideoConversion? conversion)
     {
         conversion = null;
-        DestroyFrameViews();
         var width = (uint)layer.Width;
         var height = (uint)layer.Height;
         if (layer.Native is not { } resource)
@@ -307,6 +333,12 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             return false;
         }
 
+        if (!UsePlaneViewsOf(description.FramesReference))
+        {
+            ReportVideoFailure("FFmpeg's frames context could not be referenced");
+            return false;
+        }
+
         // Forgotten until this conversion's submission completes, so a failure converts again.
         _videoLayerValid = false;
         _videoPipeline ??= VulkanVideoPipeline.Create(_vk, _device, TargetFormat);
@@ -320,10 +352,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             description.CodedWidth,
             description.CodedHeight);
         BufferResource constantsBuffer = EnsureBuffer(ref _videoConstants, (ulong)sizeof(VulkanVideoConstants), BufferUsageFlags.UniformBufferBit, UploadMemoryPreferences);
-        void* mapped;
-        Check(_vk.MapMemory(_device, constantsBuffer.Memory, 0, (ulong)sizeof(VulkanVideoConstants), 0, &mapped), "vkMapMemory");
-        *(VulkanVideoConstants*)mapped = constants;
-        _vk.UnmapMemory(_device, constantsBuffer.Memory);
+        // The previous conversion's submission has completed (fence wait).
+        *(VulkanVideoConstants*)constantsBuffer.Mapped = constants;
 
         AVVkFrame* frame = description.Frame;
         Format lumaFormat = description.BitDepth == 8 ? Format.R8Unorm : Format.R16Unorm;
@@ -361,8 +391,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// </summary>
     private VideoFrameAccess RecordVideoConversion(PendingVideoConversion conversion)
     {
-        var access = new VideoFrameAccess(conversion.FramesContext, conversion.Frame, conversion.ImageCount);
-        access.Begin();
+        VideoFrameAccess access = _videoFrameAccess;
+        access.Begin(conversion.FramesContext, conversion.Frame, conversion.ImageCount);
         try
         {
             AVVkFrame* frame = conversion.Frame;
@@ -416,8 +446,30 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         _videoFramebuffer = _videoPipeline!.CreateFramebuffer(created.View, width, height);
     }
 
+    /// <summary>
+    /// Keeps the plane views of <paramref name="frames"/>' images: views of another frames context
+    /// are released first, and this one is referenced while views of its images exist. False when
+    /// FFmpeg cannot reference it.
+    /// </summary>
+    private bool UsePlaneViewsOf(AVBufferRef* frames)
+    {
+        if (_planeViewFrames != null && _planeViewFrames->data == frames->data)
+        {
+            if (_planeViews.Count + 2 > MaxPlaneViews)
+                DestroyPlaneViewsOnly();
+            return true;
+        }
+
+        DestroyPlaneViews();
+        _planeViewFrames = ffmpeg.av_buffer_ref(frames);
+        return _planeViewFrames != null;
+    }
+
     private ImageView CreateFrameView(VkImage image, Format format, ImageAspectFlags aspect)
     {
+        if (_planeViews.TryGetValue((image.Handle, format, aspect), out ImageView cached))
+            return cached;
+
         // Decoder images also carry video usages; the view is for sampling only (as FFmpeg's own
         // plane views are).
         var usage = new ImageViewUsageCreateInfo { SType = StructureType.ImageViewUsageCreateInfo, Usage = ImageUsageFlags.SampledBit };
@@ -431,17 +483,29 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             SubresourceRange = new ImageSubresourceRange(aspect, 0, 1, 0, 1),
         };
         ImageView view;
-        Check(_vk.CreateImageView(_device, &info, null, &view), "vkCreateImageView (decoded frame plane)");
-        _frameViews.Add(view);
+        VulkanResult.Check(_vk.CreateImageView(_device, &info, null, &view), "vkCreateImageView (decoded frame plane)");
+        _planeViews.Add((image.Handle, format, aspect), view);
+        FrameViewCreateCount++;
         return view;
     }
 
-    /// <summary>Destroys the plane views of the last conversion (its submission completed or failed).</summary>
-    private void DestroyFrameViews()
+    /// <summary>Destroys the cached plane views (no submission uses them) and releases their frames context.</summary>
+    private void DestroyPlaneViews()
     {
-        foreach (ImageView view in _frameViews)
+        DestroyPlaneViewsOnly();
+        if (_planeViewFrames != null)
+        {
+            // The views go first: this may be the last reference, which destroys the images.
+            fixed (AVBufferRef** frames = &_planeViewFrames)
+                ffmpeg.av_buffer_unref(frames);
+        }
+    }
+
+    private void DestroyPlaneViewsOnly()
+    {
+        foreach (ImageView view in _planeViews.Values)
             _vk.DestroyImageView(_device, view, null);
-        _frameViews.Clear();
+        _planeViews.Clear();
     }
 
     private void DestroyVideoLayer()
@@ -455,7 +519,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
     private void DestroyVideoResources()
     {
-        DestroyFrameViews();
+        DestroyPlaneViews();
         DestroyVideoLayer();
         Destroy(ref _videoConstants);
         _videoPipeline?.Dispose();
@@ -474,6 +538,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     private struct FrameDescription
     {
         public AVHWFramesContext* FramesContext;
+        public AVBufferRef* FramesReference;
         public AVVkFrame* Frame;
         public int ImageCount;
         public int BitDepth;
@@ -501,10 +566,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         var frames = (AVHWFramesContext*)frame->hw_frames_ctx->data;
         AVPixelFormat softwareFormat = frames->sw_format;
         AVPixFmtDescriptor* format = ffmpeg.av_pix_fmt_desc_get(softwareFormat);
-        var name = ffmpeg.av_get_pix_fmt_name(softwareFormat) ?? softwareFormat.ToString();
         if (format == null || format->nb_components != 3 || ffmpeg.av_pix_fmt_count_planes(softwareFormat) != 2 || (format->flags & ffmpeg.AV_PIX_FMT_FLAG_RGB) != 0)
         {
-            failure = $"its {name} samples are not two-plane YCbCr";
+            failure = $"its {FormatName(softwareFormat)} samples are not two-plane YCbCr";
             return false;
         }
 
@@ -513,13 +577,14 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         var imageCount = vkFrame->Image[1] != 0 ? 2 : 1;
         if (bitDepth is < 8 or > 16 || vkFrame->Image[0] == 0 || vkFrame->Image[2] != 0)
         {
-            failure = $"its {name} images are laid out in a way this renderer does not read";
+            failure = $"its {FormatName(softwareFormat)} images are laid out in a way this renderer does not read";
             return false;
         }
 
         description = new FrameDescription
         {
             FramesContext = frames,
+            FramesReference = frame->hw_frames_ctx,
             Frame = vkFrame,
             ImageCount = imageCount,
             BitDepth = bitDepth,
@@ -529,6 +594,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
         failure = null;
         return true;
     }
+
+    // Only for failure messages: FFmpeg.AutoGen marshals a new string on every call.
+    private static string FormatName(AVPixelFormat format) => ffmpeg.av_get_pix_fmt_name(format) ?? format.ToString();
 
     private void Barrier(
         VkImage image,
@@ -544,15 +612,23 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
     /// <summary>
     /// A decoded frame's lock and synchronization state for one submission (FFmpeg's
     /// <c>lock_frame</c>/<c>unlock_frame</c>, as its own submissions use them): read while
-    /// recording, waited on and advanced by the submit, written back before unlocking.
+    /// recording, waited on and advanced by the submit, written back before unlocking. One
+    /// instance is reused for every conversion (they run one at a time under the compositor's lock).
     /// </summary>
-    private sealed class VideoFrameAccess(AVHWFramesContext* framesContext, AVVkFrame* frame, int imageCount)
+    private sealed class VideoFrameAccess
     {
+        private AVHWFramesContext* _framesContext;
+        private AVVkFrame* _frame;
+        private int _imageCount;
         private bool _locked;
         private bool _submitted;
 
-        public void Begin()
+        public void Begin(AVHWFramesContext* framesContext, AVVkFrame* frame, int imageCount)
         {
+            _framesContext = framesContext;
+            _frame = frame;
+            _imageCount = imageCount;
+            _submitted = false;
             var vulkan = (AVVulkanFramesContext*)framesContext->hwctx;
             if (vulkan->LockFrame != 0)
                 ((delegate* unmanaged[Cdecl]<AVHWFramesContext*, AVVkFrame*, void>)vulkan->LockFrame)(framesContext, frame);
@@ -569,16 +645,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
             ulong* signalValues,
             ref uint signalCount)
         {
-            for (var i = 0; i < imageCount; i++)
+            for (var i = 0; i < _imageCount; i++)
             {
-                if (frame->Semaphore[i] == 0)
+                if (_frame->Semaphore[i] == 0)
                     continue;
 
-                waitSemaphores[waitCount] = new VkSemaphore(frame->Semaphore[i]);
+                waitSemaphores[waitCount] = new VkSemaphore(_frame->Semaphore[i]);
                 waitStages[waitCount] = PipelineStageFlags.AllCommandsBit;
-                waitValues[waitCount++] = frame->SemaphoreValue[i];
-                signalSemaphores[signalCount] = new VkSemaphore(frame->Semaphore[i]);
-                signalValues[signalCount++] = frame->SemaphoreValue[i] + 1;
+                waitValues[waitCount++] = _frame->SemaphoreValue[i];
+                signalSemaphores[signalCount] = new VkSemaphore(_frame->Semaphore[i]);
+                signalValues[signalCount++] = _frame->SemaphoreValue[i] + 1;
             }
         }
 
@@ -592,19 +668,19 @@ internal sealed unsafe partial class VulkanOffscreenCompositor
 
             if (_submitted)
             {
-                for (var i = 0; i < imageCount; i++)
+                for (var i = 0; i < _imageCount; i++)
                 {
-                    if (frame->Semaphore[i] != 0)
-                        frame->SemaphoreValue[i]++;
-                    frame->Layout[i] = (int)ImageLayout.ShaderReadOnlyOptimal;
-                    frame->Access[i] = FfmpegVulkanInterop.ShaderReadAccess2;
+                    if (_frame->Semaphore[i] != 0)
+                        _frame->SemaphoreValue[i]++;
+                    _frame->Layout[i] = (int)ImageLayout.ShaderReadOnlyOptimal;
+                    _frame->Access[i] = FfmpegVulkanInterop.ShaderReadAccess2;
                 }
             }
 
             _locked = false;
-            var vulkan = (AVVulkanFramesContext*)framesContext->hwctx;
+            var vulkan = (AVVulkanFramesContext*)_framesContext->hwctx;
             if (vulkan->UnlockFrame != 0)
-                ((delegate* unmanaged[Cdecl]<AVHWFramesContext*, AVVkFrame*, void>)vulkan->UnlockFrame)(framesContext, frame);
+                ((delegate* unmanaged[Cdecl]<AVHWFramesContext*, AVVkFrame*, void>)vulkan->UnlockFrame)(_framesContext, _frame);
         }
     }
 }

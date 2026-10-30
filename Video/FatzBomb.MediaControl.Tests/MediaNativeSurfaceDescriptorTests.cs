@@ -111,6 +111,26 @@ public sealed class MediaNativeSurfaceDescriptorTests
     }
 
     [Fact]
+    public void ManagedFrameSinkHandle_ResolvesFromPresentationSurfaceUntilDisposed()
+    {
+        var sink = new TestFrameSink();
+        var handle = new MediaPresentationFrameSinkHandle(sink);
+        var surface = new MediaPresentationSurfaceDescriptor("sink", MediaPresentationSurfaceRole.Primary, handle.CreateSurfaceDescriptor(), 4, 4);
+        var wrongKind = new MediaPresentationSurfaceDescriptor("hwnd", MediaPresentationSurfaceRole.Primary, MediaNativeSurfaceDescriptor.Win32Hwnd(handle.Value), 4, 4);
+
+        Assert.True(MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? resolved));
+        Assert.Same(sink, resolved);
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve(wrongKind, out resolved));
+        Assert.Null(resolved);
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve((MediaPresentationSurfaceDescriptor?)null, out resolved));
+
+        handle.Dispose();
+
+        Assert.False(MediaPresentationFrameSinkHandle.TryResolve(surface, out resolved));
+        Assert.Null(resolved);
+    }
+
+    [Fact]
     public void ManagedFrameSinkHandle_AfterDispose_CannotCreateSurface()
     {
         var handle = new MediaPresentationFrameSinkHandle(new TestFrameSink());

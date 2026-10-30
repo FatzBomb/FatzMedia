@@ -142,7 +142,7 @@ internal sealed class PlayerRendererSelection
                     {
                         // Stage 045A slice 3: hardware decoding (Vulkan Video on the renderer's
                         // device) when the device has it, software decoding otherwise.
-                        var decoding = vulkan.RequiresSoftwareDecoding ? "software decoding" : "hardware decoding (Vulkan Video) where the GPU supports the codec";
+                        (_, var decoding) = PlayerRendererRules.DescribeDecoding(PlayerRendererRequest.Vulkan, vulkan.RequiresSoftwareDecoding);
                         return new PlayerRendererSelection(
                             static () => new VulkanPresentationCoordinatorFactory(),
                             usesFrameSinkRenderer: true,

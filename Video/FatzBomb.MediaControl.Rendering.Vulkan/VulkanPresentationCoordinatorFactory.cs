@@ -64,7 +64,7 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
     public IMediaPresentationCoordinator Create(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) =>
         new MediaPresentationCoordinator(
             new VulkanRendererBackend(CreateCompositor),
-            new NullSubtitleRasterizer(),
+            NullSubtitleRasterizer.Instance,
             mediaEngine,
             configuration,
             _precisionWaiterFactory);
@@ -84,16 +84,4 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
         compositor.VideoDecode is { } decode
             ? $"Vulkan Video decoding: {decode.Describe()}"
             : $"no Vulkan Video decoding: {compositor.VideoDecodeUnavailableReason ?? "unknown"}";
-
-    /// <summary>Subtitle rasterization (DirectWrite/Skia) is a later slice.</summary>
-    private sealed class NullSubtitleRasterizer : ISubtitleRasterizer
-    {
-        public SubtitleRasterResult Render(string text, int width, int height) => default;
-
-        public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height) => default;
-
-        public void Dispose()
-        {
-        }
-    }
 }

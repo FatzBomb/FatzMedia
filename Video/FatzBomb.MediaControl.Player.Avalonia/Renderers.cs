@@ -77,26 +77,20 @@ internal static class Renderers
     }
 
     /// <summary>
-    /// How video is decoded for a renderer (Stage 045A): a host choice, paired with what the
-    /// renderer's probe says it can present (<see cref="MediaPresentationAvailability.RequiresSoftwareDecoding"/>).
-    /// A renderer that presents hardware frames gets <see cref="VideoDecodingMethod.Auto"/>
-    /// (hardware where the GPU decodes the codec, else software): Direct3D11 on a GPU, which keeps
-    /// D3D11VA frames on the GPU through both surface paths, and Vulkan on a device with Vulkan
-    /// Video (slice 2: FFmpeg decodes on the renderer's device). The software renderer takes no
-    /// hardware frames, Vulkan without Vulkan Video has nothing to decode with (its probe detail
-    /// says why), and Direct3D11 on a software rasterizer (WARP) would be handed frames on another
-    /// device, so those decode in software. <paramref name="kind"/> only words the reason.
+    /// How video is decoded for a renderer (Stage 045A): the shared table
+    /// (<see cref="PlayerRendererRules.DescribeDecoding"/>) over what the renderer's probe says it
+    /// can present (<see cref="MediaPresentationAvailability.RequiresSoftwareDecoding"/>).
     /// </summary>
     internal static (VideoDecodingMethod Decoding, string Detail) ChooseDecoding(RendererKind kind, MediaPresentationAvailability availability) =>
-        (availability.RequiresSoftwareDecoding, kind) switch
-        {
-            (false, RendererKind.Direct3D11) => (VideoDecodingMethod.Auto, "hardware decoding (D3D11VA) where the GPU supports the codec"),
-            (false, RendererKind.Vulkan) => (VideoDecodingMethod.Auto, "hardware decoding (Vulkan Video) where the GPU supports the codec"),
-            (false, _) => (VideoDecodingMethod.Auto, "hardware decoding where the GPU supports the codec"),
-            (true, RendererKind.Direct3D11 or RendererKind.Warp) => (VideoDecodingMethod.Software, "software decoding (the renderer runs on a software rasterizer)"),
-            (true, RendererKind.Vulkan) => (VideoDecodingMethod.Software, "software decoding (the device has no Vulkan Video decoding)"),
-            (true, _) => (VideoDecodingMethod.Software, "software decoding (the renderer takes no hardware frames)")
-        };
+        PlayerRendererRules.DescribeDecoding(
+            kind switch
+            {
+                RendererKind.Direct3D11 => PlayerRendererRequest.Direct3D11,
+                RendererKind.Warp => PlayerRendererRequest.Warp,
+                RendererKind.Vulkan => PlayerRendererRequest.Vulkan,
+                _ => PlayerRendererRequest.Software,
+            },
+            availability.RequiresSoftwareDecoding);
 
     /// <summary>
     /// Resolves a <c>--renderer=</c> request against what the probe found. <c>auto</c> takes the

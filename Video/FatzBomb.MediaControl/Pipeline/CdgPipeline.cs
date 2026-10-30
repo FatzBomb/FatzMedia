@@ -194,12 +194,7 @@ internal sealed class CdgPipeline : ISeekPumpHost, IDisposable
 
     void ISeekPumpHost.WaitForPumpInterval() => _seekPump.WaitInterval(CdgSeekIntervalMilliseconds);
 
-    private double NormalizeSeekTarget(double seconds) =>
-        !double.IsFinite(seconds) || seconds <= 0
-            ? 0
-            : DurationSeconds > 0
-                ? Math.Clamp(seconds, 0, DurationSeconds)
-                : seconds;
+    private double NormalizeSeekTarget(double seconds) => SeekHelpers.NormalizeSeekTarget(seconds, DurationSeconds);
 
     public void RenderAt(double seconds, bool forceRebuild)
     {

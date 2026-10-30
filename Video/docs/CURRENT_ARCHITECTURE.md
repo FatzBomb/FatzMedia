@@ -62,7 +62,7 @@ package (`net10.0`) that references Core only and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
-no-op `ISubtitleRasterizer` (`NoOpSubtitleRasterizer`), and
+no-op `ISubtitleRasterizer` (Core's `NullSubtitleRasterizer.Instance`, also used by Vulkan), and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
 **Output contract** — `SoftwareCompositionRenderer.Render(MediaCompositionFrame, width,
@@ -259,6 +259,23 @@ named `window` handle.
   key/velocity ranges, sample rate/root key, and the resulting SF2 container.
 - MIDI files (`.mid`, `.midi`, `.kar`, `.rmi`) play through the existing `AudioEngine` path with pitch, tempo, normalization, volume, and loop support.
 - Tracker formats (`.mod`, `.it`, `.s3m`, `.xm`, `.mo3`, `.mtm`, `.umx`) are natively supported by BASS via `BASS_MusicLoad`. `AudioStreamManager` loads tracker playback sources with decode + float + prescan flags so byte-position seeking works through the BASS_FX tempo stream, and releases their `HMUSIC` handles with `Bass.MusicFree`.
+
+## Embedded Subtitles
+
+- The text subtitle tracks of a local video (SRT, ASS/SSA, WebVTT, mov_text, plain text) are
+  decoded by `EmbeddedSubtitleDecoder` on its own demuxer. That reads the whole file, so since
+  ENG-039 (P5-1) it runs on a background task that `PlaybackCoordinator` starts after the video
+  (and its sidecar, if any) opened: the load returns without the tracks.
+- The scan is cancellable and generation-checked: every open, close and dispose cancels it, and a
+  result that arrives after that is dropped. It runs with the opening player's `DiagnosticRouter`
+  owner and without the control queue's execution context.
+- When the tracks arrive they join `SubtitleTracks`. The first embedded track is selected, taking
+  precedence over an auto-selected sidecar as before, unless the host already chose a track (or
+  none) with `SelectSubtitleTrack`. The engine raises `ISubtitleTrackSource.SubtitleTracksChanged`;
+  the player forwards it as the public `IMediaControlSession.SubtitleTracksChanged` (with the
+  current tracks and selection) through the control queue, after `MediaLoaded` and on a
+  background thread, and not after a close. `PlayerViewModel` refreshes its subtitle picker on it.
+- Network video and archive video have no embedded-subtitle scan.
 
 ## MIDI/KAR Karaoke Lyrics
 
@@ -539,6 +556,12 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
 - `MediaSurfacePresentationPath` (`None`, `FrameSink`, `SharedGpuImage`, `NativeWindow`; moved
   from the Avalonia adapter) and `MediaSurfacePresentationPathText` (the shared path Info line
   and the Warning raised once per session when `AttachPresentationSurface` returns false).
+  ENG-039: `MediaSurfaceBookkeeping` keeps each surface's number, effective-id rule, current
+  path/reason and that once-per-session refusal; `LatestFrameMailbox` is the frame sinks'
+  latest-frame hand-off (latest wins, two circulating arrays, a spare over twice the need
+  dropped, size checked in `long`), each adapter marshalling the publish itself;
+  `KaraokeLayout.Fit` and `PresentationPlacement.Center` are the shared 4:3 fit and
+  second-screen centring.
 - Every `MediaSurface` has `Role`, `SurfaceId`, `EffectiveSurfaceId`, `IsSurfaceAttached`,
   `IsPrimarySurfaceAttached`, `AutoHide` (default true), `IsContentVisible`,
   `ContentVisibilityChanged`, `IsPresentationSuspended`, `PresentationPath`,
@@ -562,7 +585,8 @@ would otherwise copy lives in Core, and the WPF, Avalonia and WinForms adapters 
   control binds its surface on the UI thread), numbers reloads so a newer source abandons an older
   load after every await, coalesces source changes (`TryQueueReload`), runs the load sequence
   (no sidecars, inspect, close a rejected item, start), and releases (`PlayerChanged`, then a
-  blocking dispose). A release or dispose abandons pending loads and creations; a player created
+  blocking dispose). `RunQueuedReloadAsync` runs a queued reload and turns a failure into the
+  control's Warning (ENG-039). A release or dispose abandons pending loads and creations; a player created
   for an abandoned request is disposed off the UI thread and never adopted. Unlike engine code its
   awaits resume on the caller's context on purpose; it uses a `System.Threading.Lock`.
 - `KaraokeSurface` and `BackgroundSurface` in the WPF (reworked; same API plus
@@ -905,7 +929,8 @@ network source has a read-ahead (`NetworkReadAhead`, queues in the pure `ReadAhe
 reader thread owns every network read and seek and demuxes the registered streams ahead of
 playback, up to `MediaPlayerConfiguration.NetworkReadAhead` (`NetworkReadAheadPolicy`: 20 s or
 64 MB by default). The video's `VideoAudioEngine` shares that cursor (one connection, one
-download; no normalization pre-analysis); local video keeps audio on its own cursor. A seek to a
+download; no normalization pre-analysis); local video keeps audio on its own cursor, and the
+picture's cursor discards every other stream (ENG-039). A seek to a
 buffered forward target is served from the queues (dropped to the keyframe at or before it); any
 other seek empties them and the reader seeks, giving up its read in progress through an interrupt
 condition. Consumer reads wait for packets except on the playback loops (`NoWait`), Stop (0.5 s)

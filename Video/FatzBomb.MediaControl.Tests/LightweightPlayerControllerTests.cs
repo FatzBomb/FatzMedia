@@ -279,6 +279,44 @@ public sealed class LightweightPlayerControllerTests
         Assert.False(controller.IsCurrentReload(reload));
     }
 
+    [Fact]
+    public async Task RunQueuedReload_ClearsTheQueue_SkipsWhenTheControlCannotRun_AndWarnsOnFailure()
+    {
+        const string category = "Test.QueuedReload";
+        var warnings = new ConcurrentQueue<MediaDiagnosticInfo>();
+        void Record(MediaDiagnosticInfo info)
+        {
+            if (info.Category == category)
+                warnings.Enqueue(info);
+        }
+
+        using var controller = new LightweightPlayerController(LightweightPlayerKind.Karaoke, category);
+        var runs = 0;
+        Assert.True(controller.TryQueueReload());
+        await controller.RunQueuedReloadAsync(() => false, () =>
+        {
+            runs++;
+            return Task.CompletedTask;
+        });
+        Assert.Equal(0, runs);
+        Assert.True(controller.TryQueueReload()); // cleared even when skipped
+
+        DiagnosticRouter.DiagnosticOccurred += Record;
+        try
+        {
+            await controller.RunQueuedReloadAsync(() => true, () => throw new InvalidOperationException("bad source"));
+        }
+        finally
+        {
+            DiagnosticRouter.DiagnosticOccurred -= Record;
+        }
+
+        MediaDiagnosticInfo warning = Assert.Single(warnings);
+        Assert.Equal(MediaDiagnosticLevel.Warning, warning.Level);
+        Assert.Equal("Reloading the source failed: bad source", warning.Message);
+        Assert.IsType<InvalidOperationException>(warning.InnerException);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + TestEnvironment.EventuallyTimeout;

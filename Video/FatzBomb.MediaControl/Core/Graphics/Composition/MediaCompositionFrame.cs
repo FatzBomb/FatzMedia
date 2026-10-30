@@ -105,6 +105,20 @@ public readonly partial record struct MediaCompositionFrame
 
     public bool HasShaderVisibleLayer => HasAnyBackground || HasWash || HasCdgOverlay || HasSubtitleOverlay;
 
+    /// <summary>
+    /// Gets the straight-alpha 0xAARRGGBB colour every renderer clears the target to:
+    /// transparent for <see cref="MediaCompositionClearMode.Transparent"/> and
+    /// <see cref="MediaCompositionClearMode.PreservePrevious"/>, <see cref="ClearArgb"/> as given for
+    /// <see cref="MediaCompositionClearMode.ConfiguredColor"/>, and otherwise <see cref="ClearArgb"/>
+    /// with zero meaning opaque black.
+    /// </summary>
+    public uint ResolveClearArgb() => ClearMode switch
+    {
+        MediaCompositionClearMode.Transparent or MediaCompositionClearMode.PreservePrevious => 0u,
+        MediaCompositionClearMode.ConfiguredColor => ClearArgb,
+        _ => ClearArgb == 0 ? 0xFF000000u : ClearArgb
+    };
+
     public MediaCompositionStretchMode EffectiveBackgroundStretchMode => BackgroundStretchMode switch
     {
         MediaCompositionStretchMode.Auto when BackgroundUniformToFill => MediaCompositionStretchMode.UniformToFill,

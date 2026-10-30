@@ -957,6 +957,81 @@ public sealed class MediaPresentationCoordinatorTests
         Assert.False(refreshed.UseRetainedBackground);
     }
 
+    [Fact]
+    public void UnchangedCues_DoNotRasterizeOrAllocateText()
+    {
+        // ENG-039 P5-2: a KAR re-checked its cues on every frame, joining the cue text each time.
+        var karaokeCue = new SubtitleCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(10), "Hello world")
+        {
+            KaraokeTiming = new KaraokeCueTiming(
+                [new KaraokeLineTiming("Hello world", [new KaraokeTextSegment(0, 5, TimeSpan.FromSeconds(1)), new KaraokeTextSegment(6, 5, TimeSpan.FromSeconds(2))])],
+                ActiveLineIndex: 0,
+                TransitionStart: TimeSpan.Zero,
+                TransitionEnd: TimeSpan.FromSeconds(10)),
+        };
+        var subtitles = new FixedSubtitleEngine([karaokeCue]);
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle, Subtitle = subtitles };
+        var rasterizer = new CountingSubtitleRasterizer();
+        using var coordinator = CreateCoordinator(new RecordingRendererBackend(), engine, rasterizer: rasterizer);
+
+        Assert.True(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal((0, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+        Assert.Equal(0, MeasureUnchangedUpdates(coordinator, 5));
+        Assert.Equal((0, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+
+        // Two plain cues are joined into one text; unchanged cues don't join them again.
+        subtitles.Cues = [new SubtitleCue(2, TimeSpan.Zero, TimeSpan.FromSeconds(10), "first"), new SubtitleCue(3, TimeSpan.Zero, TimeSpan.FromSeconds(10), "second")];
+        Assert.True(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal("first\nsecond", rasterizer.LastText);
+        Assert.Equal(0, MeasureUnchangedUpdates(coordinator, 5));
+        Assert.Equal((1, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+
+        // New cue objects with the same text still skip the raster, as before.
+        subtitles.Cues = [new SubtitleCue(4, TimeSpan.Zero, TimeSpan.FromSeconds(10), "first"), new SubtitleCue(5, TimeSpan.Zero, TimeSpan.FromSeconds(10), "second")];
+        Assert.False(coordinator.UpdateSubtitleOverlay(5));
+        Assert.Equal((1, 1), (rasterizer.TextCount, rasterizer.KaraokeCount));
+    }
+
+    [Fact]
+    public void SubtitleRaster_IsPresentedFromThePooledBuffer()
+    {
+        var subtitles = new FixedSubtitleEngine([new SubtitleCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(10), "one")]);
+        var engine = new TestMediaEngine { Content = MediaContent.Audio | MediaContent.Subtitle, Subtitle = subtitles };
+        var rasterizer = new CountingSubtitleRasterizer();
+        var backend = new RecordingRendererBackend();
+        using var coordinator = CreateCoordinator(backend, engine, rasterizer: rasterizer);
+        rasterizer.Fill = 0x11;
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame first = backend.PresentedFrames.Last();
+        Assert.Equal(CountingSubtitleRasterizer.PixelBytes, first.SubtitleBgra.Length);
+        Assert.All(first.SubtitleBgra.ToArray(), value => Assert.Equal(0x11, value));
+
+        rasterizer.Fill = 0x22;
+        subtitles.Cues = [new SubtitleCue(2, TimeSpan.Zero, TimeSpan.FromSeconds(10), "two")];
+        coordinator.RefreshCurrentPosition();
+        MediaCompositionFrame second = backend.PresentedFrames.Last();
+        Assert.Equal(2, rasterizer.TextCount);
+        Assert.True(second.SubtitleRevision > first.SubtitleRevision);
+        Assert.All(second.SubtitleBgra.ToArray(), value => Assert.Equal(0x22, value));
+    }
+
+    private static long MeasureUnchangedUpdates(MediaPresentationCoordinator coordinator, double position)
+    {
+        var changed = false;
+        for (var i = 0; i < 16; i++)
+            changed |= coordinator.UpdateSubtitleOverlay(position);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+            changed |= coordinator.UpdateSubtitleOverlay(position);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.False(changed);
+        return allocated;
+    }
+
     private static List<PresentationTimingGroup> QueryGroups(TestVideoEngine video)
     {
         var groups = new List<PresentationTimingGroup>();
@@ -1014,9 +1089,10 @@ public sealed class MediaPresentationCoordinatorTests
     private static MediaPresentationCoordinator CreateCoordinator(
         RecordingRendererBackend backend,
         TestMediaEngine engine,
-        TimeProvider? timeProvider = null) => new(
+        TimeProvider? timeProvider = null,
+        ISubtitleRasterizer? rasterizer = null) => new(
             backend,
-            new StubSubtitleRasterizer(),
+            rasterizer ?? new StubSubtitleRasterizer(),
             engine,
             MediaPlayerConfiguration.Auto,
             new SystemPrecisionWaiterFactory(),
@@ -1116,6 +1192,56 @@ public sealed class MediaPresentationCoordinatorTests
         public SubtitleRasterResult Render(string text, int width, int height) => default;
         public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height) => default;
         public void Dispose() { }
+    }
+
+    /// <summary>Counts raster calls and returns a small fixed raster through the base overloads.</summary>
+    private sealed class CountingSubtitleRasterizer : ISubtitleRasterizer
+    {
+        public const int PixelBytes = 4 * 4 * 2;
+        private readonly byte[] _pixels = new byte[PixelBytes];
+
+        public int TextCount { get; private set; }
+        public int KaraokeCount { get; private set; }
+        public string? LastText { get; private set; }
+        public byte Fill { get; set; } = 0xFF;
+
+        public SubtitleRasterResult Render(string text, int width, int height)
+        {
+            TextCount++;
+            LastText = text;
+            return Result(width, height);
+        }
+
+        public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height)
+        {
+            KaraokeCount++;
+            return Result(width, height);
+        }
+
+        public void Dispose() { }
+
+        private SubtitleRasterResult Result(int width, int height)
+        {
+            Array.Fill(_pixels, Fill);
+            return new SubtitleRasterResult(_pixels, 4, 2, 16, 0, 0, width, height);
+        }
+    }
+
+    private sealed class FixedSubtitleEngine(IReadOnlyList<SubtitleCue> cues) : ISubtitleEngine
+    {
+        public IReadOnlyList<SubtitleCue> Cues { get; set; } = cues;
+        public bool IsOpen => true;
+        public IReadOnlyList<SubtitleCue> GetActiveCues(double positionSeconds) => Cues;
+        public void Load(string filePath) => throw new NotSupportedException();
+        public void LoadCues(IReadOnlyList<SubtitleCue> cues) => Cues = cues;
+        public void Close() => Cues = [];
+        public void Dispose() { }
+
+        public event EventHandler? CuesChanged
+        {
+            add { }
+            remove { }
+        }
     }
 
     private sealed class DecodeDeviceRendererBackend : RecordingRendererBackend, IMediaRendererVideoDecodeDevice

@@ -88,7 +88,8 @@ foreach ($adapter in @(
     Assert-Match $adapter.Surface 'public\s+bool\s+IsPresentationSuspended' "$name MediaSurface must expose IsPresentationSuspended (Audio mode)."
     Assert-Match $adapter.Surface 'public\s+MediaSurfacePresentationPath\s+PresentationPath' "$name MediaSurface must report Core's MediaSurfacePresentationPath."
     Assert-Match $adapter.Surface 'event\s+EventHandler\?\s+PresentationPathChanged' "$name MediaSurface must expose PresentationPathChanged."
-    Assert-Match $adapter.Surface 'DescribeAttachRefused' "$name MediaSurface must warn when the session refuses its surface."
+    # ENG-039: the refusal warning (raised once per session) lives in Core's MediaSurfaceBookkeeping.
+    Assert-Match $adapter.Surface '_bookkeeping\.ReportAttachRefused\s*\(' "$name MediaSurface must warn through Core's MediaSurfaceBookkeeping when the session refuses its surface."
     Assert-Match $adapter.Surface 'public\s+MediaPresentationSurfaceRole\s+Role' "$name MediaSurface must expose Role."
     Assert-Match $adapter.Surface 'public\s+string\s+EffectiveSurfaceId' "$name MediaSurface must expose EffectiveSurfaceId."
     Assert-Match $adapter.Secondary 'public\s+bool\s+IsFullScreen' "$name SecondaryPresentationWindow must expose IsFullScreen."

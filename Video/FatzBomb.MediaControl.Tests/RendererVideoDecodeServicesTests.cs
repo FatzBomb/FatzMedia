@@ -137,7 +137,7 @@ public sealed class RendererVideoDecodeServicesTests
     }
 
     private static MediaPresentationCoordinator Create(IMediaRendererBackend backend, IMediaEngine engine) =>
-        new(backend, new NullRasterizer(), engine, MediaPlayerConfiguration.Auto, new SystemPrecisionWaiterFactory());
+        new(backend, NullSubtitleRasterizer.Instance, engine, MediaPlayerConfiguration.Auto, new SystemPrecisionWaiterFactory());
 
     private static List<MediaDiagnosticInfo> Capture(Action action)
     {
@@ -281,12 +281,6 @@ public sealed class RendererVideoDecodeServicesTests
         }
     }
 
-    private sealed class NullRasterizer : ISubtitleRasterizer
-    {
-        public SubtitleRasterResult Render(string text, int width, int height) => default;
-        public SubtitleRasterResult RenderKaraoke(KaraokeCueTiming timing, TimeSpan position, int width, int height) => default;
-        public void Dispose() { }
-    }
 
     /// <summary>A platform with no native libraries: no audio, software decoding services.</summary>
     private sealed class TestPlatformServices : IMediaControlPlatformServices

@@ -213,9 +213,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
         // As Direct3D11 and the software renderer do: with a primary attached, success is the
         // primary's present, so a secondary that presented never hides a failed primary frame.
-        var primaryExpected = false;
-        var primaryPresented = false;
-        var anyPresented = false;
+        var outcome = new CompositionPresentOutcome();
         var anyIncluded = false;
         foreach (Target target in targets)
         {
@@ -236,17 +234,14 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             if (result == PresentResult.Detached)
                 continue;
 
-            primaryExpected |= isPrimary;
-            var presented = result == PresentResult.Presented;
-            primaryPresented |= isPrimary && presented;
-            anyPresented |= presented;
+            outcome.Record(isPrimary, result == PresentResult.Presented);
         }
 
         // A filter that matches no attached target (its surface just detached) is nothing to do.
         if (!anyIncluded)
             return frame.Targets is not null;
 
-        var succeeded = primaryExpected ? primaryPresented : anyPresented;
+        var succeeded = outcome.Succeeded;
         if (succeeded)
         {
             _renderFailureLatch.Reset();
@@ -575,7 +570,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         if (MediaSharedGpuImageConsumerHandle.TryResolve(surface, out IMediaSharedGpuImageConsumer? consumer))
             return SetSharedSurface(surface, consumer!, requireExisting);
 
-        if (!TryGetManagedFrameSink(surface, out IMediaPresentationFrameSink? sink))
+        if (!MediaPresentationFrameSinkHandle.TryResolve(surface, out IMediaPresentationFrameSink? sink))
             return false;
 
         lock (_renderGate)
@@ -976,15 +971,5 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         public VulkanExportedImageSet Images { get; } = images;
         public MediaSharedGpuImageSet Set { get; } = set;
         public MediaSharedGpuImageRing Ring { get; } = ring;
-    }
-
-    private static bool TryGetManagedFrameSink(MediaPresentationSurfaceDescriptor? surface, out IMediaPresentationFrameSink? sink)
-    {
-        sink = null;
-        return surface is { IsValid: true }
-            && surface.NativeSurface.SurfaceTypeId == MediaNativeSurfaceTypeIds.ManagedBgraFrameSink
-            && surface.NativeSurface.TryGetHandle(MediaNativeHandleIds.FrameSink, out nint handle)
-            && MediaPresentationFrameSinkHandle.TryResolve(handle, out sink)
-            && sink != null;
     }
 }
