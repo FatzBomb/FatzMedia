@@ -45,7 +45,7 @@ Give each player its own `MediaSurface` and set its `Player` property to bind th
 
 ## Per-player diagnostics
 
-Diagnostics belong to the player that raised them. A player reports a message on its `MediaDiagnostic` event only if it owns the message or the message is process-wide. Engine work (decoding, presentation, audio) is attributed to its player automatically, including the threads and tasks it starts. Surfaces name the player they are attached to, so a surface's presentation-path messages appear only in that player's log.
+Diagnostics belong to the player that raised them (see also [Diagnostics](../concepts/diagnostics.md)). A player reports a message on its `MediaDiagnostic` event only if it owns the message or the message is process-wide. Engine work (decoding, presentation, audio) is attributed to its player automatically, including the threads and tasks it starts. Surfaces name the player they are attached to, so a surface's presentation-path messages appear only in that player's log.
 
 This lets you give each player its own log, panel or file without filtering. The same holds for `MediaError` and the other events: they are raised per player.
 
@@ -64,7 +64,7 @@ Several players multiply the load. Watch these when you size a layout:
 | Audio | Each player plays through its own audio stream. Players that should be silent (a background loop) can use `MediaPlayerMode.Background`, which never starts the audio engine, or `Audio` mode for sound only with no renderer. |
 | Memory | Each player buffers decoded frames and, for network sources, read-ahead data. |
 
-Use <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> to build only what a player needs:
+Use <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> to build only what a player needs (see [Player modes](../playback/player-modes.md)):
 
 | Mode | Builds |
 | --- | --- |

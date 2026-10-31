@@ -1,6 +1,6 @@
 # Common problems
 
-Most problems show up in the player's diagnostics before they show up anywhere else. This page lists the usual symptoms, their causes and fixes, and the messages to look for. Start by subscribing to the diagnostics and the error event, and log them somewhere you can read.
+Most problems show up in the player's diagnostics before they show up anywhere else. This page lists the usual symptoms, their causes and fixes, and the messages to look for. Start by subscribing to the diagnostics and the error event, and log them somewhere you can read (see [Diagnostics](../concepts/diagnostics.md)).
 
 ```csharp
 player.MediaDiagnostic += (_, e) =>
@@ -69,14 +69,14 @@ Typical causes:
 - **Wrong architecture.** The Windows build is x64. A 32-bit DLL, or a build for another CPU, fails to load.
 - **A dependency of a DLL is missing**, which shows as `was found at <path> but not loaded because other FFmpeg files are missing` or `failed to load`.
 
-See [Test players](../reference/test-players.md) for the folder layout the repository's players use, and the native-dependencies document in the source repository for the licensing and distribution details.
+See [Native dependencies](../getting-started/native-dependencies.md) for what to deploy and where, and [Test players](../reference/test-players.md) for the folder layout the repository's players use.
 
 ## Wrong audio device after a device change
 
 By default (`AudioOutputDeviceIndex = -1`) the player uses the system's primary device, and Windows moves playback when the default changes. If you select a specific device by index, the player keeps that device. Device choices are made when the player is created or reset; a running player does not move to another explicit device.
 
 - To follow the system default, leave `AudioOutputDeviceIndex` at `-1`.
-- To switch to another device, create a new player with the new index, or call `Reset` with a new configuration and load the media again. List devices with `AudioOutputDevices.Enumerate()` (Windows).
+- To switch to another device, create a new player with the new index, or call `Reset` with a new configuration and load the media again. List devices with `AudioOutputDevices.Enumerate()` (Windows). See [Output devices](../audio/output-devices.md).
 - To decide what happens when a chosen device is unavailable, set `AudioOutputFallbackMode`: `FallbackToPrimary` (default) switches to the primary device and logs a warning; `NoFallback` does not route audio elsewhere.
 - Subscribe to `AudioDeviceChanged`. Its `Kind` is `DefaultDeviceChanged`, `DeviceStateChanged`, `DeviceRemoved`, `DeviceAdded` or `Unrecoverable`, and `DeviceName` and `FailureMessage` say what happened. The player does not change playback itself on such a notification. It is for your UI.
 
@@ -112,6 +112,8 @@ Turn on `EnablePerformanceLogging` in the configuration to get per-second counte
 - **Software tone mapping of HDR video.** HDR video decoded in software is tone mapped on the CPU; so is any video when `HdrToneMappingOptions.PreferCpu` is set.
 
 ## Subtitles missing
+
+See also [Subtitles](../subtitles/subtitles.md).
 
 | Cause | Fix |
 | --- | --- |
