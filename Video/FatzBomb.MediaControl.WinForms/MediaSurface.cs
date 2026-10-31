@@ -259,7 +259,7 @@ public class MediaSurface : Control
 
     /// <summary>
     /// Gets whether the surface shows only its background because nothing presents to it: the
-    /// session is in <see cref="MediaPlayerMode.Audio"/> mode. The last video frame is not left on
+    /// session is in <see cref="Core.Configuration.MediaPlayerMode.Audio"/> mode. The last video frame is not left on
     /// screen; frames show again once the session leaves Audio mode.
     /// </summary>
     [Browsable(false)]

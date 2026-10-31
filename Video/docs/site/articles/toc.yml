@@ -1,0 +1,22 @@
+- name: Getting started
+  href: getting-started/toc.yml
+- name: Concepts
+  href: concepts/toc.yml
+- name: Playback
+  href: playback/toc.yml
+- name: Audio
+  href: audio/toc.yml
+- name: Karaoke
+  href: karaoke/toc.yml
+- name: Subtitles
+  href: subtitles/toc.yml
+- name: Video
+  href: video/toc.yml
+- name: Surfaces and screens
+  href: presentation/toc.yml
+- name: Lightweight surfaces
+  href: lightweight-surfaces/toc.yml
+- name: Troubleshooting
+  href: troubleshooting/toc.yml
+- name: Reference
+  href: reference/toc.yml

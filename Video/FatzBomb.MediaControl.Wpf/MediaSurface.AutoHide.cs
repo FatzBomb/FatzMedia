@@ -45,7 +45,7 @@ public sealed partial class MediaSurface
 
     /// <summary>
     /// Gets whether the surface shows only its background because nothing presents to it: the
-    /// session is in <see cref="MediaPlayerMode.Audio"/> mode (Stage 046A). The last video frame
+    /// session is in <see cref="Core.Configuration.MediaPlayerMode.Audio"/> mode (Stage 046A). The last video frame
     /// is not left on screen.
     /// </summary>
     public bool IsPresentationSuspended => _presentationCleared;

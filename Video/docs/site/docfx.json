@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../..",
+          "files": [
+            "FatzBomb.MediaControl/FatzBomb.MediaControl.csproj",
+            "FatzBomb.MediaControl.Rendering.Software/FatzBomb.MediaControl.Rendering.Software.csproj",
+            "FatzBomb.MediaControl.Rendering.Direct3D11/FatzBomb.MediaControl.Rendering.Direct3D11.csproj",
+            "FatzBomb.MediaControl.Rendering.Vulkan/FatzBomb.MediaControl.Rendering.Vulkan.csproj",
+            "FatzBomb.MediaControl.Windows/FatzBomb.MediaControl.Windows.csproj",
+            "FatzBomb.MediaControl.Windows.Direct3D11/FatzBomb.MediaControl.Windows.Direct3D11.csproj",
+            "FatzBomb.MediaControl.Linux/FatzBomb.MediaControl.Linux.csproj",
+            "FatzBomb.MediaControl.Wpf/FatzBomb.MediaControl.Wpf.csproj",
+            "FatzBomb.MediaControl.Avalonia/FatzBomb.MediaControl.Avalonia.csproj",
+            "FatzBomb.MediaControl.WinForms/FatzBomb.MediaControl.WinForms.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "properties": { "EnableWindowsTargeting": "true", "Configuration": "Release" },
+      "namespaceLayout": "flattened",
+      "memberLayout": "samePage",
+      "enumSortOrder": "declaringOrder"
+    }
+  ],
+  "build": {
+    "content": [
+      { "files": [ "**/*.{md,yml}" ], "exclude": [ "_site/**", "obj/**" ] }
+    ],
+    "resource": [ { "files": [ "images/**" ] } ],
+    "output": "_site",
+    "template": [ "default", "modern" ],
+    "globalMetadata": {
+      "_appName": "FatzBomb.MediaControl",
+      "_appTitle": "FatzBomb.MediaControl",
+      "_enableSearch": true,
+      "_disableContribution": true,
+      "pdf": false
+    }
+  }
+}
