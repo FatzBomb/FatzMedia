@@ -1,6 +1,6 @@
 # Engineering Issues
 
-Updated: 2026-10-28
+Updated: 2026-10-31
 
 This register tracks verified engineering follow-ups that are not product-feature
 stages. Items remain here until fixed, deliberately accepted, or promoted into a
@@ -54,6 +54,53 @@ Batches:
 These came out of the 2026-10-18 code audit (ENG-020). Each was verified by reading the code
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
+
+### ENG-040 - Library gaps found while writing the user guide
+
+Reported: 2026-10-31, while writing `docs/site` (the DocFX user guide). Each was found by reading
+the code for the guide; none is fixed. The guide documents the current behaviour.
+
+**Behaviour a buyer will hit:**
+- **Text only on Direct3D11.** The Software and Vulkan renderers use `NullSubtitleRasterizer`:
+  SRT/ASS subtitles, MIDI/KAR lyrics, countdowns and title cards never draw there (every Linux
+  player). Tracks load and select; nothing shows. `KaraokeSurface` still accepts a KAR there.
+- **WPF + Software/Vulkan needs `PresentationMode="WpfComposited"`**; WPF does not fall back to a
+  frame sink by itself (WinForms and Avalonia do). The Software renderer also needs
+  `VideoDecodingMethod.Software`; nothing enforces it.
+- **Silence trim only from the second play:** the trim window is used only when a cached
+  analysis exists at open, so a first play is untrimmed (`PrepareNextAsync`/`AnalyzeAsync`
+  fill the cache).
+- **A found sidecar background beats an explicit one** (`ResolveCoreBackground` returns
+  `sidecar ?? explicit`); `ignoreSidecar` only affects backgrounds, not `.cdg` or subtitle pairing.
+- **Sidecar probing is case-sensitive on Linux** (`Song.CDG` next to `Song.mp3` is not found);
+  an archive whose audio and `.cdg` names differ plays audio only, silently.
+- **Lightweight surfaces cannot be configured** (karaoke/subtitle style, soundfont) and never load
+  a sidecar background.
+- **MIDI soundfont is process-wide** (`BassMidi.DefaultFont`): players with different
+  `MidiSoundfontPath` override each other. The MIDI lyric track is found by display name.
+- **Relative native paths resolve against the working directory** and a missing folder throws;
+  the AppBase-relative branch of the Windows bootstrap is unreachable. `DLLPath` is read only by
+  the lightweight surfaces and `AudioOutputDevices`.
+
+**Missing public API:** no stream/byte-array `MediaInputSource`; no mute; no equalizer presets;
+no `DisposeAsync`; CD+G background override colour (`ICdgEngine.BackgroundOverrideArgb`) and
+`CdgVisuals` not on `IMediaControlSession`; no display refresh-rate override on the player
+(`IMediaEngine.SetDisplayRefreshRate` only; Linux has `LinuxPlatformOptions`); `DeviceRecovered`
+not on the player (hosts see recovery only in diagnostics); `AcceptedMediaTypes` unused publicly.
+
+**Names and docs:** "crossfade" (`AudioCrossfadeOptions`) never overlaps (fade out, gap, fade
+in); `MediaEffects.NormalizationGain` is documented as dB but is a linear multiplier;
+`MediaErrorCode.AudioDeviceLost` and `AudioDeviceChangeKind.Unrecoverable` are never raised;
+`SubtitleTracksChanged` is not raised when the scan finds no tracks; `EnableLogging` /
+`EnableVerboseLogging` write mostly via `Debug.WriteLine` (dropped in Release builds); stage and
+ENG ids appear in public XML docs (`NetworkTlsPolicy`, `NetworkReadAheadPolicy`,
+`MediaSurfacePresentationPath`, `MediaPlayerConfiguration.Mode`, the WPF `ShowSecondaryOutput`
+obsolete message) and so in the generated API reference; WPF `WpfPresentationMode`,
+`PresentationMode`, `OverlayContent`, `OverlayHitTestVisible` have no XML docs; the Vulkan and
+Linux READMEs are stale (subtitle frames "rejected", hardware decode "a later slice").
+
+**Not a feature yet:** audio CD and CD+G disc playback (only `basscd` registering `.cda`; idea
+`032A`); DASH (only `.m3u8` is detected).
 
 ### ENG-021 - BASS output latency and device recovery are largely inert
 
