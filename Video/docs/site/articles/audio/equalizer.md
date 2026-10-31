@@ -66,7 +66,7 @@ player.EqualizerChanged += (_, e) =>
     dispatcher.Post(() => Refresh(e.CurrentValue));
 ```
 
-`EqualizerChanged` fires on a background thread when the value changes. It does not fire when you assign a value equal to the current one. After `Reset()` the equalizer goes back to disabled and the event is raised with `MediaChangeReason.PlayerReset`.
+`EqualizerChanged` fires on the thread that set the value (after `Reset`, on an engine thread) when the value changes; marshal to the UI thread. It does not fire when you assign a value equal to the current one. After `Reset()` the equalizer goes back to disabled and the event is raised with `MediaChangeReason.PlayerReset`.
 
 ## Things to watch
 

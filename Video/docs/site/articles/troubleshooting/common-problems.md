@@ -10,7 +10,7 @@ player.MediaError += (_, e) =>
     Log($"error {e.Code}: {e.Message} ({e.SourcePath})");
 ```
 
-Both events fire on background threads. Messages in `Warning` and `Error` level matter most; `Info` messages tell you which path was chosen. After the player is created, `player.NativeDependencies.Describe()` lists every native library that did not load, and `player.LastNativeLoadMessage` gives a one-line summary.
+Both events fire on engine threads; marshal before you touch the UI. Messages in `Warning` and `Error` level matter most; `Info` messages tell you which path was chosen. After the player is created, `player.NativeDependencies.Describe()` lists every native library that did not load, and `player.LastNativeLoadMessage` gives a one-line summary.
 
 > [!TIP]
 > The test players have a Log panel with every diagnostic, and they write the same text to a file. If a problem reproduces there, you can copy the log into a bug report. See [Test players](../reference/test-players.md).
@@ -62,7 +62,7 @@ Audio is unavailable: the BASS libraries did not load. Video plays without sound
 
 Typical causes:
 
-- **The files are not in a searched folder.** The player searches the folders you pass, then the defaults (`native` and `runtimes/win-x64/native` under the application folder). Searches are recursive. On Linux it searches host paths, `native/` and `runtimes/linux-<arch>/native/`. `NativeDependencies.SearchPaths` shows exactly where it looked.
+- **The files are not in a searched folder.** The player searches the folders you pass, then the defaults (`native` and `runtimes/win-x64/native` under the application folder). On Windows the search includes subfolders. On Linux it searches your paths, then the application folder, `native/` and `runtimes/linux-<arch>/native/`, without subfolders. `NativeDependencies.SearchPaths` shows exactly where it looked.
 - **A path you passed does not exist.** The `Bootstrap` category reports `Specified path does not exist: '<path>'`, and a missing directory passed to `MediaControlPlayer` raises `DirectoryNotFoundException` before native initialization.
 - **A different FFmpeg version.** The library needs FFmpeg 9.0.x shared libraries: `avcodec-63.dll`, `avdevice-63.dll`, `avfilter-12.dll`, `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll` and `swscale-10.dll`. Older DLLs do not load. Static executables are not enough.
 - **The FFmpeg files are split across folders.** The log says `FFmpeg DLLs are split across folders; all seven must be in one folder.`
@@ -119,7 +119,7 @@ See also [Subtitles](../subtitles/subtitles.md).
 | --- | --- |
 | The renderer does not draw text | The Software and Vulkan renderers have no text rasterizer, so text subtitles and MIDI/KAR lyrics are not drawn. Use the Direct3D11 renderer. |
 | No track is selected | `SubtitleTracks` lists the tracks and `SelectedSubtitleTrackId` the chosen one (`null` is off). Call `SelectSubtitleTrack(id)`. |
-| The sidecar file is not found | A sidecar must sit next to the video, have the same name and end in `.srt`, `.ass` or `.ssa`. Loading with `ignoreSidecar: true` skips it. |
+| The sidecar file is not found | A sidecar must sit next to a local video file (not inside an archive), have the same name and end in `.srt`, `.ass` or `.ssa`. `ignoreSidecar` does not affect subtitles. |
 | Embedded tracks have not arrived yet | Embedded text tracks of a local video are read after the video opens, so they appear later. Wait for `SubtitleTracksChanged`. If you select an embedded track on `MediaLoaded`, it is applied when the scan delivers it. |
 | The player is in `Audio` mode | Nothing is presented in `Audio` mode. Switch to `Full`. |
 | Timing is off | Adjust `SubtitleSyncOffset`, or `AdjustSubtitleSyncOffset(steps)`. |

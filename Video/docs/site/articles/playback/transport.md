@@ -100,7 +100,7 @@ Set `LoopMedia = true` to restart when the media ends. The order of events for e
 | `PositionChanged` | About every 250 ms while playing, and immediately after seeks, stops and loops. Carries position and duration. |
 | `SeekCompleted` | An accepted seek settled. |
 
-Handlers run on background threads. Marshal to the UI thread:
+Handlers normally run on engine threads (see [Threading and events](../concepts/threading-and-events.md)). Marshal to the UI thread:
 
 ```csharp
 player.PositionChanged += (_, e) => dispatcher.Post(() => UpdateSeekBar(e.Position, e.Duration));

@@ -61,8 +61,8 @@ any player code. See [Karaoke surface](../lightweight-surfaces/karaoke-surface.m
   raised on background threads. Marshal to the UI thread before touching UI state.
 - **Offsets are per song.** The CD+G and subtitle sync offsets go back to zero when the media is
   closed or replaced.
-- **Audio CDs and CD+G discs.** The library has no disc or drive API, so it does not play from
-  a disc. Copy the disc's tracks and graphics to files first and load those.
+- **Audio CDs and CD+G discs.** The library has no disc or drive API, and this guide does not
+  cover playing from a disc. Copy the disc's tracks and graphics to files first and load those.
 
 ## Where to go next
 

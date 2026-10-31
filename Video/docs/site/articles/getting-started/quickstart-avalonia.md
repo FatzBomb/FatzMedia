@@ -236,7 +236,7 @@ public partial class MainWindow : AvaloniaWindow
 
 ## What the code does
 
-- **Platform.** The Avalonia adapter has no default platform factory. `CreatePlatform` picks the Windows services on a `net10.0-windows7.0` build and the Linux services otherwise, both paired with the Software renderer. That renderer presents CPU frames only, so the configuration asks for software video decoding (`VideoDecodingMethod.Software`).
+- **Platform.** The Avalonia adapter has no default platform factory. `CreatePlatform` picks the Windows services on a `net10.0-windows7.0` build and the Linux services otherwise, both paired with the Software renderer. That renderer presents CPU frames only and always decodes video in software; the configuration (`VideoDecodingMethod.Software`) makes that explicit.
 - **Create.** <xref:FatzBomb.MediaControl.Avalonia.Player.CreateAsync*> builds the player on a pool thread, because loading the native libraries blocks. The empty path list means "use the default folders": the platform package looks in `native` and `runtimes/<rid>/native` next to the application (see [Native dependencies](native-dependencies.md#where-the-engine-looks)).
 - **Attach.** Setting `Surface.Player` attaches the surface. It sizes itself from its layout bounds and render scale, and detaches when you set `Player` to `null`.
 - **Events.** `MediaDiagnostic` and `MediaEnded` fire on background threads, so the handlers post to `Dispatcher.UIThread`. See [Threading and events](../concepts/threading-and-events.md).
@@ -252,6 +252,6 @@ The Software renderer draws on the CPU. With the Direct3D11 or Vulkan renderer, 
 
 ## Next
 
-- Second screen: <xref:FatzBomb.MediaControl.Avalonia.SecondaryPresentationWindow>.
-- Self-contained karaoke and background controls: <xref:FatzBomb.MediaControl.Avalonia.KaraokeSurface> and <xref:FatzBomb.MediaControl.Avalonia.BackgroundSurface>.
+- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzBomb.MediaControl.Avalonia.SecondaryPresentationWindow>.
+- Ready-made karaoke and background controls: [Karaoke surface](../lightweight-surfaces/karaoke-surface.md) and [Background surface](../lightweight-surfaces/background-surface.md).
 - The player and its session: [Player and session](../concepts/player-and-session.md).

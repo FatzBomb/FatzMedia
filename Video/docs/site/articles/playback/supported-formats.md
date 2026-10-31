@@ -2,7 +2,7 @@
 
 What the player can open is decided by the native libraries your application deploys. Audio containers and MIDI come from BASS and its plugins, video and images come from FFmpeg, and FFmpeg also decodes audio formats that a missing BASS plugin would have played. This article lists the formats by kind, says which library each one needs, and shows how to ask a running player what it accepts.
 
-The library ships no native binaries. You deploy BASS and FFmpeg yourself; see the native dependency guide in the repository (`docs/NATIVE_DEPENDENCIES.md`) for versions, folders and licensing.
+The library ships no native binaries. You deploy BASS and FFmpeg yourself; see [Native dependencies](../getting-started/native-dependencies.md) for versions, folders and licensing.
 
 > [!NOTE]
 > The tables describe what the player registers when the libraries load. They are not a guarantee that every file with such an extension plays: the codec inside the container also has to be supported by the library.
@@ -18,6 +18,7 @@ Plain audio plays through BASS. The extensions the player accepts depend on whic
 | `bass_aac` | `.aac` `.m4a` `.m4b` |
 | `bass_ac3` | `.ac3` |
 | `bassalac` (Windows) | `.aac` `.m4a` |
+| `basscd` (Windows) | `.cda` (playing from a disc is not covered by this guide) |
 | `bassflac` | `.flac` |
 | `bassopus` | `.opus` |
 | `basswma` (Windows) | `.wma` |
@@ -29,7 +30,7 @@ When FFmpeg is loaded, it also decodes a fixed set of audio extensions, and the 
 Notes:
 
 - Without the BASS core libraries the player still starts. Video plays without sound, and images and CD+G graphics without audio still load. Audio files, MP3+G and network audio fail to load with `MediaErrorCode.NativeLibraryMissing`.
-- MIDI files need the `bassmidi` plugin; FFmpeg does not play them. Lyrics inside MIDI and KAR files appear as a subtitle track. A soundfont can be set with `MediaPlayerConfiguration.MidiSoundfontPath`; otherwise the engine looks for a system soundfont.
+- MIDI files need the `bassmidi` plugin; FFmpeg does not play them. Lyrics inside MIDI and KAR files appear as a subtitle track. A soundfont can be set with `MediaPlayerConfiguration.MidiSoundfontPath`; otherwise the engine looks for one (see [MIDI soundfont](../getting-started/native-dependencies.md#midi-soundfont)).
 - Audio inside archives is supported. See [Loading media](loading-media.md#archives).
 
 ## Video

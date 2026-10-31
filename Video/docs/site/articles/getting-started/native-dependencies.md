@@ -44,9 +44,9 @@ MIDI synthesis needs a soundfont. The engine uses, in this order:
 
 1. <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerConfiguration.MidiSoundfontPath> when you set it (`.sf2`, `.sfz` or `.dls`).
 2. On Windows, the system `gm.dls` (converted to SF2 once and cached).
-3. The first of `soundfont.sf2`, `native/soundfont.sf2` and `native/TimGM6mb.sf2` under the application folder.
+3. The first that exists of `System32\drivers\sgm.sb` (Windows), and `soundfont.sf2`, `native/soundfont.sf2` and `native/TimGM6mb.sf2` under the application folder.
 
-If none is found, MIDI plays silently and the engine raises a Warning diagnostic in the `BASSMIDI` category. On Linux there is no `gm.dls`, so ship an `.sf2`.
+If none is found, MIDI plays silently and the engine raises a Warning diagnostic in the `BASSMIDI` category. On Linux there is no `gm.dls`, so ship an `.sf2`. The soundfont is process-wide; see [MIDI and KAR](../karaoke/midi-and-kar.md#soundfonts).
 
 ## Where the engine looks
 
@@ -83,7 +83,7 @@ To use only the default folders, pass an empty list or <xref:FatzBomb.MediaContr
 
 ### The DLLPath settings
 
-<xref:FatzBomb.MediaControl.DLLPath> (`Bass`, `FFmpeg`) is a static setting that is used only where no explicit paths are given: the self-contained `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`), and `AudioOutputDevices` on Windows. A player you create yourself with a path list does not read it.
+<xref:FatzBomb.MediaControl.DLLPath> (`Bass`, `FFmpeg`) is a static setting that is used only where no explicit paths are given: the ready-made `BackgroundSurface` and `KaraokeSurface` controls (unless you set their `NativeLibraryPaths`), and `AudioOutputDevices` on Windows. A player you create yourself with a path list does not read it.
 
 ## Startup report
 

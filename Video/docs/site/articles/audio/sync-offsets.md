@@ -49,9 +49,9 @@ TimeSpan subs = player.AdjustSubtitleSyncOffset(+1);
 - Changes apply at once. With playback paused, the picture, graphics or subtitle refreshes to the new timing.
 
 > [!TIP]
-> Show the offset in the UI in milliseconds and offer the step buttons plus a reset. Tuning by ear with 100 ms steps is the usual way to fix a Bluetooth headset or a TV that adds delay.
+> Show the offset in the UI in milliseconds and offer the step buttons plus a reset. Tuning by eye and ear in 100 ms steps is the usual way to correct an output that adds delay.
 
 ## Things to watch
 
 - The properties and helpers act on the current engine and do not wait in the control queue. Do not call them while a `Reset` or mode switch is running; the value may be lost. Set the offset again once the rebuild is done.
-- There is no offset for the audio itself. If the sound is late on a particular output device, shift the picture instead (positive `AudioSyncOffset` when the picture lags). For a device with fixed extra delay, `MediaPlayerConfiguration.EnableUsbBluetoothLatencyHeuristic` can compensate automatically for USB and Bluetooth outputs. It is an estimate; see [Audio output devices](output-devices.md).
+- There is no offset for the audio itself. If the sound is late on a particular output device (a Bluetooth headset, say), delay the picture to match it with a negative `AudioSyncOffset`. For a device with fixed extra delay, `MediaPlayerConfiguration.EnableUsbBluetoothLatencyHeuristic` can compensate automatically for USB and Bluetooth outputs. It is an estimate; see [Audio output devices](output-devices.md).

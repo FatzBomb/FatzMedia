@@ -55,7 +55,7 @@ player.BaseVisualTransformChanged += (_, e) =>
     Console.WriteLine($"brightness {e.PreviousValue.Brightness} -> {e.CurrentValue.Brightness}");
 ```
 
-The change event is raised on a background thread. A player reset (`Reset`) returns the transform to the identity and raises the event with `MediaChangeReason.PlayerReset`.
+The change event is raised on the thread that set the value (after `Reset`, on an engine thread); marshal to the UI thread. A player reset (`Reset`) returns the transform to the identity and raises the event with `MediaChangeReason.PlayerReset`.
 
 > [!WARNING]
 > The Vulkan renderer does not support color transforms: a frame with a non-identity transform is not drawn. Use Direct3D11 or the Software renderer when you need them. See [Renderers](renderers.md).

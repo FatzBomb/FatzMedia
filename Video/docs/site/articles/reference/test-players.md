@@ -49,7 +49,7 @@ Every player understands the same flags (parsed by `PlayerStartupOptions` in `Fa
 | --- | --- |
 | `<file>` or `<url>` | The first argument that is not a flag. A path is loaded at startup by player 1. An `http` or `https` URL is opened as a network source. |
 | `--url=<url>` | An `http` or `https` source for player 1. It wins over a positional file. |
-| `--mode=full\|background\|audio` | The initial [player mode](configuration.md) (default `full`). Each player's Mode box switches it at run time. |
+| `--mode=full\|background\|audio` | The initial [player mode](../playback/player-modes.md) (default `full`). Each player's Mode box switches it at run time. |
 | `--native=<dir>` | A native library folder, repeatable. Searched before the defaults. |
 | `--players=1..4` | How many independent players are shown side by side (default 1). The toolbar changes the count at run time and recreates the players. |
 | `--renderer=auto\|gpu\|warp\|software\|vulkan\|direct3d11` | The renderer. `auto` (default) is GPU first: Direct3D11 on the GPU, then WARP, then software on Windows; Vulkan, then software elsewhere. `gpu` is the platform's GPU renderer. `warp` and `direct3d11` exist on Windows only; `warp` decodes in software. See [Renderers](../video/renderers.md). |

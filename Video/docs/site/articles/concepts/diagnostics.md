@@ -99,7 +99,8 @@ The category is a free-form string, and new ones appear as the engine grows, so 
 | MIDI and karaoke | `BASSMIDI`, `MIDI` | Soundfont selection, "no soundfont found; MIDI playback will be silent". |
 | Video | `VideoPipeline`, `VideoDecoder`, `VideoCadence`, `PlaybackScheduler` | The decode path (hardware or software), display rate, scheduling problems. |
 | Network | `Network` | Waiting for the network, audio that did not open, retries. |
-| Compositing and rendering | `Composition`, `D3D11`, `D3D11.DeviceLost`, `D3D11.Hdr`, `Vulkan`, `Subtitle`, `CdgEngine` | Device creation, present failures, device loss and recovery, HDR output, subtitle rasterization. |
+| Compositing and rendering | `Composition`, `Presentation`, `D3D11`, `D3D11.DeviceLost`, `D3D11.Hdr`, `D3D11.HdrOutput`, `Vulkan`, `Subtitle`, `CdgEngine` | Device creation, present failures, HDR output, subtitle rasterization. |
+| GPU device loss | `DeviceRecovery`, `D3D11.DeviceLost`, `Vulkan.DeviceLost`, `Software.DeviceLost`, `Decoder.DeviceLost` | Device loss and recovery. See [GPU device loss](../presentation/gpu-device-loss.md). |
 | Session | `MediaFile`, `MediaControls`, `MediaControlPlayer`, `MediaControlOperationQueue`, `PreparedNext`, `PipelineMediaEngine` | Load failures, reset and dispose problems, prepared-next analysis and transitions. |
 | Host events | `HostEvent` | One of your event handlers threw. |
 | Adapter surfaces | `Wpf.MediaSurface`, `Avalonia.MediaSurface`, `WinForms.MediaSurface` | Which presentation path a surface uses, and a Warning when the player refuses a surface. |
@@ -138,7 +139,7 @@ Use a distinctive category (for example your application's name) so you can filt
 | --- | --- | --- |
 | Purpose | A log stream | Reacting to a failure |
 | Volume | Many messages, including informational ones | Few: high-value failures |
-| Type | Level, category string, message | A typed <xref:FatzBomb.MediaControl.MediaErrorCode> (`FileNotFound`, `NativeLibraryMissing`, `UnsupportedFormat`, `OpenFailed`, `DecodeFailed`, `AudioDeviceLost`, and others) |
+| Type | Level, category string, message | A typed <xref:FatzBomb.MediaControl.MediaErrorCode> (`FileNotFound`, `NativeLibraryMissing`, `UnsupportedFormat`, `OpenFailed`, `DecodeFailed` and others) |
 | Thread | The player's diagnostic thread | The control queue |
 
 A load that fails often produces both: a `MediaFile` Error diagnostic that names the file, and a `MediaError` with a code. Show the user the `MediaError` message and write the diagnostics to your log.

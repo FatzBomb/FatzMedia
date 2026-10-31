@@ -11,10 +11,10 @@ Short definitions of terms used across this guide.
 : A MIDI karaoke file. A MIDI file whose lyric events carry the words, so the library can highlight each word as it is sung.
 
 **MIDI**
-: A file of musical instructions, not recorded sound. The library plays it with a soundfont (`.sf2` or `.dls`) through BASS.
+: A file of musical instructions, not recorded sound. The library plays it with a soundfont through BASS.
 
 **Sidecar**
-: A companion file that sits next to a media file and shares its name: `.srt`, `.ass` or `.ssa` subtitles next to a video, or a `.cdg` file next to an audio file. The player picks it up automatically unless you load with `ignoreSidecar: true`.
+: A companion file that sits next to a media file and shares its name: `.srt`, `.ass` or `.ssa` subtitles next to a video, a `.cdg` file next to an audio file, or an image or video used as a background. The player picks these up automatically. `ignoreSidecar: true` (and `AutoBackground = false`) turn off only the background search; subtitles and `.cdg` partners are always found.
 
 **HDR10, PQ, HLG**
 : Two HDR video encodings. HDR10 uses the PQ (SMPTE ST 2084) curve, in which the signal means absolute brightness. HLG (hybrid log-gamma) is the broadcast encoding. Both are wider than SDR and must be tone mapped to show correctly on an SDR monitor.
@@ -23,6 +23,15 @@ Short definitions of terms used across this guide.
 : Compressing HDR brightness into the range of an SDR display so the picture is neither washed out nor clipped.
 
 ## Rendering and presentation
+
+**Player, session**
+: The object you load and control media with. `MediaControlPlayer` (or an adapter's `Player`, which derives from it) is the implementation; `IMediaControlSession` is the interface surfaces and your code can depend on. See [Player and session](../concepts/player-and-session.md).
+
+**Control queue**
+: The per-player queue that runs load, transport, seek and mode calls one at a time, in order. See [Threading and events](../concepts/threading-and-events.md).
+
+**Prepared next**
+: The single slot in which the player keeps the next item analysed and ready to start. See [Prepared next and transitions](../playback/prepared-next-and-transitions.md).
 
 **Renderer**
 : The component that draws each composed frame: Direct3D11, Vulkan or Software.
@@ -98,4 +107,4 @@ Short definitions of terms used across this guide.
 : Adjusting gain so tracks play at a similar loudness.
 
 **Soundfont**
-: A file (`.sf2` or `.dls`) that holds instrument sounds for MIDI playback.
+: A file (`.sf2`, `.sfz` or `.dls`) that holds instrument sounds for MIDI playback.

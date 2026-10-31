@@ -39,7 +39,7 @@ A handler raised during a control operation counts as part of that operation. Sy
 
 ## Events fire on background threads
 
-None of the player events is raised on your UI thread. Handlers must marshal before touching UI state.
+Most player events are raised on the control queue or another engine thread. The exceptions are the value-changed events (`VolumeChanged`, `PitchChanged` and the others in the table below), which run on the thread that set the value, and the events of a synchronous call, which run on the calling thread. Do not rely on either: marshal to the UI thread in every handler that touches UI state. Marshalling with `BeginInvoke` or `Post` is safe even when the handler already runs on the UI thread.
 
 ```csharp
 player.MediaEnded += (_, _) => Dispatcher.BeginInvoke(() => NextTrack());                   // WPF

@@ -110,7 +110,7 @@ await player.LoadAsync(
 await player.LoadAsync(@"C:\Karaoke\Song.mp3", ignoreSidecar: true);
 ```
 
-A background found next to the file or inside the archive wins over the explicit one. To force your own background, pass `ignoreSidecar: true` together with it. A background path that does not exist, or has an unknown extension, is skipped without an error.
+A background found next to the file or inside the archive wins over the explicit one. To force your own background, pass `ignoreSidecar: true` together with it. A background path that does not exist, or has an unknown extension, is skipped without an error. [Backgrounds](../karaoke/backgrounds.md) has the full detection rules and how a background video behaves.
 
 ## Network sources
 
@@ -215,5 +215,5 @@ The synchronous `Load` methods take no token. They can be cancelled only by `Res
 - A load can take seconds (network, large archives). Never call the synchronous `Load` on the UI thread; use `LoadAsync`.
 - Loading does not start playback unless `PlayOnLoad` is set. Call `PlayAsync()` after `MediaLoaded` otherwise.
 - Which extensions load depends on the native libraries found at startup. A missing BASS plugin or FFmpeg library makes the matching formats fail with `UnsupportedFormat`. See [Supported formats](supported-formats.md).
-- Audio and CD+G items need the BASS libraries. Without them the load fails with `NativeLibraryMissing`, while video without sound and images still load.
+- Media with audio (audio files, MP3+G, MIDI, network audio) needs the BASS libraries. Without them the load fails with `NativeLibraryMissing`, while video (without sound), images and CD+G graphics without audio still load. See [Running without BASS](../getting-started/native-dependencies.md#running-without-bass).
 - A <xref:FatzBomb.MediaControl.Core.Configuration.MediaPlayerMode> other than `Full` refuses some kinds of media. See [Player modes](player-modes.md).

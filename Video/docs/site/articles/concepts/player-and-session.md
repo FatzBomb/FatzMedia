@@ -10,7 +10,7 @@ Everything you do with the engine goes through one object: a player. This page e
 | <xref:FatzBomb.MediaControl.MediaControlPlayer> | The engine's implementation of the session. It owns playback, composition, target fan-out and the control queue. It can be used directly, without any UI adapter. |
 | <xref:FatzBomb.MediaControl.Wpf.Player>, <xref:FatzBomb.MediaControl.WinForms.Player>, <xref:FatzBomb.MediaControl.Avalonia.Player> | Adapter classes that derive from `MediaControlPlayer`. They add an async factory and `Load` overloads that take the framework's image type. All commands, properties and events are inherited. |
 
-`MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, equalizer), `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IMediaControlSession`.
+`MediaControlPlayer` offers a few members beyond the interface: `Effects` (volume, pitch, tempo, normalization, equalizer), `Normalize`, `CdgVisuals`, `OpenFileDialogFilter`, `NativeDependencies` and `LastNativeLoadMessage`. The interface has the rest. Surfaces such as `MediaSurface.Player` take an `IMediaControlSession`.
 
 ## Creating a player
 
@@ -42,7 +42,7 @@ Creation throws when it cannot proceed:
 - `InvalidOperationException` if the required FFmpeg libraries cannot be loaded. The message lists what is wrong; read `platformFactory.NativeDependencies` for the details ([Native dependencies](../getting-started/native-dependencies.md#startup-report)).
 - A missing BASS does not throw. The player starts without audio.
 
-Create one player per independent playback. Players do not share state, and each should have its own platform factory and renderer factory instance.
+Create one player per independent playback, each with its own platform factory and renderer factory instance. Players keep their own playback state, but native library loading and the MIDI soundfont are process-wide; see [Multiple players](../presentation/multiple-players.md).
 
 ## Configuration
 
@@ -57,33 +57,21 @@ var configuration = MediaPlayerConfiguration.Auto with
 };
 ```
 
-| Property | Default | Meaning |
-| --- | --- | --- |
-| `VideoDecoding` | `Auto` | `Auto` uses the GPU where it can decode the codec and software otherwise. `Hardware` forces hardware decoding and falls back to software if it fails. `Software` forces CPU decoding. Use `Software` with the Software renderer, which presents CPU frames only. |
-| `Mode` | `Full` | `Full`, `Background` (looping picture, no audio) or `Audio` (sound only, no renderer). See below. |
-| `AudioOutputDeviceIndex` | `-1` | The BASS output device. `-1` is the system default and follows default-device changes. An explicit index is a creation-time choice; to change devices, create a new player. |
-| `AudioOutputFallbackMode` | `FallbackToPrimary` | What happens when an explicit device cannot be opened. `NoFallback` does not reroute audio. |
-| `SubtitleStyle`, `KaraokeStyle` | Defaults | Text styles for subtitles and MIDI/KAR lyrics (including the sung-text colours). Fixed for the player's lifetime. |
-| `MidiSoundfontPath` | `null` | A MIDI soundfont (`.sf2`, `.sfz`, `.dls`). When empty, the engine looks for one. |
-| `ResetPitchOnMediaLoad`, `ResetTempoOnMediaLoad` | `false` | Return pitch to 0 and tempo to 100 after every successful load. |
-| `SilenceTrim` | Off | Optional trimming of leading and trailing silence for analyzed plain audio. |
-| `NetworkRetry`, `NetworkTls`, `NetworkReadAhead` | `null` (defaults) | Network behaviour: retries, certificate checks, read-ahead. |
-| `HdrToneMapping` | Tone mapping on | How HDR video is shown on SDR output. |
-| `PresentationLeadRefreshIntervals` | `0.75` | The starting presentation lead in display refresh intervals; an adaptive controller adjusts it. |
-| `EnableLogging`, `EnablePerformanceLogging`, `EnableVerboseLogging` | `false` | Extra trace output for debugging and performance work. They do not control the `MediaDiagnostic` event (see [Diagnostics](diagnostics.md)). |
-| `EnableUsbBluetoothLatencyHeuristic` | `false` | Adds an estimated offset for USB and Bluetooth audio outputs. |
+The options you are most likely to set:
+
+- `VideoDecoding`: `Auto` (default), `Hardware` or `Software`. See [Hardware decoding](../video/hardware-decoding.md).
+- `Mode`: `Full` (default), `Background` or `Audio`. See below.
+- `AudioOutputDeviceIndex` and `AudioOutputFallbackMode`: the output device. See [Audio output devices](../audio/output-devices.md).
+- `SubtitleStyle`, `KaraokeStyle` and `MidiSoundfontPath`: text styles and the MIDI soundfont.
+- `NetworkRetry`, `NetworkTls` and `NetworkReadAhead`: network behaviour.
+
+[Configuration](../reference/configuration.md) lists every option with its default.
 
 To change a configuration value later, call `Reset(configuration, paths)`. It rebuilds the engine, keeps your surfaces attached, and starts the runtime settings (volume, pitch, tempo, normalization, equalizer, loop) from their defaults again; no media is loaded afterwards.
 
 ### Player modes
 
-| Mode | What it does | What it rejects |
-| --- | --- | --- |
-| `Full` | The complete player: audio, video, images, CD+G, subtitles, MIDI and network audio. | Nothing. |
-| `Background` | A looping picture source: video (picture only, no audio decoded), images and plain colour sources. No audio output starts, and looping is always on. | Audio-only files, CD+G, MIDI and network audio (`Load` returns `false` with a diagnostic). |
-| `Audio` | Sound only: audio files, MIDI, a video's soundtrack, the audio of MP3+G. No renderer, GPU device or surfaces. | Images and video without audio (`Load` returns `false`). Surface calls return `false`. |
-
-`await player.SetModeAsync(MediaPlayerMode.Audio)` switches mode on the fly. The engine is rebuilt and the open media is reopened at its position and in its transport state, so there is a short gap like a seek. Volume, pitch, tempo, normalization, equalizer, sync offsets, display options and the prepared-next item carry over. `ModeChanged` and `HasPresentationChanged` report the change. In `Audio` mode, `HasPresentation` is `false`: your surfaces stay attached but nothing draws to them, so the adapter shows its background instead of the last frame.
+`Full` is the complete player. `Background` is a looping picture source with no audio output, and `Audio` plays sound only, with no renderer or surfaces. `await player.SetModeAsync(mode)` switches a running player: the engine is rebuilt and the open media reopens at its position, with a short gap like a seek. In `Audio` mode `HasPresentation` is `false`, and attached surfaces show their background. [Player modes](../playback/player-modes.md) lists what each mode accepts and what a switch keeps.
 
 ## Controlling playback
 

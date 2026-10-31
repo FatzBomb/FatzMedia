@@ -74,7 +74,7 @@ protected override void OnClosed(EventArgs e)
 </fbm:BackgroundSurface>
 ```
 
-with `xmlns:fbm="clr-namespace:FatzBomb.MediaControl.Avalonia;assembly=FatzBomb.MediaControl.Avalonia"`
+with `xmlns:fbm="using:FatzBomb.MediaControl.Avalonia"`
 on the root element.
 
 ```csharp
@@ -123,7 +123,7 @@ Controls.Add(backdrop);
 | `Source` | `null` | What to show (see above). A change reloads; several changes in one turn load once. |
 | `BackgroundColor` | black | The opaque colour shown without media and while a video has not drawn its first frame. The alpha value is ignored. |
 | `PlatformFactory` | `null` | How the control's player is built. Required for files, images and video; not needed for colours. It can only be changed before the player exists; later changes throw `InvalidOperationException`. |
-| `NativeLibraryPaths` | `null` | Folders that hold the FFmpeg libraries. `null` uses the standard search. |
+| `NativeLibraryPaths` | `null` | Folders that hold the FFmpeg libraries. `null` uses the [`DLLPath` settings](../getting-started/native-dependencies.md#the-dllpath-settings) and the default folders. |
 | `AutoPlay` | `true` | Start a video when it has loaded. Images show without playing. When `false`, call `PlayAsync` for a video. |
 | `AutoHide` | `true` | Keep the video surface hidden until the first frame is drawn and again after stop, close or an error, so `BackgroundColor` shows meanwhile. |
 | `IsContentVisible` | | Read-only. `true` while media is drawn. `ContentVisibilityChanged` is raised when it changes. |

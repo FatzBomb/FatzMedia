@@ -17,7 +17,7 @@ For a complete window, follow [Quickstart for Avalonia](quickstart-avalonia.md).
 
 Linux has no Direct3D11, so the choices are Vulkan and Software:
 
-- **Software** (`SoftwarePresentationCoordinatorFactory`) composes on the CPU. It works everywhere, including machines with no GPU or driver. It presents CPU frames only, so create the player with `new MediaPlayerConfiguration(VideoDecodingMethod.Software)`.
+- **Software** (`SoftwarePresentationCoordinatorFactory`) composes on the CPU. It works everywhere, including machines with no GPU or driver. It presents CPU frames only and always decodes video in software; create the player with `new MediaPlayerConfiguration(VideoDecodingMethod.Software)` to make that explicit.
 - **Vulkan** (`VulkanPresentationCoordinatorFactory`) composes on the GPU and hands frames to Avalonia as a shared GPU image when the compositor supports it, or through a frame sink otherwise. It decodes on the GPU through Vulkan Video when the driver has a decode queue and FFmpeg is built with Vulkan; otherwise it asks for software decoding.
 
 Probe before you choose. `VulkanPresentationCoordinatorFactory.IsSupported` tells you whether a usable device exists; `ProbeAvailability()` also reports whether it will decode in hardware. A fallback chain (<xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory>) takes the first candidate that is available.
@@ -76,7 +76,7 @@ Notes:
 | Direct3D11 renderer, HDR output, `WindowsNativeLibraryPaths` | Not available. |
 | Hardware decoding | Only through the Vulkan renderer, with Vulkan Video and an FFmpeg built with `--enable-vulkan`. The Software renderer always decodes in software. |
 | Text subtitles and MIDI/KAR lyric text | Not drawn. Neither Software nor Vulkan renders text. Video, images, backgrounds and CD+G graphics do render. |
-| MIDI | Needs `libbassmidi.so` and a soundfont (`MediaPlayerConfiguration.MidiSoundfontPath` or an `.sf2` named `soundfont.sf2` in the application folder or `native`). There is no system `gm.dls`. |
+| MIDI | Needs `libbassmidi.so` and a soundfont (`MediaPlayerConfiguration.MidiSoundfontPath`, or one of the file names listed in [MIDI soundfont](native-dependencies.md#midi-soundfont)). There is no system `gm.dls`. |
 | `basscd`, `bassalac`, `basswma` add-ons | Not part of the Linux set. ALAC and WMA files can still open through the FFmpeg fallback. |
 | WPF and WinForms | Windows only. Use Avalonia. |
 

@@ -36,7 +36,7 @@ Two shortcuts exist: `new MediaPlayerConfiguration(VideoDecodingMethod.Software)
 | `AudioOutputFallbackMode` | <xref:FatzBomb.MediaControl.Core.Configuration.AudioOutputFallbackMode> | `FallbackToPrimary` | What happens when an explicit device cannot be initialized: switch to the primary device (with a warning), or `NoFallback`. Applied at creation and open time; device changes while running are reported but not acted on. |
 | `SubtitleStyle` | <xref:FatzBomb.MediaControl.Core.Configuration.SubtitleTextStyle> | See below | Look of text subtitles. |
 | `KaraokeStyle` | <xref:FatzBomb.MediaControl.Core.Configuration.KaraokeTextStyle> | See below | Look of MIDI/KAR lyrics, including the sung-text wipe colors. |
-| `MidiSoundfontPath` | `string?` | `null` | Path to a `.sf2` or `.dls` soundfont for MIDI synthesis. When set it is used instead of any auto-detected system soundfont. When `null` or empty the engine detects one. |
+| `MidiSoundfontPath` | `string?` | `null` | Path to a `.sf2`, `.sfz` or `.dls` soundfont for MIDI synthesis. When set it is used instead of any auto-detected soundfont. When `null`, empty or missing (a missing file raises a Warning) the engine detects one; see [Native dependencies](../getting-started/native-dependencies.md#midi-soundfont). |
 | `ResetPitchOnMediaLoad` | `bool` | `false` | Pitch returns to 0 after each successful load. |
 | `ResetTempoOnMediaLoad` | `bool` | `false` | Tempo returns to 100 after each successful load. |
 | `SilenceTrim` | <xref:FatzBomb.MediaControl.SilenceTrimOptions> | Disabled | Leading and trailing silence trimming for analyzed plain audio. Not applied to synchronized media (video, CD+G). See below. |

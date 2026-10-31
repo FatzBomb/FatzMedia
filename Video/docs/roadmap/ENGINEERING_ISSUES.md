@@ -99,6 +99,13 @@ obsolete message) and so in the generated API reference; WPF `WpfPresentationMod
 `PresentationMode`, `OverlayContent`, `OverlayHitTestVisible` have no XML docs; the Vulkan and
 Linux READMEs are stale (subtitle frames "rejected", hardware decode "a later slice").
 
+**Found in the review:** `default(MediaPlayerConfiguration)` zeroes every field
+(`AudioOutputDeviceIndex = 0` is BASS's no-sound device, presentation lead 0);
+`VideoDecodingMethod.Hardware` behaves like `Auto`; `IMediaControlSession` has the volume, pitch,
+tempo and normalization change events but not the members, so interface-only hosts (e.g. via
+`KaraokeSurface.Session`) cannot set them; value-changed events fire on the setter's thread while
+the rest come from engine threads.
+
 **Not a feature yet:** audio CD and CD+G disc playback (only `basscd` registering `.cda`; idea
 `032A`); DASH (only `.m3u8` is detected).
 

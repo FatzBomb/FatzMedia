@@ -156,6 +156,6 @@ public sealed class MainForm : Form
 
 ## Next
 
-- Second screen: <xref:FatzBomb.MediaControl.WinForms.SecondaryPresentationWindow>.
-- Self-contained karaoke and background controls: <xref:FatzBomb.MediaControl.WinForms.KaraokeSurface> and <xref:FatzBomb.MediaControl.WinForms.BackgroundSurface>.
+- Second screen: [Second screen](../presentation/second-screen.md) and <xref:FatzBomb.MediaControl.WinForms.SecondaryPresentationWindow>.
+- Ready-made karaoke and background controls: [Karaoke surface](../lightweight-surfaces/karaoke-surface.md) and [Background surface](../lightweight-surfaces/background-surface.md).
 - The player and its session: [Player and session](../concepts/player-and-session.md).

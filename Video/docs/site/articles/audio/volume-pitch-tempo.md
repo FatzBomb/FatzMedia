@@ -27,7 +27,7 @@ player.TempoChanged += (_, e) =>
     dispatcher.Post(() => tempoLabel.Text = $"{e.CurrentValue}%");
 ```
 
-Setters take effect immediately and do not queue behind other control calls, so a slider can write them on every move. The three events are `EventHandler<MediaValueChangedEventArgs<T>>` with `PreviousValue`, `CurrentValue` and a `Reason`. They fire on background threads; marshal to the UI thread. Setting a value equal to the current one raises nothing.
+Setters take effect immediately and do not queue behind other control calls, so a slider can write them on every move. The three events are `EventHandler<MediaValueChangedEventArgs<T>>` with `PreviousValue`, `CurrentValue` and a `Reason`. They fire on the thread that set the value, and after a `Reset` on an engine thread; marshal to the UI thread. Setting a value equal to the current one raises nothing.
 
 > [!TIP]
 > For a volume slider that feels natural, map the slider through a curve (for example `Volume = slider * slider`) before assigning it. The engine applies the value as a plain linear gain.

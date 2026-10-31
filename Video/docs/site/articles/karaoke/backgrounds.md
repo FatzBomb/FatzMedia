@@ -29,8 +29,8 @@ Karaoke\
 - Image extensions: `.bmp`, `.gif`, `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`.
 - Video extensions: the video extensions FFmpeg supports, such as `.mp4`, `.mkv`, `.avi`, `.mov`,
   `.webm`, `.wmv`. They are known only after the FFmpeg libraries have loaded.
-- The match is on the name without extension. On Windows and macOS case does not matter. On Linux
-  the name must match exactly; only the extension is case-insensitive.
+- The match is on the name without extension. On Windows case does not matter. On Linux the
+  name must match exactly; only the extension is case-insensitive.
 
 **Archives.** For a `.zip` or other archive, the candidates are every image and video inside the
 archive (whatever their names) and every file next to the archive that has the archive's name, as

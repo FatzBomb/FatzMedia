@@ -57,7 +57,7 @@ A renderer takes the composed frame description from Core and turns it into pixe
 
 | Renderer | Package | Output | Notes |
 | --- | --- | --- | --- |
-| Direct3D11 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Swap chain in a native window, or frames for a frame sink | The only renderer that draws subtitle and lyric text. Hardware decoding with D3D11VA. HDR output. Windows only. |
+| Direct3D11 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Swap chain in a native window, exported GPU images, or frames for a frame sink | The only renderer that draws subtitle and lyric text. Hardware decoding with D3D11VA. HDR output. Windows only. |
 | Vulkan | `FatzBomb.MediaControl.Rendering.Vulkan` | Frames for a frame sink, or exported GPU images | GPU decoding through Vulkan Video where the driver supports it. Windows and Linux. Preview. |
 | Software | `FatzBomb.MediaControl.Rendering.Software` | Frames for a frame sink | CPU composition, deterministic output, no GPU or window. Any platform. |
 
@@ -75,7 +75,7 @@ var platform = new WindowsMediaControlPlatformFactory(new SoftwarePresentationCo
 
 ### Adapters: your UI framework
 
-The WPF, WinForms and Avalonia adapters connect Core to a UI framework. They own the surface control (`MediaSurface`: size, DPI, window handle or bitmap, input), the second-screen window, the `KaraokeSurface` and `BackgroundSurface` convenience controls, and conversion of framework images to engine images. They own no media logic, no renderer policy and no timing.
+The WPF, WinForms and Avalonia adapters connect Core to a UI framework. They own the surface control (`MediaSurface`: size, DPI, window handle or bitmap, input), the second-screen window, the ready-made `KaraokeSurface` and `BackgroundSurface` controls, and conversion of framework images to engine images. They own no media logic, no renderer policy and no timing.
 
 Each adapter also has a `Player` class that derives from `MediaControlPlayer`. It adds only an asynchronous factory (`Player.CreateAsync`) and `Load` overloads that accept the framework's image type (`ImageSource` for WPF, `Bitmap` for Avalonia and WinForms). Everything else is the Core API. See [Player and session](player-and-session.md).
 
@@ -86,14 +86,14 @@ Core composes; the renderer renders; the adapter's surface shows. There are thre
 | Path | What happens | Used by |
 | --- | --- | --- |
 | `NativeWindow` | The renderer presents straight into a child window (an HWND swap chain). Best performance. | Direct3D11 in WPF (`NativeHwndOverlay`, the default) and WinForms |
-| `SharedGpuImage` | The renderer exports GPU images that the UI framework imports without copying. | Avalonia, when the compositor and the renderer support it |
-| `FrameSink` | The renderer reads each frame back to the CPU and the surface draws it as a bitmap. | Software and Vulkan renderers; WPF `WpfComposited` mode; fallback everywhere |
+| `SharedGpuImage` | The renderer exports GPU images that the UI framework imports without copying. | Avalonia with Direct3D11 or Vulkan, when the compositor supports it |
+| `FrameSink` | The renderer reads each frame back to the CPU and the surface draws it as a bitmap. | The Software renderer; Vulkan in WPF and WinForms; WPF `WpfComposited` mode; fallback everywhere |
 
 A frame sink costs a CPU copy per frame but works with any renderer and lets WPF apply clipping, transforms and opacity to the video.
 
 ### More than one surface
 
-One player can feed several surfaces: the control in your main window and, for example, a full-screen window on a second monitor. Each `MediaSurface` has a `Role` (`Primary` or `Projector`) and a `SurfaceId`. The renderer composes once per surface at that surface's size. Only the primary surface forwards the video display mode. The adapters provide `SecondaryPresentationWindow` for the common case. See the adapter API pages.
+One player can feed several surfaces: the control in your main window and, for example, a full-screen window on a second monitor. Each `MediaSurface` has a `Role` (`Primary` or `Projector`) and a `SurfaceId`. The renderer composes once per surface at that surface's size. Only the primary surface forwards the video display mode. The adapters provide `SecondaryPresentationWindow` for the common case. See [Second screen](../presentation/second-screen.md) and [Surfaces](../presentation/surfaces.md).
 
 ## Dependencies and choices
 
@@ -117,8 +117,8 @@ The consequences for you:
 
 ## Audio
 
-Audio output uses BASS behind an engine interface (<xref:FatzBomb.MediaControl.Core.Abstractions.IAudioEngine>). Audio formats BASS has no add-on for fall back to FFmpeg decoding, which is played through the same BASS chain. Treat BASS as an implementation detail of the audio engine: the public player API does not expose BASS types.
+Audio output uses BASS behind an engine interface (<xref:FatzBomb.MediaControl.Core.Abstractions.IAudioEngine>). Audio formats BASS has no add-on for fall back to FFmpeg decoding, which is played through the same BASS chain. Treat BASS as an implementation detail of the audio engine: the player API does not expose BASS types.
 
 ## What is not in scope
 
-The library does not provide a plugin architecture, DVD or Blu-ray playback, or a playlist or media library. Your application owns its playlist; the engine offers a "prepared next" slot to make transitions quick (see [Player and session](player-and-session.md)).
+The library does not provide a plugin architecture, DVD or Blu-ray playback, or a playlist or media library. Your application owns its playlist; the engine offers a "prepared next" slot to make transitions quick (see [Prepared next and transitions](../playback/prepared-next-and-transitions.md)).

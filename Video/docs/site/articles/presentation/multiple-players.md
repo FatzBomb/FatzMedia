@@ -17,6 +17,7 @@ The repository's test players create up to four players side by side, each with 
 ## What is shared in the process
 
 - **Native libraries.** BASS and FFmpeg are located and loaded once per process. A later player created with the same paths reuses the result without scanning again. A later player created with other paths retries BASS; the already loaded FFmpeg is kept.
+- **The MIDI soundfont.** BASSMIDI has one default soundfont per process. Each player sets it from its `MidiSoundfontPath` when its audio output starts, so the most recent player's soundfont applies to MIDI playback in every player. Give all players the same `MidiSoundfontPath`.
 - **Process-wide diagnostics.** Messages from native loading and other process-wide work are not owned by a player and reach every player's `MediaDiagnostic` event.
 - **The machine.** CPU, GPU and audio hardware are shared; see "Resources" below.
 
