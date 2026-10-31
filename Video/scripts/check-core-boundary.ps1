@@ -8,8 +8,14 @@ $projectReferences = @{
     'FatzBomb.MediaControl.Rendering.Direct3D11\FatzBomb.MediaControl.Rendering.Direct3D11.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
     )
-    'FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj' = @(
+    # SkiaSharp subtitle and karaoke rasterizer for the software and Vulkan renderers (the
+    # Direct3D11 renderer keeps DirectWrite).
+    'FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+    )
+    'FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj' = @(
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj'
     )
     'FatzBomb.MediaControl.Windows\FatzBomb.MediaControl.Windows.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
