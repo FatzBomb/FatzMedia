@@ -37,7 +37,8 @@ $projectReferences = @{
         '..\FatzBomb.MediaControl.Windows.Direct3D11\FatzBomb.MediaControl.Windows.Direct3D11.csproj'
     )
     'FatzBomb.MediaControl.Rendering.Vulkan\FatzBomb.MediaControl.Rendering.Vulkan.csproj' = @(
-        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj'
+        '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',
+        '..\FatzBomb.MediaControl.Rendering.Text\FatzBomb.MediaControl.Rendering.Text.csproj'
     )
     'FatzBomb.MediaControl.Rendering.Vulkan.Tests\FatzBomb.MediaControl.Rendering.Vulkan.Tests.csproj' = @(
         '..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj',

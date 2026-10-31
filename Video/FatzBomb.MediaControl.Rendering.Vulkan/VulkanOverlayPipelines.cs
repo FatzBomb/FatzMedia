@@ -6,15 +6,16 @@ using VkPipeline = Silk.NET.Vulkan.Pipeline;
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
 /// <summary>
-/// Graphics pipelines drawn after the clear and background blit: a full-target wash and the
-/// nearest-sampled CDG overlay. Both blend premultiplied colour ONE / ONE_MINUS_SRC_ALPHA into
+/// Graphics pipelines drawn after the clear and background blit: a full-target wash, the
+/// nearest-sampled CDG overlay and the nearest-sampled subtitle raster. All blend premultiplied
+/// colour ONE / ONE_MINUS_SRC_ALPHA into
 /// the BGRA8 target inside one render pass that loads and stores the target. SPIR-V is compiled
 /// from <c>Shaders/*.vert|*.frag</c> (scripts/compile-vulkan-shaders.sh) and embedded.
 /// </summary>
 internal sealed unsafe class VulkanOverlayPipelines : IDisposable
 {
     // One vec4 of push constants at offset 0, visible to both stages: the vertex stage reads it as
-    // the CDG texture rectangle, the wash fragment stage as the wash colour (the wash quad ignores
+    // the CDG or subtitle texture rectangle, the wash fragment stage as the wash colour (the wash quad ignores
     // texture coordinates). Keeping every read at offset 0 also sidesteps a Mesa lavapipe
     // (LLVM 20) issue where a fragment-stage vec4 push-constant load at offset 16 returned the
     // bytes at offset 0.
@@ -27,9 +28,11 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     private PipelineLayout _layout;
     private DescriptorPool _descriptorPool;
     private DescriptorSet _cdgDescriptorSet;
+    private DescriptorSet _subtitleDescriptorSet;
     private Sampler _sampler;
     private VkPipeline _washPipeline;
     private VkPipeline _cdgPipeline;
+    private VkPipeline _subtitlePipeline;
 
     private VulkanOverlayPipelines(Vk vk, Device device)
     {
@@ -79,28 +82,19 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
     }
 
     /// <summary>
-    /// Records the render pass: wash over the whole target, then the CDG overlay. The target must
-    /// be in <see cref="ImageLayout.ColorAttachmentOptimal"/> and stays there; the CDG image (when
-    /// drawn) must be in <see cref="ImageLayout.ShaderReadOnlyOptimal"/>.
+    /// Records the render pass: wash over the whole target, then the CDG overlay, then the
+    /// subtitle raster (the software renderer's order). The target must be in
+    /// <see cref="ImageLayout.ColorAttachmentOptimal"/> and stays there; the CDG and subtitle
+    /// images (when drawn) must be in <see cref="ImageLayout.ShaderReadOnlyOptimal"/>.
     /// </summary>
-    public void Record(CommandBuffer commandBuffer, Framebuffer framebuffer, in VulkanFramePlan plan, ImageView cdgView)
+    public void Record(CommandBuffer commandBuffer, Framebuffer framebuffer, in VulkanFramePlan plan, ImageView cdgView, ImageView subtitleView)
     {
+        // Rewritten every frame: the previous submission has completed (fence wait), and handle
+        // values may be reused after an image is re-created.
         if (plan.Cdg is not null)
-        {
-            // Rewritten every frame: the previous submission has completed (fence wait), and
-            // handle values may be reused after the CDG image is re-created.
-            var imageInfo = new DescriptorImageInfo(_sampler, cdgView, ImageLayout.ShaderReadOnlyOptimal);
-            var write = new WriteDescriptorSet
-            {
-                SType = StructureType.WriteDescriptorSet,
-                DstSet = _cdgDescriptorSet,
-                DstBinding = 0,
-                DescriptorCount = 1,
-                DescriptorType = DescriptorType.CombinedImageSampler,
-                PImageInfo = &imageInfo,
-            };
-            _vk.UpdateDescriptorSets(_device, 1, &write, 0, null);
-        }
+            UpdateImageDescriptor(_cdgDescriptorSet, cdgView);
+        if (plan.Subtitle is not null)
+            UpdateImageDescriptor(_subtitleDescriptorSet, subtitleView);
 
         var width = (uint)plan.OutputWidth;
         var height = (uint)plan.OutputHeight;
@@ -127,21 +121,43 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         }
 
         if (plan.Cdg is { Quad: var quad })
-        {
-            (push[0], push[1], push[2], push[3]) = quad.TexCoords;
-            _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _cdgPipeline);
-            DescriptorSet set = _cdgDescriptorSet;
-            _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _layout, 0, 1, &set, 0, null);
-            SetRegion(commandBuffer, quad.Destination);
-            _vk.CmdPushConstants(commandBuffer, _layout, ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit, 0, PushConstantSize, push);
-            _vk.CmdDraw(commandBuffer, 4, 1, 0, 0);
-        }
+            DrawTexturedQuad(commandBuffer, _cdgPipeline, _cdgDescriptorSet, quad, push);
+
+        if (plan.Subtitle is { Quad: var subtitleQuad })
+            DrawTexturedQuad(commandBuffer, _subtitlePipeline, _subtitleDescriptorSet, subtitleQuad, push);
 
         _vk.CmdEndRenderPass(commandBuffer);
     }
 
+    private void UpdateImageDescriptor(DescriptorSet set, ImageView view)
+    {
+        var imageInfo = new DescriptorImageInfo(_sampler, view, ImageLayout.ShaderReadOnlyOptimal);
+        var write = new WriteDescriptorSet
+        {
+            SType = StructureType.WriteDescriptorSet,
+            DstSet = set,
+            DstBinding = 0,
+            DescriptorCount = 1,
+            DescriptorType = DescriptorType.CombinedImageSampler,
+            PImageInfo = &imageInfo,
+        };
+        _vk.UpdateDescriptorSets(_device, 1, &write, 0, null);
+    }
+
+    private void DrawTexturedQuad(CommandBuffer commandBuffer, VkPipeline pipeline, DescriptorSet set, in VulkanOverlayQuad quad, float* push)
+    {
+        (push[0], push[1], push[2], push[3]) = quad.TexCoords;
+        _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, pipeline);
+        _vk.CmdBindDescriptorSets(commandBuffer, PipelineBindPoint.Graphics, _layout, 0, 1, &set, 0, null);
+        SetRegion(commandBuffer, quad.Destination);
+        _vk.CmdPushConstants(commandBuffer, _layout, ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit, 0, PushConstantSize, push);
+        _vk.CmdDraw(commandBuffer, 4, 1, 0, 0);
+    }
+
     public void Dispose()
     {
+        if (_subtitlePipeline.Handle != 0)
+            _vk.DestroyPipeline(_device, _subtitlePipeline, null);
         if (_cdgPipeline.Handle != 0)
             _vk.DestroyPipeline(_device, _cdgPipeline, null);
         if (_washPipeline.Handle != 0)
@@ -156,11 +172,13 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
             _vk.DestroySampler(_device, _sampler, null);
         if (_renderPass.Handle != 0)
             _vk.DestroyRenderPass(_device, _renderPass, null);
+        _subtitlePipeline = default;
         _cdgPipeline = default;
         _washPipeline = default;
         _layout = default;
         _descriptorPool = default;
         _cdgDescriptorSet = default;
+        _subtitleDescriptorSet = default;
         _setLayout = default;
         _sampler = default;
         _renderPass = default;
@@ -212,31 +230,39 @@ internal sealed unsafe class VulkanOverlayPipelines : IDisposable
         VulkanResult.Check(_vk.CreatePipelineLayout(_device, &layoutInfo, null, &layout), "vkCreatePipelineLayout");
         _layout = layout;
 
-        var poolSize = new DescriptorPoolSize(DescriptorType.CombinedImageSampler, 1);
-        var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 1, PoolSizeCount = 1, PPoolSizes = &poolSize };
+        // One set for the CDG texture and one for the subtitle texture.
+        var poolSize = new DescriptorPoolSize(DescriptorType.CombinedImageSampler, 2);
+        var poolInfo = new DescriptorPoolCreateInfo { SType = StructureType.DescriptorPoolCreateInfo, MaxSets = 2, PoolSizeCount = 1, PPoolSizes = &poolSize };
         DescriptorPool pool;
         VulkanResult.Check(_vk.CreateDescriptorPool(_device, &poolInfo, null, &pool), "vkCreateDescriptorPool");
         _descriptorPool = pool;
 
-        var allocateInfo = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = pool, DescriptorSetCount = 1, PSetLayouts = &setLayout };
-        DescriptorSet set;
-        VulkanResult.Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, &set), "vkAllocateDescriptorSets");
-        _cdgDescriptorSet = set;
+        var setLayouts = stackalloc DescriptorSetLayout[] { setLayout, setLayout };
+        var allocateInfo = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = pool, DescriptorSetCount = 2, PSetLayouts = setLayouts };
+        var sets = stackalloc DescriptorSet[2];
+        VulkanResult.Check(_vk.AllocateDescriptorSets(_device, &allocateInfo, sets), "vkAllocateDescriptorSets");
+        _cdgDescriptorSet = sets[0];
+        _subtitleDescriptorSet = sets[1];
 
         ShaderModule vertex = default;
         ShaderModule wash = default;
         ShaderModule cdg = default;
+        ShaderModule subtitle = default;
         try
         {
             vertex = CreateShaderModule(_vk, _device, "quad.vert");
             wash = CreateShaderModule(_vk, _device, "wash.frag");
             cdg = CreateShaderModule(_vk, _device, "cdg.frag");
+            subtitle = CreateShaderModule(_vk, _device, "subtitle.frag");
             _washPipeline = CreateGraphicsPipeline(_vk, _device, _layout, _renderPass, vertex, wash, blend: true);
             _cdgPipeline = CreateGraphicsPipeline(_vk, _device, _layout, _renderPass, vertex, cdg, blend: true);
+            _subtitlePipeline = CreateGraphicsPipeline(_vk, _device, _layout, _renderPass, vertex, subtitle, blend: true);
         }
         finally
         {
             // Pipelines keep their own copy of the code; modules are not needed afterwards.
+            if (subtitle.Handle != 0)
+                _vk.DestroyShaderModule(_device, subtitle, null);
             if (cdg.Handle != 0)
                 _vk.DestroyShaderModule(_device, cdg, null);
             if (wash.Handle != 0)

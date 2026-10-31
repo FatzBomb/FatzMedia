@@ -1,6 +1,8 @@
 using FatzBomb.MediaControl.Core.Cdg;
 using FatzBomb.MediaControl.Core.Graphics.Composition;
+using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Rendering.Software;
+using FatzBomb.MediaControl.Rendering.Text;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan.Tests;
 
@@ -48,12 +50,13 @@ public sealed class VulkanCompositionPlannerTests
     }
 
     [Fact]
-    public void Classify_AcceptsWashAndCdg_RejectsSubtitlesTransformsAndInvalidCdg()
+    public void Classify_AcceptsWashCdgAndSubtitles_RejectsTransformsAndInvalidLayers()
     {
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(MediaCompositionFrame.Empty()));
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(MediaCompositionFrame.Empty() with { WashArgb = 0x80000000 }));
         Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(MediaCompositionFrame.Empty() with { CdgOverlay = CdgFixtures.Snapshot() }));
-        Assert.Equal(VulkanFrameSupport.Subtitles, VulkanCompositionPlanner.Classify(SubtitleFrame()));
+        Assert.Equal(VulkanFrameSupport.Supported, VulkanCompositionPlanner.Classify(SubtitleFrame()));
+        Assert.Equal(VulkanFrameSupport.InvalidSubtitle, VulkanCompositionPlanner.Classify(SubtitleFrame() with { SubtitleBgra = new byte[12] }));
         Assert.Equal(
             VulkanFrameSupport.BaseVisualTransform,
             VulkanCompositionPlanner.Classify(MediaCompositionFrame.Empty() with { BaseVisualTransform = BaseVisualTransform.Identity with { Brightness = 0.5f } }));
@@ -233,6 +236,81 @@ public sealed class VulkanConformanceTests
         AssertMatchesSoftware(MediaCompositionFrame.Empty() with { CdgOverlay = CdgFixtures.Snapshot() }, width, height, minimumExactRatio: 1.0);
 
     /// <summary>
+    /// A premultiplied subtitle raster on its 1920x1080 canvas, over a background and the CDG
+    /// overlay, at the canvas size and scaled: the subtitle pipeline samples and blends it as the
+    /// software renderer does.
+    /// </summary>
+    [Theory]
+    [InlineData(1920, 1080)]
+    [InlineData(640, 360)]
+    [InlineData(1280, 720)]
+    public void SubtitleOverBackgroundAndCdg_MatchesSoftware(int width, int height) =>
+        AssertMatchesSoftware(
+            WithSubtitle(CreateBackgroundFrame(16, 9, MediaCompositionStretchMode.UniformFit) with { CdgOverlay = CdgFixtures.Snapshot() }),
+            width,
+            height,
+            minimumExactRatio: 1.0,
+            maxChannelDelta: WashTolerance);
+
+    /// <summary>
+    /// Text from the SkiaSharp rasterizer the Vulkan factory uses, composed as Core composes it:
+    /// the GPU draws the same text pixels as the software renderer, and they are visible.
+    /// </summary>
+    [Fact]
+    public void RasterizedSubtitleText_MatchesSoftwareAndIsVisible()
+    {
+        using var rasterizer = new SkiaSubtitleRasterizer();
+        SubtitleRasterResult text = rasterizer.Render("Vulkan subtitle text", 1920, 1080);
+        MediaCompositionFrame frame = MediaCompositionFrame.Empty() with
+        {
+            SubtitleBgra = text.Pixels,
+            SubtitleWidth = text.Width,
+            SubtitleHeight = text.Height,
+            SubtitleStride = text.Stride,
+            SubtitleCanvasLeft = text.CanvasLeft,
+            SubtitleCanvasTop = text.CanvasTop,
+            SubtitleCanvasWidth = text.CanvasWidth,
+            SubtitleCanvasHeight = text.CanvasHeight,
+            SubtitleRevision = 1,
+        };
+
+        // 2/3 scale keeps destination pixel centres off source texel edges (see CdgAtTexelEdgeScales).
+        AssertMatchesSoftware(frame, 1280, 720, minimumExactRatio: 1.0, maxChannelDelta: WashTolerance);
+
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        ReadOnlySpan<byte> pixels = compositor.Render(VulkanCompositionPlanner.Plan(frame, 1280, 720));
+        var white = 0;
+        for (var offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset] == 255 && pixels[offset + 1] == 255 && pixels[offset + 2] == 255)
+                white++;
+        }
+
+        Assert.True(white > 200, $"{white} white text pixels");
+    }
+
+    [Fact]
+    public void SubtitleRaster_IsUploadedOncePerRevision()
+    {
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        MediaCompositionFrame frame = WithSubtitle(MediaCompositionFrame.Empty());
+        _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 640, 360));
+        _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 320, 180));
+        _ = compositor.Render(VulkanCompositionPlanner.Plan(frame, 640, 360));
+        Assert.Equal(1, compositor.SubtitleUploadCount);
+
+        _ = compositor.Render(VulkanCompositionPlanner.Plan(frame with { SubtitleRevision = 2 }, 640, 360));
+        _ = compositor.Render(VulkanCompositionPlanner.Plan(frame with { SubtitleRevision = 0 }, 640, 360));
+        Assert.Equal(3, compositor.SubtitleUploadCount);
+    }
+
+    /// <summary>
     /// At 1.5x and 0.5x some destination pixel centres map exactly onto a source texel edge. The
     /// software renderer then picks a side by double-precision rounding noise and the GPU by fp32
     /// interpolation, so those rows/columns may differ by one source texel - never more.
@@ -363,9 +441,16 @@ public sealed class VulkanConformanceTests
         Assert.Equal((10, 2), (sink.Width, sink.Height));
         Assert.Equal(2, presented);
 
-        Assert.False(backend.PresentComposition(MediaCompositionFrame.Empty() with
+        Assert.True(backend.PresentComposition(MediaCompositionFrame.Empty() with
         {
             SubtitleBgra = new byte[16],
+            SubtitleWidth = 2,
+            SubtitleHeight = 2,
+            SubtitleStride = 8,
+        }));
+        Assert.False(backend.PresentComposition(MediaCompositionFrame.Empty() with
+        {
+            SubtitleBgra = new byte[12],
             SubtitleWidth = 2,
             SubtitleHeight = 2,
             SubtitleStride = 8,
@@ -508,6 +593,41 @@ public sealed class VulkanConformanceTests
             BackgroundHeight = height,
             BackgroundStride = stride,
             BackgroundStretchMode = stretch,
+        };
+    }
+
+    // A premultiplied raster with every alpha level, padded rows, placed on a 1920x1080 canvas as
+    // the subtitle rasterizers place text.
+    private static MediaCompositionFrame WithSubtitle(MediaCompositionFrame frame)
+    {
+        const int Width = 301;
+        const int Height = 83;
+        const int Stride = (Width * 4) + 16;
+        var pixels = new byte[Stride * Height];
+        for (var y = 0; y < Height; y++)
+        {
+            for (var x = 0; x < Width; x++)
+            {
+                var offset = (y * Stride) + (x * 4);
+                var alpha = (byte)((x + (y * 7)) % 256);
+                pixels[offset] = (byte)(alpha * (x % 5) / 4);
+                pixels[offset + 1] = (byte)(alpha * (y % 3) / 2);
+                pixels[offset + 2] = alpha;
+                pixels[offset + 3] = alpha;
+            }
+        }
+
+        return frame with
+        {
+            SubtitleBgra = pixels,
+            SubtitleWidth = Width,
+            SubtitleHeight = Height,
+            SubtitleStride = Stride,
+            SubtitleCanvasLeft = 810,
+            SubtitleCanvasTop = 901,
+            SubtitleCanvasWidth = 1920,
+            SubtitleCanvasHeight = 1080,
+            SubtitleRevision = 1,
         };
     }
 

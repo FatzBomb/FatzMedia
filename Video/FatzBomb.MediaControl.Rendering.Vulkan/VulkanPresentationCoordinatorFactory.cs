@@ -1,8 +1,8 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Rendering.Text;
 
 namespace FatzBomb.MediaControl.Rendering.Vulkan;
 
@@ -61,10 +61,14 @@ public sealed class VulkanPresentationCoordinatorFactory : IMediaPresentationCoo
         }
     }
 
+    /// <summary>
+    /// Creates the coordinator. Subtitles and karaoke lyrics are drawn by
+    /// <see cref="SkiaSubtitleRasterizer"/> with the configuration's subtitle and karaoke styles.
+    /// </summary>
     public IMediaPresentationCoordinator Create(IMediaEngine mediaEngine, MediaPlayerConfiguration configuration) =>
         new MediaPresentationCoordinator(
             new VulkanRendererBackend(CreateCompositor),
-            NullSubtitleRasterizer.Instance,
+            new SkiaSubtitleRasterizer(configuration.SubtitleStyle, configuration.KaraokeStyle),
             mediaEngine,
             configuration,
             _precisionWaiterFactory);
