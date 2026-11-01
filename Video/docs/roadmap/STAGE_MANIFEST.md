@@ -26,7 +26,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
 - `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
   the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
   2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux, pending the
-  owner's Windows smoke (`updates/037A_0`; CI package access granted); slice 1 next. Analysis:
+  owner's Windows smoke (`updates/037A_0`; CI package access granted). Slice 1 (seams for MIDI
+  events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
+  change) implemented, pending manual smoke (`updates/037A_1`); slice 2 next. Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules

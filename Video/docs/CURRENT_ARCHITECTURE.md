@@ -281,8 +281,8 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are extracted via `BassMidi.StreamGetMarks` from the open BASS MIDI channel by the internal `MidiLyricCueBuilder` (the public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A).
-- `MidiMetadataExtractor` (internal) reads Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam gets `StandardMidiFileReader`, which parses the file or archive entry in managed code. A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
+- `MidiMetadataExtractor` (internal) reads, through the same reader, Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
 - Syllable-level timing is preserved through the subtitle pipeline as `KaraokeCueTiming` metadata on `SubtitleCue`. The renderer uses absolute MIDI marker timestamps for wipe highlighting, independent of scroll animation timing.
@@ -1046,6 +1046,24 @@ The BASS playback chain is decode -> tempo/pitch -> filter stages -> normalizati
 equalizer (`BassEqualizerFilter`) driven by public `AudioEqualizerSettings` (`MediaEffects.Equalizer`,
 `IMediaControlSession.Equalizer`, `EqualizerChanged`). See
 `roadmap/complete/020A_COMPLETED_AudioFilterFramework.md`.
+
+## Audio Engine Seams (Stage 037A, slice 1, pending manual smoke)
+
+`IAudioEngine.PlayHandle` and `SourceHandle` are BASS-specific and public; internal code no
+longer reads them, so a second engine needs no BASS handles. Internal seams, each implemented by
+the BASS engines with the BASS calls they made before:
+
+- `IAudioFadeGainTarget` (fades, `BassFadeGainStage`), `IAudioFilterHost` (equalizer,
+  `BassEqualizerFilter`), `IAudioAnalysisOpenControl` and `IAudioTrimWindowProvider` (trim), and
+  the normalization members of `IAudioEngine`.
+- `IMidiEventReaderSource` / `IMidiEventReader` (MIDI lyrics and karaoke metadata;
+  `BassMidiEventReader` on the source channel, or `StandardMidiFileReader` from the file).
+- `IAudioLevelSource` (what `AudioNormalizer` peak analysis and `AudioSilenceAnalyzer` read;
+  `BassChannelLevelSource`).
+
+The BASS effect stages, transport and device code keep their handles inside `AudioEngine`,
+`AudioStreamManager`, `VideoAudioEngine` and the `Bass*` helpers. See
+`roadmap/updates/037A_1/StageUpdate.md`.
 
 ## CDG Snapshot Ownership (Stage 018A, slice 1)
 
