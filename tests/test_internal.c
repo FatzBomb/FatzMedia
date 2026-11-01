@@ -1855,6 +1855,50 @@ static void test_levels_tap_fits_latency(void)
     fa_stream_close(s);
 }
 
+/* A late callback (a loaded machine) puts the extrapolated speaker frame past the
+ * frames mixed so far. The meters end their window at the newest mixed frame, so
+ * a constant signal still reads its full level instead of a dip from silence. */
+static void test_levels_late_callback(void)
+{
+    const uint32_t block = 512, blocks = 48;
+    int64_t late_ns;   /* the last callback is this late: 60 ms past the latency */
+    fa_stream* s = open_attached(g_dev->rate * 2, 0, 0);
+    float out[2 * 512], peak[2], rms[2], dpeak[2], drms[2];
+    fa_time latency = 0;
+    int64_t now;
+    uint32_t b;
+    int i;
+    CHECK(s != NULL);
+    fa_device_get_latency(g_dev, &latency);
+    CHECK(latency < 100000000);
+    /* Past the latency by more than a block, so the speaker frame passes the clock,
+     * and well inside device_live's 250 ms, so a slow machine still reads a live device. */
+    late_ns = (int64_t)latency + 60000000;
+    /* Make both taps before anything is mixed into them. */
+    CHECK_EQ(fa_stream_get_levels(s, 100000000, peak, rms, 2), FA_OK);
+    CHECK_EQ(fa_device_get_levels(g_dev, 100000000, dpeak, drms, 2), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    /* Callbacks as the decoder keeps up, the last one stamped `late_ns` ago (a jump
+     * the clock smoothing takes as it is), then none. */
+    for (b = 0; b < blocks; b++) {
+        for (i = 0; i < 2000 && fa_ring_readable(&s->ring) < (int64_t)block && !fa_load32(&s->eof); i++)
+            fa_sleep_ms(1);
+        now = fa_monotonic_ns();
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_device_render_at(g_dev, out, block, b + 1 < blocks ? now : now - late_ns);
+        fa_fetch_add64(&g_dev->epoch, 1);
+    }
+    CHECK(fa_device_speaker_frame(g_dev, fa_monotonic_ns()) > (double)fa_load64(&g_dev->clock));
+    CHECK_EQ(fa_stream_get_levels(s, 200000000, peak, rms, 2), FA_OK);
+    CHECK_EQ(fa_device_get_levels(g_dev, 200000000, dpeak, drms, 2), FA_OK);
+    printf("  stream peak %.4f rms %.4f; device peak %.4f rms %.4f\n", peak[0], rms[0], dpeak[0], drms[0]);
+    CHECK(peak[0] > 0.1f);
+    CHECK_NEAR(rms[0], peak[0], peak[0] * 0.01);   /* constant: no silent frames in the window */
+    CHECK(dpeak[0] > 0.1f);
+    CHECK_NEAR(drms[0], dpeak[0], dpeak[0] * 0.01);
+    fa_stream_close(s);
+}
+
 static void FA_CALL dsp_double(float* f, fa_frames n, uint32_t ch, uint32_t rate, void* user)
 {
     fa_frames i;
@@ -2098,6 +2142,7 @@ int main(void)
     RUN(test_eq_flat_is_free);
     RUN(test_eq_noop_makes_none);
     RUN(test_levels_tap_fits_latency);
+    RUN(test_levels_late_callback);
     RUN(test_dsp_order_and_remove);
     RUN(test_dsp_on_decode_only);
     RUN(test_pkt_index);

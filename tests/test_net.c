@@ -2576,6 +2576,26 @@ static int real_system(void)
 }
 #endif
 
+/* Before the HTTPS cases: waits up to 15 s for the first request to FA_NET_HTTPS_ECHO_URL
+ * to go through. A test root certificate added just before the run (the iOS simulator
+ * job: simctl keychain add-root-cert) can take a few seconds to be trusted, and every
+ * handshake until then fails. A failure that lasts is still a failure. */
+static void test_https_ready_optional(void)
+{
+    const char* url = getenv("FA_NET_HTTPS_ECHO_URL");
+    int64_t t0 = fa_monotonic_ns(), waited;
+    fa_result r = FA_ERROR_NETWORK;
+    conn_fetch c;
+    if (!url) { printf("  skipped (set FA_NET_HTTPS_ECHO_URL)\n"); return; }
+    memset(&c, 0, sizeof(c));
+    while ((r = fetch_with(NULL, url, NULL, &c)) == FA_ERROR_NETWORK && fa_monotonic_ns() - t0 < 15000000000LL)
+        fa_sleep_ms(250);
+    free(c.body.p);
+    waited = (fa_monotonic_ns() - t0) / 1000000;
+    printf("  first request: %d after %lld ms\n", (int)r, (long long)waited);
+    CHECK_EQ(r, FA_OK);
+}
+
 /* HTTPS through the system's TLS stack, when FA_NET_HTTPS_URL names an audio file
  * (CI sets none by default: the test must not depend on the internet). */
 static void test_https_optional(void)
@@ -4022,6 +4042,7 @@ int main(void)
     RUN(test_mkv_slow_no_reader_waits);
     RUN(test_av_files_over_http);
     RUN(test_hls_fmp4);
+    RUN(test_https_ready_optional);
     RUN(test_https_optional);
     RUN(test_https_headers_optional);
     RUN(test_https_session_optional);
