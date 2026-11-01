@@ -217,8 +217,16 @@ public sealed class PlayerViewModelTests
         Assert.True(viewModel.CanSwitchMode);
         Assert.Equal(Enum.GetValues<MediaPlayerMode>(), viewModel.PlayerModes);
 
+        // The switch can finish inside the setter when the engine answers at once, so record
+        // that it was raised rather than reading it afterwards.
+        var switchingSeen = false;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PlayerViewModel.IsSwitchingMode) && viewModel.IsSwitchingMode)
+                switchingSeen = true;
+        };
         viewModel.PlayerMode = MediaPlayerMode.Background;
-        Assert.True(viewModel.IsSwitchingMode);
+        Assert.True(switchingSeen);
         await harness.Dispatcher.UntilAsync(() => !viewModel.IsSwitchingMode);
 
         Assert.Equal(MediaPlayerMode.Background, harness.Player.Mode);
