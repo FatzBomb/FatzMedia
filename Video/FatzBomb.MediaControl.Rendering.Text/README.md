@@ -1,23 +1,20 @@
 # FatzBomb.MediaControl.Rendering.Text
 
-SkiaSharp subtitle and karaoke text rasterizer for `FatzBomb.MediaControl`. The software and
-Vulkan renderers use it to draw text subtitles (SRT, ASS/SSA, embedded tracks) and MIDI/KAR
-karaoke lyrics; the Direct3D11 renderer keeps its DirectWrite rasterizer.
+SkiaSharp plain-subtitle rasterizer for `FatzBomb.MediaControl`. The software and Vulkan
+renderers use it to draw text subtitles (SRT, ASS/SSA, embedded tracks); the Direct3D11 renderer
+keeps its DirectWrite rasterizer. MIDI/KAR karaoke lyrics are not drawn here: `RenderKaraoke`
+returns an empty result, and lyrics on these renderers come from FatzAudio's lyric surface in a
+later stage (037A).
 
 `SkiaSubtitleRasterizer` implements Core's `ISubtitleRasterizer` and follows the Direct3D11
-rasterizer's layout and drawing rules, styled by `MediaPlayerConfiguration.SubtitleStyle` and
-`KaraokeStyle`:
-
-- plain cues: bold text centred near the bottom, wrapped inside 85 % of the canvas width, with
-  an eight-way outline and a drop shadow;
-- karaoke: the scrolling five-line window, the two-pass syllable wipe (sung, then the current
-  syllable blended from the unsung to the sung colours), countdown arrows, page fades, and the
-  intro card, split title bands and end card.
+rasterizer's layout and drawing rules for plain cues, styled by
+`MediaPlayerConfiguration.SubtitleStyle`: bold text centred near the bottom, wrapped inside 85 %
+of the canvas width, with an eight-way outline and a drop shadow.
 
 The result is the bounds of the drawn text as premultiplied BGRA8 rows on a canvas of the
 requested size, the format Core and every renderer composite. Text layouts (with their glyph
 runs) are cached while frames use them and the bitmap is kept while its size stays the same, so
-a steady karaoke wipe allocates nothing; the pooled overloads write into the caller's buffer.
+a repeated subtitle allocates nothing; the pooled overloads write into the caller's buffer.
 
 Fonts come from the system: the configured family when it is installed, otherwise the
 platform's default (fontconfig on Linux), with per-character fallback for glyphs the family

@@ -65,7 +65,7 @@ Avalonia hosts pick the platform package and the renderer themselves:
 </ItemGroup>
 ```
 
-Add `FatzBomb.MediaControl.Rendering.Vulkan` if you want the Vulkan renderer. The Software and Vulkan renderers bring `FatzBomb.MediaControl.Rendering.Text` (their subtitle and lyric text rasterizer) and SkiaSharp 3.119.4, the version Avalonia 12.1.4 uses, with its native library; you do not reference them yourself. The Windows bundle depends on `FatzBomb.MediaControl.Windows`, so you do not list it separately. For a Windows build that uses only the Software or Vulkan renderer, reference `FatzBomb.MediaControl.Windows` instead and skip the Direct3D11 renderer.
+Add `FatzBomb.MediaControl.Rendering.Vulkan` if you want the Vulkan renderer. The Software and Vulkan renderers bring `FatzBomb.MediaControl.Rendering.Text` (their plain-subtitle rasterizer) and SkiaSharp 3.119.4, the version Avalonia 12.1.4 uses; SkiaSharp and its native library ship automatically with the packages and are not optional, and you do not reference them yourself. The Windows bundle depends on `FatzBomb.MediaControl.Windows`, so you do not list it separately. For a Windows build that uses only the Software or Vulkan renderer, reference `FatzBomb.MediaControl.Windows` instead and skip the Direct3D11 renderer.
 
 > [!NOTE]
 > The Avalonia adapter targets `net10.0` and references Avalonia 12. Your application must use a compatible Avalonia version.
@@ -89,7 +89,7 @@ The packages contain no BASS or FFmpeg binaries. The simplest layout is a `nativ
 </ItemGroup>
 ```
 
-On Linux use `native\**\*.so*` for the shared libraries. SkiaSharp's native library (`libSkiaSharp`, used by the Software and Vulkan renderers for text) is not in this folder: it comes from its NuGet package and is copied by the build like any runtime asset. The `.sf2` line is for a MIDI soundfont, if you ship one; see [Native dependencies](native-dependencies.md) for file names and search rules.
+On Linux use `native\**\*.so*` for the shared libraries. SkiaSharp's native library (`libSkiaSharp`, used by the Software and Vulkan renderers for subtitles) does not belong in this folder: it ships automatically with the packages and the build copies it like any runtime asset. The `.sf2` line is for a MIDI soundfont, if you ship one; see [Native dependencies](native-dependencies.md) for file names and search rules.
 
 ## Check that it works
 

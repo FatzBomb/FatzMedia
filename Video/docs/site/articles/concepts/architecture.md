@@ -58,8 +58,8 @@ A renderer takes the composed frame description from Core and turns it into pixe
 | Renderer | Package | Output | Notes |
 | --- | --- | --- | --- |
 | Direct3D11 | `FatzBomb.MediaControl.Rendering.Direct3D11` | Swap chain in a native window, exported GPU images, or frames for a frame sink | Subtitle and lyric text through DirectWrite. Hardware decoding with D3D11VA. HDR output. Windows only. |
-| Vulkan | `FatzBomb.MediaControl.Rendering.Vulkan` | Frames for a frame sink, or exported GPU images | GPU decoding through Vulkan Video where the driver supports it. Subtitle and lyric text through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`). Windows and Linux. Preview. |
-| Software | `FatzBomb.MediaControl.Rendering.Software` | Frames for a frame sink | CPU composition, deterministic output, no GPU or window. Subtitle and lyric text through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`). Any platform. |
+| Vulkan | `FatzBomb.MediaControl.Rendering.Vulkan` | Frames for a frame sink, or exported GPU images | GPU decoding through Vulkan Video where the driver supports it. Plain subtitles through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`); MIDI/KAR lyrics are not drawn yet. Windows and Linux. Preview. |
+| Software | `FatzBomb.MediaControl.Rendering.Software` | Frames for a frame sink | CPU composition, deterministic output, no GPU or window. Plain subtitles through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`); MIDI/KAR lyrics are not drawn yet. Any platform. |
 
 You select a renderer by passing its factory (an <xref:FatzBomb.MediaControl.Controllers.IMediaPresentationCoordinatorFactory>) to the platform factory. <xref:FatzBomb.MediaControl.Controllers.FallbackPresentationCoordinatorFactory> takes several candidates and uses the first that reports itself available, for example Direct3D11, then Software.
 

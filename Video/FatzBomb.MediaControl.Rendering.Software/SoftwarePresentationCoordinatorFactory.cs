@@ -36,14 +36,15 @@ public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationC
         };
 
     /// <summary>
-    /// Creates the coordinator. Subtitles and karaoke lyrics are drawn by
-    /// <see cref="SkiaSubtitleRasterizer"/> with the configuration's subtitle and karaoke styles.
+    /// Creates the coordinator. Plain subtitles are drawn by
+    /// <see cref="SkiaSubtitleRasterizer"/> with the configuration's subtitle style. Karaoke lyrics
+    /// are not drawn by this renderer yet (FatzAudio's lyric surface will provide them).
     /// </summary>
     public IMediaPresentationCoordinator Create(
         IMediaEngine mediaEngine,
         MediaPlayerConfiguration configuration) => new MediaPresentationCoordinator(
             new SoftwareRendererBackend(),
-            new SkiaSubtitleRasterizer(configuration.SubtitleStyle, configuration.KaraokeStyle),
+            new SkiaSubtitleRasterizer(configuration.SubtitleStyle),
             mediaEngine,
             configuration,
             _precisionWaiterFactory);

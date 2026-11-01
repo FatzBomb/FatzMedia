@@ -19,7 +19,7 @@ internal readonly record struct VulkanExportSupport(bool MemoryFd, bool Semaphor
 /// either kind; every composition is rendered once per target at the target's size.
 /// Stage 045A slice 2: FFmpeg decodes on the renderer's device (Vulkan Video,
 /// <see cref="IMediaRendererVideoDecodeDevice"/>), and decoded frames are converted on the GPU into
-/// the composition's video layer. Subtitle and karaoke rasters (SkiaSharp, from
+/// the composition's video layer. Subtitle rasters (SkiaSharp, from
 /// <c>FatzBomb.MediaControl.Rendering.Text</c>) are drawn as a premultiplied overlay. Window-system
 /// swapchains and base-visual transforms are later slices; frames that need them are rejected with
 /// a diagnostic instead of being drawn incorrectly.

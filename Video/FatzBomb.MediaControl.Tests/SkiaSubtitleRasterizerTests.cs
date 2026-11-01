@@ -5,14 +5,13 @@ using FatzBomb.MediaControl.Rendering.Text;
 namespace FatzBomb.MediaControl.Tests;
 
 /// <summary>
-/// The SkiaSharp subtitle and karaoke rasterizer the software and Vulkan renderers use: premultiplied
-/// BGRA bounds on the canvas, the karaoke wipe colours, the caller's buffer and its caches.
+/// The SkiaSharp plain-subtitle rasterizer the software and Vulkan renderers use: premultiplied
+/// BGRA bounds on the canvas, the caller's buffer and its caches. Karaoke is not drawn.
 /// </summary>
 public sealed class SkiaSubtitleRasterizerTests
 {
     private const int CanvasWidth = 1920;
     private const int CanvasHeight = 1080;
-    private const uint Sung = 0xFFFF0000;
     private const uint Unsung = 0xFFFFFFFF;
 
     [Fact]
@@ -65,89 +64,57 @@ public sealed class SkiaSubtitleRasterizerTests
         _ = Assert.Throws<ArgumentNullException>(() => rasterizer.Render(null!, CanvasWidth, CanvasHeight));
     }
 
-    [Theory]
-    [InlineData(0.5, false, false)] // before the first syllable: all unsung
-    [InlineData(2.0, true, false)] // first word sung, second not
-    [InlineData(10.0, true, true)] // the whole line sung
-    public void RenderKaraoke_ShowsSungColourLeftOfTheWipeAndUnsungRightOfIt(double seconds, bool leftSung, bool rightSung)
+    [Fact]
+    public void RenderKaraoke_ReturnsAnEmptyResultWithoutDrawingOrAllocating()
     {
-        using var rasterizer = new SkiaSubtitleRasterizer(karaokeStyle: PlainKaraokeStyle());
-        var timing = new KaraokeCueTiming(
-            [new KaraokeLineTiming("MMMM MMMM", [new(0, 4, TimeSpan.FromSeconds(1)), new(5, 4, TimeSpan.FromSeconds(3))])],
+        using var rasterizer = new SkiaSubtitleRasterizer();
+        KaraokeCueTiming timing = new(
+            [new KaraokeLineTiming("Sing along", [new(0, 4, TimeSpan.FromSeconds(1)), new(5, 5, TimeSpan.FromSeconds(2))])],
             ActiveLineIndex: 0,
             TransitionStart: TimeSpan.Zero,
             TransitionEnd: TimeSpan.Zero);
-
-        SubtitleRasterResult result = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(seconds), CanvasWidth, CanvasHeight);
-
-        // Opaque pixels across the line's middle band, by canvas x.
-        var opaque = new List<(int X, uint Argb)>();
-        ReadOnlySpan<byte> pixels = result.Pixels.Span;
-        for (var canvasY = (CanvasHeight / 2) - 10; canvasY <= (CanvasHeight / 2) + 10; canvasY++)
+        var rented = 0;
+        Func<int, Memory<byte>> rent = length =>
         {
-            var y = canvasY - result.CanvasTop;
-            for (var x = 0; x < result.Width; x++)
-            {
-                var offset = (y * result.Stride) + (x * 4);
-                if (pixels[offset + 3] == 255)
-                    opaque.Add((result.CanvasLeft + x, 0xFF000000u | ((uint)pixels[offset + 2] << 16) | ((uint)pixels[offset + 1] << 8) | pixels[offset]));
-            }
-        }
+            rented++;
+            return new byte[length];
+        };
 
-        Assert.NotEmpty(opaque);
-        var left = opaque.Min(static pixel => pixel.X);
-        var right = opaque.Max(static pixel => pixel.X);
-        var quarter = (right - left) / 4;
-        // Sung text is red and unsung white; an opaque glyph-edge pixel can mix the two passes, so
-        // classify by the green channel, which only the unsung white carries.
-        static bool IsSung(uint argb) => ((argb >> 8) & 0xFF) < 128;
-        Assert.All(opaque.Where(pixel => pixel.X < left + quarter), pixel => Assert.Equal(leftSung, IsSung(pixel.Argb)));
-        Assert.All(opaque.Where(pixel => pixel.X > right - quarter), pixel => Assert.Equal(rightSung, IsSung(pixel.Argb)));
-        Assert.Contains(opaque, pixel => pixel.Argb == (leftSung ? Sung : Unsung));
+        // Warm up, then measure: karaoke lyrics come from FatzAudio's lyric surface, not this rasterizer.
+        _ = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(1.5), CanvasWidth, CanvasHeight, rent);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        SubtitleRasterResult pooled = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(1.5), CanvasWidth, CanvasHeight, rent);
+        SubtitleRasterResult plain = rasterizer.RenderKaraoke(timing, TimeSpan.FromSeconds(1.5), CanvasWidth, CanvasHeight);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(pooled.Pixels.IsEmpty);
+        Assert.True(plain.Pixels.IsEmpty);
+        Assert.Equal(0, rented);
+        Assert.True(allocated < 1024, $"{allocated} bytes allocated");
     }
 
     [Fact]
-    public void RenderKaraoke_PooledOverload_WritesIntoTheRentedBufferAndAllocatesLittle()
+    public void Render_PooledOverload_WritesIntoTheRentedBuffer()
     {
         using var rasterizer = new SkiaSubtitleRasterizer();
-        KaraokeCueTiming timing = CreateTiming();
         var buffer = new byte[CanvasWidth * CanvasHeight * 4];
         Func<int, Memory<byte>> rent = length => buffer.AsMemory(0, length);
 
-        // Warm the caches, then wipe through the active line at 60 frames per second.
-        for (var frame = 0; frame < 10; frame++)
-            _ = rasterizer.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight, rent);
+        SubtitleRasterResult result = rasterizer.Render("A plain subtitle", CanvasWidth, CanvasHeight, rent);
 
-        const int Frames = 120;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        SubtitleRasterResult last = default;
-        for (var frame = 10; frame < 10 + Frames; frame++)
-            last = rasterizer.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight, rent);
-        var perFrame = (GC.GetAllocatedBytesForCurrentThread() - before) / Frames;
-
-        Assert.True(perFrame < 16 * 1024, $"{perFrame} bytes allocated per frame");
-        Assert.True(last.Pixels.Span.Overlaps(buffer));
-        Assert.Contains(buffer.AsSpan(0, last.Pixels.Length).ToArray(), static value => value != 0);
+        Assert.True(result.Pixels.Span.Overlaps(buffer));
+        Assert.Contains(buffer.AsSpan(0, result.Pixels.Length).ToArray(), static value => value != 0);
     }
 
     [Fact]
-    public void RenderKaraoke_CachedPath_MatchesAColdRasterizer()
+    public void Render_CachedPath_MatchesAColdRasterizer()
     {
-        KaraokeCueTiming timing = CreateTiming();
         using var warm = new SkiaSubtitleRasterizer();
-        for (var frame = 0; frame < 30; frame++)
-            _ = warm.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight);
+        for (var frame = 0; frame < 5; frame++)
+            _ = warm.Render("A plain subtitle", CanvasWidth, CanvasHeight);
 
-        foreach (var frame in new[] { 30, 45, 90 })
-        {
-            using var cold = new SkiaSubtitleRasterizer();
-            AssertSameRaster(
-                cold.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight),
-                warm.RenderKaraoke(timing, FramePosition(frame), CanvasWidth, CanvasHeight));
-        }
-
-        using var coldText = new SkiaSubtitleRasterizer();
-        AssertSameRaster(coldText.Render("A plain subtitle", CanvasWidth, CanvasHeight), warm.Render("A plain subtitle", CanvasWidth, CanvasHeight));
+        using var cold = new SkiaSubtitleRasterizer();
+        AssertSameRaster(cold.Render("A plain subtitle", CanvasWidth, CanvasHeight), warm.Render("A plain subtitle", CanvasWidth, CanvasHeight));
     }
 
     [Fact]
@@ -160,7 +127,6 @@ public sealed class SkiaSubtitleRasterizerTests
         rasterizer.Dispose();
 
         _ = Assert.Throws<ObjectDisposedException>(() => rasterizer.Render("After disposal", CanvasWidth, CanvasHeight));
-        _ = Assert.Throws<ObjectDisposedException>(() => rasterizer.RenderKaraoke(CreateTiming(), FramePosition(0), CanvasWidth, CanvasHeight));
     }
 
     [Fact]
@@ -173,16 +139,6 @@ public sealed class SkiaSubtitleRasterizerTests
         Assert.Contains(result.Pixels.ToArray(), static value => value == 255);
     }
 
-    private static KaraokeTextStyle PlainKaraokeStyle() => new()
-    {
-        TextArgb = Unsung,
-        WipeTextArgb = Sung,
-        OutlineArgb = 0,
-        WipeOutlineArgb = 0,
-        ShadowArgb = 0,
-        WipeShadowArgb = 0,
-    };
-
     private static void AssertSameRaster(SubtitleRasterResult expected, SubtitleRasterResult actual)
     {
         Assert.Equal(
@@ -191,34 +147,4 @@ public sealed class SkiaSubtitleRasterizerTests
         Assert.True(expected.Pixels.Span.SequenceEqual(actual.Pixels.Span), "Cached raster pixels differ from an uncached raster.");
         Assert.Contains(actual.Pixels.ToArray(), static value => value != 0);
     }
-
-    // The second of three lines is active and its syllables start every 250 ms from 1 s.
-    internal static KaraokeCueTiming CreateTiming()
-    {
-        static KaraokeLineTiming Line(string text, double startSeconds)
-        {
-            var words = text.Split(' ');
-            var segments = new List<KaraokeTextSegment>();
-            var offset = 0;
-            for (var i = 0; i < words.Length; i++)
-            {
-                segments.Add(new KaraokeTextSegment(offset, words[i].Length, TimeSpan.FromSeconds(startSeconds + (i * 0.25))));
-                offset += words[i].Length + 1;
-            }
-
-            return new KaraokeLineTiming(text, segments);
-        }
-
-        return new KaraokeCueTiming(
-            [
-                Line("Singing the first line here", -2),
-                Line("Now the wipe crosses this line slowly", 1),
-                Line("And the next one is waiting", 4),
-            ],
-            ActiveLineIndex: 1,
-            TransitionStart: TimeSpan.Zero,
-            TransitionEnd: TimeSpan.FromSeconds(10));
-    }
-
-    private static TimeSpan FramePosition(int frame) => TimeSpan.FromSeconds(1 + (frame / 60.0));
 }

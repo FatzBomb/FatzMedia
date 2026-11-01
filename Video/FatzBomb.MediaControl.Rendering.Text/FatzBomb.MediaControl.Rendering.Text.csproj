@@ -7,7 +7,7 @@
     <PackageId>FatzBomb.MediaControl.Rendering.Text</PackageId>
     <AssemblyName>FatzBomb.MediaControl.Rendering.Text</AssemblyName>
     <RootNamespace>FatzBomb.MediaControl.Rendering.Text</RootNamespace>
-    <Description>SkiaSharp subtitle and karaoke text rasterizer for the FatzBomb.MediaControl software and Vulkan renderers.</Description>
+    <Description>SkiaSharp plain-subtitle rasterizer for the FatzBomb.MediaControl software and Vulkan renderers.</Description>
     <PackageProjectUrl>https://github.com/FatzBomb75/FatzBombMedia</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

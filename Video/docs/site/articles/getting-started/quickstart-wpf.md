@@ -168,7 +168,7 @@ public partial class MainWindow : Window
 
 ## Software renderer or Vulkan
 
-To use the software renderer, create the player with `new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())` (package `FatzBomb.MediaControl.Rendering.Software`) and a configuration of `new MediaPlayerConfiguration(VideoDecodingMethod.Software)`. That renderer presents CPU frames only and decodes video in software whatever the configuration says; the configuration makes that explicit. Set `PresentationMode="WpfComposited"` on the `MediaSurface`, because the renderer hands finished frames to the control instead of drawing into a window. The Vulkan renderer needs the same `PresentationMode`, and it keeps `MediaPlayerConfiguration.Auto` so it can decode on the GPU. Both renderers draw subtitle and lyric text (with SkiaSharp instead of DirectWrite).
+To use the software renderer, create the player with `new WindowsMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory())` (package `FatzBomb.MediaControl.Rendering.Software`) and a configuration of `new MediaPlayerConfiguration(VideoDecodingMethod.Software)`. That renderer presents CPU frames only and decodes video in software whatever the configuration says; the configuration makes that explicit. Set `PresentationMode="WpfComposited"` on the `MediaSurface`, because the renderer hands finished frames to the control instead of drawing into a window. The Vulkan renderer needs the same `PresentationMode`, and it keeps `MediaPlayerConfiguration.Auto` so it can decode on the GPU. Both renderers draw plain subtitles (with SkiaSharp instead of DirectWrite); MIDI/KAR lyrics are drawn only by Direct3D11 for now.
 
 ## Next
 

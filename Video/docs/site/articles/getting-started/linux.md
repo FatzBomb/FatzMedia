@@ -75,7 +75,7 @@ Notes:
 | --- | --- |
 | Direct3D11 renderer, HDR output, `WindowsNativeLibraryPaths` | Not available. |
 | Hardware decoding | Only through the Vulkan renderer, with Vulkan Video and an FFmpeg built with `--enable-vulkan`. The Software renderer always decodes in software. |
-| Text subtitles and MIDI/KAR lyric text | Drawn by the Software and Vulkan renderers through SkiaSharp. Fonts come from fontconfig: the configured family (Segoe UI by default) when installed, otherwise the system default font, so glyph shapes and widths differ from Windows. |
+| Text subtitles | Drawn by the Software and Vulkan renderers through SkiaSharp. Fonts come from fontconfig: the configured family (Segoe UI by default) when installed, otherwise the system default font, so glyph shapes and widths differ from Windows. MIDI/KAR karaoke lyrics are not drawn on Linux yet; FatzAudio integration will bring them to every renderer. |
 | MIDI | Needs `libbassmidi.so` and a soundfont (`MediaPlayerConfiguration.MidiSoundfontPath`, or one of the file names listed in [MIDI soundfont](native-dependencies.md#midi-soundfont)). There is no system `gm.dls`. |
 | `basscd`, `bassalac`, `basswma` add-ons | Not part of the Linux set. ALAC and WMA files can still open through the FFmpeg fallback. |
 | WPF and WinForms | Windows only. Use Avalonia. |
