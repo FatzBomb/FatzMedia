@@ -37,6 +37,9 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     // reports as a Subtitle warning) instead of the renderer factory.
     private SKPaint? _paint;
     private SKPaint? _layerPaint;
+    // Set when the native library failed to load: later frames draw nothing instead of throwing
+    // (and raising a warning) on every karaoke progress step.
+    private bool _nativeUnavailable;
     private long _generation;
     private SKBitmap? _bitmap;
     private SKCanvas? _canvas;
@@ -68,7 +71,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         lock (_gate)
         {
-            BeginFrame();
+            if (!BeginFrame())
+                return default;
             try
             {
                 return RenderTextFrame(text, width, height, rentPixels);
@@ -106,7 +110,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
         lock (_gate)
         {
-            BeginFrame();
+            if (!BeginFrame())
+                return default;
             try
             {
                 return RenderKaraokeFrame(timing, position, baseStyle, wipeStyle, width, height, rentPixels);
@@ -862,12 +867,29 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         return (uint)((a << 24) | (r << 16) | (g << 8) | b);
     }
 
-    private void BeginFrame()
+    // False when the native SkiaSharp library is unavailable: the first frame reports it (Core
+    // raises one Subtitle warning) and later frames draw nothing.
+    private bool BeginFrame()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_nativeUnavailable)
+            return false;
+
+        try
+        {
+            _paint ??= new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+            _layerPaint ??= new SKPaint();
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or TypeInitializationException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            _nativeUnavailable = true;
+            throw new InvalidOperationException(
+                "The SkiaSharp native library (libSkiaSharp) could not be loaded or does not match SkiaSharp; subtitles and karaoke text are not drawn.",
+                ex);
+        }
+
         _generation++;
-        _paint ??= new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
-        _layerPaint ??= new SKPaint();
+        return true;
     }
 
     // Disposes the layouts this frame did not use.

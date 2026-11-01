@@ -182,8 +182,9 @@ internal sealed class SkiaTextLayout : IDisposable
             while (Sum(advances, lineStart, wordEnd) > maxWidth)
             {
                 var split = lineStart + 1;
-                while (split < wordEnd && Sum(advances, lineStart, split + 1) <= maxWidth)
-                    split++;
+                var splitWidth = advances[lineStart];
+                while (split < wordEnd && splitWidth + advances[split] <= maxWidth)
+                    splitWidth += advances[split++];
                 if (split < wordEnd && char.IsLowSurrogate(text[split]))
                     split = split - 1 > lineStart ? split - 1 : split + 1;
                 if (split >= wordEnd)

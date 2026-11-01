@@ -19,8 +19,8 @@ internal sealed class SkiaFontFace
     private readonly Dictionary<int, int> _fallbacks = [];
     private readonly SKFontStyle _style;
     private readonly string _family;
-    private readonly bool _embolden;
-    private readonly bool _skew;
+    private readonly int _weight;
+    private readonly bool _italic;
 
     public SkiaFontFace(string family, int weight, bool italic)
     {
@@ -30,8 +30,8 @@ internal sealed class SkiaFontFace
             ?? SKTypeface.FromFamilyName(family, _style)
             ?? SKTypeface.Default;
         _typefaces.Add(primary);
-        _embolden = weight >= (int)SKFontStyleWeight.SemiBold && primary.FontWeight < (int)SKFontStyleWeight.SemiBold;
-        _skew = italic && primary.FontSlant == SKFontStyleSlant.Upright;
+        _weight = weight;
+        _italic = italic;
     }
 
     public int TypefaceCount => _typefaces.Count;
@@ -68,14 +68,22 @@ internal sealed class SkiaFontFace
         return index;
     }
 
-    /// <summary>A font for typeface <paramref name="index"/> at <paramref name="size"/>; the caller disposes it.</summary>
-    public SKFont CreateFont(int index, float size) => new(_typefaces[index], size)
+    /// <summary>
+    /// A font for typeface <paramref name="index"/> at <paramref name="size"/>; the caller disposes
+    /// it. Bold and italic are simulated per typeface, so a fallback face that lacks them is
+    /// simulated even when the primary one has them (and one that has them is not simulated twice).
+    /// </summary>
+    public SKFont CreateFont(int index, float size)
     {
-        Edging = SKFontEdging.Antialias,
-        Subpixel = true,
-        Embolden = _embolden,
-        SkewX = _skew ? -0.2f : 0,
-    };
+        SKTypeface typeface = _typefaces[index];
+        return new SKFont(typeface, size)
+        {
+            Edging = SKFontEdging.Antialias,
+            Subpixel = true,
+            Embolden = _weight >= (int)SKFontStyleWeight.SemiBold && typeface.FontWeight < (int)SKFontStyleWeight.SemiBold,
+            SkewX = _italic && typeface.FontSlant == SKFontStyleSlant.Upright ? -0.2f : 0,
+        };
+    }
 
     /// <summary>The code point at <paramref name="index"/> and its UTF-16 length (lone surrogates count as U+FFFD).</summary>
     public static (int CodePoint, int Length) ReadCodePoint(string text, int index) =>

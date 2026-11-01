@@ -59,7 +59,7 @@ swap-chain present mode defaults to VSync; Immediate remains an explicit diagnos
 ### Software Renderer (Stage 024A)
 
 `FatzBomb.MediaControl.Rendering.Software` is a portable, deterministic renderer
-package (`net10.0`) that references Core only and implements the same public
+package (`net10.0`) that references Core and `FatzBomb.MediaControl.Rendering.Text` and implements the same public
 `IMediaRendererBackend` / `IMediaPresentationCoordinatorFactory` seams as Direct3D11.
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
@@ -985,7 +985,7 @@ systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 
 ## Vulkan Renderer Preview (Stage 026A, slice 1)
 
-`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core only, Silk.NET.Vulkan) offers
+`FatzBomb.MediaControl.Rendering.Vulkan` (net10.0, Core and Rendering.Text, Silk.NET.Vulkan) offers
 `VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
 1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
 blit using the software renderer's placement rules, and readback. Transform and
