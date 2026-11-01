@@ -106,7 +106,7 @@ if (fa_disc_get_pregap(disc, 5, &gap) == FA_OK && gap > 0) {
 }
 ```
 
-- **Disc images** answer from the cue sheet: `INDEX 00` before `INDEX 01`, plus any `PREGAP` (silence that is not in the file). No disc access.
+- **Disc images** answer from the cue sheet: `INDEX 00` before `INDEX 01`, plus any `PREGAP` (silence that is not in the file). No disc access. A damaged sheet with `INDEX 00` later than `INDEX 01` gives 0.
 - **Drives** answer from the Q subcode, which says on every sector which track and index it belongs to: FatzAudio reads a few single sectors before the track (the usual 2 s gap is confirmed with 3-4 reads, other lengths are found by halving the range, some 10-20 reads), once per track; the answer is kept until the disc changes. Sectors whose subcode cannot be read are stepped over. `FA_ERROR_NOT_IMPLEMENTED` from a drive that returns no subcode.
 - **The first track** counts from sector 0: its pregap is its start sector (usually 0; more on a disc with a hidden track before track 1). The 2 seconds before sector 0 that every disc has are not counted, since no drive reads them.
 - Data tracks give `FA_ERROR_UNSUPPORTED_FORMAT`.

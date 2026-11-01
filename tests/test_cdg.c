@@ -1105,6 +1105,99 @@ static void test_zip_prefix_probe(void)
     free(zip.p); free(junk.p); free(wav.p);
 }
 
+/* Entries that share one data range (final audit H2): only the first is listed, so
+ * a small archive cannot have the same bytes unpacked once per entry. */
+static void test_zip_shared_range(void)
+{
+    buf wav = make_wav(8000, 8000), zip, z = { 0 };
+    zip_file f;
+    fa_source zs;
+    fa_zip_entry* e = NULL;
+    uint32_t count = 0, i, cd_at, cd_len;
+    fa_open_options o;
+    fa_stream* s = NULL;
+    f.name = "song.wav"; f.data = &wav; f.deflate = 1; f.crc_xor = 0;
+    zip = make_zip(&f, 1);
+    /* The same central entry 30 times (names changed), all pointing at offset 0. */
+    cd_at = fa_le32(zip.p + zip.n - 6);
+    cd_len = fa_le32(zip.p + zip.n - 10);
+    put(&z, zip.p, cd_at);
+    for (i = 0; i < 30; i++) {
+        size_t at = z.n;
+        put(&z, zip.p + cd_at, cd_len);
+        z.p[at + 46] = (uint8_t)('A' + i);   /* "Aong.wav", "Bong.wav", ... */
+    }
+    le32(&z, 0x06054b50); le16(&z, 0); le16(&z, 0); le16(&z, 30); le16(&z, 30);
+    le32(&z, cd_len * 30); le32(&z, cd_at); le16(&z, 0);
+    fa_source_open_memory_ref(&zs, z.p, z.n);
+    CHECK_EQ(fa_zip_list(&zs, &e, &count), FA_OK);
+    CHECK_EQ(count, 1);
+    if (count == 1) CHECK(strcmp(e[0].name, "Aong.wav") == 0);   /* the directory's first */
+    free(e);
+    fa_source_close(&zs);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_memory(g_engine, z.p, z.n, &o, &s), FA_OK);
+    if (s) { CHECK_EQ(decode_all(s), 8000); fa_stream_close(s); }
+    free(z.p); free(zip.p); free(wav.p);
+}
+
+/* At most FA_ZIP_MAX_UNPACKS large compressed entries that look like audio are
+ * unpacked in full per open or tags read (final audit H2): each refused one costs a
+ * whole unpack. */
+static void test_zip_unpack_cap(void)
+{
+    buf decoy = { 0 }, wav = make_wav(8000, 40000), zip;   /* over FA_ZIP_PROBE_BYTES: counted */
+    zip_file files[FA_ZIP_MAX_UNPACKS + 2];
+    const char* names[] = { "a.mp3", "b.mp3", "c.mp3", "d.mp3", "e.mp3", "f.mp3" };
+    fa_open_options o;
+    fa_stream* s = NULL;
+    fa_io_callbacks io;
+    mem_io m;
+    fa_tags* t = NULL;
+    fa_stream_info info;
+    int i, n;
+    uint8_t zeros[4096];
+    /* An ID3 tag claiming 256 MB, then zeros: looks like audio, then refused. */
+    put(&decoy, "ID3\x04\x00\x00\x7f\x7f\x7f\x7f", 10);
+    memset(zeros, 0, sizeof(zeros));
+    while (decoy.n < 200000) put(&decoy, zeros, sizeof(zeros));
+    CHECK(sizeof(names) / sizeof(names[0]) >= FA_ZIP_MAX_UNPACKS + 1);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    memset(&io, 0, sizeof(io));
+    io.read = mio_read; io.seek = mio_seek; io.length = mio_length; io.close = mio_close;
+    for (n = FA_ZIP_MAX_UNPACKS - 1; n <= FA_ZIP_MAX_UNPACKS; n++) {
+        /* n decoys, then the song: the song is the n+1th unpack */
+        for (i = 0; i < n; i++) { files[i].name = names[i]; files[i].data = &decoy; files[i].deflate = 1; files[i].crc_xor = 0; }
+        files[n].name = "song.wav"; files[n].data = &wav; files[n].deflate = 1; files[n].crc_xor = 0;
+        zip = make_zip(files, n + 1);
+        memset(&m, 0, sizeof(m));
+        m.b = &zip; m.seekable = 1;
+        if (n < FA_ZIP_MAX_UNPACKS) {
+            CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
+            if (s) { CHECK_EQ(decode_all(s), 40000); fa_stream_close(s); s = NULL; }
+        } else {
+            buf alone;
+            mem_io m2;
+            CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+            /* The song was not unpacked, nor even probed: the archive costs what the
+             * decoys alone cost (give or take its directory entry). */
+            alone = make_zip(files, n);
+            memset(&m2, 0, sizeof(m2));
+            m2.b = &alone; m2.seekable = 1;
+            CHECK_EQ(fa_stream_open_io(g_engine, &io, &m2, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+            CHECK(m.read_bytes - m2.read_bytes < 4096);
+            free(alone.p);
+        }
+        CHECK_EQ(fa_tags_read_memory(zip.p, zip.n, 0, &t), FA_OK);
+        CHECK_EQ(fa_tags_get_info(t, &info), n < FA_ZIP_MAX_UNPACKS ? FA_OK : FA_ERROR_NOT_FOUND);
+        fa_tags_close(t);
+        free(zip.p);
+    }
+    free(decoy.p); free(wav.p);
+}
+
 /* The cancel flag stops the unpacking of a compressed song, into memory and into a temp file. */
 static void test_zip_cancel(void)
 {
@@ -4300,6 +4393,8 @@ int main(void)
     RUN(test_zip_lean);
     RUN(test_zip_over_limit);
     RUN(test_zip_prefix_probe);
+    RUN(test_zip_shared_range);
+    RUN(test_zip_unpack_cap);
     RUN(test_zip_cancel);
     RUN(test_zip_temp_song);
     RUN(test_zip_stored_crc);

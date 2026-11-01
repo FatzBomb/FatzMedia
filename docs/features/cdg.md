@@ -383,6 +383,8 @@ The `.cdg` is always unpacked into memory (a song's graphics are a few MB).
 
 **Other files in the archive** (a bundled video, a PDF, a text file) are told from the audio by their first 64 KB: for a compressed entry bigger than that, FatzAudio unpacks 64 KB and runs the same content probes the decoders use, and only unpacks the whole entry when one of them claims it. A 200 MB video in a karaoke ZIP costs a 64 KB read, whether the song is opened, tagged (`fa_tags_read_path`) or probed for a `.cdg`.
 
+**Damaged and hostile archives.** Entries whose data overlaps an earlier entry's are left out (only the first, in file order, is listed), and at most 4 compressed entries over 64 KB that look like audio are unpacked in full per open or tags read. A real karaoke ZIP never comes near either limit, but without them a small hostile archive could have the same bytes unpacked once per entry, or many entries that look like audio unpacked one after another. When the limit is reached, the open fails with `FA_ERROR_UNSUPPORTED_FORMAT`, as if no entry were audio.
+
 **Cancelling a long unpack.** Unpacking a big song into memory or a temp file is the one slow step of an open. Set `fa_open_options.cancel` to point at an `int32_t` flag, and set the flag to non-zero from another thread to stop it: the open returns `FA_ERROR_CANCELLED` (.NET `ErrorCode.Cancelled`) within a fraction of a second, no stream is created and no temp file is left behind. In .NET pass `StreamOptions.CancellationToken`. Stored entries need no unpacking, so they open at once either way.
 
 ```c

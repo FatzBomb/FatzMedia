@@ -434,6 +434,10 @@ static void test_open_args(void)
     CHECK(fa_stream_open_midi(g_engine, &mo, &o, &s) == FA_ERROR_INVALID_ARG);
     e.track = 65535;   /* one past the last track there can be */
     CHECK(fa_stream_open_midi_events(g_engine, &e, 1, NULL, &o, &s) == FA_ERROR_INVALID_ARG);
+    e.track = 0;
+    e.frame = INT64_MAX - 5;   /* past 6 hours: the length would overflow (final audit H6) */
+    CHECK(fa_stream_open_midi_events(g_engine, &e, 1, NULL, &o, &s) == FA_ERROR_INVALID_ARG);
+    e.frame = 0;
     CHECK(fa_stream_open_midi(g_engine, NULL, &o, &s) == FA_OK);
     len = length_of(s);
     CHECK(len == -1);

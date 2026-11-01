@@ -242,7 +242,12 @@ static void take_one(fa_http_cookies* j, const fa_url* u, const char* line, int6
         }
     }
     if (k.expires >= 0 && k.expires <= now) goto drop;
-    if (j->count == FA_COOKIE_MAX) cookie_remove(j, 0);   /* the oldest */
+    if (j->count == FA_COOKIE_MAX) {
+        /* The oldest: a replaced cookie keeps its creation but moves to the end. */
+        int oldest = 0;
+        for (i = 1; i < j->count; i++) if (j->c[i].created < j->c[oldest].created) oldest = i;
+        cookie_remove(j, oldest);
+    }
     if (!k.created) k.created = ++j->next;
     j->c[j->count++] = k;
     return;

@@ -2873,7 +2873,8 @@ FA_API fa_result FA_CALL fa_stream_open_midi(fa_engine* engine, const fa_midi_st
  * seekable, its length measured as a file's (until the last events' sound dies away). `events` in time order
  * (frames at midi_options->sample_rate; FA_MIDI_NOW is frame 0), copied; `track` sets
  * the track for fa_stream_set_midi_track_volume (0..65534). SysEx longer than 65 bytes
- * (bulk data) is left out, as in files. */
+ * (bulk data) is left out, as in files. FA_ERROR_INVALID_ARG for an event later than
+ * 6 hours (the limit for files too). */
 FA_API fa_result FA_CALL fa_stream_open_midi_events(fa_engine* engine, const fa_midi_event* events, uint32_t count,
                                                     const fa_midi_stream_options* midi_options,
                                                     const fa_open_options* options, fa_stream** out_stream);

@@ -2157,6 +2157,8 @@ static fa_result build_events(struct fa_midi* m, const fa_midi_event* events, ui
         midi_event* e = &m->ev[k];
         fa_result r = event_of(&events[i], e);
         if (r == FA_OK && (events[i].track < 0 || events[i].track >= FA_MIDI_NO_TRACK)) r = FA_ERROR_INVALID_ARG;
+        /* As in files: nothing past FA_MIDI_MAX_SECONDS (the length adds a tail to the last). */
+        if (r == FA_OK && e->frame > (fa_frames)(FA_MIDI_MAX_SECONDS * m->rate)) r = FA_ERROR_INVALID_ARG;
         if (r != FA_OK) return r;
         if (e->frame < 0) e->frame = 0;
         e->track = (uint16_t)events[i].track;

@@ -343,7 +343,7 @@ static fa_result unpack_to_temp(struct fa_stream* s, fa_source* arc, const fa_zi
  * unpacked into memory, or into a temp file past the memory limit (or when memory
  * runs out). */
 static fa_result open_zip_entry(struct fa_stream* s, fa_source* arc, const fa_zip_entry* e,
-                                const volatile int32_t* cancel, int* moved)
+                                const volatile int32_t* cancel, uint32_t* unpacks, int* moved)
 {
     int64_t offset;
     uint8_t* data;
@@ -360,13 +360,16 @@ static fa_result open_zip_entry(struct fa_stream* s, fa_source* arc, const fa_zi
     }
     /* Not audio (a bundled video, a PDF) is told from the first 64 KB, not a full unpack. */
     if (e->size > FA_ZIP_PROBE_BYTES) {
-        uint8_t* head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
+        uint8_t* head;
         size_t got = 0;
+        if (*unpacks >= FA_ZIP_MAX_UNPACKS) return FA_ERROR_UNSUPPORTED_FORMAT;
+        head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
         if (!head) return FA_ERROR_OUT_OF_MEMORY;
         r = fa_zip_extract_prefix(arc, e, head, FA_ZIP_PROBE_BYTES, &got);
         got = r == FA_OK && !fa_decoder_recognizes(head, got) ? 0 : 1;
         free(head);
         if (!got) return FA_ERROR_UNSUPPORTED_FORMAT;
+        (*unpacks)++;
     }
     r = fa_zip_extract(arc, e, zip_memory_limit(s->engine), cancel, &data);
     if (r == FA_OK) {
@@ -403,7 +406,7 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
     fa_source arc;
     fa_zip_entry* entries;
     fa_cdg_data* graphics = NULL;
-    uint32_t count, i, pass, chosen_crc = 0;
+    uint32_t count, i, pass, chosen_crc = 0, unpacks = 0;
     int cdg = -1, moved = 0;
     const volatile int32_t* cancel = open_cancel(options);
     fa_result r, skipped = FA_ERROR_UNSUPPORTED_FORMAT;
@@ -429,7 +432,7 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
             fa_result opened;
             int preferred = cdg >= 0 && same_stem(entries[i].name, entries[cdg].name);
             if ((int)i == cdg || fa_cdg_is_cdg_name(entries[i].name) || preferred != (pass == 0)) continue;
-            opened = open_zip_entry(s, &arc, &entries[i], cancel, &moved);
+            opened = open_zip_entry(s, &arc, &entries[i], cancel, &unpacks, &moved);
             if (opened == FA_ERROR_CANCELLED) { r = opened; break; }
             if (opened != FA_OK) {
                 /* Too big to unpack, out of memory or a temp file that failed is worth

@@ -340,6 +340,7 @@ static fa_result parse_cue(image* m, const char* cue_path, char* text)
                 cur->lba = st.lba;
                 /* The first track's pregap is everything before it (a hidden track too). */
                 cur->pregap = m->ntracks == 1 ? cur->lba : cur->index0 >= 0 ? cur->lba - cur->index0 : gap;
+                if (cur->pregap < 0) cur->pregap = 0;   /* INDEX 00 later than INDEX 01: a damaged sheet */
             }
         } else if (word_is(word, "PREGAP") && cur) {
             next_token(p, arg, sizeof(arg));

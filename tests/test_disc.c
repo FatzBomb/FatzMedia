@@ -167,6 +167,31 @@ static void test_image_pregap(void)
     fa_disc_close(d);
 }
 
+/* INDEX 00 later than INDEX 01 (a damaged sheet): no negative pregap (final audit H7). */
+static void test_image_pregap_backwards(void)
+{
+    static const char* cue = "disc_test_backwards.cue";
+    fa_disc* d = NULL;
+    int64_t n = -1;
+    FILE* f = fopen(cue, "wb");
+    CHECK(f != NULL);
+    if (!f) return;
+    fputs("FILE \"disc_test_audio.bin\" BINARY\r\n"
+          "  TRACK 01 AUDIO\r\n"
+          "    INDEX 01 00:00:00\r\n"
+          "  TRACK 02 AUDIO\r\n"
+          "    INDEX 00 00:06:00\r\n"
+          "    INDEX 01 00:05:00\r\n", f);
+    fclose(f);
+    CHECK_EQ(fa_disc_open(cue, NULL, &d), FA_OK);
+    if (d) {
+        CHECK_EQ(fa_disc_get_pregap(d, 2, &n), FA_OK);
+        CHECK_EQ(n, 0);
+        fa_disc_close(d);
+    }
+    remove(cue);
+}
+
 static void test_image_text(void)
 {
     fa_disc* d = NULL;
@@ -1739,6 +1764,7 @@ int main(void)
     if (!write_image()) { fprintf(stderr, "cannot write the test image\n"); return 1; }
     RUN(test_image_toc);
     RUN(test_image_pregap);
+    RUN(test_image_pregap_backwards);
     RUN(test_image_text);
     RUN(test_image_stream);
     RUN(test_image_offset);
