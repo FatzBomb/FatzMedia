@@ -10,7 +10,7 @@ FatzBomb.MediaControl plays media through two native libraries: BASS for audio a
 | BASS and BASS_FX | Audio output and every audio feature | No. Without the core libraries the player starts with no audio (see [Running without BASS](#running-without-bass)). |
 | BASS add-ons | Extra audio formats, MIDI, audio CD | No. Each one adds the formats it handles. |
 | A MIDI soundfont | MIDI and KAR playback | Only for MIDI. |
-| SkiaSharp's native library | Plain subtitle text with the Software and Vulkan renderers | Ships automatically with the packages; nothing to download or configure. |
+| SkiaSharp's native library | Subtitle and lyric text with the Software and Vulkan renderers | Comes with the packages; nothing to download. |
 
 ### Windows (x64)
 
@@ -35,7 +35,7 @@ Put all FFmpeg libraries in one directory. The engine preloads them in dependenc
 
 ### SkiaSharp
 
-The Software and Vulkan renderers draw plain subtitle text with SkiaSharp (through `FatzBomb.MediaControl.Rendering.Text`). SkiaSharp is not optional and needs no setup: unlike BASS and FFmpeg, SkiaSharp and its native library arrive automatically with the NuGet packages. `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that folder when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
+The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzBomb.MediaControl.Rendering.Text`). Unlike BASS and FFmpeg it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
 
 ### What the optional pieces change
 

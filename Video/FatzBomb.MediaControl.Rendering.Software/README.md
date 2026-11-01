@@ -7,10 +7,9 @@ an in-memory premultiplied BGRA8 frame. It supports clear modes, software BGRA
 backgrounds, deterministic nearest-neighbor stretch modes, wash colors, CDG overlays,
 and pre-rasterized subtitles.
 
-`SoftwarePresentationCoordinatorFactory` rasterizes plain text subtitles
-with `SkiaSubtitleRasterizer` from `FatzBomb.MediaControl.Rendering.Text` (SkiaSharp),
-styled by the configuration's `SubtitleStyle`. MIDI/KAR karaoke lyrics are not drawn by this
-renderer; FatzAudio's lyric surface will provide them (037A).
+`SoftwarePresentationCoordinatorFactory` rasterizes text subtitles and MIDI/KAR karaoke
+lyrics with `SkiaSubtitleRasterizer` from `FatzBomb.MediaControl.Rendering.Text` (SkiaSharp),
+styled by the configuration's `SubtitleStyle` and `KaraokeStyle`.
 
 The package also supplies `SoftwarePresentationCoordinatorFactory` for explicit host
 selection through the same renderer seam as Direct3D11. Its backend accepts

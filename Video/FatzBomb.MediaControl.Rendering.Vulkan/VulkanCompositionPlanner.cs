@@ -65,7 +65,7 @@ internal readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placem
 internal readonly record struct VulkanCdgLayer(CdgRenderSnapshot Snapshot, VulkanOverlayQuad Quad);
 
 /// <summary>
-/// Rasterized subtitle text (premultiplied BGRA rows) and where it lands on the output.
+/// Rasterized subtitle or karaoke text (premultiplied BGRA rows) and where it lands on the output.
 /// <see cref="Revision"/> is the frame's subtitle revision (Core bumps it for every new raster);
 /// zero or less is unknown, and always uploads.
 /// </summary>

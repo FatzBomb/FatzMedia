@@ -5,7 +5,7 @@
 - `FatzBomb.MediaControl`: OS- and UI-agnostic Core media-control engine (`net10.0`).
 - `FatzBomb.MediaControl.Rendering.Direct3D11`: Direct3D 11 renderer backend and subtitle rasterizer.
 - `FatzBomb.MediaControl.Rendering.Software`: portable deterministic software renderer — in-memory premultiplied BGRA8 composition, no GPU or window (`net10.0`, references Core and Rendering.Text).
-- `FatzBomb.MediaControl.Rendering.Text`: SkiaSharp plain-subtitle rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one; karaoke lyrics are not drawn, they move to FatzAudio's lyric surface in 037A) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
+- `FatzBomb.MediaControl.Rendering.Text`: SkiaSharp subtitle and karaoke rasterizer (`SkiaSubtitleRasterizer`, a port of the Direct3D11 DirectWrite one) used by the Software and Vulkan renderers (`net10.0`, references Core only; SkiaSharp 3.119.4, matching Avalonia 12.1.4).
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
@@ -64,7 +64,7 @@ package (`net10.0`) that references Core and `FatzBomb.MediaControl.Rendering.Te
 Hosts opt in by injecting `SoftwarePresentationCoordinatorFactory`, which supplies
 Core's `MediaPresentationCoordinator` with the internal `SoftwareRendererBackend`, a
 `SkiaSubtitleRasterizer` (`FatzBomb.MediaControl.Rendering.Text`, also used by Vulkan) styled by
-the configuration's `SubtitleStyle` (plain subtitles only; karaoke lyrics come with 037A), and
+the configuration's `SubtitleStyle` and `KaraokeStyle`, and
 `SystemPrecisionWaiterFactory`. No Core, Windows, or WPF selection logic changes.
 
 **Output contract** — `SoftwareCompositionRenderer.Render(MediaCompositionFrame, width,
@@ -989,7 +989,7 @@ systems. See `roadmap/active/026B_ACTIVE_CrossPlatformPlatformServices.md`.
 `VulkanPresentationCoordinatorFactory` beside the software and Direct3D11 factories. Slice
 1 renders to a primary managed frame-sink surface: GPU clear, nearest-filter background
 blit using the software renderer's placement rules, and readback. Transform and
-window-swapchain frames are rejected with a diagnostic until later slices. Subtitle
+window-swapchain frames are rejected with a diagnostic until later slices. Subtitle and karaoke
 rasters (`SkiaSubtitleRasterizer`) are drawn as a premultiplied overlay by `subtitle.frag`, placed
 as the software renderer places them, and uploaded only when the subtitle revision changes. A lavapipe
 conformance suite compares output with `SoftwareCompositionRenderer`. Since Stage 045A slice 2

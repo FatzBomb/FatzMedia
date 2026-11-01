@@ -12,10 +12,14 @@ namespace FatzBomb.MediaControl.Rendering.Text;
 /// </summary>
 internal sealed class SkiaTextLayout : IDisposable
 {
+    private readonly string _text;
+    private readonly float[] _advances;
     private readonly Line[] _lines;
 
-    private SkiaTextLayout(Line[] lines, float width, float height)
+    private SkiaTextLayout(string text, float[] advances, Line[] lines, float width, float height)
     {
+        _text = text;
+        _advances = advances;
         _lines = lines;
         Width = width;
         Height = height;
@@ -26,6 +30,8 @@ internal sealed class SkiaTextLayout : IDisposable
 
     /// <summary>Height of all lines.</summary>
     public float Height { get; }
+
+    public int LineCount => _lines.Length;
 
     public static SkiaTextLayout Create(string text, SkiaFontFace face, float size, float maxWidth, bool center)
     {
@@ -109,7 +115,7 @@ internal sealed class SkiaTextLayout : IDisposable
             for (var l = 0; l < lines.Length; l++)
                 lines[l] = lines[l] with { Left = center ? (boxWidth - lines[l].Width) / 2 : 0 };
 
-            return new SkiaTextLayout(lines, width, lines.Length * lineHeight);
+            return new SkiaTextLayout(text, advances, lines, width, lines.Length * lineHeight);
         }
         finally
         {
@@ -126,6 +132,17 @@ internal sealed class SkiaTextLayout : IDisposable
             foreach (Run run in line.Runs)
                 canvas.DrawText(run.Blob, x + line.Left + run.X, y + line.Baseline, paint);
         }
+    }
+
+    /// <summary>
+    /// For a single-line layout, the width of <c>text[..length]</c> without its trailing
+    /// whitespace: what DirectWrite's hit test from the first character's leading edge to the
+    /// last kept character's trailing edge returns.
+    /// </summary>
+    public float MeasurePrefixWidth(int length)
+    {
+        var end = TrimEnd(_text, 0, Math.Min(length, _text.Length));
+        return end == 0 ? 0 : Sum(_advances, 0, end);
     }
 
     public void Dispose()

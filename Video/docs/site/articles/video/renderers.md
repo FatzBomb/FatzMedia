@@ -11,13 +11,12 @@ A renderer is the component that draws each composed frame (video, images, CD+G 
 | Status | Full | Preview | Full, CPU only |
 | Draws into | Native window swap chains, managed frame sinks, shared GPU images | Managed frame sinks, shared GPU images (never native windows) | Managed frame sinks |
 | Hardware video decoding | D3D11VA | Vulkan Video, when the GPU has a decode queue | None (software decoding) |
-| Plain subtitles | Yes (DirectWrite) | Yes (SkiaSharp) | Yes (SkiaSharp) |
-| MIDI/KAR karaoke lyrics | Yes (DirectWrite) | Not yet (FatzAudio) | Not yet (FatzAudio) |
+| Text subtitles and MIDI/KAR lyrics | Yes (DirectWrite) | Yes (SkiaSharp) | Yes (SkiaSharp) |
 | Color transform (`BaseVisualTransform`) | Yes | No, the frame is not drawn | Yes |
 | HDR tone mapping | GPU for hardware-decoded frames, CPU otherwise | GPU for Vulkan Video frames, CPU otherwise | CPU |
 | HDR output on an HDR display | Optional | No | No |
 
-Plain subtitles are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, a port of the DirectWrite one with the same layout and style. MIDI/KAR karaoke lyrics are drawn only by Direct3D11 for now; FatzAudio integration will bring them to every renderer. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
+Text subtitles and lyrics are rasterized by a renderer-specific component. Direct3D11 uses DirectWrite. The Software and Vulkan renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, a port of the DirectWrite one with the same layout, styles, karaoke wipe, countdown and title cards. Text is placed by glyph advances without shaping, so scripts that need ligatures or reordering (Arabic, Indic) look better with Direct3D11, and on a machine without the configured font family the system's default font is used.
 
 > [!NOTE]
 > With the Vulkan renderer, a frame that carries a non-identity <xref:FatzBomb.MediaControl.BaseVisualTransform> is refused. The player raises one warning in the `Vulkan` category (`Vulkan preview slice cannot draw this frame yet (...)`) and keeps the last picture.

@@ -46,9 +46,10 @@ any player code. See [Karaoke surface](../lightweight-surfaces/karaoke-surface.m
 ## Things to know before you start
 
 > [!NOTE]
-> Only the Direct3D11 renderer (through DirectWrite) draws MIDI/KAR lyrics, countdown arrows and
-> title cards for now. The Software and Vulkan renderers, and so Linux players, do not draw them
-> yet; FatzAudio integration will bring them to every renderer.
+> Every renderer draws MIDI/KAR lyrics, countdown arrows and title cards. Direct3D11 uses
+> DirectWrite; the Software and Vulkan renderers (and so every Linux player) use SkiaSharp,
+> which follows the same layout, colours and timing. Fonts come from the system, so on a machine
+> without the configured family (Segoe UI by default) the default font is used.
 
 - **Audio.** Audio is played through BASS, with FFmpeg as a fallback for formats a BASS plug-in
   would otherwise handle. MIDI and KAR need the BASS MIDI plug-in (`bassmidi.dll`, or
