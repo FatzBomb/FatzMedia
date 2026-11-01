@@ -33,8 +33,10 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     private readonly Dictionary<FaceKey, SkiaFontFace> _faces = [];
     private readonly Dictionary<LayoutKey, CacheEntry> _layouts = [];
     private readonly List<SkiaTextLayout> _lineLayouts = [];
-    private readonly SKPaint _paint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
-    private readonly SKPaint _layerPaint = new();
+    // Created by the first frame, so a missing native SkiaSharp library fails a frame (which Core
+    // reports as a Subtitle warning) instead of the renderer factory.
+    private SKPaint? _paint;
+    private SKPaint? _layerPaint;
     private long _generation;
     private SKBitmap? _bitmap;
     private SKCanvas? _canvas;
@@ -362,7 +364,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
         var layerBottom = Math.Min(bounds.Height, y - bounds.Top + lineHeight + descenderPadding + padding);
 
         // Fade the composed line once so overlapping text, outline, and wipe passes retain their original colors.
-        _layerPaint.Color = new SKColor(0, 0, 0, ToByte(opacity));
+        _layerPaint!.Color = new SKColor(0, 0, 0, ToByte(opacity));
         _ = canvas.SaveLayer(new SKRect(layerLeft, layerTop, layerRight, layerBottom), _layerPaint);
         try
         {
@@ -644,7 +646,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
     private void DrawSmokedGlassPanel(SKCanvas canvas, SKRect rect, float radius, float opacity, uint accentArgb)
     {
-        SKPaint paint = _paint;
+        SKPaint paint = _paint!;
         paint.Color = ToColor(0f, 0f, 0f, 0.42f * opacity);
         canvas.DrawRoundRect(SKRect.Create(rect.Left + 8, rect.Top + 10, rect.Width, rect.Height), radius, radius, paint);
         paint.Color = ToColor(0.055f, 0.075f, 0.11f, 0.88f * opacity);
@@ -661,7 +663,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
     private void DrawSmokedGlassBand(SKCanvas canvas, SKRect rect, float opacity, bool borderAtTop)
     {
-        SKPaint paint = _paint;
+        SKPaint paint = _paint!;
         paint.Color = ToColor(0.025f, 0.04f, 0.065f, 0.78f * opacity);
         canvas.DrawRect(rect, paint);
         paint.Color = ToColor(0.12f, 0.2f, 0.27f, 0.16f * opacity);
@@ -744,7 +746,7 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
 
     private void DrawLayout(SKCanvas canvas, SkiaTextLayout layout, float x, float y, SKColor color)
     {
-        _paint.Color = color;
+        _paint!.Color = color;
         layout.Draw(canvas, x, y, _paint);
     }
 
@@ -864,6 +866,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _generation++;
+        _paint ??= new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+        _layerPaint ??= new SKPaint();
     }
 
     // Disposes the layouts this frame did not use.
@@ -962,8 +966,8 @@ public sealed class SkiaSubtitleRasterizer : ISubtitleRasterizer
             _faces.Clear();
             _lineLayouts.Clear();
             ReleaseTarget();
-            _paint.Dispose();
-            _layerPaint.Dispose();
+            _paint?.Dispose();
+            _layerPaint?.Dispose();
         }
     }
 
