@@ -5,8 +5,8 @@ To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-01. Based on reading and mea
 numbers, is in `2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 
 Short version: the surfaces are in very good shape. Sync, seeking and tempo handling are as good
-as ours or better, and the CD+G fixes, Shift-JIS and effects are real gains for us. Seven
-requests, in priority order:
+as ours or better, and the CD+G fixes, Shift-JIS and effects are real gains for us. Eight
+requests, in priority order (8 was found by our slice-0 spike and blocks our karaoke slice):
 
 1. **`update_into` never blocks the caller.** Today a first frame, layout change, seek, loop wrap
    or late frame redraws in full on the caller (`cdg.c:2595-2610`), and the call can wait on
@@ -32,3 +32,9 @@ requests, in priority order:
 7. **Document the timing rules:** that CD+G packs are counted with ceil at a time
    (`cdg.c:2279-2286`; we use floor), and the offset sign (time - offset, `cdg.c:2345-2351`; ours
    is the opposite). A floor option would let our golden tests compare frame for frame.
+8. **Render-ahead must never starve audio decoding, and underruns should be visible.** Measured
+   in our slice-0 spike (`updates/037A_0/StageUpdate.md`): two streams playing with 4K surfaces at
+   maximum effects and render-ahead on, the stream clocks fell 170-580 ms behind wall time within
+   30 s (audible dropouts); with render-ahead off they held within 14 ms. Please give decoding
+   strict priority over render-ahead jobs (or cap render-ahead's share of the workers), and expose
+   the per-stream underrun count you already keep, so hosts can detect it and back off.
