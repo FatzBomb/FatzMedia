@@ -16,28 +16,23 @@ internal sealed class BassMidiEventReader : IMidiEventReader
 
     private BassMidiEventReader(int handle) => _handle = handle;
 
-    /// <summary>Gets the BASS channel this reader reads.</summary>
-    public int Handle => _handle;
-
     /// <summary>Returns a reader over <paramref name="handle"/>, or <see langword="null"/> for 0 (no channel).</summary>
     public static BassMidiEventReader? ForHandle(int handle) => handle == 0 ? null : new BassMidiEventReader(handle);
 
     public IReadOnlyList<MidiMark> GetMarks(MidiMarkKind kind)
     {
-        MidiMarker[] markers;
         try
         {
-            markers = BassMidi.StreamGetMarks(_handle, -1, ToBass(kind)) ?? [];
+            MidiMarker[] markers = BassMidi.StreamGetMarks(_handle, -1, ToBass(kind)) ?? [];
+            var marks = new MidiMark[markers.Length];
+            for (var i = 0; i < markers.Length; i++)
+                marks[i] = new MidiMark(markers[i].Position, markers[i].Track, markers[i].Text);
+            return marks;
         }
         catch
         {
             return [];
         }
-
-        var marks = new MidiMark[markers.Length];
-        for (var i = 0; i < markers.Length; i++)
-            marks[i] = new MidiMark(markers[i].Position, markers[i].Track, markers[i].Text);
-        return marks;
     }
 
     public IReadOnlyList<MidiTempoEvent> GetTempoEvents()

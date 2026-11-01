@@ -28,6 +28,12 @@ internal sealed class StandardMidiFileReader : IMidiEventReader
     private readonly double _secondsPerTick;
     private readonly long _endTick;
 
+    // Tempo map for tick conversion, built once: the start tick, the seconds elapsed at it and the
+    // tempo from it on, of each applied (non-zero) tempo change.
+    private readonly long[] _tempoTicks;
+    private readonly double[] _tempoSeconds;
+    private readonly int[] _tempoMicroseconds;
+
     private StandardMidiFileReader(
         Dictionary<MidiMarkKind, MidiMark[]> marks,
         MidiTempoEvent[] tempos,
@@ -40,6 +46,32 @@ internal sealed class StandardMidiFileReader : IMidiEventReader
         _ticksPerQuarterNote = ticksPerQuarterNote;
         _secondsPerTick = secondsPerTick;
         _endTick = endTick;
+
+        var ticks = new List<long>(tempos.Length);
+        var seconds = new List<double>(tempos.Length);
+        var microseconds = new List<int>(tempos.Length);
+        if (ticksPerQuarterNote != 0)
+        {
+            double elapsed = 0;
+            long tick = 0;
+            var microsecondsPerQuarterNote = DefaultMicrosecondsPerQuarterNote;
+            foreach (MidiTempoEvent tempo in tempos)
+            {
+                if (tempo.MicrosecondsPerQuarterNote <= 0)
+                    continue;
+
+                elapsed += TicksToSeconds(tempo.Position - tick, microsecondsPerQuarterNote);
+                tick = tempo.Position;
+                microsecondsPerQuarterNote = tempo.MicrosecondsPerQuarterNote;
+                ticks.Add(tick);
+                seconds.Add(elapsed);
+                microseconds.Add(microsecondsPerQuarterNote);
+            }
+        }
+
+        _tempoTicks = [.. ticks];
+        _tempoSeconds = [.. seconds];
+        _tempoMicroseconds = [.. microseconds];
     }
 
     /// <summary>Reads the file at <paramref name="path"/>; <see langword="null"/> when it is missing, too large or not SMF.</summary>
@@ -154,23 +186,15 @@ internal sealed class StandardMidiFileReader : IMidiEventReader
         if (_ticksPerQuarterNote == 0)
             return position * _secondsPerTick;
 
-        double seconds = 0;
-        long tick = 0;
-        var microsecondsPerQuarterNote = DefaultMicrosecondsPerQuarterNote;
-        foreach (MidiTempoEvent tempo in _tempos)
-        {
-            if (tempo.Position >= position)
-                break;
+        // The last tempo change before position (the last of several at one tick) applies.
+        var index = Array.BinarySearch(_tempoTicks, position - 1);
+        index = index >= 0 ? index : ~index - 1;
+        while (index >= 0 && index + 1 < _tempoTicks.Length && _tempoTicks[index + 1] < position)
+            index++;
 
-            if (tempo.MicrosecondsPerQuarterNote <= 0)
-                continue;
-
-            seconds += TicksToSeconds(tempo.Position - tick, microsecondsPerQuarterNote);
-            tick = tempo.Position;
-            microsecondsPerQuarterNote = tempo.MicrosecondsPerQuarterNote;
-        }
-
-        return seconds + TicksToSeconds(position - tick, microsecondsPerQuarterNote);
+        return index < 0
+            ? TicksToSeconds(position, DefaultMicrosecondsPerQuarterNote)
+            : _tempoSeconds[index] + TicksToSeconds(position - _tempoTicks[index], _tempoMicroseconds[index]);
     }
 
     private double TicksToSeconds(long ticks, int microsecondsPerQuarterNote) =>
