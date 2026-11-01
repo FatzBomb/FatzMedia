@@ -6,9 +6,11 @@ tracks, and lets the user shift the timing. MIDI/KAR lyrics are shown through th
 mechanism. This article describes the formats, how tracks are found, how to select them and how
 to style and time them.
 
-> [!IMPORTANT]
-> Subtitle text is drawn by the Direct3D 11 renderer only. The Software and Vulkan renderers have
-> no text renderer: tracks load and can be selected, but nothing is drawn.
+> [!NOTE]
+> Every renderer draws subtitle text. Direct3D11 uses DirectWrite; the Software and Vulkan
+> renderers use the SkiaSharp rasterizer in `FatzBomb.MediaControl.Rendering.Text`, which follows
+> the same layout and style rules. Fonts come from the system: when the configured family is not
+> installed (Segoe UI on Linux, for example), the platform's default font is used.
 
 ## Supported formats
 

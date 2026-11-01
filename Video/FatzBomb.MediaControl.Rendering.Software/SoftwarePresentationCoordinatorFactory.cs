@@ -1,8 +1,8 @@
 using FatzBomb.MediaControl.Controllers;
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Core.Subtitle;
 using FatzBomb.MediaControl.Core.Threading;
+using FatzBomb.MediaControl.Rendering.Text;
 
 namespace FatzBomb.MediaControl.Rendering.Software;
 
@@ -35,11 +35,15 @@ public sealed class SoftwarePresentationCoordinatorFactory : IMediaPresentationC
             RequiresFrameSinkSurface = true
         };
 
+    /// <summary>
+    /// Creates the coordinator. Subtitles and karaoke lyrics are drawn by
+    /// <see cref="SkiaSubtitleRasterizer"/> with the configuration's subtitle and karaoke styles.
+    /// </summary>
     public IMediaPresentationCoordinator Create(
         IMediaEngine mediaEngine,
         MediaPlayerConfiguration configuration) => new MediaPresentationCoordinator(
             new SoftwareRendererBackend(),
-            NullSubtitleRasterizer.Instance,
+            new SkiaSubtitleRasterizer(configuration.SubtitleStyle, configuration.KaraokeStyle),
             mediaEngine,
             configuration,
             _precisionWaiterFactory);

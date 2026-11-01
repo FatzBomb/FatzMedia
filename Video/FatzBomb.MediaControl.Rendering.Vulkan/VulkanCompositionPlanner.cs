@@ -10,7 +10,7 @@ internal enum VulkanFrameSupport
 {
     Supported,
     NativeOrRetainedBackground,
-    Subtitles,
+    InvalidSubtitle,
     BaseVisualTransform,
     InvalidCdgSnapshot,
     InvalidBackground,
@@ -64,6 +64,19 @@ internal readonly record struct VulkanOverlayQuad(NearestSampledPlacement Placem
 /// <summary>CDG overlay snapshot and where it lands on the output.</summary>
 internal readonly record struct VulkanCdgLayer(CdgRenderSnapshot Snapshot, VulkanOverlayQuad Quad);
 
+/// <summary>
+/// Rasterized subtitle or karaoke text (premultiplied BGRA rows) and where it lands on the output.
+/// <see cref="Revision"/> is the frame's subtitle revision (Core bumps it for every new raster);
+/// zero or less is unknown, and always uploads.
+/// </summary>
+internal readonly record struct VulkanSubtitleLayer(
+    ReadOnlyMemory<byte> Bgra,
+    int Width,
+    int Height,
+    int Stride,
+    long Revision,
+    VulkanOverlayQuad Quad);
+
 /// <summary>Everything the compositor draws for one frame, in software-renderer order.</summary>
 internal readonly record struct VulkanFramePlan(
     int OutputWidth,
@@ -71,10 +84,11 @@ internal readonly record struct VulkanFramePlan(
     (byte B, byte G, byte R, byte A) ClearBgraPremultiplied,
     VulkanBackgroundLayer? Background,
     uint? WashArgb,
-    VulkanCdgLayer? Cdg)
+    VulkanCdgLayer? Cdg,
+    VulkanSubtitleLayer? Subtitle = null)
 {
     /// <summary>Gets whether the frame needs the graphics pipeline after the clear and blit.</summary>
-    public bool HasDraws => WashArgb is not null || Cdg is not null;
+    public bool HasDraws => WashArgb is not null || Cdg is not null || Subtitle is not null;
 }
 
 /// <summary>
@@ -91,8 +105,16 @@ internal static class VulkanCompositionPlanner
         // (Stage 045A slice 2); another API's frames are not.
         if (frame.HasNativeBackground && frame.BackgroundNativeResource!.BackendId != MediaGraphicsBackendId.Vulkan)
             return VulkanFrameSupport.NativeOrRetainedBackground;
-        if (frame.HasSubtitleOverlay)
-            return VulkanFrameSupport.Subtitles;
+        // The software renderer refuses the same subtitle buffer (the upload would read past it).
+        if (!frame.SubtitleBgra.IsEmpty
+            && (frame.SubtitleWidth <= 0
+                || frame.SubtitleHeight <= 0
+                || frame.SubtitleStride < (long)frame.SubtitleWidth * 4
+                || frame.SubtitleBgra.Length < (long)frame.SubtitleStride * frame.SubtitleHeight))
+        {
+            return VulkanFrameSupport.InvalidSubtitle;
+        }
+
         if (!frame.BaseVisualTransform.IsIdentity)
             return VulkanFrameSupport.BaseVisualTransform;
         // The software renderer refuses the whole frame for the same background buffer (ENG-039:
@@ -147,13 +169,41 @@ internal static class VulkanCompositionPlanner
             cdg = new VulkanCdgLayer(snapshot, quad);
         }
 
+        // Placed as the software renderer places it: on its canvas, or fitted when it has none.
+        VulkanSubtitleLayer? subtitle = null;
+        if (frame.HasSubtitleOverlay)
+        {
+            NearestSampledPlacement placement = frame.SubtitleCanvasWidth > 0 && frame.SubtitleCanvasHeight > 0
+                ? NearestSampledPlacement.CreateCanvasPlacement(
+                    frame.SubtitleWidth,
+                    frame.SubtitleHeight,
+                    frame.SubtitleCanvasLeft,
+                    frame.SubtitleCanvasTop,
+                    frame.SubtitleCanvasWidth,
+                    frame.SubtitleCanvasHeight,
+                    outputWidth,
+                    outputHeight)
+                : NearestSampledPlacement.Create(frame.SubtitleWidth, frame.SubtitleHeight, outputWidth, outputHeight, MediaCompositionStretchMode.UniformFit);
+            if (!placement.IsEmpty)
+            {
+                subtitle = new VulkanSubtitleLayer(
+                    frame.SubtitleBgra,
+                    frame.SubtitleWidth,
+                    frame.SubtitleHeight,
+                    frame.SubtitleStride,
+                    frame.SubtitleRevision,
+                    new VulkanOverlayQuad(placement));
+            }
+        }
+
         return new VulkanFramePlan(
             outputWidth,
             outputHeight,
             ResolveClear(frame),
             background,
             frame.HasWash ? frame.WashArgb : null,
-            cdg);
+            cdg,
+            subtitle);
     }
 
     /// <summary>Same clear policy as the software renderer, returned premultiplied.</summary>

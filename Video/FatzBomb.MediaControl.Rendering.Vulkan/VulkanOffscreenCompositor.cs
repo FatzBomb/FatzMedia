@@ -21,7 +21,7 @@ internal readonly record struct VulkanBlit(PixelRect Source, PixelRect Destinati
 
 /// <summary>
 /// Headless Vulkan device that clears an offscreen BGRA8 target, blits one uploaded BGRA
-/// layer into it with nearest filtering, draws the wash and CDG overlay with SPIR-V pipelines
+/// layer into it with nearest filtering, draws the wash, CDG overlay and subtitle raster with SPIR-V pipelines
 /// (<see cref="VulkanOverlayPipelines"/>), and reads the result back. Swapchain presentation
 /// is a later slice.
 /// </summary>
@@ -30,7 +30,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private const Format TargetFormat = Format.B8G8R8A8Unorm;
 
     // Every use of TargetFormat: clear/blit/readback, the render-pass attachment with blending,
-    // and the sampled CDG image.
+    // and the sampled CDG and subtitle images.
     private const FormatFeatureFlags RequiredFormatFeatures =
         FormatFeatureFlags.BlitSrcBit | FormatFeatureFlags.BlitDstBit
         | FormatFeatureFlags.TransferSrcBit | FormatFeatureFlags.TransferDstBit
@@ -70,6 +70,13 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private BufferResource? _cdgUploadBuffer;
     private CdgRenderSnapshot? _cdgUploadedSnapshot;
     private VkImage _cdgUploadedImage;
+    // The subtitle raster held by _subtitleImage: uploaded only when the frame's subtitle revision
+    // or pixel buffer changes (a steady cue is not re-uploaded per frame or per target).
+    private ImageResource? _subtitleImage;
+    private BufferResource? _subtitleUploadBuffer;
+    private long _subtitleUploadedRevision = -1;
+    private ReadOnlyMemory<byte> _subtitleUploadedPixels;
+    private VkImage _subtitleUploadedImage;
     private BufferResource? _readbackBuffer;
     // The background held by _sourceImage (ENG-026): uploaded only when the frame's revision or
     // pixel buffer changes, not once per target per frame. Revision -1 means "not uploaded".
@@ -89,6 +96,9 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
 
     /// <summary>Gets how many times a CDG snapshot was expanded and uploaded (tests).</summary>
     internal int CdgUploadCount { get; private set; }
+
+    /// <summary>Gets how many times a subtitle raster was uploaded (tests).</summary>
+    internal int SubtitleUploadCount { get; private set; }
 
     /// <summary>Gets how many times a background was uploaded (tests).</summary>
     internal int BackgroundUploadCount { get; private set; }
@@ -137,8 +147,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     }
 
     /// <summary>
-    /// Draws <paramref name="plan"/> (clear, optional background blit, then wash and CDG
-    /// overlay draws) and returns the target as tightly packed premultiplied BGRA8 rows. The
+    /// Draws <paramref name="plan"/> (clear, optional background blit, then wash, CDG overlay
+    /// and subtitle draws) and returns the target as tightly packed premultiplied BGRA8 rows. The
     /// returned span is backed by a buffer the compositor reuses; it is valid until the next
     /// <see cref="Render"/> or <see cref="Dispose"/>, so callers copy it before rendering again.
     /// </summary>
@@ -213,6 +223,24 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 VulkanCompositionPlanner.ExpandCdg(cdgPlan.Snapshot, new Span<byte>((void*)cdgUpload.Mapped, (int)length));
             }
 
+            var uploadSubtitle = false;
+            if (plan.Subtitle is { } subtitle)
+            {
+                // As for the CDG texture: a re-created image never counts as holding the last upload.
+                if (_subtitleImage is not { } current || current.Width != (uint)subtitle.Width || current.Height != (uint)subtitle.Height)
+                    _subtitleUploadedRevision = -1;
+
+                ImageResource subtitleTexture = EnsureImage(ref _subtitleImage, (uint)subtitle.Width, (uint)subtitle.Height, ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit);
+                uploadSubtitle = !HoldsSubtitle(subtitle, subtitleTexture.Image);
+                if (uploadSubtitle)
+                {
+                    // Forgotten until this frame's submission completes, so a failure re-uploads.
+                    _subtitleUploadedRevision = -1;
+                    BufferResource upload = EnsureBuffer(ref _subtitleUploadBuffer, (ulong)subtitle.Width * (ulong)subtitle.Height * 4, BufferUsageFlags.TransferSrcBit, UploadMemoryPreferences);
+                    Upload(upload, subtitle.Bgra.Span, subtitle.Width, subtitle.Height, subtitle.Stride);
+                }
+            }
+
             VulkanResult.Check(_vk.ResetCommandBuffer(_commandBuffer, 0), "vkResetCommandBuffer");
             var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
             VulkanResult.Check(_vk.BeginCommandBuffer(_commandBuffer, &begin), "vkBeginCommandBuffer");
@@ -281,6 +309,28 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     cdgView = cdgImage.View;
                 }
 
+                ImageView subtitleView = default;
+                if (plan.Subtitle is { } subtitleLayer)
+                {
+                    ImageResource subtitleImage = _subtitleImage!.Value;
+                    // A reused texture is still in ShaderReadOnlyOptimal from the frame that uploaded it.
+                    if (uploadSubtitle)
+                    {
+                        Transition(subtitleImage.Image, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit);
+                        CopyBufferToImage(_subtitleUploadBuffer!.Value, subtitleImage.Image, subtitleLayer.Width, subtitleLayer.Height);
+                        Barrier(
+                            subtitleImage.Image,
+                            ImageLayout.TransferDstOptimal,
+                            ImageLayout.ShaderReadOnlyOptimal,
+                            AccessFlags.TransferWriteBit,
+                            AccessFlags.ShaderReadBit,
+                            PipelineStageFlags.TransferBit,
+                            PipelineStageFlags.FragmentShaderBit);
+                    }
+
+                    subtitleView = subtitleImage.View;
+                }
+
                 // Clear/blit writes -> render-pass load and blending, then draws -> readback.
                 Barrier(
                     target,
@@ -290,7 +340,7 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                     AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
                     PipelineStageFlags.TransferBit,
                     PipelineStageFlags.ColorAttachmentOutputBit);
-                _overlay!.Record(_commandBuffer, renderTarget.Framebuffer, plan, cdgView);
+                _overlay!.Record(_commandBuffer, renderTarget.Framebuffer, plan, cdgView, subtitleView);
                 Barrier(
                     target,
                     ImageLayout.ColorAttachmentOptimal,
@@ -431,6 +481,14 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 CdgUploadCount++;
             }
 
+            if (uploadSubtitle && plan.Subtitle is { } uploadedSubtitle)
+            {
+                _subtitleUploadedRevision = uploadedSubtitle.Revision;
+                _subtitleUploadedPixels = uploadedSubtitle.Bgra;
+                _subtitleUploadedImage = _subtitleImage!.Value.Image;
+                SubtitleUploadCount++;
+            }
+
             if (uploadBackground && plan.Background is { } uploadedBackground)
             {
                 _backgroundUploadedRevision = uploadedBackground.Revision;
@@ -462,6 +520,16 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         && background.Revision == _backgroundUploadedRevision
         && background.Bgra.Equals(_backgroundUploadedPixels)
         && image.Handle == _backgroundUploadedImage.Handle;
+
+    /// <summary>
+    /// Whether <see cref="_subtitleImage"/> already holds <paramref name="subtitle"/>: the same
+    /// known revision and pixel buffer, uploaded into this image.
+    /// </summary>
+    private bool HoldsSubtitle(in VulkanSubtitleLayer subtitle, VkImage image) =>
+        subtitle.Revision > 0
+        && subtitle.Revision == _subtitleUploadedRevision
+        && subtitle.Bgra.Equals(_subtitleUploadedPixels)
+        && image.Handle == _subtitleUploadedImage.Handle;
 
     /// <summary>
     /// Copies a finished readback into <paramref name="destination"/>. Host-cached memory that is
@@ -521,6 +589,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 Destroy(ref _sourceImage);
                 Destroy(ref _cdgImage);
                 _cdgUploadedSnapshot = null;
+                Destroy(ref _subtitleImage);
+                Destroy(ref _subtitleUploadBuffer);
+                _subtitleUploadedRevision = -1;
+                _subtitleUploadedPixels = default;
                 Destroy(ref _uploadBuffer);
                 Destroy(ref _cdgUploadBuffer);
                 Destroy(ref _readbackBuffer);

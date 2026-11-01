@@ -9,9 +9,13 @@ if (VulkanPresentationCoordinatorFactory.IsSupported(out var reason))
 
 The backend renders into a managed BGRA frame-sink surface: GPU clear, background upload and
 nearest blit (same placement rules as the software renderer), then a SPIR-V render pass that
-blends the wash and the CDG overlay (palette-expanded on the CPU, nearest-sampled with the
-software renderer's UniformFit mapping), and readback. Frames with subtitles or base-visual
-transforms are rejected with a diagnostic. Window swapchains are a later slice.
+blends the wash, the CDG overlay (palette-expanded on the CPU, nearest-sampled with the
+software renderer's UniformFit mapping) and the subtitle raster, and readback. Text subtitles and
+MIDI/KAR karaoke lyrics are rasterized by `SkiaSubtitleRasterizer` from
+`FatzBomb.MediaControl.Rendering.Text` (SkiaSharp), uploaded when they change, and drawn by
+`Shaders/subtitle.frag` with the software renderer's canvas placement and premultiplied blend.
+Frames with base-visual transforms are rejected with a diagnostic. Window swapchains are a later
+slice.
 
 ## GPU decoding (Stage 045A slice 2)
 

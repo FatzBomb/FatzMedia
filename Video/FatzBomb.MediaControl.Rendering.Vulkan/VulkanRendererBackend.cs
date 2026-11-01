@@ -19,9 +19,10 @@ internal readonly record struct VulkanExportSupport(bool MemoryFd, bool Semaphor
 /// either kind; every composition is rendered once per target at the target's size.
 /// Stage 045A slice 2: FFmpeg decodes on the renderer's device (Vulkan Video,
 /// <see cref="IMediaRendererVideoDecodeDevice"/>), and decoded frames are converted on the GPU into
-/// the composition's video layer. Window-system swapchains, subtitles and base-visual transforms
-/// are later slices; frames that need them are rejected with a diagnostic instead of being drawn
-/// incorrectly.
+/// the composition's video layer. Subtitle and karaoke rasters (SkiaSharp, from
+/// <c>FatzBomb.MediaControl.Rendering.Text</c>) are drawn as a premultiplied overlay. Window-system
+/// swapchains and base-visual transforms are later slices; frames that need them are rejected with
+/// a diagnostic instead of being drawn incorrectly.
 /// </summary>
 internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> compositorFactory) : IMediaRendererBackend, IMediaRendererVideoDecodeDevice
 {
@@ -559,7 +560,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         DiagnosticRouter.Raise(
             MediaDiagnosticLevel.Warning,
             "Vulkan",
-            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA and Vulkan-decoded backgrounds, wash and CDG overlays are supported.");
+            $"Vulkan preview slice cannot draw this frame yet ({support}); only clear, software BGRA and Vulkan-decoded backgrounds, wash, CDG overlays and subtitles are supported.");
     }
 
     private bool IsCurrentNoLock(Target target) =>
