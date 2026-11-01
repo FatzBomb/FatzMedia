@@ -566,6 +566,7 @@ typedef struct midi_text {
 enum { EV_NOTE_OFF, EV_NOTE_ON, EV_CONTROL, EV_PROGRAM, EV_PITCH, EV_SYSEX, EV_CHANNEL_PRESSURE, EV_KEY_PRESSURE };
 
 #define FA_MIDI_NO_TRACK 0xFFFF   /* sent events: no track volume */
+#define FA_MIDI_TRACK_HELD 128    /* tracks whose held notes are counted (2 KB each) */
 
 typedef struct midi_event {
     fa_frames frame;
@@ -679,6 +680,12 @@ struct fa_midi {
     /* Track volumes (float bits, 1 = normal), one per track. */
     fa_atomic32* track_vol;
     uint32_t ntrack_vol;
+    /* Held notes per track, channel and key (the first FA_MIDI_TRACK_HELD tracks). Playing:
+     * the strikes a silent track (volume 0) left without a voice, so their note-offs end
+     * nothing. Replaying before a seek: every strike still held, so restart_held knows
+     * which tracks hold a key. */
+    uint8_t (*track_held)[16][128];
+    uint32_t ntrack_held;
 
     /* fa_stream_get_midi_value: each channel's controllers, program, bend and pressure as the
      * synth has them after the last block; refreshed for the channels events touched. */
@@ -709,10 +716,25 @@ static void end_notes(struct fa_midi* m, int ch, int key)
 
 static void forget_channel(struct fa_midi* m, int ch)
 {
+    uint32_t t;
     memset(m->depth[ch], 0, sizeof(m->depth[ch]));
     memset(m->pedal_held[ch], 0, sizeof(m->pedal_held[ch]));
     memset(m->merged[ch], 0, sizeof(m->merged[ch]));
     memset(m->sost_latched[ch], 0, sizeof(m->sost_latched[ch]));
+    for (t = 0; t < m->ntrack_held; t++) memset(m->track_held[t][ch], 0, sizeof(m->track_held[t][ch]));
+}
+
+/* The held-note count of (track, channel, key); NULL for a track not counted. */
+static uint8_t* track_held(struct fa_midi* m, unsigned track, int ch, int key)
+{
+    return track < m->ntrack_held ? &m->track_held[track][ch][key] : NULL;
+}
+
+/* Every track's held-note count of (channel, key), back to 0. */
+static void forget_track_held(struct fa_midi* m, int ch, int key)
+{
+    uint32_t t;
+    for (t = 0; t < m->ntrack_held; t++) m->track_held[t][ch][key] = 0;
 }
 
 /* Master volume at `frame` (at or after the last change). Frames past the ramp,
@@ -1000,11 +1022,10 @@ static float track_volume(const struct fa_midi* m, unsigned track)
     return track < m->ntrack_vol ? fa_load_float(&m->track_vol[track]) : 1.0f;
 }
 
-/* Starts a note at the track's volume (dB added to the voices' level). 0 if the track is
- * silent and nothing started. */
-static int track_note_on(struct fa_midi* m, int ch, int play, int vel, unsigned track)
+/* Starts a note at volume `g` (dB added to the voices' level). 0 if it is silent and
+ * nothing started. */
+static int gain_note_on(struct fa_midi* m, int ch, int play, int vel, float g)
 {
-    float g = track_volume(m, track);
     if (!(g > 0.0f)) return 0;
     if (g != 1.0f) tsf_set_note_gain(m->synth, 20.0f * log10f(g));
     tsf_channel_note_on(m->synth, ch, play, (float)vel / 127.0f);
@@ -1022,13 +1043,18 @@ static void apply_event(struct fa_midi* m, const midi_event* e, int silent)
     switch (e->type) {
     case EV_NOTE_ON: {
         int play = key;
+        float g;
         if (silent) {
             /* Held at the target if no note-off comes before it (restart_held). */
             if (m->depth[ch][key] == 0 || m->held_vel[ch][key] < e->value) {
                 m->held_vel[ch][key] = (uint8_t)e->value;
                 m->held_track[ch][key] = e->track;
             }
-            if (m->depth[ch][key] < 255) m->depth[ch][key]++;
+            if (m->depth[ch][key] < 255) {
+                uint8_t* c = track_held(m, e->track, ch, key);
+                m->depth[ch][key]++;
+                if (c && *c < 255) (*c)++;
+            }
             m->pedal_held[ch][key] = 0;
             m->porta_ctrl[ch] = -1;     /* a CC84 before it was for this note */
             return;
@@ -1037,22 +1063,39 @@ static void apply_event(struct fa_midi* m, const midi_event* e, int silent)
         if (!m->drums[ch]) play += m->transpose_now;
         if (play < 0 || play > 127) return;
         if (m->depth[ch][key] == 255) return;   /* every note needs its note-off counted */
+        g = track_volume(m, e->track);
+        if (!(g > 0.0f)) {
+            /* A silent track: no voice. Its note-off is counted apart, so it ends no other
+             * track's note on this key; nor does its strike (the other notes and a
+             * restarted key's merged voice are left as they are). */
+            uint8_t* c = track_held(m, e->track, ch, key);
+            if (c && *c < 255) (*c)++;
+            return;
+        }
         /* The same key again while held on another pitch (the transpose changed):
          * end those first, so no note is left hanging. */
         if (m->depth[ch][key] > 0 && m->sounding[ch][key] != play) end_notes(m, ch, key);
         m->merged[ch][key] = 0;     /* a voice of its own: every note-off ends one again */
-        if (!track_note_on(m, ch, play, e->value, e->track)) return;   /* a silent track: no voice, no count */
+        gain_note_on(m, ch, play, e->value, g);
         m->sounding[ch][key] = (uint8_t)play;
         m->depth[ch][key]++;
         return;
     }
-    case EV_NOTE_OFF:
+    case EV_NOTE_OFF: {
+        uint8_t* c = track_held(m, e->track, ch, key);
+        if (!silent && c && *c) { (*c)--; return; }   /* a silent strike's: it ended nothing */
         if (m->depth[ch][key] == 0) return;
         m->depth[ch][key]--;
+        if (c && *c) (*c)--;
+        /* Replaying, a note-off on another track than its note-on's can leave a count
+         * behind: with nothing held, none is, or that track's next note-off would end
+         * nothing (a hanging note). */
+        if (silent && m->depth[ch][key] == 0) forget_track_held(m, ch, key);
         if (!silent && m->merged[ch][key]) m->merged[ch][key]--;   /* a restarted key: its one voice rings on */
         else if (!silent) tsf_channel_note_off(m->synth, ch, m->sounding[ch][key]);
         else if (m->depth[ch][key] == 0 && (m->pedal[ch] || (m->sost[ch] && m->sost_latched[ch][key]))) m->pedal_held[ch][key] = 1;
         return;
+    }
     case EV_CONTROL:
         if (key == TML_PORTAMENTO_CTRL) {   /* names a key: transposed as the notes are */
             if (silent) m->porta_ctrl[ch] = (int16_t)e->value;   /* restart_held passes it on if unused */
@@ -1319,12 +1362,54 @@ static fa_result midi_read(fa_decoder* dec, float* out, fa_frames frames, fa_fra
     return done > 0 ? FA_OK : FA_ERROR_END_OF_STREAM;
 }
 
+/* A key's held notes, all forgotten (it can't sound). */
+static void forget_key(struct fa_midi* m, int ch, int key)
+{
+    m->depth[ch][key] = 0;
+    m->pedal_held[ch][key] = 0;
+    forget_track_held(m, ch, key);
+}
+
+/* After a seek's replay, of a key held by `depth` strikes: how many are on tracks that
+ * aren't silent now, and the loudest of those tracks' volumes in `*g`. A silent track's
+ * strikes stay counted as silent ones (their note-offs end nothing); a track not counted
+ * (past FA_MIDI_TRACK_HELD) plays at the loudest strike's track's volume. */
+static int held_audible(struct fa_midi* m, int ch, int key, float* g)
+{
+    int n = m->depth[ch][key], counted = 0;
+    uint32_t t;
+    *g = 0.0f;
+    for (t = 0; t < m->ntrack_held; t++) {
+        uint8_t* c = &m->track_held[t][ch][key];
+        float v;
+        if (!*c) continue;
+        counted += *c;
+        v = track_volume(m, t);
+        if (v > 0.0f) {
+            if (v > *g) *g = v;
+            *c = 0;
+        } else {
+            n -= *c;
+        }
+    }
+    if (counted < m->depth[ch][key]) {   /* strikes on tracks not counted */
+        float v = track_volume(m, m->held_track[ch][key]);
+        if (v > *g) *g = v;
+        if (!(v > 0.0f) && m->held_track[ch][key] >= m->ntrack_held) n -= m->depth[ch][key] - counted;
+    }
+    /* Note-offs on other tracks than their note-ons' can leave more counted than held:
+     * a track that isn't silent still holding the key keeps one voice. */
+    if (n <= 0 && *g > 0.0f) n = 1;
+    return n > 0 ? n : 0;
+}
+
 /* After a seek's replay: the notes held at the target start again (from their
  * attack), with the controls the API has set now. A note only the pedal holds is
  * released at once, so the pedal (restored by the replay) keeps it ringing. */
 static void restart_held(struct fa_midi* m)
 {
     int ch, key, pass;
+    float g;
     for (ch = 0; ch < 16; ch++) {
         int porta, from = m->porta_ctrl[ch] >= 0 ? transposed_key(m, ch, m->porta_ctrl[ch]) : -1;
         m->porta_ctrl[ch] = -1;
@@ -1344,14 +1429,17 @@ static void restart_held(struct fa_midi* m)
                 int held = m->depth[ch][key];
                 if (!held && !m->pedal_held[ch][key]) continue;
                 if ((m->sost[ch] && m->sost_latched[ch][key]) != !pass) continue;
-                if (play < 0 || play > 127) { m->depth[ch][key] = 0; continue; }
-                /* One voice, at the loudest of the strikes still held; it ends with the
-                 * last of their note-offs. */
-                if (!track_note_on(m, ch, play, m->held_vel[ch][key], m->held_track[ch][key])) {
-                    m->depth[ch][key] = 0;   /* a silent track: no voice to end */
+                if (play < 0 || play > 127) { forget_key(m, ch, key); continue; }
+                if (held) held = held_audible(m, ch, key, &g);
+                else g = track_volume(m, m->held_track[ch][key]);   /* the pedal holds it */
+                /* One voice, at the loudest strike's velocity and the loudest track still
+                 * holding the key; it ends with the last of their note-offs. */
+                if ((m->depth[ch][key] && !held) || !gain_note_on(m, ch, play, m->held_vel[ch][key], g)) {
+                    m->depth[ch][key] = 0;   /* only silent tracks: no voice to end */
                     m->pedal_held[ch][key] = 0;
                     continue;
                 }
+                m->depth[ch][key] = (uint8_t)held;
                 m->sounding[ch][key] = (uint8_t)play;
                 m->merged[ch][key] = (uint8_t)(held > 1 ? held - 1 : 0);
                 if (!held && pass == 1) tsf_channel_note_off(m->synth, ch, play);
@@ -1470,6 +1558,7 @@ static void midi_free(struct fa_midi* m)
     fa_soundfont_release(m->font);
     free_sent(m);
     free(m->track_vol);
+    free(m->track_held);
     if (m->send_lock_ready) fa_mutex_destroy(&m->send_lock);
     for (i = 0; i < m->ntexts; i++) free(m->texts[i].text);
     free(m->texts);
@@ -2007,6 +2096,9 @@ static fa_result midi_start(struct fa_midi* m, fa_soundfont* font)
         m->track_vol = (fa_atomic32*)malloc(m->ntrack_vol * sizeof(fa_atomic32));
         if (!m->track_vol) return FA_ERROR_OUT_OF_MEMORY;
         for (i = 0; i < m->ntrack_vol; i++) fa_store_float(&m->track_vol[i], 1.0f);
+        m->ntrack_held = m->ntrack_vol < FA_MIDI_TRACK_HELD ? m->ntrack_vol : FA_MIDI_TRACK_HELD;
+        m->track_held = (uint8_t(*)[16][128])calloc(m->ntrack_held, sizeof(*m->track_held));
+        if (!m->track_held) return FA_ERROR_OUT_OF_MEMORY;
     }
     if (!m->synth || !m->fx) return FA_ERROR_OUT_OF_MEMORY;
     start_song(m);
