@@ -10,7 +10,7 @@ namespace FatzBomb.MediaControl.Avalonia;
 /// <summary>
 /// Self-contained background for solid colours, images and silent looping video (Stage 046A, the
 /// Avalonia counterpart of the WPF and WinForms <c>BackgroundSurface</c>). Media plays in a player
-/// of its own in <see cref="MediaPlayerMode.Background"/> mode (no audio engine), created from
+/// of its own in <see cref="Core.Configuration.MediaPlayerMode.Background"/> mode (no audio engine), created from
 /// <see cref="PlatformFactory"/>; audio, CD+G and lyrics are rejected (Core's
 /// <see cref="LightweightPlayerPolicy"/>). A solid colour needs no player: the surface shows
 /// <see cref="BackgroundColor"/>. <see cref="OverlayContent"/> is presented above the background.

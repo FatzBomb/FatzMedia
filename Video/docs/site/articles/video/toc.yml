@@ -1,0 +1,8 @@
+- name: Renderers
+  href: renderers.md
+- name: Hardware decoding
+  href: hardware-decoding.md
+- name: Display and color
+  href: display-and-color.md
+- name: Frame timing
+  href: frame-timing.md

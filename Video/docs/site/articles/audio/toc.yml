@@ -1,0 +1,10 @@
+- name: Volume, pitch and tempo
+  href: volume-pitch-tempo.md
+- name: Equalizer
+  href: equalizer.md
+- name: Normalization and silence trimming
+  href: normalization.md
+- name: Audio output devices
+  href: output-devices.md
+- name: Sync offsets
+  href: sync-offsets.md

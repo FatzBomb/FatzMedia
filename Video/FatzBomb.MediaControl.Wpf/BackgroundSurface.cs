@@ -9,7 +9,7 @@ namespace FatzBomb.MediaControl.Wpf;
 /// Self-contained background player for solid colors, images, and silent looping video.
 /// </summary>
 /// <remarks>
-/// Stage 046A: the player runs in <see cref="MediaPlayerMode.Background"/> mode, so a background
+/// Stage 046A: the player runs in <see cref="Core.Configuration.MediaPlayerMode.Background"/> mode, so a background
 /// never starts the audio engine (before, a Full-mode player was muted). The rules (what is
 /// accepted, creation, reload and release) are Core's <see cref="LightweightPlayerPolicy"/> and
 /// <see cref="LightweightPlayerController"/>, shared with the Avalonia and WinForms
