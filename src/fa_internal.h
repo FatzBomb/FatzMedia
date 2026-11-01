@@ -1879,6 +1879,9 @@ fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* forma
  * plus `extra_ms` (half the stream's decode-ahead buffer when it may be attached), so
  * the workers' top-ups in turns of a quarter buffer never overflow it. */
 fa_result fa_capture_decoder_open(fa_decoder* dec, fa_engine* engine, const fa_capture_options* options, uint32_t extra_ms);
+/* Loopback capture: silence frames due at now_ns in a gap that started at from_ns, of
+ * which `given` were given already; 0 until the gap is gap_ns long. Pure. */
+int64_t fa_loopback_silence_due(int64_t now_ns, int64_t from_ns, int64_t given, uint32_t rate, int64_t gap_ns);
 
 /* ---- Push streams (push.c) ------------------------------------------------------ */
 

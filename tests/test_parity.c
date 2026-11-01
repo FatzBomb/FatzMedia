@@ -296,6 +296,11 @@ static void test_capture_read(void)
     c.flags = 1u << 7;   /* unknown flag */
     CHECK_EQ(fa_stream_open_capture(g_engine, &c, &o, &s), FA_ERROR_INVALID_ARG);
     CHECK(s == NULL);
+
+    /* Loopback records an output: WASAPI only, never on the null backend. */
+    c.flags = FA_CAPTURE_LOOPBACK;
+    CHECK_EQ(fa_stream_open_capture(g_engine, &c, &o, &s), FA_ERROR_NOT_IMPLEMENTED);
+    CHECK(s == NULL);
 }
 
 /* Recording an input to a file: a decode-only capture stream read by an encoder. */

@@ -2015,6 +2015,23 @@ static void test_engine_destroy_wakes(void)
     CHECK(fa_monotonic_ns() - t0 < 500000000LL);
 }
 
+/* Loopback capture fills a gap in the output's packets with silence by the clock. */
+static void test_loopback_silence_due(void)
+{
+    const int64_t ms = 1000000, gap = 250 * ms;
+    CHECK_EQ(fa_loopback_silence_due(1000 * ms, 1000 * ms, 0, 48000, gap), 0);
+    CHECK_EQ(fa_loopback_silence_due(1249 * ms, 1000 * ms, 0, 48000, gap), 0);    /* a late packet */
+    CHECK_EQ(fa_loopback_silence_due(1250 * ms, 1000 * ms, 0, 48000, gap), 12000); /* from the gap's start */
+    CHECK_EQ(fa_loopback_silence_due(1250 * ms, 1000 * ms, 12000, 48000, gap), 0);
+    CHECK_EQ(fa_loopback_silence_due(1260 * ms, 1000 * ms, 12000, 48000, gap), 480);
+    CHECK_EQ(fa_loopback_silence_due(1260 * ms, 1000 * ms, 20000, 48000, gap), 0);  /* never negative */
+    CHECK_EQ(fa_loopback_silence_due(1250 * ms, 1000 * ms, 0, 44100, gap), 11025);
+    CHECK_EQ(fa_loopback_silence_due(1250 * ms, 1000 * ms, 0, 0, gap), 0);
+    /* Exact over long gaps: 10 hours at 384 kHz without overflow or drift. */
+    CHECK_EQ(fa_loopback_silence_due(36000000 * ms + 1, 1, 0, 384000, gap), 13824000000LL);
+    CHECK_EQ(fa_loopback_silence_due(1000 * ms + 999999, 0, 0, 48000, gap), 48047);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -2083,6 +2100,7 @@ int main(void)
     RUN(test_dsp_on_decode_only);
     RUN(test_pkt_index);
     RUN(test_utf8_valid);
+    RUN(test_loopback_silence_due);
 
     fa_device_close(g_dev);
     fa_engine_destroy(g_engine);

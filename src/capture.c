@@ -8,7 +8,12 @@
  * read for a while: a paused stream), drops what waited, so the stream always
  * continues with live input rather than a backlog. Input that stops without being
  * asked to (unplugged) ends the stream once the ring is empty and it has not come
- * back for FA_CAPTURE_LOST_NS. */
+ * back for FA_CAPTURE_LOST_NS.
+ *
+ * Loopback (FA_CAPTURE_LOOPBACK, WASAPI only) records an output instead. Windows sends
+ * no loopback packets while nothing plays, so the read fills a gap longer than
+ * FA_LOOPBACK_GAP_NS with silence by the wall clock (fa_loopback_silence_due): a
+ * recording keeps its length through pauses. */
 #include "fa_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +21,7 @@
 
 #define FA_CAPTURE_RING_MS 1000   /* plus, attached, half the stream's buffer: workers top it up in turns */
 #define FA_CAPTURE_LOST_NS 1000000000   /* a default input the system moves comes back sooner */
+#define FA_LOOPBACK_GAP_NS 250000000    /* well past a late packet: silence from here on */
 
 typedef struct capture_src {
     ma_device device;
@@ -26,6 +32,11 @@ typedef struct capture_src {
     int reading;                /* reader: the first read happened */
     fa_atomic32 stopping;       /* close: the stop that follows is ours */
     fa_atomic64 lost_at;        /* monotonic ns the input stopped by itself, 0 = running */
+    int loopback;               /* FA_CAPTURE_LOOPBACK: gaps are silence */
+    fa_atomic64 data_at;        /* loopback: monotonic ns of the last packet */
+    fa_atomic64 first_read_at;  /* loopback: monotonic ns of the first read */
+    fa_atomic64 gap_from;       /* loopback, reader: where the silence being given starts */
+    fa_atomic64 gap_given;      /* loopback, reader: silence frames given since gap_from */
 } capture_src;
 
 static void capture_data(ma_device* d, void* out, const void* in, ma_uint32 frames)
@@ -38,6 +49,26 @@ static void capture_data(ma_device* d, void* out, const void* in, ma_uint32 fram
     if (room > (int64_t)frames) room = frames;
     fa_ring_write(&c->ring, (const float*)in, room);
     if (room < (int64_t)frames) fa_fetch_add64(&c->dropped, (int64_t)frames - room);
+    if (c->loopback) fa_store64(&c->data_at, fa_monotonic_ns());
+}
+
+int64_t fa_loopback_silence_due(int64_t now_ns, int64_t from_ns, int64_t given, uint32_t rate, int64_t gap_ns)
+{
+    int64_t d = now_ns - from_ns, due;
+    if (d < gap_ns || rate == 0) return 0;
+    due = d / 1000000000 * (int64_t)rate + d % 1000000000 * (int64_t)rate / 1000000000 - given;
+    return due > 0 ? due : 0;
+}
+
+/* Loopback: where the current gap starts (the last packet, or the first read when it
+ * came later) and the silence already given in it. */
+static int64_t loopback_due(capture_src* c, uint32_t rate, int64_t* from)
+{
+    int64_t data = fa_load64(&c->data_at), first = fa_load64(&c->first_read_at);
+    int64_t given = 0;
+    *from = data > first ? data : first;
+    if (fa_load64(&c->gap_from) == *from) given = fa_load64(&c->gap_given);
+    return fa_loopback_silence_due(fa_monotonic_ns(), *from, given, rate, FA_LOOPBACK_GAP_NS);
 }
 
 /* The backend's thread: an input that stops without being asked to has gone away; a
@@ -77,9 +108,25 @@ static fa_result capture_read(fa_decoder* dec, float* out, fa_frames frames, fa_
         /* Live from here: what waited before the first read or since an overflow goes. */
         fa_ring_advance_read(&c->ring, fa_ring_readable(&c->ring));
         c->dropped_seen = dropped;
+        if (!c->reading && c->loopback) fa_store64(&c->first_read_at, fa_monotonic_ns());
         c->reading = 1;
     }
     avail = fa_ring_readable(&c->ring);
+    if (avail == 0 && c->loopback && !capture_gone(c)) {
+        int64_t from, due = loopback_due(c, dec->format.sample_rate, &from);
+        if (fa_load64(&c->gap_from) != from) { fa_store64(&c->gap_from, from); fa_store64(&c->gap_given, 0); }
+        if (due > c->ring.capacity) {
+            /* Nobody read for a while (as an overflow): live from here. */
+            fa_store64(&c->gap_given, fa_load64(&c->gap_given) + due);
+            return FA_ERROR_BUSY;
+        }
+        if (due > frames) due = frames;
+        if (due == 0) return FA_ERROR_BUSY;
+        memset(out, 0, (size_t)due * ch * sizeof(float));
+        fa_store64(&c->gap_given, fa_load64(&c->gap_given) + due);
+        *got = due;
+        return FA_OK;
+    }
     if (avail == 0) return capture_gone(c) ? FA_ERROR_END_OF_STREAM : FA_ERROR_BUSY;
     if (avail > frames) avail = frames;
     fa_ring_regions(&c->ring, avail, &p1, &n1, &p2, &n2);
@@ -113,7 +160,9 @@ static void capture_close(fa_decoder* dec)
 static int capture_ready(fa_decoder* dec)
 {
     capture_src* c = (capture_src*)dec->impl;
-    return fa_ring_readable(&c->ring) > 0 || capture_gone(c);
+    int64_t from;
+    if (fa_ring_readable(&c->ring) > 0 || capture_gone(c)) return 1;
+    return c->loopback && fa_load64(&c->first_read_at) != 0 && loopback_due(c, dec->format.sample_rate, &from) > 0;
 }
 
 static const fa_decoder_vtable capture_vtable = {
@@ -129,20 +178,24 @@ fa_result fa_capture_decoder_open(fa_decoder* dec, fa_engine* engine, const fa_c
     ma_device_id did;
     ma_result mr;
     fa_result r;
-    int has_id;
+    int has_id, loopback;
     fa_capture_options_init(&o);
     if (options) {
         if (options->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
         memcpy(&o, options, options->struct_size < sizeof(o) ? options->struct_size : sizeof(o));
     }
     if ((o.sample_rate && (o.sample_rate < 8000 || o.sample_rate > 384000)) || o.channels > 32 ||
-        (o.flags & ~(uint32_t)FA_CAPTURE_OS_PROCESSING))
+        (o.flags & ~(uint32_t)(FA_CAPTURE_OS_PROCESSING | FA_CAPTURE_LOOPBACK)))
         return FA_ERROR_INVALID_ARG;
-    r = fa_device_parse_id(engine, FA_DEVICE_CAPTURE, o.device_id, &did, &has_id);
+    loopback = (o.flags & FA_CAPTURE_LOOPBACK) != 0;
+    /* Only WASAPI records an output (not the null backend of FA_ENGINE_NULL_OUTPUT). */
+    if (loopback && !ma_is_loopback_supported(engine->context.backend)) return FA_ERROR_NOT_IMPLEMENTED;
+    r = fa_device_parse_id(engine, loopback ? FA_DEVICE_PLAYBACK : FA_DEVICE_CAPTURE, o.device_id, &did, &has_id);
     if (r != FA_OK) return r;
     c = (capture_src*)calloc(1, sizeof(*c));
     if (!c) return FA_ERROR_OUT_OF_MEMORY;
-    cfg = ma_device_config_init(ma_device_type_capture);
+    c->loopback = loopback;
+    cfg = ma_device_config_init(loopback ? ma_device_type_loopback : ma_device_type_capture);
     cfg.capture.pDeviceID = has_id ? &did : NULL;
     cfg.capture.format = ma_format_f32;
     cfg.capture.channels = o.channels;     /* 0 = the device's own */
@@ -151,7 +204,7 @@ fa_result fa_capture_decoder_open(fa_decoder* dec, fa_engine* engine, const fa_c
     cfg.dataCallback = capture_data;
     cfg.notificationCallback = capture_notify;
     cfg.pUserData = c;
-    if (!(o.flags & FA_CAPTURE_OS_PROCESSING)) {   /* as the mixer's mics (mic.c) */
+    if (!loopback && !(o.flags & FA_CAPTURE_OS_PROCESSING)) {   /* as the mixer's mics (mic.c) */
         cfg.aaudio.inputPreset = ma_aaudio_input_preset_unprocessed;
         cfg.opensl.recordingPreset = ma_opensl_recording_preset_voice_unprocessed;
         cfg.wasapi.rawCapture = MA_TRUE;

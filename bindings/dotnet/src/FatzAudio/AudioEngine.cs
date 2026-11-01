@@ -661,8 +661,10 @@ public sealed partial class AudioEngine : IDisposable
     /// <param name="capture">The input and its format; null = the default input, as it is.</param>
     /// <param name="options">Optional open options (<see cref="StreamOptions.Loop"/> is not allowed).</param>
     /// <returns>The stream; dispose it when done. If the input goes away (unplugged), the stream ends.</returns>
-    /// <exception cref="ArgumentException"><see cref="CaptureOptions.Device"/> is not an input.</exception>
-    /// <exception cref="FatzAudioException"><see cref="ErrorCode.PermissionDenied"/> without the microphone permission;
+    /// <exception cref="ArgumentException"><see cref="CaptureOptions.Device"/> is not an input (with
+    /// <see cref="CaptureOptions.Loopback"/>: not an output).</exception>
+    /// <exception cref="FatzAudioException"><see cref="ErrorCode.NotImplemented"/> for <see cref="CaptureOptions.Loopback"/>
+    /// off Windows; <see cref="ErrorCode.PermissionDenied"/> without the microphone permission;
     /// <see cref="ErrorCode.Device"/> when the input cannot be opened.</exception>
     /// <example>
     /// <code>
@@ -674,15 +676,16 @@ public sealed partial class AudioEngine : IDisposable
     /// </example>
     public unsafe AudioStream OpenCapture(CaptureOptions? capture = null, StreamOptions? options = null)
     {
-        if (capture?.Device is { Kind: not DeviceKind.Capture })
-            throw new ArgumentException("Not an input device.", nameof(capture));
+        bool loopback = capture?.Loopback == true;
+        if (capture?.Device is { } dev && dev.Kind != (loopback ? DeviceKind.Playback : DeviceKind.Capture))
+            throw new ArgumentException(loopback ? "Not an output device." : "Not an input device.", nameof(capture));
         var h = Handle;
         using var opts = NativeOptions.Create(options);
         FaCaptureOptions c;
         NativeMethods.fa_capture_options_init(&c);
         c.SampleRate = (uint)Math.Max(0, capture?.SampleRate ?? 0);
         c.Channels = (uint)Math.Max(0, capture?.Channels ?? 0);
-        c.Flags = capture?.KeepOsProcessing == true ? 1u : 0u;
+        c.Flags = (capture?.KeepOsProcessing == true ? 1u : 0u) | (loopback ? 2u : 0u);
         byte* id = capture?.Device?.Id is { } devId ? (byte*)Marshal.StringToCoTaskMemUTF8(devId) : null;
         try
         {

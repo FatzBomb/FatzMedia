@@ -6,6 +6,7 @@ Two stream sources that are not files: your own function that makes audio on dem
 |---|---|---|---|
 | Your function, asked for audio when the stream wants more | `fa_stream_open_callback` | `engine.OpenCallback(rate, channels, fill)` | `BASS_StreamCreate` with a `STREAMPROC` |
 | An input device | `fa_stream_open_capture` | `engine.OpenCapture(capture)` | `BASS_RecordInit` + `BASS_RecordStart` |
+| What an output plays (Windows) | `fa_stream_open_capture` with `FA_CAPTURE_LOOPBACK` | `engine.OpenCapture(new CaptureOptions { Loopback = true })` | `BASS_RecordInit` on a `BASS_DEVICE_LOOPBACK` device, BASSWASAPI loopback |
 
 Audio you already have in hand (decoded frames, FFmpeg packets) goes to a push stream instead ([FFmpeg hand-off](ffmpeg.md)). A karaoke or DJ mic you sing or talk through belongs on the [DJ mixer](dj-mixer.md#microphones), which corrects the drift between input and output and keeps the latency low.
 
@@ -135,11 +136,40 @@ rec.Close();        // completes the file
 | `sample_rate` (8000 to 384000) | `SampleRate` | 0: the input's own |
 | `channels` (1 to 32) | `Channels` | 0: the input's own |
 | `FA_CAPTURE_OS_PROCESSING` in `flags` | `KeepOsProcessing` | Off: the system's echo cancelling, noise suppression and automatic gain stay off where the system allows (Windows raw capture on drivers that offer it, Android's unprocessed input), as for mixer mics. Turn it on for calls |
+| `FA_CAPTURE_LOOPBACK` in `flags` | `Loopback` | Off: records an input. On: records what an output plays ([loopback](#recording-what-the-pc-plays-loopback)) |
 
 - Permission: `FA_ERROR_PERMISSION_DENIED` (.NET `ErrorCode.PermissionDenied`) when the system refuses the microphone (macOS, iOS, Android and the Windows privacy settings). Ask the user for it before opening. `FA_ERROR_DEVICE` when the input cannot be opened.
 - An input that goes away (unplugged) ends the stream with `FA_EVENT_ENDED` once what it gave is read, unless the system moved a default input to the new default within about a second.
 - The stream cannot seek or loop and its length is unknown. Its position counts the frames read or played since the first read.
 - Each capture stream opens the input on its own. Opening one input twice (a mixer mic and a capture stream, say) works where the system shares an input between apps, as shared mode does.
+
+### Recording what the PC plays (loopback)
+
+`FA_CAPTURE_LOOPBACK` (.NET `CaptureOptions.Loopback`) records an output instead of an input: everything every app plays on it, as the system mixes it, before the system's master volume. Use it to record a stream you can't open yourself, a USB mixer or audio interface's playback side, or a whole DJ set as the room heard it. `device_id` is then an output's id (`FA_DEVICE_PLAYBACK`, .NET `engine.OutputDevices`); NULL is the default output, and the stream follows it when the user changes the default.
+
+- Windows only (WASAPI). On macOS, iOS, Android and Linux the open fails with `FA_ERROR_NOT_IMPLEMENTED` (.NET `ErrorCode.NotImplemented`), and so it does on an engine created with `FA_ENGINE_NULL_OUTPUT`. On those systems a loopback or "monitor" input the user installed (a virtual audio driver, PulseAudio's monitor sources) is an ordinary input: open it without the flag.
+- The format is the output's mix format (often 48 kHz stereo); `sample_rate` and `channels` convert as for an input.
+- Windows sends nothing while nothing plays. The stream fills such a gap with silence once it is longer than a quarter of a second, counting from the gap's start, so a recording keeps its real length through pauses. A decode-only reader sees the silence of a pause up to a quarter of a second late.
+- Your own app's sound is in it too. Don't play a loopback stream on the output it records: that feeds back.
+- `FA_CAPTURE_OS_PROCESSING` has no effect on it, and the microphone permission does not apply.
+
+```c
+/* Record everything the default output plays, to a FLAC file. */
+fa_capture_options c;
+fa_capture_options_init(&c);
+c.flags = FA_CAPTURE_LOOPBACK;      /* c.device_id = an FA_DEVICE_PLAYBACK id for another output */
+fa_stream* pc;
+if (fa_stream_open_capture(engine, &c, &o, &pc) == FA_ERROR_NOT_IMPLEMENTED) { /* not Windows */ }
+fa_encoder_encode_stream(rec, pc);
+```
+
+```csharp
+using var pc = engine.OpenCapture(new CaptureOptions { Loopback = true }, new StreamOptions { DecodeOnly = true });
+var rec = AudioEncoder.Create("set.flac", new EncoderOptions { Format = EncodeFormat.Flac });
+rec.Encode(pc);
+```
+
+Manual check (needs a Windows PC; CI has no sound card to record): play a song in any app, record 20 s with loopback including a 5 s pause, and confirm the file is 20 s long, the pause is silent, and the music matches what played. Then switch the default output while recording: the recording goes on from the new output.
 
 ## Pitfalls
 
