@@ -1,9 +1,13 @@
-# Idea Stage 037A - FatzAudio As A Second Audio Engine
+# Stage 037A - FatzAudio As A Second Audio Engine
 
-Status: Idea. Written 2026-10-20 from FatzAudio's answer to our two notes ("answer to
-FatzBomb.MediaControl", checked by FatzAudio against its `main` @ c6e4446, PR 78). That note is
-FatzAudio's own claim: nothing here is verified against the package until slice 0 runs. The
-local checkout at `/home/user/fatzbomb75/fatzaudio` is older (8849f04, PR 65).
+Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to FatzAudio). Slice 0
+done on Linux 2026-11-01 (`updates/037A_0`), pending the owner's Windows smoke (CI package
+access granted 2026-11-01: FatzBombMedia has Read on the FatzAudio package); render-ahead at 4K with two streams caused underruns there (a FatzAudio request before slice 3).
+Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
+FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
+`docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
+coupling) and the requests it raised, `docs/fatzaudio/2026-11-01_MediaControl_Request_SurfaceTiming.md`.
+A read-only checkout of FatzAudio is at `/home/user/fatzbomb75/fatzaudio`.
 
 Goal (owner decision, 2026-10-24): replace BASS with FatzAudio if it is proven to work, so end
 users need no BASS DLLs and no BASS licence. First an opt-in `FatzAudioEngine` next to the BASS
@@ -35,10 +39,16 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
 
 ## Slices
 
-0. **Verify (spike).** Pull `FatzAudio` 0.2.0-ci.N; a test project opens a file, plays it to a
-   null/dummy device, seeks, loops and reads the clock on Linux. Decide how CI authenticates to
-   GitHub Packages (a `read:packages` secret). Check FatzAudio's header version check against
-   the pinned package. Nothing else starts until this passes.
+Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner smoke.
+
+0. **Verify (spike).** Done when: a test project references the `FatzAudio` .NET package (the
+   GitHub Packages feed with a `read:packages` token, or a package built from FatzAudio's source
+   until the token exists), opens a file, plays it to a null device, seeks, loops and reads the
+   clock on Linux; the binding's native version check passes against the pinned version; and the
+   karaoke measurements in the analysis's "To measure" list that Linux can produce are recorded
+   (draw time per frame at 1080p and 4K, effects off and on, for steady play, seek, loop wrap,
+   page build, resize and a tempo ramp; audio underruns with render-ahead). Decide how CI gets
+   the package. Nothing else starts until this passes.
 1. **Seam, no behaviour change.** Remove BASS handles from the engine contract: lyrics from the
    file (or a FatzAudio-neutral reader) instead of a source handle; fade, EQ, normalization and
    silence analysis behind small interfaces that the BASS engines implement as today. BASS output
@@ -47,13 +57,25 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
    volume, pitch, tempo, loop with a per-wrap `PlaybackEnded`/`MediaLooped`, position from
    `fa_stream_get_clock`, EQ from the built-in 16 bands, fades from volume ramps, device
    following. Opt-in: `MediaPlayerConfiguration` audio engine choice and Player `--audio=fatz`.
-3. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
-   MIDI texts/marks for lyrics, `GetTrackerTime` for the tracker timeline, network playback.
-4. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
+3. **Karaoke surfaces.** CD+G and MIDI lyrics drawn by FatzAudio's surfaces on every renderer,
+   following the analysis's integration rules: a dedicated karaoke thread calling `update_into`
+   with triple buffers (never the presentation or video thread); an explicit draw time (clock plus
+   the expected present time, the video frame's target, our offsets folded in with the sign
+   flipped and FatzAudio's CD+G offset at 0); classic indexed CD+G as the default; render-ahead in
+   scaled mode; next song's surfaces prepared early; a governor on `draw_ns`/`render_ns`/`behind`;
+   linear sampling with mips for scaled bitmaps. With the FatzAudio engine the surfaces use its
+   stream; with BASS they use a decode-only FatzAudio stream for the same file (needs request 3 for
+   lyrics without a soundfont, or a GM bank). Our own CD+G engine and both lyric
+   renderers (DirectWrite on Direct3D11, SkiaSharp on Software and Vulkan) stay as the fallback
+   until the decision slice.
+4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
+   MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
+5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
    0.75-1.5, seeks, loop wraps and pause/resume.
-5. **Decision (separate from the build).** Whether FatzAudio becomes the default, and whether
-   BASS is then removed.
+6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
+   then removed, and whether our CD+G engine and lyric renderers (DirectWrite and SkiaSharp) are
+   deleted. No karaoke drawing code is removed before this decision.
 
 ## Karaoke presentation (agreed with the owner 2026-10-20)
 
@@ -96,9 +118,10 @@ The app keeps the playlist, singer rotation, controller mapping and song databas
 
 ## Known gaps to decide on (from FatzAudio's own list)
 
-- **MIDI lyrics in Shift-JIS come out garbled** (only UTF-8 and Windows-1252 are recognized).
-  Karaoke MIDI is a core use case; keep our own `MidiLyricExtractor`/`MidiMetadataExtractor`
-  reading the file rather than relying on FatzAudio's text decoding until this is fixed.
+- ~~MIDI lyrics in Shift-JIS come out garbled~~: supported in FatzAudio `main` @ 17d2284
+  (`dec_midi.c:464-502`); verified in slice 0 (`updates/037A_0`).
+- **Complex scripts:** FatzAudio's font engine does cmap and kerning only (no ligatures or bidi);
+  Arabic, Hebrew and Indic lyrics look worse than with DirectWrite (request 6).
 - MIDI: SysEx effect parameters ignored (one fixed reverb and chorus); a seek clears reverb
   tails; no SFZ; no real-time MIDI input.
 - Trackers: no live tempo/speed or channel/instrument volume attributes; MO3 with compressed
@@ -113,8 +136,9 @@ The app keeps the playlist, singer rotation, controller mapping and song databas
 
 ## What we do not need to change yet
 
-FatzAudio's "five changes" mostly concern adopting its CD+G surface: we keep our own CDG engine
-(`fa_cdg_surface_update_at` uses ceil, not floor, and a CD+G offset of 0 if we apply our own).
+Until slice 3, we keep our own CD+G engine. When adopting FatzAudio's: `fa_cdg_surface_update_at`
+counts packs with ceil (ours floor) and its offset sign is the opposite of ours, so its offset
+stays 0 and ours is folded into the time we pass.
 We never called `FFmpeg.Load`. Rebuilding against the 0.2 header and the NuGet feed token are
 slice 0.
 
@@ -125,6 +149,10 @@ slice 0.
 - Linux natives need glibc 2.35 or later; a new native dependency is documented in
   `docs/NATIVE_DEPENDENCIES.md`.
 - A/V sync, loop gaplessness and latency are only judged on the owner's machine.
+- Surface stalls: until FatzAudio's `update_into` never blocks (request 1), full redraws (first
+  frame, seek, loop wrap, resize) run on our karaoke thread: 50-210 ms at 4K with effects.
+- While BASS is the default, lyric and CD+G surfaces need a second, decode-only FatzAudio stream
+  (a second parse, and a soundfont for MIDI).
 
 ## Must Preserve
 

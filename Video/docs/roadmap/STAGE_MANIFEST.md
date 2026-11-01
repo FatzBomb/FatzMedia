@@ -23,6 +23,11 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   film, no burst). Slice 2 (FFmpeg fallback for unclaimed audio formats) implemented,
   pending manual smoke: the owner has no such files yet (`updates/033A_1`,
   `updates/033A_2`).
+- `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
+  the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
+  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux, pending the
+  owner's Windows smoke (`updates/037A_0`; CI package access granted); slice 1 next. Analysis:
+  `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
   (`VideoLoopBoundary`), slice 2 the adaptive presentation-lead rules
@@ -109,9 +114,6 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 
-- `future/037A_IDEA_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine`, opt-in first, then
-  replacing BASS once proven (no BASS DLLs or licence for end users); starts with a verification
-  spike (owner decisions, 2026-10-20 and 2026-10-24).
 - `future/032A_IDEA_AudioCdAndCdgDiscPlayback.md` - audio CD and CD+G disc playback through
   BASSCD, feeding disc subchannel graphics into the existing CDG engine (owner decision,
   2026-10-17).
