@@ -3,7 +3,7 @@
 Stage: 037A.0 - FatzAudio verification spike (package, playback, clock, karaoke measurements)
 Date: 2026-11-01
 
-## Status: slice 0 done on Linux - pending the owner's Windows smoke and CI package access
+## Status: slice 0 done on Linux - pending the owner's Windows smoke
 
 Every done-when item of slice 0 that Linux can answer passes. Two findings need FatzAudio before
 slice 3 (karaoke surfaces): render-ahead at 4K with effects and two streams starved audio decode
@@ -237,6 +237,9 @@ render-ahead the audio held (caller stalls up to 157-301 ms instead).
 - The same 4K numbers on the owner's CPU (this sandbox has 4 shared vCPUs).
 
 ## CI package access (recommendation)
+
+Done 2026-11-01: the owner added FatzBombMedia with Read under the package's Manage Actions
+access, so option 1 applies; slice 2 adds the workflow permission and `nuget.config`.
 
 1. **Use the GitHub Packages feed with the workflow's own `GITHUB_TOKEN`.** The owner opens the
    `FatzAudio` package's settings on GitHub (Package settings, Manage Actions access) and adds

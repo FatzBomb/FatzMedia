@@ -1,8 +1,8 @@
 # Stage 037A - FatzAudio As A Second Audio Engine
 
 Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to FatzAudio). Slice 0
-done on Linux 2026-11-01 (`updates/037A_0`), pending the owner's Windows smoke and CI package
-access; render-ahead at 4K with two streams caused underruns there (a FatzAudio request before slice 3).
+done on Linux 2026-11-01 (`updates/037A_0`), pending the owner's Windows smoke (CI package
+access granted 2026-11-01: FatzBombMedia has Read on the FatzAudio package); render-ahead at 4K with two streams caused underruns there (a FatzAudio request before slice 3).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
