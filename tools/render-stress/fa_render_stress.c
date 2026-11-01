@@ -178,14 +178,15 @@ static surf g_surf[MAX_SURF];
 static int g_nsurf;
 static volatile int g_stop;
 
+/* arg: NULL draws every surface, else the surface it points to (--threads). */
 static void* draw_main(void* arg)
 {
     int64_t next = now_ns();
     uint32_t b = 0;
-    (void)arg;
+    int first = arg ? (int)((surf*)arg - g_surf) : 0, last = arg ? first + 1 : g_nsurf;
     while (!g_stop) {
         int i;
-        for (i = 0; i < g_nsurf; i++) {
+        for (i = first; i < last; i++) {
             surf* u = &g_surf[i];
             fa_surface_frame fr;
             int64_t t0;
@@ -226,10 +227,10 @@ static void* burn_main(void* arg)
 #ifdef _WIN32
 static DWORD WINAPI draw_w(LPVOID a) { draw_main(a); return 0; }
 static DWORD WINAPI burn_w(LPVOID a) { burn_main(a); return 0; }
-static void start(thr_t* t, int draw) { *t = CreateThread(NULL, 0, draw ? draw_w : burn_w, NULL, 0, NULL); }
+static void start(thr_t* t, int draw, void* arg) { *t = CreateThread(NULL, 0, draw ? draw_w : burn_w, arg, 0, NULL); }
 static void join(thr_t t) { WaitForSingleObject(t, INFINITE); CloseHandle(t); }
 #else
-static void start(thr_t* t, int draw) { pthread_create(t, NULL, draw ? draw_main : burn_main, NULL); }
+static void start(thr_t* t, int draw, void* arg) { pthread_create(t, NULL, draw ? draw_main : burn_main, arg); }
 static void join(thr_t t) { pthread_join(t, NULL); }
 #endif
 
@@ -282,14 +283,14 @@ static void usage(void)
 {
     printf("fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N]\n"
            "                 [--size WxH] [--tempo T] [--soundfont file.sf2]\n"
-           "                 [--extra N] [--latency ms] [--colours ms] [--lyrics N]\n"
+           "                 [--extra N] [--latency ms] [--colours ms] [--lyrics N] [--threads]\n"
            "  Two streams with tempo T (default 1.05 and 0.95), two CD+G surfaces each\n"
            "  (traced and blended, every effect), drawn at 60 Hz on the null output.\n"
            "  With a soundfont, the second stream is MIDI with lyrics and has a lyric\n"
            "  surface (--lyrics N: N of them, presets in turn) in place of its second\n"
            "  CD+G surface. --burn adds busy threads\n"
            "  standing in for the app's own work. --extra adds N more CD+G surfaces per\n"
-           "  stream; --latency sets the tempo latency (default 150 ms); --colours how\n"
+           "  stream; --threads draws each surface on a thread of its own; --latency sets the tempo latency (default 150 ms); --colours how\n"
            "  often the CD+G loads new colours, a full redraw (default 10000 ms). Run under\n"
            "  taskset to pin the cores.\n");
 }
@@ -306,7 +307,8 @@ int main(int argc, char** argv)
     fa_stream* st[MAX_STREAMS];
     fa_soundfont* sf = NULL;
     buf wav, cdg;
-    thr_t draw, burners[16];
+    thr_t draw[MAX_SURF], burners[16];
+    int per_surface = 0, ndraw;
     int64_t wall0[MAX_STREAMS], t_end;
     fa_time clock0[MAX_STREAMS];
     double max_lag[MAX_STREAMS] = { 0, 0 }, last_lag[MAX_STREAMS] = { 0, 0 };
@@ -325,6 +327,7 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--latency") && i + 1 < argc) latency = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--colours") && i + 1 < argc) colour_ms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--lyrics") && i + 1 < argc) lyrics = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--threads")) per_surface = 1;
         else { usage(); return 2; }
     }
     if (burn > 16) burn = 16;
@@ -385,9 +388,10 @@ int main(int argc, char** argv)
         fa_engine_get_stats(e, &es);
         printf("render-ahead %s, %u workers, %d burners, %ux%u, %d s\n", ra ? "on" : "off", es.workers, burn, w, h, seconds);
     }
-    for (i = 0; i < burn; i++) start(&burners[i], 0);
+    for (i = 0; i < burn; i++) start(&burners[i], 0, NULL);
     for (i = 0; i < MAX_STREAMS; i++) check(fa_stream_play(st[i]), "play");
-    start(&draw, 1);
+    ndraw = per_surface ? g_nsurf : 1;
+    for (i = 0; i < ndraw; i++) start(&draw[i], 1, per_surface ? (void*)&g_surf[i] : NULL);
 
     /* The clock should move at the tempo against wall time: lag is how far it fell
      * behind that since it first moved. */
@@ -411,7 +415,7 @@ int main(int argc, char** argv)
         sleep_ms(5);
     }
     g_stop = 1;
-    join(draw);
+    for (i = 0; i < ndraw; i++) join(draw[i]);
     for (i = 0; i < burn; i++) join(burners[i]);
 
     for (i = 0; i < MAX_STREAMS; i++) {

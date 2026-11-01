@@ -40,24 +40,24 @@ taskset -c 0-3 build/bin/fa_render_stress --colours 100 --burn 2 --soundfont Tim
 
 On Windows, `start /affinity F build\bin\Release\fa_render_stress.exe ...` does the same.
 
-## Results (2026-11-01, Linux, 4 cores pinned, 2 burners, a soundfont)
+## Results (2026-11-01, Linux, 4 cores pinned, a soundfont)
 
-Before step K1 (main at cfeb65a, with only `fa_stream_get_stats` added so the tool runs) and after it, render-ahead on:
+Before step K1 (main at cfeb65a, with only `fa_stream_get_stats` added so the tool runs) and after it, render-ahead on,
+30 s each. `--threads` draws every surface on a thread of its own, as MediaControl's slice-0 spike did (it lost
+170-580 ms of clock in 30 s on a 4-vCPU Linux machine):
 
-| Run | Build | Dropouts | Least buffered (ms) | Surfaces `behind` |
+| Run | Build | Dropouts (stream 0 / 1) | Clock lag, max | Least buffered (stream 0 / 1) |
 |---|---|---|---|---|
-| `--colours 100`, 30 s, 3 runs | Before | 0, 0, 0 | 80-90 | 0-10 % |
-| | After | 0, 0, 0 | 80-90 | 4-17 % |
-| `--colours 100 --workers 2 --lyrics 4`, 20 s | Before | 0 | 60 | 0 % |
-| | After | 0 | 80 | 0 % |
-| `--colours 100 --workers 4 --lyrics 6 --extra 1`, 20 s | Before | 0 | 40-50 | 0 % |
-| | After | 0 | 83-90 | 0 % |
+| `--threads --tempo 1.0` | Before | 0 / 65 | 652 ms | 190 / 0 ms |
+| | After | 0 / 0 | 2.3 ms | 340 / 80 ms |
+| `--threads --colours 100` (tempo 1.05 / 0.95) | Before | 158 / 157 | 1660 ms | 0 / 0 ms |
+| | After | 0 / 0 | 2.0 ms | 90 / 90 ms |
+| `--threads --tempo 1.0 --lyrics 2 --colours 1000` | Before | 8 / 72 | 722 ms | 0 / 0 ms |
+| | After | 0 / 0 | 2.7 ms | 360 / 90 ms |
 
-Linux's scheduler shares the cores fairly enough that these loads did not reproduce MediaControl's dropouts (measured
-on Windows): one early run before the change had 2 dropouts and 10 ms left, and its repeats had none. What the change
-shows here is the headroom: with drawing work on every worker the streams fell to 40-60 ms ahead before it and stay
-at 80-90 ms after it, and the drawing thread got more frames done in the heavy runs (45 against 32, 21 against 15).
+With one drawing thread for all surfaces (no `--threads`, 2 burners) neither build dropped out, but under heavy
+drawing (`--workers 4 --lyrics 6 --extra 1`) the least buffered went from 40-50 ms before to 83-90 ms after.
+
 This machine's RLIMIT_NICE is 0, so the lower priority was not in play: these numbers are the top-up and the free
-worker alone. The white-box test
-`test_drawing_leaves_a_worker_to_decode` (tests/test_internal.c) shows the cause directly: before the change a shared
-drawing job took every worker.
+worker alone. The white-box test `test_drawing_leaves_a_worker_to_decode` (tests/test_internal.c) shows the cause
+directly: before the change a shared drawing job took every worker.
