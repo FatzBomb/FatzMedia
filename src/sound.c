@@ -9,7 +9,11 @@
  *
  * Lock order: sound->lock, then a voice's stream locks. fa_stream_close of a voice
  * takes sound->lock (fa_sound_forget), so the sound never closes a voice while holding
- * it: it takes the voice out of its list first, then closes it. */
+ * it: it takes the voice out of its list first, then closes it.
+ *
+ * A voice the app is closing is still listed until its fa_sound_forget gets the lock,
+ * but its close cleared `sound` before that: such a voice is never handed out or used
+ * again (voice_live), since it is freed as soon as the lock is let go. */
 #include "fa_internal.h"
 #include <math.h>
 #include <stdio.h>
@@ -333,6 +337,12 @@ FA_API fa_result FA_CALL fa_sound_load_pcm(fa_engine* engine, const fa_audio_for
 
 /* ---- voices ------------------------------------------------------------------- */
 
+/* Not being closed by the app (lock held): see the top of the file. */
+static int voice_live(const fa_sound* snd, fa_stream* s)
+{
+    return fa_load_ptr(&s->sound) == (void*)snd;
+}
+
 void fa_sound_forget(fa_sound* snd, fa_stream* voice)
 {
     uint32_t i;
@@ -395,8 +405,11 @@ FA_API fa_result FA_CALL fa_sound_get_info(fa_sound* sound, fa_sound_info* out_i
     fa_mutex_lock(&sound->lock);
     out_info->max_voices = sound->max_voices;
     out_info->steal = sound->steal;
-    out_info->voices = sound->count;
-    for (i = 0; i < sound->count; i++) out_info->playing += (uint32_t)fa_stream_voice_busy(sound->v[i].s);
+    for (i = 0; i < sound->count; i++) {
+        if (!voice_live(sound, sound->v[i].s)) continue;
+        out_info->voices++;
+        out_info->playing += (uint32_t)fa_stream_voice_busy(sound->v[i].s);
+    }
     fa_mutex_unlock(&sound->lock);
     return FA_OK;
 }
@@ -419,13 +432,17 @@ FA_API fa_result FA_CALL fa_sound_set_options(fa_sound* sound, const fa_sound_op
     }
     sound->max_voices = max_voices;
     sound->steal = steal;
-    /* Over the limit: free voices go first (the newest of them), then the oldest busy
-     * ones. They stop (still attached) and stay until fa_sound_close. */
+    /* Over the limit: voices the app is closing go first (they are leaving anyway),
+     * then free ones (the newest of them), then the oldest busy ones. They stop (still
+     * attached) and stay until fa_sound_close. */
     while (sound->count > sound->max_voices) {
         uint32_t pick = sound->count;
         fa_stream* s;
-        for (i = sound->count; i-- > 0;)
-            if (!fa_stream_voice_busy(sound->v[i].s)) { pick = i; break; }
+        for (i = 0; i < sound->count; i++)
+            if (!voice_live(sound, sound->v[i].s)) { pick = i; break; }
+        if (pick == sound->count)
+            for (i = sound->count; i-- > 0;)
+                if (!fa_stream_voice_busy(sound->v[i].s)) { pick = i; break; }
         if (pick == sound->count) {
             pick = 0;
             for (i = 1; i < sound->count; i++)
@@ -434,8 +451,8 @@ FA_API fa_result FA_CALL fa_sound_set_options(fa_sound* sound, const fa_sound_op
         s = sound->v[pick].s;
         memmove(&sound->v[pick], &sound->v[pick + 1], (size_t)(sound->count - pick - 1) * sizeof(sound->v[0]));
         sound->count--;
-        sound->retired[sound->retired_count++] = s;
-        if (fa_stream_voice_busy(s)) fa_stream_stop(s);   /* stays attached, stopped: nothing more is heard */
+        sound->retired[sound->retired_count++] = s;   /* one being closed leaves it in fa_sound_forget */
+        if (voice_live(sound, s) && fa_stream_voice_busy(s)) fa_stream_stop(s);   /* stays attached, stopped: nothing more is heard */
     }
     fa_mutex_unlock(&sound->lock);
     return FA_OK;
@@ -453,19 +470,21 @@ static float voice_volume(fa_stream* s)
  * (*out_stolen: it is busy). -1 = none. */
 static int64_t pick_voice_locked(fa_sound* snd, fa_device* device, int* out_new, int* out_stolen, fa_result* out_r)
 {
-    uint32_t i;
-    int64_t free_any = -1, pick;
+    uint32_t i, live = 0;
+    int64_t free_any = -1, pick = -1;
     *out_new = 0;
     *out_stolen = 0;
     *out_r = FA_OK;
     for (i = 0; i < snd->count; i++) {
         fa_stream* s = snd->v[i].s;
+        if (!voice_live(snd, s)) continue;   /* being closed: gone once the lock goes */
+        live++;
         if (fa_stream_voice_busy(s)) continue;
         if (fa_load_ptr(&s->clock_device) == device) return i;
         if (free_any < 0) free_any = i;
     }
     if (free_any >= 0) return free_any;
-    if (snd->count < snd->max_voices) {
+    if (live < snd->max_voices) {   /* voices being closed don't count: they are leaving */
         fa_decoder dec;
         fa_stream* s;
         if (snd->count == snd->cap) {
@@ -484,18 +503,20 @@ static int64_t pick_voice_locked(fa_sound* snd, fa_device* device, int* out_new,
         *out_new = 1;
         return snd->count++;
     }
-    if (snd->steal == FA_SOUND_STEAL_NONE || snd->count == 0) { *out_r = FA_ERROR_BUSY; return -1; }
-    pick = 0;
+    if (snd->steal == FA_SOUND_STEAL_NONE) { *out_r = FA_ERROR_BUSY; return -1; }
     if (snd->steal == FA_SOUND_STEAL_QUIETEST) {
-        float quietest = voice_volume(snd->v[0].s);
-        for (i = 1; i < snd->count; i++) {
-            float v = voice_volume(snd->v[i].s);
-            if (v < quietest || (v == quietest && snd->v[i].seq < snd->v[pick].seq)) { quietest = v; pick = i; }
+        float quietest = 0.0f;
+        for (i = 0; i < snd->count; i++) {
+            float v;
+            if (!voice_live(snd, snd->v[i].s)) continue;
+            v = voice_volume(snd->v[i].s);
+            if (pick < 0 || v < quietest || (v == quietest && snd->v[i].seq < snd->v[pick].seq)) { quietest = v; pick = i; }
         }
     } else {
-        for (i = 1; i < snd->count; i++)
-            if (snd->v[i].seq < snd->v[pick].seq) pick = i;
+        for (i = 0; i < snd->count; i++)
+            if (voice_live(snd, snd->v[i].s) && (pick < 0 || snd->v[i].seq < snd->v[pick].seq)) pick = i;
     }
+    if (pick < 0) { *out_r = FA_ERROR_BUSY; return -1; }   /* none to take over (cannot happen: live >= max >= 1) */
     *out_stolen = 1;
     return pick;
 }
@@ -540,7 +561,7 @@ FA_API fa_result FA_CALL fa_sound_stop(fa_sound* sound)
     if (!sound) return FA_ERROR_INVALID_ARG;
     fa_mutex_lock(&sound->lock);
     for (i = 0; i < sound->count; i++)
-        if (fa_stream_voice_busy(sound->v[i].s)) fa_stream_stop(sound->v[i].s);
+        if (voice_live(sound, sound->v[i].s) && fa_stream_voice_busy(sound->v[i].s)) fa_stream_stop(sound->v[i].s);
     fa_mutex_unlock(&sound->lock);
     return FA_OK;
 }
@@ -560,7 +581,7 @@ FA_API fa_result FA_CALL fa_sound_get_voices(fa_sound* sound, fa_stream** out_vo
     busy = (fa_sound_voice*)malloc((sound->count ? sound->count : 1) * sizeof(*busy));
     if (!busy) { fa_mutex_unlock(&sound->lock); return FA_ERROR_OUT_OF_MEMORY; }
     for (i = 0; i < sound->count; i++)
-        if (fa_stream_voice_busy(sound->v[i].s)) busy[n++] = sound->v[i];
+        if (voice_live(sound, sound->v[i].s) && fa_stream_voice_busy(sound->v[i].s)) busy[n++] = sound->v[i];
     fa_mutex_unlock(&sound->lock);
     qsort(busy, n, sizeof(*busy), by_seq);
     for (i = 0; i < n && i < capacity; i++) out_voices[i] = busy[i].s;

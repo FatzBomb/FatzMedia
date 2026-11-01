@@ -186,6 +186,7 @@ void fa_event_thread_main(void* arg)
     fa_mutex_lock(&e->list_lock);
     for (;;) {
         struct fa_stream* grave = NULL;
+        struct fa_stream* later;
         struct fa_stream* s;
         uint32_t n = 0, i, nw = 0;
         int busy = 0;
@@ -237,9 +238,18 @@ void fa_event_thread_main(void* arg)
                 n = 0; /* out of memory: try again next round */
             }
         }
+        /* Streams closed from inside their own callback (fa_stream_close): close them
+         * here, after delivering. They go to the graveyard for a later round. */
+        later = e->close_later;
+        e->close_later = NULL;
         fa_mutex_unlock(&e->list_lock);
 
         for (i = 0; i < n; i++) deliver(&batch[i].ev);
+        while (later) {
+            struct fa_stream* next = later->close_later_next;
+            fa_stream_close(later);
+            later = next;
+        }
         /* After delivering: a reopen can take a while and should not hold events up. */
         if (!quit) busy = fa_devices_service(e);
         while (grave) {
@@ -249,7 +259,7 @@ void fa_event_thread_main(void* arg)
         }
 
         fa_mutex_lock(&e->list_lock);
-        if (quit && e->pending_count == 0 && !e->graveyard) break;
+        if (quit && e->pending_count == 0 && !e->graveyard && !e->close_later) break;
         if (e->pending_count == 0 || n == 0) {
             /* Everything that gives this thread work signals event_wake, the audio
              * thread too; only CD+G change events (the picture moves with the clock)

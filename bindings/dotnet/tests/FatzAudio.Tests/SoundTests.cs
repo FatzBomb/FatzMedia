@@ -118,6 +118,64 @@ public class SoundTests
         Assert.Equal(1, sound.VoiceCount);
     }
 
+    // Final audit T2: Dispose closed the voices under the sound's lock while an Ended handler waited for that lock in
+    // Play, and closing a voice waits for its handlers: a deadlock.
+    [Fact]
+    public void Dispose_WhileEndedHandlersPlay_DoesNotDeadlock()
+    {
+        using var engine = CreateHeadless();
+        using var output = engine.OpenOutput();
+        for (int round = 0; round < 20; round++)
+        {
+            var sound = engine.CreateSound(Tone(96), 48000, 1, new SoundOptions { MaxVoices = 4 });   // 2 ms
+            int ended = 0;
+            void Again(object? sender, EventArgs e)
+            {
+                Interlocked.Increment(ref ended);
+                try
+                {
+                    var v = sound.Play(output);
+                    v.Ended -= Again;
+                    v.Ended += Again;
+                }
+                catch (ObjectDisposedException) { }
+                catch (FatzAudioException) { }
+            }
+            for (int i = 0; i < 4; i++) sound.Play(output).Ended += Again;
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (Volatile.Read(ref ended) < 8 && DateTime.UtcNow < deadline) Thread.Sleep(1);
+            var dispose = Task.Run(sound.Dispose);
+            Assert.True(dispose.Wait(TimeSpan.FromSeconds(10)), $"Dispose hung in round {round}");
+        }
+    }
+
+    // Final audit T1: disposing voices on one thread while another plays the sound. A voice whose close had begun
+    // could be handed out again and wrapped a second time, so it was closed twice.
+    [Fact]
+    public void DisposingVoices_WhilePlaying_IsSafe()
+    {
+        using var engine = CreateHeadless();
+        using var output = engine.OpenOutput();
+        using var sound = engine.CreateSound(Tone(4800), 48000, 1, new SoundOptions { MaxVoices = 2 });
+        var played = new System.Collections.Concurrent.BlockingCollection<AudioStream>();
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+        var player = Task.Run(() =>
+        {
+            while (DateTime.UtcNow < until) played.Add(sound.Play(output));
+            played.CompleteAdding();
+        });
+        int disposed = 0;
+        foreach (var v in played.GetConsumingEnumerable())
+        {
+            v.Dispose();
+            disposed++;
+        }
+        player.Wait();
+        Assert.True(disposed > 0);
+        Assert.InRange(sound.VoiceCount, 0, 2);
+        Assert.Equal(1.0f, sound.Play(output).Volume);
+    }
+
     [Fact]
     public void CreateSound_RejectsBadInput()
     {

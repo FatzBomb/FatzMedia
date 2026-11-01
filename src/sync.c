@@ -519,7 +519,7 @@ FA_API fa_result FA_CALL fa_deck_beat_jump(fa_deck* deck, double beats)
      * the deck goes on counting where it would be: fa_deck_slip_return comes back). */
     began = fa_stream_slip_begin(dn.s);
     r = out > in ? fa_stream_jump_loop(dn.s, (fa_frames)delta, in, out) : fa_stream_jump(dn.s, -1, (fa_frames)delta);
-    if (began && r != FA_OK && r != FA_ERROR_BUSY) fa_stream_slip_cancel(dn.s);   /* no jump: no slip (BUSY is tried again) */
+    if (began && r != FA_OK) fa_stream_slip_cancel(dn.s);   /* no jump: no slip (one tried again begins its own) */
 done:
     fa_mutex_unlock(&m->lock);
     return r;

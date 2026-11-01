@@ -587,6 +587,24 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   - Cookie jar: when it is full, the cookie created first is evicted. A replaced cookie keeps its creation time, so
     before this the wrong cookie went.
 
+- Lifetimes and threads (final audit step 2):
+  - Sounds: a voice the app was closing on one thread could be handed out by `fa_sound_play` on another (and listed by
+    `fa_sound_get_voices`) just before it was freed, so the play returned a dangling voice. A voice whose close has
+    begun is now skipped, and doesn't count against the voice limit. .NET: disposing a voice while another thread
+    plays the sound no longer wraps that voice a second time (which closed it twice).
+  - .NET `Sound.Dispose` closed the voices while holding the sound's lock, so a voice's `Ended` handler calling `Play`
+    at that moment deadlocked. The voices are now disposed outside the lock.
+  - `fa_stream_close` from inside the stream's own `fa_stream_proc` waited for the decode lock its own thread held, and
+    from inside its own download callback joined its own download thread (a hang on Windows, a use-after-free on
+    POSIX). Both now return without waiting for that callback: it is not called again, and the event thread finishes
+    the close. The
+    header and docs now say what else not to do inside a stream proc.
+  - DJ: a failed `fa_deck_beat_jump` (`FA_ERROR_BUSY` too) and a deck loop that failed for want of memory left slip
+    mode's slip running with no jump or loop.
+  - .NET: a download handler given at open (`NetworkOptions.Downloaded`) that changed handlers from inside itself, on
+    the first bytes while the open still ran, took the stream's lock as if called from outside, and could deadlock
+    with another thread changing handlers at that moment.
+  - CD+G change events on a detached push stream no longer wait behind a seek on that stream: the round skips it.
 - .NET `AudioStream.CdgChanged`: the first event (the whole screen) was sometimes lost. Adding the first handler turned
   the native events on before storing the handler, and since the event thread now wakes at once it could raise
   that event in between; on a paused or decode-only stream no later event followed. The handler is now stored first.
