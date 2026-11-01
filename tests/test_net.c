@@ -3373,6 +3373,113 @@ static void test_download_tap(void)
     fa_mutex_destroy(&t.lock);
 }
 
+/* T3/T4 (final audit): closing a stream from inside its own callback. A download
+ * callback runs on the download thread, which the close would join; a stream proc runs
+ * under the stream's decode lock, which the close takes. Either way the close is
+ * finished on the event thread once the callback returns, and the callback is not
+ * called again. The stream proc case is here too, for the white-box atomics. */
+typedef struct self_closer {
+    fa_atomic_ptr stream;     /* set once the test is done with the stream: the callback closes it */
+    fa_atomic32 calls, closes, calls_after;
+} self_closer;
+
+static void FA_CALL tap_close_proc(void* user, const void* data, size_t size)
+{
+    self_closer* c = (self_closer*)user;
+    fa_stream* s = (fa_stream*)fa_load_ptr(&c->stream);
+    (void)data; (void)size;
+    if (fa_load32(&c->closes)) { fa_fetch_add32(&c->calls_after, 1); return; }
+    fa_fetch_add32(&c->calls, 1);
+    if (s) {
+        fa_stream_close(s);   /* returns at once */
+        fa_store32(&c->closes, 1);
+    }
+}
+
+static int64_t FA_CALL proc_close_proc(void* buffer, fa_frames frames, void* user)
+{
+    self_closer* c = (self_closer*)user;
+    fa_stream* s = (fa_stream*)fa_load_ptr(&c->stream);
+    memset(buffer, 0, (size_t)frames * 2 * sizeof(float));
+    if (fa_load32(&c->closes)) { fa_fetch_add32(&c->calls_after, 1); return frames; }
+    fa_fetch_add32(&c->calls, 1);
+    if (s) {
+        fa_stream_close(s);
+        fa_store32(&c->closes, 1);
+    }
+    return frames;
+}
+
+/* Renders until the engine has no attached stream left (the event thread finished
+ * the close), at most 5 s. */
+static int render_until_detached(fa_device* dev)
+{
+    float out[512 * 2];
+    fa_engine_stats st;
+    int64_t until = fa_monotonic_ns() + 5000000000LL;
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
+    do {
+        fa_fetch_add64(&dev->epoch, 1);
+        fa_device_render(dev, out, 512);
+        fa_fetch_add64(&dev->epoch, 1);
+        fa_sleep_ms(2);
+        fa_engine_get_stats(g_engine, &st);
+    } while (st.attached_streams > 0 && fa_monotonic_ns() < until);
+    return st.attached_streams == 0;
+}
+
+static void test_close_inside_callback(void)
+{
+    static self_closer c;   /* static: a failed CHECK returns with a callback maybe still running */
+    fa_audio_format f = { FA_FORMAT_F32, 44100, 2, 0 };
+    fa_open_options o;
+    fa_net_options net;
+    fa_device* dev = NULL;
+    fa_stream* s = NULL;
+    fa_result r;
+    float buf[256 * 2];
+    fa_frames got = 0;
+    int i;
+    CHECK_EQ(fa_device_open(g_engine, NULL, &dev), FA_OK);
+
+    /* A radio station's download callback. */
+    memset(&c, 0, sizeof(c));
+    fa_net_options_init(&net);
+    net.download_proc = tap_close_proc;
+    net.download_user = &c;
+    s = open_url_net("/radio", 0, &net, &r);
+    CHECK_EQ(r, FA_OK);
+    CHECK_EQ(fa_stream_attach(s, dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    fa_exchange_ptr(&c.stream, s);   /* from here on the callback owns it */
+    CHECK(render_until_detached(dev));
+    CHECK_EQ(fa_load32(&c.closes), 1);
+    fa_sleep_ms(100);
+    CHECK_EQ(fa_load32(&c.calls_after), 0);
+
+    /* A stream proc on a decode worker. */
+    memset(&c, 0, sizeof(c));
+    CHECK_EQ(fa_stream_open_callback(g_engine, &f, proc_close_proc, &c, NULL, &s), FA_OK);
+    CHECK_EQ(fa_stream_attach(s, dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    fa_exchange_ptr(&c.stream, s);
+    CHECK(render_until_detached(dev));
+    CHECK_EQ(fa_load32(&c.closes), 1);
+    fa_sleep_ms(50);
+    CHECK_EQ(fa_load32(&c.calls_after), 0);
+
+    /* A stream proc inside fa_stream_read, on this thread: the read comes back. */
+    memset(&c, 0, sizeof(c));
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_callback(g_engine, &f, proc_close_proc, &c, &o, &s), FA_OK);
+    fa_exchange_ptr(&c.stream, s);
+    for (i = 0; i < 10 && !fa_load32(&c.closes); i++) fa_stream_read(s, buf, 256, &got);
+    CHECK_EQ(fa_load32(&c.closes), 1);   /* and the stream is not used again */
+    fa_device_close(dev);
+}
+
 /* The cookie jar's rules: domain and host-only cookies, paths, Secure, expiry,
  * replacement and deletion, the order of the Cookie header. */
 static void test_cookie_jar(void)
@@ -3904,6 +4011,7 @@ int main(void)
     RUN(test_cancel_open);
     RUN(test_clean_close_reconnects);
     RUN(test_download_tap);
+    RUN(test_close_inside_callback);
     RUN(test_cookie_jar);
     RUN(test_hls_cookies);
     RUN(test_fmp4_indexed_open);

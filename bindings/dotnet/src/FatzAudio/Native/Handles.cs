@@ -156,6 +156,22 @@ internal sealed class StreamHandle : SafeHandle
         lock (_surfaces) _surfaces.Remove(surface);
     }
 
+    private Sound? _voiceOf;
+    private int _voiceClosing;
+
+    /// <summary>Makes this a voice of <paramref name="sound"/>, which then learns when the voice's close starts
+    /// and when it is over (<see cref="Sound.VoiceClosing"/>, <see cref="Sound.VoiceClosed"/>).</summary>
+    public void SetVoiceOf(Sound sound) => _voiceOf = sound;
+
+    protected override void Dispose(bool disposing)
+    {
+        // Before the handle counts as closed: from here on the sound does not hand this voice out again, even
+        // while the native close waits for a call still running on the handle.
+        if (_voiceOf is { } sound && Interlocked.Exchange(ref _voiceClosing, 1) == 0 && !IsInvalid)
+            sound.VoiceClosing(handle);
+        base.Dispose(disposing);
+    }
+
     protected override bool ReleaseHandle()
     {
         // Surfaces the app did not dispose are destroyed with the stream.
@@ -165,6 +181,7 @@ internal sealed class StreamHandle : SafeHandle
             _surfaces.Clear();
         }
         NativeMethods.fa_stream_close(handle);
+        _voiceOf?.VoiceClosed(handle);
         lock (_pins)
         {
             foreach (var h in _pins) h.Free();

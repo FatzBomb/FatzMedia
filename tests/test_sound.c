@@ -234,6 +234,42 @@ static void test_steal_none(void)
     fa_sound_close(snd);
 }
 
+/* T1 (final audit): a voice the app closes on another thread. fa_stream_close clears
+ * the voice's `sound` first, then waits for the sound's lock in fa_sound_forget and
+ * frees the voice as soon as it has it, so meanwhile the sound must not hand that voice
+ * out, take it over or list it. The first step of the close is done here by hand, as
+ * if that thread were waiting for the lock. */
+static void test_voice_being_closed_not_used(void)
+{
+    fa_sound* snd = make_sound(20000, 0.1f, 2, FA_SOUND_STEAL_OLDEST);
+    fa_stream* a = NULL; fa_stream* b = NULL; fa_stream* c = NULL; fa_stream* d = NULL;
+    fa_stream* list[4];
+    fa_sound_info info;
+    uint32_t n = 0, i;
+    void* owner;
+    CHECK(snd != NULL);
+    CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &a), FA_OK);
+    CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &b), FA_OK);
+    CHECK_EQ(fa_stream_stop(a), FA_OK);                 /* free: the next play would reuse it */
+    owner = fa_exchange_ptr(&a->sound, NULL);           /* ...but its close has begun */
+    CHECK(owner == (void*)snd);
+    CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &c), FA_OK);
+    CHECK(c != a && c != b);                            /* a new voice: the leaving one does not count */
+    CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &d), FA_OK);
+    CHECK(d == b);                                      /* taken over: the oldest one still there */
+    CHECK_EQ(fa_sound_get_voices(snd, list, 4, &n), FA_OK);
+    CHECK_EQ(n, 2);
+    for (i = 0; i < n; i++) CHECK(list[i] != a);
+    CHECK_EQ(fa_sound_get_info(snd, &info), FA_OK);
+    CHECK_EQ(info.voices, 2);
+    fa_exchange_ptr(&a->sound, owner);
+    fa_stream_close(a);                                 /* the close goes on: forgotten, freed */
+    CHECK_EQ(fa_sound_get_info(snd, &info), FA_OK);
+    CHECK_EQ(info.voices, 2);
+    CHECK_EQ(info.playing, 2);
+    fa_sound_close(snd);
+}
+
 static void test_ended_voice_reused(void)
 {
     fa_sound* snd = make_sound(1000, 0.3f, 4, FA_SOUND_STEAL_OLDEST);
@@ -412,6 +448,7 @@ int main(void)
     RUN(test_steal_oldest);
     RUN(test_steal_quietest);
     RUN(test_steal_none);
+    RUN(test_voice_being_closed_not_used);
     RUN(test_ended_voice_reused);
     RUN(test_detached_voice_restarts);
     RUN(test_lower_limit);

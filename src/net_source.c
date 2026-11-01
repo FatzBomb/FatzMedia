@@ -546,6 +546,7 @@ static void download_main(void* arg)
     fa_http_session_destroy(n->http);    /* fa_net_close frees n only after joining this thread */
     n->http = NULL;
     free(url);
+    fa_store64(&n->download_tid, 0);    /* its id may be reused by another thread */
 }
 
 /* ---- opening and closing ------------------------------------------------------ */
@@ -633,7 +634,7 @@ fa_result fa_net_open(const fa_net_config* cfg, fa_net** out)
 
 void fa_net_set_tap(fa_net* n, fa_download_proc proc, void* user)
 {
-    if ((int64_t)fa_thread_current_id() == fa_load64(&n->download_tid)) {   /* from inside the tap: tap_lock is held already */
+    if (fa_net_on_download_thread(n)) {   /* from inside the tap: tap_lock is held already */
         n->tap = proc;
         n->tap_user = user;
         return;
@@ -642,6 +643,11 @@ void fa_net_set_tap(fa_net* n, fa_download_proc proc, void* user)
     n->tap = proc;
     n->tap_user = user;
     fa_mutex_unlock(&n->tap_lock);
+}
+
+int fa_net_on_download_thread(fa_net* n)
+{
+    return (int64_t)fa_thread_current_id() == fa_load64(&n->download_tid);
 }
 
 void fa_net_interrupt(fa_net* n)

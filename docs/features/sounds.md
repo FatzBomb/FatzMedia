@@ -86,12 +86,12 @@ void Hit(int pad) => pads[pad].Play(fxBus);
 
 ## Threads
 
-Every call is thread-safe. A play takes the sound's lock while it picks a voice, so plays of one sound from several threads are served one after another; plays of different sounds do not wait for each other. A play may be called from an event callback (to fire a sound when a song ends, for example). The audio thread does nothing new: it mixes voices as it mixes any stream.
+Every call is thread-safe. A play takes the sound's lock while it picks a voice, so plays of one sound from several threads are served one after another; plays of different sounds do not wait for each other. A play may be called from an event callback (to fire a sound when a song ends, for example), also in .NET while another thread disposes the sound or one of its voices. The audio thread does nothing new: it mixes voices as it mixes any stream.
 
 ## Pitfalls
 
 - **For short sounds.** The whole file is decoded into memory: a 3-minute stereo song at 44.1 kHz is about 64 MB. Sounds over 1 GB of PCM fail with `FA_ERROR_TOO_LARGE`. Songs belong in streams.
-- **Don't close voices behind the sound's back expecting the sound to stay the same.** `fa_stream_close` on a voice is allowed: the sound forgets that voice. But a voice pointer you kept from an earlier play may now be playing someone else's copy: stop a copy right after its play, or keep its `FA_EVENT_ENDED`, rather than holding the pointer for minutes.
+- **Don't close voices behind the sound's back expecting the sound to stay the same.** `fa_stream_close` on a voice is allowed, also while other threads play the sound (in .NET, disposing a voice while another thread plays): the sound forgets that voice and never hands it out again once its close has begun. But a voice pointer you kept from an earlier play may now be playing someone else's copy: stop a copy right after its play, or keep its `FA_EVENT_ENDED`, rather than holding the pointer for minutes.
 - **Stealing cuts.** A stolen voice restarts at once. With short sounds and a sensible limit nobody hears it; for long sounds, use `FA_SOUND_STEAL_NONE` and fade copies out yourself.
 - **Normalization.** Voices are never normalized (`FA_OPEN_NO_NORMALIZE`): set the level with the play's volume.
 - **Close every sound before `fa_engine_destroy`**, as with streams.

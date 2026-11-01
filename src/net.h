@@ -53,7 +53,8 @@ void fa_http_session_destroy(fa_http_session* s);    /* closes its connections; 
 
 /* A stream's cookies (net_cookie.c): what its servers set with Set-Cookie goes back
  * to them on its later requests (an HLS playlist's session cookie on the segments).
- * Only the stream's download thread uses it. */
+ * Used by the stream's download thread and by a demuxer's own range requests
+ * (fa_net_read_range) on a decode worker, under the jar's own lock. */
 typedef struct fa_http_cookies fa_http_cookies;
 fa_http_cookies* fa_http_cookies_create(void);       /* NULL when out of memory */
 void fa_http_cookies_destroy(fa_http_cookies* c);    /* NULL ok */
@@ -288,7 +289,10 @@ fa_result fa_net_open_done(fa_net* n);
 /* Ends the download for good and wakes a reader waiting for bytes (its read
  * returns the end). For closing a stream while a worker may be reading. NULL ok. */
 void fa_net_interrupt(fa_net* n);
-void fa_net_close(fa_net* n);    /* stops the download thread, frees everything */
+void fa_net_close(fa_net* n);    /* stops the download thread, frees everything; never
+                                    from the download thread (fa_net_on_download_thread) */
+/* 1 when called on n's download thread: inside the download callback (fa_net_set_tap). */
+int fa_net_on_download_thread(fa_net* n);
 /* I/O callbacks over the downloaded bytes, for fa_source_open_io. seek is NULL
  * for live streams. Reads wait for the network; decode workers only call them
  * once fa_net_can_decode said enough is here. */

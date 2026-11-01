@@ -990,6 +990,9 @@ struct fa_engine {
     struct fa_stream* streams;   /* attached streams the workers keep filled */
     struct fa_device* devices;
     struct fa_stream* graveyard; /* closed streams, freed by the event thread */
+    struct fa_stream* close_later; /* streams closed from inside their own callback: the
+                                      event thread closes them (fa_stream_close), via
+                                      close_later_next */
     struct fa_stream* cdg_watched; /* streams with CD+G change events (cdg.c), via cdg_watch_link */
     struct fa_cdg_surface* cdg_render; /* surfaces waiting for a worker to render ahead (cdg.c) */
     fa_atomic32 cdg_render_count; /* how many: read by idle workers without a lock */
@@ -1474,6 +1477,8 @@ struct fa_stream {
     void* callback_user;
     fa_atomic32 in_callback;
     fa_atomic32 closed;
+    fa_atomic64 proc_tid;        /* callback streams: the thread inside fa_stream_proc now, 0 = none */
+    struct fa_stream* close_later_next;   /* engine->close_later */
     fa_qevent spill[FA_EVENT_SPILL];     /* written by the audio thread when the queue is full */
     fa_atomic32 spill_full[FA_EVENT_SPILL];
 
@@ -1697,6 +1702,9 @@ void fa_stream_fill(struct fa_stream* s, int64_t max_frames);  /* caller holds d
 int fa_stream_work(struct fa_stream* s, int64_t max_frames);
 fa_frames fa_stream_position_now(struct fa_stream* s);
 void fa_stream_free_memory(struct fa_stream* s);               /* event thread, from the graveyard */
+/* fa_stream_get_clock, but FA_ERROR_BUSY rather than wait for a detached push stream's api_lock
+ * (the event thread's CD+G watch). */
+fa_result fa_stream_get_clock_nowait(struct fa_stream* s, fa_time* out_pts);
 
 float fa_stream_norm_target_db(struct fa_stream* s);          /* any thread */
 void fa_stream_start_analysis(struct fa_stream* s);           /* idempotent */
@@ -1880,7 +1888,11 @@ int fa_stream_voice_busy(fa_stream* s);
 void fa_sound_forget(struct fa_sound* sound, fa_stream* voice);
 /* Tests: the shared PCM a voice reads (NULL if not a voice) and its reference count. */
 const float* fa_sound_voice_data(fa_stream* voice, int32_t* out_refs);
-fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* format, fa_stream_proc proc, void* user);
+/* proc_tid: where the thread calling proc is kept while it runs (fa_stream.proc_tid). */
+fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* format, fa_stream_proc proc, void* user,
+                                   fa_atomic64* proc_tid);
+/* From inside the proc (decode_lock held): never call it again; the stream ends. */
+void fa_callback_decoder_stop(fa_decoder* dec);
 /* capture.c: fa_stream_open_capture's decoder (an input device). Its ring holds 1 s
  * plus `extra_ms` (half the stream's decode-ahead buffer when it may be attached), so
  * the workers' top-ups in turns of a quarter buffer never overflow it. */

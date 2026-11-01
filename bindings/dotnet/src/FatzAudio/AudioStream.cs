@@ -251,20 +251,23 @@ public unsafe partial class AudioStream : IDisposable
 
     private readonly object _downloadLock = new();
     private GCHandle? _download;
+    // Names this stream to its download handlers (DownloadState.Stream). An open-time handler's token is made
+    // before the open, since the handler gets bytes while the open still runs.
+    private object _downloadToken = new();
 
     // The handle of NetworkOptions.Downloaded (already adopted by the stream handle), so a later
     // SetDownloadHandler frees it like any replaced handler.
     internal void InitDownloadHandle(GCHandle? gc)
     {
-        if (gc is { } g && g.Target is DownloadState st) st.Owner = this;
+        if (gc is { } g && g.Target is DownloadState st) _downloadToken = st.Stream;
         _download = gc;
     }
 
-    // What the native tap's user pointer leads to: the handler, and the stream it is for.
-    internal sealed class DownloadState(DownloadHandler handler, AudioStream? owner)
+    // What the native tap's user pointer leads to: the handler, and the token of the stream it is for.
+    internal sealed class DownloadState(DownloadHandler handler, object stream)
     {
         public DownloadHandler Handler { get; } = handler;
-        public AudioStream? Owner { get; set; } = owner;
+        public object Stream { get; } = stream;
     }
 
     /// <summary>
@@ -290,7 +293,7 @@ public unsafe partial class AudioStream : IDisposable
         var h = Handle;
         // From inside this stream's handler the lock is skipped: another thread holding it waits in the native call
         // for the handler to return, and makes its change after this one, in the same order as the native side.
-        if (ReferenceEquals(t_inDownloadOf, this))
+        if (ReferenceEquals(t_inDownloadOf, _downloadToken))
         {
             SwapDownloadHandler(h, handler);
             return;
@@ -300,7 +303,7 @@ public unsafe partial class AudioStream : IDisposable
 
     private unsafe void SwapDownloadHandler(StreamHandle h, DownloadHandler? handler)
     {
-        GCHandle? gc = handler is null ? null : _handle.Pin(new DownloadState(handler, this));
+        GCHandle? gc = handler is null ? null : _handle.Pin(new DownloadState(handler, _downloadToken));
         int rc = NativeMethods.fa_stream_set_download_callback(h, gc is null ? null : &OnDownload,
             gc is { } g ? (void*)GCHandle.ToIntPtr(g) : null);
         if (rc < 0)
@@ -314,7 +317,7 @@ public unsafe partial class AudioStream : IDisposable
         _download = gc;
     }
 
-    [ThreadStatic] private static AudioStream? t_inDownloadOf;
+    [ThreadStatic] private static object? t_inDownloadOf;   // the token of the stream whose handler runs here
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnDownload(void* user, void* data, nuint size)
@@ -324,7 +327,7 @@ public unsafe partial class AudioStream : IDisposable
             if (user != null && GCHandle.FromIntPtr((nint)user).Target is DownloadState st)
             {
                 var outer = t_inDownloadOf;
-                t_inDownloadOf = st.Owner;
+                t_inDownloadOf = st.Stream;
                 try { st.Handler(new ReadOnlySpan<byte>(data, checked((int)size))); }
                 finally { t_inDownloadOf = outer; }
             }

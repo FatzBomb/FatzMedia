@@ -64,7 +64,11 @@ public sealed record SoundInfo(int SampleRate, int Channels, long Frames, long M
 public sealed unsafe class Sound : IDisposable
 {
     private readonly SoundHandle _handle;
-    private readonly Dictionary<nint, AudioStream> _voices = new();
+    private readonly Dictionary<nint, AudioStream> _voices = new();   // also the lock of the members below
+    // Voices whose wrapper is being disposed: the native close has not finished, and until it has started the
+    // native pool may still hand the voice out. Such a voice is never wrapped again (it is about to be freed).
+    private readonly HashSet<nint> _closing = new();
+    private bool _disposed;   // no new voices once Dispose has taken the list
 
     private Sound(AudioEngine engine, SoundHandle handle)
     {
@@ -191,24 +195,38 @@ public sealed unsafe class Sound : IDisposable
         var dh = output.Handle;
         var bh = bus?.Handle;
         output.Start();
-        lock (_voices)
+        var spin = new SpinWait();
+        long giveUp = Environment.TickCount64 + 1000;
+        while (true)
         {
-            bool added = false;
-            nint native;
-            int rc;
-            try
+            lock (_voices)
             {
-                bh?.DangerousAddRef(ref added);
-                rc = NativeMethods.fa_sound_play(Handle, dh, bh?.DangerousGetHandle() ?? 0, volume, pan, out native);
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                bool added = false;
+                nint native;
+                int rc;
+                try
+                {
+                    bh?.DangerousAddRef(ref added);
+                    rc = NativeMethods.fa_sound_play(Handle, dh, bh?.DangerousGetHandle() ?? 0, volume, pan, out native);
+                }
+                finally
+                {
+                    if (added) bh!.DangerousRelease();
+                }
+                FatzAudioException.ThrowIfFailed(rc);
+                if (!_closing.Contains(native))
+                {
+                    var voice = VoiceFor(native);
+                    voice.JoinedVoice(output, bus);
+                    return voice;
+                }
             }
-            finally
-            {
-                if (added) bh!.DangerousRelease();
-            }
-            FatzAudioException.ThrowIfFailed(rc);
-            var voice = VoiceFor(native);
-            voice.JoinedVoice(output, bus);
-            return voice;
+            // A voice being disposed on another thread, whose native close had not reached the pool yet: it is
+            // closed in a moment (which cuts this copy off), so play again. The lock is let go meanwhile, so that
+            // close can finish.
+            if (Environment.TickCount64 > giveUp) throw new FatzAudioException(ErrorCode.Busy);
+            spin.SpinOnce();
         }
     }
 
@@ -219,6 +237,7 @@ public sealed unsafe class Sound : IDisposable
         var h = new StreamHandle();
         h.Initialize(native, Engine.Handle);
         h.SetOwner(_handle);   // the sound stays open while a voice wrapper is alive
+        h.SetVoiceOf(this);
         var voice = new AudioStream(Engine, h, null);
         _voices[native] = voice;
         return voice;
@@ -233,6 +252,7 @@ public sealed unsafe class Sound : IDisposable
     {
         lock (_voices)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             var h = Handle;
             uint count;
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, null, 0, out count));
@@ -242,19 +262,40 @@ public sealed unsafe class Sound : IDisposable
                 FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_voices(h, p, count, out count));
             int n = (int)Math.Min(count, (uint)buf.Length);   // fewer if some ended between the calls
             var list = new List<AudioStream>(n);
-            for (int i = 0; i < n; i++) list.Add(VoiceFor(buf[i]));
+            for (int i = 0; i < n; i++)
+                if (!_closing.Contains(buf[i])) list.Add(VoiceFor(buf[i]));   // not one being disposed
             return list;
+        }
+    }
+
+    // A voice wrapper's handle is being disposed (StreamHandle.Dispose): see _closing.
+    internal void VoiceClosing(nint native)
+    {
+        lock (_voices) _closing.Add(native);
+    }
+
+    // Its native close is over: the pointer may now name a new voice.
+    internal void VoiceClosed(nint native)
+    {
+        lock (_voices)
+        {
+            _closing.Remove(native);
+            if (_voices.TryGetValue(native, out var v) && v.IsDisposed) _voices.Remove(native);
         }
     }
 
     /// <summary>Stops and disposes every voice, then frees the sound.</summary>
     public void Dispose()
     {
+        AudioStream[] voices;
         lock (_voices)
         {
-            foreach (var v in _voices.Values) v.Dispose();
+            _disposed = true;   // a Play racing this (an Ended handler, say) must not add a voice nobody disposes
+            voices = [.. _voices.Values];
             _voices.Clear();
         }
+        // Outside the lock: closing a voice waits for its event handlers, and an Ended handler may be in Play.
+        foreach (var v in voices) v.Dispose();
         _handle.Dispose();
     }
 }
