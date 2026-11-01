@@ -63,15 +63,17 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    scaled mode; next song's surfaces prepared early; a governor on `draw_ns`/`render_ns`/`behind`;
    linear sampling with mips for scaled bitmaps. With the FatzAudio engine the surfaces use its
    stream; with BASS they use a decode-only FatzAudio stream for the same file (needs request 3 for
-   lyrics without a soundfont, or a GM bank). Our own CD+G engine and the Direct3D11 lyric
-   renderer stay until the decision slice.
+   lyrics without a soundfont, or a GM bank). Our own CD+G engine and both lyric
+   renderers (DirectWrite on Direct3D11, SkiaSharp on Software and Vulkan) stay as the fallback
+   until the decision slice.
 4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
    MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
 5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
    0.75-1.5, seeks, loop wraps and pause/resume.
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
-   then removed, and whether our CD+G engine and lyric renderers are deleted.
+   then removed, and whether our CD+G engine and lyric renderers (DirectWrite and SkiaSharp) are
+   deleted. No karaoke drawing code is removed before this decision.
 
 ## Karaoke presentation (agreed with the owner 2026-10-20)
 
