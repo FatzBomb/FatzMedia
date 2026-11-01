@@ -22,9 +22,26 @@ static int g_failures = 0;
     fprintf(stderr, "  FAIL %s:%d: %s == %s (%lld vs %lld)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
 #define CHECK_NEAR(a, b, tol) do { double va_ = (a), vb_ = (b); if (fabs(va_ - vb_) > (tol)) { \
     fprintf(stderr, "  FAIL %s:%d: %s ~ %s (%.6f vs %.6f)\n", __FILE__, __LINE__, #a, #b, va_, vb_); g_failures++; return; } } while (0)
+/* Which tests run: FA_TEST names one; the command line's `--only a,b` or `--skip a,b`
+ * name a list (ctest runs the slow malformed-file tests as entries of their own). */
+static const char* g_only;
+static const char* g_skip;
+static int g_ran;
+static int listed(const char* list, const char* name)
+{
+    size_t n = strlen(name);
+    while (list && *list) {
+        const char* end = strchr(list, ',');
+        size_t k = end ? (size_t)(end - list) : strlen(list);
+        if (k == n && strncmp(list, name, n) == 0) return 1;
+        list = end ? end + 1 : NULL;
+    }
+    return 0;
+}
 #define RUN(t) do { const char* only_ = getenv("FA_TEST"); int before_ = g_failures; \
     if (only_ && strcmp(only_, #t) != 0) break; \
-    printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
+    if ((g_only && !listed(g_only, #t)) || listed(g_skip, #t)) break; \
+    g_ran++; printf("%s\n", #t); t(); if (g_failures == before_) printf("  ok\n"); } while (0)
 
 #define RATE 44100
 #define PI 3.14159265358979323846
@@ -2258,10 +2275,16 @@ static void test_system_soundfont(void)
     free(song.d);
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
     fa_engine_config cfg;
-    buf sf = make_sf2();
+    buf sf;
+    int i;
+    for (i = 1; i + 1 < argc; i += 2) {
+        if (strcmp(argv[i], "--only") == 0) g_only = argv[i + 1];
+        else if (strcmp(argv[i], "--skip") == 0) g_skip = argv[i + 1];
+    }
+    sf = make_sf2();
 #if defined(__APPLE__)
     /* The iOS simulator starts programs elsewhere: tools/ios-sim/run.sh names the folder. */
     if (getenv("FA_TEST_CWD") && chdir(getenv("FA_TEST_CWD")) != 0) return 1;
@@ -2311,6 +2334,7 @@ int main(void)
 
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);
+    if (g_only && !g_ran) { printf("no test named in --only %s\n", g_only); return 1; }
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }
     printf("PASS\n");
     return 0;

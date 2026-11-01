@@ -156,20 +156,31 @@ void efx_stage_free(efx_stage* s)
     memset(s, 0, sizeof(*s));
 }
 
-/* The stage's line, made (or made longer, from silence) when it has something to play. */
+/* The stage's line, made when it has something to play, or made longer when a parameter
+   change asks for more delay. A longer line keeps what it holds, oldest first, so the
+   echoes already in flight keep playing; the new room reads as silence until it fills.
+   It grows by half again at least, so a sweep of the delay time on the decode thread
+   reallocates a few times, not on every block. */
 int efx_stage_ready(fa_midi_efx* e, efx_stage* s)
 {
     float* d;
-    int cap;
+    int cap, old;
     (void)e;
     if (s->need <= 0 || (s->line.d && s->line.cap >= s->need + 2)) return 1;
+    old = s->line.d ? s->line.cap : 0;
     cap = s->need + 2;
+    if (old && cap < old + old / 2) cap = old + old / 2;
     d = (float*)calloc(2 * (size_t)cap, sizeof(float));
     if (!d) return 0;
+    if (old) {
+        int tail = old - s->line.pos;   /* the oldest frames, from pos to the end */
+        memcpy(d, s->line.d + 2 * (size_t)s->line.pos, 2 * (size_t)tail * sizeof(float));
+        memcpy(d + 2 * (size_t)tail, s->line.d, 2 * (size_t)s->line.pos * sizeof(float));
+    }
     free(s->line.d);
     s->line.d = d;
     s->line.cap = cap;
-    s->line.pos = 0;
+    s->line.pos = old;   /* next write goes after the newest frame; old < cap */
     return 1;
 }
 

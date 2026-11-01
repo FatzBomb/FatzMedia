@@ -580,6 +580,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- MIDI (final audit step 3):
+  - A GS EFX or XG insertion parameter change that needs a longer delay line (a longer delay time, more chorus
+    depth, or a controller sweeping them) wiped the line, so the echoes already in it were lost; it also reallocated on
+    every 64-frame block during a sweep. The line now grows keeping its content, by half again at least.
+  - Track volume: a silent track's note-off could end another track's note on the same channel and key, and a seek
+    restarted a key held by several tracks at the volume of its loudest strike's track (silent if that one was at 0).
+    Held notes are now counted per track (the first 128 tracks of a file).
+  - A seek with a transpose that pushed a pedal-held key out of range left it marked as held.
 - Hostile input (final audit step 1):
   - A fragmented MP4 web stream whose last `moof` claims the rest of the file, over the `mfra` that points at it, read
     past the bytes it had fetched (heap over-read, reached over HTTP with Range). The `moof` is now bounded at the `mfra`.

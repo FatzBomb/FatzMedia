@@ -9,6 +9,7 @@
 #endif
 #include "fa_internal.h"
 #include "midi_synth_test.h"
+#include "midi_efx.h"
 #if defined(__APPLE__)
 #  include <unistd.h>
 #endif
@@ -196,6 +197,34 @@ static void test_gs_delay_taps(void)
     CHECK(abs(first_peak(y, 1, n) - frames_ms(300)) <= 2);
     CHECK(rms_ch(y, 0, 0, frames_ms(140)) == 0.0);
     free(x); free(y);
+    fa_midi_efx_free(e);
+}
+
+/* A longer delay time mid-play keeps the echoes already in the line (audit C1): the
+ * right tap's line grows while the impulse is in it, and both echoes still play. */
+static void test_gs_delay_grows_mid_play(void)
+{
+    const int n = RATE, at = frames_ms(100) / BLOCK * BLOCK;
+    float* x = (float*)calloc((size_t)n * 2, sizeof(float)), *y = (float*)calloc((size_t)n * 2, sizeof(float)), *a, *b;
+    fa_midi_efx* e = fa_midi_efx_new(RATE);
+    int cap, right;
+    CHECK(fa_midi_efx_set_type(e, 1, 0x01, 0x50));
+    gsp(e, 0x05, 64);
+    gsp(e, 0x0A, 0x7F);
+    gsp(e, 0x12, 127);
+    x[0] = x[1] = 1.0f;
+    a = efx_run_from(e, x, at, 0);
+    cap = e->st[0].line.cap;
+    gsp(e, 0x04, 0x77);                    /* right: longer than the line holds */
+    b = efx_run_from(e, x + at * 2, n - at, at);
+    CHECK(e->st[0].line.cap > cap);
+    memcpy(y, a, (size_t)at * 2 * sizeof(float));
+    memcpy(y + at * 2, b, (size_t)(n - at) * 2 * sizeof(float));
+    CHECK(abs(first_peak(y, 0, n) - frames_ms(150)) <= 2);
+    right = first_peak(y, 1, n);
+    CHECK(right > frames_ms(305) && right < n);
+    CHECK(fabs(y[right * 2 + 1]) > 0.5f);
+    free(x); free(y); free(a); free(b);
     fa_midi_efx_free(e);
 }
 
@@ -611,6 +640,7 @@ int main(void)
     RUN(test_deterministic);
     RUN(test_gs_eq);
     RUN(test_gs_delay_taps);
+    RUN(test_gs_delay_grows_mid_play);
     RUN(test_gs_pitch);
     RUN(test_xg_compressor);
     RUN(test_xg_gate);

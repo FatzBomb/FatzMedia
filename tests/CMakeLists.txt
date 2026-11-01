@@ -342,7 +342,15 @@ target_link_libraries(fa_test_midi PRIVATE Threads::Threads ${CMAKE_DL_LIBS} ${F
 if(UNIX)
     target_link_libraries(fa_test_midi PRIVATE m)
 endif()
-add_test(NAME midi COMMAND fa_test_midi WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+# The malformed-file tests (about 1500 files each) are most of this binary's time under
+# the sanitizers: entries of their own, so ctest -j runs them side by side.
+set(FA_MIDI_SLOW test_malformed_midi test_malformed_soundfont test_malformed_dls)
+string(REPLACE ";" "," FA_MIDI_SLOW_LIST "${FA_MIDI_SLOW}")
+add_test(NAME midi COMMAND fa_test_midi --skip ${FA_MIDI_SLOW_LIST} WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+foreach(t IN LISTS FA_MIDI_SLOW)
+    string(REPLACE "test_" "" short ${t})
+    add_test(NAME midi_${short} COMMAND fa_test_midi --only ${t} WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endforeach()
 
 add_executable(fa_test_midi_controls test_midi_controls.c)
 target_compile_options(fa_test_midi_controls PRIVATE ${FA_WARNINGS})
