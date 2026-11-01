@@ -368,6 +368,44 @@ static void make_fragpad(void)
     }
 }
 
+/* A hostile fragmented MP4 (final audit H1): g_frag's ftyp and moov, then a moof
+ * whose size 0 runs "to the end", over the mfra that points at it. Reading the
+ * last fragment's end from it used to run past the bytes read. */
+static uint8_t* g_mfra_bad;
+static size_t g_mfra_bad_n;
+
+static void make_mfra_bad(void)
+{
+    size_t p = 0, o, moof = 0, mfra = 0;
+    uint32_t track = 1;
+    while (p + 8 <= g_frag_n) {
+        uint32_t size = be32(g_frag + p);
+        if (!moof && memcmp(g_frag + p + 4, "moof", 4) == 0) moof = p;
+        if (memcmp(g_frag + p + 4, "mfra", 4) == 0) mfra = p;
+        if (size < 8) break;
+        p += size;
+    }
+    if (!moof || !mfra) return;
+    track = be32(g_frag + mfra + 8 + 8 + 4);   /* the first tfra's track */
+    g_mfra_bad_n = moof + 8 + 64 + 8 + 35 + 16;
+    g_mfra_bad = (uint8_t*)calloc(1, g_mfra_bad_n);
+    memcpy(g_mfra_bad, g_frag, moof);
+    for (o = 0; o + 8 <= moof; o += be32(g_mfra_bad + o)) {
+        if (memcmp(g_mfra_bad + o + 4, "sidx", 4) == 0) memcpy(g_mfra_bad + o + 4, "free", 4);
+        if (be32(g_mfra_bad + o) < 8) break;
+    }
+    o = moof;
+    put_be32(g_mfra_bad + o, 0); memcpy(g_mfra_bad + o + 4, "moof", 4); o += 8 + 64;
+    put_be32(g_mfra_bad + o, 8 + 35 + 16); memcpy(g_mfra_bad + o + 4, "mfra", 4); o += 8;
+    /* tfra v0, 1-byte numbers: one entry, time 0 at the moof. */
+    put_be32(g_mfra_bad + o, 35); memcpy(g_mfra_bad + o + 4, "tfra", 4);
+    put_be32(g_mfra_bad + o + 12, track);
+    put_be32(g_mfra_bad + o + 20, 1);
+    put_be32(g_mfra_bad + o + 28, (uint32_t)moof);
+    o += 35;
+    put_be32(g_mfra_bad + o, 16); memcpy(g_mfra_bad + o + 4, "mfro", 4); put_be32(g_mfra_bad + o + 12, 8 + 35 + 16);
+}
+
 /* Which indexes the padded file keeps (the other boxes become 'free'). */
 static void frag_index(int sidx, int mfra)
 {
@@ -948,6 +986,7 @@ static int handle_request(sock_t s, int id)
     else if (strcmp(path, "/pcm.asf") == 0) serve_bytes(s, req, g_asf_pcm, g_asf_pcm_n, "video/x-ms-asf", 1, 0);
     else if (strcmp(path, "/chunked.asf") == 0) serve_chunked(s, g_asf_pcm, g_asf_pcm_n);
     else if (strcmp(path, "/frag.m4a") == 0) serve_bytes(s, req, g_fragpad, g_fragpad_n, "audio/mp4", 1, 0);
+    else if (strcmp(path, "/mfra-bad.m4a") == 0) serve_bytes(s, req, g_mfra_bad, g_mfra_bad_n, "audio/mp4", 1, 0);
     else if (strcmp(path, "/big.mkv") == 0) serve_bytes(s, req, g_mkv, g_mkv_n, "video/x-matroska", 1, 0);
     else if (strcmp(path, "/slow.mkv") == 0) serve_bytes_rate(s, req, g_mkv, g_mkv_n, "video/x-matroska", 1, 0, 860 * 1024);
     else if (strcmp(path, "/av.mp4") == 0) serve_bytes(s, req, g_av[0], g_av_n[0], "video/mp4", 1, 0);
@@ -3394,6 +3433,27 @@ static void test_cookie_jar(void)
         CHECK_STR(w.text, "Accept=*/*|Accept-Encoding=identity|X-A=1|Cookie=s=1|");
         fa_http_cookies_destroy(j);
     }
+    /* A full jar drops the oldest by creation: a replaced cookie keeps its age (final audit C2). */
+    {
+        char line[64];
+        int i;
+        j = fa_http_cookies_create();
+        for (i = 0; i < 64; i++) {
+            snprintf(line, sizeof(line), "Set-Cookie: k%d=1; Path=/\r\n", i);
+            fa_http_cookies_take(j, "http://h.com/", line);
+        }
+        fa_http_cookies_take(j, "http://h.com/", "Set-Cookie: k0=2; Path=/\r\n");   /* replaced: still the oldest */
+        fa_http_cookies_take(j, "http://h.com/", "Set-Cookie: new=1; Path=/\r\n");
+        c = fa_http_cookies_for(j, "http://h.com/");
+        CHECK(c != NULL);
+        if (c) {
+            CHECK(strstr(c, "k0=") == NULL);
+            CHECK(strstr(c, "k1=1") != NULL);
+            CHECK(strstr(c, "new=1") != NULL);
+        }
+        free(c);
+        fa_http_cookies_destroy(j);
+    }
     /* A long jar line still fits the plain-socket client's request (6 KB of cookies). */
     {
         char big[3100], line[3200], url[256];
@@ -3563,6 +3623,24 @@ static void test_fmp4_indexed_open(void)
         fa_stream_close(s);
     }
     frag_index(1, 1);
+}
+
+/* A moof that claims the rest of the file, over the mfra pointing at it: the open
+ * reads the index without running past the bytes it read (ASan builds check). */
+static void test_fmp4_mfra_hostile(void)
+{
+    fa_result r;
+    fa_stream* s;
+    CHECK(g_mfra_bad != NULL);
+    if (!g_mfra_bad) return;
+    s = open_url("/mfra-bad.m4a", FA_OPEN_DECODE_ONLY, &r);
+    printf("  hostile mfra: %s\n", fa_result_string(r));
+    if (s) {
+        float buf[4096];
+        fa_frames got = 0;
+        fa_stream_read(s, buf, 1024, &got);
+        fa_stream_close(s);
+    }
 }
 
 /* Seeks in an indexed fragmented MP4 read the fragment holding the target (from the
@@ -3768,6 +3846,7 @@ int main(void)
     make_hls_ac3();
     make_hls_map();
     make_fragpad();
+    make_mfra_bad();
     make_big_mkv();
     make_hls_fmp4();
     g_aac_tagged_n = 30000 + g_aac_n;
@@ -3829,6 +3908,7 @@ int main(void)
     RUN(test_hls_cookies);
     RUN(test_fmp4_indexed_open);
     RUN(test_fmp4_indexed_seek);
+    RUN(test_fmp4_mfra_hostile);
     RUN(test_fmp4_no_reader_waits);
     RUN(test_mkv_cues_at_end);
     RUN(test_mkv_slow_no_reader_waits);
@@ -3863,6 +3943,7 @@ int main(void)
     free(g_wav);
     free(g_frag);
     free(g_fragpad);
+    free(g_mfra_bad);
     free(g_mkv);
     free(g_av[0]);
     free(g_av[1]);

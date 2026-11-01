@@ -538,7 +538,7 @@ Rendering runs on the engine's worker threads like decoding of any other format.
 
 ## Limits and pitfalls
 
-- MIDI files up to 16 MB; events later than 6 hours are dropped. Soundfonts up to 1 GB.
+- MIDI files up to 16 MB; events later than 6 hours are dropped (in an event list for `fa_stream_open_midi_events`, refused with `FA_ERROR_INVALID_ARG`). Soundfonts up to 1 GB.
 - 256 voices per stream. When a dense passage needs more, the voices furthest into their release are cut; if all 256 are held, the new notes are skipped.
 - Damaged files play what can be read: a track cut short plays up to the cut. A file with no usable track fails with `FA_ERROR_UNSUPPORTED_FORMAT`.
 - DLS banks play their regions, samples, loops, envelopes, LFOs, filter, gains and effect sends. Connections with a MIDI controller, velocity, key or pressure in them (velocity to attack time, the mod wheel scaling the LFO, a controller to volume, key to filter cutoff) play as SoundFont 2 modulators; connections to the sustain levels or from the envelopes other than to pitch and cutoff are left out. DLS 2 conditional chunks are followed as a software DLS 2 synthesizer with no instruments of its own answers them (GM, GS and XG "in hardware": no; DLS 1 and 2: yes); a condition that can't be read keeps what it guards. Regions on different DLS 2 layers may overlap and all play. A region with its own articulation uses it instead of the instrument's, as the DLS spec says. A region's net gain above 0 dB plays at 0 dB (SoundFont 2 attenuation can't be negative).

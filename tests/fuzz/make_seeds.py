@@ -24,6 +24,20 @@ with zipfile.ZipFile(os.path.join(here, "seeds", "zip", "zip64.zip"), "w", zipfi
     with z.open(zinfo("big.bin", zipfile.ZIP_DEFLATED), "w", force_zip64=True) as f:
         f.write(b"abc" * 500)
 
+def shared_range_zip(k, data):
+    # One local entry, k central entries pointing at it (final audit H2: entries after the first are left out)
+    import zlib
+    crc = zlib.crc32(data) & 0xffffffff
+    c = zlib.compressobj(9, zlib.DEFLATED, -15); comp = c.compress(data) + c.flush()
+    local = struct.pack("<IHHHHHIIIHH", 0x04034b50, 20, 0, 8, 0, 0, crc, len(comp), len(data), 8, 0) + b"song.mp3" + comp
+    cd = b""
+    for i in range(k):
+        nm = b"s%05d.mp3" % i
+        cd += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014b50, 20, 20, 0, 8, 0, 0, crc, len(comp), len(data), len(nm), 0, 0, 0, 0, 0, 0) + nm
+    return local + cd + struct.pack("<IHHHHIIH", 0x06054b50, 0, 0, k, k, len(cd), len(local), 0)
+open(os.path.join(here, "seeds", "zip", "shared_range.zip"), "wb").write(
+    shared_range_zip(8, b"ID3\x04\x00\x00\x7f\x7f\x7f\x7f" + bytes(1 << 20)))
+
 hls = {
  "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=128000,CODECS=\"mp4a.40.2\"\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS=\"mp4a.40.5\"\nhigh/a.m3u8\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",DEFAULT=YES,URI=\"aud.m3u8\"\n",
  "media.m3u8": "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:7\n#EXTINF:6.0,\ns1.aac\n#EXT-X-DISCONTINUITY\n#EXTINF:5.5,\ns2.aac\n#EXT-X-ENDLIST\n",

@@ -190,12 +190,14 @@ static fa_sound_pcm* pcm_new(uint32_t rate, uint32_t channels, uint64_t mask)
     return p;
 }
 
+#define DECODE_START_FRAMES ((fa_frames)1 << 20)   /* about 22 s at 48 kHz */
+
 /* Reads a decode-only stream to its end into a new PCM buffer. */
 static fa_result decode_all(fa_stream* st, fa_sound_pcm** out)
 {
     fa_stream_info info;
     fa_sound_pcm* p;
-    fa_frames cap, n = 0;
+    fa_frames cap, want, n = 0;
     uint64_t frame_bytes;
     fa_result r = fa_stream_get_info(st, &info);
     if (r != FA_OK) return r;
@@ -207,12 +209,16 @@ static fa_result decode_all(fa_stream* st, fa_sound_pcm** out)
         pcm_release(p);
         return FA_ERROR_TOO_LARGE;
     }
-    cap = info.length_frames > 0 ? info.length_frames + 1 : 65536;   /* +1: a read that finds the end */
+    /* The header's length is only a claim: the buffer starts at most a few MB and
+     * grows as audio really comes (to that length +1 first: a read that finds the end). */
+    want = info.length_frames > 0 ? info.length_frames + 1 : 0;
+    cap = want <= 0 ? 65536 : want < DECODE_START_FRAMES ? want : DECODE_START_FRAMES;
     for (;;) {
         fa_frames got = 0;
         if (n == cap) {
             fa_frames more = cap * 2;
             float* q;
+            if (want > cap && more > want) more = want;
             if ((uint64_t)more * frame_bytes > FA_SOUND_MAX_BYTES) more = (fa_frames)(FA_SOUND_MAX_BYTES / frame_bytes);
             if (more <= cap) { pcm_release(p); return FA_ERROR_TOO_LARGE; }
             q = (float*)realloc(p->data, (size_t)(more * (fa_frames)frame_bytes));

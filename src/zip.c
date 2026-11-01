@@ -569,6 +569,42 @@ static int apply_zip64_extra(fa_zip_entry* e, const uint8_t* extra, size_t extra
     return -1;
 }
 
+static int by_offset(const void* a, const void* b)
+{
+    const fa_zip_entry* x = *(const fa_zip_entry* const*)a;
+    const fa_zip_entry* y = *(const fa_zip_entry* const*)b;
+    if (x->header_offset != y->header_offset) return x->header_offset < y->header_offset ? -1 : 1;
+    return x < y ? -1 : x > y;   /* the directory's order */
+}
+
+/* Entries whose local header and data run into an earlier entry's are left out
+ * (only a hostile archive points many entries at the same bytes, each unpacked
+ * in full). The rest keep the directory's order. Returns how many are kept. */
+static uint32_t drop_overlapping(fa_zip_entry* e, uint32_t n)
+{
+    fa_zip_entry** order;
+    uint8_t* drop;
+    uint64_t end = 0;
+    uint32_t i, kept = 0;
+    if (n < 2) return n;
+    order = (fa_zip_entry**)malloc((size_t)n * sizeof(*order));
+    drop = (uint8_t*)calloc(n, 1);
+    if (!order || !drop) { free(order); free(drop); return n; }   /* the unpack limits still hold */
+    for (i = 0; i < n; i++) order[i] = &e[i];
+    qsort(order, n, sizeof(*order), by_offset);
+    for (i = 0; i < n; i++) {
+        fa_zip_entry* x = order[i];
+        if (i > 0 && x->header_offset < end) { drop[x - e] = 1; continue; }
+        end = x->header_offset > UINT64_MAX - ZIP_LOCAL_SIZE ||
+                      x->compressed_size > UINT64_MAX - ZIP_LOCAL_SIZE - x->header_offset
+                  ? UINT64_MAX : x->header_offset + ZIP_LOCAL_SIZE + x->compressed_size;
+    }
+    free(order);
+    for (i = 0; i < n; i++) if (!drop[i]) e[kept++] = e[i];
+    free(drop);
+    return kept;
+}
+
 fa_result fa_zip_list(fa_source* src, fa_zip_entry** out_entries, uint32_t* out_count)
 {
     uint8_t* tail = NULL;
@@ -650,6 +686,7 @@ fa_result fa_zip_list(fa_source* src, fa_zip_entry** out_entries, uint32_t* out_
         pos += skip;
         n++;
     }
+    n = drop_overlapping(entries, n);
     *out_entries = entries;
     *out_count = n;
     entries = NULL;

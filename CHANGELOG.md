@@ -570,6 +570,23 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- Hostile input (final audit step 1):
+  - A fragmented MP4 web stream whose last `moof` claims the rest of the file, over the `mfra` that points at it, read
+    past the bytes it had fetched (heap over-read, reached over HTTP with Range). The `moof` is now bounded at the `mfra`.
+  - ZIP: central-directory entries that share one data range are left out after the first, and at most 4 compressed
+    entries over 64 KB that look like audio are unpacked in full per open or tags read. Before this, a 200 KB archive with 30 entries could
+    take nearly a minute to open or tag.
+  - Sounds (`fa_sound_load_*`) no longer allocate the whole length the header claims (up to 1 GB) before decoding
+    anything. The buffer starts at about 22 s of audio and grows as the audio really arrives.
+  - MP4: a time in an extreme timescale is clamped instead of overflowing on the conversion. On a web stream, one
+    fragment may add at most about 256 K packets beyond one per byte of its `moof`. Before, a tiny `trun` with a huge
+    count could create about 32 M packets (200 MB), bounded only by the server's Content-Length.
+  - `fa_stream_open_midi_events`: an event later than 6 hours returns `FA_ERROR_INVALID_ARG`, the same limit as for
+    files. Before, the length overflowed.
+  - CUE sheets: an INDEX 00 later than INDEX 01 gives a pregap of 0 instead of a negative one.
+  - Cookie jar: when it is full, the cookie created first is evicted. A replaced cookie keeps its creation time, so
+    before this the wrong cookie went.
+
 - .NET `AudioStream.CdgChanged`: the first event (the whole screen) was sometimes lost. Adding the first handler turned
   the native events on before storing the handler, and since the event thread now wakes at once it could raise
   that event in between; on a paused or decode-only stream no later event followed. The handler is now stored first.

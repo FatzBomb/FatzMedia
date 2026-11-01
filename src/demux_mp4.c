@@ -27,6 +27,10 @@
 #define MP4_MAX_OFFSET (INT64_MAX / 2)
 #define MP4_PCM_FRAMES 4096
 #define MP4_MAX_INDEX (1u << 20)      /* sidx read into memory */
+/* Packets one fragment of a web stream may add beyond one per byte of its moof: a
+ * trun with no per-sample records lists any count in a few bytes, and the file length
+ * there is only the server's claim. 256 K is about 1.5 hours of AAC. */
+#define MP4_FRAG_PACKETS (1 << 18)
 #define MP4_TAIL (256 * 1024)         /* read from the end for mfra and the last fragment */
 #define MP4_HINT_TIME 0.5             /* seconds of packets announced ahead ... */
 #define MP4_HINT_SPAN (1 << 20)       /* ... over at most this many bytes of the file */
@@ -261,8 +265,25 @@ static fa_result build_packets(mp4* m, const fa_mp4_box* stbl)
     return FA_OK;
 }
 
+static fa_result parse_moof_samples(mp4* m, const uint8_t* p, size_t len, int64_t moof_off);
+
 /* Appends the samples of one movie fragment (moof at file offset moof_off). */
 static fa_result parse_moof(mp4* m, const uint8_t* p, size_t len, int64_t moof_off)
+{
+    int64_t limit = m->limit;
+    fa_result r;
+    if (m->net && !m->frame_bytes) {
+        /* Bounded by the bytes really read (the moof), not by Content-Length. PCM is
+         * left out: its trun counts samples, which merge into few packets. */
+        int64_t frag = (int64_t)m->pk.n + (int64_t)len + MP4_FRAG_PACKETS;
+        if (frag < m->limit) m->limit = frag;
+    }
+    r = parse_moof_samples(m, p, len, moof_off);
+    m->limit = limit;
+    return r;
+}
+
+static fa_result parse_moof_samples(mp4* m, const uint8_t* p, size_t len, int64_t moof_off)
 {
     const uint8_t* cur = p;
     fa_mp4_box traf;
@@ -385,8 +406,12 @@ static int load_fragment(mp4* m, fa_result* err)
 /* `t` in units of 1/`ts` s, in the track's timescale. */
 static int64_t to_track_time(const mp4* m, uint64_t t, uint32_t ts)
 {
+    double v;
     if (ts == m->timescale) return (int64_t)t;
-    return (int64_t)((double)t * m->timescale / ts + 0.5);
+    v = (double)t * m->timescale / ts + 0.5;
+    /* Extreme timescales: kept where later sums cannot overflow (the cast of a
+     * larger double is undefined). */
+    return v < (double)(INT64_MAX / 4) ? (int64_t)v : INT64_MAX / 4;
 }
 
 static int frags_alloc(mp4* m, size_t n)
@@ -502,17 +527,18 @@ static int read_mfra(mp4* m, int64_t* out_end)
         while (!ok && fa_mp4_next_box(&cur, mfra.p + mfra.len, &b))
             if (b.type == FA_FOURCC('t', 'f', 'r', 'a')) ok = parse_tfra(m, b.p, b.len);
     }
-    if (ok && m->frags[m->nfrags - 1].off >= from && m->frags[m->nfrags - 1].off + 8 <= from + (int64_t)n) {
-        /* The last fragment's moof is here too: its samples give the end. */
+    if (ok && m->frags[m->nfrags - 1].off >= from && m->frags[m->nfrags - 1].off + 8 <= from + (int64_t)(n - mfra_size)) {
+        /* The last fragment's moof is here too, before the mfra: its samples give the end. */
         const uint8_t* cur = buf + (m->frags[m->nfrags - 1].off - from);
-        size_t left = n - (size_t)(cur - buf);
+        const uint8_t* stop = buf + n - mfra_size;   /* the boxes before the mfra */
+        size_t left = (size_t)(stop - cur);
         fa_mp4_box moof;
-        if (fa_be32(cur) <= left && fa_mp4_next_box(&cur, buf + n, &moof) && moof.type == FA_FOURCC('m', 'o', 'o', 'f')) {
+        if (fa_be32(cur) <= left && fa_mp4_next_box(&cur, stop, &moof) && moof.type == FA_FOURCC('m', 'o', 'o', 'f')) {
             /* Only when it is the file's last moof: tfra need not list every fragment. */
             const uint8_t* after = cur;
             fa_mp4_box x;
             int last = 1;
-            while (last && fa_mp4_next_box(&after, buf + n - mfra_size, &x)) if (x.type == FA_FOURCC('m', 'o', 'o', 'f')) last = 0;
+            while (last && after < stop && fa_mp4_next_box(&after, stop, &x)) if (x.type == FA_FOURCC('m', 'o', 'o', 'f')) last = 0;
             m->end_pts = m->frags[m->nfrags - 1].pts;
             if (last && parse_moof(m, moof.p, moof.len, m->frags[m->nfrags - 1].off) == FA_OK && m->pk.n > 0)
                 *out_end = m->pk.end_pts;

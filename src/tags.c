@@ -576,7 +576,7 @@ static int read_source(fa_tags* t, fa_source* src, const char* name, uint32_t fl
 static fa_result read_zip(fa_tags* t, fa_source* src, uint32_t flags)
 {
     fa_zip_entry* e;
-    uint32_t count, i, pass;
+    uint32_t count, i, pass, unpacks = 0;
     int cdg = -1, ok;
     int64_t size = src->length;
     fa_result r = fa_zip_list(src, &e, &count);
@@ -600,14 +600,17 @@ static fa_result read_zip(fa_tags* t, fa_source* src, uint32_t flags)
                 fa_source mem;
                 /* Not audio (a video, a PDF): told from a 64 KB prefix, not by unpacking it. */
                 if (e[i].size > FA_ZIP_PROBE_BYTES) {
-                    uint8_t* head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
+                    uint8_t* head;
                     size_t got = 0;
                     fa_result pr;
+                    if (unpacks >= FA_ZIP_MAX_UNPACKS) continue;   /* the unpack limit: only small or stored ones */
+                    head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
                     if (!head) continue;
                     pr = fa_zip_extract_prefix(src, &e[i], head, FA_ZIP_PROBE_BYTES, &got);
                     ok = pr != FA_OK || fa_decoder_recognizes(head, got);
                     free(head);
                     if (!ok) continue;
+                    unpacks++;
                 }
                 if (fa_zip_extract(src, &e[i], FA_ZIP_DEFAULT_MEMORY_LIMIT, NULL, &audio) != FA_OK) continue;
                 fa_source_open_memory_ref(&mem, audio, (size_t)e[i].size);

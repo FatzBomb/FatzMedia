@@ -46,6 +46,10 @@ fa_result fa_zip_extract_file(fa_source* src, const fa_zip_entry* e, const volat
 fa_result fa_zip_extract_prefix(fa_source* src, const fa_zip_entry* e, uint8_t* buf, size_t cap, size_t* got);
 /* The bytes a probe of an unpacked entry looks at (fa_zip_extract_prefix). */
 #define FA_ZIP_PROBE_BYTES 65536
+/* The most compressed entries over FA_ZIP_PROBE_BYTES unpacked in full for one
+ * open or tags read: each one the decoder refuses costs a whole unpack, and a
+ * karaoke archive has one or two candidates. */
+#define FA_ZIP_MAX_UNPACKS 4
 /* Raw DEFLATE (RFC 1951). FA_OK only when the stream ends exactly at out_size bytes. */
 fa_result fa_inflate(const uint8_t* in, size_t in_size, uint8_t* out, size_t out_size);
 uint32_t fa_crc32(const uint8_t* data, size_t size);
