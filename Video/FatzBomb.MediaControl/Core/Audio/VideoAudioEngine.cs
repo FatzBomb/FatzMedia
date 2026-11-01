@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
-internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient
+internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFadeGainTarget, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
 {
     private const double AudioBufferHighWatermarkSeconds = 4.0;
     private const double AudioBufferLowWatermarkSeconds = 2.0;
@@ -108,6 +108,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     public AudioEngineState State { get; private set; } = AudioEngineState.Stopped;
     public int PlayHandle { get; private set; }
     public int SourceHandle { get; private set; }
+
+    /// <summary>The push stream as the MIDI source, exactly as the lyric path read it before 037A slice 1.</summary>
+    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => BassMidiEventReader.ForHandle(SourceHandle);
+
     public bool Normalize
     {
         get
@@ -565,6 +569,17 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
     }
 
     int IBassOutputClient.PlayingHandle => State == AudioEngineState.Playing ? PlayHandle : 0;
+
+    /// <summary>
+    /// True while BASS has parked the channel because its output device was lost (ENG-032). Moved
+    /// here from <c>SoundtrackAudioEngine</c> (037A slice 1) so the BASS call stays in the engine;
+    /// the same unlocked read of the play handle and the same call as before.
+    /// </summary>
+    internal bool IsChannelPausedByDevice()
+    {
+        var playHandle = PlayHandle;
+        return playHandle != 0 && (int)Bass.ChannelIsActive(playHandle) == BassOutputWatchdog.ActivePausedDevice;
+    }
 
     bool IBassOutputClient.ResumeChannelPausedByDevice()
     {

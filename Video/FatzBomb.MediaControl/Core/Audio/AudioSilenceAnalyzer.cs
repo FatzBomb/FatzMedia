@@ -1,25 +1,25 @@
-using ManagedBass;
-using MBass = ManagedBass.Bass;
-
 namespace FatzBomb.MediaControl.Core.Audio;
 
 internal readonly record struct SilenceScanResult(
     double SourceDuration,
     IReadOnlyList<SilenceRegion> SilenceRegions);
 
+/// <summary>
+/// Scans a decoded stream for silence in <see cref="BlockDurationSeconds"/> blocks, through an
+/// engine-neutral <see cref="IAudioLevelSource"/> (037A slice 1; BASS:
+/// <see cref="BassChannelLevelSource"/>).
+/// </summary>
 internal sealed class AudioSilenceAnalyzer
 {
     internal const double BlockDurationSeconds = 0.1;
 
-    private static readonly ThreadLocal<float[]> LevelBuffer = new(() => new float[2]);
-
     public Task<SilenceScanResult> ScanAsync(
-        int analysisHandle,
+        IAudioLevelSource? source,
         double sourceDuration,
         double thresholdDecibels,
         CancellationToken cancellationToken)
     {
-        if (analysisHandle == 0 || !double.IsFinite(sourceDuration) || sourceDuration <= 0)
+        if (source is null || !double.IsFinite(sourceDuration) || sourceDuration <= 0)
         {
             var normalizedDuration = double.IsFinite(sourceDuration)
                 ? Math.Max(0, sourceDuration)
@@ -28,35 +28,31 @@ internal sealed class AudioSilenceAnalyzer
         }
 
         return Task.Run(
-            () => Scan(analysisHandle, sourceDuration, thresholdDecibels, cancellationToken),
+            () => Scan(source, sourceDuration, thresholdDecibels, cancellationToken),
             cancellationToken);
     }
 
     private static SilenceScanResult Scan(
-        int analysisHandle,
+        IAudioLevelSource source,
         double sourceDuration,
         double thresholdDecibels,
         CancellationToken cancellationToken)
     {
-        if (!MBass.ChannelSetPosition(analysisHandle, 0))
+        if (!source.TrySeekToStart())
         {
-            throw new InvalidOperationException($"Unable to seek the analysis stream to its start: {MBass.LastError}");
+            throw new InvalidOperationException($"Unable to seek the analysis stream to its start: {source.LastError}");
         }
 
-        const LevelRetrievalFlags flags = LevelRetrievalFlags.Stereo;
-        var levelBuffer = LevelBuffer.Value!;
         var samples = new List<SilenceLevelSample>();
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var startBytes = MBass.ChannelGetPosition(analysisHandle);
-            if (startBytes < 0)
+            if (!source.TryGetPosition(out var startSeconds))
             {
-                throw new InvalidOperationException($"Unable to read the analysis stream position: {MBass.LastError}");
+                throw new InvalidOperationException($"Unable to read the analysis stream position: {source.LastError}");
             }
 
-            var startSeconds = MBass.ChannelBytes2Seconds(analysisHandle, startBytes);
             if (!double.IsFinite(startSeconds))
             {
                 throw new InvalidOperationException("The analysis stream returned an invalid position.");
@@ -68,24 +64,22 @@ internal sealed class AudioSilenceAnalyzer
             }
 
             var blockDuration = Math.Min(BlockDurationSeconds, sourceDuration - startSeconds);
-            if (!MBass.ChannelGetLevel(analysisHandle, levelBuffer, (float)blockDuration, flags))
+            if (!source.TryReadPeak((float)blockDuration, out var blockPeak))
             {
-                throw new InvalidOperationException($"Unable to read the analysis stream at {startSeconds:F3}s: {MBass.LastError}");
+                throw new InvalidOperationException($"Unable to read the analysis stream at {startSeconds:F3}s: {source.LastError}");
             }
 
-            var endBytes = MBass.ChannelGetPosition(analysisHandle);
-            if (endBytes < 0)
+            if (!source.TryGetPosition(out var endSeconds))
             {
-                throw new InvalidOperationException($"Unable to read the analysis stream position: {MBass.LastError}");
+                throw new InvalidOperationException($"Unable to read the analysis stream position: {source.LastError}");
             }
 
-            var endSeconds = MBass.ChannelBytes2Seconds(analysisHandle, endBytes);
             if (!double.IsFinite(endSeconds) || endSeconds <= startSeconds)
             {
                 throw new InvalidOperationException($"The analysis stream made no progress at {startSeconds:F3}s.");
             }
 
-            var peak = Math.Clamp((double)Math.Max(levelBuffer[0], levelBuffer[1]), 0, 1);
+            var peak = Math.Clamp(blockPeak, 0, 1);
             samples.Add(new SilenceLevelSample(
                 startSeconds,
                 Math.Min(sourceDuration, endSeconds),

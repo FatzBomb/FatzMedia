@@ -33,7 +33,7 @@ namespace FatzBomb.MediaControl.Pipeline;
 /// rest.
 /// </para>
 /// </remarks>
-internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide
+internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, IAudioFilterHost, IAudioFadeGainTarget, IAudioVolumeSlide, IMidiEventReaderSource
 {
     internal const double EndToleranceSeconds = 0.05;
     internal const double EndStallSeconds = 1.0;
@@ -67,6 +67,9 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     public AudioEngineState State => _audio.State;
     public int PlayHandle => _audio.PlayHandle;
     public int SourceHandle => _audio.SourceHandle;
+
+    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => ((IMidiEventReaderSource)_audio).GetMidiEventReader();
+
     public bool IsOpen => _audio.IsOpen;
 
     public bool Normalize
@@ -355,7 +358,7 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
                 if (double.IsNaN(lastPosition)
                     || Math.Abs(position - lastPosition) > StallPositionEpsilonSeconds
                     || decoded
-                    || IsChannelPausedByDevice())
+                    || _audio.IsChannelPausedByDevice())
                 {
                     lastPosition = position;
                     stallStarted = Stopwatch.GetTimestamp();
@@ -379,12 +382,6 @@ internal sealed class SoundtrackAudioEngine : IAudioEngine, IAudioLoopControl, I
     /// </summary>
     internal static bool HasReachedEnd(double position, double duration, double stalledSeconds) =>
         (duration > 0 && position >= duration - EndToleranceSeconds) || stalledSeconds >= EndStallSeconds;
-
-    private bool IsChannelPausedByDevice()
-    {
-        var playHandle = _audio.PlayHandle;
-        return playHandle != 0 && (int)ManagedBass.Bass.ChannelIsActive(playHandle) == BassOutputWatchdog.ActivePausedDevice;
-    }
 
     private bool IsCurrent(int generation)
     {

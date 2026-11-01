@@ -1,14 +1,14 @@
 using FatzBomb.MediaControl.Core.Subtitle;
-using ManagedBass.Midi;
 using System.Text;
-using MBass = ManagedBass.Bass;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
 /// <summary>
-/// Extracts karaoke lyrics from an open BASS MIDI channel using BASS MIDI marker APIs.
-/// Lyric markers (MIDI meta event 5) and text markers (MIDI meta event 1) are converted
-/// to <see cref="SubtitleCue"/> objects with timing derived from the BASS channel position.
+/// Builds karaoke lyric cues from the events of a MIDI source, read through an engine-neutral
+/// <see cref="IMidiEventReader"/> (037A slice 1). Lyric events (MIDI meta event 5), or text
+/// events (meta event 1) when there are none, become <see cref="SubtitleCue"/> objects timed by
+/// the reader's positions. On BASS the reader is <see cref="BassMidiEventReader"/> on the open
+/// MIDI channel, which makes the same BASS marker calls this class made before.
 /// </summary>
 internal static class MidiLyricCueBuilder
 {
@@ -34,24 +34,33 @@ internal static class MidiLyricCueBuilder
     public static IReadOnlyList<SubtitleCue>? ExtractLyrics(
         int channelHandle,
         string sourcePath,
+        TimeSpan? transitionDuration = null) =>
+        ExtractLyrics(BassMidiEventReader.ForHandle(channelHandle), sourcePath, transitionDuration);
+
+    /// <summary>
+    /// Extracts lyric cues from the MIDI events <paramref name="reader"/> reads. Returns null when
+    /// there is no reader or the source has no lyrics.
+    /// </summary>
+    public static IReadOnlyList<SubtitleCue>? ExtractLyrics(
+        IMidiEventReader? reader,
+        string sourcePath,
         TimeSpan? transitionDuration = null)
     {
-        if (channelHandle == 0)
+        if (reader is null)
             return null;
 
-        MidiMarker[] lyrics = GetMarksSafe(channelHandle, MidiMarkerType.Lyric);
-        MidiMarker[] textEvents = GetMarksSafe(channelHandle, MidiMarkerType.Text);
+        IReadOnlyList<MidiMark> lyrics = reader.GetMarks(MidiMarkKind.Lyric);
+        IReadOnlyList<MidiMark> textEvents = reader.GetMarks(MidiMarkKind.Text);
 
-        var durationBytes = MBass.ChannelGetLength(channelHandle);
-        var durationSeconds = MBass.ChannelBytes2Seconds(channelHandle, durationBytes);
+        var durationSeconds = reader.GetDurationSeconds();
         TimeSpan duration = double.IsFinite(durationSeconds) && durationSeconds > 0
             ? TimeSpan.FromSeconds(durationSeconds)
             : TimeSpan.Zero;
-        IReadOnlyList<MidiMarker> metadataMarkers =
+        IReadOnlyList<MidiMark> metadataMarkers =
             [.. lyrics.Concat(textEvents).OrderBy(static marker => marker.Position)];
-        KaraokeMetadata metadata = MidiMetadataExtractor.Extract(channelHandle, sourcePath, duration, metadataMarkers);
+        KaraokeMetadata metadata = MidiMetadataExtractor.Extract(reader, sourcePath, duration, metadataMarkers);
         List<SubtitleCue> cues = BuildCuesFromMarkers(
-            channelHandle,
+            reader,
             lyrics,
             textEvents,
             duration,
@@ -69,36 +78,24 @@ internal static class MidiLyricCueBuilder
         return cues.Count > 0 ? cues : null;
     }
 
-    private static MidiMarker[] GetMarksSafe(int channelHandle, MidiMarkerType type)
-    {
-        try
-        {
-            return BassMidi.StreamGetMarks(channelHandle, -1, type) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
     private static List<SubtitleCue> BuildCuesFromMarkers(
-        int stream,
-        MidiMarker[] lyrics,
-        MidiMarker[] textEvents,
+        IMidiEventReader reader,
+        IReadOnlyList<MidiMark> lyrics,
+        IReadOnlyList<MidiMark> textEvents,
         TimeSpan duration,
         TimeSpan transitionDuration)
     {
-        MidiMarker[] lyricMarkers = FilterKaraokeEvents(lyrics);
-        MidiMarker[] markers = lyricMarkers.Length > 0 ? lyricMarkers : FilterKaraokeEvents(textEvents);
+        MidiMark[] lyricMarkers = FilterKaraokeEvents(lyrics);
+        MidiMark[] markers = lyricMarkers.Length > 0 ? lyricMarkers : FilterKaraokeEvents(textEvents);
 
         if (markers.Length == 0)
             return [];
 
         var fragments = new List<MidiLyricFragment>(markers.Length);
 
-        foreach (MidiMarker marker in markers)
+        foreach (MidiMark marker in markers)
         {
-            var startSeconds = MBass.ChannelBytes2Seconds(stream, marker.Position);
+            var startSeconds = reader.PositionToSeconds(marker.Position);
             if (!double.IsFinite(startSeconds) || startSeconds < 0)
                 continue;
 
@@ -108,7 +105,7 @@ internal static class MidiLyricCueBuilder
             if (adjustedStart < TimeSpan.Zero)
                 adjustedStart = TimeSpan.Zero;
 
-            fragments.Add(new MidiLyricFragment(adjustedStart, marker.Text));
+            fragments.Add(new MidiLyricFragment(adjustedStart, marker.Text!));
         }
 
         if (fragments.Count == 0)
@@ -501,10 +498,10 @@ internal static class MidiLyricCueBuilder
         return false;
     }
 
-    private static MidiMarker[] FilterKaraokeEvents(MidiMarker[] events)
+    private static MidiMark[] FilterKaraokeEvents(IReadOnlyList<MidiMark> events)
     {
-        var result = new List<MidiMarker>();
-        foreach (MidiMarker marker in events)
+        var result = new List<MidiMark>();
+        foreach (MidiMark marker in events)
         {
             var text = marker.Text;
             if (string.IsNullOrEmpty(text))

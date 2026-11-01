@@ -14,9 +14,6 @@ internal sealed class AudioNormalizer
 {
     #region Constants and Static Fields
 
-    // Performance optimization: pre-allocated arrays for level analysis
-    private static readonly ThreadLocal<float[]> LevelBuffer = new(() => new float[2]);
-
     // Normalization target level (0.8 = industry standard, can be configured)
     private const double NormalizationTarget = 0.8;
 
@@ -54,30 +51,30 @@ internal sealed class AudioNormalizer
     /// Performs quick peak analysis for immediate use.
     /// Optimized for speed over accuracy.
     /// </summary>
-    /// <param name="handle">BASS channel handle for analysis</param>
+    /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
-    public async Task<double> AnalyzePeakQuickAsync(int handle, bool updateGain = true, CancellationToken cancellationToken = default)
+    public async Task<double> AnalyzePeakQuickAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default)
     {
-        if (handle == 0) return 0.0;
+        if (source is null) return 0.0;
 
         const float blockSeconds = 0.25f;
         const int maxSamples = 24;
 
-        return await Task.Run(() => AnalyzePeakInternal(handle, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => AnalyzePeakInternal(source, blockSeconds, maxSamples, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Performs comprehensive peak analysis for best accuracy.
     /// May take longer but provides more reliable results.
     /// </summary>
-    /// <param name="handle">BASS channel handle for analysis</param>
+    /// <param name="source">Level source to analyze (037A slice 1; BASS: <see cref="BassChannelLevelSource"/>), null when none</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Peak level (0.0 to 1.0)</returns>
-    public async Task<double> AnalyzePeakAsync(int handle, bool updateGain = true, CancellationToken cancellationToken = default) =>
-        handle == 0
+    public async Task<double> AnalyzePeakAsync(IAudioLevelSource? source, bool updateGain = true, CancellationToken cancellationToken = default) =>
+        source is null
             ? 0.0
-            : await Task.Run(() => AnalyzePeakFull(handle, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
+            : await Task.Run(() => AnalyzePeakFull(source, updateGain, cancellationToken), cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Resets the normalization gain to default value. Thread-safe operation.
@@ -203,20 +200,17 @@ internal sealed class AudioNormalizer
 
     #region Private Methods
 
-    private double AnalyzePeakInternal(int handle, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
+    private double AnalyzePeakInternal(IAudioLevelSource source, float blockSeconds, int maxSamples, bool updateGain, CancellationToken cancellationToken)
     {
-        const LevelRetrievalFlags flags = LevelRetrievalFlags.Stereo;
-        var levelBuffer = LevelBuffer.Value!;
         var peak = 0.0;
 
         for (var i = 0; i < maxSamples; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!MBass.ChannelGetLevel(handle, levelBuffer, blockSeconds, flags))
+            if (!source.TryReadPeak(blockSeconds, out var blockPeak))
                 break;
 
-            var blockPeak = (double)Math.Max(levelBuffer[0], levelBuffer[1]);
             blockPeak = Math.Clamp(blockPeak, 0.0, 1.0);
 
             if (blockPeak > peak)
@@ -231,19 +225,16 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private double AnalyzePeakFull(int handle, bool updateGain, CancellationToken cancellationToken)
+    private double AnalyzePeakFull(IAudioLevelSource source, bool updateGain, CancellationToken cancellationToken)
     {
-        const LevelRetrievalFlags flags = LevelRetrievalFlags.Stereo;
         const double blockSeconds = 0.5;
         const int maxWindows = 240;
 
-        var levelBuffer = LevelBuffer.Value!;
         double peak;
-        var lengthBytes = MBass.ChannelGetLength(handle);
 
-        peak = lengthBytes > 0
-            ? AnalyzePeakBySeek(handle, lengthBytes, blockSeconds, maxWindows, levelBuffer, flags, cancellationToken)
-            : AnalyzePeakSequential(handle, blockSeconds, maxWindows, levelBuffer, flags, cancellationToken);
+        peak = source.TryGetDuration(out var duration)
+            ? AnalyzePeakBySeek(source, duration, blockSeconds, maxWindows, cancellationToken)
+            : AnalyzePeakSequential(source, blockSeconds, maxWindows, cancellationToken);
 
         if (updateGain)
             _ = SetNormalizationGainFromPeak(peak);
@@ -251,10 +242,9 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakBySeek(int handle, long lengthBytes, double blockSeconds, int maxWindows,
-        float[] levelBuffer, LevelRetrievalFlags flags, CancellationToken cancellationToken)
+    private static double AnalyzePeakBySeek(IAudioLevelSource source, double duration, double blockSeconds, int maxWindows,
+        CancellationToken cancellationToken)
     {
-        var duration = MBass.ChannelBytes2Seconds(handle, lengthBytes);
         var stride = Math.Max(1, (int)Math.Ceiling(duration / (blockSeconds * maxWindows)));
         var peak = 0.0;
 
@@ -262,12 +252,10 @@ internal sealed class AudioNormalizer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var bytePosition = MBass.ChannelSeconds2Bytes(handle, position);
-            if (!MBass.ChannelSetPosition(handle, bytePosition) ||
-                !MBass.ChannelGetLevel(handle, levelBuffer, (float)blockSeconds, flags))
+            if (!source.TrySeek(position) ||
+                !source.TryReadPeak((float)blockSeconds, out var blockPeak))
                 break;
 
-            var blockPeak = (double)Math.Max(levelBuffer[0], levelBuffer[1]);
             blockPeak = Math.Clamp(blockPeak, 0.0, 1.0);
 
             if (blockPeak > peak)
@@ -277,8 +265,8 @@ internal sealed class AudioNormalizer
         return peak;
     }
 
-    private static double AnalyzePeakSequential(int handle, double blockSeconds, int maxWindows,
-        float[] levelBuffer, LevelRetrievalFlags flags, CancellationToken cancellationToken)
+    private static double AnalyzePeakSequential(IAudioLevelSource source, double blockSeconds, int maxWindows,
+        CancellationToken cancellationToken)
     {
         var peak = 0.0;
 
@@ -286,10 +274,9 @@ internal sealed class AudioNormalizer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!MBass.ChannelGetLevel(handle, levelBuffer, (float)blockSeconds, flags))
+            if (!source.TryReadPeak((float)blockSeconds, out var blockPeak))
                 break;
 
-            var blockPeak = (double)Math.Max(levelBuffer[0], levelBuffer[1]);
             blockPeak = Math.Clamp(blockPeak, 0.0, 1.0);
 
             if (blockPeak > peak)
