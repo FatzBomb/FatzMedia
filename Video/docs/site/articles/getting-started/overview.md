@@ -37,8 +37,8 @@ Native libraries are x64 only. The Windows packages target `net10.0-windows7.0`;
 
 With Direct3D11 the WPF and WinForms adapters present into a native child window, which gives the best video performance. The Software and Vulkan renderers deliver finished frames to the adapter, which draws them (a "frame sink"). The WinForms and Avalonia surfaces pick the right path themselves. A WPF host that uses the Software or Vulkan renderer sets `MediaSurface.PresentationMode` to `WpfComposited`. See [Architecture](../concepts/architecture.md).
 
-> [!IMPORTANT]
-> Text subtitles and MIDI/KAR lyric text are drawn by the Direct3D11 renderer only. The Software and Vulkan renderers do not draw subtitle or lyric text. CD+G graphics, backgrounds and video work on all three.
+> [!NOTE]
+> Text subtitles and MIDI/KAR lyric text are drawn by all three renderers: Direct3D11 through DirectWrite, Software and Vulkan through SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`). CD+G graphics, backgrounds and video work on all three too.
 
 macOS, WinUI and ARM are not supported. Avalonia and Linux support is a preview.
 
@@ -53,8 +53,9 @@ Every package is optional apart from Core, which every other one builds on. A ho
 | `FatzBomb.MediaControl.Linux` | net10.0 | Linux platform services: shared library loading, timing, BASS device monitoring, software decode. Contains <xref:FatzBomb.MediaControl.Linux.LinuxMediaControlPlatformFactory>. |
 | `FatzBomb.MediaControl.Rendering.Direct3D11` | net10.0-windows7.0 | The Direct3D 11 renderer: GPU composition, swap chains, subtitle and lyric text, HDR output. |
 | `FatzBomb.MediaControl.Windows.Direct3D11` | net10.0-windows7.0 | A convenience bundle: the Windows package plus the Direct3D11 renderer, with <xref:FatzBomb.MediaControl.WindowsDirect3D11MediaControlPlatformFactory> to create both. |
-| `FatzBomb.MediaControl.Rendering.Software` | net10.0 | A portable CPU renderer that needs no GPU. Deterministic output; every platform. |
+| `FatzBomb.MediaControl.Rendering.Software` | net10.0 | A portable CPU renderer that needs no GPU. Deterministic output; every platform. Draws text through `FatzBomb.MediaControl.Rendering.Text`. |
 | `FatzBomb.MediaControl.Rendering.Vulkan` | net10.0 | A Vulkan renderer for Windows and Linux, with GPU video decoding through Vulkan Video where the driver supports it. Preview. |
+| `FatzBomb.MediaControl.Rendering.Text` | net10.0 | The SkiaSharp subtitle and lyric text rasterizer the Software and Vulkan renderers use. They reference it, so you do not list it yourself. Brings SkiaSharp 3.119.4 and its native library. |
 | `FatzBomb.MediaControl.Wpf` | net10.0-windows7.0 | The WPF adapter: `MediaSurface`, `Player`, `SecondaryPresentationWindow`, `BackgroundSurface`, `KaraokeSurface`. Depends on the Windows package. |
 | `FatzBomb.MediaControl.WinForms` | net10.0-windows7.0 | The WinForms adapter with the same set of controls. Depends on Core only. |
 | `FatzBomb.MediaControl.Avalonia` | net10.0 | The Avalonia adapter with the same set of controls. Depends on Core and Avalonia only. |

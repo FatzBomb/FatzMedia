@@ -58,12 +58,17 @@ needs Windows to verify.
 ### ENG-040 - Library gaps found while writing the user guide
 
 Reported: 2026-10-31, while writing `docs/site` (the DocFX user guide). Each was found by reading
-the code for the guide; none is fixed. The guide documents the current behaviour.
+the code for the guide; only the first (text on Software and Vulkan) is fixed. The guide documents
+the current behaviour.
 
 **Behaviour a buyer will hit:**
-- **Text only on Direct3D11.** The Software and Vulkan renderers use `NullSubtitleRasterizer`:
-  SRT/ASS subtitles, MIDI/KAR lyrics, countdowns and title cards never draw there (every Linux
-  player). Tracks load and select; nothing shows. `KaraokeSurface` still accepts a KAR there.
+- ~~**Text only on Direct3D11.**~~ Resolved 2026-11-01, pending Windows smoke: the Software
+  and Vulkan renderers draw subtitles, MIDI/KAR lyrics, countdowns and title cards with
+  `SkiaSubtitleRasterizer` (new package `FatzBomb.MediaControl.Rendering.Text`, SkiaSharp
+  3.119.4); Vulkan gained a subtitle overlay pipeline. Linux verified with lavapipe and the
+  software renderer; Windows Software/Vulkan hosts (libSkiaSharp.dll loading, Segoe UI) still to
+  smoke. Known differences from DirectWrite: no shaping (ligatures, complex scripts), system
+  font fallback.
 - **WPF + Software/Vulkan needs `PresentationMode="WpfComposited"`**; WPF does not fall back to a
   frame sink by itself (WinForms and Avalonia do). The Software renderer also needs
   `VideoDecodingMethod.Software`; nothing enforces it.

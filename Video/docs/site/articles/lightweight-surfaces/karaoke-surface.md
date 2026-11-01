@@ -26,8 +26,8 @@ It rejects everything else after looking at the file: video files, plain audio a
 without lyrics. A rejected file is closed and `LoadAsync` returns `false`.
 
 > [!NOTE]
-> MIDI lyrics are text, and only the Direct3D 11 renderer draws text. With the Software or Vulkan
-> renderer a KAR file plays but shows no words. CD+G graphics show with every renderer.
+> MIDI lyrics are text. Direct3D 11 draws it with DirectWrite and the Software and Vulkan
+> renderers with SkiaSharp, using the system's fonts. CD+G graphics show with every renderer.
 
 Songs load without sidecar search, so a picture or video with the song's name is not shown behind
 it. Put a [Background surface](background-surface.md) beside the karaoke control if you want one.

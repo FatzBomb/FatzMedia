@@ -11,8 +11,8 @@ turn lyrics on and off, how to choose a soundfont and how to change the lyric st
   only when the BASS MIDI plug-in (`bassmidi.dll` on Windows, `libbassmidi.so` on Linux) is
   loaded next to `bass.dll`. Without it `LoadAsync` returns `false` for these files.
 - A soundfont, or the system one. See [Soundfonts](#soundfonts).
-- The Direct3D 11 renderer, to see the words. The Software and Vulkan renderers do not draw text,
-  so with them the music plays and the lyric track exists, but nothing is shown.
+- Any renderer, to see the words: Direct3D 11 draws them with DirectWrite, the Software and Vulkan
+  renderers with SkiaSharp (system fonts; the default font when Segoe UI is not installed).
 
 MIDI files are loaded like any other media:
 

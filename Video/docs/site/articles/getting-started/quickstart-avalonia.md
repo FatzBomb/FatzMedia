@@ -247,8 +247,8 @@ public partial class MainWindow : AvaloniaWindow
 
 The Software renderer draws on the CPU. With the Direct3D11 or Vulkan renderer, use `MediaPlayerConfiguration.Auto` so the GPU can decode. On Windows, replace it with the Direct3D11 renderer from `FatzBomb.MediaControl.Windows.Direct3D11`: `new WindowsDirect3D11MediaControlPlatformFactory()` in place of the Windows branch of `CreatePlatform`. On both operating systems you can use the Vulkan renderer (`FatzBomb.MediaControl.Rendering.Vulkan`, `new VulkanPresentationCoordinatorFactory()`), which decodes on the GPU where the driver supports Vulkan Video. A surface presents through a shared GPU image when Avalonia's compositor and the renderer support it, and through a frame sink otherwise; `MediaSurface.PresentationPath` says which.
 
-> [!IMPORTANT]
-> Only the Direct3D11 renderer draws subtitle and lyric text. On Linux, where Direct3D11 is not available, video, images, backgrounds and CD+G graphics work, but text subtitles and MIDI/KAR lyric text do not appear.
+> [!NOTE]
+> All three renderers draw subtitle and lyric text. On Linux the Software and Vulkan renderers draw it with SkiaSharp (`FatzBomb.MediaControl.Rendering.Text`, which they bring in), using the system's fonts.
 
 ## Next
 
