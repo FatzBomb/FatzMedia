@@ -35,7 +35,7 @@ Put all FFmpeg libraries in one directory. The engine preloads them in dependenc
 
 ### SkiaSharp
 
-The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzBomb.MediaControl.Rendering.Text`). Unlike BASS and FFmpeg it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
+The Software and Vulkan renderers draw subtitle and lyric text with SkiaSharp (through `FatzBomb.MediaControl.Rendering.Text`). Unlike BASS and FFmpeg it is not optional and you do not supply it: it arrives with the NuGet packages: `libSkiaSharp.dll` (Windows x64) and `libSkiaSharp.so` (Linux x64) are copied to the output by the normal runtime-asset rules (into `runtimes/<rid>/native`, or next to the application in a publish for one runtime). Keep that file when you deploy by hand. On Linux it needs fontconfig and at least one installed font. The Direct3D11 renderer uses DirectWrite and does not load it. SkiaSharp is MIT licensed.
 
 ### What the optional pieces change
 
