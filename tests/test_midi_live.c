@@ -280,6 +280,50 @@ static void test_track_volume(void)
     free(f.d);
 }
 
+/* Two tracks on one key (channel 1, key 69): track 0 holds it softly from 100 to 1500 ms,
+ * track 1 strikes it hard from 200 to 400 ms. */
+static buf shared_key(void)
+{
+    song a = { 0 }, b = { 0 };
+    buf f = { 0 };
+    ev3(&a, 100, 0x90, 69, 60);
+    ev3(&a, 1500, 0x80, 69, 0);
+    ev3(&b, 200, 0x90, 69, 127);
+    ev3(&b, 400, 0x80, 69, 0);
+    put8(&a.t, 0); put8(&a.t, 0xFF); put8(&a.t, 0x2F); put8(&a.t, 0);
+    put8(&b.t, 0); put8(&b.t, 0xFF); put8(&b.t, 0x2F); put8(&b.t, 0);
+    put(&f, "MThd", 4); put32be(&f, 6); put8(&f, 0); put8(&f, 1); put8(&f, 0); put8(&f, 2); put8(&f, 480 >> 8); put8(&f, 480 & 255);
+    put(&f, "MTrk", 4); put32be(&f, (uint32_t)a.t.n); put(&f, a.t.d, a.t.n);
+    put(&f, "MTrk", 4); put32be(&f, (uint32_t)b.t.n); put(&f, b.t.d, b.t.n);
+    free(a.t.d); free(b.t.d);
+    return f;
+}
+
+/* Held notes are counted per track (audit, MIDI events item 2): a silent track's note-off
+ * ends no other track's note on the key, and a seek where the loudest strike's track is
+ * silent restarts the key at the volume of a track that isn't. */
+static void test_track_volume_shared_key(void)
+{
+    buf f = shared_key();
+    fa_stream *s = open_file(&f), *t = open_file(&f);
+    float *a, *b;
+    CHECK(s && t);
+    CHECK(fa_stream_set_midi_track_volume(s, 1, 0.0f) == FA_OK);
+    a = read_frames(s, 2 * RATE, 1024);
+    CHECK(a);
+    CHECK(rms(a, 0.6, 1.4) > 0.005);   /* track 0's note rings on past track 1's note-off */
+    free(a);
+    CHECK(fa_stream_set_midi_track_volume(t, 1, 0.0f) == FA_OK);
+    CHECK(fa_stream_seek(t, (fa_frames)(RATE * 0.3)) == FA_OK);
+    b = read_frames(t, RATE, 1024);
+    CHECK(b);
+    CHECK(rms(b, 0.05, 0.08) > 0.005);  /* restarted for track 0 */
+    CHECK(rms(b, 0.3, 1.0) > 0.005);    /* and track 1's note-off at 400 ms doesn't end it */
+    free(b);
+    fa_stream_close(s); fa_stream_close(t);
+    free(f.d);
+}
+
 /* A file's events, all or by track and type; texts and tempo are not among them. */
 static void test_file_events(void)
 {
@@ -516,6 +560,7 @@ int main(void)
     RUN(test_values);
     RUN(test_queue);
     RUN(test_track_volume);
+    RUN(test_track_volume_shared_key);
     RUN(test_file_events);
     RUN(test_event_list);
     RUN(test_send_to_file);
