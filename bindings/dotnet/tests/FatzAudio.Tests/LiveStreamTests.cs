@@ -99,6 +99,11 @@ public class LiveStreamTests
         Assert.InRange(stats.AudioLoad, double.Epsilon, 100);
         Assert.True(stats.AudioLoadPeak > 0);
         Assert.InRange(stats.WorkerLoad, 0, 100.0 * stats.Workers);
+        Assert.True(stats.Underruns >= 0);
+
+        var st = tone.GetStats();
+        Assert.True(st.Underruns >= 0);
+        Assert.True(st.Buffered >= TimeSpan.Zero);
     }
 
     [Fact]

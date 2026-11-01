@@ -1194,7 +1194,7 @@ static void fx_run(fx_job* j, void (*run)(void*, int, int), int count, int64_t p
     int i, slots = 0;
     memset(&pj, 0, sizeof(pj));
     if (f->eng && count > 1 && px >= CDG_FX_SHARE) {
-        int want = (int)f->eng->worker_count < CDG_FX_HELPERS ? (int)f->eng->worker_count : CDG_FX_HELPERS;
+        int want = (int)f->eng->worker_count - 1 < CDG_FX_HELPERS ? (int)f->eng->worker_count - 1 : CDG_FX_HELPERS;   /* the last worker never helps (engine.c) */
         for (; slots < want; slots++) {
             if (scratch && f->fx_help_size[slots] < f->fx_scratch_size) {
                 free(f->fx_help[slots]);
@@ -1222,7 +1222,7 @@ static void fx_run(fx_job* j, void (*run)(void*, int, int), int count, int64_t p
 static void fx_draw(fa_cdg_surface* f, const fa_fx_plan* plan, const fa_rects* e, int mx1, int my1)
 {
     int piece[CDG_FX_PIECES][4], i, count = 0, n = (int)f->sc.n, k = f->x2 ? 2 : 1;
-    int tile = FA_FX_TILE / k, ways = 1 + (f->eng ? (int)f->eng->worker_count : 0);
+    int tile = FA_FX_TILE / k, ways = f->eng && f->eng->worker_count ? (int)f->eng->worker_count : 1;
     int64_t px = 0;
     fx_job j;
     memset(&j, 0, sizeof(j));
@@ -1391,8 +1391,8 @@ static void scale_draw(fa_cdg_surface* f, const cdg_scaler* sc, const uint8_t pm
     memset(&j, 0, sizeof(j));
     memset(&pj, 0, sizeof(pj));
     for (i = 0; i < m->n; i++) px += (int64_t)(m->r[i][2] - m->r[i][0]) * (m->r[i][3] - m->r[i][1]) * n * n;
-    if (f->eng && f->eng->worker_count && px >= CDG_FX_SHARE) {
-        int want = (int)f->eng->worker_count < CDG_FX_HELPERS ? (int)f->eng->worker_count : CDG_FX_HELPERS;
+    if (f->eng && f->eng->worker_count > 1 && px >= CDG_FX_SHARE) {
+        int want = (int)f->eng->worker_count - 1 < CDG_FX_HELPERS ? (int)f->eng->worker_count - 1 : CDG_FX_HELPERS;   /* the last worker never helps (engine.c) */
         for (; slots < want; slots++) {
             if (f->rows_help_size[slots] < need) {
                 free(f->rows_help[slots]);

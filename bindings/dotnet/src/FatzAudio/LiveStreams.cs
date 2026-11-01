@@ -58,7 +58,24 @@ public sealed class CaptureOptions
 /// <param name="Devices">Open outputs.</param>
 /// <param name="AttachedStreams">Streams attached to an output.</param>
 public sealed record EngineStats(double AudioLoad, double AudioLoadPeak, double WorkerLoad, int Workers, int Devices,
-    int AttachedStreams);
+    int AttachedStreams)
+{
+    /// <summary>
+    /// Dropouts of all streams since the engine was created (every stream's <see cref="StreamStats.Underruns"/>
+    /// added up, closed streams too).
+    /// </summary>
+    public long Underruns { get; init; }
+}
+
+/// <summary>How well the decode workers keep up with a stream (<see cref="AudioStream.GetStats"/>).</summary>
+/// <param name="Underruns">
+/// Output callbacks that found too little decoded audio for the stream while it played (a dropout), since it was
+/// opened. Its end, a pause and a stop are not counted; a push, callback or web stream that runs out of data is.
+/// </param>
+/// <param name="Buffered">
+/// Decoded audio ready ahead of the mix, as playing time (tempo and rate applied); zero when not on a device.
+/// </param>
+public sealed record StreamStats(long Underruns, TimeSpan Buffered);
 
 /// <summary>
 /// Loudness meter readings (<see cref="AudioStream.GetLoudnessMeter"/>, <see cref="OutputDevice.GetLoudnessMeter"/>),

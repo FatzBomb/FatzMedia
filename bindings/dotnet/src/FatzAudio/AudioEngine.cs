@@ -56,7 +56,7 @@ public sealed partial class AudioEngine : IDisposable
         st.StructSize = (uint)sizeof(FaEngineStats);
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_get_stats(Handle, &st));
         return new EngineStats(st.AudioLoad, st.AudioLoadPeak, st.WorkerLoad, (int)st.Workers, (int)st.Devices,
-            (int)st.AttachedStreams);
+            (int)st.AttachedStreams) { Underruns = st.Underruns };
     }
 
     /// <summary>Creates an engine.</summary>

@@ -612,6 +612,29 @@ public unsafe partial class AudioStream : IDisposable
         }
     }
 
+    /// <summary>
+    /// How well the decode workers keep up with this stream: its dropouts so far and the decoded audio ready ahead.
+    /// Use it in a diagnostics panel, or to back off (render-ahead, effects, extra streams) when
+    /// <see cref="StreamStats.Underruns"/> goes up.
+    /// </summary>
+    /// <returns>The current figures.</returns>
+    /// <remarks>Cheap and lock-free: it can be read every frame from any thread.</remarks>
+    /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
+    /// <example>
+    /// <code>
+    /// var before = stream.GetStats().Underruns;
+    /// // ... a second later
+    /// if (stream.GetStats().Underruns > before) surface.RenderAhead = false;   // the audio ran short: back off
+    /// </code>
+    /// </example>
+    public unsafe StreamStats GetStats()
+    {
+        FaStreamStats st = default;
+        st.StructSize = (uint)sizeof(FaStreamStats);
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_stats(Handle, &st));
+        return new StreamStats(st.Underruns, TimeConvert.FromNanoseconds(st.Buffered));
+    }
+
     // ---- CD+G -------------------------------------------------------------------
 
     /// <summary>

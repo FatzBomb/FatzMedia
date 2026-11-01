@@ -102,6 +102,15 @@ static int decode_wanted_locked(fa_engine* e)
     return 0;
 }
 
+/* Drawing work (helping a shared job, rendering ahead) may take every worker but
+ * one, so one is always free to decode however long a frame takes: render-ahead runs
+ * only with two or more workers (cdg.c), and a stream that needs audio never waits
+ * for a frame to finish. Caller holds list_lock. */
+static int render_room_locked(fa_engine* e)
+{
+    return e->render_workers + 1 < e->worker_count;
+}
+
 /* Takes part in the first job with items left and room for a helper, until it is
  * done or a stream wants decoding (the others finish it). Caller holds list_lock,
  * which is released while working. */
@@ -109,24 +118,51 @@ static int par_help(fa_engine* e)
 {
     fa_par_job* j;
     int slot, i, stop = 0;
+    if (!render_room_locked(e)) return 0;
     for (j = e->par; j; j = j->next_job)
         if (j->joined < j->slots && fa_load32(&j->next) < j->count) break;
     if (!j) return 0;
     slot = ++j->joined;
     j->helpers++;
+    e->render_workers++;
     while (!stop && (i = fa_fetch_add32(&j->next, 1)) < j->count) {
         fa_mutex_unlock(&e->list_lock);
         j->run(j->ctx, i, slot);
         fa_mutex_lock(&e->list_lock);
         stop = decode_wanted_locked(e);
     }
+    e->render_workers--;
     if (--j->helpers == 0) fa_cond_broadcast(&j->done);
     return 1;
 }
 
+/* The emptiest stream `wants` (fa_stream_needs_work, or before drawing work
+ * fa_stream_wants_top_up: short of its full buffer, not only below the 3/4 that makes
+ * it ask, so a long frame starts with full buffers) that nobody else is decoding,
+ * returned with its decode_lock held, or NULL; `wanted` counts the streams that want
+ * it. Caller holds list_lock. */
+static struct fa_stream* pick_locked(fa_engine* e, int (*wants)(struct fa_stream*), int* wanted)
+{
+    struct fa_stream* s;
+    struct fa_stream* pick = NULL;
+    double best = 2.0;
+    for (s = e->streams; s; s = s->next) {
+        double fill;
+        if (!wants(s)) continue;
+        (*wanted)++;
+        /* A pending seek first: its buffer is stale, however full. */
+        fill = fa_load64(&s->seek_pending) >= 0 ? -1.0 : (double)fa_ring_readable(&s->ring) / (double)s->ring.capacity;
+        if (fill >= best || !fa_mutex_trylock(&s->decode_lock)) continue;
+        if (pick) fa_mutex_unlock(&pick->decode_lock);
+        best = fill;
+        pick = s;
+    }
+    return pick;
+}
+
 void fa_engine_parallel(fa_engine* e, fa_par_job* job)
 {
-    int i, shared = e && e->worker_count && job->slots > 0 && job->count > 1 && fa_cond_init(&job->done) == 0;
+    int i, shared = e && e->worker_count > 1 && job->slots > 0 && job->count > 1 && fa_cond_init(&job->done) == 0;
     fa_store32(&job->next, 0);
     job->joined = job->helpers = 0;
     if (shared) {
@@ -150,27 +186,24 @@ void fa_engine_parallel(fa_engine* e, fa_par_job* job)
     fa_cond_destroy(&job->done);
 }
 
+/* Top-ups (fa_stream_wants_top_up) a worker does before it takes drawing work: a bound,
+ * so a stream whose top-up cannot move (waiting for its data) never keeps it spinning. */
+#define FA_TOP_UP_TURNS 4
+
 static void worker_main(void* arg)
 {
     fa_engine* e = (fa_engine*)arg;
+    int top_ups = 0;
     fa_mutex_lock(&e->list_lock);
     while (!fa_load32(&e->quit)) {
-        struct fa_stream* s;
-        struct fa_stream* pick = NULL;
-        double best = 2.0;
-        int wanted = 0;
+        struct fa_stream* pick;
+        int wanted = 0, topping = 0;
         fa_event_collect_locked(e);  /* keeps the audio thread's event queues drained */
-        for (s = e->streams; s; s = s->next) {
-            double fill;
-            if (!fa_stream_needs_work(s)) continue;
-            wanted++;
-            /* A pending seek first: its buffer is stale, however full. */
-            fill = fa_load64(&s->seek_pending) >= 0 ? -1.0 : (double)fa_ring_readable(&s->ring) / (double)s->ring.capacity;
-            if (fill >= best || !fa_mutex_trylock(&s->decode_lock)) continue;
-            if (pick) fa_mutex_unlock(&pick->decode_lock);
-            best = fill;
-            pick = s;
-        }
+        pick = pick_locked(e, fa_stream_needs_work, &wanted);
+        /* Drawing work waiting, and room for it: streams first. */
+        if (!pick && top_ups < FA_TOP_UP_TURNS && render_room_locked(e) && (e->par || fa_load32(&e->cdg_render_count)) &&
+            (pick = pick_locked(e, fa_stream_wants_top_up, &topping)) != NULL)
+            top_ups++;
         if (pick) {
             /* Others want work too (or are some other worker's already): one more.
              * The poller taking work wakes one too, which then polls in its place, so
@@ -190,6 +223,7 @@ static void worker_main(void* arg)
         }
         /* No stream wants decoding: help with work being shared out, which someone
          * waits for, then a surface rendering ahead may want a frame (cdg.c). */
+        top_ups = 0;
         {
             int64_t t0 = fa_monotonic_ns();
             if (par_help(e)) {
@@ -197,13 +231,21 @@ static void worker_main(void* arg)
                 continue;
             }
         }
-        if (fa_load32(&e->cdg_render_count)) {
+        if (fa_load32(&e->cdg_render_count) && render_room_locked(e)) {
             int64_t t0;
+            int prio;
+            e->render_workers++;
             fa_mutex_unlock(&e->list_lock);
             t0 = fa_monotonic_ns();
+            /* Lower while it renders ahead, so decoding wins on a busy CPU. Not while
+             * helping a shared job: its owner (the app's drawing thread, or a
+             * render-ahead job) waits for the helpers. */
+            prio = fa_thread_lower_priority();
             fa_cdg_render_one(e);
+            fa_thread_restore_priority(prio);
             fa_fetch_add64(&e->worker_busy_ns, fa_monotonic_ns() - t0);
             fa_mutex_lock(&e->list_lock);
+            e->render_workers--;
             continue;
         }
         e->workers_idle++;
@@ -243,6 +285,7 @@ FA_API fa_result FA_CALL fa_engine_get_stats(fa_engine* engine, fa_engine_stats*
         if (peak > st.audio_load_peak) st.audio_load_peak = peak;
     }
     for (s = engine->streams; s; s = s->next) st.attached_streams++;
+    st.underruns = (uint32_t)fa_load32(&engine->underruns);
     /* Workers: over the time since the previous call (since the engine started, the
      * first time); calls closer together than 100 ms repeat the previous value. */
     busy = fa_load64(&engine->worker_busy_ns);

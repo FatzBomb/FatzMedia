@@ -282,6 +282,8 @@ int fa_probe_mp3_header(const uint8_t* data, size_t size, size_t start, uint32_t
 #define FA_WORKER_POLL_MIN_MS 5     /* the polling worker's shortest and longest sleep (worker_main) */
 #define FA_WORKER_POLL_MAX_MS 50
 #define FA_WORKER_POLL_IDLE_MS 100  /* ... while no stream has anything to decode */
+#define FA_TOP_UP_MIN_MS 10         /* a worker about to draw first tops up streams this short
+                                       of full (fa_stream_wants_top_up) */
 #define FA_REVERSE_BLOCK_MS 500     /* reversed: source decoded per seek (reverse_read) */
 #define FA_REVERSE_OVERLAP_MS 10    /* ... each block this far past its end, cross-faded with the one above */
 
@@ -998,6 +1000,8 @@ struct fa_engine {
     fa_thread workers[FA_MAX_WORKERS];
     uint32_t worker_count;
     uint32_t workers_idle;       /* list_lock: workers waiting on work_cond */
+    uint32_t render_workers;     /* list_lock: workers drawing (helping a shared job or
+                                    rendering ahead): at most worker_count - 1 */
     int work_poller;             /* list_lock: one idle worker waits with a timeout (worker_main) */
     fa_thread event_thread;
     fa_atomic64 event_thread_id;
@@ -1006,6 +1010,7 @@ struct fa_engine {
     int destroy_on_event_thread; /* fa_engine_destroy ran inside a callback: the event
                                     thread finishes the teardown when it exits */
     fa_atomic64 worker_busy_ns;  /* time the workers spent working, ever (fa_engine_get_stats) */
+    fa_atomic32 underruns;       /* every stream's dropouts, ever (fa_engine_get_stats) */
     int64_t stats_at, stats_busy_ns; /* list_lock: the previous fa_engine_get_stats */
     float stats_worker_load;     /* list_lock: what it reported */
 
@@ -1684,6 +1689,7 @@ fa_result fa_param_check(fa_param param, float* value);
  * block starting there (from_here 1) or ending there (0). */
 void fa_bus_gains_at(struct fa_bus* b, fa_device* dev, int64_t off, int from_here, float* gl, float* gr);
 int fa_stream_needs_work(struct fa_stream* s);
+int fa_stream_wants_top_up(struct fa_stream* s);
 uint32_t fa_stream_poll_ms(struct fa_stream* s);
 void fa_stream_fill(struct fa_stream* s, int64_t max_frames);  /* caller holds decode_lock */
 /* Workers: a pending fa_stream_seek_async, then fa_stream_fill. Caller holds decode_lock.

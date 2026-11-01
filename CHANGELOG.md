@@ -23,6 +23,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Dropout counts (karaoke timing step K1): `fa_stream_get_stats` gives a stream's `underruns` (output callbacks that
+  found it short of decoded audio while playing) and `buffered` (decoded audio ready ahead), lock-free;
+  `fa_engine_stats.underruns` adds up all streams since the engine was created. .NET: `AudioStream.GetStats()`
+  (`StreamStats`) and `EngineStats.Underruns`.
+
 - Loopback capture (BASS_DEVICE_LOOPBACK, Windows): `FA_CAPTURE_LOOPBACK` in `fa_capture_options.flags` makes
   `fa_stream_open_capture` record what an output plays (`device_id` an output's id, NULL = the default output), filling
   the gaps where nothing plays with silence. `FA_ERROR_NOT_IMPLEMENTED` off Windows. .NET: `CaptureOptions.Loopback`.
@@ -348,6 +353,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Changed
 
+- Decoding comes first (karaoke timing step K1): a worker tops up any stream short of its full buffer before it
+  renders ahead or helps with surface effects; drawing work (render-ahead and effect helpers together) never takes the
+  last worker, so one is always free to decode; and a worker runs at a lower priority while it renders ahead (Windows below
+  normal, Apple QoS utility, Linux and Android nice + 5 where RLIMIT_NICE lets it go back). An engine with one worker
+  no longer lends it to effects drawn on the caller's thread. `tools/render-stress` measures it.
 - The MIDI reverb (also the microphone reverb) runs about 1.45 times faster, with the same output to the bit: its delay
   lines are worked a block at a time instead of frame by frame. Opening a MIDI file (which measures the song's tail),
   seeking and playing MIDI all get cheaper with it.

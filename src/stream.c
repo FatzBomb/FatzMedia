@@ -1347,17 +1347,33 @@ static int live_waiting(struct fa_stream* s)
     return s->live && s->decoder_ready && !s->decoder.ready(&s->decoder) && !fa_load32(&s->staged);
 }
 
+/* Decoding could add to the buffer now: not ended, waiting for input or for
+ * playback to catch up. */
+static int can_decode(struct fa_stream* s)
+{
+    if (!s->ring.data || fa_load32(&s->eof) || fa_load32(&s->flushing)) return 0;
+    if (push_waiting(s)) return 0;   /* nothing pushed yet */
+    if (live_waiting(s)) return 0;   /* no new input yet */
+    if (fa_tmap_full(tmap_of(s))) return 0;   /* waits for playback to catch up */
+    /* Web streams: only once the bytes are downloaded, so a worker never waits. */
+    return !s->net || fa_net_can_decode(s->net, NULL);
+}
+
 int fa_stream_needs_work(struct fa_stream* s)
 {
     if (s->ring.data && fa_load32(&s->zcrc_pending)) return 1;   /* a stored ZIP entry still to check */
     if (s->ring.data && fa_load64(&s->seek_pending) >= 0) return 1;
-    if (!s->ring.data || fa_load32(&s->eof) || fa_load32(&s->flushing)) return 0;
-    if (push_waiting(s)) return 0;   /* nothing pushed yet */
-    if (live_waiting(s)) return 0;   /* no new input yet */
-    if (fa_ring_readable(&s->ring) > fill_target(s) * 3 / 4) return 0;
-    if (fa_tmap_full(tmap_of(s))) return 0;   /* waits for playback to catch up */
-    /* Web streams: only once the bytes are downloaded, so a worker never waits. */
-    return !s->net || fa_net_can_decode(s->net, NULL);
+    if (!s->ring.data || fa_ring_readable(&s->ring) > fill_target(s) * 3 / 4) return 0;
+    return can_decode(s);
+}
+
+/* Short of its full buffer by more than a decoding step: worth a top-up before a
+ * worker starts drawing (worker_main). */
+int fa_stream_wants_top_up(struct fa_stream* s)
+{
+    if (!s->ring.data || !s->dev_rate) return 0;
+    if (fa_ring_readable(&s->ring) + (int64_t)s->dev_rate * FA_TOP_UP_MIN_MS / 1000 > fill_target(s)) return 0;
+    return can_decode(s);
 }
 
 /* How long the polling worker may sleep before this stream could want it
@@ -3115,6 +3131,23 @@ FA_API fa_result FA_CALL fa_stream_get_clock(fa_stream* stream, fa_time* out_pts
     return FA_OK;
 }
 
+FA_API fa_result FA_CALL fa_stream_get_stats(fa_stream* stream, fa_stream_stats* out_stats)
+{
+    fa_stream_stats st;
+    if (!stream || !out_stats || out_stats->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
+    st.underruns = (uint32_t)fa_load32(&stream->underruns);
+    /* As fa_stream_get_clock: while clock_device is set, a detach waits for us before
+     * it changes the ring or dev_rate. */
+    fa_fetch_add32(&stream->clock_readers, 1);
+    if (fa_load_ptr(&stream->clock_device) && stream->dev_rate > 0)
+        st.buffered = (fa_time)((double)fa_ring_readable(&stream->ring) * 1e9 / (double)stream->dev_rate + 0.5);
+    fa_fetch_add32(&stream->clock_readers, -1);
+    fa_copy_sized(out_stats, &st, sizeof(st));
+    return FA_OK;
+}
+
 /* ---- push streams ---------------------------------------------------------- */
 
 FA_API fa_result FA_CALL fa_stream_push_flush(fa_stream* stream)
@@ -4700,6 +4733,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
             return;
         }
         fa_fetch_add32(&s->underruns, 1);
+        fa_fetch_add32(&s->engine->underruns, 1);
         /* A push, live or web stream that ran dry waits for more: the app's next data,
          * the input, or the network (whose download buffer only hands data on once
          * prebuffer_ms are in, so the ring then refills at once). */
