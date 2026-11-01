@@ -507,6 +507,13 @@ FA_API fa_result FA_CALL fa_stream_get_buffered(fa_stream* stream, fa_time* out_
  * FA_OPEN_DECODE_ONLY streams. It is never called on the audio thread, never twice at
  * once, and never after fa_stream_close returns (so `user` may be freed then). It may
  * take locks and do real work, but should not block: the stream runs dry meanwhile.
+ * It runs under the stream's decode lock, so from inside it do not read, seek or
+ * otherwise wait on this stream, and do not hold a lock in it that you also hold around
+ * fa_stream_close of this stream: either one waits for the other for good. Closing the
+ * stream from inside its own proc is allowed: fa_stream_close returns without waiting
+ * for the proc (only, as any close, for an event callback of this stream running right
+ * then, which must not wait on the stream meanwhile), the proc is not called again, and
+ * the engine finishes the close as soon as the proc returns.
  * The stream cannot seek or loop (FA_ERROR_NOT_SEEKABLE; FA_OPEN_LOOP is
  * FA_ERROR_INVALID_ARG) and its length is unknown. */
 #define FA_STREAM_PROC_END (-1)
@@ -568,6 +575,8 @@ FA_API void FA_CALL fa_capture_options_init(fa_capture_options* options);
 FA_API fa_result FA_CALL fa_stream_open_capture(fa_engine* engine, const fa_capture_options* capture_options,
                                                 const fa_open_options* options, fa_stream** out_stream);
 
+/* Frees the stream; it must not be used again. From inside one of the stream's own
+ * callbacks (its event callback, fa_stream_proc, fa_download_proc) it is allowed too. */
 FA_API void FA_CALL fa_stream_close(fa_stream* stream);
 
 /* ---- Sounds: one short sound, many voices ---------------------------------
@@ -587,7 +596,8 @@ FA_API void FA_CALL fa_stream_close(fa_stream* stream);
  * fa_sound_play, so everything a stream can do works on it: fa_stream_stop,
  * fa_stream_set_param (volume, pan, rate, pitch), ramps, loops, a bus, effects,
  * events (FA_EVENT_ENDED when it finishes). The sound owns its voices: do not
- * fa_stream_close them (it is allowed, and the sound forgets that voice). A voice
+ * fa_stream_close them (it is allowed, also while other threads play the sound: the
+ * sound forgets that voice and never hands it out again once its close began). A voice
  * that ended or was stopped is free, and a later fa_sound_play reuses it, so a
  * voice pointer stays valid until fa_sound_close (also after fa_sound_set_options
  * retired it) but may by then be playing a newer copy. A reused voice starts at the volume and pan of its play with looping
@@ -709,7 +719,11 @@ typedef enum fa_net_flags {
  * are the ones the decoder reads: a file as the server sends it, radio without its
  * ICY title blocks, HLS the audio of the segments (decrypted; from MPEG-TS segments
  * the audio stream inside). Called on the stream's download thread, in order; the
- * download waits while it runs, so return quickly. */
+ * download waits while it runs, so return quickly. Closing the stream from inside it
+ * is allowed: fa_stream_close returns without waiting for the download (only, as any
+ * close, for an event callback of this stream running right then, which must not change
+ * this stream's download callback meanwhile), the callback is not called again, and the
+ * engine finishes the close as soon as the callback returns. */
 typedef void (FA_CALL *fa_download_proc)(void* user, const void* data, size_t size);
 
 struct fa_net_options {

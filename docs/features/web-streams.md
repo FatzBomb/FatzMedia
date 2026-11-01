@@ -234,7 +234,11 @@ fclose(f);
 `fa_stream_set_download_callback` starts, changes or stops it while the stream plays (from the next downloaded byte;
 the first bytes only arrive through `download_proc`). It may also be called from inside the callback. The callback
 runs on the stream's download thread, one call at a time, in order. After a seek that restarts the download
-elsewhere in a file, the bytes go on from there.
+elsewhere in a file, the bytes go on from there. Closing the stream from inside the callback (to stop a recording at a
+size limit, say) is allowed: `fa_stream_close` returns without waiting for the download, the callback is not called
+again, and the engine finishes the close as soon as the callback returns. Like any close, it does wait for an event
+callback of the stream that is running at that moment, so don't change the download callback from an event callback
+of a stream whose download callback may close it.
 
 ```csharp
 var file = File.Create("recording.mp3");

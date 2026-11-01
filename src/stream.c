@@ -663,7 +663,7 @@ FA_API fa_result FA_CALL fa_stream_open_callback(fa_engine* engine, const fa_aud
     if (options && options->flags & FA_OPEN_LOOP) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
-    r = fa_callback_decoder_open(&s->decoder, format, proc, user);
+    r = fa_callback_decoder_open(&s->decoder, format, proc, user, &s->proc_tid);
     if (r != FA_OK) { stream_discard(s); return r; }
     open_live(s);
     *out_stream = s;
@@ -900,12 +900,41 @@ FA_API fa_result FA_CALL fa_stream_open_url(fa_engine* engine, const char* url, 
     return FA_OK;
 }
 
+/* fa_stream_close from inside the stream's own fa_stream_proc (whose thread holds
+ * decode_lock) or download callback (whose thread close would join) would wait for
+ * itself. The event thread finishes the close instead, as soon as the callback has
+ * returned. From here on, as after any close, the callback is not called again and no
+ * events are delivered (an event callback running now is waited for, as by any
+ * close); the stream may play on for a moment. */
+static int close_later(fa_stream* s)
+{
+    fa_engine* e = s->engine;
+    int64_t self = (int64_t)fa_thread_current_id();
+    int in_proc = fa_load64(&s->proc_tid) == self;
+    if (!in_proc && !(s->net && fa_net_on_download_thread(s->net))) return 0;
+    if (in_proc) fa_callback_decoder_stop(&s->decoder);
+    if (s->net) {
+        fa_net_set_tap(s->net, NULL, NULL);   /* inside the tap: takes effect after it returns */
+        fa_net_interrupt(s->net);
+    }
+    fa_store32(&s->closed, 1);
+    if (self != fa_load64(&e->event_thread_id))   /* a decode-only proc inside an event callback: not that one */
+        while (fa_load32(&s->in_callback)) fa_sleep_ms(1);
+    fa_mutex_lock(&e->list_lock);
+    s->close_later_next = e->close_later;
+    e->close_later = s;
+    fa_wake_signal(&e->event_wake);
+    fa_mutex_unlock(&e->list_lock);
+    return 1;
+}
+
 FA_API void FA_CALL fa_stream_close(fa_stream* stream)
 {
     fa_scan_job* job;
     fa_engine* e;
     uintptr_t self;
     if (!stream) return;
+    if (close_later(stream)) return;
     e = stream->engine;
     {
         struct fa_sound* snd = (struct fa_sound*)fa_exchange_ptr(&stream->sound, NULL);
@@ -2562,7 +2591,7 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
 {
     fa_result r = FA_OK;
     fa_frames cur[2];
-    int on = out > in;
+    int on = out > in, began = 0;
     if (!s || in < 0) return FA_ERROR_INVALID_ARG;
     if (!on) in = out = 0;
     if (on && (s->push || !s->decoder.seekable)) return FA_ERROR_NOT_SEEKABLE;
@@ -2570,7 +2599,7 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
     fa_mutex_lock(&s->api_lock);
     region_read(s, cur);
     if (cur[0] == in && cur[1] == out) { fa_mutex_unlock(&s->api_lock); return FA_OK; }
-    if (on && slip_starts(s)) slip_begin_locked(s);
+    if (on && (began = slip_starts(s))) slip_begin_locked(s);   /* undone below if the loop fails */
     if (!on && fa_load32(&s->slip_active) && fa_load32(&s->reverse_want) == s->slip_rev) {
         r = slip_return_locked(s);   /* the loop ends the slip: back to where it would be */
         fa_mutex_unlock(&s->api_lock);
@@ -2585,7 +2614,7 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
         fa_mutex_unlock(&s->decode_lock);
         if (on && (reversed(s) ? pos <= in : pos >= out) && fa_load32(&s->state) != FA_STATE_ENDED)
             r = seek_locked(s, reversed(s) ? out : in);   /* outside the loop on the side already passed */
-        fa_mutex_unlock(&s->api_lock);
+        fa_mutex_unlock(&s->api_lock);   /* no slip began: it needs a stream playing from its ring */
         return r;
     }
     fa_mutex_lock(&s->decode_lock);   /* no worker decodes meanwhile */
@@ -2608,6 +2637,7 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
         }
         if (!m && !(m = ensure_tmap(s))) {   /* the join needs a position map */
             fa_mutex_unlock(&s->decode_lock);
+            if (began) fa_store32(&s->slip_active, 0);   /* no loop: no slip */
             fa_mutex_unlock(&s->api_lock);
             return FA_ERROR_OUT_OF_MEMORY;
         }
@@ -2639,6 +2669,7 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
         if (r != FA_OK) region_store(s, cur[0], cur[1]);   /* not joined: the old loop stays */
     }
     fa_mutex_unlock(&s->decode_lock);
+    if (began && r != FA_OK) fa_store32(&s->slip_active, 0);   /* nor a slip */
     fa_mutex_unlock(&s->api_lock);
     return r;
 }
@@ -3095,10 +3126,10 @@ int64_t fa_stream_clock_at(struct fa_stream* s, int64_t now_ns)
 /* No lock while attached or for file streams: a render loop calls this every vsync,
  * and must not wait behind a seek (which holds api_lock while it refills) or a
  * worker. Detached push streams read their carry, which the API lock guards. */
-FA_API fa_result FA_CALL fa_stream_get_clock(fa_stream* stream, fa_time* out_pts)
+/* wait 0: FA_ERROR_BUSY instead of waiting for a detached push stream's api_lock. */
+static fa_result get_clock(fa_stream* stream, fa_time* out_pts, int wait)
 {
     fa_device* dev;
-    if (!stream || !out_pts) return FA_ERROR_INVALID_ARG;
     if ((*out_pts = pending_clock(stream)) >= 0) return FA_OK;
     fa_fetch_add32(&stream->clock_readers, 1);
     dev = (fa_device*)fa_load_ptr(&stream->clock_device);
@@ -3109,10 +3140,26 @@ FA_API fa_result FA_CALL fa_stream_get_clock(fa_stream* stream, fa_time* out_pts
         *out_pts = clock_of_position(stream);
         return FA_OK;
     }
-    fa_mutex_lock(&stream->api_lock);
+    if (wait) {
+        fa_mutex_lock(&stream->api_lock);
+    } else if (!fa_mutex_trylock(&stream->api_lock)) {
+        *out_pts = 0;
+        return FA_ERROR_BUSY;
+    }
     *out_pts = fa_stream_clock_at(stream, fa_monotonic_ns());
     fa_mutex_unlock(&stream->api_lock);
     return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_stream_get_clock(fa_stream* stream, fa_time* out_pts)
+{
+    if (!stream || !out_pts) return FA_ERROR_INVALID_ARG;
+    return get_clock(stream, out_pts, 1);
+}
+
+fa_result fa_stream_get_clock_nowait(struct fa_stream* s, fa_time* out_pts)
+{
+    return get_clock(s, out_pts, 0);
 }
 
 /* ---- push streams ---------------------------------------------------------- */

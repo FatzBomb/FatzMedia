@@ -2783,9 +2783,11 @@ void fa_stream_cdg_watch(struct fa_stream* s)
     size_t target;
     int r[4] = { 0, 0, 0, 0 }, palette = 0;
     /* Like a callback: fa_stream_close sets `closed`, then waits for in_callback 0
-     * before it frees what the clock reads, so either it sees us or we see it. */
+     * before it frees what the clock reads, so either it sees us or we see it. A
+     * detached push stream's clock is read under its api_lock, which a seek holds while
+     * it refills: then this round skips it rather than hold up every other event. */
     fa_store32(&s->in_callback, 1);
-    if (!fa_load32(&s->cdg_events) || fa_load32(&s->closed) || fa_stream_get_clock(s, &now) != FA_OK) {
+    if (!fa_load32(&s->cdg_events) || fa_load32(&s->closed) || fa_stream_get_clock_nowait(s, &now) != FA_OK) {
         fa_store32(&s->in_callback, 0);
         return;
     }

@@ -4,7 +4,11 @@
  * The proc runs where any decoder runs: on a decode worker (or the thread calling
  * fa_stream_read for decode-only streams), under the stream's decode_lock, so it is
  * never called twice at once nor after fa_stream_close. When it has nothing right
- * now (returns 0), `ready` keeps the workers away for FA_CALLBACK_RETRY_NS. */
+ * now (returns 0), `ready` keeps the workers away for FA_CALLBACK_RETRY_NS.
+ *
+ * While it runs, the stream's proc_tid names its thread: fa_stream_close from inside
+ * the proc would wait for decode_lock, which that same thread holds, so it hands the
+ * close to the event thread instead (and stops the proc here first). */
 #include "fa_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +25,7 @@ typedef struct callback_src {
     fa_frames scratch_frames;
     int ended;               /* the proc returned FA_STREAM_PROC_END */
     fa_atomic64 retry_at;    /* monotonic ns: the proc had nothing, ask again from then */
+    fa_atomic64* proc_tid;   /* the stream's: the thread inside proc now */
 } callback_src;
 
 static int callback_probe(const uint8_t* data, size_t size, size_t id3_size)
@@ -48,7 +53,10 @@ static fa_result callback_read(fa_decoder* dec, float* out, fa_frames frames, fa
         }
         buf = c->scratch;
     }
+    fa_store64(c->proc_tid, (int64_t)fa_thread_current_id());
     n = c->proc(buf, frames, c->user);
+    fa_store64(c->proc_tid, 0);
+    if (c->ended) return FA_ERROR_END_OF_STREAM;   /* closed from inside the proc */
     if (n < 0) {
         c->ended = 1;
         return FA_ERROR_END_OF_STREAM;
@@ -95,7 +103,14 @@ static const fa_decoder_vtable callback_vtable = {
     callback_probe, callback_open, callback_read, callback_seek, callback_close, 0, NULL, NULL
 };
 
-fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* format, fa_stream_proc proc, void* user)
+void fa_callback_decoder_stop(fa_decoder* dec)
+{
+    callback_src* c = (callback_src*)dec->impl;
+    if (dec->vt == &callback_vtable && c) c->ended = 1;
+}
+
+fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* format, fa_stream_proc proc, void* user,
+                                   fa_atomic64* proc_tid)
 {
     callback_src* c;
     int planar, kind;
@@ -108,6 +123,7 @@ fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* forma
     if (!c) return FA_ERROR_OUT_OF_MEMORY;
     c->proc = proc;
     c->user = user;
+    c->proc_tid = proc_tid;
     c->kind = kind;
     c->frame_bytes = (size_t)fa_sample_bytes(kind) * format->channels;
     memset(dec, 0, sizeof(*dec));

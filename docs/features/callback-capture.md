@@ -73,6 +73,8 @@ The .NET callback always gets float samples (`buffer.Length` is frames times cha
 
 - The function runs on a decode worker, ahead of what is heard by the stream's buffer (500 ms by default, `fa_open_options.buffer_ms`). For `FA_OPEN_DECODE_ONLY` streams it runs on your thread, inside `fa_stream_read`.
 - It is never called on the audio thread, never twice at once, and never after `fa_stream_close` returns. It may take locks and do real work, but should not block: the stream runs dry while it waits.
+- It runs under the stream's decode lock. From inside it, don't read, seek or otherwise wait on the same stream, and don't hold a lock in it that you also hold around `fa_stream_close` of that stream: each would wait for the other for good.
+- Closing the stream from inside its own function is allowed (a generator that knows it is done, say, though returning `FA_STREAM_PROC_END` is usually better): `fa_stream_close` returns without waiting for the function (like any close, it does wait for an event callback of the stream running at that moment), the function is not called again, and the engine finishes the close as soon as it returns.
 - Something you change for the audio (a synth's note) is heard a buffer later. Use a short `buffer_ms` (50 to 100 ms) for an instrument that should answer quickly.
 - The stream cannot seek (`FA_ERROR_NOT_SEEKABLE`) or loop (`FA_OPEN_LOOP` is `FA_ERROR_INVALID_ARG`), and its length is unknown (`length_frames` -1).
 
