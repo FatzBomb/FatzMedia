@@ -149,7 +149,7 @@ rec.Close();        // completes the file
 
 - Windows only (WASAPI). On macOS, iOS, Android and Linux the open fails with `FA_ERROR_NOT_IMPLEMENTED` (.NET `ErrorCode.NotImplemented`), and so it does on an engine created with `FA_ENGINE_NULL_OUTPUT`. On those systems a loopback or "monitor" input the user installed (a virtual audio driver, PulseAudio's monitor sources) is an ordinary input: open it without the flag.
 - The format is the output's mix format (often 48 kHz stereo); `sample_rate` and `channels` convert as for an input.
-- Windows sends nothing while nothing plays. The stream fills such a gap with silence once it is longer than a quarter of a second, counting from the gap's start, so a recording keeps its real length through pauses. A decode-only reader sees the silence of a pause up to a quarter of a second late.
+- Windows sends nothing while nothing plays. The stream records such a gap as silence by the clock, so a recording keeps its real length through pauses: the silence comes when the sound comes back, or, once the gap is a quarter of a second long, while it lasts (a reader keeps getting audio). Gaps of a few tens of milliseconds can't be told from a late packet and are not filled, and the end of a gap can be off by up to 10 ms.
 - Your own app's sound is in it too. Don't play a loopback stream on the output it records: that feeds back.
 - `FA_CAPTURE_OS_PROCESSING` has no effect on it, and the microphone permission does not apply.
 
