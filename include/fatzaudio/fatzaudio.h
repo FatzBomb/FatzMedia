@@ -543,10 +543,21 @@ FA_API fa_result FA_CALL fa_stream_open_callback(fa_engine* engine, const fa_aud
 #define FA_CAPTURE_OS_PROCESSING (1u << 0)  /* keep the system's voice processing (echo
                                                cancelling, noise suppression, automatic
                                                gain): for calls, not for music */
+/* Loopback (BASS_DEVICE_LOOPBACK): record what an output plays (every app's sound, the
+ * system's mix before its master volume) instead of an input. device_id is then an FA_DEVICE_PLAYBACK device's id, NULL =
+ * the default output (following default-output changes). Windows only (WASAPI):
+ * FA_ERROR_NOT_IMPLEMENTED elsewhere and on an engine with FA_ENGINE_NULL_OUTPUT.
+ * Windows sends nothing while nothing plays; the stream records such a gap as silence
+ * (all but gaps of a few tens of ms, which can't be told from a late packet), so a
+ * recording keeps its real length through pauses. A reader gets that silence when the
+ * sound comes back, or while the gap lasts once it is a quarter of a second long.
+ * FA_CAPTURE_OS_PROCESSING has no effect with it. */
+#define FA_CAPTURE_LOOPBACK      (1u << 1)
 typedef struct fa_capture_options {
     uint32_t    struct_size;  /* set by fa_capture_options_init */
     const char* device_id;    /* fa_device_info.id of an FA_DEVICE_CAPTURE device, NULL =
-                                 the default input */
+                                 the default input (with FA_CAPTURE_LOOPBACK: an
+                                 FA_DEVICE_PLAYBACK device, NULL = the default output) */
     uint32_t    sample_rate;  /* 0 = the input's own (8000..384000 otherwise) */
     uint32_t    channels;     /* 0 = the input's own (1..32 otherwise) */
     uint32_t    flags;        /* FA_CAPTURE_* */

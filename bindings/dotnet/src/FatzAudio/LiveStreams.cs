@@ -17,7 +17,10 @@ public delegate int AudioCallback(Span<float> buffer);
 /// <summary>Settings of an input opened as a stream (<see cref="AudioEngine.OpenCapture"/>).</summary>
 public sealed class CaptureOptions
 {
-    /// <summary>The input (from <see cref="AudioEngine.InputDevices"/>); null = the system default input.</summary>
+    /// <summary>
+    /// The input (from <see cref="AudioEngine.InputDevices"/>); null = the system default input. With
+    /// <see cref="Loopback"/>: an output (from <see cref="AudioEngine.OutputDevices"/>); null = the default output.
+    /// </summary>
     public AudioDeviceInfo? Device { get; init; }
 
     /// <summary>The sample rate to record at; 0 = the input's own (the system converts otherwise).</summary>
@@ -31,6 +34,13 @@ public sealed class CaptureOptions
     /// default: it spoils music.
     /// </summary>
     public bool KeepOsProcessing { get; init; }
+
+    /// <summary>
+    /// Record what an output plays (every app's sound, the system's mix before its master volume) instead of an input
+    /// (BASS_DEVICE_LOOPBACK). Windows only: elsewhere the open throws with <see cref="ErrorCode.NotImplemented"/>.
+    /// Gaps where nothing plays are recorded as silence. <see cref="KeepOsProcessing"/> has no effect with it.
+    /// </summary>
+    public bool Loopback { get; init; }
 }
 
 /// <summary>How busy the engine is (<see cref="AudioEngine.GetStats"/>).</summary>

@@ -2015,6 +2015,25 @@ static void test_engine_destroy_wakes(void)
     CHECK(fa_monotonic_ns() - t0 < 500000000LL);
 }
 
+/* Loopback capture fills a gap in the output's packets with silence by the clock. */
+static void test_loopback_gap_frames(void)
+{
+    const int64_t ms = 1000000;
+    CHECK_EQ(fa_loopback_gap_frames(1000 * ms, 1000 * ms, 0, 48000), 0);
+    CHECK_EQ(fa_loopback_gap_frames(999 * ms, 1000 * ms, 0, 48000), 0);         /* clock before the gap */
+    CHECK_EQ(fa_loopback_gap_frames(1250 * ms, 1000 * ms, 0, 48000), 12000);
+    CHECK_EQ(fa_loopback_gap_frames(1250 * ms, 1000 * ms, 12000, 48000), 0);    /* the reader gave it all */
+    CHECK_EQ(fa_loopback_gap_frames(1260 * ms, 1000 * ms, 12000, 48000), 480);
+    CHECK_EQ(fa_loopback_gap_frames(1260 * ms, 1000 * ms, 20000, 48000), 0);    /* never negative */
+    /* The packet that ends a gap holds `frames` of it: the rest is silence. */
+    CHECK_EQ(fa_loopback_gap_frames(1100 * ms, 1000 * ms, 480 + 1000, 48000), 4800 - 1480);
+    CHECK_EQ(fa_loopback_gap_frames(1250 * ms, 1000 * ms, 0, 44100), 11025);
+    CHECK_EQ(fa_loopback_gap_frames(1250 * ms, 1000 * ms, 0, 0), 0);
+    /* Exact over long gaps: 10 hours at 384 kHz without overflow or drift. */
+    CHECK_EQ(fa_loopback_gap_frames(36000000 * ms + 1, 1, 0, 384000), 13824000000LL);
+    CHECK_EQ(fa_loopback_gap_frames(1000 * ms + 999999, 0, 0, 48000), 48047);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -2083,6 +2102,7 @@ int main(void)
     RUN(test_dsp_on_decode_only);
     RUN(test_pkt_index);
     RUN(test_utf8_valid);
+    RUN(test_loopback_gap_frames);
 
     fa_device_close(g_dev);
     fa_engine_destroy(g_engine);

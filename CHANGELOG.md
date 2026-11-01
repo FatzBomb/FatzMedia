@@ -23,6 +23,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Loopback capture (BASS_DEVICE_LOOPBACK, Windows): `FA_CAPTURE_LOOPBACK` in `fa_capture_options.flags` makes
+  `fa_stream_open_capture` record what an output plays (`device_id` an output's id, NULL = the default output), filling
+  the gaps where nothing plays with silence. `FA_ERROR_NOT_IMPLEMENTED` off Windows. .NET: `CaptureOptions.Loopback`.
+
 - Soundfont stacks (extras step 16): `fa_soundfont_open_stack` (BASS_MIDI_StreamSetFonts with several fonts,
   BASS_MIDI_FONTEX mapping, BASS_MIDI_FontSetVolume) makes one soundfont of the presets of others: each
   `fa_soundfont_stack_entry` takes all of a soundfont, one bank or one program, optionally as another bank or program

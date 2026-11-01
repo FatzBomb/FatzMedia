@@ -120,4 +120,15 @@ public class LiveStreamTests
         Assert.True(total >= 4800, $"read {total} frames");
         Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Device = engine.OutputDevices.FirstOrDefault() ?? throw new InvalidOperationException() }));
     }
+
+    [Fact]
+    public void OpenCapture_Loopback_NeedsAnOutputAndWasapi()
+    {
+        using var engine = CreateHeadless();
+        var input = engine.InputDevices.FirstOrDefault() ?? throw new InvalidOperationException();
+        Assert.Throws<ArgumentException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true, Device = input }));
+        // The headless engine runs on the null backend, which has no loopback (WASAPI only).
+        var e = Assert.Throws<FatzAudioException>(() => engine.OpenCapture(new CaptureOptions { Loopback = true }));
+        Assert.Equal(ErrorCode.NotImplemented, e.ErrorCode);
+    }
 }
