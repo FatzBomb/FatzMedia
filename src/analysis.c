@@ -9,7 +9,8 @@
  * read without locks, staying clear of the part the next callbacks will write.
  *
  * Readers end their window at the frame the speaker plays now
- * (fa_device_speaker_frame), so meters line up with the sound. */
+ * (fa_device_speaker_frame), so meters line up with the sound, and never past
+ * the newest frame mixed (a late callback). */
 #include "fa_internal.h"
 #include <math.h>
 #include <stdlib.h>
@@ -348,11 +349,16 @@ static int spectrum_size_log2(uint32_t size, uint32_t flags, const float* bins)
 
 /* Where a window ends: the frame the speaker plays now. A stream tap holds mix
  * frames; a device tap holds the limiter's output, `delay` frames behind the mix
- * it came from (fa_device_speaker_frame already counts that delay). */
+ * it came from (fa_device_speaker_frame already counts that delay).
+ * The speaker frame is extrapolated from the last callback's time, so a late
+ * callback (a loaded machine) puts it past the frames mixed so far: the window
+ * then ends at the newest mixed frame, rather than reading the gap as silence. */
 static int64_t speaker_end(fa_device* dev, int after_limiter)
 {
     double sp = fa_device_speaker_frame(dev, fa_monotonic_ns());
-    return (int64_t)floor(sp) + (after_limiter ? (int64_t)dev->limiter.delay : 0);
+    int64_t end = (int64_t)floor(sp) + (after_limiter ? (int64_t)dev->limiter.delay : 0);
+    int64_t mixed = fa_load64(&dev->clock);
+    return end < mixed ? end : mixed;
 }
 
 typedef struct measure {

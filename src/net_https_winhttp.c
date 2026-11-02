@@ -288,10 +288,14 @@ fa_result fa_http_fetch_tls(const fa_http_request* req, fa_http_head_proc on_hea
             break;
         /* A pooled connection that the server closed in the meantime fails before any
          * response, and WinHTTP doesn't try again by itself (curl, URLSession and
-         * HttpURLConnection do). A GET is safe to repeat: once, on a new connection. */
+         * HttpURLConnection do). A GET is safe to repeat: once, on a new connection.
+         * Which error a dead TLS connection gives varies (a reset, a broken record, a
+         * secure-channel error), so every error but the ones another try can't help
+         * is tried again. */
         err = GetLastError();
-        if (attempt > 0 || (err != ERROR_WINHTTP_CONNECTION_ERROR && err != ERROR_WINHTTP_INVALID_SERVER_RESPONSE) ||
-            (req->cancel && fa_load32(req->cancel)))
+        if (attempt > 0 || err == ERROR_WINHTTP_TIMEOUT || err == ERROR_WINHTTP_NAME_NOT_RESOLVED ||
+            err == ERROR_WINHTTP_CANNOT_CONNECT || err == ERROR_WINHTTP_OPERATION_CANCELLED ||
+            err == ERROR_NOT_ENOUGH_MEMORY || (req->cancel && fa_load32(req->cancel)))
             goto done;
         if (!slot_remove(slot)) WinHttpCloseHandle(request);
         request = NULL;
