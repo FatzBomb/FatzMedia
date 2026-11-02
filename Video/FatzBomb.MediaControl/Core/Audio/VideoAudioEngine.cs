@@ -1137,7 +1137,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         var generation = Volatile.Read(ref _normalizationGeneration);
         if (cacheKey is not null && NormalizationGainCache.TryGetValue(cacheKey, out var cachedGain))
         {
-            ApplyNormalizationGain(cachedGain, cacheKey, generation, "Using cached normalization gain");
+            ApplyNormalizationGain(cachedGain, cacheKey, generation, "Using cached normalization gain", filePath);
             return;
         }
 
@@ -1162,10 +1162,18 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
                 NormalizationGainPolicy.QuickGain(quickPeak),
                 cacheKey: null,
                 generation,
-                NormalizationGainPolicy.QuickPassHeldBackBoost(quickPeak) ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete");
+                NormalizationGainPolicy.QuickPassHeldBackBoost(quickPeak) ? "Quick normalization complete (boost waits for the full scan)" : "Quick normalization complete",
+                filePath);
 
             var deepPeak = NormalizationGainPolicy.FinalPeak(quickPeak, FfmpegAudioPeakScanner.ScanDeep(reader, cancellationToken));
-            ApplyNormalizationPeak(deepPeak, cacheKey, generation, "Deep normalization complete");
+            ApplyNormalizationPeak(
+                deepPeak,
+                cacheKey,
+                generation,
+                // A silent or empty audio track (common in background videos) scans to a peak of 0,
+                // which leaves the gain at 1.0: say so rather than look like a measured gain.
+                deepPeak > 0 ? "Deep normalization complete" : "Deep normalization complete (no audible audio found; gain left at 1.0)",
+                filePath);
         }
         catch (OperationCanceledException)
         {
@@ -1182,10 +1190,10 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         }
     }
 
-    private void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message) =>
-        ApplyNormalizationGain(AudioNormalizer.CalculateGainFromPeak(peak), cacheKey, generation, message);
+    private void ApplyNormalizationPeak(double peak, string? cacheKey, int generation, string message, string sourcePath) =>
+        ApplyNormalizationGain(AudioNormalizer.CalculateGainFromPeak(peak), cacheKey, generation, message, sourcePath);
 
-    private void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message)
+    private void ApplyNormalizationGain(double gain, string? cacheKey, int generation, string message, string sourcePath)
     {
         lock (_gainGate)
         {
@@ -1200,7 +1208,7 @@ internal sealed unsafe class VideoAudioEngine : IAudioEngine, IAudioLoopControl,
         if (cacheKey is not null)
             NormalizationGainCache.Set(cacheKey, gain);
 
-        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoAudioEngine", $"{message}, gain={gain:F3}");
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "VideoAudioEngine", $"{message}, gain={gain:F3}", sourcePath: sourcePath);
         QueueNormalizationGainChanged(gain, generation);
     }
 
