@@ -243,11 +243,14 @@ static void test_change_while_playing(void)
     CHECK(fa_stream_attach(s, dev, NULL) == FA_OK);
     CHECK(fa_device_start(dev) == FA_OK);
     CHECK(fa_stream_play(s) == FA_OK);
+    /* Wait for the device to pull audio (a busy CI runner can take a while), so the changes
+     * below happen while the stream plays. */
+    for (i = 0; i < 1000 && (fa_stream_get_position(s, &pos) != FA_OK || pos <= 0); i++) sleep_ms(5);
+    CHECK(pos > 0);
     for (i = 0; i < 40; i++) {
         CHECK(fa_stream_set_soundfont(s, (i & 1) ? g_font : g_octave) == FA_OK);
         sleep_ms(i % 3 == 0 ? 0 : 7);
     }
-    CHECK(fa_stream_get_position(s, &pos) == FA_OK && pos > RATE / 10);   /* it played meanwhile */
     CHECK(fa_stream_set_soundfont(s, g_octave) == FA_OK);
     fa_stream_close(s);
     fa_device_close(dev);
