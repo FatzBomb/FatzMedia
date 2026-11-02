@@ -108,6 +108,10 @@ struct tsf_stack_preset { const tsf* font; int presetIndex; int bank, preset; fl
 TSFDEF tsf* tsf_load_stack(const struct tsf_stack_preset* presets, int n);
 // FatzAudio: the bank and preset number of a preset index (0 if out of range)
 TSFDEF int tsf_get_preset_bank_number(const tsf* f, int preset_index, int* bank, int* preset_number);
+// FatzAudio: gives `dst` (a synth of another soundfont taking over from `src`) the channel settings, drum key
+// edits and master tuning of `src`. No voices are copied. The channels keep src's preset indexes: set each
+// channel's preset again (indexes past dst's presets are set to 0). Returns 0 when out of memory.
+TSFDEF int tsf_copy_state(tsf* dst, const tsf* src);
 
 // Free the memory related to this tsf instance
 TSFDEF void tsf_close(tsf* f);
@@ -397,6 +401,7 @@ struct tsf
 {
 	struct tsf_preset* presets;
 	tsf_s16* fontSamples; // FatzAudio: 16-bit, as in the file (the renderer converts per voice)
+	tsf_u8* fontSamples24; // FatzAudio: the sm24 chunk (the low 8 bits of 24-bit samples), NULL without one
 	struct tsf_voice* voices;
 	struct tsf_channels* channels;
 
@@ -517,6 +522,7 @@ struct tsf_region
 	float chorusSend, reverbSend; // FatzAudio: effect sends, 0.1% units (generators 15 and 16)
 	int modStart, modNum; // FatzAudio: the region's modulators in tsf::modulators
 	const tsf_s16* samples; // FatzAudio: the font's sample data (a stack plays several fonts' regions)
+	const tsf_u8* samples24; // FatzAudio: the font's sm24 low bytes, NULL for 16-bit samples
 	const struct tsf_modulator* mods; // FatzAudio: modulators + modStart, set once the font is loaded
 };
 
@@ -1339,7 +1345,7 @@ static int tsf_load_samples(void** pRawBuffer, tsf_s16** pSampleBuffer, unsigned
 	res = (tsf_s16*)TSF_MALLOC(((size_t)*pSmplCount + TSF_SAMPLE_PADDING) * sizeof(tsf_s16));
 	*pSampleBuffer = res;
 	if (!res || stream->read(stream->data, res, *pSmplCount * (unsigned int)sizeof(short)) != (int)(*pSmplCount * sizeof(short))) return 0;
-	if (chunkSmpl->size & 1) stream->skip(stream->data, 1);
+	if (chunkSmpl->size & 1) stream->skip(stream->data, 1); // the odd byte (the pad byte after it is skipped by the caller)
 	{
 		const unsigned short one = 1;
 		if (!*(const unsigned char*)&one)
@@ -1358,6 +1364,9 @@ static int tsf_load_samples(void** pRawBuffer, tsf_s16** pSampleBuffer, unsigned
 // The output differs from float samples only by float rounding, at no cost per sample.
 #define TSF_SAMPLE(s) ((float)(s))
 #define TSF_SAMPLE_SCALE (1.0f / 32767.0f)
+// FatzAudio: a sample with its sm24 low byte, at the same scale (exact in a float: 15 + 8 bits); without
+// one, the 16-bit sample as before.
+#define TSF_SAMPLE24(in, lo, i) ((lo) ? TSF_SAMPLE((in)[i]) + (float)(lo)[i] * (1.0f / 256.0f) : TSF_SAMPLE((in)[i]))
 
 static int tsf_voice_envelope_release_samples(struct tsf_voice_envelope* e, float outSampleRate)
 {
@@ -1810,6 +1819,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 {
 	struct tsf_region* region = v->region;
 	const tsf_s16* input = region->samples; // FatzAudio: 16-bit samples, see TSF_SAMPLE
+	const tsf_u8* input24 = region->samples24; // FatzAudio: their low 8 bits (sm24), or NULL
 	float* outL = outputBuffer;
 	float* outR = (f->outputmode == TSF_STEREO_UNWEAVED ? outL + numSamples : TSF_NULL);
 
@@ -1892,7 +1902,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE(input[pos]) * (1.0f - alpha) + TSF_SAMPLE(input[nextPos]) * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE24(input, input24, pos) * (1.0f - alpha) + TSF_SAMPLE24(input, input24, nextPos) * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1913,7 +1923,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE(input[pos]) * (1.0f - alpha) + TSF_SAMPLE(input[nextPos]) * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE24(input, input24, pos) * (1.0f - alpha) + TSF_SAMPLE24(input, input24, nextPos) * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1933,7 +1943,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE(input[pos]) * (1.0f - alpha) + TSF_SAMPLE(input[nextPos]) * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (TSF_SAMPLE24(input, input24, pos) * (1.0f - alpha) + TSF_SAMPLE24(input, input24, nextPos) * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1973,6 +1983,8 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 	void* rawBuffer = TSF_NULL;
 	tsf_s16* floatBuffer = TSF_NULL; // FatzAudio: 16-bit samples
 	tsf_u32 smplCount = 0;
+	tsf_u8* sm24Buffer = TSF_NULL; // FatzAudio: the sm24 chunk, when it is valid
+	int version = 0; // FatzAudio: ifil, major * 100 + minor (2.04 = 204)
 
 	if (!tsf_riffchunk_read(TSF_NULL, &chunkHead, stream) || !TSF_FourCCEquals(chunkHead.id, "sfbk"))
 	{
@@ -2013,6 +2025,20 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 				#undef HandleChunk
 			}
 		}
+		else if (TSF_FourCCEquals(chunkList.id, "INFO"))
+		{
+			// FatzAudio: the version, which says whether an sm24 chunk counts. The spec puts ifil
+			// first in INFO; the rest of the list is skipped whole, as before.
+			tsf_u8 v[12];
+			tsf_u32 left = chunkList.size;
+			if (left >= 12 && stream->read(stream->data, v, 12) == 12)
+			{
+				left -= 12;
+				if (TSF_FourCCEquals(v, "ifil") && (v[4] | (v[5] << 8) | (v[6] << 16) | ((tsf_u32)v[7] << 24)) == 4)
+					version = (v[8] | (v[9] << 8)) * 100 + (v[10] | (v[11] << 8));
+			}
+			stream->skip(stream->data, left);
+		}
 		else if (TSF_FourCCEquals(chunkList.id, "sdta"))
 		{
 			while (tsf_riffchunk_read(&chunkList, &chunk, stream))
@@ -2025,7 +2051,19 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 				{
 					if (!tsf_load_samples(&rawBuffer, &floatBuffer, &smplCount, &chunk, stream)) goto out_of_memory;
 				}
+				else if (TSF_FourCCEquals(chunk.id, "sm24") && floatBuffer && !sm24Buffer && version >= 204 &&
+				         (chunk.size == smplCount || (chunk.size == smplCount + 1 && (smplCount & 1))))
+				{
+					// FatzAudio: 24-bit samples (SF2 2.04): the low byte of each smpl sample. As the spec
+					// says, it counts only after smpl, in a version 2.04 file and at the size of smpl's
+					// samples (a pad byte allowed); otherwise it is skipped and the samples play as 16 bits.
+					sm24Buffer = (tsf_u8*)TSF_MALLOC((size_t)smplCount + TSF_SAMPLE_PADDING);
+					if (!sm24Buffer || stream->read(stream->data, sm24Buffer, smplCount) != (int)smplCount) goto out_of_memory;
+					TSF_MEMSET(sm24Buffer + smplCount, 0, TSF_SAMPLE_PADDING);
+					if (chunk.size > smplCount) stream->skip(stream->data, chunk.size - smplCount);
+				}
 				else stream->skip(stream->data, chunk.size);
+				if ((chunk.size & 1) && chunkList.size > 0) { stream->skip(stream->data, 1); chunkList.size--; } // FatzAudio: RIFF pad byte
 			}
 		}
 		else stream->skip(stream->data, chunkList.size);
@@ -2049,6 +2087,8 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 		res->outSampleRate = 44100.0f;
 		res->fontSamples = floatBuffer;
 		floatBuffer = TSF_NULL; // don't free below
+		res->fontSamples24 = sm24Buffer; // FatzAudio
+		sm24Buffer = TSF_NULL;
 		{
 			// FatzAudio: each region points at its font's samples and modulators (a stack plays
 			// regions of several fonts)
@@ -2058,6 +2098,7 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 				{
 					struct tsf_region* region = &res->presets[p].regions[r];
 					region->samples = res->fontSamples;
+					region->samples24 = res->fontSamples24;
 					region->mods = res->modulators + region->modStart;
 				}
 		}
@@ -2072,7 +2113,7 @@ static tsf* tsf_load_sized(struct tsf_stream* stream, tsf_u32 total)
 	TSF_FREE(hydra.phdrs); TSF_FREE(hydra.pbags); TSF_FREE(hydra.pmods);
 	TSF_FREE(hydra.pgens); TSF_FREE(hydra.insts); TSF_FREE(hydra.ibags);
 	TSF_FREE(hydra.imods); TSF_FREE(hydra.igens); TSF_FREE(hydra.shdrs);
-	TSF_FREE(rawBuffer);   TSF_FREE(floatBuffer);
+	TSF_FREE(rawBuffer);   TSF_FREE(floatBuffer);   TSF_FREE(sm24Buffer); // FatzAudio
 	return res;
 }
 
@@ -2142,6 +2183,33 @@ TSFDEF int tsf_get_preset_bank_number(const tsf* f, int preset_index, int* bank,
 	return 1;
 }
 
+static struct tsf_channel* tsf_channel_init(tsf* f, int channel);
+
+TSFDEF int tsf_copy_state(tsf* dst, const tsf* src)
+{
+	int n = (src->channels ? src->channels->channelNum : 0), i;
+	if (n > 0)
+	{
+		if (!tsf_channel_init(dst, n - 1)) return 0;
+		TSF_MEMCPY(dst->channels->channels, src->channels->channels, (size_t)n * sizeof(struct tsf_channel));
+		for (i = 0; i != n; i++)
+			if (dst->channels->channels[i].presetIndex >= dst->presetNum) dst->channels->channels[i].presetIndex = 0;
+	}
+	if (src->drumKeys)
+	{
+		if (!dst->drumKeys) dst->drumKeys = (struct tsf_drumkey*)TSF_MALLOC(TSF_DRUM_KITS * 128 * sizeof(struct tsf_drumkey));
+		if (!dst->drumKeys) return 0;
+		TSF_MEMCPY(dst->drumKeys, src->drumKeys, TSF_DRUM_KITS * 128 * sizeof(struct tsf_drumkey));
+	}
+	else if (dst->drumKeys)
+	{
+		TSF_FREE(dst->drumKeys); // no edits: the soundfont's own
+		dst->drumKeys = TSF_NULL;
+	}
+	dst->globalTuning = src->globalTuning;
+	return 1;
+}
+
 TSFDEF void tsf_close(tsf* f)
 {
 	if (!f) return;
@@ -2151,6 +2219,7 @@ TSFDEF void tsf_close(tsf* f)
 		if (!f->stacked) for (; preset != presetEnd; preset++) TSF_FREE(preset->regions); // FatzAudio: a stack's are its members'
 		TSF_FREE(f->presets);
 		TSF_FREE(f->fontSamples);
+		TSF_FREE(f->fontSamples24); // FatzAudio
 		TSF_FREE(f->modulators); // FatzAudio
 		TSF_FREE(f->refCount);
 	}

@@ -69,6 +69,12 @@ against untrusted files and add what the decoder needs:
   a soundfont of other fonts' presets (sharing their regions; `tsf_get_preset_bank_number` lists them), each preset
   with a gain of its own (`gainDB`). The Ogg Vorbis (`smpo`) path is disabled (`#error`): SF3 is converted to SF2
   before loading.
+- 24-bit samples: the `sm24` chunk (the low byte of each `smpl` sample) is read when the file's `ifil` (read as the
+  first INFO chunk) is 2.04 or later and its size matches `smpl`'s sample count (a pad byte allowed); otherwise it is
+  skipped, as the spec says. Regions point at it (`samples24`) and `tsf_voice_render` adds it at the 16-bit scale
+  (`TSF_SAMPLE24`); without it the render is unchanged. RIFF pad bytes after odd-sized `sdta` sub-chunks are skipped.
+- `tsf_copy_state`: copies the channel settings, drum key edits and master tuning of one synth to another (a stream
+  changing soundfonts); the caller sets the presets again.
 - `tsf_has_endless_voice`: whether a looped voice is still held at its sustain level (it would never
   die away), so the MIDI length measure can stop without rendering to its cap.
 - Sample data followed by zeroed padding samples; a short read is an error. Hydra arrays

@@ -2660,8 +2660,9 @@ FA_API fa_result FA_CALL fa_cdg_surface_get_presentation(fa_surface* surface, fa
  * FA_ERROR_NO_SOUNDFONT.
  * A soundfont is reference-counted: the engine and every stream using it hold a
  * reference, so it may be closed (or replaced on the engine) at any time and is
- * freed when the last user is done. Its samples are kept in memory as 16 bits,
- * as in the .sf2 file (DLS banks' 8-bit samples become 16-bit; SF3 banks are decoded).
+ * freed when the last user is done. Its samples are kept in memory as in the .sf2
+ * file: 16 bits, or 24 with an sm24 chunk (SoundFont 2.04). DLS banks' 8-bit samples
+ * become 16-bit, their 24- and 32-bit ones are kept as 16; SF3 banks are decoded.
  * Several soundfonts can play as one: fa_soundfont_open_stack.
  *
  * Seeking is sample-exact and fast: events up to the target are replayed without
@@ -2757,8 +2758,28 @@ FA_API fa_result FA_CALL fa_soundfont_open_stack(const fa_soundfont_stack_entry*
                                                  fa_soundfont** out_font);
 
 /* The soundfont for MIDI streams opened from now on (streams already open keep
- * theirs). The engine takes its own reference; NULL removes it. */
+ * theirs: fa_stream_set_soundfont). The engine takes its own reference; NULL removes it. */
 FA_API fa_result FA_CALL fa_engine_set_soundfont(fa_engine* engine, fa_soundfont* font);
+
+/* Changes the soundfont of an open MIDI stream (a file, an event list or the real-time
+ * synth of fa_stream_open_midi), playing or not; the stream takes its own reference.
+ * NULL: the engine's soundfont, else the OS's instruments, as at open
+ * (FA_ERROR_NO_SOUNDFONT when there are none). Like the live controls it is heard after
+ * the decode-ahead buffer (150 ms for MIDI files, the real-time synth's latency_ms),
+ * and cross-fades over about 12 ms.
+ * A file plays on from the same place as after a seek there with the new instruments:
+ * the file's programs, controllers and SysEx settings stay (what sent events changed
+ * before is forgotten, as after a seek), the notes held go on (from their attack), the
+ * reverb and chorus ring on. The real-time synth keeps its programs and
+ * controllers; its held notes end and the next ones play with the new soundfont. The
+ * length, the beat grid and a loudness already measured stay as measured at open;
+ * fa_analyze_stream and later loudness scans use the new soundfont.
+ * FA_ERROR_INVALID_ARG for streams that are not MIDI. */
+FA_API fa_result FA_CALL fa_stream_set_soundfont(fa_stream* stream, fa_soundfont* font);
+/* The soundfont a MIDI stream plays with (the last one set, even before it is heard), as
+ * a reference of your own: fa_soundfont_close it. FA_ERROR_INVALID_ARG for streams that
+ * are not MIDI. */
+FA_API fa_result FA_CALL fa_stream_get_soundfont(fa_stream* stream, fa_soundfont** out_font);
 
 typedef enum fa_midi_text_type {
     FA_MIDI_LYRIC = 0,       /* a syllable to sing: lyric events, or the words of a .kar file */

@@ -55,6 +55,7 @@
 #include <string.h>
 
 #define FA_MIDI_BLOCK 64                  /* frames; TinySoundFont's effect block */
+#define FA_MIDI_FONT_FADE (FA_MIDI_BLOCK * 8)   /* frames: a soundfont change cross-fades over 8 blocks (12 ms at 44.1 kHz) */
 #define FA_MIDI_MAX_FILE ((size_t)16 << 20)   /* the largest real MIDI files are a few MB */
 #define FA_MIDI_MAX_SOUNDFONT ((size_t)1 << 30)
 #define FA_MIDI_MAX_SECONDS (6.0 * 3600.0)  /* events later than this are dropped */
@@ -85,10 +86,12 @@ struct fa_soundfont {
 };
 
 /* The bank's name: RIFF sfbk > LIST INFO > INAM. Also the size of the sample data
- * (smpl in LIST sdta), kept as 16 bits. */
+ * (smpl in LIST sdta, 16 bits a sample, and an sm24 chunk tsf uses: one byte more). */
 static void sf2_scan(const uint8_t* d, size_t n, char* name, size_t cap, uint64_t* sample_memory)
 {
     size_t pos = 12;
+    uint32_t version = 0, samples = 0;
+    int have_smpl = 0, have24 = 0;
     name[0] = '\0';
     *sample_memory = 0;
     if (n < 12) return;
@@ -108,7 +111,18 @@ static void sf2_scan(const uint8_t* d, size_t n, char* name, size_t cap, uint64_
                     while (k < len && k + 1 < cap && d[sub + 8 + k]) { name[k] = (char)d[sub + 8 + k]; k++; }
                     name[k] = '\0';
                 }
-                if (sdta && memcmp(d + sub, "smpl", 4) == 0) *sample_memory = (uint64_t)(len / 2) * sizeof(int16_t);
+                /* tsf reads ifil only as the first INFO chunk, as the spec has it. */
+                if (info && sub == body + 4 && memcmp(d + sub, "ifil", 4) == 0 && len == 4)
+                    version = fa_le16(d + sub + 8) * 100u + fa_le16(d + sub + 10);
+                if (sdta && !have_smpl && memcmp(d + sub, "smpl", 4) == 0 && len >= 2) {
+                    samples = len / 2;
+                    have_smpl = 1;
+                    *sample_memory = (uint64_t)samples * sizeof(int16_t);
+                } else if (sdta && have_smpl && !have24 && memcmp(d + sub, "sm24", 4) == 0 && version >= 204 &&
+                           (len == samples || (len == samples + 1 && (samples & 1)))) {
+                    *sample_memory += samples;   /* the same rule as tsf's load */
+                    have24 = 1;
+                }
                 sub += 8 + (size_t)len + (len & 1);
             }
         }
@@ -601,6 +615,13 @@ struct fa_midi {
     int smpte;                  /* SMPTE time division, or no file: no tempo, so no beat grid */
     fa_soundfont* font;         /* a reference */
     tsf* synth;
+    /* fa_stream_set_soundfont: the soundfont to change to (a reference), taken by the decode
+     * thread at its next block. The synth it replaces plays on for FA_MIDI_FONT_FADE frames
+     * (fading out, without new events) under the new one's first blocks. */
+    fa_atomic_ptr font_want;
+    tsf* fade_synth;
+    fa_soundfont* fade_font;    /* fade_synth's (a reference) */
+    fa_frames fade_pos;
     uint32_t rate;
     fa_frames length;
     fa_frames last_event;       /* the time of the last event (end of track included) */
@@ -1349,6 +1370,9 @@ static void render_block(struct fa_midi* m)
     if (m->dirty) refresh_values(m);
 }
 
+static int change_font(struct fa_midi* m);
+static void fade_block(struct fa_midi* m);
+
 static fa_result midi_read(fa_decoder* dec, float* out, fa_frames frames, fa_frames* got)
 {
     struct fa_midi* m = (struct fa_midi*)dec->impl;
@@ -1357,7 +1381,10 @@ static fa_result midi_read(fa_decoder* dec, float* out, fa_frames frames, fa_fra
         fa_frames k;
         if (m->blk_off == m->blk_len) {
             if (m->rpos >= m->length) break;
-            render_block(m);
+            if (!fa_load_ptr(&m->font_want) || !change_font(m)) {
+                render_block(m);
+                fade_block(m);
+            }
         }
         k = m->blk_len - m->blk_off;
         if (k > frames - done) k = frames - done;
@@ -1466,15 +1493,28 @@ static void restart_held(struct fa_midi* m)
     }
 }
 
-static fa_result seek_to(struct fa_midi* m, fa_frames frame)
+/* A seek replays the song up to `frame` on a new synth. `font` (a reference, NULL = the
+ * stream's own) is the soundfont to build it from: it becomes the stream's on success, and
+ * the caller keeps it on failure. `keep` NULL frees the synth replaced; else it is handed to
+ * the caller in *keep, with a reference to its soundfont in *keep_font. */
+static fa_result seek_to_font(struct fa_midi* m, fa_frames frame, fa_soundfont* font, tsf** keep, fa_soundfont** keep_font)
 {
     fa_frames block = frame - frame % FA_MIDI_BLOCK, from = block;
     tsf* fresh;
     if (m->realtime) return FA_ERROR_NOT_SEEKABLE;
-    fresh = synth_new(m->font, m->rate);
+    fresh = synth_new(font ? font : m->font, m->rate);
     if (!fresh) return FA_ERROR_OUT_OF_MEMORY;
-    synth_free(m->font, m->synth);
+    if (keep) {
+        *keep = m->synth;
+        *keep_font = fa_soundfont_retain(m->font);
+    } else {
+        synth_free(m->font, m->synth);
+    }
     m->synth = fresh;
+    if (font) {
+        fa_soundfont_release(m->font);
+        m->font = font;
+    }
     fa_midi_fx_reset(m->fx);
     start_song(m);   /* also forgets every held note */
     m->dirty = 0xFFFFu;
@@ -1515,9 +1555,112 @@ static fa_result seek_to(struct fa_midi* m, fa_frames frame)
     return FA_OK;
 }
 
+static fa_result seek_to(struct fa_midi* m, fa_frames frame)
+{
+    return seek_to_font(m, frame, NULL, NULL, NULL);
+}
+
+/* ---- Soundfont change --------------------------------------------------------- */
+
+/* The soundfont fa_stream_set_soundfont left for the decode thread (a reference), or NULL. */
+static fa_soundfont* take_font(struct fa_midi* m)
+{
+    return fa_load_ptr(&m->font_want) ? (fa_soundfont*)fa_exchange_ptr(&m->font_want, NULL) : NULL;
+}
+
+/* A soundfont taken but not used (out of memory): left for the next block, unless the app
+ * has chosen another meanwhile. */
+static void untake_font(struct fa_midi* m, fa_soundfont* f)
+{
+    if (!fa_cas_ptr(&m->font_want, NULL, f)) fa_soundfont_release(f);
+}
+
+static void fade_end(struct fa_midi* m)
+{
+    if (!m->fade_synth) return;
+    synth_free(m->fade_font, m->fade_synth);
+    fa_soundfont_release(m->fade_font);
+    m->fade_synth = NULL;
+    m->fade_font = NULL;
+}
+
+/* The block just rendered, cross-faded from the replaced synth (if it still plays): its
+ * voices go on without the block's events, dry, at the master volume, fading out. */
+static void fade_block(struct fa_midi* m)
+{
+    float old[FA_MIDI_BLOCK * 2];
+    int i, n = m->blk_len;
+    if (!m->fade_synth) return;
+    if (n > 0) {
+        memset(old, 0, (size_t)n * 2 * sizeof(float));
+        tsf_render_float(m->fade_synth, old, n, 0);
+        for (i = 0; i < n; i++) {
+            float w = (float)(m->fade_pos + i + 1) / (float)FA_MIDI_FONT_FADE;
+            float g = (w < 1.0f ? 1.0f - w : 0.0f) * m->gain_to;
+            if (w > 1.0f) w = 1.0f;
+            m->blk[i * 2] = m->blk[i * 2] * w + old[i * 2] * g;
+            m->blk[i * 2 + 1] = m->blk[i * 2 + 1] * w + old[i * 2 + 1] * g;
+        }
+        m->fade_pos += n;
+    }
+    if (n <= 0 || m->fade_pos >= FA_MIDI_FONT_FADE) fade_end(m);
+}
+
+/* Changes to the soundfont the app chose, at the block boundary rpos, and renders the block
+ * there; 0 (nothing rendered) when there is none or out of memory. A song is replayed up to
+ * rpos on the new soundfont, as a seek does: the notes held there go on with the new
+ * instruments, the effects ring on through the pre-roll. A real-time synth takes the channels'
+ * settings over instead; the notes it holds end (with the old synth's fade). */
+static int change_font(struct fa_midi* m)
+{
+    fa_soundfont* font = take_font(m);
+    tsf* old = NULL;
+    fa_soundfont* old_font = NULL;
+    if (!font) return 0;
+    fade_end(m);   /* a change during a change: the older fade is cut */
+    if (m->realtime) {
+        tsf* fresh = synth_new(font, m->rate);
+        int ch;
+        if (!fresh || !tsf_copy_state(fresh, m->synth)) {
+            if (fresh) synth_free(font, fresh);
+            untake_font(m, font);
+            return 0;
+        }
+        old = m->synth;
+        old_font = m->font;   /* the reference moves to the fade */
+        m->synth = fresh;
+        m->font = font;
+        for (ch = 0; ch < 16; ch++) {
+            select_program(m, ch);   /* the presets of the new soundfont */
+            forget_channel(m, ch);   /* the held notes were the old synth's */
+        }
+        m->dirty = 0xFFFFu;
+        render_block(m);
+    } else {
+        if (seek_to_font(m, m->rpos, font, &old, &old_font) != FA_OK) {
+            untake_font(m, font);
+            return 0;
+        }
+        if (m->blk_len == 0) render_block(m);   /* at the start the seek leaves it to the read */
+    }
+    m->fade_synth = old;
+    m->fade_font = old_font;
+    m->fade_pos = 0;
+    fade_block(m);
+    return 1;
+}
+
 static fa_result midi_seek(fa_decoder* dec, fa_frames frame)
 {
-    return seek_to((struct fa_midi*)dec->impl, frame);
+    struct fa_midi* m = (struct fa_midi*)dec->impl;
+    fa_soundfont* font;
+    fa_result r;
+    if (m->realtime) return FA_ERROR_NOT_SEEKABLE;   /* a soundfont change's fade plays on */
+    font = take_font(m);
+    fade_end(m);
+    r = seek_to_font(m, frame, font, NULL, NULL);
+    if (r != FA_OK && font) untake_font(m, font);
+    return r;
 }
 
 /* The song's length: until what the last events leave sounding (release envelopes, the
@@ -1561,6 +1704,8 @@ static void midi_free(struct fa_midi* m)
     uint32_t i;
     if (!m) return;
     if (m->synth) synth_free(m->font, m->synth);
+    fade_end(m);
+    fa_soundfont_release((fa_soundfont*)fa_exchange_ptr(&m->font_want, NULL));
     fa_midi_fx_free(m->fx);
     fa_soundfont_release(m->font);
     free_sent(m);
@@ -2353,6 +2498,36 @@ FA_API fa_result FA_CALL fa_stream_get_midi_marks(fa_stream* stream, fa_midi_mar
     n = stream->midi->nmarks < capacity ? stream->midi->nmarks : capacity;
     if (n) memcpy(out_marks, stream->midi->marks, n * sizeof(fa_midi_mark));
     *out_count = stream->midi->nmarks;
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_stream_set_soundfont(fa_stream* stream, fa_soundfont* font)
+{
+    fa_soundfont *f, *old;
+    if (!stream || !stream->midi) return FA_ERROR_INVALID_ARG;
+    /* NULL: as at open, the engine's, else the OS's instruments. */
+    f = font ? fa_soundfont_retain(font) : fa_engine_soundfont(stream->engine);
+    if (!f) f = fa_engine_system_soundfont(stream->engine);
+    if (!f) return FA_ERROR_NO_SOUNDFONT;
+    /* For what reads the file again later (loudness scans, fa_analyze_stream). */
+    fa_mutex_lock(&stream->norm_lock);
+    old = stream->soundfont;
+    stream->soundfont = fa_soundfont_retain(f);
+    stream->decoder.soundfont = f;
+    fa_mutex_unlock(&stream->norm_lock);
+    fa_soundfont_release(old);
+    /* The decode thread takes it at its next block; one it has not taken yet is replaced. */
+    fa_soundfont_release((fa_soundfont*)fa_exchange_ptr(&stream->midi->font_want, f));
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_stream_get_soundfont(fa_stream* stream, fa_soundfont** out_font)
+{
+    if (out_font) *out_font = NULL;
+    if (!stream || !out_font || !stream->midi) return FA_ERROR_INVALID_ARG;
+    fa_mutex_lock(&stream->norm_lock);
+    *out_font = fa_soundfont_retain(stream->soundfont);
+    fa_mutex_unlock(&stream->norm_lock);
     return FA_OK;
 }
 

@@ -55,7 +55,7 @@ Console.WriteLine(sys?.Info.Name);
 using var strict = AudioEngine.Create(new AudioEngineOptions { NoSystemSoundFont = true });
 ```
 
-A soundfont is reference-counted. The engine and every stream that uses it hold their own reference, so you can close yours right after setting it, and replace the engine's at any time (open streams keep theirs). It's freed when the last user is done. Its samples are kept in memory as 16 bits, as in the `.sf2` file (DLS banks' 8-bit samples take twice their size); `fa_soundfont_get_info` gives the figure, and `fa_soundfont_get_preset` (`Presets`) lists the instruments and drum kits.
+A soundfont is reference-counted. The engine and every stream that uses it hold their own reference, so you can close yours right after setting it, and replace the engine's at any time (open streams keep theirs, unless you [change them](#changing-a-playing-streams-soundfont)). It's freed when the last user is done. Its samples are kept in memory as in the `.sf2` file: 16 bits, or 24 bits when the bank has an `sm24` chunk (SoundFont 2.04; the low byte of each sample is played too, and takes a third more memory). As the spec says, an `sm24` chunk in a file older than version 2.04, or of the wrong size, is ignored and the samples play as 16 bits. DLS banks' 8-bit samples take twice their size, and their 24- and 32-bit ones are kept as 16 bits. `fa_soundfont_get_info` gives the figure, and `fa_soundfont_get_preset` (`Presets`) lists the instruments and drum kits.
 
 There is no sample loading on demand: one call loads the whole bank, and it's ready.
 
@@ -89,7 +89,32 @@ engine.DefaultSoundFont = mix;
 foreach (var p in mix.Presets) Console.WriteLine($"{p.Bank}:{p.Program} {p.Name}");
 ```
 
-A stack is fixed once made; to change it, make another and set it (streams already open keep theirs).
+A stack is fixed once made; to change it, make another and set it on the engine, or on a playing stream with `fa_stream_set_soundfont`.
+
+### Changing a playing stream's soundfont
+
+`fa_stream_set_soundfont` (`AudioStream.SetSoundFont`) gives an open MIDI stream other instruments, playing or not, like `BASS_MIDI_StreamSetFonts` on a playing stream. It works on files, event lists and the real-time synth. NULL (`null`) goes back to the engine's soundfont, else the OS's, as at open. The stream takes its own reference, so you can close yours right away. `fa_stream_get_soundfont` (`GetSoundFont()`) gives the one it plays with now, as a reference of your own to close.
+
+The change is heard like the [live controls](#live-controls): after the decode-ahead buffer (150 ms for MIDI files, `latency_ms` for the real-time synth), cross-faded over about 12 ms so there is no click.
+
+- **A file or an event list** plays on as after a [seek](#seeking-and-length) to the same place with the new instruments: the file's programs, controllers, pitch bends and SysEx settings stay (what [sent events](#sending-events-and-the-real-time-synthesizer) changed before is forgotten, as after a seek), the notes held at that moment go on with the new sounds (from their attack), and the reverb and chorus ring on. It costs about what a seek costs (10-25 ms of rendering on the decode thread with effects on).
+- **The real-time synth** (`fa_stream_open_midi`) keeps its programs and controllers; the notes it holds at the change end, and the next notes play with the new soundfont.
+
+The length, the beat grid and a loudness already measured stay as they were measured at open. `fa_analyze_stream` and later loudness scans use the new soundfont.
+
+```c
+fa_soundfont* bright = NULL;
+fa_soundfont_open_path("Bright.sf2", &bright);
+fa_stream_set_soundfont(song, bright);   /* heard ~150 ms later */
+fa_soundfont_close(bright);              /* song keeps it */
+fa_stream_set_soundfont(song, NULL);     /* back to the engine's */
+```
+
+```csharp
+using (var bright = SoundFont.FromFile("Bright.sf2"))
+    song.SetSoundFont(bright);           // the stream keeps its own reference
+song.SetSoundFont(null);                 // back to engine.DefaultSoundFont
+```
 
 ### C
 

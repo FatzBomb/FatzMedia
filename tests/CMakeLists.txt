@@ -463,6 +463,14 @@ option(FA_FUZZ "Build the fuzz targets (tests/fuzz)" OFF)
 if(FA_FUZZ)
     target_compile_options(fa_whitebox PRIVATE -fsanitize-coverage=trace-pc)
 endif()
+add_executable(fa_test_midi_font_change test_midi_font_change.c)
+target_compile_options(fa_test_midi_font_change PRIVATE ${FA_WARNINGS})
+target_link_libraries(fa_test_midi_font_change PRIVATE fatzaudio)
+if(UNIX)
+    target_link_libraries(fa_test_midi_font_change PRIVATE m)
+endif()
+add_test(NAME midi_font_change COMMAND fa_test_midi_font_change)
+
 add_subdirectory(fuzz)
 
 foreach(t fa_test_internal fa_test_loudness fa_test_crossfade fa_test_sound fa_test_handoff fa_test_demux
