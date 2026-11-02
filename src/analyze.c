@@ -676,7 +676,9 @@ FA_API fa_result FA_CALL fa_analyze_stream(fa_stream* stream, const fa_analysis_
     j.engine = stream->engine;
     j.audio_track = stream->audio_track;
     j.env.midi_rate = stream->midi || stream->tracker ? stream->decoder.format.sample_rate : fa_engine_midi_rate(stream->engine);
+    fa_mutex_lock(&stream->norm_lock);   /* fa_stream_set_soundfont may change it */
     j.env.soundfont = fa_soundfont_retain(stream->soundfont);
+    fa_mutex_unlock(&stream->norm_lock);
     if (stream->path) {
         j.path = stream->path;
         j.path_offset = stream->path_offset;

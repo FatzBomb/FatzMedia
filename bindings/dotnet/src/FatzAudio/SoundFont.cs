@@ -15,7 +15,8 @@ namespace FatzAudio;
 /// <remarks>
 /// The native soundfont is reference-counted: the engine and every stream using it keep their own reference, so
 /// disposing this object at any time is safe and the instruments are freed when the last user is done. Samples
-/// are held in memory as 16 bits, as in the file. Several soundfonts can play as one: <see cref="Stack"/>. All
+/// are held in memory as in the file: 16 bits, or 24 with an sm24 chunk (SoundFont 2.04). Several soundfonts can play
+/// as one: <see cref="Stack"/>. A playing stream can change to another: <see cref="AudioStream.SetSoundFont"/>. All
 /// members are thread-safe.
 /// </remarks>
 /// <example>
@@ -54,7 +55,7 @@ public sealed class SoundFont : IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
         NativeLoader.EnsureInitialized();
-        return Wrap(NativeMethods.fa_soundfont_open_path(path, out nint native), native);
+        return FromNative(NativeMethods.fa_soundfont_open_path(path, out nint native), native);
     }
 
     /// <summary>Loads a SoundFont 2 or DLS bank from memory (the bytes are copied).</summary>
@@ -67,7 +68,7 @@ public sealed class SoundFont : IDisposable
         nint native;
         int rc;
         fixed (byte* p = data) rc = NativeMethods.fa_soundfont_open_memory(p, (nuint)data.Length, out native);
-        return Wrap(rc, native);
+        return FromNative(rc, native);
     }
 
     /// <summary>
@@ -81,7 +82,7 @@ public sealed class SoundFont : IDisposable
         NativeLoader.EnsureInitialized();
         int rc = NativeMethods.fa_soundfont_open_system(out nint native);
         if (rc == (int)ErrorCode.NotFound) return null;
-        return Wrap(rc, native);
+        return FromNative(rc, native);
     }
 
     /// <summary>
@@ -132,7 +133,7 @@ public sealed class SoundFont : IDisposable
             int rc;
             nint font;
             fixed (FaSoundFontStackEntry* p = native) rc = NativeMethods.fa_soundfont_open_stack(p, (uint)native.Length, out font);
-            return Wrap(rc, font);
+            return FromNative(rc, font);
         }
         finally
         {
@@ -157,7 +158,9 @@ public sealed class SoundFont : IDisposable
         return list;
     }
 
-    private static SoundFont Wrap(int rc, nint native)
+    /// <summary>A native soundfont reference handed over by a call that returns one (an open, or
+    /// <c>fa_stream_get_soundfont</c>).</summary>
+    internal static SoundFont FromNative(int rc, nint native)
     {
         FatzAudioException.ThrowIfFailed(rc);
         var h = new SoundFontHandle();

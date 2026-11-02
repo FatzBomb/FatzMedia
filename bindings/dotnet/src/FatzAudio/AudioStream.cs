@@ -1234,6 +1234,48 @@ public unsafe partial class AudioStream : IDisposable
     }
 
     /// <summary>
+    /// MIDI streams: changes the soundfont while the stream is open, playing or not (<c>BASS_MIDI_StreamSetFonts</c> on
+    /// a playing stream). The native stream keeps its own reference, so <paramref name="font"/> may be disposed
+    /// afterwards. Null: the engine's <see cref="AudioEngine.DefaultSoundFont"/>, else the OS's instruments, as at open.
+    /// Heard after the decode-ahead buffer (150 ms by default for MIDI files, the latency for a real-time stream),
+    /// cross-faded over about 12 ms. A file plays on as after a seek to the same place with the new instruments:
+    /// the file's programs, controllers and SysEx settings stay (what sent events changed before is forgotten, as after
+    /// a seek), held notes go on (from their attack), reverb and chorus ring on.
+    /// A real-time stream (<see cref="AudioEngine.OpenMidi"/>) keeps its programs and controllers; its held notes end.
+    /// The length and a loudness already measured stay as measured at open.
+    /// </summary>
+    /// <param name="font">The soundfont to play with, or null for the engine's.</param>
+    /// <example>
+    /// <code>
+    /// using (var piano = SoundFont.FromFile("Piano.sf2"))
+    ///     song.SetSoundFont(piano);
+    /// </code>
+    /// </example>
+    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>), or null
+    /// was passed and there is no soundfont to fall back on (<see cref="ErrorCode.NoSoundFont"/>).</exception>
+    /// <exception cref="ObjectDisposedException">The stream, or the soundfont, was disposed.</exception>
+    public void SetSoundFont(SoundFont? font)
+    {
+        var stream = Handle;
+        if (font is null)
+        {
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, 0));
+            return;
+        }
+        var native = Native.HandleRef.AddRef(font.Handle);
+        try { FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_soundfont(stream, native.DangerousGetHandle())); }
+        finally { native.DangerousRelease(); }
+    }
+
+    /// <summary>
+    /// MIDI streams: the soundfont the stream plays with (the last one set, even before it is heard), as a new
+    /// <see cref="SoundFont"/> object of its own that must be disposed.
+    /// </summary>
+    /// <exception cref="FatzAudioException">The stream is not MIDI (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
+    public SoundFont GetSoundFont() => SoundFont.FromNative(NativeMethods.fa_stream_get_soundfont(Handle, out nint native), native);
+
+    /// <summary>
     /// MIDI streams: semitones (-48..48) added to every note but the drums, from the next note on. The soundfont
     /// plays the transposed notes themselves, so a key change sounds as clean as the original (unlike
     /// <see cref="Pitch"/>, which shifts the rendered audio). Heard after the decode-ahead buffer (150 ms by default

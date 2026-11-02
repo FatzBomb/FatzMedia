@@ -505,6 +505,12 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_engine_set_soundfont(EngineHandle engine, nint font);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_stream_set_soundfont(StreamHandle stream, nint font);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_stream_get_soundfont(StreamHandle stream, out nint font);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_get_tracker_info(StreamHandle stream, FaTrackerInfo* info);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

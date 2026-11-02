@@ -333,6 +333,28 @@ public class MidiTests
     }
 
     [Fact]
+    public void SetSoundFont_ChangesThePlayingStream()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var dls = SoundFont.FromMemory(SineDls());
+        // Silent, and told apart from `font` by its sample memory (both members count).
+        using var silent = SoundFont.Stack(new SoundFontStackEntry(font) { Volume = 0 }, new SoundFontStackEntry(dls) { Volume = 0 });
+        Assert.NotEqual(font.Info.SampleMemory, silent.Info.SampleMemory);
+        using var s = engine.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        s.MidiEffects = false;
+        var before = ReadAll(s, 5000);
+        Assert.True(Rms(before, 1000, 5000) > 0.1);
+        s.SetSoundFont(silent);
+        using (var now = s.GetSoundFont()) Assert.Equal(silent.Info.SampleMemory, now.Info.SampleMemory);
+        var after = ReadAll(s, 15000);
+        Assert.True(Rms(after, 1000, 15000) < 1e-6); // the held note goes on with the silent instruments
+        engine.DefaultSoundFont = font;
+        s.SetSoundFont(null); // the engine's
+        using (var now = s.GetSoundFont()) Assert.Equal(font.Info.SampleMemory, now.Info.SampleMemory);
+    }
+
+    [Fact]
     public void NoSoundFont_Throws()
     {
         using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
@@ -416,6 +438,7 @@ public class MidiTests
         Assert.Empty(s.MidiTexts);
         var ex = Assert.Throws<FatzAudioException>(() => s.MidiTranspose = 2);
         Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<FatzAudioException>(() => s.GetSoundFont()).ErrorCode);
     }
 
     [Fact]

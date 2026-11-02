@@ -44,6 +44,14 @@ updates the package and the native library together and rebuilds.
 
 ### Added
 
+- Changing a playing MIDI stream's soundfont (final audit step 8, BASS_MIDI_StreamSetFonts on an open stream):
+  `fa_stream_set_soundfont` (NULL: the engine's, else the OS's) and `fa_stream_get_soundfont`. Heard after the
+  decode-ahead buffer, cross-faded over about 12 ms; a file plays on as after a seek there (held notes go on with the
+  new instruments), the real-time synth keeps its programs and controllers. .NET: `AudioStream.SetSoundFont`,
+  `AudioStream.GetSoundFont()`.
+- 24-bit SoundFont samples: the `sm24` chunk of SF2 2.04 banks is played (the low byte of each sample), and counts in
+  `fa_soundfont_info.sample_memory`. It is ignored, as the spec says, in older files or at the wrong size.
+
 - `FA_MAX_SAMPLE_RATE` (768000), the highest sample rate any call accepts. `fa_result_string` has a text for
   `FA_ERROR_OUT_OF_RANGE`.
 
