@@ -51,9 +51,11 @@ public class SilenceTests
     [Fact]
     public void NativeStructs_MatchTheCLayout()
     {
-        Assert.Equal(12, Marshal.SizeOf<Native.FaSilenceOptions>());
-        Assert.Equal(40, Marshal.SizeOf<Native.FaSilence>());
+        Assert.Equal(24, Marshal.SizeOf<Native.FaSilenceOptions>());
+        Assert.Equal(64, Marshal.SizeOf<Native.FaSilence>());
         Assert.Equal(16, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.FirstAudible)));
+        Assert.Equal(40, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.ThresholdDb)));
+        Assert.Equal(56, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.MinSoundMs)));
         Assert.Equal(16, Marshal.SizeOf<Native.FaSilenceRegion>());
     }
 
@@ -80,9 +82,44 @@ public class SilenceTests
         Assert.Equal(s.FirstAudibleTime, song.Markers.CueIn);
         Assert.Equal(s.LastAudibleTime, song.Markers.CueOut);
 
+        // The settings that made it.
+        Assert.Equal(SilenceMode.Rms, s.Mode);
+        Assert.Equal(-50f, s.ThresholdDb);
+        Assert.Equal(TimeSpan.FromSeconds(1), s.MinLength);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), s.Window);
+        Assert.Equal(TimeSpan.FromMilliseconds(200), s.MinSound);
+
         // Shorter regions count with a shorter minimum.
         var fine = song.DetectSilence(new SilenceOptions { MinLength = TimeSpan.FromMilliseconds(400) });
         Assert.Equal(4, fine.Regions.Count);
+    }
+
+    [Fact]
+    public void Rms_IgnoresAClickAndACountIn_PeakCountsThem()
+    {
+        // A lone full-scale click at 1 s, four 20 ms ticks from 2 s, the song from 4 to 6 s.
+        var x = Tones(7, (4.0, 6.0));
+        x[Rate] = 1f;
+        for (int k = 0; k < 4; k++)
+            for (int i = 0; i < Rate / 50; i++)
+                x[(int)((2.0 + 0.5 * k) * Rate) + i] = (float)(0.5 * Math.Sin(2 * Math.PI * 1000 * i / Rate));
+
+        using var rms = new SilenceDetector(AudioFormat.Float32(Rate, 1));
+        rms.Feed(x);
+        var r = rms.GetResult();
+        Assert.Equal(TimeSpan.FromSeconds(4), r.FirstAudibleTime);
+        Assert.Equal(TimeSpan.FromSeconds(6), r.LastAudibleTime);
+
+        using var peak = new SilenceDetector(AudioFormat.Float32(Rate, 1), new SilenceOptions { Mode = SilenceMode.Peak });
+        peak.Feed(x);
+        var p = peak.GetResult();
+        Assert.Equal(TimeSpan.FromSeconds(1), p.FirstAudibleTime);
+        Assert.Equal(SilenceMode.Peak, p.Mode);
+        Assert.Equal(TimeSpan.Zero, p.Window);
+
+        var bad = Assert.Throws<FatzAudioException>(() => new SilenceDetector(AudioFormat.Float32(Rate, 1),
+            new SilenceOptions { Window = TimeSpan.FromMilliseconds(5) }));
+        Assert.Equal(ErrorCode.InvalidArgument, bad.ErrorCode);
     }
 
     [Fact]
@@ -109,6 +146,12 @@ public class SilenceTests
             Assert.True(cached.IsComplete);
             Assert.True(cached.FromCache);
             Assert.Equal(t.Silence.Regions, cached.Regions);
+            Assert.Equal(SilenceMode.Rms, cached.Mode);
+
+            // A result made in one mode is not reused for the other.
+            var peak = song.DetectSilence(new SilenceOptions { Mode = SilenceMode.Peak });
+            Assert.False(peak.FromCache);
+            Assert.Equal(SilenceMode.Peak, peak.Mode);
         }
         finally
         {

@@ -51,7 +51,7 @@ public sealed record AnalysisOptions
     /// <summary>Neither read nor write the analysis cache (<see cref="AudioEngineOptions.CacheDirectory"/>).</summary>
     public bool NoCache { get; init; }
     /// <summary>
-    /// <see cref="AnalysisKinds.Silence"/>: the threshold and minimum length (defaults -60 dBFS and 1 s). Use the same
+    /// <see cref="AnalysisKinds.Silence"/>: the mode, threshold and lengths (defaults: RMS over 50 ms, -50 dBFS, 1 s). Use the same
     /// settings as <see cref="AudioStream.DetectSilence"/>, so it answers from the cache.
     /// </summary>
     public SilenceOptions Silence { get; init; } = new();
@@ -447,6 +447,9 @@ public sealed class TrackAnalysis
             var silence = SilenceOptions.ToNative(options.Silence);
             o.SilenceThresholdDb = silence.ThresholdDb;
             o.SilenceMinLengthMs = silence.MinLengthMs;
+            o.SilenceMode = silence.Mode;
+            o.SilenceWindowMs = silence.WindowMs;
+            o.SilenceMinSoundMs = silence.MinSoundMs;
         }
         return o;
     }

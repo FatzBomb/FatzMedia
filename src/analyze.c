@@ -61,19 +61,38 @@ FA_API void FA_CALL fa_analysis_options_init(fa_analysis_options* options)
     options->kinds = FA_ANALYZE_BEATS | FA_ANALYZE_KEY;
     options->min_bpm = 70.0f;
     options->max_bpm = 180.0f;
-    options->silence_threshold_db = -60.0f;
+    options->silence_threshold_db = -50.0f;
     options->silence_min_length_ms = 1000;
+    options->silence_mode = FA_SILENCE_RMS;
+    options->silence_window_ms = 50;
+    options->silence_min_sound_ms = 200;
+}
+
+/* The SILENCE settings of analysis options as fa_silence_options. */
+static void silence_options_of(const fa_analysis_options* a, fa_silence_options* o)
+{
+    fa_silence_options_init(o);
+    o->threshold_db = a->silence_threshold_db;
+    o->min_length_ms = a->silence_min_length_ms;
+    o->mode = a->silence_mode;
+    o->window_ms = a->silence_window_ms;
+    o->min_sound_ms = a->silence_min_sound_ms;
 }
 
 static int read_options(const fa_analysis_options* in, fa_analysis_options* out)
 {
+    fa_silence_options so;
     fa_analysis_options_init(out);
     if (!in) return 1;
     if (fa_read_sized(out, in, sizeof(*out), FA_V1(fa_analysis_options)) != FA_OK) return 0;
     if (out->kinds == 0 || (out->kinds & ~(uint32_t)FA_ANALYZE_ALL) || (out->flags & ~(uint32_t)FA_ANALYZE_NO_CACHE))
         return 0;
     if (!(out->min_bpm >= 30.0f && out->max_bpm <= 400.0f && out->max_bpm >= 1.9f * out->min_bpm)) return 0;
-    return fa_silence_options_valid(out->silence_threshold_db, out->silence_min_length_ms);
+    silence_options_of(out, &so);
+    if (!fa_silence_options_fix(&so)) return 0;
+    out->silence_window_ms = so.window_ms;        /* 0 for PEAK: equal settings compare equal */
+    out->silence_min_sound_ms = so.min_sound_ms;
+    return 1;
 }
 
 /* ---- Waveform -------------------------------------------------------------------- */
@@ -299,9 +318,12 @@ static void encode(const fa_analysis* a, bytes* b)
     /* Added after the first files were written: a file that ends here has none. */
     if (a->have_silence) {
         const fa_silence_data* q = &a->silence;
-        put_u32(b, 1);
-        put_f32(b, q->threshold_db);
-        put_u32(b, q->min_length_ms);
+        put_u32(b, 2);                 /* 1: no mode, window or sound length (PEAK) */
+        put_f32(b, q->info.threshold_db);
+        put_u32(b, q->info.min_length_ms);
+        put_u32(b, q->info.mode);
+        put_u32(b, q->info.window_ms);
+        put_u32(b, q->info.min_sound_ms);
         put_u64(b, (uint64_t)q->info.first_audible);
         put_u64(b, (uint64_t)q->info.last_audible);
         put_u32(b, q->nregs);
@@ -316,10 +338,25 @@ static void encode(const fa_analysis* a, bytes* b)
 static int decode_silence(fa_analysis* a, reader* r)
 {
     fa_silence_data* q = &a->silence;
-    uint32_t i, count;
-    if (get_u32(r) != 1) return 0;
-    q->threshold_db = get_f32(r);
-    q->min_length_ms = get_u32(r);
+    fa_silence_options o;
+    uint32_t i, count, version = get_u32(r);
+    if (version != 1 && version != 2) return 0;
+    fa_silence_options_init(&o);
+    o.threshold_db = get_f32(r);
+    o.min_length_ms = get_u32(r);
+    if (version == 1) {
+        o.mode = FA_SILENCE_PEAK;
+    } else {
+        o.mode = get_u32(r);
+        o.window_ms = get_u32(r);
+        o.min_sound_ms = get_u32(r);
+    }
+    if (r->bad || !fa_silence_options_fix(&o)) return 0;
+    q->info.threshold_db = o.threshold_db;
+    q->info.min_length_ms = o.min_length_ms;
+    q->info.mode = o.mode;
+    q->info.window_ms = o.window_ms;
+    q->info.min_sound_ms = o.min_sound_ms;
     q->info.struct_size = sizeof(q->info);
     q->info.flags = FA_SILENCE_COMPLETE | FA_SILENCE_FROM_CACHE;
     q->info.sample_rate = a->rate;
@@ -328,7 +365,6 @@ static int decode_silence(fa_analysis* a, reader* r)
     q->info.length = a->length;
     count = get_u32(r);
     if (r->bad || count > (r->n - r->at) / 16) return 0;
-    if (!fa_silence_options_valid(q->threshold_db, q->min_length_ms)) return 0;
     if (q->info.first_audible == FA_FRAMES_UNSET ? q->info.last_audible != FA_FRAMES_UNSET
         : !(q->info.first_audible >= 0 && q->info.first_audible < q->info.last_audible && q->info.last_audible <= a->length))
         return 0;
@@ -548,7 +584,12 @@ static fa_result measure(const job* j, uint32_t kinds, fa_analysis* a)
     if (r == FA_OK && (kinds & FA_ANALYZE_KEY) && !(chroma = fa_chroma_new(rate))) r = FA_ERROR_OUT_OF_MEMORY;
     if (r == FA_OK && want_wave) wave_init(&wave, rate);
     if (r == FA_OK && want_silence)
-        fa_silence_det_init(&silence, j->opt.silence_threshold_db, j->opt.silence_min_length_ms, rate, ch);
+    {
+        fa_silence_options so;
+        silence_options_of(&j->opt, &so);
+        fa_silence_det_init(&silence, &so, rate, ch);
+        if (silence.failed) r = FA_ERROR_OUT_OF_MEMORY;
+    }
     if (r == FA_OK && (kinds & FA_ANALYZE_LOUDNESS)) {
         r = fa_meter_init(&meter, rate, ch, 1, 0);
         have_meter = r == FA_OK;
@@ -633,9 +674,18 @@ static int covers(const fa_analysis* a, const fa_analysis_options* opt)
     if ((opt->kinds & FA_ANALYZE_BEATS) && a->have_grid && !(a->grid.grid.flags & FA_GRID_EXACT) &&
         (a->min_bpm != opt->min_bpm || a->max_bpm != opt->max_bpm))
         return 0;
-    if ((opt->kinds & FA_ANALYZE_SILENCE) &&
-        (a->silence.threshold_db != opt->silence_threshold_db || a->silence.min_length_ms != opt->silence_min_length_ms))
-        return 0;
+    if (opt->kinds & FA_ANALYZE_SILENCE) {
+        fa_silence_options want, have;
+        silence_options_of(opt, &want);
+        if (!fa_silence_options_fix(&want)) return 0;
+        silence_options_of(opt, &have);
+        have.threshold_db = a->silence.info.threshold_db;
+        have.min_length_ms = a->silence.info.min_length_ms;
+        have.mode = a->silence.info.mode;
+        have.window_ms = a->silence.info.window_ms;
+        have.min_sound_ms = a->silence.info.min_sound_ms;
+        if (!fa_silence_options_same(&want, &have)) return 0;
+    }
     return 1;
 }
 
@@ -689,8 +739,11 @@ static fa_result run(const job* jin, fa_analysis** out)
             kinds |= a->kinds;
             /* Silence kept but not asked for: measured again at its own settings. */
             if (a->have_silence && !(jm.opt.kinds & FA_ANALYZE_SILENCE)) {
-                jm.opt.silence_threshold_db = a->silence.threshold_db;
-                jm.opt.silence_min_length_ms = a->silence.min_length_ms;
+                jm.opt.silence_threshold_db = a->silence.info.threshold_db;
+                jm.opt.silence_min_length_ms = a->silence.info.min_length_ms;
+                jm.opt.silence_mode = a->silence.info.mode;
+                jm.opt.silence_window_ms = a->silence.info.window_ms;
+                jm.opt.silence_min_sound_ms = a->silence.info.min_sound_ms;
             }
             free_parts(a);
             memset(a, 0, sizeof(*a));
@@ -812,7 +865,7 @@ void fa_stream_reader_close(fa_stream_reader* rd)
     rd->soundfont = NULL;
 }
 
-fa_result fa_analysis_cached_silence(fa_stream* s, float threshold_db, uint32_t min_length_ms, fa_silence_data* out)
+fa_result fa_analysis_cached_silence(fa_stream* s, const fa_silence_options* opt, fa_silence_data* out)
 {
     const char* dir = s->engine->config.cache_directory;
     fa_analysis* a = NULL;
@@ -823,8 +876,11 @@ fa_result fa_analysis_cached_silence(fa_stream* s, float threshold_db, uint32_t 
     memset(&j, 0, sizeof(j));
     fa_analysis_options_init(&j.opt);
     j.opt.kinds = FA_ANALYZE_SILENCE;
-    j.opt.silence_threshold_db = threshold_db;
-    j.opt.silence_min_length_ms = min_length_ms;
+    j.opt.silence_threshold_db = opt->threshold_db;
+    j.opt.silence_min_length_ms = opt->min_length_ms;
+    j.opt.silence_mode = opt->mode;
+    j.opt.silence_window_ms = opt->window_ms;
+    j.opt.silence_min_sound_ms = opt->min_sound_ms;
     j.cache_only = 1;
     r = job_for_stream(s, &j);
     if (r != FA_OK) return FA_ERROR_NOT_FOUND;
