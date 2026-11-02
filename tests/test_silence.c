@@ -1,7 +1,9 @@
-/* Silence detection: the rule (fa_silence_detector), the per-stream edge scan
+/* Silence detection: the rule (fa_silence_detector) in both modes (RMS windows with
+ * short sounds ignored, the default; sample peak), the per-stream edge scan
  * (fa_stream_get_silence) in each of its paths, FA_ANALYZE_SILENCE and its cache,
  * and MIDI tails. Every answer is checked against audio made here with known
- * silence, and the edge scan against a full decode of the same file. */
+ * silence, and the edge scan against a full decode of the same file. Span edges are
+ * on 50 ms window edges, so both modes give the same frames there. */
 #include "midi_synth_test.h"
 #include <time.h>
 #if defined(_WIN32)
@@ -74,7 +76,7 @@ static fa_result stream_silence(fa_stream* s, const fa_silence_options* o, resul
     return fa_stream_get_silence(s, o, &r->info, r->regs, MAX_REGIONS, &r->n);
 }
 
-static fa_result analysis_silence(fa_stream* s, uint32_t flags, result* r)
+static fa_result analysis_silence(fa_stream* s, const fa_silence_options* so, uint32_t flags, result* r)
 {
     fa_analysis_options o;
     fa_analysis* a = NULL;
@@ -83,6 +85,13 @@ static fa_result analysis_silence(fa_stream* s, uint32_t flags, result* r)
     fa_analysis_options_init(&o);
     o.kinds = FA_ANALYZE_SILENCE;
     o.flags = flags;
+    if (so) {
+        o.silence_threshold_db = so->threshold_db;
+        o.silence_min_length_ms = so->min_length_ms;
+        o.silence_mode = so->mode;
+        o.silence_window_ms = so->window_ms;
+        o.silence_min_sound_ms = so->min_sound_ms;
+    }
     rr = fa_analyze_stream(s, &o, &a);
     if (rr != FA_OK) return rr;
     r->info.struct_size = sizeof(r->info);
@@ -92,6 +101,27 @@ static fa_result analysis_silence(fa_stream* s, uint32_t flags, result* r)
 }
 
 static fa_frames sec(double s, uint32_t rate) { return (fa_frames)(s * rate + 0.5); }
+
+static void peak_options(fa_silence_options* o, float threshold_db)
+{
+    fa_silence_options_init(o);
+    o->mode = FA_SILENCE_PEAK;
+    o->threshold_db = threshold_db;
+}
+
+static fa_result detect(const fa_audio_format* f, const fa_silence_options* o, const float* x, fa_frames n, result* r)
+{
+    fa_silence_detector* d = NULL;
+    const void* p = x;
+    fa_result rr = fa_silence_detector_create(f, o, &d);
+    memset(r, 0, sizeof(*r));
+    if (rr != FA_OK) return rr;
+    rr = fa_silence_detector_feed(d, &p, n);
+    r->info.struct_size = sizeof(r->info);
+    if (rr == FA_OK) rr = fa_silence_detector_get(d, &r->info, r->regs, MAX_REGIONS, &r->n);
+    fa_silence_detector_free(d);
+    return rr;
+}
 
 /* The regions match the spans in seconds: a region ends exactly where a tone starts
  * (its first sample is 0.5 * sin(0.3)), and starts within 2 frames of where one ends
@@ -122,12 +152,16 @@ static void test_detector_rule(void)
     int step = 1;
     result r;
     CHECK(fa_silence_detector_create(&f, NULL, &d) == FA_OK);
-    while (at < n) {   /* odd sizes, from 1 frame up */
+    while (at < n) {   /* odd sizes, from 1 frame up; a look at the result on the way changes nothing */
         fa_frames k = n - at < step ? n - at : step;
         const void* p = x + at;
         CHECK(fa_silence_detector_feed(d, &p, k) == FA_OK);
         at += k;
         step = step * 3 + 1;
+        memset(&r, 0, sizeof(r));
+        r.info.struct_size = sizeof(r.info);
+        CHECK(fa_silence_detector_get(d, &r.info, r.regs, MAX_REGIONS, &r.n) == FA_OK);
+        CHECK_EQ(r.info.length, at);
     }
     memset(&r, 0, sizeof(r));
     r.info.struct_size = sizeof(r.info);
@@ -138,9 +172,11 @@ static void test_detector_rule(void)
     CHECK(r.info.last_audible <= sec(9.0, RATE) && r.info.last_audible >= sec(9.0, RATE) - 2);
     CHECK_EQ(r.info.length, n);
     CHECK(regions_are(&r, want, 3, RATE));
+    CHECK(r.info.mode == FA_SILENCE_RMS && r.info.window_ms == 50 && r.info.min_sound_ms == 200);
+    CHECK(r.info.threshold_db == -50.0f && r.info.min_length_ms == 1000);
 }
 
-/* Exactly at the threshold is audible, just under it is not; all formats agree. */
+/* PEAK: exactly at the threshold is audible, just under it is not; all formats agree. */
 static void test_detector_threshold(void)
 {
     const float thr = (float)pow(10.0, -40.0 / 20.0);
@@ -151,8 +187,7 @@ static void test_detector_threshold(void)
     fa_silence_detector* d = NULL;
     result r, r2;
     int i;
-    fa_silence_options_init(&o);
-    o.threshold_db = -40.0f;
+    peak_options(&o, -40.0f);
     o.min_length_ms = 500;
     for (i = 0; i < 3 * RATE; i++) x[i] = (i % 2 ? -1.0f : 1.0f) * thr * 0.999f;
     x[RATE] = thr;            /* one audible frame, alone, at 1 s */
@@ -171,6 +206,7 @@ static void test_detector_threshold(void)
     CHECK_EQ(r.info.last_audible, 2 * RATE + 8);
     CHECK_EQ(r.info.length, 3 * RATE);
     CHECK_EQ(r.info.flags, 0);
+    CHECK(r.info.mode == FA_SILENCE_PEAK && r.info.window_ms == 0 && r.info.min_sound_ms == 0);
     CHECK_EQ(r.n, 3);
     CHECK(r.regs[0].start == 0 && r.regs[0].end == RATE);
     CHECK(r.regs[1].start == RATE + 1 && r.regs[1].end == 2 * RATE + 7);
@@ -217,7 +253,33 @@ static void test_args(void)
     fa_silence info;
     uint32_t n = 99;
     fa_silence_options_init(&o);
-    CHECK(o.threshold_db == -60.0f && o.min_length_ms == 1000);
+    CHECK(o.threshold_db == -50.0f && o.min_length_ms == 1000 && o.mode == FA_SILENCE_RMS && o.window_ms == 50 &&
+          o.min_sound_ms == 200);
+    o.window_ms = 5;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_ERROR_INVALID_ARG);
+    o.window_ms = 1001;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_ERROR_INVALID_ARG);
+    o.window_ms = 1000;
+    o.min_sound_ms = 10001;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_ERROR_INVALID_ARG);
+    o.mode = FA_SILENCE_PEAK;   /* window and sound length are not used: anything goes */
+    o.window_ms = 0;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_OK);
+    fa_silence_detector_free(d);
+    d = NULL;
+    o.mode = 2;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_ERROR_INVALID_ARG);
+    /* The first layout (no mode, window, sound length) gets the defaults for them. */
+    fa_silence_options_init(&o);
+    o.struct_size = (uint32_t)offsetof(fa_silence_options, mode);
+    o.window_ms = 0;
+    CHECK(fa_silence_detector_create(&f, &o, &d) == FA_OK);
+    info.struct_size = sizeof(info);
+    CHECK(fa_silence_detector_get(d, &info, NULL, 0, NULL) == FA_OK);
+    CHECK(info.mode == FA_SILENCE_RMS && info.window_ms == 50);
+    fa_silence_detector_free(d);
+    d = NULL;
+    fa_silence_options_init(&o);
     o.threshold_db = 1.0f;
     CHECK(fa_silence_detector_create(&f, &o, &d) == FA_ERROR_INVALID_ARG && !d);
     fa_silence_options_init(&o);
@@ -242,27 +304,43 @@ static void test_args(void)
 
 /* ---- the stream's edge scan ------------------------------------------------------------- */
 
-/* A file stream against the detector fed the same audio, and the full analysis. */
-static void check_file(const double* spans, int nspans, double seconds, int want_complete,
-                       const double* want_regions, int nwant)
+/* The edge scan and the full analysis of `x` as a file. */
+static void scan_both(const float* x, fa_frames n, const fa_silence_options* o, result* edge, result* full)
+{
+    buf w = make_wav(x, n, LOW_RATE);
+    fa_stream* s = open_mem(g_engine, &w);
+    clock_t t0;
+    double ms;
+    memset(edge, 0, sizeof(*edge));
+    memset(full, 0, sizeof(*full));
+    CHECK(s);
+    t0 = clock();
+    CHECK(stream_silence(s, o, edge) == FA_OK);
+    ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
+    CHECK(analysis_silence(s, o, FA_ANALYZE_NO_CACHE, full) == FA_OK);
+    fa_stream_close(s);
+    free(w.d);
+    printf("  %.0f s file, %s: %u region(s)%s, %.1f ms\n", (double)n / LOW_RATE,
+           edge->info.mode == FA_SILENCE_PEAK ? "peak" : "rms", edge->n,
+           edge->info.flags & FA_SILENCE_COMPLETE ? ", complete" : "", ms);
+}
+
+/* A file stream against the full analysis, in one mode. */
+static void check_file_mode(const double* spans, int nspans, double seconds, int want_complete,
+                            const double* want_regions, int nwant, uint32_t mode)
 {
     fa_frames n;
     float* x = tones(seconds, LOW_RATE, spans, nspans, &n);
-    buf w = make_wav(x, n, LOW_RATE);
-    fa_stream* s = open_mem(g_engine, &w);
+    fa_silence_options o;
     result edge, full;
-    clock_t t0;
-    double ms;
-    CHECK(s);
-    t0 = clock();
-    CHECK(stream_silence(s, NULL, &edge) == FA_OK);
-    ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
-    CHECK(analysis_silence(s, FA_ANALYZE_NO_CACHE, &full) == FA_OK);
-    fa_stream_close(s);
-    free(w.d);
+    int failures = g_failures;
+    fa_silence_options_init(&o);
+    o.mode = mode;
+    scan_both(x, n, &o, &edge, &full);
     free(x);
-    printf("  %.0f s file: %u region(s)%s, %.1f ms\n", seconds, edge.n,
-           edge.info.flags & FA_SILENCE_COMPLETE ? ", complete" : "", ms);
+    if (g_failures != failures) return;
+    CHECK_EQ(edge.info.mode, mode);
+    CHECK_EQ(full.info.mode, mode);
     CHECK_EQ(full.info.flags, FA_SILENCE_COMPLETE);
     CHECK_EQ(edge.info.flags, want_complete ? FA_SILENCE_COMPLETE : 0);
     CHECK_EQ(edge.info.sample_rate, LOW_RATE);
@@ -286,6 +364,13 @@ static void check_file(const double* spans, int nspans, double seconds, int want
         CHECK(memcmp(&edge.regs[1], &full.regs[full.n - 1], sizeof(edge.regs[0])) == 0);
     }
     if (want_regions) CHECK(regions_are(&full, want_regions, nwant, LOW_RATE));
+}
+
+static void check_file(const double* spans, int nspans, double seconds, int want_complete,
+                       const double* want_regions, int nwant)
+{
+    check_file_mode(spans, nspans, seconds, want_complete, want_regions, nwant, FA_SILENCE_RMS);
+    check_file_mode(spans, nspans, seconds, want_complete, want_regions, nwant, FA_SILENCE_PEAK);
 }
 
 static void test_short_file(void)
@@ -356,7 +441,8 @@ static void test_midi_tail(void)
     song sg = { 0 };
     buf m;
     fa_stream* s = NULL;
-    result edge, full;
+    fa_silence_options so;
+    result edge, full, edge_rms, full_rms;
     /* The instrument's release generator (38) from -3600 timecents (125 ms) to 2400 (4 s). */
     for (i = 0; i + 4 <= sf.n; i++)
         if (sf.d[i] == 38 && sf.d[i + 1] == 0 && sf.d[i + 2] == 0xF0 && sf.d[i + 3] == 0xF1) { sf.d[i + 2] = 0x60; sf.d[i + 3] = 0x09; break; }
@@ -371,8 +457,13 @@ static void test_midi_tail(void)
     o.flags = FA_OPEN_DECODE_ONLY;
     o.soundfont = font;
     CHECK(fa_stream_open_memory(g_engine, m.d, m.n, &o, &s) == FA_OK);
-    CHECK(stream_silence(s, NULL, &edge) == FA_OK);
-    CHECK(analysis_silence(s, FA_ANALYZE_NO_CACHE, &full) == FA_OK);
+    /* Sample peak at -60 dB: the release rings well past the edge. */
+    peak_options(&so, -60.0f);
+    CHECK(stream_silence(s, &so, &edge) == FA_OK);
+    CHECK(analysis_silence(s, &so, FA_ANALYZE_NO_CACHE, &full) == FA_OK);
+    /* The default (RMS at -50 dB) agrees with its full render too. */
+    CHECK(stream_silence(s, NULL, &edge_rms) == FA_OK);
+    CHECK(analysis_silence(s, NULL, FA_ANALYZE_NO_CACHE, &full_rms) == FA_OK);
     fa_stream_close(s);
     fa_soundfont_close(font);
     free(m.d);
@@ -385,6 +476,106 @@ static void test_midi_tail(void)
     CHECK(llabs((long long)(edge.info.last_audible - full.info.last_audible)) <= RATE / 100);
     CHECK_EQ(full.n, 3);
     CHECK_EQ(edge.n, 2);
+    printf("  rms: first %.4f s, last %.4f s (full %.4f s)\n", (double)edge_rms.info.first_audible / RATE,
+           (double)edge_rms.info.last_audible / RATE, (double)full_rms.info.last_audible / RATE);
+    CHECK_EQ(edge_rms.info.first_audible, full_rms.info.first_audible);
+    CHECK_EQ(edge_rms.info.last_audible, full_rms.info.last_audible);
+    CHECK(edge_rms.info.first_audible >= sec(1.0, RATE) && edge_rms.info.first_audible <= sec(1.05, RATE));
+    CHECK(full_rms.info.last_audible > sec(128.0, RATE) && full_rms.info.last_audible < full.info.last_audible);
+}
+
+/* ---- RMS: clicks and ticks do not count, a fade-in does ------------------------------ */
+
+static void test_rms_clicks(void)
+{
+    /* A lone full-scale click at 1 s, a count-in of four 20 ms ticks from 2 s, then the
+     * song from 4 to 6 s. */
+    static float x[7 * RATE];
+    static const double want[] = { 0.0, 4.0, 6.0, 7.0 };
+    static const double song_span[] = { 4.0, 6.0 };
+    fa_audio_format f = { FA_FORMAT_F32, RATE, 1, 0 };
+    fa_silence_options o;
+    result r;
+    fa_frames n;
+    int i, k;
+    float* song = tones(7.0, RATE, song_span, 1, &n);
+    memcpy(x, song, sizeof(x));
+    free(song);
+    x[RATE] = 1.0f;
+    for (k = 0; k < 4; k++)
+        for (i = 0; i < RATE / 50; i++)
+            x[sec(2.0 + 0.5 * k, RATE) + i] = 0.5f * (float)sin(2.0 * PI * 1000.0 * i / RATE);
+    CHECK(detect(&f, NULL, x, 7 * RATE, &r) == FA_OK);
+    CHECK_EQ(r.info.first_audible, sec(4.0, RATE));
+    CHECK_EQ(r.info.last_audible, sec(6.0, RATE));
+    CHECK(regions_are(&r, want, 2, RATE));
+    /* Sample peak counts the click; RMS with every sound counting counts it too. */
+    peak_options(&o, -50.0f);
+    CHECK(detect(&f, &o, x, 7 * RATE, &r) == FA_OK);
+    CHECK_EQ(r.info.first_audible, RATE);
+    fa_silence_options_init(&o);
+    o.min_sound_ms = 0;
+    CHECK(detect(&f, &o, x, 7 * RATE, &r) == FA_OK);
+    CHECK_EQ(r.info.first_audible, RATE);
+    CHECK_EQ(r.info.min_sound_ms, 0);
+    /* A 100 ms window: the same answer on its own edges. */
+    fa_silence_options_init(&o);
+    o.window_ms = 100;
+    CHECK(detect(&f, &o, x, 7 * RATE, &r) == FA_OK);
+    CHECK_EQ(r.info.first_audible, sec(4.0, RATE));
+    CHECK_EQ(r.info.window_ms, 100);
+    {
+        /* At 11025 Hz a 50 ms window is 551 frames: four of them (2204 frames, not quite
+         * 200 ms) are still a 200 ms sound. */
+        fa_audio_format f11 = { FA_FORMAT_F32, 11025, 1, 0 };
+        for (i = 0; i < 11025; i++) x[i] = i >= 551 * 2 && i < 551 * 6 ? 0.5f : 0.0f;
+        CHECK(detect(&f11, NULL, x, 11025, &r) == FA_OK);
+        CHECK_EQ(r.info.first_audible, 551 * 2);
+        CHECK_EQ(r.info.last_audible, 551 * 6);
+    }
+}
+
+static void test_rms_fade_in(void)
+{
+    /* 1 s of silence, a linear fade from 0 to 0.5 over 4 s, the tone to 6 s, silence to
+     * 7 s. The window 1.00-1.05 s averages -52 dB, 1.05-1.10 s -43 dB. */
+    static float x[7 * RATE];
+    fa_audio_format f = { FA_FORMAT_F32, RATE, 1, 0 };
+    fa_silence_options o;
+    result r;
+    int i;
+    for (i = sec(1.0, RATE); i < sec(6.0, RATE); i++) {
+        double t = (double)(i - sec(1.0, RATE)) / RATE;
+        double g = t < 4.0 ? t / 4.0 : 1.0;
+        x[i] = (float)(0.5 * g * sin(2.0 * PI * 440.0 * t));
+    }
+    CHECK(detect(&f, NULL, x, 7 * RATE, &r) == FA_OK);
+    CHECK_EQ(r.info.first_audible, sec(1.05, RATE));
+    CHECK(r.info.last_audible == sec(6.0, RATE));
+    peak_options(&o, -50.0f);
+    CHECK(detect(&f, &o, x, 7 * RATE, &r) == FA_OK);
+    CHECK(r.info.first_audible > sec(1.02, RATE) && r.info.first_audible < sec(1.03, RATE));
+}
+
+/* A sound that ends 150 ms past the last window's edge (170 s of 200) is cut to a
+ * click by that window's seek; the window before reads on past its end and finds it
+ * whole (300 ms). A real click at 185 s stays silence. */
+static void test_rms_sound_at_window_edge(void)
+{
+    static const double spans[] = { 2.0, 10.0, 169.85, 170.15 };
+    fa_frames n;
+    float* x = tones(200.0, LOW_RATE, spans, 2, &n);
+    result edge, full;
+    int failures = g_failures;
+    x[sec(185.0, LOW_RATE)] = 1.0f;
+    scan_both(x, n, NULL, &edge, &full);
+    free(x);
+    if (g_failures != failures) return;
+    CHECK_EQ(full.info.last_audible, sec(170.15, LOW_RATE));
+    CHECK_EQ(edge.info.last_audible, full.info.last_audible);
+    CHECK_EQ(edge.info.first_audible, sec(2.0, LOW_RATE));
+    CHECK_EQ(edge.n, 2);
+    CHECK(memcmp(&edge.regs[1], &full.regs[full.n - 1], sizeof(edge.regs[0])) == 0);
 }
 
 /* ---- analysis cache ------------------------------------------------------------------- */
@@ -460,6 +651,16 @@ static void cache_checks(const char* dir)
     CHECK_EQ(after.info.first_audible, before.info.first_audible);
     CHECK_EQ(after.info.last_audible, before.info.last_audible);
     CHECK_EQ(after.info.length, n);
+    CHECK(after.info.mode == FA_SILENCE_RMS && after.info.window_ms == 50 && after.info.threshold_db == -50.0f);
+    /* A result made in one mode is not the other's. */
+    peak_options(&o, -50.0f);
+    CHECK(stream_silence(s, &o, &other) == FA_OK);
+    CHECK_EQ(other.info.flags, 0);
+    CHECK_EQ(other.info.mode, FA_SILENCE_PEAK);
+    fa_silence_options_init(&o);
+    o.window_ms = 100;
+    CHECK(stream_silence(s, &o, &other) == FA_OK);
+    CHECK_EQ(other.info.flags, 0);
     /* The analysis reads its own result back too. */
     ao.kinds = FA_ANALYZE_SILENCE;
     CHECK(fa_analyze_stream(s, &ao, &a) == FA_OK);
@@ -559,6 +760,9 @@ int main(void)
     RUN(test_all_silent);
     RUN(test_not_seekable);
     RUN(test_midi_tail);
+    RUN(test_rms_clicks);
+    RUN(test_rms_fade_in);
+    RUN(test_rms_sound_at_window_edge);
     RUN(test_cache);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);

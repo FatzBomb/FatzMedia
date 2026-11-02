@@ -2,23 +2,49 @@ using FatzAudio.Native;
 
 namespace FatzAudio;
 
+/// <summary>How silence detection measures the level.</summary>
+public enum SilenceMode
+{
+    /// <summary>
+    /// The RMS level over windows of <see cref="SilenceOptions.Window"/> (the default, for trimming). Audible windows in a row
+    /// that last less than <see cref="SilenceOptions.MinSound"/> count as silence, so a lone click, a crackle or a count-in tick
+    /// is not audio, while a soft fade-in counts from the first window that reaches the threshold. Times fall on window edges.
+    /// </summary>
+    Rms = 0,
+
+    /// <summary>The sample peak, frame by frame: exact to the frame, and a single click counts.</summary>
+    Peak = 1,
+}
+
 /// <summary>
 /// Settings for silence detection (<see cref="AudioStream.DetectSilence"/>, <see cref="AnalysisKinds.Silence"/>,
-/// <see cref="SilenceDetector"/>). A frame is audible when any channel's sample is at or above
-/// <see cref="ThresholdDb"/>; a silence region is a run of frames that are not, at least <see cref="MinLength"/> long.
+/// <see cref="SilenceDetector"/>). Audio is audible when its level (<see cref="Mode"/>) in any channel is at or above
+/// <see cref="ThresholdDb"/>; a silence region is a stretch that is not, at least <see cref="MinLength"/> long.
 /// </summary>
 public sealed record SilenceOptions
 {
-    /// <summary>The threshold in dBFS, sample peak (-120..0, default -60).</summary>
-    public float ThresholdDb { get; init; } = -60f;
+    /// <summary>How the level is measured (default <see cref="SilenceMode.Rms"/>).</summary>
+    public SilenceMode Mode { get; init; } = SilenceMode.Rms;
+
+    /// <summary>The threshold in dBFS (-120..0, default -50). For <see cref="SilenceMode.Rms"/> a full-scale sine reads -3 dB.</summary>
+    public float ThresholdDb { get; init; } = -50f;
 
     /// <summary>The shortest silence that counts as a region (1 ms..1 hour, default 1 s).</summary>
     public TimeSpan MinLength { get; init; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>The RMS window (10 ms..1 s, default 50 ms); not used by <see cref="SilenceMode.Peak"/>.</summary>
+    public TimeSpan Window { get; init; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// The shortest sound that counts as audio (0..10 s, default 200 ms; zero counts every audible window); not used by
+    /// <see cref="SilenceMode.Peak"/>.
+    /// </summary>
+    public TimeSpan MinSound { get; init; } = TimeSpan.FromMilliseconds(200);
+
     internal static uint ToMilliseconds(TimeSpan t)
     {
         double ms = Math.Round(t.TotalMilliseconds);
-        return ms >= 0 && ms <= uint.MaxValue ? (uint)ms : 0; // out of range: the library rejects 0
+        return ms >= 0 && ms <= uint.MaxValue ? (uint)ms : 0; // out of range: the library rejects 0 (a length or window)
     }
 
     internal static unsafe FaSilenceOptions ToNative(SilenceOptions? options)
@@ -29,6 +55,10 @@ public sealed record SilenceOptions
         {
             o.ThresholdDb = options.ThresholdDb;
             o.MinLengthMs = ToMilliseconds(options.MinLength);
+            o.Mode = (uint)options.Mode;
+            o.WindowMs = ToMilliseconds(options.Window);
+            double sound = Math.Round(options.MinSound.TotalMilliseconds);
+            o.MinSoundMs = sound >= 0 && sound <= uint.MaxValue ? (uint)sound : uint.MaxValue; // 0 is valid here: out of range is rejected as too long
         }
         return o;
     }
@@ -70,7 +100,27 @@ public sealed class SilenceInfo
         LastAudible = s.LastAudible >= 0 ? s.LastAudible : null;
         Length = s.Length;
         Regions = Array.AsReadOnly(regions);
+        Mode = (SilenceMode)s.Mode;
+        ThresholdDb = s.ThresholdDb;
+        MinLength = TimeSpan.FromMilliseconds(s.MinLengthMs);
+        Window = TimeSpan.FromMilliseconds(s.WindowMs);
+        MinSound = TimeSpan.FromMilliseconds(s.MinSoundMs);
     }
+
+    /// <summary>The mode that produced this result (a cached result has the one it was measured with).</summary>
+    public SilenceMode Mode { get; }
+
+    /// <summary>The threshold in dBFS that produced this result.</summary>
+    public float ThresholdDb { get; }
+
+    /// <summary>The shortest silence counted as a region.</summary>
+    public TimeSpan MinLength { get; }
+
+    /// <summary>The RMS window; zero for <see cref="SilenceMode.Peak"/>.</summary>
+    public TimeSpan Window { get; }
+
+    /// <summary>The shortest sound counted as audio; zero for <see cref="SilenceMode.Peak"/>.</summary>
+    public TimeSpan MinSound { get; }
 
     /// <summary>The first audible frame (for the cue-in marker); null when nothing is audible.</summary>
     public long? FirstAudible { get; }
@@ -150,7 +200,7 @@ public sealed unsafe class SilenceDetector : IDisposable
 
     /// <summary>Creates a detector for PCM in <paramref name="format"/>.</summary>
     /// <param name="format">The format of the frames you will feed: any sample format, 1..32 channels.</param>
-    /// <param name="options">Threshold and minimum length; null uses the defaults.</param>
+    /// <param name="options">Mode, threshold and lengths; null uses the defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="format"/> is null.</exception>
     /// <exception cref="FatzAudioException">The format or the options are invalid (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     public SilenceDetector(AudioFormat format, SilenceOptions? options = null)
@@ -216,7 +266,7 @@ public sealed unsafe class SilenceDetector : IDisposable
 
     /// <summary>
     /// What the frames fed so far show. A silent run still going at the end is a region once it is long enough, and grows
-    /// while more silence is fed.
+    /// while more silence is fed; an RMS window still being filled counts with the frames it has.
     /// </summary>
     /// <returns>The result (never <see cref="SilenceInfo.IsComplete"/>: only your app knows when its audio is over).</returns>
     /// <exception cref="ObjectDisposedException">The detector was disposed.</exception>

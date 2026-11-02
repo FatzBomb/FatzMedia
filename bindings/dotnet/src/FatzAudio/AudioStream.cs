@@ -1994,7 +1994,7 @@ public unsafe partial class AudioStream : IDisposable
     /// files: only the leading and trailing regions are known). MIDI files and tracker modules are measured on their
     /// rendered audio, release tails and reverb included. Blocks while it decodes: call it where you open streams.
     /// </summary>
-    /// <param name="options">Threshold and minimum length; null uses the defaults (-60 dBFS, 1 s).</param>
+    /// <param name="options">Mode, threshold and lengths; null uses the defaults (RMS over 50 ms windows, -50 dBFS, 1 s, sounds from 200 ms).</param>
     /// <returns>The result, a plain object with nothing to dispose.</returns>
     /// <exception cref="FatzAudioException">The stream cannot be read twice (web, push, packet, callback and app I/O streams:
     /// <see cref="ErrorCode.NotSeekable"/>; use a <see cref="SilenceDetector"/>), or the options are invalid.</exception>
