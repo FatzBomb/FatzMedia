@@ -461,14 +461,21 @@ public sealed partial class DjMixer : IDisposable
         return new LatencyCheck(modes, (CheckAdvice)r.Advice, (LatencyMode)r.AdvisedMode);
     }
 
+    /// <summary>The native latency struct, with no allocations (for <see cref="Mic.InputLatency"/> polled by meters).</summary>
+    internal unsafe FaMixerLatency ReadLatency()
+    {
+        FaMixerLatency l = default;
+        l.StructSize = (uint)sizeof(FaMixerLatency);
+        using (Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(_mixer, &l));
+        return l;
+    }
+
     /// <summary>What the mixer's outputs and mic inputs add up to now.</summary>
     public unsafe MixerLatency Latency
     {
         get
         {
-            FaMixerLatency l = default;
-            l.StructSize = (uint)sizeof(FaMixerLatency);
-            using (Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(_mixer, &l));
+            var l = ReadLatency();
             var input = new TimeSpan?[2];
             var monitor = new TimeSpan?[2];
             for (int i = 0; i < 2; i++)

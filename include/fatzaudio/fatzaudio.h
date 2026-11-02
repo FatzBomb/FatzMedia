@@ -2917,7 +2917,9 @@ FA_API fa_result FA_CALL fa_stream_send_midi_events(fa_stream* stream, const fa_
 /* Sends MIDI bytes as they come from a device or a file's track (BASS_MIDI_EVENTS_RAW):
  * status bytes with running status, SysEx from F0 to F7; real-time (F8..FF) and
  * system common bytes are skipped, and so is an incomplete message at the end. All
- * play at `frame`. Running status does not carry over to the next call. */
+ * play at `frame`. Running status does not carry over to the next call. FA_ERROR_BUSY
+ * when the queue has no room for them all; FA_ERROR_INVALID_ARG for streams that are not
+ * MIDI or bytes holding more than FA_MIDI_QUEUE messages (nothing is sent). */
 FA_API fa_result FA_CALL fa_stream_send_midi(fa_stream* stream, fa_frames frame, const void* bytes, size_t size);
 /* A file's note, controller, program, pitch bend, pressure and SysEx events, in time
  * order (BASS_MIDI_StreamGetEvents): `track` -1 for all tracks, `type` -1 for all

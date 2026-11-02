@@ -104,6 +104,40 @@ public class MidiEventTests
     }
 
     [Fact]
+    public void Bytes_MoreThanTheQueueIsAnError()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(MidiTests.SineSoundFont());
+        using var s = OpenSynth(engine, font);
+        // 8193 program changes (2 bytes each): more than FA_MIDI_QUEUE messages is InvalidArgument, not a full queue.
+        var bytes = new byte[8193 * 2];
+        for (int i = 0; i < bytes.Length; i += 2) bytes[i] = 0xC0;
+        var ex = Assert.Throws<FatzAudioException>(() => s.SendMidiBytes(bytes));
+        Assert.Equal(ErrorCode.InvalidArgument, ex.ErrorCode);
+        Assert.True(s.SendMidiBytes(bytes.AsSpan(0, 8192 * 2)));
+    }
+
+    [Fact]
+    public void Latency_ZeroMeansTheDefault()
+    {
+        using var engine = CreateHeadless();
+        using var font = SoundFont.FromMemory(MidiTests.SineSoundFont());
+        using var s = engine.OpenMidi(new MidiStreamOptions { SampleRate = Rate, Latency = TimeSpan.Zero },
+            new StreamOptions { DecodeOnly = true, SoundFont = font });
+        Assert.Equal(-1, s.Info.LengthFrames);
+    }
+
+    [Fact]
+    public void FileEvents_EmptyForOtherStreams_ThrowForBadArguments()
+    {
+        using var engine = CreateHeadless();
+        using var wav = engine.OpenMemory(TestAudio.SineWav(seconds: 1), new StreamOptions { DecodeOnly = true });
+        Assert.Empty(wav.GetMidiEvents());
+        Assert.Throws<ArgumentOutOfRangeException>(() => wav.GetMidiEvents(track: -2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => wav.GetMidiEvents(type: (MidiEventType)99));
+    }
+
+    [Fact]
     public void FileEvents_ListAndReplayAsAList()
     {
         using var engine = CreateHeadless();

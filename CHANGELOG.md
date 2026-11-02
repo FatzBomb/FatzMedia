@@ -580,6 +580,15 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- .NET binding fixes (final audit step 5):
+  - `Equalizer.GetPreset` and `GetPresetName` now load and check the native library when they are the first call.
+  - `GetMidiEvents` throws for a native error and for an unknown `type` (it returned an empty list); a stream that
+    isn't MIDI still gives an empty list.
+  - `MidiStreamOptions.Latency = TimeSpan.Zero` now means the default 30 ms (it became 1 ms and failed to open).
+  - `Mic.InputLatency` and `MonitorLatency` no longer allocate on each read.
+  - Docs: `CrossfadeTo` throws `InvalidOperationException` when not attached; `SendMidiBytes` (and
+    `fa_stream_send_midi`) give `InvalidArgument` for more than 8192 messages; SF3 soundfonts load; a stack's preset
+    banks go up to 16383; `EventsSupported` is always true.
 - Flaky tests (final audit step 4):
   - Levels, spectrum and loudness dipped when the audio callback was late (a loaded machine): the window ended at
     the speaker position extrapolated from the clock, past the newest mixed audio, and read the gap as silence

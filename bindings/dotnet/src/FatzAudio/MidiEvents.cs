@@ -82,8 +82,8 @@ public sealed class MidiStreamOptions
     /// Event frames count at this rate.</summary>
     public int SampleRate { get; init; }
 
-    /// <summary>Real-time streams: how far ahead of the output the synth renders, 10..500 ms; null = 30 ms. Lower is
-    /// heard sooner but needs a less busy machine.</summary>
+    /// <summary>Real-time streams: how far ahead of the output the synth renders, 10..500 ms; null or zero = 30 ms. Lower
+    /// is heard sooner but needs a less busy machine.</summary>
     public TimeSpan? Latency { get; init; }
 
     internal FaMidiStreamOptions ToNative()
@@ -91,7 +91,7 @@ public sealed class MidiStreamOptions
         FaMidiStreamOptions o;
         unsafe { NativeMethods.fa_midi_stream_options_init(&o); }
         o.SampleRate = (uint)Math.Max(SampleRate, 0);
-        if (Latency is { } l) o.LatencyMs = (uint)Math.Clamp(Math.Round(l.TotalMilliseconds), 1, 100000);
+        if (Latency is { } l && l != TimeSpan.Zero) o.LatencyMs = (uint)Math.Clamp(Math.Round(l.TotalMilliseconds), 1, 100000);
         return o;
     }
 }
@@ -240,8 +240,9 @@ public unsafe partial class AudioStream
     /// with running status, SysEx from F0 to F7. Real-time and system common bytes are skipped, and so is an incomplete
     /// message at the end. All play at <paramref name="frame"/>.
     /// </summary>
-    /// <returns>True if sent; false if the queue is full (nothing was sent).</returns>
-    /// <exception cref="FatzAudioException">Not a MIDI stream (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <returns>True if sent; false if the queue has no room for them all (nothing was sent).</returns>
+    /// <exception cref="FatzAudioException">Not a MIDI stream, or the bytes hold more than 8192 messages
+    /// (<see cref="ErrorCode.InvalidArgument"/>; nothing was sent, so split them).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     public bool SendMidiBytes(ReadOnlySpan<byte> bytes, long frame = MidiEvent.Now)
     {
@@ -259,6 +260,8 @@ public unsafe partial class AudioStream
     /// </summary>
     /// <param name="track">One track (0-based), or -1 for all.</param>
     /// <param name="type">One kind of event, or null for all.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="track"/> is below -1 or <paramref name="type"/> is not a known kind.</exception>
+    /// <exception cref="FatzAudioException">The native call failed (not for a stream that isn't a MIDI file: that gives an empty list).</exception>
     /// <exception cref="ObjectDisposedException">The stream was disposed.</exception>
     /// <example>
     /// <code>
@@ -271,7 +274,12 @@ public unsafe partial class AudioStream
         uint count = 0;
         int t = type is { } k ? (int)k : -1;
         if (track < -1) throw new ArgumentOutOfRangeException(nameof(track));
-        if (NativeMethods.fa_stream_get_midi_events(Handle, track, t, null, 0, &count) != 0 || count == 0) return [];
+        if (t < -1 || t > (int)MidiEventType.SysEx) throw new ArgumentOutOfRangeException(nameof(type));
+        // With the arguments checked, InvalidArgument can only mean "not a MIDI stream": empty, as documented.
+        int r = NativeMethods.fa_stream_get_midi_events(Handle, track, t, null, 0, &count);
+        if (r == (int)ErrorCode.InvalidArgument) return [];
+        FatzAudioException.ThrowIfFailed(r);
+        if (count == 0) return [];
         var native = new FaMidiEvent[count];
         fixed (FaMidiEvent* p = native)
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_events(Handle, track, t, p, count, &count));

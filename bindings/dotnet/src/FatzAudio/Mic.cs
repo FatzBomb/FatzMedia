@@ -197,10 +197,26 @@ public sealed class Mic : IDisposable
     }
 
     /// <summary>What the input device and the drift-corrected buffer add, from the voice to the mix.</summary>
-    public TimeSpan InputLatency => _mixer.Latency.MicInput[Index] ?? TimeSpan.Zero;
+    public unsafe TimeSpan InputLatency
+    {
+        get
+        {
+            var l = _mixer.ReadLatency();
+            return Ns(l.MicInput[Index]);
+        }
+    }
 
     /// <summary>Mic to speaker: <see cref="InputLatency"/> plus the master output's.</summary>
-    public TimeSpan MonitorLatency => _mixer.Latency.MicMonitor[Index] ?? TimeSpan.Zero;
+    public unsafe TimeSpan MonitorLatency
+    {
+        get
+        {
+            var l = _mixer.ReadLatency();
+            return Ns(l.MicMonitor[Index]);
+        }
+    }
+
+    private static TimeSpan Ns(long ns) => ns < 0 ? TimeSpan.Zero : TimeConvert.FromNanoseconds(ns);
 
     internal nint NativeHandle => _handle.IsClosed ? 0 : _handle.DangerousGetHandle();
 
