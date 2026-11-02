@@ -5,8 +5,9 @@ To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-01. Based on reading and mea
 numbers, is in `2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 
 Short version: the surfaces are in very good shape. Sync, seeking and tempo handling are as good
-as ours or better, and the CD+G fixes, Shift-JIS and effects are real gains for us. Eight
-requests, in priority order (8 was found by our slice-0 spike and blocks our karaoke slice):
+as ours or better, and the CD+G fixes, Shift-JIS and effects are real gains for us. Nine
+requests, in priority order (8 was found by our slice-0 spike and blocks our karaoke slice;
+9 was added 2026-11-02 and is not about the surfaces):
 
 1. **`update_into` never blocks the caller.** Today a first frame, layout change, seek, loop wrap
    or late frame redraws in full on the caller (`cdg.c:2595-2610`), and the call can wait on
@@ -38,3 +39,15 @@ requests, in priority order (8 was found by our slice-0 spike and blocks our kar
    30 s (audible dropouts); with render-ahead off they held within 14 ms. Please give decoding
    strict priority over render-ahead jobs (or cap render-ahead's share of the workers), and expose
    the per-stream underrun count you already keep, so hosts can detect it and back off.
+9. **Silence detection (added 2026-11-02).** The owner decided silence detection belongs in the
+   audio engine. Today MediaControl finds leading, trailing and internal silence itself and trims
+   playback to the audible part (an optional "trim silence" setting), but only from the second
+   play: our scan finishes about 0.5 s after the open, too late for the first. Please add silence
+   regions to the stream (or to track analysis): where the audio is below a threshold (default
+   about -60 dBFS) for at least a minimum length (default about 1 s), as a list of start/end
+   times, plus the first and last audible time. Two things make it useful for trimming: it must
+   be known before the first audible sample of a first play (a fast leading/trailing scan at open,
+   or the result from your analysis cache), and a stream option to start at the first audible time
+   and end at the last one, so the host need not seek. MIDI and tracker files can answer from
+   their events. For video audio we push decoded samples, so a way to run the same detector on
+   pushed or decode-only audio would let us use one rule everywhere.

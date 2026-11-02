@@ -84,7 +84,10 @@ the current behaviour.
   `VideoDecodingMethod.Software`; nothing enforces it.
 - **Silence trim only from the second play:** the trim window is used only when a cached
   analysis exists at open, so a first play is untrimmed (`PrepareNextAsync`/`AnalyzeAsync`
-  fill the cache).
+  fill the cache). Owner decision 2026-11-02: silence detection belongs in the audio engine;
+  requested from FatzAudio (request 9 in `docs/fatzaudio/2026-11-01_MediaControl_Request_SurfaceTiming.md`),
+  and the FatzAudio engine (037A slice 2) trims on the first play with it. The BASS path keeps
+  today's behaviour until then.
 - **A found sidecar background beats an explicit one** (`ResolveCoreBackground` returns
   `sidecar ?? explicit`); `ignoreSidecar` only affects backgrounds, not `.cdg` or subtitle pairing.
 - **Sidecar probing is case-sensitive on Linux** (`Song.CDG` next to `Song.mp3` is not found);

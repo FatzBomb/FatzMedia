@@ -62,6 +62,8 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    volume, pitch, tempo, loop with a per-wrap `PlaybackEnded`/`MediaLooped`, position from
    `fa_stream_get_clock`, EQ from the built-in 16 bands, fades from volume ramps, device
    following. Opt-in: `MediaPlayerConfiguration` audio engine choice and Player `--audio=fatz`.
+   Silence trim from FatzAudio's silence detection (request 9; owner decision 2026-11-02: it
+   belongs in the audio engine), applied from the first play.
 3. **Karaoke surfaces.** CD+G and MIDI lyrics drawn by FatzAudio's surfaces on every renderer,
    following the analysis's integration rules: a dedicated karaoke thread calling `update_into`
    with triple buffers (never the presentation or video thread); an explicit draw time (clock plus
@@ -134,8 +136,9 @@ The app keeps the playlist, singer rotation, controller mapping and song databas
 - Not supported at all: ALAC in `.caf`, DTS, TrueHD, WMA off Windows, xHE-AAC without an OS
   decoder. Our FFmpeg fallback (033A) covers these by pushing decoded audio.
 - Reverse playback and BPM detection are not built.
-- Decode-only streams are not equalized and report no levels, so silence analysis and
-  normalization keep measuring decoded samples themselves.
+- Decode-only streams are not equalized and report no levels, so normalization keeps measuring
+  decoded samples itself; silence detection is requested from FatzAudio for files and for pushed
+  audio (request 9).
 - Not yet run on real hardware by FatzAudio: WASAPI rerun, WMA, real CD drive, mobile. We run
   the Windows smoke.
 
