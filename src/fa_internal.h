@@ -476,6 +476,64 @@ fa_result fa_stream_beat_grid_now(struct fa_stream* stream, fa_beat_grid* out_gr
 /* fa_stream_close: a background render stops, and is waited for. */
 void fa_stream_grid_closing(struct fa_stream* stream);
 
+/* ---- Silence (silence.c) ----
+ * The detector behind fa_stream_get_silence, FA_ANALYZE_SILENCE and the public
+ * fa_silence_detector: frames are fed in order, `pos` counts them. */
+typedef struct fa_silence_det {
+    float threshold;             /* linear: a frame with any |sample| >= this is audible */
+    float threshold_db;
+    uint32_t min_length_ms;
+    fa_frames min_length;        /* frames */
+    uint32_t rate, channels;
+    fa_frames pos;               /* frames fed */
+    fa_frames run_start;         /* start of the silent run going on, -1 = audio */
+    fa_frames first, last;       /* first audible frame, the frame after the last; -1 = none yet */
+    fa_silence_region* regs;     /* closed regions */
+    uint32_t nregs, cap;
+    int failed;                  /* out of memory */
+} fa_silence_det;
+
+/* A finished result: what fa_analysis keeps and the cache stores. */
+typedef struct fa_silence_data {
+    fa_silence info;             /* struct_size = sizeof(fa_silence) */
+    float threshold_db;
+    uint32_t min_length_ms;
+    fa_silence_region* regs;
+    uint32_t nregs;
+} fa_silence_data;
+
+/* Reads the caller's options over the defaults; 0 when they are out of range. */
+int fa_silence_options_read(const fa_silence_options* in, fa_silence_options* out);
+int fa_silence_options_valid(float threshold_db, uint32_t min_length_ms);
+void fa_silence_det_init(fa_silence_det* d, float threshold_db, uint32_t min_length_ms, uint32_t rate, uint32_t channels);
+void fa_silence_det_process(fa_silence_det* d, const float* frames, fa_frames n);
+/* n frames known to be silent (a stretch already decoded and found so). */
+void fa_silence_det_skip_silent(fa_silence_det* d, fa_frames n);
+void fa_silence_det_free(fa_silence_det* d);
+/* The result so far (a silent run still going counts once long enough). FA_ERROR_OUT_OF_MEMORY. */
+fa_result fa_silence_det_result(const fa_silence_det* d, uint32_t flags, fa_silence_data* out);
+void fa_silence_data_free(fa_silence_data* d);
+/* The public getters' copy-out (fa_stream_get_silence's contract). */
+fa_result fa_silence_data_get(const fa_silence_data* d, fa_silence* out, fa_silence_region* regions,
+                              uint32_t capacity, uint32_t* out_count);
+/* The regions make sense for `length` frames: rising, not overlapping, each at least 1 frame. */
+int fa_silence_regions_valid(const fa_silence_region* r, uint32_t n, fa_frames length);
+
+/* analyze.c, for fa_stream_get_silence: a decoder of the stream's own file or memory
+ * (the same one fa_analyze_stream uses), and the analysis cache without measuring. */
+typedef struct fa_stream_reader {
+    fa_source src;
+    fa_decoder dec;              /* points at src: keep the struct where it is while open */
+    struct fa_soundfont* soundfont;
+} fa_stream_reader;
+/* FA_ERROR_NOT_SEEKABLE for streams that cannot be read twice. */
+fa_result fa_stream_reader_open(struct fa_stream* s, fa_stream_reader* r);
+void fa_stream_reader_close(fa_stream_reader* r);
+/* The cached SILENCE result of the stream's content at these settings, else
+ * FA_ERROR_NOT_FOUND (no cache directory, no file, other settings). */
+fa_result fa_analysis_cached_silence(struct fa_stream* s, float threshold_db, uint32_t min_length_ms,
+                                     fa_silence_data* out);
+
 /* The struct_size rule (header, "Versioned structs").
  * Output: struct_size (at least 4) says how much of the struct the caller has; it is
  * filled up to there and set to what was filled (fa_copy_sized).
@@ -510,6 +568,7 @@ void fa_stream_grid_closing(struct fa_stream* stream);
 #define FA_V1_fa_latency_check_config FA_SIZE_TO(fa_latency_check_config, max_monitor)
 #define FA_V1_fa_mic_effects          FA_SIZE_TO(fa_mic_effects, echo_tone)
 #define FA_V1_fa_ducking              FA_SIZE_TO(fa_ducking, threshold_db)
+#define FA_V1_fa_silence_options      FA_SIZE_TO(fa_silence_options, min_length_ms)
 
 /* Reads a caller's input struct into `dst`, which holds the defaults (`full` bytes,
  * the library's sizeof): the first min(struct_size, full) bytes of `src` replace

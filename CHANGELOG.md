@@ -44,6 +44,16 @@ updates the package and the native library together and rebuilds.
 
 ### Added
 
+- Silence detection (MediaControl request 9, karaoke timing step K9): where a song stays below a threshold (default
+  -60 dBFS, sample peak) for at least a minimum length (default 1 s), and its first and last audible frame, for the
+  CUE_IN / CUE_OUT markers. `fa_stream_get_silence` answers between open and play: from the analysis cache when a
+  silence analysis is there, else by decoding only the start up to the first sound and the end back to the last one
+  (short files whole). `FA_ANALYZE_SILENCE` + `fa_analysis_get_silence` give every region, cached (the `.analysis`
+  file gets an optional section; existing entries stay valid). `fa_silence_detector_*` runs the same rule on PCM the
+  app pushes. MIDI and tracker files are measured on their rendered audio (release and reverb tails included).
+  `fa_analysis_options` gained `silence_threshold_db` and `silence_min_length_ms` at its end. .NET:
+  `AudioStream.DetectSilence`, `SilenceOptions`, `SilenceInfo`, `SilenceRegion`, `SilenceDetector`,
+  `AnalysisKinds.Silence`, `AnalysisOptions.Silence`, `TrackAnalysis.Silence`.
 - Changing a playing MIDI stream's soundfont (final audit step 8, BASS_MIDI_StreamSetFonts on an open stream):
   `fa_stream_set_soundfont` (NULL: the engine's, else the OS's) and `fa_stream_get_soundfont`. Heard after the
   decode-ahead buffer, cross-faded over about 12 ms; a file plays on as after a seek there (held notes go on with the
