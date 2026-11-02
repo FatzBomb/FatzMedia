@@ -1,6 +1,6 @@
 # Track analysis
 
-Track analysis measures a song once and gives you its **beat grid** (tempo and where the beats fall), its **musical key**, a **waveform** overview for drawing, and its **loudness**. One decode of the audio feeds all of them, so asking for several costs little more than asking for one. It is what a DJ deck needs for sync and beat loops, and what a library needs to show BPM and key. It replaces `BASS_FX_BPM_*`.
+Track analysis measures a song once and gives you its **beat grid** (tempo and where the beats fall), its **musical key**, a **waveform** overview for drawing, its **loudness** and its **silence** (where it is silent, and its first and last audible frame). One decode of the audio feeds all of them, so asking for several costs little more than asking for one. It is what a DJ deck needs for sync and beat loops, and what a library needs to show BPM and key. It replaces `BASS_FX_BPM_*`.
 
 | Kind | `fa_analysis_kind` | .NET `AnalysisKinds` | You get |
 |---|---|---|---|
@@ -8,6 +8,7 @@ Track analysis measures a song once and gives you its **beat grid** (tempo and w
 | Key | `FA_ANALYZE_KEY` | `Key` | Tonic and mode, the name (`F#m`) and the Camelot code (`11A`), a confidence |
 | Waveform | `FA_ANALYZE_WAVEFORM` | `Waveform` | Peak and low, mid and high levels every 10 ms |
 | Loudness | `FA_ANALYZE_LOUDNESS` | `Loudness` | The same measurement as `fa_scan_loudness_path` ([normalization](normalization.md)), in the same pass |
+| Silence | `FA_ANALYZE_SILENCE` | `Silence` | Every silence region, and the first and last audible frame ([silence](#silence)) |
 
 The default is beats and key. MIDI files and tracker modules do not get their beat grid by listening: they carry their tempo, so the grid comes from the file and is exact (see [Exact grids](#exact-grids-from-midi-files-and-tracker-modules)).
 
@@ -142,6 +143,99 @@ One `fa_waveform_point` per 10 ms of audio; point *i* covers the 10 ms from *i* 
 
 `fa_analysis_get_loudness` returns the same `fa_loudness` as `fa_scan_loudness_path`, so a library import can get loudness, tempo and key in one pass. `gain_db` is what normalization would apply with the engine's settings at the time of the analysis. In .NET it is `t.Loudness`.
 
+## Silence
+
+Silence detection finds where a song is silent, so a player can play only its audible part: set the stream's `CUE_IN` marker to the first audible frame and `CUE_OUT` to the frame after the last one ([markers](crossfade.md#markers)). No other start or end option is needed.
+
+**The rule** is the same everywhere. A frame is *audible* when any channel's sample is at or above the threshold (sample peak: `|x| >= 10^(threshold_db / 20)`). A *silence region* is a run of frames that are not audible and lasts at least the minimum length. Defaults: **-60 dBFS** and **1 s** (`fa_silence_options`: `threshold_db` -120..0, `min_length_ms` 1..3,600,000; .NET `SilenceOptions.ThresholdDb`, `MinLength`). Frames are the stream's source frames, the unit of markers. A fade-in counts from its first sample at the threshold, so trimming never cuts audio; one click above the threshold in a silent intro counts as audio too.
+
+| Field (`fa_silence`) | .NET `SilenceInfo` | Meaning |
+|---|---|---|
+| `first_audible` | `FirstAudible`, `FirstAudibleTime` | The first audible frame: the value for `CUE_IN`. `FA_FRAMES_UNSET` (.NET null) when nothing is audible |
+| `last_audible` | `LastAudible`, `LastAudibleTime` | The frame after the last audible one: the value for `CUE_OUT` |
+| `length` | `Length` | Frames measured (the stream's length; a detector: the frames fed so far) |
+| `sample_rate` | `SampleRate` | Of the frames |
+| `flags` | `IsComplete`, `FromCache` | `FA_SILENCE_COMPLETE`: the regions cover the whole song. Without it only the leading and trailing regions are known. `FA_SILENCE_FROM_CACHE`: read from the analysis cache |
+| regions | `Regions` | `fa_silence_region { start, end }` (end is the frame after the last silent one), in order. The silence before the first audible frame and after the last one are regions too, when they are long enough |
+
+There are three ways to get it, and the same audio gives the same answer from each:
+
+| Way | C | .NET | What you get | Cost |
+|---|---|---|---|---|
+| Per stream, between open and play | `fa_stream_get_silence` | `stream.DetectSilence()` | From the analysis cache when it holds a silence analysis of the same content and settings: every region. Otherwise first and last audible plus the leading and trailing regions | Usually a few milliseconds: it decodes only the start up to the first sound and the end back to the last one |
+| Track analysis | `FA_ANALYZE_SILENCE` + `fa_analysis_get_silence` | `AnalysisKinds.Silence`, `TrackAnalysis.Silence` | Every region (always complete), cached | One decode of the whole song, shared with the other kinds |
+| Your own PCM | `fa_silence_detector_create` / `_feed` / `_get` | `SilenceDetector` | What the frames fed so far show | Next to nothing per frame |
+
+### Trimming a song before its first play
+
+C:
+```c
+fa_stream* song;
+fa_stream_open_path(engine, "song.mp3", NULL, &song);
+
+fa_silence s = { .struct_size = sizeof(s) };
+if (fa_stream_get_silence(song, NULL, &s, NULL, 0, NULL) == FA_OK && s.first_audible != FA_FRAMES_UNSET) {
+    fa_stream_set_marker(song, FA_MARKER_CUE_IN, s.first_audible);    /* playback starts here */
+    fa_stream_set_marker(song, FA_MARKER_CUE_OUT, s.last_audible);    /* and ends here */
+}
+fa_stream_play(song);
+```
+
+C#:
+```csharp
+using var song = engine.OpenFile("song.mp3");
+var s = song.DetectSilence();
+song.Markers.CueIn = s.FirstAudibleTime;    // null when nothing is audible: the marker stays unset
+song.Markers.CueOut = s.LastAudibleTime;
+song.PlayOn(output);
+```
+
+To keep a short breath before the first note, set `CUE_IN` a little earlier than `first_audible`. To get the regions, pass an array: `fa_stream_get_silence(song, NULL, &s, regions, 16, &count)` copies up to 16 and sets `count` to how many there are (pass `NULL, 0` first to ask the count).
+
+### How the per-stream scan works
+
+`fa_stream_get_silence` reads the stream's file or memory with a decoder of its own, as `fa_analyze_stream` does, so playback is not touched and it can be called at any time.
+
+1. **Cache.** With `cache_directory` set and a silence analysis of this content at the same threshold and minimum length stored, it returns that: every region, flagged complete and from cache, without decoding. Analyse your library ahead with `FA_ANALYZE_SILENCE` (with the kinds you already ask for) and every later open answers at once and completely.
+2. **The start.** Otherwise it decodes from the start until the first audible frame. Most songs start within a few seconds.
+3. **The end.** It decodes the last 30 s. If that is all silent, the 120 s before it, then four times more each time, until a window holds audio. Each frame is decoded at most once.
+4. **Short or awkward files** are decoded whole instead, and get every region: when the rest after the first sound is under a minute, when the windows would meet the start, and for formats that cannot seek cheaply or have no known length.
+
+A song with minutes of silence before a hidden track gets its leading and trailing regions here; the gap in the middle comes from the analysis.
+
+**MIDI files and tracker modules** are measured on their rendered audio, with the stream's soundfont, not on their note events. The events would put the end at the last note-off; the audio includes what keeps sounding after it (release envelopes, reverb and chorus, which are on by default, and a module's sample decay). Rendering silence costs next to nothing, and a seek in these formats plays its events forward without rendering them. A seek clears what was still ringing, so a tail window that ends where a note is still dying away reads on past its end until the tail is gone: the answer matches a render of the whole song.
+
+**Push, packet, web, callback and app-I/O streams** cannot be read twice, so `fa_stream_get_silence` returns `FA_ERROR_NOT_SEEKABLE` (as `fa_analyze_stream` does). Feed the audio to a detector instead.
+
+### Pushed or decoded audio: the detector
+
+The audio of a video you decode with FFmpeg and push, or PCM you read from a decode-only stream, goes through `fa_silence_detector`: the same rule and the same results, with frames counted from the first one you feed. It takes any `fa_sample_format` (planes as for `fa_stream_push_pcm`), so feed it what you push.
+
+C:
+```c
+fa_audio_format fmt = { FA_FORMAT_F32_PLANAR, 48000, 2, 0 };   /* what you push */
+fa_silence_detector* det;
+fa_silence_detector_create(&fmt, NULL, &det);
+
+/* wherever you push a frame: */
+fa_stream_push_pcm(push, planes, frames, pts);
+fa_silence_detector_feed(det, planes, frames);
+
+fa_silence s = { .struct_size = sizeof(s) };
+fa_silence_detector_get(det, &s, NULL, 0, NULL);   /* what the audio so far shows */
+fa_silence_detector_free(det);
+```
+
+C#:
+```csharp
+using var detector = new SilenceDetector(push.Format);
+push.Push(samples);
+detector.Feed(samples);                          // or detector.FeedFrame(frame->extended_data, frame->nb_samples)
+var s = detector.GetResult();
+```
+
+A silent run still going at the end of what was fed is a region once it is long enough, and grows while more silence comes. The detector never says complete, because only your app knows when the audio is over. After a seek in your own timeline, start a new detector. A detector is not thread safe: feed and read it from one thread at a time.
+
 ## Using a grid on a stream
 
 A deck needs the grid on the stream, for sync, beat loops and beats aligned across two songs. `fa_stream_set_beat_grid` gives a stream a grid: one from an analysis, one the user corrected, or one from your own library. `fa_stream_get_beat_grid` reads back the one set last.
@@ -240,6 +334,7 @@ With `fa_engine_config.cache_directory` set (.NET `AudioEngineOptions.CacheDirec
 - `FA_ANALYZE_NO_CACHE` (.NET `AnalysisOptions.NoCache`) neither reads nor writes the cache.
 - When a later version changes a measurement, older entries are ignored and the song is measured again.
 - Loudness measured by an analysis is also written to the loudness cache, so normalization finds it.
+- **Silence** is stored with its threshold and minimum length. Other settings measure again (and the file keeps the newest settings). `fa_stream_get_silence` reads it without measuring when the settings match.
 
 Without a cache directory every call measures again. For a library, set one: a rescan then costs a file read.
 
@@ -249,8 +344,8 @@ Without a cache directory every call measures again. For a library, set one: a r
 |---|---|
 | `FA_ERROR_NOT_FOUND` | `fa_analyze_path`: the file is missing. A getter: the kind was not asked for, or nothing was found (see above) |
 | `FA_ERROR_UNSUPPORTED_FORMAT` | No decoder reads the file |
-| `FA_ERROR_NOT_SEEKABLE` | `fa_analyze_stream` on a web, push or app-I/O stream, which cannot be read twice. Analyse the file instead |
-| `FA_ERROR_INVALID_ARG` | Unknown kinds or flags, or a tempo range that is not allowed |
+| `FA_ERROR_NOT_SEEKABLE` | `fa_analyze_stream` or `fa_stream_get_silence` on a web, push, packet, callback or app-I/O stream, which cannot be read twice. Analyse the file instead, or feed a `fa_silence_detector` |
+| `FA_ERROR_INVALID_ARG` | Unknown kinds or flags, a tempo range that is not allowed, or silence settings out of range (threshold -120..0 dB, minimum length 1 ms..1 h) |
 
 ## Threads
 
@@ -258,6 +353,7 @@ Without a cache directory every call measures again. For a library, set one: a r
 - .NET: `AnalyzeAsync` runs `Analyze` on a pool thread. Disposing the engine or the stream while it runs is safe: the analysis keeps the native object alive until it is done. A `CancellationToken` cancels the **wait**; the native work cannot be interrupted and runs to its end.
 - An analysis never touches playback, and nothing waits for one. It does not use the audio or decode threads.
 - `fa_stream_set_beat_grid` and `fa_stream_get_beat_grid` can be called from any thread.
+- `fa_stream_get_silence` blocks while it decodes (usually a few milliseconds; a whole short file or a long silent ending takes longer). Call it where you open streams, from any thread. A `fa_silence_detector` belongs to one thread at a time.
 
 ## How it works
 

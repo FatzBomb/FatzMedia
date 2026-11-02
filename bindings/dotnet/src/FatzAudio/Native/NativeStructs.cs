@@ -712,6 +712,35 @@ internal struct FaAnalysisOptions
     public float MinBpm;
     public float MaxBpm;
     public uint Flags;
+    public float SilenceThresholdDb;
+    public uint SilenceMinLengthMs;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct FaSilenceOptions
+{
+    public uint StructSize;
+    public float ThresholdDb;
+    public uint MinLengthMs;
+}
+
+// 4 bytes of padding after SampleRate: Sequential layout inserts them, as the C compiler does.
+[StructLayout(LayoutKind.Sequential)]
+internal struct FaSilence
+{
+    public uint StructSize;
+    public uint Flags;
+    public uint SampleRate;
+    public long FirstAudible;
+    public long LastAudible;
+    public long Length;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct FaSilenceRegion
+{
+    public long Start;
+    public long End;
 }
 
 [StructLayout(LayoutKind.Sequential)]
