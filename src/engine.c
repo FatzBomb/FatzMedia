@@ -394,7 +394,10 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
     if (n > FA_MAX_WORKERS) n = FA_MAX_WORKERS;
     for (i = 0; i < n; i++) {
         if (fa_thread_create(&e->workers[i], worker_main, e) != 0) break;
+        /* Under list_lock: running workers read it (render_room_locked). */
+        fa_mutex_lock(&e->list_lock);
         e->worker_count++;
+        fa_mutex_unlock(&e->list_lock);
     }
     if (e->worker_count == 0 || fa_thread_create(&e->event_thread, fa_event_thread_main, e) != 0) {
         fa_engine_destroy(e);

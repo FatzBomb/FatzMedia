@@ -358,6 +358,15 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   last worker, so one is always free to decode; and a worker runs at a lower priority while it renders ahead (Windows below
   normal, Apple QoS utility, Linux and Android nice + 5 where RLIMIT_NICE lets it go back). An engine with one worker
   no longer lends it to effects drawn on the caller's thread. `tools/render-stress` measures it.
+- `fa_surface_update_into` with render-ahead never waits and never draws a whole frame on the caller's thread (karaoke
+  timing step K2), for CD+G and lyric surfaces, when the engine has two or more workers: where it drew the frame itself
+  (the first frame, a new layout, options or style, a seek, a loop back, new graphics, a late frame) or waited for a
+  worker's or a setter's `work_lock`, it now copies the last finished frame flagged `behind`, or returns nothing new
+  (`FA_OK`, `dirty_count = 0`, `revision = dst_revision`, `behind = 1`, `time = 0`) when there is none yet, and a worker
+  renders the frame asked for, ahead by about as long as the worker's frames take. On four cores with three 2160p CD+G
+  surfaces and a lyric surface at full effects, seeks and resizes, the longest call went from 355-570 ms to 24-31 ms.
+  One worker: the caller still draws. .NET `UpdateInto` no longer takes the surface's lock, so a setter on another
+  thread does not make it wait either. `tools/render-stress --events` adds seeks and resizes.
 - The MIDI reverb (also the microphone reverb) runs about 1.45 times faster, with the same output to the bit: its delay
   lines are worked a block at a time instead of frame by frame. Opening a MIDI file (which measures the song's tail),
   seeking and playing MIDI all get cheaper with it.

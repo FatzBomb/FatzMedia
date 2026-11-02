@@ -6,6 +6,7 @@
 #  define _POSIX_C_SOURCE 200809L
 #endif
 #include "fa_internal.h"
+#include "cdg.h"
 #include "lyric_time.h"
 #include <math.h>
 #include <stddef.h>
@@ -1304,6 +1305,59 @@ static int same_at(fa_surface* ref, target* rt, fa_time time, const target* got)
     return 1;
 }
 
+/* update_into had no finished frame: the buffer keeps the one it holds. */
+static int nothing_new(const fa_surface_frame* fr, uint64_t dst_rev)
+{
+    return fr->behind && fr->dirty_count == 0 && fr->revision == dst_rev && fr->base_revision == dst_rev && fr->time == 0;
+}
+
+/* draw_at `time` until the frame is no longer behind (a worker renders it). */
+static fa_result settle_at(fa_surface* f, target* t, fa_time time, fa_surface_frame* fr)
+{
+    fa_result r = FA_OK;
+    int i;
+    for (i = 0; i < 4000; i++) {
+        r = draw_at(f, t, time, fr);
+        if (r != FA_OK || !fr->behind) break;
+        fa_sleep_ms(1);
+    }
+    return r;
+}
+
+/* Holds a surface's work_lock on a thread of its own, as a worker rendering ahead or
+ * another thread's setter would, until told to stop (or 5 s pass). */
+typedef struct holder {
+    fa_surface* f;
+    fa_thread t;
+    fa_atomic32 held, stop;
+} holder;
+
+static void hold_main(void* arg)
+{
+    holder* h = (holder*)arg;
+    int64_t until = fa_monotonic_ns() + (int64_t)5000000000;
+    fa_surface_test_hold(h->f, 1);
+    fa_store32(&h->held, 1);
+    while (!fa_load32(&h->stop) && fa_monotonic_ns() < until) fa_sleep_ms(1);
+    fa_surface_test_hold(h->f, 0);
+}
+
+static int hold_start(holder* h, fa_surface* f)
+{
+    h->f = f;
+    fa_store32(&h->held, 0);
+    fa_store32(&h->stop, 0);
+    if (fa_thread_create(&h->t, hold_main, h) != 0) return 0;
+    while (!fa_load32(&h->held)) fa_sleep_ms(1);
+    return 1;
+}
+
+static void hold_end(holder* h)
+{
+    fa_store32(&h->stop, 1);
+    fa_thread_join(&h->t);
+}
+
 static void test_render_ahead(void)
 {
     buf song = make_titled("@TBOA", "@TVOB", 0, 40);
@@ -1329,9 +1383,17 @@ static void test_render_ahead(void)
         t[k].px = (uint8_t*)calloc((size_t)t[k].stride * t[k].lay.height, 1);
         CHECK(t[k].px != NULL);
     }
+    /* The first frame comes from a worker: nothing new until then. */
+    CHECK_EQ(draw_at(f, &t[0], 0, &fr), FA_OK);
+    CHECK(nothing_new(&fr, 0));
+    CHECK_EQ(settle_at(f, &t[0], 0, &fr), FA_OK);
+    CHECK(same_at(ref, &rt, 0, &t[0]));
     for (k = 0; k <= 12000; k += 17) {
+        uint64_t before;
         b = (k / 17) % 2;
+        before = t[b].rev;
         CHECK_EQ(draw_at(f, &t[b], (fa_time)k * MS, &fr), FA_OK);
+        if (nothing_new(&fr, before)) continue;
         frames++;
         if (fr.behind) behind++;
         if (fr.base_revision) partial++;
@@ -1346,18 +1408,37 @@ static void test_render_ahead(void)
     }
     printf("    %d of %d frames behind, %d partial\n", behind, frames, partial);
     CHECK(partial > 0);
-    /* Paused: the frame of that time. A seek back: drawn here. */
-    CHECK_EQ(draw_at(f, &t[0], 4000 * MS, &fr), FA_OK);
-    CHECK_EQ(draw_at(f, &t[0], 4000 * MS, &fr), FA_OK);
+    /* A seek back: the last frame, flagged behind, then a worker's of that time. */
+    {
+        fa_time shown;
+        CHECK_EQ(draw_at(f, &t[0], 12000 * MS, &fr), FA_OK);
+        shown = fr.time;
+        CHECK_EQ(draw_at(f, &t[0], 4000 * MS, &fr), FA_OK);
+        CHECK(fr.behind);
+        CHECK_EQ(fr.time, shown);
+        CHECK(same_at(ref, &rt, fr.time, &t[0]));
+    }
+    CHECK_EQ(settle_at(f, &t[0], 4000 * MS, &fr), FA_OK);
     CHECK_EQ(fr.time, 4000 * MS);
     CHECK(same_at(ref, &rt, fr.time, &t[0]));
-    /* A new presentation size: the old buffer no longer fits; a new one does. */
+    /* A new presentation size: the old buffer no longer fits (nothing new until this
+     * thread has the lock to lay it out); a new one does. */
     CHECK_EQ(fa_surface_set_presentation_size(f, 1920, 1080), FA_OK);
-    CHECK_EQ(draw_at(f, &t[0], 4100 * MS, &fr), FA_ERROR_SIZE_MISMATCH);
+    {
+        uint64_t before = t[0].rev;
+        fa_result r;
+        for (k = 0; k < 4000; k++) {
+            r = draw_at(f, &t[0], 4100 * MS, &fr);
+            if (r != FA_OK || !nothing_new(&fr, before)) break;
+            fa_sleep_ms(1);
+        }
+        CHECK_EQ(r, FA_ERROR_SIZE_MISMATCH);
+    }
     free(t[0].px);
     CHECK(target_make(f, &t[0]));
-    CHECK_EQ(draw_at(f, &t[0], 4100 * MS, &fr), FA_OK);
+    CHECK_EQ(settle_at(f, &t[0], 4100 * MS, &fr), FA_OK);
     CHECK_EQ(fr.layout_revision, t[0].lay.layout_revision);
+    CHECK_EQ(fr.time, 4100 * MS);
     /* Off again: drawn on this thread as before. */
     CHECK_EQ(fa_surface_set_render_ahead(f, 0), FA_OK);
     CHECK_EQ(draw_at(f, &t[0], 4200 * MS, &fr), FA_OK);
@@ -1366,6 +1447,96 @@ static void test_render_ahead(void)
     fa_surface_destroy(ref);
     free(t[0].px);
     free(t[1].px);
+    free(rt.px);
+    fa_stream_close(s);
+    free(song.d);
+}
+
+/* Render-ahead with workers: update_into never waits for work_lock (held here by
+ * another thread for up to 5 s) and never draws a whole frame itself; the first
+ * frame, a seek and a new style show what there is, and a worker's frame follows. */
+static void test_update_into_never_waits(void)
+{
+    buf song = make_titled("@TBOA", "@TVOB", 0, 40);
+    fa_stream* s = open_buf(&song);
+    fa_lyric_style st;
+    fa_surface *f = NULL, *ref = NULL;
+    fa_surface_frame fr;
+    target t, rt;
+    holder h;
+    fa_result r;
+    fa_time shown;
+    int64_t t0;
+    CHECK(s != NULL);
+    style(&st, FA_LYRIC_CLASSIC);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &f), FA_OK);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &ref), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(f, 1280, 720), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(ref, 1280, 720), FA_OK);
+    CHECK_EQ(fa_surface_set_render_ahead(f, 1), FA_OK);
+    CHECK(target_make(f, &t));
+    CHECK(target_make(ref, &rt));
+    /* The first frame, with the lock held: nothing new, at once. */
+    CHECK(hold_start(&h, f));
+    t0 = fa_monotonic_ns();
+    r = draw_at(f, &t, 3000 * MS, &fr);
+    t0 = fa_monotonic_ns() - t0;
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(t0 < (int64_t)1000000000);
+    CHECK(nothing_new(&fr, 0));
+    /* With the lock free: never drawn here either. */
+    CHECK_EQ(draw_at(f, &t, 3000 * MS, &fr), FA_OK);
+    CHECK(fr.behind);
+    CHECK_EQ(settle_at(f, &t, 3000 * MS, &fr), FA_OK);
+    CHECK(same_at(ref, &rt, 3000 * MS, &t));
+    /* A seek forward with the lock held: the last frame, flagged behind. */
+    shown = fr.time;
+    CHECK(hold_start(&h, f));
+    t0 = fa_monotonic_ns();
+    r = draw_at(f, &t, 9000 * MS, &fr);
+    t0 = fa_monotonic_ns() - t0;
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(t0 < (int64_t)1000000000);
+    CHECK(fr.behind);
+    CHECK_EQ(fr.time, shown);
+    CHECK_EQ(settle_at(f, &t, 9000 * MS, &fr), FA_OK);
+    CHECK(same_at(ref, &rt, 9000 * MS, &t));
+    /* A tempo ramp: by the time a worker's frame is shown the tempo has moved on a step
+     * (0.25%), so none fits exactly; they are shown anyway, flagged behind, never a
+     * frozen picture (nor one drawn here). */
+    {
+        fa_time first_shown = -1, last_shown = -1;
+        int k;
+        for (k = 0; k < 80; k++) {
+            uint64_t before = t.rev;
+            CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.0f + 0.01f * (float)(k + 1)), FA_OK);
+            CHECK_EQ(draw_at(f, &t, (9000 + 16 * (fa_time)k) * MS, &fr), FA_OK);
+            if (!nothing_new(&fr, before)) {
+                if (first_shown < 0) first_shown = fr.time;
+                last_shown = fr.time;
+            }
+            fa_sleep_ms(5);
+        }
+        CHECK(last_shown > first_shown);
+        CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.0f), FA_OK);
+        CHECK_EQ(settle_at(f, &t, 9000 * MS, &fr), FA_OK);
+    }
+    /* A new style: nothing new until a worker's frame with it. */
+    st.sung_color = 0xFF00FF00u;
+    CHECK_EQ(fa_lyric_surface_set_style(f, &st), FA_OK);
+    CHECK_EQ(fa_lyric_surface_set_style(ref, &st), FA_OK);
+    CHECK(hold_start(&h, f));
+    r = draw_at(f, &t, 9000 * MS, &fr);
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(nothing_new(&fr, t.rev));
+    CHECK_EQ(settle_at(f, &t, 9000 * MS, &fr), FA_OK);
+    CHECK(same_at(ref, &rt, 9000 * MS, &t));
+    fa_surface_destroy(f);
+    fa_surface_destroy(ref);
+    free(t.px);
     free(rt.px);
     fa_stream_close(s);
     free(song.d);
@@ -1410,6 +1581,7 @@ int main(void)
     RUN(test_intro_when);
     RUN(test_intro_stateless);
     RUN(test_render_ahead);
+    RUN(test_update_into_never_waits);
     free(g_song.d);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);

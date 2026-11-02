@@ -13,6 +13,7 @@ graphics and MIDI are generated, so it needs no files.
 ```
 fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N] [--size WxH]
                  [--tempo T] [--soundfont file.sf2] [--extra N] [--latency ms] [--colours ms]
+                 [--lyrics N] [--threads] [--events ms]
 ```
 
 | Option | Default | What it does |
@@ -27,10 +28,15 @@ fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N] [--
 | `--extra` | 0 | More CD+G surfaces per stream |
 | `--latency` | 150 | `fa_tempo_options.latency_ms`: how much each stream keeps decoded ahead |
 | `--colours` | 10000 | How often the CD+G loads new colours, in ms. Each load redraws the whole picture with its effects (the 50-220 ms frames); a real song does it rarely, 100 makes it a stress test |
+| `--lyrics` | 1 | With a soundfont: how many lyric surfaces the second stream has (presets in turn) |
+| `--threads` | off | Draw every surface on a thread of its own, as MediaControl's slice-0 spike did |
+| `--events` | 0 (none) | Every so many ms, in turn: both streams seek (back to half way, or a quarter further on), or the drawing thread resizes every surface to 3/4 and back (`fa_surface_set_presentation_size`, then `fa_surface_get_layout` and new buffers on `FA_ERROR_SIZE_MISMATCH`) |
 
 It prints, per stream, the dropouts (`fa_stream_stats.underruns`), how far the stream clock fell behind wall time
 times the tempo, and the least decoded audio seen ahead (`buffered`); per surface, the frames drawn, how many came back
-`behind`, and the time `update_into` took on the drawing thread.
+`behind` (and of those, how many had nothing new yet), the time `update_into` took on the drawing thread, and how far
+the frame shown was behind the clock; with `--events`, the longest `fa_surface_set_presentation_size` and
+`fa_surface_get_layout`.
 
 Pin it to a few cores to make the machine busy, with burners on top:
 
@@ -61,3 +67,22 @@ drawing (`--workers 4 --lyrics 6 --extra 1`) the least buffered went from 40-50 
 This machine's RLIMIT_NICE is 0, so the lower priority was not in play: these numbers are the top-up and the free
 worker alone. The white-box test `test_drawing_leaves_a_worker_to_decode` (tests/test_internal.c) shows the cause
 directly: before the change a shared drawing job took every worker.
+
+## Results (2026-11-02, step K2: update_into never waits)
+
+Linux, 4 cores pinned, the TimGM6mb soundfont, `--threads --soundfont TimGM6mb.sf2`, 20 s each, main before K2 (with this
+version of the tool) against K2. Every surface is 2160p with every effect; the CD+G surfaces are 3020x2180.
+
+| Run | Build | `update_into` max (per surface) | Over 8 ms | Frames drawn of ~1200 | Shown late (`behind`) | Behind the clock, average |
+|---|---|---|---|---|---|---|
+| plain | Before | 146-191 ms | 35-441 | 947-1138 | 9-65% | 8-34 ms |
+| | After | 16-36 ms | 2-3 | 1199-1201 | 20-44% | 12-17 ms |
+| `--events 1500 --colours 1000 --burn 1` (seeks, resizes, a full redraw a second) | Before | 356-570 ms | 35-295 | 839-982 | 14-46% | 9-23 ms |
+| | After | 24-31 ms | 5-10 | 1185-1191 | 44-56% | 24-34 ms |
+
+What is left on the drawing thread is the copy into a buffer (a whole 2160p buffer is about 25 MB; the longest calls
+are whole copies into freshly allocated buffers right after a resize). After a resize the surface has nothing new for
+10-20 calls while a worker draws the first frame of the new layout; a player keeps its old texture meanwhile.
+`set_presentation_size` still waits for a render in progress (up to 22 ms here, up to a 2160p frame in general);
+`get_layout` right after `FA_ERROR_SIZE_MISMATCH` took under 0.1 ms. No run dropped out in either build.
+

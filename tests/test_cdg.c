@@ -4050,6 +4050,46 @@ static int same_as_at(fa_surface* ref, fa_time t, const uint8_t* got, int32_t st
     return same;
 }
 
+/* update_into had no finished frame: the buffer keeps the one it holds (dst_rev). */
+static int nothing_new(const fa_surface_frame* fr, uint64_t dst_rev)
+{
+    return fr->behind && fr->dirty_count == 0 && fr->revision == dst_rev && fr->base_revision == dst_rev && fr->time == 0;
+}
+
+/* Holds a surface's work_lock on a thread of its own, as a worker rendering ahead or
+ * another thread's setter would, until told to stop (or 5 s pass). */
+typedef struct holder {
+    fa_surface* f;
+    fa_thread t;
+    fa_atomic32 held, stop;
+} holder;
+
+static void hold_main(void* arg)
+{
+    holder* h = (holder*)arg;
+    int64_t until = fa_monotonic_ns() + (int64_t)5000000000;
+    fa_surface_test_hold(h->f, 1);
+    fa_store32(&h->held, 1);
+    while (!fa_load32(&h->stop) && fa_monotonic_ns() < until) fa_sleep_ms(1);
+    fa_surface_test_hold(h->f, 0);
+}
+
+static int hold_start(holder* h, fa_surface* f)
+{
+    h->f = f;
+    fa_store32(&h->held, 0);
+    fa_store32(&h->stop, 0);
+    if (fa_thread_create(&h->t, hold_main, h) != 0) return 0;
+    while (!fa_load32(&h->held)) fa_sleep_ms(1);
+    return 1;
+}
+
+static void hold_end(holder* h)
+{
+    fa_store32(&h->stop, 1);
+    fa_thread_join(&h->t);
+}
+
 /* update_into at `t` until the frame is no longer behind (a worker renders it). */
 static void settle(fa_surface* f, fa_time t, uint8_t* mem, int32_t stride, const fa_surface_layout* l, uint64_t* rev,
                    fa_surface_frame* fr)
@@ -4096,7 +4136,10 @@ static void test_render_ahead(void)
     stride = (int32_t)(l.width * 4 + 8);
     for (b = 0; b < 2; b++) mem[b] = (uint8_t*)calloc((size_t)stride * l.height, 1);
 
-    /* Two packs a frame through the song, two buffers in turn. */
+    /* The first frame comes from a worker (nothing new until then). Then two packs a
+     * frame through the song, two buffers in turn, faster than the worker renders. */
+    settle(f, 0, mem[0], stride, &l, &rev[0], &fr);
+    CHECK(same_as_at(ref, 0, mem[0], stride, 4));
     for (n = 0; n <= packs + 4; n += 2) {
         b = (uint32_t)(n / 2 % 2);
         memset(&fr, 0, sizeof(fr));
@@ -4105,6 +4148,7 @@ static void test_render_ahead(void)
         if (fr.behind) behind++;
         if (fr.base_revision) partial++;
         CHECK(fr.revision >= rev[b] || !fr.base_revision);
+        if (nothing_new(&fr, rev[b])) continue;   /* the first: a worker renders it */
         rev[b] = fr.revision;
         if (!same_as_at(ref, fr.time, mem[b], stride, 4)) {
             printf("    step %u: the frame differs from the picture at its time\n", (unsigned)n);
@@ -4124,7 +4168,7 @@ static void test_render_ahead(void)
         CHECK_EQ(fa_surface_update_into(f, t_packs((int64_t)n), mem[b], stride, l.width, l.height, rev[b], &fr), FA_OK);
         if (fr.behind) behind++;
         rev[b] = fr.revision;
-        CHECK(same_as_at(ref, fr.time, mem[b], stride, 4));
+        CHECK(nothing_new(&fr, rev[b]) || same_as_at(ref, fr.time, mem[b], stride, 4));
         fa_sleep_ms(7);
     }
     printf("    paced: %u of %u frames behind\n", behind, (unsigned)(packs / 2 + 3));
@@ -4164,7 +4208,7 @@ static void test_render_ahead(void)
         free(other.p);
     }
 
-    /* New options are shown at once, not after a worker's frame. */
+    /* New options: nothing new until a worker's frame with them, never the old one. */
     p.smoothness = 0;
     p.edge_blend = 0;
     CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
@@ -4172,8 +4216,9 @@ static void test_render_ahead(void)
     memset(&fr, 0, sizeof(fr));
     fr.struct_size = sizeof(fr);
     CHECK_EQ(fa_surface_update_into(f, t_packs(40), mem[0], stride, l.width, l.height, rev[0], &fr), FA_OK);
+    CHECK(nothing_new(&fr, rev[0]));
+    settle(f, t_packs(40), mem[0], stride, &l, &rev[0], &fr);
     CHECK(!fr.behind);
-    rev[0] = fr.revision;
     CHECK(same_as_at(ref, t_packs(40), mem[0], stride, 4));
 
     /* Off again: drawn on the caller's thread, never behind. */
@@ -4248,6 +4293,179 @@ static void test_render_ahead(void)
         }
         free(m);
     }
+    free(c.p);
+}
+
+/* update_into into `mem`; *ms gets how long it took. */
+static fa_result update_timed(fa_surface* f, fa_time t, uint8_t* mem, int32_t stride, const fa_surface_layout* l,
+                              uint64_t rev, fa_surface_frame* fr, double* ms)
+{
+    int64_t t0 = fa_monotonic_ns();
+    fa_result r;
+    memset(fr, 0, sizeof(*fr));
+    fr->struct_size = sizeof(*fr);
+    r = fa_surface_update_into(f, t, mem, stride, l->width, l->height, rev, fr);
+    *ms = (double)(fa_monotonic_ns() - t0) / 1e6;
+    return r;
+}
+
+/* Render-ahead with workers: update_into never draws a whole frame itself and never
+ * waits for work_lock, which a worker rendering or another thread's setter holds
+ * (held here for up to 5 s, so a call that waited would take that long). The first
+ * frame, a new layout, a seek, a loop back and new graphics all show what there is
+ * (nothing new, or the last frame flagged behind) and the frame wanted follows from a
+ * worker. With one worker the caller draws, as before. */
+static void test_update_into_never_waits(void)
+{
+    buf c = busy_cdg(), other = moves_cdg();
+    size_t packs = c.n / FA_CDG_PACK_BYTES;
+    fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
+    fa_cdg_surface *f = NULL, *ref = NULL;
+    fa_cdg_presentation p = pres(1, FA_SAFETY_SHOW);
+    fa_surface_layout l;
+    fa_surface_frame fr;
+    holder h;
+    uint8_t* mem;
+    uint64_t rev = 0;
+    int32_t stride;
+    fa_time shown;
+    fa_result r;
+    double ms;
+    int i;
+    size_t seek_to[3];
+    seek_to[0] = packs * 3 / 4;   /* forward */
+    seek_to[1] = 5;               /* back, as a loop wraps */
+    seek_to[2] = packs / 2;
+    p.smoothness = 2;
+    p.edge_blend = 1;
+    CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &f), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &ref), FA_OK);
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    CHECK_EQ(fa_cdg_surface_set_presentation(ref, &p), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(f, 900, 648), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(ref, 900, 648), FA_OK);
+    CHECK_EQ(fa_surface_set_render_ahead(f, 1), FA_OK);
+    l = layout_of(f);
+    stride = (int32_t)(l.width * 4);
+    mem = (uint8_t*)calloc((size_t)stride * l.height, 1);
+    CHECK(mem != NULL);
+
+    /* The first frame, with the lock free and with it held: nothing new. */
+    CHECK_EQ(update_timed(f, t_packs(30), mem, stride, &l, rev, &fr, &ms), FA_OK);
+    CHECK(nothing_new(&fr, 0));
+    CHECK(hold_start(&h, f));
+    r = update_timed(f, t_packs(30), mem, stride, &l, rev, &fr, &ms);
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(ms < 1000.0);
+    CHECK(fr.behind);   /* nothing new, or the worker's frame (for a time ahead) */
+    settle(f, t_packs(30), mem, stride, &l, &rev, &fr);
+    CHECK(!fr.behind);
+    CHECK(same_as_at(ref, t_packs(30), mem, stride, 4));
+
+    /* Seeks: the last frame, flagged behind, then the worker's. */
+    for (i = 0; i < 3; i++) {
+        shown = fr.time;
+        if (i == 1) CHECK(hold_start(&h, f));
+        r = update_timed(f, t_packs((int64_t)seek_to[i]), mem, stride, &l, rev, &fr, &ms);
+        if (i == 1) hold_end(&h);
+        CHECK_EQ(r, FA_OK);
+        CHECK(ms < 1000.0);
+        CHECK(fr.behind);
+        CHECK_EQ(fr.time, shown);
+        rev = fr.revision;
+        CHECK(same_as_at(ref, shown, mem, stride, 4));
+        settle(f, t_packs((int64_t)seek_to[i]), mem, stride, &l, &rev, &fr);
+        CHECK(!fr.behind);
+        CHECK(same_as_at(ref, t_packs((int64_t)seek_to[i]), mem, stride, 4));
+    }
+
+    /* New graphics: the old song's frame, flagged behind, until the new one's. */
+    CHECK_EQ(fa_stream_load_cdg_memory(s, other.p, other.n), FA_OK);
+    CHECK(hold_start(&h, f));
+    r = update_timed(f, t_packs(20), mem, stride, &l, rev, &fr, &ms);
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(ms < 1000.0);
+    CHECK(fr.behind);
+    rev = fr.revision;
+    settle(f, t_packs(20), mem, stride, &l, &rev, &fr);
+    CHECK(!fr.behind);
+    CHECK(same_as_at(ref, t_packs(20), mem, stride, 4));
+
+    /* A new layout: nothing new while the lock is held, then FA_ERROR_SIZE_MISMATCH once
+     * this thread applies it; a buffer of the new size gets the worker's frame. */
+    p.padding = 2;
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    CHECK_EQ(fa_cdg_surface_set_presentation(ref, &p), FA_OK);
+    CHECK(hold_start(&h, f));
+    r = update_timed(f, t_packs(25), mem, stride, &l, rev, &fr, &ms);
+    hold_end(&h);
+    CHECK_EQ(r, FA_OK);
+    CHECK(ms < 1000.0);
+    CHECK(nothing_new(&fr, rev));
+    for (i = 0; i < 4000; i++) {
+        r = update_timed(f, t_packs(25), mem, stride, &l, rev, &fr, &ms);
+        if (r != FA_OK || !nothing_new(&fr, rev)) break;
+        fa_sleep_ms(1);   /* a worker's job held the lock: this thread applies it next time */
+    }
+    CHECK_EQ(r, FA_ERROR_SIZE_MISMATCH);
+    free(mem);
+    l = layout_of(f);
+    stride = (int32_t)(l.width * 4);
+    mem = (uint8_t*)calloc((size_t)stride * l.height, 1);
+    CHECK(mem != NULL);
+    rev = 0;
+    settle(f, t_packs(25), mem, stride, &l, &rev, &fr);
+    CHECK(!fr.behind);
+    CHECK(same_as_at(ref, t_packs(25), mem, stride, 4));
+    free(mem);
+    fa_surface_destroy(ref);
+    fa_surface_destroy(f);
+    fa_stream_close(s);
+
+    /* One worker: no render-ahead jobs, so the frame is drawn here, never behind. */
+    {
+        fa_engine_config cfg;
+        fa_engine* e = NULL;
+        buf w = make_wav(8000, 8000);
+        fa_open_options o;
+        fa_stream* s1 = NULL;
+        fa_cdg_surface *g = NULL, *gref = NULL;
+        fa_engine_config_init(&cfg);
+        cfg.flags = FA_ENGINE_NULL_OUTPUT;
+        cfg.worker_threads = 1;
+        CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+        fa_open_options_init(&o);
+        o.flags = FA_OPEN_DECODE_ONLY;
+        CHECK_EQ(fa_stream_open_memory(e, w.p, w.n, &o, &s1), FA_OK);
+        free(w.p);
+        CHECK_EQ(fa_stream_load_cdg_memory(s1, c.p, c.n), FA_OK);
+        CHECK_EQ(fa_cdg_surface_create(s1, NULL, &g), FA_OK);
+        CHECK_EQ(fa_cdg_surface_create(s1, NULL, &gref), FA_OK);
+        CHECK_EQ(fa_cdg_surface_set_presentation(g, &p), FA_OK);
+        CHECK_EQ(fa_cdg_surface_set_presentation(gref, &p), FA_OK);
+        CHECK_EQ(fa_surface_set_render_ahead(g, 1), FA_OK);
+        l = layout_of(g);
+        stride = (int32_t)(l.width * 4);
+        mem = (uint8_t*)calloc((size_t)stride * l.height, 1);
+        CHECK(mem != NULL);
+        rev = 0;
+        for (i = 0; i < 3; i++) {
+            CHECK_EQ(update_timed(g, t_packs((int64_t)seek_to[i]), mem, stride, &l, rev, &fr, &ms), FA_OK);
+            CHECK(!fr.behind);
+            CHECK_EQ(fr.time, t_packs((int64_t)seek_to[i]));
+            rev = fr.revision;
+            CHECK(same_as_at(gref, t_packs((int64_t)seek_to[i]), mem, stride, 4));
+        }
+        free(mem);
+        fa_surface_destroy(gref);
+        fa_surface_destroy(g);
+        fa_stream_close(s1);
+        fa_engine_destroy(e);
+    }
+    free(other.p);
     free(c.p);
 }
 
@@ -4438,6 +4656,7 @@ int main(void)
     RUN(test_colour_change_partial);
     RUN(test_presentation_incremental);
     RUN(test_render_ahead);
+    RUN(test_update_into_never_waits);
     RUN(test_presentation_costs);
     fa_engine_destroy(g_engine);
     remove("cdg_pair.zip");

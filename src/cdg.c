@@ -220,6 +220,8 @@ struct fa_cdg_surface {
     cdg_slot slot[2];
     int front, ready;             /* the slot shown, the one finished next; -1 = none */
     fa_time ra_time;              /* the stream time the worker renders for */
+    int64_t ra_cost;              /* update_into's: how long the worker's frames take (ra_lead) */
+    uint64_t ra_cost_layout;      /* ... at this layout_revision */
     fa_time ra_last;              /* update_into's last time */
     struct fa_cdg_surface* ra_next; /* engine->cdg_render, under g_bind */
     int ra_queued;                /* under g_bind */
@@ -2062,15 +2064,18 @@ static void ra_unqueue(fa_engine* e, fa_cdg_surface* f)
     fa_fetch_add32(&e->cdg_render_count, -1);
 }
 
-/* Asks a worker to render ahead for the surface (its stream `s` held by the caller).
- * Not with one worker: a full 2160p frame with effects takes it 50-220 ms, longer than a
- * tempo stream's buffer target, so the audio could run dry; update_into draws then. */
+/* 1 when workers render ahead for the surfaces of stream `s`: not with one worker, as
+ * a full 2160p frame with effects takes it 50-220 ms, longer than a tempo stream's
+ * buffer target, so the audio could run dry; update_into draws on its own thread then. */
+static int ra_workers(const struct fa_stream* s) { return s->engine->worker_count >= 2; }
+
+/* Asks a worker to render ahead for the surface (its stream `s` held by the caller). */
 static void ra_request(fa_cdg_surface* f, struct fa_stream* s)
 {
     fa_engine* e = s->engine;
     fa_cdg_surface** pp;
     int add;
-    if (e->worker_count < 2) return;
+    if (!ra_workers(s)) return;
     fa_lazy_mutex_lock(&g_bind);
     add = !f->ra_queued && f->stream;
     if (add) {
@@ -2486,7 +2491,7 @@ static void ra_job(fa_cdg_surface* f, struct fa_stream* s)
     fa_mutex_lock(&f->work_lock);
     if (ra_on(f) && f->slot[0].px) {
         fa_mutex_lock(&f->pub_lock);
-        if (f->front >= 0 && f->ready < 0) k = 1 - f->front;
+        if (f->ready < 0) k = f->front < 0 ? 0 : 1 - f->front;   /* the first frame too */
         t = f->ra_time;
         fa_mutex_unlock(&f->pub_lock);
     }
@@ -2533,13 +2538,52 @@ static void to_rect(const int r[4], fa_rect* out)
 
 #define RA_NEED_LOCK 1            /* ra_show: a frame must be drawn here, and work_lock is not held */
 
+/* How far ahead of `time` the next frame is rendered: the pace of the calls (paused or
+ * back: the frame of `time` itself), and with workers rendering (`async`) also about
+ * as long as their frames take, so a frame is on time when it is finished rather than
+ * that much late. Only update_into's thread reads and writes ra_last and ra_cost. */
+static fa_time ra_lead(const fa_cdg_surface* f, fa_time time, int async)
+{
+    fa_time lead;
+    if (time <= f->ra_last) return 0;
+    if ((uint64_t)time - (uint64_t)f->ra_last > (uint64_t)RA_LEAD_MAX) lead = RA_LEAD_DEFAULT;
+    else lead = time - f->ra_last;
+    if (async) lead += f->ra_cost < RA_LEAD_MAX ? f->ra_cost : RA_LEAD_MAX;
+    return lead;
+}
+
+/* A worker's frame shown for the first time: its cost, smoothed (started again for a
+ * new layout, whose frames cost something else). */
+static void ra_cost_add(fa_cdg_surface* f, int64_t render_ns)
+{
+    uint64_t layout = (uint64_t)fa_load64(&f->layout_revision);
+    f->ra_cost = f->ra_cost && layout == f->ra_cost_layout ? (3 * f->ra_cost + render_ns) / 4 : render_ns;
+    f->ra_cost_layout = layout;
+}
+
+/* Fills `fr` for "nothing new": the buffer keeps the frame it holds (dst_revision), as
+ * no finished frame exists yet; a worker renders one. */
+static void nothing_new(uint64_t dst_revision, fa_surface_frame* fr)
+{
+    fr->revision = fr->base_revision = dst_revision;
+    fr->time = 0;
+    fr->render_ns = 0;
+    fr->behind = 1;
+    fr->background_index = fr->border_index = -1;
+    fr->dirty_count = 0;
+    memset(&fr->dirty_bounds, 0, sizeof(fr->dirty_bounds));
+}
+
 /* update_into with render-ahead: picks the finished frame that fits `time` best,
  * copies what changed since dst_revision from it, and asks a worker for the next one.
- * When there is no frame yet (the first, or after a change of layout or options) or
- * the best is late by more than 1/60 s, ahead of `time` or of other graphics, the
- * frame for `time` is drawn here instead, which needs work_lock (`held`); without it
- * (a worker is rendering) a frame that exists is shown, flagged behind. The layout in
- * use is read: a worker never changes it. */
+ * With workers to render ahead (ra_workers) a frame is never drawn here: the best
+ * finished one is shown, flagged behind when it does not fit (none yet: nothing new),
+ * and a worker renders the frame wanted. With one worker, when there is no frame yet
+ * (the first, or after a change of layout or options) or the best is late by more than
+ * 1/60 s, ahead of `time` or of other graphics, the frame for `time` is drawn here,
+ * which needs work_lock (`held`); without it (another thread's setter holds it) a frame
+ * that exists is shown, flagged behind. The layout in use is read: a worker never
+ * changes it. */
 static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t* dst, int32_t dst_stride,
                    uint32_t dst_width, uint32_t dst_height, uint64_t dst_revision, int held, fa_surface_frame* fr,
                    fa_result* result)
@@ -2548,7 +2592,7 @@ static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t
     fa_rects drawn;
     fa_time lead, ahead_time;
     size_t target = 0, ahead = 0;
-    int i, fit = FIT_NONE, need, partial, b[4], drew = 0;
+    int i, fit = FIT_NONE, need, partial, b[4], drew = 0, none = 0, async;
     uint32_t bpp = 4;
     *result = FA_OK;
     if (held && !f->slot[0].px) {
@@ -2561,10 +2605,7 @@ static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t
             return 0;
         }
     }
-    /* The pace of the calls: paused or back, the frame of `time` itself. */
-    if (time <= f->ra_last) lead = 0;
-    else if ((uint64_t)time - (uint64_t)f->ra_last > (uint64_t)RA_LEAD_MAX) lead = RA_LEAD_DEFAULT;
-    else lead = time - f->ra_last;
+    lead = ra_lead(f, time, ra_workers(s));
     /* Half a pack short of the next call's time: a frame a hair ahead of it would
      * wait a whole call longer to be shown. */
     if (lead > 1000000000 / FA_CDG_PACKS_PER_SECOND / 2) lead -= 1000000000 / FA_CDG_PACKS_PER_SECOND / 2;
@@ -2587,18 +2628,25 @@ static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t
             f->front = f->ready;
             f->ready = -1;
             ff = fr_fit;
+            ra_cost_add(f, f->slot[f->front].render_ns);
         } else if (f->ready >= 0 && !(fr_fit == FIT_AHEAD && f->slot[f->ready].target <= ahead)) {
             f->ready = -1;        /* of no use: the worker renders another */
         }
         fit = ff;
         if ((f->front >= 0 && ff >= FIT_CLOSE) || drew) break;
-        if (!held) {
-            if (f->front >= 0) break;   /* shown late rather than waiting for the worker */
+        /* Under pub_lock: the layout (scaled or not) is read without work_lock. */
+        async = ra_workers(s) && ra_on(f);
+        if (async || !held) {
+            if (f->front >= 0) break;   /* shown late rather than drawn or waited for here */
+            if (async) {
+                none = 1;               /* nothing finished yet: a worker renders it */
+                break;
+            }
             fa_mutex_unlock(&f->pub_lock);
             fa_mutex_unlock(&s->cdg_lock);
             return RA_NEED_LOCK;
         }
-        /* Draw the frame for `time` here (no worker is rendering: the lock is held). */
+        /* One worker: draw the frame for `time` here (the lock is held). */
         f->ready = -1;
         k = f->front < 0 ? 0 : 1 - f->front;
         fa_mutex_unlock(&f->pub_lock);
@@ -2619,29 +2667,44 @@ static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t
         drew = 1;
     }
     /* The frame's description while the slots cannot change. */
-    sl = &f->slot[f->front];
-    partial = fa_history_since(&f->history, sl->revision, dst_revision, &drawn);
-    fr->revision = sl->revision;
-    fr->time = sl->time;
-    fr->render_ns = sl->render_ns;
-    fr->behind = fit < FIT_CLOSE;
-    fr->background_index = sl->bg;
-    fr->border_index = sl->border;
-    memcpy(fr->background, sl->background, sizeof(fr->background));
-    memcpy(fr->palette, sl->pal, sizeof(fr->palette));
-    memcpy(fr->transparency, sl->transparency, sizeof(fr->transparency));
-    fr->palette_revision = sl->palette_revision;
-    /* The next frame is wanted unless one is shown or on its way for `ahead`. */
-    need = f->ready < 0 && slot_fit(f, s, f->front, ahead) != FIT_EXACT;
+    if (none) {
+        sl = NULL;
+        partial = 1;
+        fa_rects_clear(&drawn);
+        nothing_new(dst_revision, fr);   /* palette and the rest: zero, as update_into cleared them */
+        need = f->ready < 0;
+    } else {
+        sl = &f->slot[f->front];
+        partial = fa_history_since(&f->history, sl->revision, dst_revision, &drawn);
+        fr->revision = sl->revision;
+        fr->time = sl->time;
+        fr->render_ns = sl->render_ns;
+        fr->behind = fit < FIT_CLOSE;
+        fr->background_index = sl->bg;
+        fr->border_index = sl->border;
+        memcpy(fr->background, sl->background, sizeof(fr->background));
+        memcpy(fr->palette, sl->pal, sizeof(fr->palette));
+        memcpy(fr->transparency, sl->transparency, sizeof(fr->transparency));
+        fr->palette_revision = sl->palette_revision;
+        /* The next frame is wanted unless one is shown or on its way for `ahead`. */
+        need = f->ready < 0 && slot_fit(f, s, f->front, ahead) != FIT_EXACT;
+    }
     f->ra_time = ahead_time;
     fa_mutex_unlock(&s->cdg_lock);
     /* Without work_lock another thread's setter may change the layout or free the
      * slots, both under pub_lock: the size is checked, and the copy made, under it.
      * A worker draws only into the other slot meanwhile. */
     if (!held && (dst_width != f->lay.buf_w || dst_height != f->lay.buf_h || dst_stride < f->stride)) {
+        int size_ok = dst_width == f->lay.buf_w && dst_height == f->lay.buf_h;
+        int quiet = !size_ok && ra_workers(s) && ra_on(f);   /* the layout read under pub_lock */
         fa_mutex_unlock(&f->pub_lock);
-        *result = dst_stride < f->stride && dst_width == f->lay.buf_w && dst_height == f->lay.buf_h
-                      ? FA_ERROR_INVALID_ARG : FA_ERROR_SIZE_MISMATCH;
+        if (quiet) {
+            /* A new layout is reported once a call finds the surface free (as for lyrics):
+             * until then nothing new, so the app's get_layout does not wait. */
+            nothing_new(dst_revision, fr);
+            return 0;
+        }
+        *result = size_ok ? FA_ERROR_INVALID_ARG : FA_ERROR_SIZE_MISMATCH;
         return 0;
     }
     if (!partial) {
@@ -2658,12 +2721,19 @@ static int ra_show(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t
     fa_mutex_unlock(&f->pub_lock);
     f->ra_last = time;
     if (need) ra_request(f, s);
+    if (none) return 0;
     fr->base_revision = partial ? dst_revision : 0;
     fr->dirty_count = (uint32_t)drawn.n;
     for (i = 0; i < drawn.n; i++) to_rect(drawn.r[i], &fr->dirty[i]);
     fa_rects_bounds(&drawn, b);
     to_rect(b, &fr->dirty_bounds);
     return 0;
+}
+
+void fa_surface_test_hold(fa_surface* surface, int hold)
+{
+    if (hold) fa_mutex_lock(&surface->work_lock);
+    else fa_mutex_unlock(&surface->work_lock);
 }
 
 /* ---- change events ---------------------------------------------------------------- */
@@ -2985,16 +3055,20 @@ static float stream_tempo(struct fa_stream* s)
     return (float)pow(LY_TEMPO_STEP, q);
 }
 
-/* Slot k's fit for `time`; caller holds pub_lock. */
-static int lyric_fit(const fa_cdg_surface* f, int k, fa_time time, float tempo)
+/* Slot k's fit for `time`; caller holds pub_lock. A frame of another tempo step does
+ * not fit, or with `loose` (workers render every frame) fits at best as a late one: it
+ * is shown, flagged behind, rather than nothing during a tempo ramp. */
+static int lyric_fit(const fa_cdg_surface* f, int k, fa_time time, float tempo, int loose)
 {
     const cdg_slot* sl;
+    int fit;
     if (k < 0) return FIT_NONE;
     sl = &f->slot[k];
-    if (!sl->revision || sl->layout_rev != f->ra_layout || sl->tempo != tempo) return FIT_NONE;
-    if (time == sl->time) return FIT_EXACT;
-    if (time > sl->time) return (uint64_t)time - (uint64_t)sl->time <= (uint64_t)LY_RA_CLOSE ? FIT_CLOSE : FIT_BEHIND;
-    return (uint64_t)sl->time - (uint64_t)time <= (uint64_t)(LY_RA_CLOSE / 2) ? FIT_CLOSE : FIT_AHEAD;
+    if (!sl->revision || sl->layout_rev != f->ra_layout || (sl->tempo != tempo && !loose)) return FIT_NONE;
+    if (time == sl->time) fit = FIT_EXACT;
+    else if (time > sl->time) fit = (uint64_t)time - (uint64_t)sl->time <= (uint64_t)LY_RA_CLOSE ? FIT_CLOSE : FIT_BEHIND;
+    else fit = (uint64_t)sl->time - (uint64_t)time <= (uint64_t)(LY_RA_CLOSE / 2) ? FIT_CLOSE : FIT_AHEAD;
+    return sl->tempo != tempo && fit > FIT_BEHIND ? FIT_BEHIND : fit;
 }
 
 /* Draws the frame for `time` into slot k. Caller holds work_lock; k is neither the
@@ -3029,7 +3103,7 @@ static void lyric_ra_job(fa_cdg_surface* f, struct fa_stream* s)
     if (fa_load32(&f->render_ahead) && f->slot[0].px && fa_lyric_ready_for(f->lyric, f->present_w, f->present_h) &&
         fa_lyric_layout_revision(f->lyric) == f->ra_layout) {
         fa_mutex_lock(&f->pub_lock);
-        if (f->front >= 0 && f->ready < 0) k = 1 - f->front;
+        if (f->ready < 0) k = f->front < 0 ? 0 : 1 - f->front;
         t = f->ra_time;
         fa_mutex_unlock(&f->pub_lock);
     }
@@ -3042,7 +3116,9 @@ static void lyric_ra_job(fa_cdg_surface* f, struct fa_stream* s)
 }
 
 /* update_into for a lyric surface with render-ahead (as ra_show for CD+G). `held`:
- * work_lock is held, so the layout is current and a frame can be drawn here. */
+ * work_lock is held, so the layout is current. With workers to render ahead
+ * (ra_workers) a frame is never drawn here, as for CD+G; with one worker it is drawn
+ * here when `held` and there is none that fits. */
 static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time time, uint8_t* dst, int32_t dst_stride,
                                  uint32_t dst_w, uint32_t dst_h, uint64_t dst_revision, int held, fa_surface_frame* fr)
 {
@@ -3050,7 +3126,7 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
     fa_rects copy;
     fa_time lead, ahead_time;
     float tempo = stream_tempo(s);
-    int i, fit, need, partial, b[4];
+    int i, fit, need, partial, b[4], none = 0, async = ra_workers(s);
     if (held) {
         fa_surface_layout lay;
         fa_result r;
@@ -3058,6 +3134,10 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
         r = fa_lyric_get_layout(f->lyric, f->present_w, f->present_h, &lay);
         if (r != FA_OK) return r;
         fa_store64(&f->layout_revision, (int64_t)lay.layout_revision);
+        if (lay.layout_revision != f->ra_layout) ra_forget(f);
+        /* Before new slots: a worker renders nothing for this layout until the app has
+         * a buffer of its size. */
+        if (dst_w != lay.width || dst_h != lay.height) return FA_ERROR_SIZE_MISMATCH;
         if (lay.layout_revision != f->ra_layout || !f->slot[0].px) {
             size_t size = (size_t)lay.width * (size_t)lay.height * 4;
             uint8_t *p0, *p1;
@@ -3079,29 +3159,30 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
             fa_mutex_unlock(&f->pub_lock);
         }
     }
-    /* The pace of the calls, as for CD+G. */
-    if (time <= f->ra_last) lead = 0;
-    else if ((uint64_t)time - (uint64_t)f->ra_last > (uint64_t)RA_LEAD_MAX) lead = RA_LEAD_DEFAULT;
-    else lead = time - f->ra_last;
+    lead = ra_lead(f, time, async);   /* as for CD+G */
     ahead_time = time > INT64_MAX - lead ? INT64_MAX : time + lead;
     fa_mutex_lock(&f->pub_lock);
     /* Without work_lock another thread's setter may have changed the slots (always
-     * under pub_lock): the caller takes the lock and comes back. */
+     * under pub_lock), or they are of a layout this thread has not seen yet: nothing
+     * new until it has (with one worker, the caller takes the lock and comes back). */
     if (!f->slot[0].px || dst_w != f->ra_w || dst_h != f->ra_h) {
         fa_mutex_unlock(&f->pub_lock);
-        return held ? FA_ERROR_SIZE_MISMATCH : FA_ERROR_BUSY;
+        if (!async) return FA_ERROR_BUSY;
+        nothing_new(dst_revision, fr);
+        return FA_OK;
     }
     if (dst_stride < (int32_t)f->ra_w * 4) {
         fa_mutex_unlock(&f->pub_lock);
         return FA_ERROR_INVALID_ARG;
     }
     for (;;) {
-        int ff = lyric_fit(f, f->front, time, tempo), rf = lyric_fit(f, f->ready, time, tempo), k;
+        int ff = lyric_fit(f, f->front, time, tempo, async), rf = lyric_fit(f, f->ready, time, tempo, async), k;
         if (rf != FIT_NONE && (rf > ff || (rf == ff && (rf == FIT_AHEAD ? f->slot[f->ready].time < f->slot[f->front].time
                                                      : f->slot[f->ready].time > f->slot[f->front].time)))) {
             f->front = f->ready;
             f->ready = -1;
             ff = rf;
+            ra_cost_add(f, f->slot[f->front].render_ns);
         } else if (f->ready >= 0 && !(rf == FIT_AHEAD && f->slot[f->ready].time <= ahead_time)) {
             f->ready = -1;        /* of no use: the worker renders another */
         }
@@ -3111,12 +3192,18 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
         if (f->front >= 0 &&
             (ff >= FIT_CLOSE || (ff == FIT_BEHIND && (uint64_t)time - (uint64_t)f->slot[f->front].time <= (uint64_t)RA_LEAD_MAX)))
             break;
+        if (async) {
+            /* Never drawn here: the frame there is (of another tempo step, too), else
+             * nothing new, while a worker renders the one wanted. */
+            if (f->front < 0) none = 1;
+            break;
+        }
         if (!held) {
             if (f->front >= 0 && ff != FIT_NONE) break;   /* shown late rather than waiting */
             fa_mutex_unlock(&f->pub_lock);
             return FA_ERROR_BUSY;                          /* the caller takes the lock and comes back */
         }
-        /* Draw the frame for `time` here: no worker is rendering (the lock is held). */
+        /* One worker: draw the frame for `time` here (the lock is held). */
         f->ready = -1;
         k = f->front < 0 ? 0 : 1 - f->front;
         fa_mutex_unlock(&f->pub_lock);
@@ -3129,6 +3216,15 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
         fit = FIT_EXACT;
         break;
     }
+    if (none) {
+        need = f->ready < 0;
+        f->ra_time = ahead_time;
+        fa_mutex_unlock(&f->pub_lock);
+        f->ra_last = time;
+        if (need) ra_request(f, s);
+        nothing_new(dst_revision, fr);
+        return FA_OK;
+    }
     sl = &f->slot[f->front];
     partial = fa_history_since(&sl->hist, sl->revision, dst_revision, &copy);
     fr->revision = sl->revision;
@@ -3137,7 +3233,8 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
     fr->render_ns = sl->render_ns;
     fr->behind = fit < FIT_CLOSE;
     fr->background_index = fr->border_index = -1;
-    need = f->ready < 0 && sl->time != ahead_time;
+    /* Also when the frame shown is of another tempo step, paused too. */
+    need = f->ready < 0 && (sl->tempo != tempo || sl->time != ahead_time);
     f->ra_time = ahead_time;
     if (!partial) {
         fa_rects_clear(&copy);
