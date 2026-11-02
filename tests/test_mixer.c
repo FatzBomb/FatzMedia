@@ -471,6 +471,49 @@ static void test_reverse_loop_late_and_off(void)
     free(idx);
 }
 
+/* Waits until the decoder has given everything it will (it stopped at the song's end). */
+static void wait_eof(fa_stream* s)
+{
+    int i;
+    for (i = 0; i < 2000 && !fa_load32(&s->eof); i++) fa_sleep_ms(1);
+}
+
+/* A deck loop set beyond CUE_OUT (reversed: below CUE_IN) after the decoder already
+ * stopped there is still reached: the decoder carries on past the cue marker. */
+static void test_loop_beyond_cue_end(void)
+{
+    fa_stream* s = playing_saw(200000);
+    int* idx = (int*)malloc(sizeof(int) * 40000), n = 0, j;
+    CHECK(s && idx);
+    CHECK_EQ(fa_stream_set_marker(s, FA_MARKER_CUE_OUT, 4000), FA_OK);
+    render_saw(s, 1024, idx, &n);
+    wait_eof(s);
+    CHECK(fa_load32(&s->eof));                             /* drained at CUE_OUT */
+    CHECK_EQ(fa_stream_set_loop_region(s, 3000, 6000), FA_OK);
+    render_saw(s, 10000, idx, &n);
+    j = first_jump(idx, n, 0);
+    CHECK_EQ(j, 6000);                                     /* through CUE_OUT to the out point */
+    CHECK_EQ(idx[j], 3000);
+    CHECK_EQ(first_jump(idx, n, j), 6000 + 3000);
+    fa_stream_close(s);
+
+    s = reversed_saw(200000, 200000);
+    n = 0;
+    CHECK(s);
+    CHECK_EQ(fa_stream_set_marker(s, FA_MARKER_CUE_IN, 196000), FA_OK);
+    render_saw(s, 1024, idx, &n);
+    wait_eof(s);
+    CHECK(fa_load32(&s->eof));                             /* drained at CUE_IN */
+    CHECK_EQ(fa_stream_set_loop_region(s, 194000, 198000), FA_OK);
+    render_saw(s, 10000, idx, &n);
+    j = first_jump_down(idx, n, 0);
+    CHECK_EQ(j, 6000);                                     /* down through CUE_IN to the in point */
+    CHECK_EQ(idx[j], 197999 % 4096);
+    CHECK_EQ(first_jump_down(idx, n, j), 6000 + 4000);
+    fa_stream_close(s);
+    free(idx);
+}
+
 /* Reversed, fa_stream_jump joins without a gap: a margin ahead of the mix, or where
  * playback (going down) reaches `at`; playback goes on down from there plus delta. */
 static void test_reverse_jump(void)
@@ -1262,6 +1305,7 @@ int main(void)
     RUN(test_reverse_loop_joins);
     RUN(test_reverse_loop_late_and_off);
     RUN(test_reverse_jump);
+    RUN(test_loop_beyond_cue_end);
     RUN(test_turn_instant);
     RUN(test_turn_in_loop);
     RUN(test_turn_smooth);

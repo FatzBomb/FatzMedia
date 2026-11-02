@@ -842,6 +842,33 @@ static void test_engaging_mid_play_is_smooth(void)
     free(out);
 }
 
+/* The stretcher's first output after it starts over (open, seek) stays at the input's
+ * level: on a steady sine its start used to reach up to 1.67x. Several start phases. */
+static void test_start_has_no_overshoot(void)
+{
+    static const fa_frames at[] = { 0, 37, 1000, 24071, 48000 + 55, 96000 + 211 };
+    fa_stream* s = open_wav(4 * RATE, sine440, FA_OPEN_DECODE_ONLY | FA_OPEN_NO_NORMALIZE);
+    float* buf = (float*)malloc((size_t)RATE * 2 * sizeof(float));
+    double worst = 0.0;
+    size_t k;
+    CHECK(s != NULL && buf != NULL);
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.25f), FA_OK);
+    for (k = 0; k < sizeof(at) / sizeof(at[0]); k++) {
+        fa_frames total = 0, got = 0, i;
+        double peak = 0.0;
+        if (k > 0) CHECK_EQ(fa_stream_seek(s, at[k]), FA_OK);
+        while (total < RATE / 10 && fa_stream_read(s, buf + total * 2, RATE / 10 - total, &got) == FA_OK && got > 0)
+            total += got;
+        CHECK(total >= RATE / 10);
+        for (i = 0; i < total * 2; i++) if (fabs(buf[i]) > peak) peak = fabs(buf[i]);
+        if (peak / 0.5 > worst) worst = peak / 0.5;
+    }
+    printf("  largest start level %.3fx the input\n", worst);
+    CHECK(worst < 1.06);
+    fa_stream_close(s);
+    free(buf);
+}
+
 static void test_loop_with_tempo_wraps(void)
 {
     fa_stream* s = open_attached(RATE, ramp_sig, FA_OPEN_LOOP);
@@ -1568,6 +1595,7 @@ int main(void)
     RUN(test_ramp_done_when_heard);
     RUN(test_scheduled_ramp_as_first_change);
     RUN(test_engaging_mid_play_is_smooth);
+    RUN(test_start_has_no_overshoot);
     RUN(test_loop_with_tempo_wraps);
     RUN(test_push_stream_tempo_clock);
     RUN(test_push_stream_tempo_timeline_jump);

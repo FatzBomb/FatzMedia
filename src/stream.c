@@ -2639,12 +2639,14 @@ fa_result fa_stream_set_loop_region(struct fa_stream* s, fa_frames in, fa_frames
         double head = mirror(s, (double)(fa_load64(&s->seek_base) + s->decoded));   /* as a source position */
         loop_view old = loop_view_of(s);
         fa_frames a, x, len = out - in, late = (fa_frames)(sr * FA_LOOP_LATE_MS / 1000.0);
-        int rev = reversed(s), old_loops = old.loops && old.end > 0;
+        int rev = reversed(s);
         int64_t played, write, j, margin = (int64_t)s->dev_rate * FA_LOOP_MARGIN_MS / 1000;
         fa_tmap* m = tmap_of(s);
-        /* Reversed, the turns are the in points, reached from above. */
-        if (!s->jumped_back && (rev ? (!old_loops || head > (double)old.back) && (!on || head > (double)in)
-                                    : (!old_loops || head < (double)old.end) && (!on || head < (double)out))) {
+        /* Reversed, the turns are the in points, reached from above. An old setting that does not loop
+         * ends there (CUE_OUT, reversed CUE_IN): a decoder already stopped at it never reaches a new turn
+         * beyond, so that is joined too. */
+        if (!s->jumped_back && (rev ? head > (double)old.back && (!on || head > (double)in)
+                                    : (old.end < 0 || head < (double)old.end) && (!on || head < (double)out))) {
             /* The decoder has not reached either setting's turn yet: it takes the new one there. */
             region_store(s, in, out);
             fa_mutex_unlock(&s->decode_lock);

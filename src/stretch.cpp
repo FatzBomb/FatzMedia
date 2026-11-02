@@ -56,6 +56,33 @@ struct ConstInterleaved {
     Channel operator[](int c) const { return Channel{ data + c, channels }; }
 };
 
+/* in[] with the `pad` frames before it mirrored from in[1..pad] (zero past `frames`):
+ * frame i is in[pad - i] below pad, in[i - pad] from there. */
+struct MirroredStart {
+    const float* data;
+    int channels, pad, frames;
+    struct Channel {
+        const float* data;
+        int channels, pad, frames;
+        float operator[](int i) const
+        {
+            int f = i < pad ? pad - i : i - pad;
+            return f < frames ? data[(size_t)f * (size_t)channels] : 0.0f;
+        }
+    };
+    Channel operator[](int c) const { return Channel{ data + c, channels, pad, frames }; }
+};
+
+/* An output whose samples are thrown away. */
+struct Discard {
+    float* sink;
+    struct Channel {
+        float* sink;
+        float& operator[](int) const { return *sink; }
+    };
+    Channel operator[](int) const { return Channel{ sink }; }
+};
+
 } // namespace
 
 struct fa_stretch {
@@ -108,8 +135,25 @@ extern "C" int fa_stretch_output_latency(const fa_stretch* s)
 
 extern "C" int fa_stretch_start(fa_stretch* s, const float* in, int frames)
 {
+    /* As Signalsmith's outputSeek, with two changes. Its zero padding before the start
+     * and the reversed pre-roll it adds back into the output made the first ~20 ms swell
+     * up to 1.7x the input's level on steady audio (an audible bump at every seek, attach,
+     * reverse turn and deck loop or jump join). The audio before the start is not at hand
+     * here, so the start is mirrored into it (the level carries on), and the pre-roll
+     * output is dropped. The next output still begins at in[0]. */
     try {
-        s->st.outputSeek(ConstInterleaved{ in, s->channels }, frames);
+        Stretcher& st = s->st;
+        const int ch = s->channels;
+        const int out_lat = st.outputLatency();
+        int surplus = frames - st.inputLatency(), head, pad;
+        float sink;
+        if (surplus < 0) surplus = 0;
+        head = frames - surplus;                 /* up to the first block's centre */
+        pad = st.seekLength() - head;            /* what seek() would fill with zeros */
+        if (pad < 0) pad = 0;
+        st.reset();
+        st.seek(MirroredStart{ in, ch, pad, frames }, pad + head, surplus / (double)out_lat);
+        st.process(ConstInterleaved{ in + (size_t)head * ch, ch }, surplus, Discard{ &sink }, out_lat);
     } catch (...) {
         return 0;
     }
