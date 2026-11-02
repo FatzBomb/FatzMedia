@@ -17,35 +17,26 @@ public sealed class AudioEngineSeamTests : IDisposable
 {
     private readonly string _karPath = Path.Combine(Path.GetTempPath(), $"fatzbomb-seam-{Guid.NewGuid():N}.kar");
 
-    public AudioEngineSeamTests() => File.WriteAllBytes(_karPath, StandardMidiFileReaderTests.CreateKaraokeFile());
+    public AudioEngineSeamTests() => File.WriteAllBytes(_karPath, []);
 
     public void Dispose() => File.Delete(_karPath);
 
     [Fact]
-    public void MidiLyrics_ComeFromTheFile_WhenTheEngineHasNoReader()
+    public void EngineWithoutTheReaderSeam_IsReadThroughItsSourceHandle_AsBefore()
     {
-        using PlaybackCoordinator coordinator = CreateCoordinator(new HandlelessAudioEngine(), new BassMidiLyricProvider());
+        // Handle 0 (no BASS channel) reads as no reader, as handle 0 did before the seam.
+        Assert.Null(PlaybackCoordinator.GetMidiEventReader(new TestAudioEngine()));
+        Assert.Null(PlaybackCoordinator.GetMidiEventReader(null));
 
+        using PlaybackCoordinator coordinator = CreateCoordinator(new TestAudioEngine(), new BassMidiLyricProvider());
         Assert.True(coordinator.OpenAudio(_karPath));
-
-        Assert.Single(coordinator.SubtitleTracks);
-        Assert.Contains(coordinator.Subtitle!.GetActiveCues(1.2), static cue => cue.Text.Contains("Hello world", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void MidiLyrics_ComeFromTheArchiveEntry_WhenTheEngineHasNoReader()
-    {
-        using PlaybackCoordinator coordinator = CreateCoordinator(new HandlelessAudioEngine(), new BassMidiLyricProvider());
-
-        Assert.True(coordinator.OpenAudio(new StandardMidiFileReaderTests.BytesArchiveEntry("pack/song.kar", StandardMidiFileReaderTests.CreateKaraokeFile())));
-
-        Assert.Single(coordinator.SubtitleTracks);
+        Assert.Empty(coordinator.SubtitleTracks);
     }
 
     [Fact]
     public void MidiLyrics_ComeFromTheEngineReader_WhenTheEngineHasOne()
     {
-        var reader = new RecordingMidiReader(StandardMidiFileReader.TryParse(StandardMidiFileReaderTests.CreateKaraokeFile())!);
+        var reader = new RecordingMidiReader(new KaraokeMidiReader());
         var engine = new HandlelessReaderAudioEngine(reader);
         using PlaybackCoordinator coordinator = CreateCoordinator(engine, new BassMidiLyricProvider());
 
@@ -94,7 +85,7 @@ public sealed class AudioEngineSeamTests : IDisposable
     [Fact]
     public void CueBuilder_ReadsInThePreSeamBassOrder()
     {
-        var reader = new RecordingMidiReader(StandardMidiFileReader.TryParse(StandardMidiFileReaderTests.CreateKaraokeFile())!);
+        var reader = new RecordingMidiReader(new KaraokeMidiReader());
 
         Assert.NotNull(MidiLyricCueBuilder.ExtractLyrics(reader, "song.kar", TimeSpan.FromSeconds(1)));
 
@@ -226,6 +217,34 @@ public sealed class AudioEngineSeamTests : IDisposable
     }
 
     /// <summary>Records the order of reads, which on BASS are the native calls.</summary>
+    /// <summary>
+    /// A small .kar as a MIDI reader would report it: 480 ticks per quarter note, 120 bpm until tick
+    /// 1920 then 240 bpm, positions in ticks.
+    /// </summary>
+    private sealed class KaraokeMidiReader : IMidiEventReader
+    {
+        public IReadOnlyList<MidiMark> GetMarks(MidiMarkKind kind) => kind switch
+        {
+            MidiMarkKind.Lyric =>
+            [
+                new MidiMark(960, 1, "Hel"), new MidiMark(1200, 1, "lo "), new MidiMark(1440, 1, "world"),
+                new MidiMark(2400, 1, "/Sec"), new MidiMark(2640, 1, "ond"),
+            ],
+            MidiMarkKind.Text => [new MidiMark(0, 1, "@KMIDI KARAOKE FILE"), new MidiMark(0, 1, "@TMy Song"), new MidiMark(0, 1, "@TThe Artist")],
+            MidiMarkKind.TrackName => [new MidiMark(0, 0, "Conductor")],
+            MidiMarkKind.Copyright => [new MidiMark(0, 0, "(c) 2026 Test")],
+            MidiMarkKind.KeySignature => [new MidiMark(0, 0, "-3 1")],
+            MidiMarkKind.TimeSignature => [new MidiMark(0, 0, "3/4 24 8")],
+            _ => [],
+        };
+
+        public IReadOnlyList<MidiTempoEvent> GetTempoEvents() => [new MidiTempoEvent(0, 500_000), new MidiTempoEvent(1920, 250_000)];
+
+        public double GetDurationSeconds() => 3.0;
+
+        public double PositionToSeconds(long position) => position <= 1920 ? position / 960.0 : 2.0 + ((position - 1920) / 1920.0);
+    }
+
     private sealed class RecordingMidiReader(IMidiEventReader inner) : IMidiEventReader
     {
         public List<string> Calls { get; } = [];

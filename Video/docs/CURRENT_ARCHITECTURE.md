@@ -281,7 +281,7 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam gets `StandardMidiFileReader`, which parses the file or archive entry in managed code. A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam is read through its `SourceHandle`, as before; a FatzAudio engine will implement the reader with FatzAudio's MIDI event API. A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
 - `MidiMetadataExtractor` (internal) reads, through the same reader, Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
@@ -1057,7 +1057,7 @@ the BASS engines with the BASS calls they made before:
   `BassEqualizerFilter`), `IAudioAnalysisOpenControl` and `IAudioTrimWindowProvider` (trim), and
   the normalization members of `IAudioEngine`.
 - `IMidiEventReaderSource` / `IMidiEventReader` (MIDI lyrics and karaoke metadata;
-  `BassMidiEventReader` on the source channel, or `StandardMidiFileReader` from the file).
+  `BassMidiEventReader` on the source channel).
 - `IAudioLevelSource` (what `AudioNormalizer` peak analysis and `AudioSilenceAnalyzer` read;
   `BassChannelLevelSource`).
 

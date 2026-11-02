@@ -36,7 +36,7 @@ internal readonly record struct MidiTempoEvent(long Position, int MicrosecondsPe
 /// Engine-neutral reader of the text, signature and tempo events of one MIDI source (037A slice 1).
 /// The lyric cue and karaoke metadata builders read MIDI only through it, so they need no audio
 /// engine handle. <see cref="BassMidiEventReader"/> reads an open BASS MIDI channel (today's path);
-/// <see cref="StandardMidiFileReader"/> reads the file itself.
+/// a FatzAudio engine will implement it with FatzAudio's MIDI event API (037A).
 /// </summary>
 /// <remarks>
 /// The builders call the members in a fixed order and each at most as often as they did on BASS
@@ -62,7 +62,7 @@ internal interface IMidiEventReader
 
 /// <summary>
 /// Audio-engine capability (037A slice 1): reads the MIDI events of the media the engine has open.
-/// An engine without it gets its MIDI lyrics from the file (<see cref="StandardMidiFileReader"/>).
+/// An engine without it is read through its BASS source handle, as before this seam.
 /// </summary>
 internal interface IMidiEventReaderSource
 {

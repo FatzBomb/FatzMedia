@@ -3,7 +3,7 @@
 Stage: 037A.1 - Seam, no behaviour change
 Date: 2026-11-01
 
-## Status: slice 1 implemented - pending manual smoke
+## Status: slice 1 implemented; owner smoke passed 2026-11-02 (findings below are older behaviour)
 
 Internal code no longer reads the BASS handles on `IAudioEngine` (`PlayHandle`, `SourceHandle`).
 Each use is behind a small internal seam that the BASS engines implement with exactly the BASS
@@ -43,12 +43,12 @@ Already handle-free before this slice, and confirmed with a handleless test engi
 
 ## Decisions
 
-- **Lyrics from the engine or the file.** An engine that implements `IMidiEventReaderSource`
+- **Lyrics from the engine's reader.** An engine that implements `IMidiEventReaderSource`
   reads the MIDI itself (the BASS engines: on their source channel, as before, including a null
-  reader for handle 0). An engine without it gets lyrics from the file or the archive entry the
-  player opened, through `StandardMidiFileReader` (managed SMF format 0/1/2 and RIFF RMID, tempo
-  map, SMPTE division; ticks as positions; text as UTF-8 when valid, else Latin-1; files over
-  16 MB are skipped). Today only the test doubles take the file path; on BASS nothing changes.
+  reader for handle 0). Any other engine is read through its `SourceHandle` with
+  `BassMidiEventReader`, exactly as before the seam. MIDI parsing is FatzAudio's job: a FatzAudio
+  engine will implement the reader with FatzAudio's MIDI event API (slice 2), so MediaControl has
+  no MIDI file parser of its own.
 - **Host providers keep the handle.** `IMidiLyricProvider` is public and unchanged. The built-in
   `BassMidiLyricProvider` also implements the internal `IMidiLyricReaderProvider`; a
   host-supplied provider that does not is still called with `Engine.SourceHandle`, as before.
@@ -62,10 +62,6 @@ Already handle-free before this slice, and confirmed with a handleless test engi
   `BassOutputWatchdog`, `AudioStreamManager` and the engines' own transport calls are the BASS
   implementations behind `IAudioEngine` and the seams above; the handle never leaves the BASS
   engines.
-- **Behaviour change for a hypothetical host engine.** A host that replaced the player's
-  `IAudioEngine` with its own BASS-backed engine and kept the built-in provider would now get
-  lyrics from the file instead of from its `SourceHandle`. The player creates its engines
-  itself, so no known host does this.
 
 ## Left on handles, and why
 
@@ -134,11 +130,30 @@ first three on Avalonia or WinForms):
 
 - `dotnet build FatzBomb.MediaControl.sln -c Release -p:EnableWindowsTargeting=true`: 0 warnings,
   0 errors.
-- Tests: Portable 1754 passed, Linux 110 passed (with `FATZBOMB_LINUX_FFMPEG_DIR`), Vulkan 102
-  passed, Avalonia 47 passed. New: `StandardMidiFileReaderTests`, `AudioEngineSeamTests`,
+- Tests: Portable 1743 passed, Linux 110 passed (with `FATZBOMB_LINUX_FFMPEG_DIR`), Vulkan 102
+  passed, Avalonia 47 passed. New: `AudioEngineSeamTests`,
   `AudioLevelSourceSeamTests` (in `FatzBomb.MediaControl.Tests`, linked into Portable). No
   existing test or assertion was changed.
 - `dotnet format --verify-no-changes`: clean. Boundary scripts (core, adapter, WPF, presentation
   parity): pass.
 - Not verified: anything that calls BASS (absent here), the Windows test project's run, WPF and
   D3D11.
+
+## Owner smoke, 2026-11-02 (Windows, WPF player)
+
+All eleven checks behaved as before: KAR, MIDI and RMI lyrics and metadata, pitch, tempo, loop
+and seek, KAR and MP3+CDG from a zip, normalization with the cache, trim on the second open, EQ,
+fades and the prepared-next transition, video in Audio mode, network audio. Three findings, none
+caused by this slice (the code involved is unchanged):
+
+- **31 Hz EQ band seems to do nothing.** The BASS_FX peaking band at 31 Hz is unchanged; little
+  music or playback hardware has much energy there. Re-check on FatzAudio's EQ in slice 2 with a
+  bass-heavy track; if it still does nothing, investigate the band's bandwidth.
+- **A video's audio was not normalized:** its quick and deep passes both reported gain exactly
+  1.000, which is what the FFmpeg peak scan gives when it reads no audio (peak 0 -> gain 1);
+  another video was normalized (0.904). A real bug in the video-audio scan (FFmpeg path), recorded
+  in ENGINEERING_ISSUES (ENG-041). It stays ours with FatzAudio, since video audio is decoded by
+  FFmpeg and pushed.
+- **Silence trim only from the second play:** the trim window is used only when a cached analysis
+  exists at open (ENG-040). The owner wants it analysed and applied on the first play; FatzAudio has
+  no silence analysis, so this is ours (or a request to FatzAudio).

@@ -440,12 +440,12 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
         try
         {
-            // 037A slice 1: the built-in provider reads MIDI through an engine-neutral reader (the
-            // engine's, or the file's); a host-supplied provider still gets the BASS source handle.
+            // 037A slice 1: the built-in provider reads MIDI through an engine-neutral reader; a
+            // host-supplied provider still gets the BASS source handle.
             IAudioEngine? engine = _session.Audio?.Engine;
             IReadOnlyList<SubtitleCue>? cues = _midiLyricProvider is IMidiLyricReaderProvider readerProvider
                 ? readerProvider.ExtractLyrics(
-                    GetMidiEventReader(engine, audioPath, archiveEntry),
+                    GetMidiEventReader(engine),
                     audioPath,
                     _karaokeTransitionDuration)
                 : _midiLyricProvider.ExtractLyrics(
@@ -471,12 +471,13 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
     /// <summary>
     /// The MIDI events of the open audio: from the engine when it reads them itself (the BASS
-    /// engines, on their source channel as before), else from the file or archive entry.
+    /// engines, on their source channel as before); for any other engine, its BASS source handle
+    /// as before this seam (null for 0). A FatzAudio engine will implement the reader itself.
     /// </summary>
-    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine, string audioPath, IArchiveEntryInfo? archiveEntry) => engine switch
+    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine) => engine switch
     {
         null => null,
         IMidiEventReaderSource source => source.GetMidiEventReader(),
-        _ => archiveEntry is not null ? StandardMidiFileReader.TryLoad(archiveEntry) : StandardMidiFileReader.TryLoad(audioPath),
+        _ => BassMidiEventReader.ForHandle(engine.SourceHandle),
     };
 }

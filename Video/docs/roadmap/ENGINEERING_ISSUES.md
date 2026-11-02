@@ -55,6 +55,19 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-041 - A video's audio is sometimes not normalized (peak scan reads nothing)
+
+Reported: 2026-11-02, owner smoke of 037A slice 1 (Windows, WPF player). One H.264 1080p60 video
+logged `VideoAudioEngine: Quick normalization complete, gain=1.000` and `Deep normalization
+complete, gain=1.000`; another video was normalized (0.904). `AudioNormalizer.CalculateGainFromPeak`
+returns exactly 1.0 for a peak of 0, and `NormalizationGainPolicy.QuickPassHeldBackBoost(0)` is
+false, which matches both lines: `FfmpegAudioReader` / `FfmpegAudioPeakScanner` most likely read no
+audio samples for that file (wrong or discarded stream, a decode error swallowed as silence, or an
+unsupported sample format), while playback itself had sound. Not caused by 037A slice 1 (the FFmpeg
+path is unchanged). Next: get the file's container and audio codec (`ffprobe`), reproduce with a
+similar file on Linux, and make an empty scan log a warning instead of passing as gain 1.0. This
+path stays ours after FatzAudio (video audio is decoded by FFmpeg and pushed).
+
 ### ENG-040 - Library gaps found while writing the user guide
 
 Reported: 2026-10-31, while writing `docs/site` (the DocFX user guide). Each was found by reading
