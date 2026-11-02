@@ -3036,10 +3036,17 @@ FA_API fa_result FA_CALL fa_surface_get_layout(fa_surface* surface, fa_surface_l
 
 /* LY_TEMPO_STEP: the tempo a lyric surface schedules with, in steps of 0.25%. During
  * a ramp, or a DJ sync, the stream's tempo moves every block; with the exact value
- * every slot misses (lyric_fit) and the timeline is scheduled again each frame. The
- * tempo only sets the animations' lengths (params_make), where 0.25% is at most a
- * millisecond or two of a scroll or page turn; the words' times are the stream's own. */
+ * the timeline would be scheduled again each frame. The tempo only sets the
+ * animations' lengths (params_make), where 0.25% is at most a millisecond or two of a
+ * scroll or page turn; the words' times are the stream's own.
+ * LY_TEMPO_FIT: a frame drawn at a tempo within 2% of the current one fits as one of
+ * the current tempo (lyric_fit), so render-ahead keeps working through a ramp: a
+ * worker's frame is about a frame and its render time old when shown, and a DJ-sync
+ * ramp of 10-30% a second moves the tempo up to 1-3% in 100 ms. 2% is at most 30 ms
+ * of a default 1.5 s scroll or 20 ms of a 1 s page turn, and the next frame is drawn
+ * at the current tempo. */
 #define LY_TEMPO_STEP 1.0025
+#define LY_TEMPO_FIT 1.02
 
 /* Read under tempo_lock alone: fa_stream_get_param takes api_lock, which a seek holds
  * across its prefill, and the render thread and workers would wait for it. */
@@ -3055,20 +3062,22 @@ static float stream_tempo(struct fa_stream* s)
     return (float)pow(LY_TEMPO_STEP, q);
 }
 
-/* Slot k's fit for `time`; caller holds pub_lock. A frame of another tempo step does
- * not fit, or with `loose` (workers render every frame) fits at best as a late one: it
- * is shown, flagged behind, rather than nothing during a tempo ramp. */
+/* Slot k's fit for `time`; caller holds pub_lock. A frame drawn at a tempo further
+ * than LY_TEMPO_FIT from `tempo` (a jump, not a ramp) does not fit, or with `loose`
+ * (workers render every frame) fits at best as a late one: it is shown, flagged
+ * behind, rather than nothing while a worker draws one at the new tempo. */
 static int lyric_fit(const fa_cdg_surface* f, int k, fa_time time, float tempo, int loose)
 {
     const cdg_slot* sl;
-    int fit;
+    int fit, far;
     if (k < 0) return FIT_NONE;
     sl = &f->slot[k];
-    if (!sl->revision || sl->layout_rev != f->ra_layout || (sl->tempo != tempo && !loose)) return FIT_NONE;
+    far = !((double)sl->tempo <= (double)tempo * LY_TEMPO_FIT && (double)tempo <= (double)sl->tempo * LY_TEMPO_FIT);
+    if (!sl->revision || sl->layout_rev != f->ra_layout || (far && !loose)) return FIT_NONE;
     if (time == sl->time) fit = FIT_EXACT;
     else if (time > sl->time) fit = (uint64_t)time - (uint64_t)sl->time <= (uint64_t)LY_RA_CLOSE ? FIT_CLOSE : FIT_BEHIND;
     else fit = (uint64_t)sl->time - (uint64_t)time <= (uint64_t)(LY_RA_CLOSE / 2) ? FIT_CLOSE : FIT_AHEAD;
-    return sl->tempo != tempo && fit > FIT_BEHIND ? FIT_BEHIND : fit;
+    return far && fit > FIT_BEHIND ? FIT_BEHIND : fit;
 }
 
 /* Draws the frame for `time` into slot k. Caller holds work_lock; k is neither the
@@ -3177,8 +3186,13 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
     }
     for (;;) {
         int ff = lyric_fit(f, f->front, time, tempo, async), rf = lyric_fit(f, f->ready, time, tempo, async), k;
+        /* Of the same time (paused), the one at the current tempo: a frame within
+         * LY_TEMPO_FIT fits as well, and the worker's would be dropped and asked for
+         * again at every call. */
         if (rf != FIT_NONE && (rf > ff || (rf == ff && (rf == FIT_AHEAD ? f->slot[f->ready].time < f->slot[f->front].time
-                                                     : f->slot[f->ready].time > f->slot[f->front].time)))) {
+                                                     : f->slot[f->ready].time > f->slot[f->front].time)) ||
+                               (rf == ff && f->slot[f->ready].time == f->slot[f->front].time &&
+                                f->slot[f->ready].tempo == tempo && f->slot[f->front].tempo != tempo))) {
             f->front = f->ready;
             f->ready = -1;
             ff = rf;
@@ -3193,7 +3207,7 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
             (ff >= FIT_CLOSE || (ff == FIT_BEHIND && (uint64_t)time - (uint64_t)f->slot[f->front].time <= (uint64_t)RA_LEAD_MAX)))
             break;
         if (async) {
-            /* Never drawn here: the frame there is (of another tempo step, too), else
+            /* Never drawn here: the frame there is (of another tempo, too), else
              * nothing new, while a worker renders the one wanted. */
             if (f->front < 0) none = 1;
             break;
@@ -3233,7 +3247,8 @@ static fa_result lyric_ra_update(fa_cdg_surface* f, struct fa_stream* s, fa_time
     fr->render_ns = sl->render_ns;
     fr->behind = fit < FIT_CLOSE;
     fr->background_index = fr->border_index = -1;
-    /* Also when the frame shown is of another tempo step, paused too. */
+    /* Also when the frame shown is of another tempo step (within LY_TEMPO_FIT, or
+     * not), paused too: the next one is drawn at the current tempo. */
     need = f->ready < 0 && (sl->tempo != tempo || sl->time != ahead_time);
     f->ra_time = ahead_time;
     if (!partial) {
