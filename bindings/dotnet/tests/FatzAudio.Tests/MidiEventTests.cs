@@ -135,6 +135,7 @@ public class MidiEventTests
         Assert.Empty(wav.GetMidiEvents());
         Assert.Throws<ArgumentOutOfRangeException>(() => wav.GetMidiEvents(track: -2));
         Assert.Throws<ArgumentOutOfRangeException>(() => wav.GetMidiEvents(type: (MidiEventType)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => wav.GetMidiEvents(type: (MidiEventType)(-1)));
     }
 
     [Fact]

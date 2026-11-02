@@ -274,7 +274,7 @@ public unsafe partial class AudioStream
         uint count = 0;
         int t = type is { } k ? (int)k : -1;
         if (track < -1) throw new ArgumentOutOfRangeException(nameof(track));
-        if (t < -1 || t > (int)MidiEventType.SysEx) throw new ArgumentOutOfRangeException(nameof(type));
+        if (type is { } u && (u < MidiEventType.NoteOff || u > MidiEventType.SysEx)) throw new ArgumentOutOfRangeException(nameof(type));
         // With the arguments checked, InvalidArgument can only mean "not a MIDI stream": empty, as documented.
         int r = NativeMethods.fa_stream_get_midi_events(Handle, track, t, null, 0, &count);
         if (r == (int)ErrorCode.InvalidArgument) return [];

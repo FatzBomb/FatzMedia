@@ -470,6 +470,9 @@ public sealed partial class DjMixer : IDisposable
         return l;
     }
 
+    /// <summary>A mic latency from the native struct: negative means no mic in that slot.</summary>
+    internal static TimeSpan? MicNs(long ns) => ns < 0 ? null : TimeConvert.FromNanoseconds(ns);
+
     /// <summary>What the mixer's outputs and mic inputs add up to now.</summary>
     public unsafe MixerLatency Latency
     {
@@ -480,8 +483,8 @@ public sealed partial class DjMixer : IDisposable
             var monitor = new TimeSpan?[2];
             for (int i = 0; i < 2; i++)
             {
-                input[i] = l.MicInput[i] < 0 ? null : TimeConvert.FromNanoseconds(l.MicInput[i]);
-                monitor[i] = l.MicMonitor[i] < 0 ? null : TimeConvert.FromNanoseconds(l.MicMonitor[i]);
+                input[i] = MicNs(l.MicInput[i]);
+                monitor[i] = MicNs(l.MicMonitor[i]);
             }
             return new MixerLatency(TimeConvert.FromNanoseconds(l.Master), TimeConvert.FromNanoseconds(l.Cue),
                 TimeConvert.FromNanoseconds(l.CueAlignment), input, monitor, (CueAlign)l.CueAlign);

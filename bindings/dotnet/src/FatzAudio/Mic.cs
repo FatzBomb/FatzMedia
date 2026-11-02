@@ -202,7 +202,7 @@ public sealed class Mic : IDisposable
         get
         {
             var l = _mixer.ReadLatency();
-            return Ns(l.MicInput[Index]);
+            return DjMixer.MicNs(l.MicInput[Index]) ?? TimeSpan.Zero;
         }
     }
 
@@ -212,11 +212,9 @@ public sealed class Mic : IDisposable
         get
         {
             var l = _mixer.ReadLatency();
-            return Ns(l.MicMonitor[Index]);
+            return DjMixer.MicNs(l.MicMonitor[Index]) ?? TimeSpan.Zero;
         }
     }
-
-    private static TimeSpan Ns(long ns) => ns < 0 ? TimeSpan.Zero : TimeConvert.FromNanoseconds(ns);
 
     internal nint NativeHandle => _handle.IsClosed ? 0 : _handle.DangerousGetHandle();
 
