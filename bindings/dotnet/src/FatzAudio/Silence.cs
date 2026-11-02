@@ -57,7 +57,8 @@ public sealed record SilenceOptions
             o.MinLengthMs = ToMilliseconds(options.MinLength);
             o.Mode = (uint)options.Mode;
             o.WindowMs = ToMilliseconds(options.Window);
-            o.MinSoundMs = options.MinSound >= TimeSpan.Zero ? ToMilliseconds(options.MinSound) : uint.MaxValue;
+            double sound = Math.Round(options.MinSound.TotalMilliseconds);
+            o.MinSoundMs = sound >= 0 && sound <= uint.MaxValue ? (uint)sound : uint.MaxValue; // 0 is valid here: out of range is rejected as too long
         }
         return o;
     }

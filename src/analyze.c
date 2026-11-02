@@ -79,6 +79,27 @@ static void silence_options_of(const fa_analysis_options* a, fa_silence_options*
     o->min_sound_ms = a->silence_min_sound_ms;
 }
 
+/* The settings of a silence result as fa_silence_options. */
+static void silence_options_of_info(const fa_silence* s, fa_silence_options* o)
+{
+    fa_silence_options_init(o);
+    o->threshold_db = s->threshold_db;
+    o->min_length_ms = s->min_length_ms;
+    o->mode = s->mode;
+    o->window_ms = s->window_ms;
+    o->min_sound_ms = s->min_sound_ms;
+}
+
+/* Sets the SILENCE settings of analysis options. */
+static void set_silence_options(fa_analysis_options* a, const fa_silence_options* o)
+{
+    a->silence_threshold_db = o->threshold_db;
+    a->silence_min_length_ms = o->min_length_ms;
+    a->silence_mode = o->mode;
+    a->silence_window_ms = o->window_ms;
+    a->silence_min_sound_ms = o->min_sound_ms;
+}
+
 static int read_options(const fa_analysis_options* in, fa_analysis_options* out)
 {
     fa_silence_options so;
@@ -678,12 +699,7 @@ static int covers(const fa_analysis* a, const fa_analysis_options* opt)
         fa_silence_options want, have;
         silence_options_of(opt, &want);
         if (!fa_silence_options_fix(&want)) return 0;
-        silence_options_of(opt, &have);
-        have.threshold_db = a->silence.info.threshold_db;
-        have.min_length_ms = a->silence.info.min_length_ms;
-        have.mode = a->silence.info.mode;
-        have.window_ms = a->silence.info.window_ms;
-        have.min_sound_ms = a->silence.info.min_sound_ms;
+        silence_options_of_info(&a->silence.info, &have);
         if (!fa_silence_options_same(&want, &have)) return 0;
     }
     return 1;
@@ -739,11 +755,9 @@ static fa_result run(const job* jin, fa_analysis** out)
             kinds |= a->kinds;
             /* Silence kept but not asked for: measured again at its own settings. */
             if (a->have_silence && !(jm.opt.kinds & FA_ANALYZE_SILENCE)) {
-                jm.opt.silence_threshold_db = a->silence.info.threshold_db;
-                jm.opt.silence_min_length_ms = a->silence.info.min_length_ms;
-                jm.opt.silence_mode = a->silence.info.mode;
-                jm.opt.silence_window_ms = a->silence.info.window_ms;
-                jm.opt.silence_min_sound_ms = a->silence.info.min_sound_ms;
+                fa_silence_options kept;
+                silence_options_of_info(&a->silence.info, &kept);
+                set_silence_options(&jm.opt, &kept);
             }
             free_parts(a);
             memset(a, 0, sizeof(*a));
@@ -876,11 +890,7 @@ fa_result fa_analysis_cached_silence(fa_stream* s, const fa_silence_options* opt
     memset(&j, 0, sizeof(j));
     fa_analysis_options_init(&j.opt);
     j.opt.kinds = FA_ANALYZE_SILENCE;
-    j.opt.silence_threshold_db = opt->threshold_db;
-    j.opt.silence_min_length_ms = opt->min_length_ms;
-    j.opt.silence_mode = opt->mode;
-    j.opt.silence_window_ms = opt->window_ms;
-    j.opt.silence_min_sound_ms = opt->min_sound_ms;
+    set_silence_options(&j.opt, opt);
     j.cache_only = 1;
     r = job_for_stream(s, &j);
     if (r != FA_OK) return FA_ERROR_NOT_FOUND;

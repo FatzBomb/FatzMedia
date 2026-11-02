@@ -524,6 +524,15 @@ static void test_rms_clicks(void)
     CHECK(detect(&f, &o, x, 7 * RATE, &r) == FA_OK);
     CHECK_EQ(r.info.first_audible, sec(4.0, RATE));
     CHECK_EQ(r.info.window_ms, 100);
+    {
+        /* At 11025 Hz a 50 ms window is 551 frames: four of them (2204 frames, not quite
+         * 200 ms) are still a 200 ms sound. */
+        fa_audio_format f11 = { FA_FORMAT_F32, 11025, 1, 0 };
+        for (i = 0; i < 11025; i++) x[i] = i >= 551 * 2 && i < 551 * 6 ? 0.5f : 0.0f;
+        CHECK(detect(&f11, NULL, x, 11025, &r) == FA_OK);
+        CHECK_EQ(r.info.first_audible, 551 * 2);
+        CHECK_EQ(r.info.last_audible, 551 * 6);
+    }
 }
 
 static void test_rms_fade_in(void)

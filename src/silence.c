@@ -92,7 +92,9 @@ void fa_silence_det_init(fa_silence_det* d, const fa_silence_options* opt, uint3
     if (opt->mode == FA_SILENCE_RMS) {
         d->block = (fa_frames)floor((double)opt->window_ms * rate / 1000.0 + 0.5);
         if (d->block < 1) d->block = 1;
-        d->min_sound = ms_frames(opt->min_sound_ms, rate);
+        /* On the block's scale (its frames are rounded), so a min_sound that is a whole
+         * number of windows takes that many windows at every rate. */
+        d->min_sound = ((fa_frames)opt->min_sound_ms * d->block + opt->window_ms - 1) / opt->window_ms;
         d->acc = (double*)calloc(channels ? channels : 1, sizeof(double));
         if (!d->acc) d->failed = 1;
     }
@@ -213,6 +215,18 @@ void fa_silence_det_skip_silent(fa_silence_det* d, fa_frames n)
     }
     d->bfill = n - whole;              /* zeros: acc stays as it is */
     d->pos += n;
+}
+
+/* The detector moves to `pos` with audio up to `last` and silence after it (nothing
+ * waiting in a block or a short run). */
+static void det_jump_silent(fa_silence_det* d, fa_frames last, fa_frames pos)
+{
+    d->last = last;
+    d->run_start = last;
+    d->pend_start = -1;
+    d->bfill = 0;
+    if (d->acc) memset(d->acc, 0, (size_t)(d->channels ? d->channels : 1) * sizeof(double));
+    d->pos = pos;
 }
 
 void fa_silence_det_finish(fa_silence_det* d)
@@ -441,12 +455,7 @@ static fa_result edge_scan(fa_decoder* dec, const fa_silence_options* opt, fa_si
         if (tail.last >= 0) {
             /* The leading regions as found, then the silence after the last audible
              * frame (the regions in between are not known). */
-            lead.last = tail.last;
-            lead.run_start = tail.last;
-            lead.pend_start = -1;
-            lead.bfill = 0;
-            if (lead.acc) memset(lead.acc, 0, (size_t)sc.ch * sizeof(double));
-            lead.pos = end > tail.pos ? end : tail.pos;
+            det_jump_silent(&lead, tail.last, end > tail.pos ? end : tail.pos);
             break;
         }
         hi = lo;

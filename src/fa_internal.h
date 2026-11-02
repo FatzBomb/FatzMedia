@@ -501,7 +501,7 @@ typedef struct fa_silence_det {
 } fa_silence_det;
 
 /* A finished result: what fa_analysis keeps and the cache stores. The settings are
- * in info (threshold_db, min_length_ms, mode, window_ms). */
+ * in info (threshold_db, min_length_ms, mode, window_ms, min_sound_ms). */
 typedef struct fa_silence_data {
     fa_silence info;             /* struct_size = sizeof(fa_silence) */
     fa_silence_region* regs;
@@ -509,9 +509,9 @@ typedef struct fa_silence_data {
 } fa_silence_data;
 
 /* Reads the caller's options over the defaults; 0 when they are out of range.
- * Leaves window_ms 0 for PEAK, so equal settings compare equal. */
+ * Leaves window_ms and min_sound_ms 0 for PEAK, so equal settings compare equal. */
 int fa_silence_options_read(const fa_silence_options* in, fa_silence_options* out);
-/* Checks the settings and sets window_ms to 0 for PEAK; 0 when out of range. */
+/* Checks the settings and sets window_ms and min_sound_ms to 0 for PEAK; 0 when out of range. */
 int fa_silence_options_fix(fa_silence_options* o);
 int fa_silence_options_same(const fa_silence_options* a, const fa_silence_options* b);
 void fa_silence_det_init(fa_silence_det* d, const fa_silence_options* opt, uint32_t rate, uint32_t channels);
