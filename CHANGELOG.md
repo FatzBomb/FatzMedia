@@ -367,6 +367,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   surfaces and a lyric surface at full effects, seeks and resizes, the longest call went from 355-570 ms to 24-31 ms.
   One worker: the caller still draws. .NET `UpdateInto` no longer takes the surface's lock, so a setter on another
   thread does not make it wait either. `tools/render-stress --events` adds seeks and resizes.
+- Lyric render-ahead keeps working through tempo ramps (karaoke timing step K3): a frame drawn at a tempo within 2% of
+  the current one now counts as on time instead of being flagged `behind` (a DJ-sync ramp moves the tempo by a step of
+  0.25% every few frames). Its scroll or page turn can be up to 2% longer or shorter; the words' times are exact. A jump
+  of more than 2% still shows the last frame flagged `behind` until a worker draws one at the new tempo.
+  `tools/render-stress --ramp` plays MediaControl's ramp (x1.0 to x1.3 over 3 s, back over 1 s).
 - The MIDI reverb (also the microphone reverb) runs about 1.45 times faster, with the same output to the bit: its delay
   lines are worked a block at a time instead of frame by frame. Opening a MIDI file (which measures the song's tail),
   seeking and playing MIDI all get cheaper with it.

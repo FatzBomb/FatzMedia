@@ -333,12 +333,21 @@ static void add_cdg(fa_stream* st, int stream, int render_ahead, uint32_t w, uin
     add_surface(f, stream, render_ahead, w, h, smooth >= 5 ? "cd+g traced" : "cd+g blend");
 }
 
+/* --ramp: the factor on a stream's tempo `ms` into the run (a 5 s cycle). */
+static double ramp_at(int64_t ms)
+{
+    int64_t c = ms % 5000;
+    if (c < 1000) return 1.0;
+    if (c < 4000) return 1.0 + 0.3 * (double)(c - 1000) / 3000.0;
+    return 1.3 - 0.3 * (double)(c - 4000) / 1000.0;
+}
+
 static void usage(void)
 {
     printf("fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N]\n"
            "                 [--size WxH] [--tempo T] [--soundfont file.sf2]\n"
            "                 [--extra N] [--latency ms] [--colours ms] [--lyrics N] [--threads]\n"
-           "                 [--events ms]\n"
+           "                 [--events ms] [--ramp]\n"
            "  Two streams with tempo T (default 1.05 and 0.95), two CD+G surfaces each\n"
            "  (traced and blended, every effect), drawn at 60 Hz on the null output.\n"
            "  With a soundfont, the second stream is MIDI with lyrics and has a lyric\n"
@@ -348,12 +357,16 @@ static void usage(void)
            "  stream; --threads draws each surface on a thread of its own; --latency sets the tempo latency (default 150 ms); --colours how\n"
            "  often the CD+G loads new colours, a full redraw (default 10000 ms). --events\n"
            "  ms: every ms, in turn, both streams seek (back, then forward) or every surface\n"
-           "  is resized to 3/4 and back. Run under taskset to pin the cores.\n");
+           "  is resized to 3/4 and back. --ramp: MediaControl's DJ-sync ramp on both\n"
+           "  streams, over and over: 1 s steady, tempo x1.0 to x1.3 over 3 s, back over 1 s.\n"
+           "  Run under taskset to pin the cores.\n");
 }
 
 int main(int argc, char** argv)
 {
-    int seconds = 30, ra = 1, burn = 0, extra = 0, latency = 0, colour_ms = 10000, lyrics = 1, events_ms = 0, i, k;
+    int seconds = 30, ra = 1, burn = 0, extra = 0, latency = 0, colour_ms = 10000, lyrics = 1, events_ms = 0, ramp = 0, i, k;
+    int64_t t_start, last_now[MAX_STREAMS];
+    double expect[MAX_STREAMS] = { 0, 0 };
     int64_t next_event = 0;
     uint32_t workers = 0, w = 3840, h = 2160;
     double tempo[MAX_STREAMS] = { 1.05, 0.95 };
@@ -366,7 +379,7 @@ int main(int argc, char** argv)
     buf wav, cdg;
     thr_t draw[MAX_SURF], burners[16];
     int per_surface = 0, ndraw;
-    int64_t wall0[MAX_STREAMS], t_end;
+    int64_t t_end;
     fa_time clock0[MAX_STREAMS];
     double max_lag[MAX_STREAMS] = { 0, 0 }, last_lag[MAX_STREAMS] = { 0, 0 };
     int moving[MAX_STREAMS] = { 0, 0 };
@@ -387,6 +400,7 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--lyrics") && i + 1 < argc) lyrics = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--threads")) per_surface = 1;
         else if (!strcmp(argv[i], "--events") && i + 1 < argc) events_ms = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--ramp")) ramp = 1;
         else { usage(); return 2; }
     }
     if (burn > 16) burn = 16;
@@ -454,8 +468,10 @@ int main(int argc, char** argv)
     for (i = 0; i < ndraw; i++) start(&draw[i], 1, per_surface ? (void*)&g_surf[i] : NULL);
 
     /* The clock should move at the tempo against wall time: lag is how far it fell
-     * behind that since it first moved. */
-    t_end = now_ns() + (int64_t)seconds * 1000000000;
+     * behind that since it first moved (with --ramp, against the tempo integrated over
+     * wall time, as the tempo set here). */
+    t_start = now_ns();
+    t_end = t_start + (int64_t)seconds * 1000000000;
     if (events_ms > 0) next_event = now_ns() + (int64_t)events_ms * 1000000;
     while (now_ns() < t_end) {
         if (events_ms > 0 && now_ns() >= next_event) {
@@ -478,15 +494,19 @@ int main(int argc, char** argv)
             fa_time c;
             fa_stream_stats ss;
             int64_t now = now_ns();
+            double t_now = tempo[i] * (ramp ? ramp_at((now - t_start) / 1000000) : 1.0);
+            if (ramp) fa_stream_set_param(st[i], FA_PARAM_TEMPO, (float)t_now);
             memset(&ss, 0, sizeof(ss));
             ss.struct_size = sizeof(ss);
             if (fa_stream_get_clock(st[i], &c) != FA_OK) continue;
             if (fa_stream_get_stats(st[i], &ss) == FA_OK && moving[i] && ss.buffered < min_buf[i]) min_buf[i] = ss.buffered;
             if (!moving[i]) {
-                if (c > 0 && now >= settle_until[i]) { moving[i] = 1; wall0[i] = now; clock0[i] = c; }
+                if (c > 0 && now >= settle_until[i]) { moving[i] = 1; last_now[i] = now; clock0[i] = c; expect[i] = 0; }
                 continue;
             }
-            last_lag[i] = (double)(now - wall0[i]) * tempo[i] / 1e6 - (double)(c - clock0[i]) / 1e6;
+            expect[i] += (double)(now - last_now[i]) * t_now / 1e6;
+            last_now[i] = now;
+            last_lag[i] = expect[i] - (double)(c - clock0[i]) / 1e6;
             if (last_lag[i] > max_lag[i]) max_lag[i] = last_lag[i];
         }
         sleep_ms(5);

@@ -13,7 +13,7 @@ graphics and MIDI are generated, so it needs no files.
 ```
 fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N] [--size WxH]
                  [--tempo T] [--soundfont file.sf2] [--extra N] [--latency ms] [--colours ms]
-                 [--lyrics N] [--threads] [--events ms]
+                 [--lyrics N] [--threads] [--events ms] [--ramp]
 ```
 
 | Option | Default | What it does |
@@ -31,6 +31,7 @@ fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N] [--
 | `--lyrics` | 1 | With a soundfont: how many lyric surfaces the second stream has (presets in turn) |
 | `--threads` | off | Draw every surface on a thread of its own, as MediaControl's slice-0 spike did |
 | `--events` | 0 (none) | Every so many ms, in turn: both streams seek (back to half way, or a quarter further on), or the drawing thread resizes every surface to 3/4 and back (`fa_surface_set_presentation_size`, then `fa_surface_get_layout` and new buffers on `FA_ERROR_SIZE_MISMATCH`) |
+| `--ramp` | off | MediaControl's DJ-sync ramp on both streams, over and over: 1 s steady, the tempo times 1.0 to 1.3 over 3 s, back over 1 s. The clock lag is then measured against the tempo set, so it includes the tempo latency (about 60 ms at the steepest part) |
 
 It prints, per stream, the dropouts (`fa_stream_stats.underruns`), how far the stream clock fell behind wall time
 times the tempo, and the least decoded audio seen ahead (`buffered`); per surface, the frames drawn, how many came back
@@ -86,3 +87,18 @@ are whole copies into freshly allocated buffers right after a resize). After a r
 `set_presentation_size` still waits for a render in progress (up to 22 ms here, up to a 2160p frame in general);
 `get_layout` right after `FA_ERROR_SIZE_MISMATCH` took under 0.1 ms. No run dropped out in either build.
 
+## Results (2026-11-02, step K3: lyric render-ahead through tempo ramps)
+
+Linux, 4 cores pinned, the TimGM6mb soundfont, `--threads --ramp --soundfont TimGM6mb.sf2`, 20 s each. Lyric surface
+only (the CD+G surfaces are keyed by pack position and do not change). "Before" is K2, where a lyric frame of another
+0.25% tempo step counted as late; "after" lets a frame within 2% of the current tempo count as on time.
+
+| Size | Build | Lyric frames shown late (`behind`) | Without a ramp |
+|---|---|---|---|
+| 1920x1080 | Before | 655 of 1201 (55%) | 18 of 1200 (2%) |
+| | After | 27 of 1200 (2%) | |
+| 3840x2160, every effect | Before | 1047 of 1201 (87%) | 333 of 1200 (28%) |
+| | After | 484-570 of 1200 (40-48%) | |
+
+At 1080p the ramp no longer shows: as many frames are late as without it. At 2160p the workers are 268% busy and what
+is left is frames late by time, not tempo (a 4% tolerance gave the same 42%). No run dropped out.

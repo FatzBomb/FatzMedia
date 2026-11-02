@@ -1503,9 +1503,9 @@ static void test_update_into_never_waits(void)
     CHECK_EQ(fr.time, shown);
     CHECK_EQ(settle_at(f, &t, 9000 * MS, &fr), FA_OK);
     CHECK(same_at(ref, &rt, 9000 * MS, &t));
-    /* A tempo ramp: by the time a worker's frame is shown the tempo has moved on a step
-     * (0.25%), so none fits exactly; they are shown anyway, flagged behind, never a
-     * frozen picture (nor one drawn here). */
+    /* A steep tempo ramp (1% a call, 60% a second): by the time a worker's frame is
+     * shown the tempo has moved on more than 2% (LY_TEMPO_FIT), so it does not fit; it
+     * is shown anyway, flagged behind, never a frozen picture (nor one drawn here). */
     {
         fa_time first_shown = -1, last_shown = -1;
         int k;
@@ -1534,6 +1534,119 @@ static void test_update_into_never_waits(void)
     CHECK(nothing_new(&fr, t.rev));
     CHECK_EQ(settle_at(f, &t, 9000 * MS, &fr), FA_OK);
     CHECK(same_at(ref, &rt, 9000 * MS, &t));
+    fa_surface_destroy(f);
+    fa_surface_destroy(ref);
+    free(t.px);
+    free(rt.px);
+    fa_stream_close(s);
+    free(song.d);
+}
+
+/* Render-ahead through tempo changes (MediaControl request 4). A frame drawn at a
+ * tempo within 2% of the current one fits as before, not behind; one of a tempo jump
+ * is shown, flagged behind, until a worker draws one at the new tempo. Then
+ * MediaControl's DJ-sync ramp (x1.0 to x1.3 over 3 s, back over 1 s) at 60 Hz:
+ * frames keep coming from the workers on time, not behind. */
+static void test_tempo_ramp(void)
+{
+    buf song = make_titled("@TBOA", "@TVOB", 0, 40);
+    fa_stream* s = open_buf(&song);
+    fa_lyric_style st;
+    fa_surface *f = NULL, *ref = NULL;
+    fa_surface_frame fr;
+    target t, rt;
+    holder h;
+    CHECK(s != NULL);
+    style(&st, FA_LYRIC_CLASSIC);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &f), FA_OK);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &ref), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(f, 640, 360), FA_OK);
+    CHECK_EQ(fa_surface_set_presentation_size(ref, 640, 360), FA_OK);
+    CHECK_EQ(fa_surface_set_render_ahead(f, 1), FA_OK);
+    CHECK(target_make(f, &t));
+    CHECK(target_make(ref, &rt));
+    CHECK_EQ(draw_at(f, &t, 5000 * MS, &fr), FA_OK);
+    CHECK_EQ(settle_at(f, &t, 5000 * MS, &fr), FA_OK);
+    CHECK(!fr.behind);
+    CHECK(same_at(ref, &rt, 5000 * MS, &t));
+    /* 1.5% faster: the frame there still fits (no worker can bring another). */
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.015f), FA_OK);
+    CHECK(hold_start(&h, f));
+    CHECK_EQ(draw_at(f, &t, 5000 * MS, &fr), FA_OK);
+    CHECK(!fr.behind);
+    CHECK_EQ(fr.time, 5000 * MS);
+    /* A jump to 1.05: the same frame, now flagged behind. */
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.05f), FA_OK);
+    CHECK_EQ(draw_at(f, &t, 5000 * MS, &fr), FA_OK);
+    CHECK(fr.behind);
+    CHECK_EQ(fr.time, 5000 * MS);
+    hold_end(&h);
+    /* A worker's frame at the new tempo follows. */
+    CHECK_EQ(settle_at(f, &t, 5000 * MS, &fr), FA_OK);
+    CHECK(!fr.behind);
+    CHECK(same_at(ref, &rt, 5000 * MS, &t));
+    /* Paused, 1% faster (within 2%): the worker's frame at the new tempo, of the same
+     * time, is shown, not dropped and rendered again at every call. At a time where an
+     * animation's length shows (the pictures at 1.05 and 1.06 differ). */
+    {
+        fa_time at = -1, x;
+        size_t size = (size_t)rt.stride * rt.lay.height;
+        uint8_t* was = (uint8_t*)malloc(size);
+        int k;
+        CHECK(was != NULL);
+        for (x = 1000 * MS; x < 20000 * MS && at < 0; x += 50 * MS) {
+            CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.05f), FA_OK);
+            CHECK_EQ(draw_at(ref, &rt, x, &fr), FA_OK);
+            memcpy(was, rt.px, size);
+            CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.06f), FA_OK);
+            CHECK_EQ(draw_at(ref, &rt, x, &fr), FA_OK);
+            if (memcmp(was, rt.px, size)) at = x;
+        }
+        free(was);
+        CHECK(at >= 0);
+        CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.05f), FA_OK);
+        CHECK_EQ(settle_at(f, &t, at, &fr), FA_OK);
+        CHECK(same_at(ref, &rt, at, &t));
+        CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.06f), FA_OK);
+        for (k = 0; k < 40; k++) {
+            CHECK_EQ(draw_at(f, &t, at, &fr), FA_OK);
+            CHECK(!fr.behind);
+            fa_sleep_ms(5);
+        }
+        CHECK(same_at(ref, &rt, at, &t));
+    }
+    {
+        int64_t start, now, next;
+        fa_time pos = 6000 * MS, first_shown = -1, last_shown = -1;
+        int frames = 0, behind = 0;
+        CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.0f), FA_OK);
+        CHECK_EQ(settle_at(f, &t, pos, &fr), FA_OK);
+        start = next = fa_monotonic_ns();
+        while ((now = fa_monotonic_ns()) - start < (int64_t)4000000000) {
+            double e = (double)(now - start) / 1e9;
+            double tempo = e < 3.0 ? 1.0 + 0.1 * e : 1.3 - 0.3 * (e - 3.0);
+            uint64_t before = t.rev;
+            CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, (float)tempo), FA_OK);
+            pos += (fa_time)(16666667.0 * tempo);
+            CHECK_EQ(draw_at(f, &t, pos, &fr), FA_OK);
+            if (!nothing_new(&fr, before)) {
+                frames++;
+                if (fr.behind) behind++;
+                /* Never a frame of later than now (a hair after, as when on time). */
+                CHECK(fr.time <= pos + 8333334);
+                if (first_shown < 0) first_shown = fr.time;
+                last_shown = fr.time;
+            }
+            next += 16666667;
+            while (fa_monotonic_ns() < next) fa_sleep_ms(1);
+        }
+        printf("    ramp: %d frames, %d behind\n", frames, behind);
+        CHECK(last_shown > first_shown);
+        /* Workers keep up at 640x360 (most frames on time); before, every frame of
+         * the ramp was of another tempo step, so behind. */
+        CHECK(behind * 2 < frames);
+    }
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.0f), FA_OK);
     fa_surface_destroy(f);
     fa_surface_destroy(ref);
     free(t.px);
@@ -1582,6 +1695,7 @@ int main(void)
     RUN(test_intro_stateless);
     RUN(test_render_ahead);
     RUN(test_update_into_never_waits);
+    RUN(test_tempo_ramp);
     free(g_song.d);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);
