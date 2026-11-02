@@ -55,6 +55,40 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-042 - Cached karaoke raster differed from an uncached one once on Windows CI
+
+Reported: 2026-11-02. `D3D11SubtitleTextRendererTests.RenderKaraoke_CachedPath_MatchesUncachedPixels`
+(ENG-039 P5-2) failed once on PR #45 (run 41408629494, attempt 1: "Cached raster pixels differ
+from an uncached raster" in the karaoke loop over frames 30, 45 and 90; which one was not reported) and passed on the re-run with no change. It
+cannot run in the Linux sandbox and has not reproduced since.
+
+Investigation (static, against Vortice 3.8.3): the frame inputs are pure (immutable style,
+position-only timing, no system or random state), cache keys carry every layout parameter
+(text, format, max width and height, alignment), cached layouts and brushes are never mutated,
+eviction after `Remove` during `foreach` is safe on .NET Core, and the render target's transform,
+antialias and text-rendering state are never changed after creation. No other code in the test
+process uses Direct2D or DirectWrite. The one way found for the cached path to emit pixels that are
+not the frame's drawing: Vortice's `ID2D1RenderTarget.EndDraw()` returns a `Result` instead of
+throwing, and the renderer discarded it (`_ = target.EndDraw()`). When Direct2D's flush fails
+(`D2DERR_RECREATE_TARGET`, out of memory under a loaded runner), the WIC bitmap keeps a partial
+frame or the previous frame's pixels, `CopyPixels` returns them as the new frame, and the cached
+target keeps being reused. A fresh renderer starts on a new target, so the two disagree; in the
+player it would be a stale or half-drawn lyric frame.
+
+Fix: `SubtitleTextRenderer` checks EndDraw; a failure releases the target (and its brushes) and
+the frame is drawn once more on a new one; a second failure throws with the HRESULT instead of
+returning wrong pixels. The test now compares every frame 30-90 instead of three, and its failure
+message names the frame, counts the differing pixels, gives their bounds, the maximum channel
+delta and sample BGRA values, and renders the frame with a second fresh renderer: if two fresh
+renderers disagree, Direct2D rasterization itself is not deterministic on that runner (then
+document it and compare with a tolerance justified by the reported delta); if they agree, the
+cached path drew something else.
+
+Status: fixed, pending Windows CI. Verified on Linux: the Windows test project builds (Release,
+`EnableWindowsTargeting=true`) and format is clean. Not verified: the test itself (Windows only).
+The EndDraw failure is the only mechanism found, not one observed, since the failing run left no
+evidence; if the test fails again, its message decides between the two outcomes above.
+
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 
 Reported: 2026-11-02, owner smoke of 037A slice 1. One video logged `Quick normalization complete,

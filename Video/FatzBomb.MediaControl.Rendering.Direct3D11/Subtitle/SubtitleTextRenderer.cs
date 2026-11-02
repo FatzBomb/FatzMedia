@@ -7,6 +7,7 @@ using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using SharpGen.Runtime;
 using Vortice.WIC;
 
 namespace FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
@@ -20,6 +21,9 @@ namespace FatzBomb.MediaControl.Rendering.Direct3D11.Subtitle;
 internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, KaraokeTextStyle? karaokeStyle = null) : ISubtitleRasterizer
 {
     private static readonly Func<int, Memory<byte>> AllocatePixels = static length => new byte[length];
+
+    // A frame whose EndDraw fails is drawn once more on a new render target (ENG-042).
+    private const int MaxFrameAttempts = 2;
 
     // Presentation may request a fresh cue from multiple scheduler paths; the coordinator serializes
     // calls, and the factory is multi-threaded to keep that usage valid if a future preview path is added.
@@ -40,6 +44,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
     private ID2D1RenderTarget? _target;
     private int _targetWidth;
     private int _targetHeight;
+    private Result _lastEndDrawResult;
     private bool _disposed;
 
     public SubtitleRasterResult Render(string text, int width, int height) =>
@@ -60,7 +65,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             BeginFrame();
             try
             {
-                return RenderTextFrame(text, width, height, rentPixels);
+                for (var attempt = 1; ; attempt++)
+                {
+                    if (RenderTextFrame(text, width, height, rentPixels) is { } raster)
+                        return raster;
+                    if (attempt == MaxFrameAttempts)
+                        throw CreateEndDrawException();
+                }
             }
             catch
             {
@@ -99,7 +110,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
             BeginFrame();
             try
             {
-                return RenderKaraokeFrame(timing, position, baseStyle, wipeStyle, width, height, rentPixels);
+                for (var attempt = 1; ; attempt++)
+                {
+                    if (RenderKaraokeFrame(timing, position, baseStyle, wipeStyle, width, height, rentPixels) is { } raster)
+                        return raster;
+                    if (attempt == MaxFrameAttempts)
+                        throw CreateEndDrawException();
+                }
             }
             catch
             {
@@ -115,7 +132,7 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
     }
 
-    private SubtitleRasterResult RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
+    private SubtitleRasterResult? RenderTextFrame(string text, int width, int height, Func<int, Memory<byte>> rentPixels)
     {
         IDWriteTextLayout layout = GetLayout(
             text,
@@ -163,12 +180,13 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
         }
 
         target.DrawTextLayout(origin, layout, textBrush);
-        _ = target.EndDraw();
+        if (!TryEndDraw(target))
+            return null;
 
         return CopyPixels(bounds, width, height, rentPixels);
     }
 
-    private SubtitleRasterResult RenderKaraokeFrame(
+    private SubtitleRasterResult? RenderKaraokeFrame(
         KaraokeCueTiming timing,
         TimeSpan position,
         KaraokeLayerStyle baseStyle,
@@ -380,10 +398,30 @@ internal sealed class SubtitleTextRenderer(SubtitleTextStyle? style = null, Kara
                 isEndCard: true);
         }
 
-        _ = target.EndDraw();
+        var drawn = TryEndDraw(target);
         allLayouts.Clear();
-        return CopyPixels(bounds, width, height, rentPixels);
+        return drawn ? CopyPixels(bounds, width, height, rentPixels) : null;
     }
+
+    /// <summary>
+    /// Ends the frame's draw. Direct2D reports a failed flush (for example
+    /// <c>D2DERR_RECREATE_TARGET</c> or out of memory) only through EndDraw's result; the bitmap
+    /// then holds a partial frame or the previous frame's pixels, and the cached render target must
+    /// not be used again. Returns false after releasing it, so the caller redraws on a new one.
+    /// </summary>
+    private bool TryEndDraw(ID2D1RenderTarget target)
+    {
+        Result result = target.EndDraw();
+        if (result.Success)
+            return true;
+
+        _lastEndDrawResult = result;
+        ReleaseTarget();
+        return false;
+    }
+
+    private InvalidOperationException CreateEndDrawException() =>
+        new($"Direct2D could not draw the subtitle frame: EndDraw failed with 0x{_lastEndDrawResult.Code:X8}.");
 
     private void DrawKaraokeLine(
         ID2D1RenderTarget target,
