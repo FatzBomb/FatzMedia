@@ -57,7 +57,7 @@ static int find_device(fa_engine* e, fa_device_type type, const char* part, fa_d
 static void list(fa_engine* e, fa_device_type type, const char* title)
 {
     uint32_t n = 0, i;
-    fa_device_info info;
+    fa_device_info info = { .struct_size = sizeof(info) };
     fa_device_count(e, type, &n);
     printf("%s:\n", title);
     for (i = 0; i < n; i++)
@@ -76,7 +76,7 @@ int main(int argc, char** argv)
     fa_mixer* mixer = NULL;
     fa_mic_config mc;
     fa_mic* mic = NULL;
-    fa_device_info out_info, mic_info;
+    fa_device_info out_info = { .struct_size = sizeof(out_info) }, mic_info = { .struct_size = sizeof(mic_info) };
     fa_result r;
 
     for (i = 1; i < argc; i++) {

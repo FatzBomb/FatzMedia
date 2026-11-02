@@ -16,7 +16,7 @@ static fa_engine* g_engine;
 static void play(fa_disc* d)
 {
     static float buf[4096 * 2];
-    fa_disc_toc toc;
+    fa_disc_toc toc = { .struct_size = sizeof(toc) };
     char text[256];
     int32_t t, k;
     if (fa_disc_get_toc(d, &toc) != FA_OK) return;
@@ -31,7 +31,7 @@ static void play(fa_disc* d)
         fa_open_options o;
         fa_stream* s = NULL;
         fa_frames got;
-        fa_cdg_info ci;
+        fa_cdg_info ci = { .struct_size = sizeof(ci) };
         fa_open_options_init(&o);
         o.flags = FA_OPEN_DECODE_ONLY;
         if (fa_stream_open_disc(g_engine, d, toc.first_track + t, &o, &s) != FA_OK) continue;

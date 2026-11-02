@@ -488,9 +488,9 @@ static fa_result font_open(fa_lyric* l, const fa_lyric_style* st, const void* da
 
 static fa_result read_song(fa_lyric* l, fa_stream* s)
 {
-    fa_midi_info mi;
-    fa_stream_info si;
-    fa_midi_text t;
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
+    fa_stream_info si = { .struct_size = sizeof(si) };
+    fa_midi_text t = { .struct_size = sizeof(t) };
     uint32_t i, n = 0, count = 0;
     fa_result r = fa_stream_get_midi_info(s, &mi);
     if (r != FA_OK) return r;

@@ -773,13 +773,8 @@ const fa_decoder_vtable fa_decoder_tracker = {
 
 FA_API fa_result FA_CALL fa_stream_get_tracker_info(fa_stream* stream, fa_tracker_info* out_info)
 {
-    uint32_t want;
-    if (!stream || !out_info || out_info->struct_size < offsetof(fa_tracker_info, duration) + sizeof(double) ||
-        !stream->tracker)
-        return FA_ERROR_INVALID_ARG;
-    want = out_info->struct_size < sizeof(fa_tracker_info) ? out_info->struct_size : (uint32_t)sizeof(fa_tracker_info);
-    memcpy(out_info, &stream->tracker->info, want);
-    out_info->struct_size = want;
+    if (!stream || !out_info || out_info->struct_size < sizeof(uint32_t) || !stream->tracker) return FA_ERROR_INVALID_ARG;
+    fa_copy_sized(out_info, &stream->tracker->info, sizeof(fa_tracker_info));
     return FA_OK;
 }
 

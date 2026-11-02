@@ -230,11 +230,14 @@ uint64_t fa_soundfont_key(const fa_soundfont* f)
 
 FA_API fa_result FA_CALL fa_soundfont_get_info(fa_soundfont* font, fa_soundfont_info* out_info)
 {
-    if (!font || !out_info) return FA_ERROR_INVALID_ARG;
-    memset(out_info, 0, sizeof(*out_info));
-    snprintf(out_info->name, sizeof(out_info->name), "%s", font->name);
-    out_info->preset_count = font->presets;
-    out_info->sample_memory = font->sample_memory;
+    fa_soundfont_info info;
+    if (!font || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    snprintf(info.name, sizeof(info.name), "%s", font->name);
+    info.preset_count = font->presets;
+    info.sample_memory = font->sample_memory;
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 
@@ -242,13 +245,17 @@ FA_API fa_result FA_CALL fa_soundfont_get_preset(fa_soundfont* font, uint32_t in
 {
     int bank = 0, program = 0;
     char raw[24];
-    if (out_preset) memset(out_preset, 0, sizeof(*out_preset));
-    if (!font || !out_preset || index >= font->presets || !tsf_get_preset_bank_number(font->bank, (int)index, &bank, &program))
+    fa_soundfont_preset p;
+    if (!font || !out_preset || out_preset->struct_size < sizeof(uint32_t) || index >= font->presets ||
+        !tsf_get_preset_bank_number(font->bank, (int)index, &bank, &program))
         return FA_ERROR_INVALID_ARG;
-    out_preset->bank = bank;
-    out_preset->program = program;
+    memset(&p, 0, sizeof(p));
+    p.struct_size = sizeof(p);
+    p.bank = bank;
+    p.program = program;
     snprintf(raw, sizeof(raw), "%s", tsf_get_presetname(font->bank, (int)index));
-    latin1_to_utf8(raw, out_preset->name, sizeof(out_preset->name));
+    latin1_to_utf8(raw, p.name, sizeof(p.name));
+    fa_copy_sized(out_preset, &p, sizeof(p));
     return FA_OK;
 }
 
@@ -2307,34 +2314,34 @@ fa_result fa_midi_decoder_open_events(fa_decoder* dec, fa_soundfont* font, uint3
 
 FA_API fa_result FA_CALL fa_stream_get_midi_info(fa_stream* stream, fa_midi_info* out_info)
 {
-    if (out_info) memset(out_info, 0, sizeof(*out_info));
-    if (!stream || !out_info || !stream->midi) return FA_ERROR_INVALID_ARG;
-    *out_info = stream->midi->info;
+    if (!stream || !out_info || out_info->struct_size < sizeof(uint32_t) || !stream->midi) return FA_ERROR_INVALID_ARG;
+    fa_copy_sized(out_info, &stream->midi->info, sizeof(fa_midi_info));
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_stream_get_midi_credits(fa_stream* stream, fa_midi_credits* out_credits)
 {
-    uint32_t size;
     if (!stream || !out_credits || !stream->midi || out_credits->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-    size = out_credits->struct_size < sizeof(fa_midi_credits) ? out_credits->struct_size : (uint32_t)sizeof(fa_midi_credits);
-    memcpy((char*)out_credits + sizeof(uint32_t), (const char*)&stream->midi->credits + sizeof(uint32_t), size - sizeof(uint32_t));
+    fa_copy_sized(out_credits, &stream->midi->credits, sizeof(fa_midi_credits));
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_stream_get_midi_text(fa_stream* stream, uint32_t index, fa_midi_text* out_text)
 {
     const midi_text* t;
-    if (out_text) memset(out_text, 0, sizeof(*out_text));
-    if (!stream || !out_text || !stream->midi) return FA_ERROR_INVALID_ARG;
+    fa_midi_text o;
+    if (!stream || !out_text || out_text->struct_size < sizeof(uint32_t) || !stream->midi) return FA_ERROR_INVALID_ARG;
     if (index >= stream->midi->ntexts) return FA_ERROR_NOT_FOUND;
     t = &stream->midi->texts[index];
-    out_text->frame = t->frame;
-    out_text->time = (fa_time)((double)t->frame * 1e9 / (double)stream->midi->rate + 0.5);
-    out_text->type = t->type;
-    out_text->flags = t->flags;
-    out_text->track = t->track;
-    copy_utf8(out_text->text, sizeof(out_text->text), t->text);
+    memset(&o, 0, sizeof(o));
+    o.struct_size = sizeof(o);
+    o.frame = t->frame;
+    o.time = (fa_time)((double)t->frame * 1e9 / (double)stream->midi->rate + 0.5);
+    o.type = t->type;
+    o.flags = t->flags;
+    o.track = t->track;
+    copy_utf8(o.text, sizeof(o.text), t->text);
+    fa_copy_sized(out_text, &o, sizeof(o));
     return FA_OK;
 }
 

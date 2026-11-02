@@ -340,10 +340,9 @@ FA_API fa_result FA_CALL fa_mixer_set_automix(fa_mixer* mixer, const fa_automix_
     fa_automix_options o;
     if (!mixer) return FA_ERROR_INVALID_ARG;
     if (options) {
-        if (options->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
         fa_automix_options_init(&o);
-        fa_copy_sized(&o, options, sizeof(o));
-        o.struct_size = sizeof(o);
+        if (fa_read_sized(&o, options, sizeof(o), FA_V1(fa_automix_options)) != FA_OK)
+            return FA_ERROR_INVALID_ARG;
         if (o.length < 500000000LL || o.length > 60000000000LL || !(o.length_beats == 0.0f || (o.length_beats >= 1.0f && o.length_beats <= 256.0f)) ||
             (o.flags & ~(uint32_t)AUTOMIX_FLAGS_ALL) || !(o.max_tempo_change >= 0.0f && o.max_tempo_change <= 0.5f) ||
             !(o.min_confidence >= 0.0f && o.min_confidence <= 1.0f) || o.restore_time < 0 || o.restore_time > 300000000000LL)

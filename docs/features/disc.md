@@ -22,7 +22,7 @@ FatzAudio plays audio CDs from the computer's optical drive, and disc images (`.
 fa_disc* disc;
 if (fa_disc_open(NULL, NULL, &disc) != FA_OK) { /* no drive */ }
 
-fa_disc_toc toc;
+fa_disc_toc toc = { .struct_size = sizeof(toc) };
 fa_result r = fa_disc_get_toc(disc, &toc);
 if (r == FA_ERROR_NO_DISC) { /* ask for a disc */ }
 

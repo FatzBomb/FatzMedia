@@ -85,7 +85,7 @@ static void test_callback_decode(void)
     fa_open_options o;
     ramp r = { 0, 1000, 1, 0 };
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[2 * 256];
     int64_t at = 0;
     int empty = 0, guard = 0;
@@ -94,6 +94,7 @@ static void test_callback_decode(void)
     o.flags = FA_OPEN_DECODE_ONLY;
     CHECK_EQ(fa_stream_open_callback(g_engine, &f, ramp_proc, &r, &o, &s), FA_OK);
     memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
     CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
     CHECK_EQ(info.format.sample_rate, 22050);
     CHECK_EQ(info.format.channels, 2);
@@ -264,7 +265,7 @@ static void test_capture_read(void)
     fa_capture_options c;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[2 * 512];
     fa_frames total = 0;
     int i;
@@ -277,6 +278,7 @@ static void test_capture_read(void)
     r = fa_stream_open_capture(g_engine, &c, &o, &s);
     CHECK_EQ(r, FA_OK);
     memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
     CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
     CHECK_EQ(info.format.channels, 2);
     CHECK_EQ(info.format.sample_rate, 48000);
@@ -310,7 +312,7 @@ static void test_capture_record(void)
     fa_open_options o;
     fa_stream* s = NULL;
     fa_encoder* e = NULL;
-    fa_encoder_status st;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
     int i;
     fa_open_options_init(&o);
     o.flags = FA_OPEN_DECODE_ONLY;
@@ -318,6 +320,7 @@ static void test_capture_record(void)
     CHECK_EQ(fa_encoder_create_path(path, NULL, &e), FA_OK);
     CHECK_EQ(fa_encoder_encode_stream(e, s), FA_OK);
     memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
     for (i = 0; i < 300; i++) {
         sleep_ms(10);
         CHECK_EQ(fa_encoder_get_status(e, &st), FA_OK);

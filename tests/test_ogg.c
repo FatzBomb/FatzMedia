@@ -149,7 +149,7 @@ static void test_opus_file(void)
 {
     static const int64_t targets[] = { 0, 1, 959, 960, 961, 30000, 90000, 48000, 95999, 7 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -175,7 +175,7 @@ static void test_vorbis_file(void)
 {
     static const int64_t targets[] = { 0, 1, 127, 128, 1024, 1025, 30000, 44100, 66149, 66000, 5 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -201,7 +201,7 @@ static void test_seek_skips_packets(void)
     static const int64_t vorbis_at[] = { 0, 4410, 4411, 9000, 22050, 44100, 70000, 88200, 100000, 128000, 3 };
     static const int64_t opus_at[] = { 0, 4800, 4801, 9600, 20000, 48000, 72000, 96001, 120000, 139000, 11 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -227,7 +227,7 @@ static void test_large_pages(void)
 {
     static const int64_t at[] = { 0, 1000, 44100, 70000, 100000, 131000, 5 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -244,7 +244,7 @@ static void test_large_pages(void)
 static void check_surround(const char* name, int lfe_coded)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     uint32_t c;
@@ -274,7 +274,7 @@ static void test_surround_order(void)
 static void test_two_audio_streams(void)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     CHECK_EQ(open_file("twotracks.ogg", -1, &s, &info), FA_OK);
@@ -304,7 +304,7 @@ static void test_chained_file(void)
 {
     static const int64_t targets[] = { 0, 66149, 66150, 66151, 80000, 110249, 110250, 110251, 130000, 154000, 1000 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -367,7 +367,7 @@ static int64_t append_link(uint8_t* out, size_t* n, const char* name, uint32_t s
     size_t size = 0, pos, first = 0, last = 0;
     uint8_t* d = load_file(name, &size);
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int64_t span = 0, len;
     uint32_t orig[16], seq[16];
     int r, nser = 0, j;
@@ -429,7 +429,7 @@ static void check_long_chain(chain_kind kind)
     int k = 0;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     double worst;
     CHECK(data != NULL);
@@ -489,7 +489,7 @@ static void test_single_page_links(void)
     size_t f, i;
     for (f = 0; f < sizeof(singles) / sizeof(singles[0]); f++) {
         fa_stream* s;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* full;
         int64_t n, at[3];
         double worst;
@@ -509,7 +509,7 @@ static void test_single_page_links(void)
         int k = 0;
         fa_open_options o;
         fa_stream* s = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* full;
         double worst;
         CHECK(data != NULL);
@@ -569,7 +569,7 @@ static void compare_forward_only(const char* name, uint32_t ch, int64_t slack)
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *a, *b;
     int64_t na, nb, i;
     CHECK(data != NULL);
@@ -640,7 +640,7 @@ static void test_opus_packets_pushed(void)
     fa_codec_params p;
     fa_open_options o;
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* out;
     int64_t n;
     int count, i;
@@ -706,7 +706,7 @@ static void exercise_memory(const uint8_t* data, size_t size, int32_t track)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[4096 * 8];
     int k;
     fa_open_options_init(&o);

@@ -52,7 +52,6 @@
 #define CDG_FX_SHARE (128 * 128)   /* output pixels of effects below which they are not shared */
 #define CDG_KEEP_BLOCK 24          /* screen pixels a block of a colour-only effects update spans */
 #define CDG_CHECKPOINT_PACKS (10 * FA_CDG_PACKS_PER_SECOND)
-#define CDG_CONFIG_V1_SIZE 20       /* fa_cdg_surface_config up to `flags` */
 #define CDG_ALL_FLAGS (FA_CDG_NO_BORDER | FA_CDG_TRANSPARENT | FA_CDG_PREMULTIPLIED | FA_CDG_SMOOTH | \
                        FA_CDG_TRANSPARENT_BACKGROUND_ONLY | FA_CDG_HIDE_UNTIL_PRESET | \
                        FA_CDG_BACKGROUND_COLOR | FA_CDG_BACKGROUND_OPACITY)
@@ -2187,23 +2186,26 @@ FA_API fa_result FA_CALL fa_stream_get_cdg_offset(fa_stream* stream, fa_time* ou
 FA_API fa_result FA_CALL fa_stream_get_cdg_info(fa_stream* stream, fa_cdg_info* out_info)
 {
     const fa_cdg_data* d;
-    if (!stream || !out_info) return FA_ERROR_INVALID_ARG;
-    memset(out_info, 0, sizeof(*out_info));
-    out_info->disc_parity = -1;
+    fa_cdg_info info;
+    if (!stream || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.disc_parity = -1;
     fa_mutex_lock(&stream->cdg_lock);
     d = stream->cdg;
     if (d) {
-        out_info->source = d->from_disc ? FA_CDG_SOURCE_DISC : FA_CDG_SOURCE_FILE;
-        out_info->pack_count = d->count;
-        out_info->checkpoint_interval = (fa_time)index_step(d->count) * 1000000000 / FA_CDG_PACKS_PER_SECOND;
-        if (d->index) out_info->checkpoint_count = (uint32_t)d->index->count;
+        info.source = d->from_disc ? FA_CDG_SOURCE_DISC : FA_CDG_SOURCE_FILE;
+        info.pack_count = d->count;
+        info.checkpoint_interval = (fa_time)index_step(d->count) * 1000000000 / FA_CDG_PACKS_PER_SECOND;
+        if (d->index) info.checkpoint_count = (uint32_t)d->index->count;
         if (d->from_disc) {
-            out_info->disc_parity = d->disc_parity;
-            out_info->disc_corrected = d->disc_corrected;
-            out_info->disc_dropped = d->disc_dropped;
+            info.disc_parity = d->disc_parity;
+            info.disc_corrected = d->disc_corrected;
+            info.disc_dropped = d->disc_dropped;
         }
     }
     fa_mutex_unlock(&stream->cdg_lock);
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 
@@ -2216,11 +2218,8 @@ FA_API fa_result FA_CALL fa_cdg_surface_create(fa_stream* stream, const fa_cdg_s
     if (out_surface) *out_surface = NULL;
     if (!stream || !out_surface) return FA_ERROR_INVALID_ARG;
     fa_cdg_surface_config_init(&c);
-    if (config) {
-        /* Apps built before the background fields pass the shorter struct. */
-        if (config->struct_size < CDG_CONFIG_V1_SIZE) return FA_ERROR_INVALID_ARG;
-        memcpy(&c, config, config->struct_size < sizeof(c) ? config->struct_size : sizeof(c));
-    }
+    if (config && fa_read_sized(&c, config, sizeof(c), FA_V1(fa_cdg_surface_config)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if ((uint32_t)c.pixel_format > FA_CDG_PIXELS_INDEXED8 || c.width > CDG_MAX_OUTPUT || c.height > CDG_MAX_OUTPUT ||
         (c.flags & ~(uint32_t)CDG_ALL_FLAGS) ||
         ((c.flags & FA_CDG_BACKGROUND_OPACITY) && c.background_opacity > 100))
@@ -2388,15 +2387,19 @@ static fa_time sync_state(fa_cdg_surface* f, struct fa_stream* s, fa_time time, 
     return time;
 }
 
-static fa_result surface_update(fa_cdg_surface* f, struct fa_stream* s, fa_time time, fa_cdg_frame* out)
+static fa_result surface_update(fa_cdg_surface* f, struct fa_stream* s, fa_time time, fa_cdg_frame* out_frame)
 {
     cdg_layout want;
+    fa_cdg_frame out;
     fa_result r;
+    memset(&out, 0, sizeof(out));
+    out.struct_size = sizeof(out);
     time = sync_state(f, s, time, &want);
     /* Drawing uses only this surface's state: other surfaces and loads need not wait. */
     r = layout_apply(f, &want);
-    if (r == FA_OK) r = render(f, out);
-    out->time = time;
+    if (r == FA_OK) r = render(f, &out);
+    out.time = time;
+    fa_copy_sized(out_frame, &out, sizeof(out));
     return r;
 }
 
@@ -2893,7 +2896,7 @@ FA_API fa_result FA_CALL fa_cdg_surface_update(fa_cdg_surface* surface, fa_cdg_f
     struct fa_stream* s;
     fa_time now;
     fa_result r;
-    if (!surface || !out_frame || surface->lyric) return FA_ERROR_INVALID_ARG;
+    if (!surface || !out_frame || out_frame->struct_size < sizeof(uint32_t) || surface->lyric) return FA_ERROR_INVALID_ARG;
     s = surface_hold(surface);
     if (!s) return FA_ERROR_INVALID_ARG; /* its stream was closed */
     r = fa_stream_get_clock(s, &now);
@@ -2908,7 +2911,7 @@ FA_API fa_result FA_CALL fa_cdg_surface_update_at(fa_cdg_surface* surface, fa_ti
 {
     struct fa_stream* s;
     fa_result r;
-    if (!surface || !out_frame || surface->lyric) return FA_ERROR_INVALID_ARG;
+    if (!surface || !out_frame || out_frame->struct_size < sizeof(uint32_t) || surface->lyric) return FA_ERROR_INVALID_ARG;
     s = surface_hold(surface);
     if (!s) return FA_ERROR_INVALID_ARG; /* its stream was closed */
     fa_mutex_lock(&surface->work_lock);
@@ -3403,15 +3406,13 @@ FA_API fa_result FA_CALL fa_cdg_surface_set_presentation(fa_surface* surface, co
         fa_mutex_unlock(&surface->work_lock);
         return FA_OK;
     }
-    if (presentation->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     fa_cdg_presentation_init(&p);
-    memcpy(&p, presentation, presentation->struct_size < sizeof(p) ? presentation->struct_size : sizeof(p));
+    if (fa_read_sized(&p, presentation, sizeof(p), FA_V1(fa_cdg_presentation)) != FA_OK) return FA_ERROR_INVALID_ARG;
     if ((p.scale != 0 && p.scale != 1) || (uint32_t)p.safety_zone > FA_SAFETY_SUPER ||
         !(p.auto_ignore_seconds >= 0.0f && p.auto_ignore_seconds <= 86400.0f) ||
         (p.super_centered != 0 && p.super_centered != 1) || p.padding > CDG_MAX_PADDING || p.smoothness < 0 ||
         p.smoothness > 10 || (p.edge_blend != 0 && p.edge_blend != 1) || (p.flags & ~(uint32_t)FA_CDG_TRANSPARENT_BORDER))
         return FA_ERROR_INVALID_ARG;
-    p.struct_size = (uint32_t)sizeof(p);
     fa_mutex_lock(&surface->work_lock);
     surface->pres = p;
     surface->has_pres = 1;
@@ -3448,11 +3449,8 @@ FA_API fa_result FA_CALL fa_surface_set_effects(fa_surface* surface, const fa_su
     if (!surface) return FA_ERROR_INVALID_ARG;
     memset(&e, 0, sizeof(e));
     if (effects) {
-        if (effects->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
         fa_surface_effects_init(&e);
-        memcpy(&e, effects, effects->struct_size < sizeof(e) ? effects->struct_size : sizeof(e));
-        e.struct_size = (uint32_t)sizeof(e);
-        if (!fa_fx_valid(&e)) return FA_ERROR_INVALID_ARG;
+        if (fa_read_sized(&e, effects, sizeof(e), FA_V1(fa_surface_effects)) != FA_OK || !fa_fx_valid(&e)) return FA_ERROR_INVALID_ARG;
     }
     fa_mutex_lock(&surface->work_lock);
     if (surface->lyric) fa_lyric_set_effects(surface->lyric, effects ? &e : NULL);
@@ -3506,14 +3504,12 @@ FA_API fa_result FA_CALL fa_cdg_surface_get_presentation(fa_surface* surface, fa
 
 /* ---- MIDI lyric surface ------------------------------------------------------------ */
 
-/* The app's style over Classic's (a shorter, older struct keeps Classic's tail). */
+/* The app's style over Classic's (fields past its struct_size keep Classic's). */
 static fa_result lyric_style_read(const fa_lyric_style* style, fa_lyric_style* out)
 {
     fa_lyric_style_init(out, FA_LYRIC_CLASSIC);
     if (!style) return FA_OK;
-    if (style->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-    memcpy(out, style, style->struct_size < sizeof(*out) ? style->struct_size : sizeof(*out));
-    out->struct_size = (uint32_t)sizeof(*out);
+    if (fa_read_sized(out, style, sizeof(*out), FA_V1(fa_lyric_style)) != FA_OK) return FA_ERROR_INVALID_ARG;
     out->effects.struct_size = (uint32_t)sizeof(out->effects);
     return fa_lyric_style_valid(out) ? FA_OK : FA_ERROR_INVALID_ARG;
 }
@@ -3521,7 +3517,7 @@ static fa_result lyric_style_read(const fa_lyric_style* style, fa_lyric_style* o
 FA_API fa_result FA_CALL fa_lyric_surface_create(fa_stream* stream, const fa_lyric_style* style, fa_surface** out_surface)
 {
     fa_lyric_style st;
-    fa_midi_info mi;
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
     fa_cdg_surface* f;
     fa_result r;
     if (out_surface) *out_surface = NULL;

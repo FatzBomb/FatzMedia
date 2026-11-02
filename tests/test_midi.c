@@ -249,8 +249,8 @@ static fa_stream* open_bytes_cp(const buf* b, int32_t code_page)
  * and "\" before a new paragraph. */
 static void lyric_string(fa_stream* s, char* out, size_t cap)
 {
-    fa_midi_info info;
-    fa_midi_text t;
+    fa_midi_info info = { .struct_size = sizeof(info) };
+    fa_midi_text t = { .struct_size = sizeof(t) };
     uint32_t i;
     out[0] = '\0';
     if (fa_stream_get_midi_info(s, &info) != FA_OK) return;
@@ -371,8 +371,8 @@ static void test_lyric_marks(void)
 {
     buf f = { 0 }, t = { 0 };
     fa_stream* s;
-    fa_midi_info info;
-    fa_midi_text x;
+    fa_midi_info info = { .struct_size = sizeof(info) };
+    fa_midi_text x = { .struct_size = sizeof(x) };
     char got[512];
     uint32_t i, chords = 0;
     mthd(&f, 1, 2, 480);
@@ -427,8 +427,8 @@ static void test_text_fallback(void)
 {
     buf f = { 0 }, t = { 0 };
     fa_stream* s;
-    fa_midi_info info;
-    fa_midi_text x;
+    fa_midi_info info = { .struct_size = sizeof(info) };
+    fa_midi_text x = { .struct_size = sizeof(x) };
     int pass, k;
     for (pass = 0; pass < 2; pass++) {
         int syllables = pass == 0 ? 20 : 10;
@@ -569,7 +569,7 @@ static void test_detect_and_length(void)
 {
     buf song = make_song();
     fa_stream* s = open_bytes(&song, FA_OPEN_DECODE_ONLY, NULL, NULL);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     uint32_t i;
     int listed = 0;
     CHECK(s);
@@ -595,7 +595,7 @@ static void test_rmid(void)
 {
     buf song = make_song(), riff = { 0 }, rmid = { 0 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     put(&riff, "RMID", 4);
     chunk(&riff, "data", &song);
     chunk(&rmid, "RIFF", &riff);
@@ -684,8 +684,8 @@ static void test_texts(void)
 {
     buf song = make_song();
     fa_stream* s = open_bytes(&song, FA_OPEN_DECODE_ONLY, NULL, NULL);
-    fa_midi_info info;
-    fa_midi_text t;
+    fa_midi_info info = { .struct_size = sizeof(info) };
+    fa_midi_text t = { .struct_size = sizeof(t) };
     uint32_t i, lyrics = 0;
     CHECK(s);
     CHECK_EQ(fa_stream_get_midi_info(s, &info), FA_OK);
@@ -716,8 +716,8 @@ static void test_karaoke(void)
 {
     buf f = { 0 }, t = { 0 };
     fa_stream* s;
-    fa_midi_info info;
-    fa_midi_text x;
+    fa_midi_info info = { .struct_size = sizeof(info) };
+    fa_midi_text x = { .struct_size = sizeof(x) };
     uint32_t i, n = 0;
     const char* want[] = { "Hel", "lo", "Caf\xc3\xa9", "again" };
     const uint32_t want_flags[] = { FA_MIDI_NEW_LINE | FA_MIDI_NEW_PARAGRAPH, 0, FA_MIDI_NEW_LINE, FA_MIDI_NEW_LINE | FA_MIDI_NEW_PARAGRAPH };
@@ -1046,7 +1046,7 @@ static void test_tempo_and_signature_marks(void)
 {
     buf f = { 0 }, t = { 0 };
     fa_stream* s;
-    fa_midi_info info;
+    fa_midi_info info = { .struct_size = sizeof(info) };
     fa_midi_mark x[8];
     uint32_t n = 0;
     mthd(&f, 0, 1, 480);
@@ -1163,7 +1163,7 @@ static void test_sf3(void)
 {
     buf ogg = read_file(FA_TEST_DATA_DIR "/ogg/tone.ogg"), sf3, melody = make_note(0), drums = make_note(9);
     fa_soundfont* font = NULL;
-    fa_soundfont_info fi;
+    fa_soundfont_info fi = { .struct_size = sizeof(fi) };
     fa_stream* s;
     float* x = (float*)calloc((size_t)RATE * 2, sizeof(float));
     CHECK(ogg.n > 1000);
@@ -1573,9 +1573,9 @@ static void test_format2(void)
 {
     buf f = { 0 }, t = { 0 };
     fa_stream* s;
-    fa_stream_info info;
-    fa_midi_info mi;
-    fa_midi_text x;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
+    fa_midi_text x = { .struct_size = sizeof(x) };
     uint32_t i, seen = 0;
     mthd(&f, 2, 2, 480);
     meta(&t, 0, 0x01, "@KMIDI KARAOKE FILE");
@@ -1618,7 +1618,7 @@ static void test_not_midi(void)
                         0x44, 0xAC, 0, 0, 0x88, 0x58, 1, 0, 2, 0, 16, 0, 'd', 'a', 't', 'a', 4, 0, 0, 0, 0, 0, 0, 0 };
     fa_stream* s = NULL;
     fa_open_options o;
-    fa_midi_info info;
+    fa_midi_info info = { .struct_size = sizeof(info) };
     int32_t v;
     fa_open_options_init(&o);
     o.flags = FA_OPEN_DECODE_ONLY;
@@ -1633,7 +1633,7 @@ static void test_soundfont_lifetime(void)
 {
     buf sf = make_sf2(), song = make_song();
     fa_soundfont* font = NULL;
-    fa_soundfont_info info;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
     fa_stream* s;
     float x[2048];
     CHECK_EQ(fa_soundfont_open_memory(sf.d, sf.n, &font), FA_OK);
@@ -1824,7 +1824,7 @@ static void test_loudness_scan(void)
     buf song = make_song();
     const char* path = "midi_scan_test.mid";
     FILE* f = fopen(path, "wb");
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     CHECK(f);
     fwrite(song.d, 1, song.n, f);
     fclose(f);
@@ -1853,8 +1853,8 @@ static void try_midi(const uint8_t* d, size_t n)
     fa_stream_seek(s, 1000);
     fa_stream_read(s, x, 4096, &got);
     {
-        fa_midi_info info;
-        fa_midi_text t;
+        fa_midi_info info = { .struct_size = sizeof(info) };
+        fa_midi_text t = { .struct_size = sizeof(t) };
         uint32_t i;
         fa_stream_get_midi_info(s, &info);
         for (i = 0; i < info.text_count && i < 64; i++) fa_stream_get_midi_text(s, i, &t);
@@ -2184,7 +2184,7 @@ static void test_dls_bank(void)
     for (with_type = 0; with_type < 2; with_type++) {
         buf dls = make_dls(with_type);
         fa_soundfont* f = NULL;
-        fa_soundfont_info info;
+        fa_soundfont_info info = { .struct_size = sizeof(info) };
         CHECK_EQ(fa_soundfont_open_memory(dls.d, dls.n, &f), FA_OK);
         free(dls.d);
         CHECK_EQ(fa_soundfont_get_info(f, &info), FA_OK);

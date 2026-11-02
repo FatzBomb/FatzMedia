@@ -172,7 +172,8 @@ public sealed partial class AudioEngine : IDisposable
         var list = new List<AudioDeviceInfo>((int)count);
         for (uint i = 0; i < count; i++)
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_info(h, (int)kind, i, out FaDeviceInfo info));
+            var info = NativeSized.New<FaDeviceInfo>();
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_device_get_info(h, (int)kind, i, ref info));
             list.Add(new AudioDeviceInfo(
                 NativeText.Read(info.Id),
                 NativeText.Read(info.Name),
@@ -806,7 +807,8 @@ public sealed partial class AudioEngine : IDisposable
     public Loudness ScanLoudness(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_scan_loudness_path(Handle, path, out FaLoudness l));
+        var l = NativeSized.New<FaLoudness>();
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_scan_loudness_path(Handle, path, ref l));
         return Loudness.From(l);
     }
 

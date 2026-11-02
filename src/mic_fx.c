@@ -86,48 +86,55 @@ void fa_mixer_fx_defaults(struct fa_mixer* m)
 
 FA_API fa_result FA_CALL fa_mixer_set_mic_effects(fa_mixer* mixer, const fa_mic_effects* effects)
 {
-    const fa_mic_effects* e = effects;
-    if (!mixer || !e || e->struct_size < sizeof(fa_mic_effects)) return FA_ERROR_INVALID_ARG;
-    if (bad(e->reverb_size) || bad(e->reverb_damping) || bad(e->echo_time_ms) || bad(e->echo_feedback) || bad(e->echo_tone))
+    fa_mic_effects e;
+    if (!mixer || !effects) return FA_ERROR_INVALID_ARG;
+    fa_mic_effects_init(&e);
+    if (fa_read_sized(&e, effects, sizeof(e), FA_V1(fa_mic_effects)) != FA_OK) return FA_ERROR_INVALID_ARG;
+    if (bad(e.reverb_size) || bad(e.reverb_damping) || bad(e.echo_time_ms) || bad(e.echo_feedback) || bad(e.echo_tone))
         return FA_ERROR_INVALID_ARG;
-    store_effects(mixer, e);
+    store_effects(mixer, &e);
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_mixer_get_mic_effects(fa_mixer* mixer, fa_mic_effects* out_effects)
 {
-    if (!mixer || !out_effects || out_effects->struct_size < sizeof(fa_mic_effects)) return FA_ERROR_INVALID_ARG;
-    out_effects->reverb_size = fa_load_float(&mixer->fx[MFX_REVERB_SIZE]);
-    out_effects->reverb_damping = fa_load_float(&mixer->fx[MFX_REVERB_DAMPING]);
-    out_effects->echo_time_ms = fa_load_float(&mixer->fx[MFX_ECHO_MS]);
-    out_effects->echo_feedback = fa_load_float(&mixer->fx[MFX_ECHO_FEEDBACK]);
-    out_effects->echo_tone = fa_load_float(&mixer->fx[MFX_ECHO_TONE]);
+    fa_mic_effects e;
+    if (!mixer || !out_effects || out_effects->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&e, 0, sizeof(e));
+    e.struct_size = sizeof(e);
+    e.reverb_size = fa_load_float(&mixer->fx[MFX_REVERB_SIZE]);
+    e.reverb_damping = fa_load_float(&mixer->fx[MFX_REVERB_DAMPING]);
+    e.echo_time_ms = fa_load_float(&mixer->fx[MFX_ECHO_MS]);
+    e.echo_feedback = fa_load_float(&mixer->fx[MFX_ECHO_FEEDBACK]);
+    e.echo_tone = fa_load_float(&mixer->fx[MFX_ECHO_TONE]);
+    fa_copy_sized(out_effects, &e, sizeof(e));
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_mixer_set_ducking(fa_mixer* mixer, const fa_ducking* ducking)
 {
-    fa_ducking off;
+    fa_ducking d;
     if (!mixer) return FA_ERROR_INVALID_ARG;
-    if (!ducking) {
-        fa_ducking_init(&off);
-        off.depth_db = 0.0f;
-        ducking = &off;
-    }
-    if (ducking->struct_size < sizeof(fa_ducking) || bad(ducking->depth_db) || bad(ducking->threshold_db))
-        return FA_ERROR_INVALID_ARG;
-    store_ducking(mixer, ducking);
+    fa_ducking_init(&d);
+    if (!ducking) d.depth_db = 0.0f;
+    else if (fa_read_sized(&d, ducking, sizeof(d), FA_V1(fa_ducking)) != FA_OK) return FA_ERROR_INVALID_ARG;
+    if (bad(d.depth_db) || bad(d.threshold_db)) return FA_ERROR_INVALID_ARG;
+    store_ducking(mixer, &d);
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_mixer_get_ducking(fa_mixer* mixer, fa_ducking* out_ducking)
 {
-    if (!mixer || !out_ducking || out_ducking->struct_size < sizeof(fa_ducking)) return FA_ERROR_INVALID_ARG;
-    out_ducking->depth_db = fa_load_float(&mixer->duck_depth);
-    out_ducking->threshold_db = fa_load_float(&mixer->duck_threshold);
-    out_ducking->attack = fa_load64(&mixer->duck_attack);
-    out_ducking->hold = fa_load64(&mixer->duck_hold);
-    out_ducking->release = fa_load64(&mixer->duck_release);
+    fa_ducking d;
+    if (!mixer || !out_ducking || out_ducking->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&d, 0, sizeof(d));
+    d.struct_size = sizeof(d);
+    d.depth_db = fa_load_float(&mixer->duck_depth);
+    d.threshold_db = fa_load_float(&mixer->duck_threshold);
+    d.attack = fa_load64(&mixer->duck_attack);
+    d.hold = fa_load64(&mixer->duck_hold);
+    d.release = fa_load64(&mixer->duck_release);
+    fa_copy_sized(out_ducking, &d, sizeof(d));
     return FA_OK;
 }
 

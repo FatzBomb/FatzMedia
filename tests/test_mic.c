@@ -1795,7 +1795,7 @@ static void test_cue_heard_position(void)
     for (blocks = 0; blocks < 2.5 * a.dev->rate / OUT_BLOCK; blocks++) {
         int64_t now, t[7];
         fa_time ca = 0, cb = 0, ya, yb;
-        fa_cdg_frame fa_, fb_;
+        fa_cdg_frame fa_ = { .struct_size = sizeof(fa_) }, fb_ = { .struct_size = sizeof(fb_) };
         sim_wait_decoded(&a);   /* no waiting (a 15 ms sleep on Windows) between `now` and the reads */
         sim_wait_decoded(&b);
         now = fa_monotonic_ns();

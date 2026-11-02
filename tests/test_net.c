@@ -1085,7 +1085,7 @@ static fa_stream* open_url(const char* path, uint32_t flags, fa_result* out_r)
 /* Decodes all of `s` (decode-only) into a malloc'd buffer. */
 static float* read_all(fa_stream* s, fa_frames* out_frames)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     size_t cap = 1 << 16, n = 0;
     float* buf;
     fa_stream_get_info(s, &info);
@@ -1775,8 +1775,8 @@ static void test_wav_over_http(void)
 {
     fa_result r;
     fa_stream* s = open_url("/tone.wav", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
-    fa_net_status st;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_net_status st = { .struct_size = sizeof(st) };
     fa_frames n = 0, i;
     float* got;
     char v[64];
@@ -1819,7 +1819,7 @@ static void test_mp3_over_http(void)
 {
     fa_result r;
     fa_stream* s = open_url("/tone.mp3", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0, i;
     float *got, *ref;
     double err = 0;
@@ -1865,7 +1865,7 @@ static void test_mp3_over_http(void)
 static void test_no_ranges_and_chunked(void)
 {
     fa_result r;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, i;
     float* got;
     fa_stream* s = open_url("/noranges.wav", FA_OPEN_DECODE_ONLY, &r);
@@ -1891,7 +1891,7 @@ static void test_no_ranges_and_chunked(void)
 static void test_redirect_and_errors(void)
 {
     fa_result r;
-    fa_net_status st;
+    fa_net_status st = { .struct_size = sizeof(st) };
     char url[256];
     fa_stream* s = open_url("/redirect", FA_OPEN_DECODE_ONLY, &r);
     CHECK_EQ(r, FA_OK);
@@ -1925,7 +1925,7 @@ static void test_redirect_and_errors(void)
     /* Not a web stream. */
     {
         fa_stream* m = NULL;
-        fa_metadata md;
+        fa_metadata md = { .struct_size = sizeof(md) };
         CHECK_EQ(fa_stream_open_memory(g_engine, g_wav, g_wav_n, NULL, &m), FA_OK);
         CHECK_EQ(fa_stream_get_net_status(m, &st), FA_ERROR_INVALID_ARG);
         CHECK_EQ(fa_stream_get_metadata(m, &md), FA_OK);
@@ -1937,7 +1937,7 @@ static void test_redirect_and_errors(void)
 static void test_reconnect_resumes(void)
 {
     fa_result r;
-    fa_net_status st;
+    fa_net_status st = { .struct_size = sizeof(st) };
     fa_frames n = 0, i;
     float* got;
     fa_stream* s;
@@ -2003,9 +2003,9 @@ static void test_icy_radio_decode_only(void)
 {
     fa_result r;
     fa_stream* s = open_url("/radio", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
-    fa_metadata md;
-    fa_net_status st;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_metadata md = { .struct_size = sizeof(md) };
+    fa_net_status st = { .struct_size = sizeof(st) };
     meta_log log;
     float buf[4096 * 2];
     fa_frames total = 0;
@@ -2084,7 +2084,7 @@ static void test_aac_over_http(void)
 {
     fa_result r;
     fa_stream* s = open_url("/tone.aac", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0, pos = 0, rd = 0;
     float *got, *ref, buf[2048 * 2];
     double err = 0;
@@ -2156,7 +2156,7 @@ static void check_asf_url(const char* path, const uint8_t* file, size_t file_n, 
 {
     fa_result r;
     fa_stream* s = open_url(path, FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0, i, rd = 0;
     float *got, *ref, buf[1024 * 2];
     uint32_t ch;
@@ -2204,8 +2204,8 @@ static void test_aac_radio(void)
 {
     fa_result r;
     fa_stream* s = open_url("/radio.aac", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
-    fa_metadata md;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_metadata md = { .struct_size = sizeof(md) };
     meta_log log;
     float buf[4096 * 2];
     fa_frames total = 0;
@@ -2237,7 +2237,7 @@ static void test_hls_aac(void)
 {
     fa_result r;
     fa_stream* s = open_url("/hls/aac.m3u8", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0, pos = 0, rd = 0;
     float *got, *ref, buf[4096 * 2];
     double err = 0;
@@ -2280,8 +2280,8 @@ static void test_ogg_radio_titles(void)
 {
     fa_result r;
     fa_stream* s = open_url("/oggradio", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
-    fa_metadata md;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_metadata md = { .struct_size = sizeof(md) };
     meta_log log;
     float buf[4096 * 2];
     fa_frames total = 0;
@@ -2322,7 +2322,7 @@ static void test_playlist_file_is_followed(void)
 {
     fa_result r;
     fa_stream* s = open_url("/station.pls", FA_OPEN_DECODE_ONLY, &r);
-    fa_metadata md;
+    fa_metadata md = { .struct_size = sizeof(md) };
     float buf[4096 * 2];
     fa_frames got = 0;
     CHECK_EQ(r, FA_OK);
@@ -2454,12 +2454,13 @@ static void test_encoder_close_during_stall(void)
     fa_stream* s = open_url("/hang.wav", FA_OPEN_DECODE_ONLY, &r);
     fa_encoder_output out;
     fa_encoder* e = NULL;
-    fa_encoder_status st;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
     int64_t t0;
     CHECK_EQ(r, FA_OK);
     if (!s) return;
     memset(&out, 0, sizeof(out));
     memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
     out.write = discard_write;
     CHECK_EQ(fa_encoder_create_output(&out, NULL, NULL, &e), FA_OK);
     CHECK_EQ(fa_encoder_encode_stream(e, s), FA_OK);
@@ -2487,8 +2488,8 @@ static void test_hls_vod(void)
 {
     fa_result r;
     fa_stream* s = open_url("/hls/master.m3u8", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
-    fa_net_status st;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_net_status st = { .struct_size = sizeof(st) };
     fa_frames n = 0, ref_n = 0;
     float *got, *ref;
     char url[256];
@@ -2542,7 +2543,7 @@ static void test_hls_ac3(void)
 {
     fa_result r;
     fa_stream* s = open_url("/hls/ac3.m3u8", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0;
     float *got, *ref;
     double err = 0;
@@ -2603,7 +2604,7 @@ static void test_https_optional(void)
     const char* url = getenv("FA_NET_HTTPS_URL");
     fa_stream* s = NULL;
     fa_open_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[4096 * 2];
     fa_frames got = 0;
     fa_result r;
@@ -3111,8 +3112,8 @@ static void test_hls_audio_groups(void)
 {
     fa_net_options net;
     fa_stream* s;
-    fa_stream_info info;
-    fa_net_status st;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_net_status st = { .struct_size = sizeof(st) };
     fa_result r;
     fa_frames n = 0;
     float* got;
@@ -3269,7 +3270,7 @@ static void test_clean_close_reconnects(void)
     fa_net_options net;
     fa_stream* s;
     fa_result r;
-    fa_net_status st;
+    fa_net_status st = { .struct_size = sizeof(st) };
     fa_frames n = 0, ref_n = 0;
     float* got;
     float* ref = read_all_memory(g_mp3, g_mp3_n, &ref_n);
@@ -3328,7 +3329,7 @@ static void test_download_tap(void)
     fa_net_options net;
     fa_stream* s;
     fa_result r;
-    fa_net_status st;
+    fa_net_status st = { .struct_size = sizeof(st) };
     tap_buf t;
     fa_frames n = 0;
     float* got;
@@ -3703,7 +3704,7 @@ static fa_stream* open_counted(const char* path, int* requests, fa_result* r)
  * and every sample. */
 static void check_same_as_memory(fa_stream* s, const uint8_t* file, size_t file_n)
 {
-    fa_stream_info info, ref_info;
+    fa_stream_info info = { .struct_size = sizeof(info) }, ref_info = { .struct_size = sizeof(ref_info) };
     fa_stream* m = NULL;
     fa_open_options o;
     fa_frames n = 0, ref_n = 0, i;
@@ -3734,7 +3735,7 @@ static void test_fmp4_indexed_open(void)
     for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
         fa_result r;
         fa_stream* s;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         int requests = 0;
         frag_index(cases[c].sidx, cases[c].mfra);
         s = open_counted("/frag.m4a", &requests, &r);
@@ -3871,7 +3872,7 @@ static void test_mkv_cues_at_end(void)
     fa_result r;
     int requests = 0;
     fa_stream* s = open_counted("/big.mkv", &requests, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     CHECK_EQ(r, FA_OK);
     if (!s) return;
     fa_stream_get_info(s, &info);
@@ -3929,7 +3930,7 @@ static void test_hls_fmp4(void)
 {
     fa_result r;
     fa_stream* s = open_url("/hls/fmp4.m3u8", FA_OPEN_DECODE_ONLY, &r);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames n = 0, ref_n = 0, i;
     float *got, *ref;
     CHECK_EQ(r, FA_OK);

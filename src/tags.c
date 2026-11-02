@@ -702,7 +702,7 @@ FA_API fa_result FA_CALL fa_stream_get_tags(fa_stream* stream, uint32_t flags, f
         }
     }
     if (stream->midi && !tags_have_format(t, FA_TAG_FORMAT_MIDI)) {
-        fa_midi_info mi;
+        fa_midi_info mi = { .struct_size = sizeof(mi) };
         if (fa_stream_get_midi_info(stream, &mi) == FA_OK) {
             collect_text(&t->sink, FA_TAG_FORMAT_MIDI, "TITLE", mi.title);
             collect_text(&t->sink, FA_TAG_FORMAT_MIDI, "ARTIST", mi.artist);
@@ -724,6 +724,7 @@ FA_API fa_result FA_CALL fa_stream_get_tags(fa_stream* stream, uint32_t flags, f
             free(msg);
         }
     }
+    t->info.struct_size = sizeof(t->info);
     if (!(flags & FA_TAGS_NO_INFO) && fa_stream_get_info(stream, &t->info) == FA_OK) t->have_info = 1;
     if (r != FA_OK) { fa_tags_close(t); return r; }
     *out_tags = t;
@@ -779,9 +780,8 @@ FA_API fa_result FA_CALL fa_tags_get_cover(const fa_tags* tags, fa_tag_picture* 
 
 FA_API fa_result FA_CALL fa_tags_get_info(const fa_tags* tags, fa_stream_info* out_info)
 {
-    if (out_info) memset(out_info, 0, sizeof(*out_info));
-    if (!tags || !out_info) return FA_ERROR_INVALID_ARG;
+    if (!tags || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     if (!tags->have_info) return FA_ERROR_NOT_FOUND;
-    *out_info = tags->info;
+    fa_copy_sized(out_info, &tags->info, sizeof(tags->info));
     return FA_OK;
 }

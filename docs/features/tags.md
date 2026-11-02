@@ -72,7 +72,7 @@ printf("%s - %s (%s, track %s)\n",
        fa_tags_get(tags, FA_TAG_ARTIST), fa_tags_get(tags, FA_TAG_TITLE),
        fa_tags_get(tags, FA_TAG_ALBUM), fa_tags_get(tags, FA_TAG_TRACK));
 
-fa_stream_info info;
+fa_stream_info info = { .struct_size = sizeof(info) };
 if (fa_tags_get_info(tags, &info) == FA_OK)
     printf("%s, %u Hz, %u ch, %.1f s, %u kbps, %lld bytes\n", info.codec,
            info.format.sample_rate, info.format.channels, info.duration / 1e9,

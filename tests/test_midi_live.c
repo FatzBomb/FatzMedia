@@ -37,7 +37,7 @@ static float* read_frames(fa_stream* s, fa_frames frames, fa_frames piece)
 
 static fa_frames length_of(fa_stream* s)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     if (fa_stream_get_info(s, &info) != FA_OK) return -2;
     return info.length_frames;
 }
@@ -462,7 +462,7 @@ static void test_open_args(void)
     fa_open_options o;
     fa_stream* s = (fa_stream*)1;
     fa_midi_event e = ev(0, FA_MIDI_EVENT_NOTE_ON, 0, 60, 100);
-    fa_midi_info info;
+    fa_midi_info info = { .struct_size = sizeof(info) };
     uint32_t n = 9;
     fa_frames len = 0;
     fa_open_options_init(&o);

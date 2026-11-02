@@ -88,7 +88,7 @@ static void exercise(const uint8_t* data, size_t size, int32_t track)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     static float buf[32768];   /* any channel count up to 32768 */
     int k;
     fa_open_options_init(&o);

@@ -47,7 +47,7 @@ static void draw(fa_surface* f, const uint8_t* h, fa_time last, size_t draws)
     static uint8_t buf[4 << 20];
     fa_surface_layout lay;
     fa_surface_frame fr;
-    fa_cdg_frame cf;
+    fa_cdg_frame cf = { .struct_size = sizeof(cf) };
     uint64_t rev = 0;
     size_t i;
     for (i = 0; i < draws && i < sizeof(when) / sizeof(when[0]); i++) {

@@ -67,6 +67,7 @@ static int decode(const char* name, decoded* d)
     int64_t cap = 1 << 14;
     uint32_t ch;
     memset(d, 0, sizeof(*d));
+    d->info.struct_size = sizeof(d->info);
     fa_open_options_init(&o);
     o.flags = FA_OPEN_DECODE_ONLY;
     snprintf(path, sizeof(path), "%s/aac/%s", FA_TEST_DATA_DIR, name);
@@ -208,7 +209,7 @@ static void test_seek_matches_straight_decode(void)
         char path[512];
         fa_open_options o;
         fa_stream* s = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* full;
         float* p;
         int64_t n = 0, cap = 1 << 15, i;

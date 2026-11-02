@@ -265,7 +265,7 @@ static void check_decodes(buf media, const char* codec, const char* container, u
 {
     fa_open_options o = decode_only();
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int nonzero = 0;
     fa_result r = fa_stream_open_memory(g_engine, media.p, media.n, &o, &s);
     free(media.p);
@@ -362,6 +362,67 @@ static void test_wav_sample_formats(void)
     }
 }
 
+/* The struct_size rule. Input structs: shorter than their first layout is refused,
+ * a longer one (a newer header) is read up to ours. Output structs: filled up to the
+ * caller's struct_size, which then says how much was filled; 0 is refused. */
+static void test_struct_sizes(void)
+{
+    buf media = make_wav(44100, 2, 4410);
+    fa_open_options o = decode_only();
+    struct { fa_open_options o; uint32_t later[4]; } newer;
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_stream* s = NULL;
+    fa_stream_info info;
+    fa_device_info dev;
+    fa_loudness l;
+
+    /* Inputs. */
+    o.struct_size = (uint32_t)offsetof(fa_open_options, mime_hint);       /* before V1's end */
+    CHECK_EQ(fa_stream_open_memory(g_engine, media.p, media.n, &o, &s), FA_ERROR_INVALID_ARG);
+    CHECK(s == NULL);
+    o.struct_size = (uint32_t)(offsetof(fa_open_options, mime_hint) + sizeof(o.mime_hint));   /* V1 */
+    CHECK_EQ(fa_stream_open_memory(g_engine, media.p, media.n, &o, &s), FA_OK);
+    fa_stream_close(s);
+    s = NULL;
+    memset(&newer, 0xFF, sizeof(newer));
+    newer.o = decode_only();
+    newer.o.struct_size = sizeof(newer);
+    CHECK_EQ(fa_stream_open_memory(g_engine, media.p, media.n, &newer.o, &s), FA_OK);
+    fa_stream_close(s);
+    s = NULL;
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.struct_size = 4;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_ERROR_INVALID_ARG);
+    CHECK(e == NULL);
+    cfg.struct_size = 0;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_ERROR_INVALID_ARG);
+
+    /* Outputs. */
+    o = decode_only();
+    CHECK_EQ(fa_stream_open_memory(g_engine, media.p, media.n, &o, &s), FA_OK);
+    memset(&info, 0x55, sizeof(info));
+    info.struct_size = 0;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_ERROR_INVALID_ARG);
+    info.struct_size = (uint32_t)offsetof(fa_stream_info, codec);           /* an older, shorter one */
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.struct_size, offsetof(fa_stream_info, codec));
+    CHECK_EQ(info.format.sample_rate, 44100);
+    CHECK_EQ((uint8_t)info.codec[0], 0x55);
+    info.struct_size = sizeof(info) + 64;                                    /* a newer one: ours */
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.struct_size, sizeof(info));
+    CHECK(strcmp(info.codec, "pcm") == 0);
+    memset(&l, 0, sizeof(l));
+    CHECK_EQ(fa_stream_get_loudness(s, &l), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_stream_set_loudness(s, &l), FA_ERROR_INVALID_ARG);
+    fa_stream_close(s);
+    memset(&dev, 0, sizeof(dev));
+    CHECK_EQ(fa_device_get_info(g_engine, FA_DEVICE_PLAYBACK, 0, &dev), FA_ERROR_INVALID_ARG);
+    free(media.p);
+}
+
 static void test_detect_wav(void) { check_decodes(make_wav(48000, 2, 12345), "pcm", "wav", 48000, 2, 12345, 1); }
 static void test_detect_aiff(void) { check_decodes(make_aiff(44100, 1, 5000), "pcm", "aiff", 44100, 1, 5000, 1); }
 static void test_detect_flac(void) { check_decodes(make_flac(44100, 2, 10000, 0), "flac", "flac", 44100, 2, 10000, 1); }
@@ -390,7 +451,7 @@ static void test_open_path_utf8(void)
     const char* name = "fa-test-\xC3\xA9\xE2\x99\xAA.flac"; /* "fa-test-é♪.flac" */
     buf media = make_flac(44100, 1, 3000, 0);
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     FILE* f;
 #ifdef _WIN32
     wchar_t wname[64];
@@ -493,7 +554,7 @@ static void test_open_io_forward_only(void)
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o = decode_only();
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int nonzero;
     m.p = media.p; m.n = media.n;
     CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
@@ -545,7 +606,7 @@ static void test_forward_only_aiff(void)
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o = decode_only();
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int nonzero;
     m.p = media.p; m.n = media.n;
     CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
@@ -584,7 +645,7 @@ static void test_flac_after_big_id3_forward_only(void)
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o = decode_only();
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int nonzero;
     m.p = media.p; m.n = media.n;
     o.mime_hint = "audio/flac";           /* nothing past the tag can be looked at */
@@ -710,7 +771,7 @@ static void test_attach_keeps_position_and_format(void)
     buf media = make_wav(22050, 1, 22050 * 10);
     fa_device *d1 = NULL, *d2 = NULL;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream_state st;
     fa_frames pos = 0, pos2 = 0;
     CHECK_EQ(fa_device_open(g_engine, NULL, &d1), FA_OK);
@@ -795,6 +856,7 @@ int main(void)
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
 
     RUN(test_format_list);
+    RUN(test_struct_sizes);
     RUN(test_detect_wav);
     RUN(test_wav_sample_formats);
     RUN(test_detect_aiff);

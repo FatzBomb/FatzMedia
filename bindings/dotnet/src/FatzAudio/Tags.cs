@@ -206,7 +206,8 @@ public sealed class Tags
                 pictures[i] = new TagPicture((PictureType)p.Type, NativeText.Read(p.Mime),
                     NativeText.Read(p.Description), data, (TagFormat)p.Format);
             }
-            StreamInfo? info = NativeMethods.fa_tags_get_info(native, out FaStreamInfo n) == 0 ? StreamInfo.FromNative(n) : null;
+            var n = NativeSized.New<FaStreamInfo>();
+            StreamInfo? info = NativeMethods.fa_tags_get_info(native, ref n) == 0 ? StreamInfo.FromNative(n) : null;
             return new Tags(fields, items, pictures, info);
         }
         finally

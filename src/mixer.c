@@ -441,10 +441,8 @@ FA_API fa_result FA_CALL fa_mixer_create(fa_engine* engine, const fa_mixer_confi
     if (!engine || !out_mixer) return FA_ERROR_INVALID_ARG;
     *out_mixer = NULL;
     fa_mixer_config_init(&c);
-    if (config) {
-        if (config->struct_size < sizeof(fa_mixer_config)) return FA_ERROR_INVALID_ARG;
-        c = *config;
-    }
+    if (config && fa_read_sized(&c, config, sizeof(c), FA_V1(fa_mixer_config)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if (c.deck_count == 0) c.deck_count = 2;
     if (c.deck_count > 2) return FA_ERROR_NOT_IMPLEMENTED;   /* 4 decks are planned */
     if (c.deck_count < 2) return FA_ERROR_INVALID_ARG;

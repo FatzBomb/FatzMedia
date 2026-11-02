@@ -177,7 +177,7 @@ static void same_as_reference(const char* name, const char* ref, const char* con
                               uint32_t rate)
 {
     fa_stream *s, *r;
-    fa_stream_info info, rinfo;
+    fa_stream_info info = { .struct_size = sizeof(info) }, rinfo = { .struct_size = sizeof(rinfo) };
     float *a, *b;
     int64_t na, nb, i;
     double worst = 0;
@@ -216,7 +216,7 @@ static void test_surround(void)
     same_as_reference("surround_flac.mkv", "surround.flac", "matroska", 6, 48000);
     for (k = 0; k < 2; k++) {
         fa_stream* s;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* p;
         int64_t n;
         uint32_t c;
@@ -239,7 +239,7 @@ static void test_packets_pushed(void)
     const uint8_t* pk[256];
     uint8_t* data = load_file("tone.oga", &size);
     fa_stream* r;
-    fa_stream_info rinfo;
+    fa_stream_info rinfo = { .struct_size = sizeof(rinfo) };
     float* ref;
     int64_t nref;
     int count, i, pass;
@@ -255,7 +255,7 @@ static void test_packets_pushed(void)
         fa_codec_params p;
         fa_open_options o;
         fa_stream* s;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* out;
         int64_t n, j;
         fa_codec_params_init(&p);
@@ -338,7 +338,7 @@ static void compare_forward_only(const char* name, uint32_t ch, int64_t slack)
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *a, *b;
     int64_t na, nb, i;
     CHECK(data != NULL);
@@ -375,7 +375,7 @@ static void exercise_memory(const uint8_t* data, size_t size, int32_t track)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[4096 * 8];
     int k;
     fa_open_options_init(&o);
@@ -403,7 +403,7 @@ static void exercise_memory(const uint8_t* data, size_t size, int32_t track)
 static void reverse_exact(const char* name)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *fwd, *rev;
     int64_t n = 0, m = 0, i;
     uint32_t ch, c;

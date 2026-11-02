@@ -65,9 +65,7 @@ static int read_options(const fa_analysis_options* in, fa_analysis_options* out)
 {
     fa_analysis_options_init(out);
     if (!in) return 1;
-    if (in->struct_size < offsetof(fa_analysis_options, flags) + sizeof(uint32_t)) return 0;
-    memcpy(out, in, offsetof(fa_analysis_options, flags) + sizeof(uint32_t));
-    out->struct_size = sizeof(*out);
+    if (fa_read_sized(out, in, sizeof(*out), FA_V1(fa_analysis_options)) != FA_OK) return 0;
     if (out->kinds == 0 || (out->kinds & ~(uint32_t)FA_ANALYZE_ALL) || (out->flags & ~(uint32_t)FA_ANALYZE_NO_CACHE))
         return 0;
     if (!(out->min_bpm >= 30.0f && out->max_bpm <= 400.0f && out->max_bpm >= 1.9f * out->min_bpm)) return 0;
@@ -756,8 +754,8 @@ FA_API fa_result FA_CALL fa_analysis_get_waveform(const fa_analysis* analysis, f
 
 FA_API fa_result FA_CALL fa_analysis_get_loudness(const fa_analysis* analysis, fa_loudness* out_loudness)
 {
-    if (!analysis || !out_loudness) return FA_ERROR_INVALID_ARG;
+    if (!analysis || !out_loudness || out_loudness->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     if (!analysis->have_loudness) return FA_ERROR_NOT_FOUND;
-    *out_loudness = analysis->loudness;
+    fa_copy_sized(out_loudness, &analysis->loudness, sizeof(analysis->loudness));
     return FA_OK;
 }

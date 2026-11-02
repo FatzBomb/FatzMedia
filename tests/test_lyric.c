@@ -889,7 +889,7 @@ static void test_styles(void)
     fa_stream* s = open_song();
     fa_lyric_style st, got;
     fa_surface_effects e;
-    fa_cdg_frame cf;
+    fa_cdg_frame cf = { .struct_size = sizeof(cf) };
     fa_cdg_presentation pres;
     fa_surface* f = NULL;
     CHECK(s != NULL);

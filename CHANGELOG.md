@@ -14,14 +14,38 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 - Additions (new functions, new enum values at the end, new fields at the end of a struct that has a
   `struct_size`) are not breaking.
 
-## Unreleased
+## 0.3.0 (not released yet)
+
+`FA_VERSION` is 0.3.0 on main; what lands before the stable 0.3.0 package is listed here. The Linux SONAME is
+`libfatzaudio.so.0.3`, and the .NET package refuses a 0.2 native library (and the 0.2 package a 0.3 one), so an app
+updates the package and the native library together and rebuilds.
 
 ### Breaking
 
-- `fa_cdg_info` gained `disc_corrected` and `disc_dropped` at its end (it has no `struct_size`): rebuild against the new
-  header. .NET `CdgInfo` gained the two matching positional parameters.
+- Versioned structs (final audit step 7). Fourteen output structs that are likely to grow now start with a
+  `uint32_t struct_size`: `fa_stream_info`, `fa_sound_info`, `fa_device_info`, `fa_metadata`, `fa_net_status`,
+  `fa_disc_toc`, `fa_loudness`, `fa_cdg_frame`, `fa_cdg_info`, `fa_soundfont_info`, `fa_soundfont_preset`,
+  `fa_midi_text`, `fa_midi_info` and `fa_encoder_status`. Set it to `sizeof` before the call
+  (`fa_stream_info info = { .struct_size = sizeof(info) };`); 0 is `FA_ERROR_INVALID_ARG`. The struct is filled up to
+  it and `struct_size` is set to what was filled, so fields added later never write past an older caller's struct.
+  `fa_stream_set_loudness` reads its `fa_loudness` by the same rule as other inputs. The .NET binding sets the sizes
+  itself; its public API is unchanged.
+- One `struct_size` rule for every struct you pass in (options and configs): `struct_size` must cover at least the
+  struct's first layout (else `FA_ERROR_INVALID_ARG`), the part it covers is read, the fields past it keep their
+  defaults, and a bigger struct from a newer header is read up to the library's size. Before, some calls refused
+  anything smaller than today's struct (`fa_mixer_create`, `fa_mixer_add_mic`, `fa_encoder_create_*`,
+  `fa_mixer_set_mic_effects`, `fa_mixer_set_ducking`, `fa_mixer_measure_latency`, `fa_stream_open_packets`) and
+  others took any size, even 4 bytes; `fa_engine_create` read `struct_size` 0 as a whole struct and now refuses it.
+  Structs filled with their `_init` function are unaffected.
+- Output structs are filled up to any `struct_size` of 4 or more everywhere: `fa_stream_get_tracker_info`,
+  `fa_mixer_get_mic_effects` and `fa_mixer_get_ducking` no longer refuse a shorter struct.
+- `fa_cdg_info` gained `disc_corrected` and `disc_dropped` at its end (before it had a `struct_size`): rebuild against
+  the new header. .NET `CdgInfo` gained the two matching positional parameters.
 
 ### Added
+
+- `FA_MAX_SAMPLE_RATE` (768000), the highest sample rate any call accepts. `fa_result_string` has a text for
+  `FA_ERROR_OUT_OF_RANGE`.
 
 - Dropout counts (karaoke timing step K1): `fa_stream_get_stats` gives a stream's `underruns` (output callbacks that
   found it short of decoded audio while playing) and `buffered` (decoded audio ready ahead), lock-free;
@@ -593,6 +617,9 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   copy of the effects' tile, shadow and bevel code, and the dead exports and unused arguments removed.
 
 ### Fixed
+
+- `fa_mixer_set_automix` read a whole `fa_automix_options` from the caller even when its `struct_size` was smaller,
+  past the end of a shorter struct. A struct shorter than the first layout is now refused.
 
 - Tempo and pitch (final audit step 6): the stretcher no longer swells at its start. Each time it started over (a seek,
   an attach, a reverse turn, a deck loop or jump join) its first ~20 ms reached up to 1.7x the input's level on steady

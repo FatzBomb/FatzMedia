@@ -108,7 +108,7 @@ fa_result fa_push_init_pcm(struct fa_stream* s, const fa_audio_format* f)
 {
     int planar;
     fa_result r;
-    if (f->sample_rate < 1000 || f->sample_rate > 768000 || f->channels == 0 || f->channels > 32) return FA_ERROR_INVALID_ARG;
+    if (f->sample_rate < 1000 || f->sample_rate > FA_MAX_SAMPLE_RATE || f->channels == 0 || f->channels > 32) return FA_ERROR_INVALID_ARG;
     if (fa_sample_kind(f->sample_format, &planar) < 0) return FA_ERROR_INVALID_ARG;
     r = push_new(s, &s->push);
     if (r != FA_OK) return r;
@@ -179,7 +179,7 @@ static fa_result push_frames(struct fa_stream* s, const fa_audio_format* f, cons
     int planar, kind;
     size_t bytes;
     kind = fa_sample_kind(f->sample_format, &planar);
-    if (kind < 0 || f->channels == 0 || f->channels > 32 || f->sample_rate < 1000 || f->sample_rate > 768000)
+    if (kind < 0 || f->channels == 0 || f->channels > 32 || f->sample_rate < 1000 || f->sample_rate > FA_MAX_SAMPLE_RATE)
         return FA_ERROR_INVALID_ARG;
     if (frames == 0) return FA_OK;
     if (frames < 0 || frames > (fa_frames)1 << 24 || !data || !data[0]) return FA_ERROR_INVALID_ARG;

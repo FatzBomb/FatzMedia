@@ -95,7 +95,7 @@ static fa_result codec_for(caf* c, const caf_desc* d, fa_codec_params* cp, int* 
     const uint8_t* asc = NULL;
     size_t asc_len = 0;
     uint32_t rate;
-    if (!(d->rate >= 1 && d->rate <= 768000) || d->channels == 0 || d->channels > 32) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (!(d->rate >= 1 && d->rate <= FA_MAX_SAMPLE_RATE) || d->channels == 0 || d->channels > 32) return FA_ERROR_UNSUPPORTED_FORMAT;
     rate = (uint32_t)(d->rate + 0.5);
     *constant = 0;
     switch (d->format) {

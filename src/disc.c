@@ -931,12 +931,13 @@ fa_result fa_disc_open_ops(const fa_disc_ops* ops, void* h, const fa_disc_option
     d->ops = ops;
     d->h = h;
     fa_disc_options_init(&d->opts);
-    if (options && options->struct_size >= offsetof(fa_disc_options, flags) + sizeof(options->flags)) {
-        /* Fields added later are read only when options->struct_size covers them. */
-        d->opts.read_offset = options->read_offset;
-        d->opts.retries = options->retries > 100 ? 100 : options->retries;
-        d->opts.flags = options->flags;
+    if (options && fa_read_sized(&d->opts, options, sizeof(d->opts), FA_V1(fa_disc_options)) != FA_OK) {
+        fa_mutex_destroy(&d->lock);
+        free(d);
+        ops->close(h);
+        return FA_ERROR_INVALID_ARG;
     }
+    if (d->opts.retries > 100) d->opts.retries = 100;
     d->c2_ok = !(d->opts.flags & FA_DISC_NO_C2);
     d->sub_ok = !(d->opts.flags & FA_DISC_NO_CDG);
     d->c2_sub_ok = 1;
@@ -955,7 +956,7 @@ FA_API fa_result FA_CALL fa_disc_open(const char* drive_id, const fa_disc_option
     char first[1][256];
     if (!out_disc) return FA_ERROR_INVALID_ARG;
     *out_disc = NULL;
-    if (options && options->struct_size < offsetof(fa_disc_options, flags) + sizeof(options->flags)) return FA_ERROR_INVALID_ARG;
+    if (options && options->struct_size < FA_V1(fa_disc_options)) return FA_ERROR_INVALID_ARG;
     if (!drive_id) {
         if (fa_disc_platform_list(first, 1) == 0) return FA_ERROR_NOT_FOUND;
         drive_id = first[0];
@@ -997,12 +998,12 @@ FA_API fa_result FA_CALL fa_disc_get_status(fa_disc* disc, fa_disc_status* out_s
 
 FA_API fa_result FA_CALL fa_disc_get_toc(fa_disc* disc, fa_disc_toc* out_toc)
 {
+    static const fa_disc_toc none;
     fa_result r;
-    if (!disc || !out_toc) return FA_ERROR_INVALID_ARG;
+    if (!disc || !out_toc || out_toc->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     fa_mutex_lock(&disc->lock);
     r = read_toc_locked(disc);
-    if (r == FA_OK) *out_toc = disc->toc;
-    else memset(out_toc, 0, sizeof(*out_toc));
+    fa_copy_sized(out_toc, r == FA_OK ? &disc->toc : &none, sizeof(fa_disc_toc));
     fa_mutex_unlock(&disc->lock);
     return r;
 }

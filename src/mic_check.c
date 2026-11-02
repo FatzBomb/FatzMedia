@@ -431,10 +431,8 @@ FA_API fa_result FA_CALL fa_mixer_measure_latency(fa_mixer* mixer, fa_mic* mic, 
     if (!mixer || !mic || mic->mixer != mixer || !out_result || out_result->struct_size < sizeof(uint32_t))
         return FA_ERROR_INVALID_ARG;
     fa_latency_check_config_init(&c);
-    if (config) {
-        if (config->struct_size < sizeof(c)) return FA_ERROR_INVALID_ARG;
-        c = *config;
-    }
+    if (config && fa_read_sized(&c, config, sizeof(c), FA_V1(fa_latency_check_config)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if (c.flags & ~FA_CHECK_ALL_MODES) return FA_ERROR_INVALID_ARG;
     c.max_level_db = clampf(c.max_level_db != c.max_level_db ? -12.0f : c.max_level_db, -40.0f, -6.0f);
     if (c.max_monitor <= 0) c.max_monitor = 25000000;

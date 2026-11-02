@@ -149,23 +149,18 @@ FA_API void FA_CALL fa_sound_options_init(fa_sound_options* options)
     options->steal = FA_SOUND_STEAL_OLDEST;
 }
 
-/* The fields of `o` this caller's struct has (struct_size), checked. */
-static fa_result read_options(const fa_sound_options* o, uint32_t* max_voices, int32_t* steal,
+/* The app's sound options (may be NULL: defaults), checked. */
+static fa_result read_options(const fa_sound_options* given, uint32_t* max_voices, int32_t* steal,
                               const fa_open_options** open)
 {
-    *max_voices = FA_SOUND_DEFAULT_VOICES;
-    *steal = FA_SOUND_STEAL_OLDEST;
-    if (open) *open = NULL;
-    if (!o) return FA_OK;
-    if (o->struct_size >= offsetof(fa_sound_options, max_voices) + sizeof(o->max_voices) && o->max_voices) {
-        if (o->max_voices > FA_SOUND_MAX_VOICES) return FA_ERROR_INVALID_ARG;
-        *max_voices = o->max_voices;
-    }
-    if (o->struct_size >= offsetof(fa_sound_options, steal) + sizeof(o->steal)) {
-        if (o->steal < FA_SOUND_STEAL_OLDEST || o->steal > FA_SOUND_STEAL_NONE) return FA_ERROR_INVALID_ARG;
-        *steal = o->steal;
-    }
-    if (open && o->struct_size >= offsetof(fa_sound_options, open) + sizeof(o->open)) *open = o->open;
+    fa_sound_options o;
+    fa_sound_options_init(&o);
+    if (given && fa_read_sized(&o, given, sizeof(o), FA_V1(fa_sound_options)) != FA_OK) return FA_ERROR_INVALID_ARG;
+    if (o.max_voices > FA_SOUND_MAX_VOICES || o.steal < FA_SOUND_STEAL_OLDEST || o.steal > FA_SOUND_STEAL_NONE)
+        return FA_ERROR_INVALID_ARG;
+    *max_voices = o.max_voices ? o.max_voices : FA_SOUND_DEFAULT_VOICES;
+    *steal = o.steal;
+    if (open) *open = o.open;
     return FA_OK;
 }
 
@@ -199,7 +194,7 @@ static fa_sound_pcm* pcm_new(uint32_t rate, uint32_t channels, uint64_t mask)
 /* Reads a decode-only stream to its end into a new PCM buffer. */
 static fa_result decode_all(fa_stream* st, fa_sound_pcm** out)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_sound_pcm* p;
     fa_frames cap, want, n = 0;
     uint64_t frame_bytes;
@@ -249,15 +244,13 @@ static fa_result decode_all(fa_stream* st, fa_sound_pcm** out)
 }
 
 /* The app's open options (`given`, may be NULL) as a decode-only open. */
-static void load_open_options(const fa_open_options* given, fa_open_options* o)
+static fa_result load_open_options(const fa_open_options* given, fa_open_options* o)
 {
     fa_open_options_init(o);
-    if (given) {
-        size_t n = given->struct_size < sizeof(*o) ? given->struct_size : sizeof(*o);
-        memcpy(o, given, n);
-        o->struct_size = sizeof(*o);
-    }
+    if (given && fa_read_sized(o, given, sizeof(*o), FA_V1(fa_open_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     o->flags = FA_OPEN_DECODE_ONLY | FA_OPEN_NO_NORMALIZE | FA_OPEN_NO_CDG;
+    return FA_OK;
 }
 
 /* Decodes the open decode-only stream `st` (closed here) into a new sound. */
@@ -282,7 +275,7 @@ FA_API fa_result FA_CALL fa_sound_load_path(fa_engine* engine, const char* path,
     if (!engine || !path || !out_sound) return FA_ERROR_INVALID_ARG;
     r = read_options(options, &mv, &steal, &given);
     if (r != FA_OK) return r;
-    load_open_options(given, &o);
+    if (load_open_options(given, &o) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = fa_stream_open_path(engine, path, &o, &st);
     if (r != FA_OK) return r;
     return load_from(engine, st, mv, steal, out_sound);
@@ -301,7 +294,7 @@ FA_API fa_result FA_CALL fa_sound_load_memory(fa_engine* engine, const void* dat
     if (!engine || !data || size == 0 || !out_sound) return FA_ERROR_INVALID_ARG;
     r = read_options(options, &mv, &steal, &given);
     if (r != FA_OK) return r;
-    load_open_options(given, &o);
+    if (load_open_options(given, &o) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = fa_stream_open_memory(engine, data, size, &o, &st);
     if (r != FA_OK) return r;
     return load_from(engine, st, mv, steal, out_sound);
@@ -319,7 +312,7 @@ FA_API fa_result FA_CALL fa_sound_load_pcm(fa_engine* engine, const fa_audio_for
     if (out_sound) *out_sound = NULL;
     if (!engine || !format || !data || frames <= 0 || !out_sound) return FA_ERROR_INVALID_ARG;
     kind = fa_sample_kind(format->sample_format, &planar);
-    if (kind < 0 || planar || format->sample_rate < 1000 || format->sample_rate > 768000 ||
+    if (kind < 0 || planar || format->sample_rate < 1000 || format->sample_rate > FA_MAX_SAMPLE_RATE ||
         format->channels == 0 || format->channels > 32)
         return FA_ERROR_INVALID_ARG;
     r = read_options(options, &mv, &steal, NULL);
@@ -396,21 +389,24 @@ FA_API void FA_CALL fa_sound_close(fa_sound* sound)
 FA_API fa_result FA_CALL fa_sound_get_info(fa_sound* sound, fa_sound_info* out_info)
 {
     uint32_t i;
-    if (!sound || !out_info) return FA_ERROR_INVALID_ARG;
-    memset(out_info, 0, sizeof(*out_info));
-    out_info->sample_rate = sound->pcm->rate;
-    out_info->channels = sound->pcm->channels;
-    out_info->frames = sound->pcm->frames;
-    out_info->memory_bytes = (uint64_t)sound->pcm->frames * sound->pcm->channels * sizeof(float);
+    fa_sound_info info;
+    if (!sound || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.sample_rate = sound->pcm->rate;
+    info.channels = sound->pcm->channels;
+    info.frames = sound->pcm->frames;
+    info.memory_bytes = (uint64_t)sound->pcm->frames * sound->pcm->channels * sizeof(float);
     fa_mutex_lock(&sound->lock);
-    out_info->max_voices = sound->max_voices;
-    out_info->steal = sound->steal;
+    info.max_voices = sound->max_voices;
+    info.steal = sound->steal;
     for (i = 0; i < sound->count; i++) {
         if (!voice_live(sound, sound->v[i].s)) continue;
-        out_info->voices++;
-        out_info->playing += (uint32_t)fa_stream_voice_busy(sound->v[i].s);
+        info.voices++;
+        info.playing += (uint32_t)fa_stream_voice_busy(sound->v[i].s);
     }
     fa_mutex_unlock(&sound->lock);
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 

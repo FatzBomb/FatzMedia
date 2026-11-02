@@ -39,7 +39,7 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_device_count(EngineHandle engine, int type, out uint count);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_device_get_info(EngineHandle engine, int type, uint index, out FaDeviceInfo info);
+    public static partial int fa_device_get_info(EngineHandle engine, int type, uint index, ref FaDeviceInfo info);
 
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_device_open(EngineHandle engine, string? deviceId, out nint device);
@@ -132,7 +132,7 @@ internal static unsafe partial class NativeMethods
 
     // ---- Stream info -------------------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_stream_get_info(StreamHandle stream, out FaStreamInfo info);
+    public static partial int fa_stream_get_info(StreamHandle stream, ref FaStreamInfo info);
 
     // ---- Web streams -------------------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -222,7 +222,7 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_stream_get_cdg_offset(StreamHandle stream, out long offset);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_stream_get_cdg_info(StreamHandle stream, out FaCdgInfo info);
+    public static partial int fa_stream_get_cdg_info(StreamHandle stream, ref FaCdgInfo info);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_set_cdg_events(StreamHandle stream, int enabled);
@@ -365,13 +365,13 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_engine_set_limiter(EngineHandle engine, int mode, double ceilingDbtp);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_stream_get_loudness(StreamHandle stream, out FaLoudness loudness);
+    public static partial int fa_stream_get_loudness(StreamHandle stream, ref FaLoudness loudness);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_set_loudness(StreamHandle stream, in FaLoudness loudness);
 
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_scan_loudness_path(EngineHandle engine, string path, out FaLoudness loudness);
+    public static partial int fa_scan_loudness_path(EngineHandle engine, string path, ref FaLoudness loudness);
 
     // ---- Track analysis ----------------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -402,7 +402,7 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_analysis_get_waveform(nint analysis, FaWaveformPoint* points, uint capacity, uint* count);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_analysis_get_loudness(nint analysis, out FaLoudness loudness);
+    public static partial int fa_analysis_get_loudness(nint analysis, ref FaLoudness loudness);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_key_transpose(FaKeyInfo* key, int semitones, FaKeyInfo* result);
@@ -445,7 +445,7 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_tags_get_picture(nint tags, uint index, out FaTagPicture picture);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_tags_get_info(nint tags, out FaStreamInfo info);
+    public static partial int fa_tags_get_info(nint tags, ref FaStreamInfo info);
 
     // ---- MIDI --------------------------------------------------------------
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -753,7 +753,7 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_encoder_set_paused(EncoderHandle encoder, int paused);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_encoder_get_status(EncoderHandle encoder, out FaEncoderStatus status);
+    public static partial int fa_encoder_get_status(EncoderHandle encoder, ref FaEncoderStatus status);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_encoder_wait(EncoderHandle encoder, long timeout);

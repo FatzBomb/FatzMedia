@@ -39,7 +39,7 @@ int main(void)
     fa_engine* engine = NULL;
     fa_stream* stream = NULL;
     fa_open_options opts;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_result r;
     uint32_t count = 0, i;
     size_t wav_size = 0;
@@ -57,7 +57,7 @@ int main(void)
     r = fa_device_count(engine, FA_DEVICE_PLAYBACK, &count);
     printf("playback devices: %u (%s)\n", count, fa_result_string(r));
     for (i = 0; r == FA_OK && i < count; i++) {
-        fa_device_info di;
+        fa_device_info di = { .struct_size = sizeof(di) };
         if (fa_device_get_info(engine, FA_DEVICE_PLAYBACK, i, &di) == FA_OK)
             printf("  [%u] %s%s\n", i, di.name, di.is_default ? " (default)" : "");
     }

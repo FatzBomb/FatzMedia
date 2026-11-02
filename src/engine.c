@@ -32,6 +32,7 @@ FA_API const char* FA_CALL fa_result_string(fa_result result)
     case FA_ERROR_SIZE_MISMATCH: return "the buffer is not the size the surface draws";
     case FA_ERROR_NOT_ENOUGH_CHANNELS: return "the device does not have that channel";
     case FA_ERROR_PERMISSION_DENIED: return "permission denied (microphone)";
+    case FA_ERROR_OUT_OF_RANGE: return "out of range";
     case FA_ERROR_CANCELLED: return "cancelled";
     default: return "unknown result";
     }
@@ -333,14 +334,10 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
 
     e = (fa_engine*)calloc(1, sizeof(*e));
     if (!e) return FA_ERROR_OUT_OF_MEMORY;
-    /* Copy only the part of the config the caller's struct_size covers, so callers
-     * compiled against an older, shorter struct keep working. */
     fa_engine_config_init(&e->config);
-    if (config) {
-        size_t sz = config->struct_size;
-        if (sz == 0 || sz > sizeof(e->config)) sz = sizeof(e->config);
-        memcpy(&e->config, config, sz);
-        e->config.struct_size = (uint32_t)sizeof(e->config);
+    if (config && fa_read_sized(&e->config, config, sizeof(e->config), FA_V1(fa_engine_config)) != FA_OK) {
+        free(e);
+        return FA_ERROR_INVALID_ARG;
     }
     /* Keep our own copies: the caller's strings (marshalled ones, in .NET) may not outlive this call. */
     if (e->config.cache_directory) {

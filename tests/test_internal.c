@@ -1480,7 +1480,7 @@ static void test_loop_without_length(void)
     fa_encoder* e = NULL;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames pos = -1;
     float out[2 * 1000], pcm[5000];
     recorder rec;
