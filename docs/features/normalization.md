@@ -100,7 +100,7 @@ The look-ahead (about 1.9 ms in total) is always in the signal path, also while 
 
 C:
 ```c
-fa_loudness l;
+fa_loudness l = { .struct_size = sizeof(l) };
 fa_stream_get_loudness(s, &l);        /* never blocks; starts the analysis if needed */
 if (l.is_final)
     save_to_library(path, l.integrated_lufs, l.range_lu, l.true_peak_dbtp);

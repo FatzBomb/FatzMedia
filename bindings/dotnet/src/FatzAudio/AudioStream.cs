@@ -143,7 +143,8 @@ public unsafe partial class AudioStream : IDisposable
 
     private FaStreamInfo ReadNativeInfo()
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_info(Handle, out FaStreamInfo n));
+        var n = NativeSized.New<FaStreamInfo>();
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_info(Handle, ref n));
         return n;
     }
 
@@ -210,7 +211,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FaMetadata m;
+            var m = NativeSized.New<FaMetadata>();
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_metadata(Handle, &m));
             return new StreamMetadata(
                 NativeText.Read(m.StreamTitle), NativeText.Read(m.Artist), NativeText.Read(m.Title), NativeText.Read(m.Url), NativeText.Read(m.Station), NativeText.Read(m.Genre),
@@ -224,7 +225,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FaNetStatus n;
+            var n = NativeSized.New<FaNetStatus>();
             int rc = NativeMethods.fa_stream_get_net_status(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             FatzAudioException.ThrowIfFailed(rc);
@@ -678,7 +679,8 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_info(Handle, out var i));
+            var i = NativeSized.New<FaCdgInfo>();
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_cdg_info(Handle, ref i));
             return new CdgInfo((CdgSource)i.Source, (long)i.PackCount, TimeConvert.FromNanoseconds(i.CheckpointInterval),
                 (int)i.CheckpointCount, i.DiscParity < 0 ? null : i.DiscParity != 0, (long)i.DiscCorrected, (long)i.DiscDropped);
         }
@@ -1136,7 +1138,7 @@ public unsafe partial class AudioStream : IDisposable
     {
         get
         {
-            FaMidiInfo n;
+            var n = NativeSized.New<FaMidiInfo>();
             int rc = NativeMethods.fa_stream_get_midi_info(Handle, &n);
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             FatzAudioException.ThrowIfFailed(rc);
@@ -1225,7 +1227,7 @@ public unsafe partial class AudioStream : IDisposable
 
     private unsafe MidiText GetMidiText(int index)
     {
-        FaMidiText t;
+        var t = NativeSized.New<FaMidiText>();
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_midi_text(Handle, (uint)index, &t));
         return new MidiText(index, (MidiTextType)t.Type, NativeText.Read(t.Text), (MidiTextFlags)t.Flags,
             TimeConvert.FromNanoseconds(t.Time), t.Frame, t.Track);
@@ -1888,7 +1890,8 @@ public unsafe partial class AudioStream : IDisposable
     /// <returns>The loudness.</returns>
     public Loudness GetLoudness()
     {
-        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness(Handle, out FaLoudness l));
+        var l = NativeSized.New<FaLoudness>();
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_loudness(Handle, ref l));
         return Loudness.From(l);
     }
 
@@ -1903,7 +1906,11 @@ public unsafe partial class AudioStream : IDisposable
     public void SetLoudness(double integratedLufs, double rangeLu = double.NaN, double truePeakDbtp = double.NaN)
     {
         if (double.IsNaN(integratedLufs)) throw new ArgumentException("Loudness must be a number.", nameof(integratedLufs));
-        var l = new FaLoudness { IntegratedLufs = integratedLufs, RangeLu = rangeLu, TruePeakDbtp = truePeakDbtp, IsFinal = 1 };
+        var l = NativeSized.New<FaLoudness>();
+        l.IntegratedLufs = integratedLufs;
+        l.RangeLu = rangeLu;
+        l.TruePeakDbtp = truePeakDbtp;
+        l.IsFinal = 1;
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_set_loudness(Handle, in l));
     }
 

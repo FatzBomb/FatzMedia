@@ -271,9 +271,9 @@ static void test_zip_pair(void)
     buf wav = make_wav(8000, 8000), cdg = small_cdg(), text = { 0 }, zip;
     zip_file files[3];
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     fa_frames got = 0;
     float pcm[256];
     fa_open_options o;
@@ -617,7 +617,7 @@ static void test_zip_lean(void)
     zip_file files[2];
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_io_callbacks io;
     mem_io m;
     int deflate;
@@ -768,7 +768,7 @@ static void open_and_decode(const buf* zip, int64_t frames)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_open_options_init(&o);
     o.flags = FA_OPEN_DECODE_ONLY;
     CHECK_EQ(fa_stream_open_memory(g_engine, zip->p, zip->n, &o, &s), FA_OK);
@@ -877,7 +877,7 @@ static void test_zip64_over_4gb(void)
     fa_io_callbacks io;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_tags* t = NULL;
     int wide;
     files[0].name = "pad.bin"; files[0].data = NULL; files[0].deflate = 0; files[0].gap = 4500000000ull;
@@ -958,7 +958,7 @@ static void test_zip_over_limit(void)
     fa_engine* e = NULL;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     files[0].name = "Big.cdg"; files[0].data = &cdg; files[0].deflate = 1; files[0].crc_xor = 0;
     files[1].name = "Big.wav"; files[1].data = &wav; files[1].deflate = 1; files[1].crc_xor = 0;
     zip = make_zip_lz(files, 2);
@@ -1155,7 +1155,7 @@ static void test_zip_unpack_cap(void)
     fa_io_callbacks io;
     mem_io m;
     fa_tags* t = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int i, n;
     uint8_t zeros[4096];
     /* An ID3 tag claiming 256 MB, then zeros: looks like audio, then refused. */
@@ -1275,7 +1275,7 @@ static void test_zip_temp_song(void)
     fa_open_options o;
     fa_stream* s = NULL;
     fa_tags* t = NULL;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     fa_analysis* a = NULL;
     int64_t deadline;
     f.name = "Temp.wav"; f.data = &wav; f.deflate = 1; f.crc_xor = 0;
@@ -1368,7 +1368,7 @@ static void test_decoder_basics(void)
     buf c = basic_cdg();
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     CHECK(s);
     CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
     CHECK_EQ(fa_cdg_surface_create(s, NULL, &surf), FA_OK);
@@ -1415,7 +1415,7 @@ static void test_xor_and_repeats(void)
     buf c = basic_cdg();
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     fa_cdg_surface_config cfg;
     tile(&c, 1, 0, 1, 1, 1, 0x3F); /* 4: XOR colour 1 over the whole tile: 4^1 = 5, 3^1 = 2 */
     preset(&c, 1, 1);              /* 5: a copy of the clear at pack 1, after drawing */
@@ -1468,7 +1468,7 @@ static void test_scrolling(void)
     buf c = { 0 };
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     fa_cdg_surface_config cfg;
     colors(&c, 0, k_low);
     preset(&c, 1, 0);
@@ -1507,7 +1507,7 @@ static void test_surface_options(void)
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface *nb = NULL, *big = NULL, *smooth = NULL, *tr = NULL, *pm = NULL, *rgba = NULL;
     fa_cdg_surface_config cfg;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     const uint8_t* p;
     tile(&c, 0, 5, 5, 2, 2, 0); /* 4: a grey tile at x 12..17, y 24..35 */
     d[5] = 32;                  /* 5: colour 5 (grey) about half transparent */
@@ -1663,7 +1663,7 @@ static void test_smooth_matches_reference(void)
             for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
                 fa_cdg_surface *ix = NULL, *sm = NULL;
                 fa_cdg_surface_config cfg;
-                fa_cdg_frame fi, fs;
+                fa_cdg_frame fi = { .struct_size = sizeof(fi) }, fs = { .struct_size = sizeof(fs) };
                 uint32_t y;
                 fa_cdg_surface_config_init(&cfg);
                 cfg.flags = flag_sets[f];
@@ -1697,7 +1697,7 @@ static void test_extreme_times(void)
     buf c = basic_cdg();
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
     CHECK_EQ(fa_cdg_surface_create(s, NULL, &surf), FA_OK);
     /* No overflow (UBSan) at the ends of the range, with and without offsets */
@@ -1724,7 +1724,7 @@ static void test_palette_changes(void)
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface *ix = NULL, *rgb = NULL;
     fa_cdg_surface_config cfg;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     colors(&c, 0, other); /* pack 2: colour 1 becomes cyan */
     CHECK_EQ(fa_stream_load_cdg_memory(s, c.p, c.n), FA_OK);
     fa_cdg_surface_config_init(&cfg);
@@ -1759,8 +1759,8 @@ static void test_offset_and_replace(void)
     static const uint8_t blue_first[8][3] = { { 0, 0, 15 } };
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
-    fa_stream_info info;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_time off = 0;
     colors(&b, 0, blue_first);
     preset(&b, 0, 0);
@@ -1813,7 +1813,7 @@ static void test_sibling_file(void)
 {
     buf wav = make_wav(8000, 8000), cdg = small_cdg();
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_open_options o;
     write_file("cdg_sibling.wav", &wav);
     write_file("cdg_sibling.CDG", &cdg); /* upper case, as on many karaoke discs */
@@ -1852,7 +1852,7 @@ static void test_replay_speed(void)
     buf c = { 0 };
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     int64_t i, t0, worst = 0;
     int round;
     colors(&c, 0, k_low);
@@ -1878,7 +1878,7 @@ static void test_replay_speed(void)
     /* A checkpoint gives the same picture as replaying from the start */
     {
         fa_cdg_surface* fresh = NULL;
-        fa_cdg_frame fr2;
+        fa_cdg_frame fr2 = { .struct_size = sizeof(fr2) };
         CHECK_EQ(fa_cdg_surface_create(s, NULL, &fresh), FA_OK);
         CHECK_EQ(fa_cdg_surface_update_at(surf, 0, &fr), FA_OK);
         CHECK_EQ(fa_cdg_surface_update_at(surf, 300LL * 1000000000, &fr), FA_OK);
@@ -1900,7 +1900,7 @@ static void test_frame_state(void)
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface *ix = NULL, *tr = NULL, *bg_only = NULL, *hide = NULL, *opts = NULL;
     fa_cdg_surface_config cfg;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     int i;
     colors(&c, 0, k_low);          /* pack 0 */
     transparent(&c, 1, 63);        /* 1: red invisible */
@@ -2004,7 +2004,7 @@ static void test_revisions(void)
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* ix = NULL;
     fa_cdg_surface_config cfg;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     uint64_t rev, prev;
     static const uint8_t other[8][3] = { { 1, 1, 1 } };
     colors(&c, 0, k_low);          /* 0 */
@@ -2053,8 +2053,8 @@ static void test_checkpoints(void)
     buf c = { 0 };
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface *jump = NULL, *walk = NULL;
-    fa_cdg_info ci;
-    fa_cdg_frame fr, fr2;
+    fa_cdg_info ci = { .struct_size = sizeof(ci) };
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) }, fr2 = { .struct_size = sizeof(fr2) };
     int64_t i, t;
     CHECK_EQ(fa_stream_get_cdg_info(s, &ci), FA_OK);
     CHECK_EQ(ci.source, FA_CDG_SOURCE_NONE);
@@ -2113,8 +2113,8 @@ static void test_checkpoints_streamed(void)
     fa_stream* s = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface *surf = NULL, *ref = NULL;
     fa_cdg_data* blank = NULL;
-    fa_cdg_info ci;
-    fa_cdg_frame fr, fr2;
+    fa_cdg_info ci = { .struct_size = sizeof(ci) };
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) }, fr2 = { .struct_size = sizeof(fr2) };
     uint32_t token = 0;
     size_t i, n = 300 * 40;
     fa_stream* r = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
@@ -2174,7 +2174,7 @@ static void test_timing_rule(void)
     fa_stream* s = open_wav_stream(2, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* ix = NULL;
     fa_cdg_surface_config cfg;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     colors(&c, 0, k_low);
     empty_packs_to(&c, 299);
     preset(&c, 1, 0);              /* pack 299 */
@@ -2208,7 +2208,7 @@ static void test_follows_audio_clock(void)
     fa_stream* s = open_wav_stream(4, 0);
     fa_device* dev = NULL;
     fa_cdg_surface* surf = NULL;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     fa_time clock = 0;
     int64_t deadline;
     colors(&c, 0, k_low);
@@ -2405,7 +2405,7 @@ static void test_update_into_matches(void)
         fa_cdg_surface *ref = NULL, *into = NULL;
         fa_cdg_surface_config cfg;
         fa_surface_layout lay;
-        fa_cdg_frame fr;
+        fa_cdg_frame fr = { .struct_size = sizeof(fr) };
         fa_surface_frame sf;
         uint8_t* mem[3];
         uint64_t rev[3] = { 0, 0, 0 };
@@ -2881,7 +2881,7 @@ static void test_presentation_scaled(void)
     fa_cdg_presentation p;
     fa_surface_layout l, lr;
     fa_surface_frame fr;
-    fa_cdg_frame cf;
+    fa_cdg_frame cf = { .struct_size = sizeof(cf) };
     uint8_t *a, *r;
     int64_t k = 60;
     uint32_t x, y, i;
@@ -3094,7 +3094,7 @@ static void test_offsets_as_shown(void)
     buf a = { 0 }, b = { 0 };
     fa_stream *sa = open_wav_stream(1, FA_OPEN_DECODE_ONLY), *sb = open_wav_stream(1, FA_OPEN_DECODE_ONLY);
     fa_cdg_surface* ix = NULL;
-    fa_cdg_frame fi;
+    fa_cdg_frame fi = { .struct_size = sizeof(fi) };
     uint32_t seed = 11, x, y;
     int r, col, plane, k;
     unsigned ci;
@@ -3764,14 +3764,24 @@ static void test_safety_zone_prepass(void)
     p.struct_size = 0;
     CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_ERROR_INVALID_ARG);
     CHECK_EQ(fa_cdg_surface_set_presentation(NULL, NULL), FA_ERROR_INVALID_ARG);
-    /* An older, shorter struct: the rest takes the defaults. */
+    /* Shorter than its first layout (V1): refused. A bigger one (a newer header) is read
+     * up to our size. */
     p = pres(1, FA_SAFETY_REMOVE);
     p.smoothness = 3;
-    p.struct_size = (uint32_t)offsetof(fa_cdg_presentation, padding);
-    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_OK);
+    p.struct_size = (uint32_t)offsetof(fa_cdg_presentation, flags);
+    CHECK_EQ(fa_cdg_surface_set_presentation(f, &p), FA_ERROR_INVALID_ARG);
+    {
+        struct { fa_cdg_presentation p; uint32_t later; } big;
+        memset(&big, 0, sizeof(big));
+        big.p = pres(1, FA_SAFETY_REMOVE);
+        big.p.struct_size = sizeof(big);
+        big.later = 0xFFFFFFFFu;
+        CHECK_EQ(fa_cdg_surface_set_presentation(f, &big.p), FA_OK);
+    }
     memset(&p, 0x55, sizeof(p));
     p.struct_size = sizeof(p);
     CHECK_EQ(fa_cdg_surface_get_presentation(f, &p), FA_OK);
+    CHECK_EQ(p.struct_size, sizeof(p));
     CHECK_EQ(p.scale, 1); CHECK_EQ(p.safety_zone, FA_SAFETY_REMOVE); CHECK_EQ(p.smoothness, 0);
     fa_surface_destroy(f);
     fa_stream_close(s);
@@ -4186,7 +4196,7 @@ static void test_render_ahead(void)
 
     /* The surface's own pixels with render-ahead on: as always. */
     {
-        fa_cdg_frame cf, rf;
+        fa_cdg_frame cf = { .struct_size = sizeof(cf) }, rf = { .struct_size = sizeof(rf) };
         CHECK_EQ(fa_cdg_surface_update_at(f, t_packs(50), &cf), FA_OK);
         CHECK_EQ(fa_cdg_surface_update_at(ref, t_packs(50), &rf), FA_OK);
         CHECK_EQ(cf.width, rf.width);
@@ -4556,7 +4566,7 @@ static void test_presentation_costs(void)
 static void race_updater(void* p)
 {
     race_arg* a = (race_arg*)p;
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     fa_store32(&a->started, 1);
     for (;;) {
         fa_result r = (a->updates & 1) ? fa_cdg_surface_update(a->surf, &fr)

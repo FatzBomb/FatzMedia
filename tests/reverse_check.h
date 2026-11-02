@@ -12,7 +12,7 @@
  * Closes it. NULL if it would not seek or reverse. */
 static float* rc_read_all(fa_stream* s, int64_t from, int64_t* out_n, uint32_t* out_ch, uint32_t* out_rate)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* buf;
     int64_t n = 0, cap = 1 << 15;
     uint32_t ch;

@@ -112,34 +112,41 @@ FA_API fa_result FA_CALL fa_engine_set_limiter(fa_engine* engine, fa_limiter_mod
 
 FA_API fa_result FA_CALL fa_stream_get_loudness(fa_stream* stream, fa_loudness* out_loudness)
 {
-    if (!stream || !out_loudness) return FA_ERROR_INVALID_ARG;
+    fa_loudness l;
+    if (!stream || !out_loudness || out_loudness->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     fa_stream_start_analysis(stream);
     fa_mutex_lock(&stream->norm_lock);
     if (stream->loud.is_final) {
-        *out_loudness = stream->loud;
+        l = stream->loud;
     } else {
         float est = fa_load_float(&stream->norm_est);
-        memset(out_loudness, 0, sizeof(*out_loudness));
-        out_loudness->integrated_lufs = est;
-        out_loudness->range_lu = NAN;
-        out_loudness->true_peak_dbtp = NAN;
-        out_loudness->source = est == est ? FA_LOUDNESS_ESTIMATE : FA_LOUDNESS_NONE;
+        memset(&l, 0, sizeof(l));
+        l.integrated_lufs = est;
+        l.range_lu = NAN;
+        l.true_peak_dbtp = NAN;
+        l.source = est == est ? FA_LOUDNESS_ESTIMATE : FA_LOUDNESS_NONE;
     }
     fa_mutex_unlock(&stream->norm_lock);
-    out_loudness->gain_db = fa_stream_norm_target_db(stream);
+    l.gain_db = fa_stream_norm_target_db(stream);
+    fa_copy_sized(out_loudness, &l, sizeof(l));
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_stream_set_loudness(fa_stream* stream, const fa_loudness* loudness)
 {
     fa_scan_job* job;
-    if (!stream || !loudness || loudness->integrated_lufs != loudness->integrated_lufs) return FA_ERROR_INVALID_ARG;
+    fa_loudness l;
+    if (!stream || !loudness) return FA_ERROR_INVALID_ARG;
+    memset(&l, 0, sizeof(l));
+    l.range_lu = l.true_peak_dbtp = NAN;
+    if (fa_read_sized(&l, loudness, sizeof(l), FA_V1(fa_loudness)) != FA_OK || l.integrated_lufs != l.integrated_lufs)
+        return FA_ERROR_INVALID_ARG;
+    l.is_final = 1;
+    l.source = FA_LOUDNESS_APP;
+    l.gain_db = 0.0;
     fa_mutex_lock(&stream->norm_lock);
-    stream->loud = *loudness;
-    stream->loud.is_final = 1;
-    stream->loud.source = FA_LOUDNESS_APP;
-    stream->loud.gain_db = 0.0;
-    fa_store_float(&stream->norm_track, (float)loudness->integrated_lufs);
+    stream->loud = l;
+    fa_store_float(&stream->norm_track, (float)l.integrated_lufs);
     fa_store_float(&stream->norm_album, NAN);   /* the app's value wins in album mode too */
     job = stream->scan_job;
     stream->scan_job = NULL;

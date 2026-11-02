@@ -15,6 +15,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | `HSTREAM`/`HCHANNEL`/`HMUSIC`/`HRECORD` are all `DWORD` and interchangeable by accident | Typed handles (`fa_stream*`, `fa_device*`, `fa_bus*`) | The compiler catches wrong-handle bugs |
 | Each add-on has its own `BASS_XXX_StreamCreateFile` + `BASS_PluginLoad` | One `fa_stream_open_*` detects the format; no plugins | Delete all plugin loading and per-format create calls |
 | Flags are one big `DWORD` bitfield shared across unrelated functions | Small option structs per call (`fa_open_options`) | No more guessing which `BASS_SAMPLE_*`/`BASS_STREAM_*` flags apply |
+| `BASS_ChannelGetInfo` and the other `Get*Info` calls fill a fixed struct | Info, status and option structs that can grow start with `struct_size`. Set it to `sizeof` before a get call (`fa_stream_info info = { .struct_size = sizeof(info) };`); option structs get it from their `_init` function. .NET does this for you | A struct without it is `FA_ERROR_INVALID_ARG`. With it, later versions add fields without breaking your build ([concepts](../concepts.md#versioned-structs)) |
 | Positions in bytes, converted with `Bytes2Seconds` | Positions in frames (sample-exact) or nanoseconds | No byte arithmetic that breaks when the format is float or multichannel |
 | `BASS_ChannelSetSync` with numeric `BASS_SYNC_*` types and a `SYNCPROC` | One event callback per stream with typed `fa_event`; .NET uses normal C# events | One handler instead of a sync per event type |
 | Volume/pan via `BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, v)` | `fa_stream_set_param(s, FA_PARAM_VOLUME, v)`; .NET: `stream.Volume = v` | |
@@ -900,7 +901,7 @@ BASS: pick a drive number, check `BASS_CD_IsReady`, loop `BASS_CD_GetTracks`/`Ge
 ```c
 fa_disc* disc;
 fa_disc_open(NULL, NULL, &disc);                  /* first drive; or "D:", "/dev/sr0", "album.cue" */
-fa_disc_toc toc;
+fa_disc_toc toc = { .struct_size = sizeof(toc) };
 if (fa_disc_get_toc(disc, &toc) == FA_ERROR_NO_DISC) { /* ask for a disc */ }
 fa_stream* s;
 fa_stream_open_disc(engine, disc, toc.first_track, NULL, &s);

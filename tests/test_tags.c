@@ -855,7 +855,7 @@ static void test_wav_aiff(void)
 {
     buf wav = make_wav(1, 1), aiff = { 0 }, comm = { 0 };
     fa_tags* t = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     /* ID3 chunk wins over INFO; INFO fills the rest. Properties: exact. */
     CHECK_EQ(fa_tags_read_memory(wav.p, wav.n, 0, &t), FA_OK);
     CHECK_STR(fa_tags_get(t, FA_TAG_TITLE), "ID3 Title");
@@ -1075,7 +1075,7 @@ static void test_midi_without_soundfont(void)
 {
     buf file = { 0 };
     fa_tags* t;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     put_smf(&file);
     /* No decoder can open it (no soundfont), but the title, artist and length can be read. */
     t = NULL;
@@ -1118,7 +1118,7 @@ static void test_zip(void)
     buf wav = make_wav(1, 0), zip = { 0 }, cd = { 0 }, txt = { 0 }, cdg = { 0 };
     uint32_t count = 0;
     fa_tags* t = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     uint8_t pack[24 * 4];
     memset(pack, 0, sizeof(pack));
     put_str(&txt, "readme");
@@ -1216,7 +1216,7 @@ static void test_ffmpeg_files(void)
     for (i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         char path[512];
         fa_tags* t = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         fa_tag_picture p;
         data_path(path, sizeof(path), files[i].name);
         CHECK_EQ(fa_tags_read_path(path, 0, &t), FA_OK);
@@ -1240,7 +1240,7 @@ static void test_ffmpeg_files(void)
          * 212-byte ID3v2 tag, a 417-byte LAME Info frame (not audio) and 8777 of audio. */
         char path[512];
         fa_tags* t = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         data_path(path, sizeof(path), "id3v24.mp3");
         CHECK_EQ(fa_tags_read_path(path, FA_TAGS_NO_PICTURES, &t), FA_OK);
         CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
@@ -1267,7 +1267,7 @@ static void test_ffmpeg_files(void)
         char path[512];
         fa_stream* s = NULL;
         fa_tags* t = NULL;
-        fa_stream_info a, b;
+        fa_stream_info a = { .struct_size = sizeof(a) }, b = { .struct_size = sizeof(b) };
         fa_open_options o;
         fa_open_options_init(&o);
         o.flags = FA_OPEN_DECODE_ONLY;

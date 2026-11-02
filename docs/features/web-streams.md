@@ -18,7 +18,7 @@ The format is detected from the content, as for files ([streams](streams.md#how-
 
 static void FA_CALL on_event(const fa_event* ev, void* user)
 {
-    fa_metadata md;
+    fa_metadata md = { .struct_size = sizeof(md) };
     switch (ev->type) {
     case FA_EVENT_METADATA:                 /* a new song is heard now */
         fa_stream_get_metadata(ev->stream, &md);
@@ -39,7 +39,7 @@ fa_stream_set_event_callback(radio, on_event, NULL);
 fa_stream_attach(radio, device, NULL);
 fa_stream_play(radio);
 
-fa_metadata md;
+fa_metadata md = { .struct_size = sizeof(md) };
 fa_stream_get_metadata(radio, &md);
 printf("%s (%s, %u kbps)\n", md.station, md.genre, md.bitrate_kbps);
 ```
@@ -74,7 +74,7 @@ fa_stream_open_url(engine, "https://cdn.example.com/show/master.m3u8", &opts, &s
 ### Status and headers
 
 ```c
-fa_net_status st;
+fa_net_status st = { .struct_size = sizeof(st) };
 fa_stream_get_net_status(s, &st);   /* FA_ERROR_INVALID_ARG for streams that aren't web streams */
 printf("%.1f s buffered, %lld bytes downloaded, %u reconnects, now at %s\n",
        st.buffered / 1e9, (long long)st.downloaded, st.reconnects, st.url);

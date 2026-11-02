@@ -476,6 +476,55 @@ fa_result fa_stream_beat_grid_now(struct fa_stream* stream, fa_beat_grid* out_gr
 /* fa_stream_close: a background render stops, and is waited for. */
 void fa_stream_grid_closing(struct fa_stream* stream);
 
+/* The struct_size rule (header, "Versioned structs").
+ * Output: struct_size (at least 4) says how much of the struct the caller has; it is
+ * filled up to there and set to what was filled (fa_copy_sized).
+ * Input: struct_size must cover at least the struct's first layout, V1 (FA_V1 below);
+ * what it covers is read, and the fields past it keep their defaults (fa_read_sized). */
+#define FA_SIZE_TO(type, field) ((uint32_t)(offsetof(type, field) + sizeof(((type*)0)->field)))
+
+/* The V1 size of each input struct: up to the last field of its first layout. A field
+ * added later goes after these and leaves this table as it is. */
+#define FA_V1(type) FA_V1_##type
+#define FA_V1_fa_engine_config        FA_SIZE_TO(fa_engine_config, cache_directory)
+#define FA_V1_fa_open_options         FA_SIZE_TO(fa_open_options, mime_hint)
+#define FA_V1_fa_codec_params         FA_SIZE_TO(fa_codec_params, time_base)
+#define FA_V1_fa_net_options          FA_SIZE_TO(fa_net_options, hls_max_bandwidth)
+#define FA_V1_fa_capture_options      FA_SIZE_TO(fa_capture_options, flags)
+#define FA_V1_fa_sound_options        FA_SIZE_TO(fa_sound_options, open)
+#define FA_V1_fa_disc_options         FA_SIZE_TO(fa_disc_options, flags)
+#define FA_V1_fa_tempo_options        FA_SIZE_TO(fa_tempo_options, latency_ms)
+#define FA_V1_fa_mixer_config         FA_SIZE_TO(fa_mixer_config, flags)
+#define FA_V1_fa_automix_options      FA_SIZE_TO(fa_automix_options, restore_time)
+#define FA_V1_fa_loudness             FA_SIZE_TO(fa_loudness, gain_db)
+#define FA_V1_fa_analysis_options     FA_SIZE_TO(fa_analysis_options, flags)
+#define FA_V1_fa_beat_grid            FA_SIZE_TO(fa_beat_grid, segment_count)
+#define FA_V1_fa_key_info             FA_SIZE_TO(fa_key_info, camelot)
+#define FA_V1_fa_cdg_surface_config   FA_SIZE_TO(fa_cdg_surface_config, flags)
+#define FA_V1_fa_surface_effects      FA_SIZE_TO(fa_surface_effects, bevel)
+#define FA_V1_fa_cdg_presentation     FA_SIZE_TO(fa_cdg_presentation, flags)
+#define FA_V1_fa_midi_stream_options  FA_SIZE_TO(fa_midi_stream_options, latency_ms)
+#define FA_V1_fa_lyric_style          FA_SIZE_TO(fa_lyric_style, effects)
+#define FA_V1_fa_encoder_options      FA_SIZE_TO(fa_encoder_options, track_number)
+#define FA_V1_fa_mic_config           FA_SIZE_TO(fa_mic_config, flags)
+#define FA_V1_fa_latency_check_config FA_SIZE_TO(fa_latency_check_config, max_monitor)
+#define FA_V1_fa_mic_effects          FA_SIZE_TO(fa_mic_effects, echo_tone)
+#define FA_V1_fa_ducking              FA_SIZE_TO(fa_ducking, threshold_db)
+
+/* Reads a caller's input struct into `dst`, which holds the defaults (`full` bytes,
+ * the library's sizeof): the first min(struct_size, full) bytes of `src` replace
+ * them, and dst's struct_size becomes `full`. FA_ERROR_INVALID_ARG (dst unchanged)
+ * when struct_size is under `v1`. */
+static inline fa_result fa_read_sized(void* dst, const void* src, uint32_t full, uint32_t v1)
+{
+    uint32_t have;
+    memcpy(&have, src, sizeof(have));
+    if (have < v1) return FA_ERROR_INVALID_ARG;
+    memcpy(dst, src, have < full ? have : full);
+    memcpy(dst, &full, sizeof(full));
+    return FA_OK;
+}
+
 /* Copies the fields `full` bytes of `src` has into `dst`, up to dst's struct_size
  * (its first uint32_t, at least 4), and sets that to what was filled. */
 static inline void fa_copy_sized(void* dst, const void* src, uint32_t full)

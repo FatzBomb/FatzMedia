@@ -116,7 +116,7 @@ static void remove_image(void)
 static void test_image_toc(void)
 {
     fa_disc* d = NULL;
-    fa_disc_toc toc;
+    fa_disc_toc toc = { .struct_size = sizeof(toc) };
     fa_disc_status st;
     CHECK_EQ(fa_disc_open(k_cue, NULL, &d), FA_OK);
     CHECK_EQ(fa_disc_get_status(d, &st), FA_OK);
@@ -255,7 +255,7 @@ static void test_image_stream(void)
 {
     fa_disc* d = NULL;
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* buf = (float*)malloc(sizeof(float) * 2 * 400 * 588);
     int64_t got, i;
     CHECK(buf);
@@ -451,7 +451,7 @@ static void test_image_wav_length(void)
     uint8_t sec[FA_CD_SECTOR_BYTES], hdr[44];
     uint32_t data = 0xFFFFFFFFu, v;
     fa_disc* d = NULL;
-    fa_disc_toc toc;
+    fa_disc_toc toc = { .struct_size = sizeof(toc) };
     int64_t sct;
     f = fopen("disc_test_stream.wav", "wb");
     CHECK(f);
@@ -486,7 +486,7 @@ static void test_image_later_disc(void)
     uint8_t sec[FA_CD_SECTOR_BYTES];
     int64_t i;
     fa_disc* d;
-    fa_disc_toc toc;
+    fa_disc_toc toc = { .struct_size = sizeof(toc) };
     char text[64];
     memset(sec, 0, sizeof(sec));
     f = fopen("disc_set_a.bin", "wb");
@@ -703,7 +703,7 @@ static void test_mmc_ids(void)
     uint8_t toc[4 + 8 * 7];
     fake_drive fd;
     fa_disc* d;
-    fa_disc_toc t;
+    fa_disc_toc t = { .struct_size = sizeof(t) };
     fa_disc_status st;
     char text[64];
     float speed = 0;
@@ -962,7 +962,7 @@ static void test_mmc_damage_and_removal(void)
     fd.state = FA_CD_READY;
     fd.unit_attention = 1;
     {
-        fa_disc_toc t;
+        fa_disc_toc t = { .struct_size = sizeof(t) };
         CHECK_EQ(fa_disc_get_toc(d, &t), FA_OK);
     }
     CHECK_EQ(fa_stream_seek(s, 0), FA_OK);
@@ -1025,7 +1025,7 @@ static void test_mmc_os_no_medium(void)
     fake_drive fd;
     fa_disc* d;
     fa_disc_status st;
-    fa_disc_toc t;
+    fa_disc_toc t = { .struct_size = sizeof(t) };
     memset(&fd, 0, sizeof(fd));
     fd.toc0 = toc;
     fd.toc0_len = make_toc(toc, 1, 1, lbas, 1000);
@@ -1305,7 +1305,7 @@ static fa_result play_through(fa_stream* s)
 
 static int has_cdg(fa_stream* s)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     return fa_stream_get_info(s, &info) == FA_OK && info.has_cdg;
 }
 
@@ -1321,7 +1321,7 @@ static int same_packs(fa_stream* s, const uint8_t* packs)
 /* Centre pixel of the picture at `t`, as B, G, R (BGRA). */
 static uint32_t pixel_at(fa_cdg_surface* f, fa_time t)
 {
-    fa_cdg_frame fr;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) };
     const uint8_t* p;
     if (fa_cdg_surface_update_at(f, t, &fr) != FA_OK) return 0xFFFFFFFFu;
     p = (const uint8_t*)fr.pixels + (fr.height / 2) * (uint32_t)fr.stride + (fr.width / 2) * 4;
@@ -1357,7 +1357,7 @@ static void test_cdg_image(void)
         CHECK_EQ(has_cdg(s), 1);
         CHECK(same_packs(s, packs));
         {
-            fa_cdg_info ci;
+            fa_cdg_info ci = { .struct_size = sizeof(ci) };
             CHECK_EQ(fa_stream_get_cdg_info(s, &ci), FA_OK);
             CHECK_EQ(ci.source, FA_CDG_SOURCE_DISC);
             CHECK_EQ(ci.pack_count, SONG_PACKS);
@@ -1390,7 +1390,7 @@ static void test_cdg_damage(void)
         fa_disc* d;
         fa_stream* s;
         fa_cdg_surface* f;
-        fa_cdg_info ci;
+        fa_cdg_info ci = { .struct_size = sizeof(ci) };
         uint8_t dd[16];
         g_with_parity = pass == 0;
         make_song(packs);
@@ -1460,7 +1460,7 @@ static void test_cdg_parity_limits(void)
     uint8_t* sub = (uint8_t*)malloc((size_t)SONG_PACKS * 24);
     fa_disc* d;
     fa_stream* s;
-    fa_cdg_info ci;
+    fa_cdg_info ci = { .struct_size = sizeof(ci) };
     uint8_t dd[16];
     int i, a, b, k, singles, doubles, pass;
     CHECK(packs && want && sub);

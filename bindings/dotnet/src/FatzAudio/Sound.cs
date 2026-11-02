@@ -118,7 +118,7 @@ public sealed unsafe class Sound : IDisposable
 
     private FaSoundInfo ReadInfo()
     {
-        FaSoundInfo n;
+        var n = NativeSized.New<FaSoundInfo>();
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_sound_get_info(Handle, &n));
         return n;
     }

@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define FA_GRID_FLAGS_ALL (FA_GRID_CONSTANT | FA_GRID_EXACT | FA_GRID_EDITED | FA_GRID_BARS)
-#define FA_GRID_SIZE_V1 (offsetof(fa_beat_grid, segment_count) + sizeof(uint32_t))
+#define FA_GRID_SIZE_V1 FA_V1(fa_beat_grid)
 #define FA_GRID_MIN_BPM 0.1        /* MIDI tempos reach 3.6 BPM, tracker ones go lower ... */
 #define FA_GRID_MAX_BPM 100000.0   /* ... and far higher (speed 1, tempo 255) */
 

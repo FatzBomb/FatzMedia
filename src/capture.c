@@ -214,10 +214,8 @@ fa_result fa_capture_decoder_open(fa_decoder* dec, fa_engine* engine, const fa_c
     fa_result r;
     int has_id, loopback;
     fa_capture_options_init(&o);
-    if (options) {
-        if (options->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-        memcpy(&o, options, options->struct_size < sizeof(o) ? options->struct_size : sizeof(o));
-    }
+    if (options && fa_read_sized(&o, options, sizeof(o), FA_V1(fa_capture_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if ((o.sample_rate && (o.sample_rate < 8000 || o.sample_rate > 384000)) || o.channels > 32 ||
         (o.flags & ~(uint32_t)(FA_CAPTURE_OS_PROCESSING | FA_CAPTURE_LOOPBACK)))
         return FA_ERROR_INVALID_ARG;

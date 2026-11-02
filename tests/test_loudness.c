@@ -225,7 +225,7 @@ static void test_true_peak_at_end_of_file(void)
     float* x = (float*)calloc((size_t)n, sizeof(float));
     size_t size;
     uint8_t* wav;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     x[n - 2] = x[n - 1] = 0.5f;
     wav = make_wav(rate, 1, x, n, NULL, 0, &size);
     CHECK(write_file("loudness-eof.wav", wav, size));
@@ -296,7 +296,7 @@ static void test_chunked_scan_matches_one_pass(void)
     float* x = make_signal(rate, 2, g_song, 6, 440.0, &n);
     uint8_t* wav = make_wav(rate, 2, x, n, NULL, 0, &size);
     double i, lra, tp;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     int64_t t0;
     CHECK(write_file("loudness-song.wav", wav, size));
     measure(x, n, rate, 2, &i, &lra, &tp);
@@ -319,7 +319,7 @@ static void test_cache(void)
 {
     fa_engine_config cfg;
     fa_engine* e;
-    fa_loudness a, b;
+    fa_loudness a = { .struct_size = sizeof(a) }, b = { .struct_size = sizeof(b) };
     char* dir = (char*)malloc(32);
     fa_engine_config_init(&cfg);
     cfg.flags = FA_ENGINE_NULL_OUTPUT;
@@ -330,7 +330,7 @@ static void test_cache(void)
     free(dir);
     /* Start clean: a previous run may have left this entry. */
     {
-        fa_loudness first;
+        fa_loudness first = { .struct_size = sizeof(first) };
         fa_scan_loudness_path(e, "loudness-song.wav", &first);
     }
     CHECK_EQ(fa_scan_loudness_path(e, "loudness-song.wav", &a), FA_OK);
@@ -345,7 +345,7 @@ static void test_cache(void)
 
 static void test_scan_errors(void)
 {
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     CHECK_EQ(fa_scan_loudness_path(g_engine, "does-not-exist.wav", &l), FA_ERROR_NOT_FOUND);
     CHECK(write_file("loudness-junk.bin", (const uint8_t*)"this is not audio at all", 24));
     CHECK_EQ(fa_scan_loudness_path(g_engine, "loudness-junk.bin", &l), FA_ERROR_UNSUPPORTED_FORMAT);
@@ -529,7 +529,7 @@ static void test_stream_gain_from_scan(void)
 {
     /* Mono 1 kHz sine at -10 dBFS peak measures -13.0 LUFS; target -23 -> -10 dB. */
     fa_stream* s;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     float out[2 * 4800];
     CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
     s = open_sine(30.0, -10.0, 0, NULL, 0);
@@ -550,7 +550,7 @@ static void test_glide_to_new_loudness(void)
 {
     /* While playing, the loudness changes by 12 dB: the gain glides at 12 dB/s down. */
     fa_stream* s;
-    fa_loudness l, app;
+    fa_loudness l = { .struct_size = sizeof(l) }, app = { .struct_size = sizeof(app) };
     float out[2 * 480];
     int i;
     double first_db, after_half, end_db;
@@ -562,6 +562,7 @@ static void test_glide_to_new_loudness(void)
     render(s, out, 480);
     first_db = 20.0 * log10(peak_of(out, 960));
     memset(&app, 0, sizeof(app));
+    app.struct_size = sizeof(app);
     app.integrated_lufs = l.integrated_lufs + 12.0;
     app.range_lu = app.true_peak_dbtp = NAN;
     CHECK_EQ(fa_stream_set_loudness(s, &app), FA_OK);
@@ -581,7 +582,7 @@ static void test_tags_win_and_album_mode(void)
     uint8_t tail[256];
     size_t n = 0;
     fa_stream* s;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     /* Both an R128 track gain (-> -18 LUFS) and a ReplayGain album gain (-> -20 LUFS). */
     {
         size_t a = make_ape(tail, "R128_TRACK_GAIN", "-1280");
@@ -621,7 +622,7 @@ static void test_tags_win_and_album_mode(void)
 static void test_opt_out_and_off(void)
 {
     fa_stream* s;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     float out[2 * 480];
     s = open_sine(5.0, -10.0, FA_OPEN_NO_NORMALIZE, NULL, 0);
     CHECK(s != NULL);
@@ -666,7 +667,7 @@ static void test_running_estimate_for_io(void)
     mem_reader mr;
     fa_io_callbacks io;
     fa_stream* s = NULL;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     float out[2 * 4800];
     int i;
     free(x);

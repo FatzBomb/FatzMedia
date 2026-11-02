@@ -52,24 +52,28 @@ FA_API fa_result FA_CALL fa_device_get_info(fa_engine* engine, fa_device_type ty
 {
     ma_device_info* infos; ma_uint32 n; ma_result r;
     ma_device_info detail;
-    if (!engine || !out_info || (type != FA_DEVICE_PLAYBACK && type != FA_DEVICE_CAPTURE)) return FA_ERROR_INVALID_ARG;
-    memset(out_info, 0, sizeof(*out_info));
+    fa_device_info info;
+    if (!engine || !out_info || out_info->struct_size < sizeof(uint32_t) || (type != FA_DEVICE_PLAYBACK && type != FA_DEVICE_CAPTURE))
+        return FA_ERROR_INVALID_ARG;
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
     ma_mutex_lock(&engine->lock);
     r = list_devices(engine, type, &infos, &n);
     if (r != MA_SUCCESS) { ma_mutex_unlock(&engine->lock); return FA_ERROR_DEVICE; }
     if (index >= n) { ma_mutex_unlock(&engine->lock); return FA_ERROR_NOT_FOUND; }
-    encode_id(&infos[index].id, index, out_info->id, sizeof(out_info->id));
-    snprintf(out_info->name, sizeof(out_info->name), "%s", infos[index].name);
-    out_info->type = type;
-    out_info->is_default = infos[index].isDefault ? 1 : 0;
+    encode_id(&infos[index].id, index, info.id, sizeof(info.id));
+    snprintf(info.name, sizeof(info.name), "%s", infos[index].name);
+    info.type = type;
+    info.is_default = infos[index].isDefault ? 1 : 0;
     /* Native format needs a detailed query; best effort. */
     if (ma_context_get_device_info(&engine->context,
                                    type == FA_DEVICE_CAPTURE ? ma_device_type_capture : ma_device_type_playback,
                                    &infos[index].id, &detail) == MA_SUCCESS && detail.nativeDataFormatCount > 0) {
-        out_info->native_sample_rate = detail.nativeDataFormats[0].sampleRate;
-        out_info->native_channels = detail.nativeDataFormats[0].channels;
+        info.native_sample_rate = detail.nativeDataFormats[0].sampleRate;
+        info.native_channels = detail.nativeDataFormats[0].channels;
     }
     ma_mutex_unlock(&engine->lock);
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 

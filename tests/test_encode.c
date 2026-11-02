@@ -183,7 +183,7 @@ static void test_wav_formats(void)
     int k;
     for (k = 0; k < 3; k++) {
         fa_encoder_options o;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         int64_t got, i;
         float* y;
         fa_encoder_options_init(&o);
@@ -216,7 +216,7 @@ static void test_wav_multichannel_and_tags(void)
     const int64_t n = 4801;   /* odd: the data chunk is padded */
     float* x = make_signal(0, n, rate, ch);
     fa_encoder_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int64_t got, i;
     float* y;
     size_t fn;
@@ -276,7 +276,7 @@ static void test_flac_lossless(void)
         const int64_t n = cases[k].frames;
         float* x = make_signal(cases[k].kind, n, rate, ch);
         fa_encoder_options o;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         int64_t got, i;
         float* y;
         fa_encoder_options_init(&o);
@@ -322,7 +322,7 @@ static void test_flac_seektable(void)
     const int64_t n = 25 * 44100;
     float* x = make_signal(4, n, rate, ch);
     fa_encoder_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream* s = NULL;
     uint8_t* b;
     size_t len = 0, pos = 4, table = 0, first = 0;
@@ -380,7 +380,7 @@ static void test_16bit_source_is_lossless(void)
     for (i = 0; i < n * ch; i++) x[i] = (float)(floor((double)x[i] * 32768.0 + 0.5) / 32768.0);
     for (f = 0; f < 2; f++) {
         fa_encoder_options o;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         int64_t got;
         float* y;
         fa_encoder_options_init(&o);
@@ -547,7 +547,7 @@ static void test_resample_and_mix(void)
     const int64_t n = 48000;
     float* x = make_signal(0, n, in_rate, 2);
     fa_encoder_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int64_t got, i;
     float* y;
     double amp;
@@ -579,8 +579,8 @@ static void test_encode_stream_offline(void)
     fa_encoder_options o;
     fa_encoder* e = NULL;
     fa_stream* s = NULL;
-    fa_encoder_status st;
-    fa_stream_info info;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int64_t got, i;
     float* y;
     fa_encoder_options_init(&o);
@@ -646,8 +646,8 @@ static void test_record_device_and_stream(void)
     fa_encoder_options o;
     fa_encoder *dev_enc = NULL, *str_enc = NULL, *str_enc2 = NULL;
     fa_stream* s = NULL;
-    fa_encoder_status st;
-    fa_stream_info info;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
+    fa_stream_info info = { .struct_size = sizeof(info) };
     int64_t got_dev, got_str;
     float *yd, *ys;
     fa_encoder_options_init(&o);
@@ -709,7 +709,7 @@ static void test_device_closed_while_recording(void)
     fa_encoder* e = NULL;
     float out[512 * 2];
     fa_encoder_options o;
-    fa_encoder_status st;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
     fa_encoder_options_init(&o);
     CHECK_EQ(fa_device_open(g_engine, NULL, &d), FA_OK);
     CHECK_EQ(fa_encoder_create_path("enc_gone.wav", &o, &e), FA_OK);
@@ -738,7 +738,7 @@ static void test_device_recording_wakes(void)
 {
     fa_encoder* e = NULL;
     fa_encoder_options o;
-    fa_encoder_status st;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
     fa_wake* w;
     int64_t t0, until, total = 0;
     int k;
@@ -772,7 +772,7 @@ static void test_device_recording_wakes(void)
     CHECK_EQ(fa_encoder_close(e), FA_OK);            /* wakes it: drains and ends */
     CHECK(fa_monotonic_ns() - t0 < 300000000LL);
     {
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         int64_t got = 0;
         float* y = decode_file("enc_wake.wav", &info, &got);
         CHECK(y != NULL);
@@ -816,7 +816,7 @@ static void test_forward_only_output(void)
         fa_encoder_options o;
         fa_encoder* e = NULL;
         fa_stream* s = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float y[4096 * 2];
         int64_t total = 0;
         memset(&m, 0, sizeof(m));
@@ -876,7 +876,7 @@ static void test_seekable_output(void)
         fa_encoder_options o;
         fa_encoder* e = NULL;
         fa_stream* s = NULL;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         memset(m, 0, sizeof(*m));
         fa_encoder_options_init(&o);
         o.format = f == 0 ? FA_ENCODE_WAV : FA_ENCODE_FLAC;
@@ -900,7 +900,7 @@ static void test_errors(void)
     fa_encoder_options o;
     fa_encoder* e = NULL;
     fa_encoder_output bad = { fail_write, NULL, NULL };
-    fa_encoder_status st;
+    fa_encoder_status st = { .struct_size = sizeof(st) };
     float x[2048 * 2] = { 0 };
     fa_result r;
     fa_encoder_options_init(&o);
@@ -949,7 +949,7 @@ static void test_mp3(void)
     const int64_t n = 44100 * 2;
     float* x;
     fa_encoder_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_lame_info li;
     int64_t got;
     float* y;

@@ -51,7 +51,7 @@ fa_stream* song;
 fa_result r = fa_stream_open_path(engine, "C:/Music/track.flac", NULL, &song);
 if (r != FA_OK) printf("can't open: %s\n", fa_result_string(r));
 
-fa_stream_info info;
+fa_stream_info info = { .struct_size = sizeof(info) };
 fa_stream_get_info(song, &info);
 printf("%s in %s, %u Hz, %u ch, %.3f s\n", info.codec, info.container,
        info.format.sample_rate, info.format.channels, info.duration / 1e9);
@@ -252,7 +252,7 @@ The output matches FFmpeg's AAC decoder to float precision: about 136 dB SNR for
 ```c
 fa_stream* s;
 fa_stream_open_path(engine, "song.aac", NULL, &s);   /* or .m4a, .mp4, .mkv, an AAC radio URL */
-fa_stream_info info;
+fa_stream_info info = { .struct_size = sizeof(info) };
 fa_stream_get_info(s, &info);   /* info.codec "aac"; info.format.sample_rate is the rate after SBR */
 ```
 
@@ -312,7 +312,7 @@ Details:
 ```c
 fa_stream* s;
 fa_stream_open_path(engine, "song.wma", NULL, &s);
-fa_stream_info info;
+fa_stream_info info = { .struct_size = sizeof(info) };
 fa_stream_get_info(s, &info);          /* info.codec "wmav2", info.container "asf" */
 ```
 

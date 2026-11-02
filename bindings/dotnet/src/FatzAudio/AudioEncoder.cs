@@ -303,7 +303,8 @@ public sealed unsafe class AudioEncoder : IDisposable
     {
         get
         {
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_get_status(Handle, out FaEncoderStatus s));
+            var s = NativeSized.New<FaEncoderStatus>();
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_encoder_get_status(Handle, ref s));
             var state = (EncoderState)s.State;
             return new EncoderStatus(state, (ErrorCode)s.Error, s.Paused != 0, s.Frames, TimeConvert.FromNanoseconds(s.Duration),
                                      s.Bytes, s.DroppedFrames,

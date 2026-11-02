@@ -452,7 +452,8 @@ public sealed class TrackAnalysis
             Loudness? loudness = null;
             if ((kinds & AnalysisKinds.Loudness) != 0)
             {
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_loudness(analysis, out FaLoudness l));
+                var l = NativeSized.New<FaLoudness>();
+                FatzAudioException.ThrowIfFailed(NativeMethods.fa_analysis_get_loudness(analysis, ref l));
                 loudness = FatzAudio.Loudness.From(l);
             }
             return new TrackAnalysis(kinds, (info.Flags & 1) != 0 /* FA_ANALYSIS_FROM_CACHE */, (int)info.SampleRate, info.Length,

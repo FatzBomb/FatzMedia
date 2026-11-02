@@ -12,7 +12,7 @@ fa_engine_create(NULL, &engine);
 uint32_t n = 0;
 fa_device_count(engine, FA_DEVICE_PLAYBACK, &n);
 for (uint32_t i = 0; i < n; i++) {
-    fa_device_info di;
+    fa_device_info di = { .struct_size = sizeof(di) };
     fa_device_get_info(engine, FA_DEVICE_PLAYBACK, i, &di);
     printf("%s%s\n", di.name, di.is_default ? " (default)" : "");
 }

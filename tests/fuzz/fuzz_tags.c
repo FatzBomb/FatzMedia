@@ -22,7 +22,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         }
         for (i = 0; i < 24; i++) (void)fa_tags_get(t, (fa_tag_field)i);
         {
-            fa_stream_info info;
+            fa_stream_info info = { .struct_size = sizeof(info) };
             fa_tags_get_info(t, &info);
         }
         fa_tags_close(t);

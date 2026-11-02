@@ -337,7 +337,7 @@ static void learn_format(fa_track* t)
  * headers (the gap silence in emit() scales with the rate). */
 static int codec_has_audio(const fa_track* t)
 {
-    return t->codec.out_frames > 0 && t->codec.rate != 0 && t->codec.rate <= 768000 && t->codec.channels != 0;
+    return t->codec.out_frames > 0 && t->codec.rate != 0 && t->codec.rate <= FA_MAX_SAMPLE_RATE && t->codec.channels != 0;
 }
 
 /* Lays the codec's output for packet `pk` on the timeline and keeps the part

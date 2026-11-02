@@ -49,14 +49,37 @@ extern "C" {
 /* The one version number of the library, CMake project and .NET package (see
  * CHANGELOG.md: before 1.0 a minor bump may break the API). */
 #define FA_VERSION_MAJOR 0
-#define FA_VERSION_MINOR 2
+#define FA_VERSION_MINOR 3
 #define FA_VERSION_PATCH 0
 
-/* ---- Basic types -------------------------------------------------------- */
+/* ---- Basic types --------------------------------------------------------
+ *
+ * Units. fa_time is always nanoseconds and fa_frames always sample frames (at the
+ * stream's own rate unless a call says otherwise). Other units are in the name:
+ * _ms milliseconds, _seconds seconds, _db decibels, _lufs / _lu loudness, _kbps
+ * kilobits per second; a plain double duration (fa_tracker_info.duration) is in
+ * seconds, as its comment says. Rates without a unit in the name are bits per second
+ * (fa_stream_info.bitrate, hls_max_bandwidth); sizes and counts of data are bytes.
+ *
+ * Versioned structs. A struct whose first field is struct_size can grow at its end
+ * without breaking callers built against an older header:
+ *   - Structs you pass in (options, configs): set struct_size with their _init
+ *     function (or to sizeof). It must cover at least the struct's first layout, else
+ *     FA_ERROR_INVALID_ARG. Fields past it take their defaults; a bigger struct from a
+ *     newer header is read up to the library's own size.
+ *   - Structs the library fills (info, status, stats): set struct_size to sizeof
+ *     before the call (0 is FA_ERROR_INVALID_ARG). The struct is filled up to it, and
+ *     struct_size is set to how much was filled.
+ * Structs without a struct_size keep their layout until the next breaking version:
+ * array elements (fa_midi_event, fa_midi_mark, fa_tempo_segment, ...), values inside
+ * other structs and the event structs the library hands to callbacks. */
 
 typedef int32_t fa_result;
 typedef int64_t fa_time;   /* nanoseconds */
 typedef int64_t fa_frames; /* sample frames */
+
+/* The highest sample rate any call accepts. */
+#define FA_MAX_SAMPLE_RATE 768000
 
 enum {
     FA_OK = 0,
@@ -87,9 +110,9 @@ enum {
     FA_ERROR_NOT_ENOUGH_CHANNELS = -19, /* FA_CUE_CHANNELS: the output device has no channels
                                         for the cue (fewer than cue_channel + 2); a mic's
                                         channel that its input device does not have */
-    FA_ERROR_PERMISSION_DENIED = -20 /* the OS refused the microphone: the app has no
+    FA_ERROR_PERMISSION_DENIED = -20, /* the OS refused the microphone: the app has no
                                         permission (Android RECORD_AUDIO, the macOS and iOS
-                                        microphone prompt, Windows privacy settings) */,
+                                        microphone prompt, Windows privacy settings) */
     FA_ERROR_OUT_OF_RANGE = -21,     /* fa_deck_sync: the tempo it needs is outside the deck's
                                         FA_DECK_SYNC_RANGE, also at half or double time */
     FA_ERROR_CANCELLED = -22         /* the app's fa_open_options.cancel flag stopped an open */
@@ -205,6 +228,7 @@ FA_API fa_result FA_CALL fa_format_get_info(uint32_t index, fa_format_info* out_
 typedef enum fa_device_type { FA_DEVICE_PLAYBACK = 1, FA_DEVICE_CAPTURE = 2 } fa_device_type;
 
 typedef struct fa_device_info {
+    uint32_t struct_size; /* sizeof(fa_device_info), set before the call; filled up to it */
     char id[256];      /* stable backend id, pass to fa_device_open */
     char name[256];
     fa_device_type type;
@@ -635,6 +659,7 @@ typedef struct fa_sound_options {
 } fa_sound_options;
 
 typedef struct fa_sound_info {
+    uint32_t struct_size;   /* sizeof(fa_sound_info), set before the call; filled up to it */
     uint32_t  sample_rate;  /* the sound's own rate and channels: each voice converts to */
     uint32_t  channels;     /* its device, as a stream does */
     fa_frames frames;       /* length */
@@ -656,7 +681,7 @@ FA_API fa_result FA_CALL fa_sound_load_path(fa_engine* engine, const char* path,
 FA_API fa_result FA_CALL fa_sound_load_memory(fa_engine* engine, const void* data, size_t size, const fa_sound_options* options,
                                               fa_sound** out_sound);
 /* Your own PCM (BASS_SampleCreate + BASS_SampleSetData): `frames` interleaved frames in
- * `format` (any interleaved sample format, 1..32 channels, 1000..768000 Hz; planar is
+ * `format` (any interleaved sample format, 1..32 channels, 1000..FA_MAX_SAMPLE_RATE Hz; planar is
  * FA_ERROR_INVALID_ARG). Copied. */
 FA_API fa_result FA_CALL fa_sound_load_pcm(fa_engine* engine, const fa_audio_format* format, const void* data, fa_frames frames,
                                            const fa_sound_options* options, fa_sound** out_sound);
@@ -769,6 +794,7 @@ FA_API fa_result FA_CALL fa_android_set_java_vm(void* java_vm);
 /* What a web stream is playing. Every string is UTF-8 and "" when unknown. Streams
  * that are not web streams return FA_OK with everything empty. */
 typedef struct fa_metadata {
+    uint32_t struct_size;          /* sizeof(fa_metadata), set before the call; filled up to it */
     char stream_title[1024];       /* the song heard now, as the station sends it
                                       (ICY StreamTitle), usually "Artist - Title" */
     char artist[256];              /* stream_title split at its first " - " */
@@ -789,6 +815,7 @@ typedef struct fa_metadata {
 FA_API fa_result FA_CALL fa_stream_get_metadata(fa_stream* stream, fa_metadata* out_metadata);
 
 typedef struct fa_net_status {
+    uint32_t struct_size;          /* sizeof(fa_net_status), set before the call; filled up to it */
     int32_t connected;             /* 1 while a connection is open */
     int32_t http_status;           /* status code of the last response, 0 before one */
     int32_t is_live;               /* 1 = no known end (radio, live HLS) */
@@ -919,6 +946,7 @@ typedef struct fa_disc_track {
 } fa_disc_track;
 
 typedef struct fa_disc_toc {
+    uint32_t struct_size;    /* sizeof(fa_disc_toc), set before the call; filled up to it */
     int32_t first_track;     /* number of the first track, usually 1 */
     int32_t last_track;
     int32_t track_count;     /* entries used in tracks[] */
@@ -994,6 +1022,7 @@ FA_API fa_result FA_CALL fa_stream_open_disc(fa_engine* engine, fa_disc* disc, i
 /* ---- Stream info -------------------------------------------------------- */
 
 typedef struct fa_stream_info {
+    uint32_t struct_size;        /* sizeof(fa_stream_info), set before the call; filled up to it */
     fa_audio_format format;      /* the source's own decoded format (always F32 interleaved,
                                     at the source's rate and channel count). It does not
                                     change when the stream is attached to a device; the
@@ -1593,6 +1622,8 @@ typedef struct fa_mixer_config {
  * Windows, macOS, Linux and Android (where the system may route both outputs to one
  * place); FA_ERROR_NOT_IMPLEMENTED on iOS (use FA_CUE_SPLIT). */
 
+/* Its defaults are not all zero (2 decks, FA_LATENCY_LOW): call it before setting
+ * fields, or pass NULL to fa_mixer_create for all of them. */
 FA_API void      FA_CALL fa_mixer_config_init(fa_mixer_config* config);
 /* Opens the output device (and the headphones of FA_CUE_DEVICE) and starts it.
  * FA_ERROR_NOT_ENOUGH_CHANNELS when FA_CUE_CHANNELS asks for channels the device does
@@ -1849,6 +1880,8 @@ typedef struct fa_automix_options {
     float    min_confidence;     /* 0..1, default 0.5: grids below it count as unknown */
     fa_time  restore_time;       /* RESTORE_TEMPO's glide, 0..300 s (0 = at once), default 20 s */
 } fa_automix_options;
+/* Its defaults are not zero (8 s, MATCH_TEMPO | ALIGN_BEATS, ...): call it before
+ * setting fields. */
 FA_API void      FA_CALL fa_automix_options_init(fa_automix_options* options);
 /* Turns auto-mix on with `options` (or changes them for the next transition), NULL = off.
  * Turning it off leaves a transition already scheduled to finish, without events.
@@ -1899,6 +1932,7 @@ typedef enum fa_loudness_source {
 } fa_loudness_source;
 
 typedef struct fa_loudness {
+    uint32_t struct_size;    /* sizeof(fa_loudness), set before the call; filled up to it */
     double integrated_lufs;  /* integrated loudness; -INFINITY for digital silence */
     double range_lu;         /* loudness range (EBU Tech 3342) */
     double true_peak_dbtp;   /* true peak; from tags this is the sample peak */
@@ -2200,6 +2234,7 @@ FA_API void FA_CALL fa_cdg_surface_config_init(fa_cdg_surface_config* config);
 /* One rendered picture. `pixels` belongs to the surface: it stays valid and unchanged
  * until the next update of that surface or fa_cdg_surface_destroy. */
 typedef struct fa_cdg_frame {
+    uint32_t struct_size; /* sizeof(fa_cdg_frame), set before the call; filled up to it */
     const void* pixels;
     uint32_t width, height;
     int32_t stride;                    /* bytes from one row to the next */
@@ -2244,6 +2279,7 @@ typedef enum fa_cdg_source {
 } fa_cdg_source;
 
 typedef struct fa_cdg_info {
+    uint32_t struct_size; /* sizeof(fa_cdg_info), set before the call; filled up to it */
     fa_cdg_source source;
     uint64_t pack_count;               /* 300 per second (a disc track's whole length) */
     fa_time checkpoint_interval;       /* seeks replay at most this much (10 s, longer for
@@ -2311,7 +2347,9 @@ FA_API fa_result FA_CALL fa_cdg_surface_create(fa_stream* stream, const fa_cdg_s
 FA_API void FA_CALL fa_cdg_surface_destroy(fa_cdg_surface* surface);
 /* Draws the picture for the audio heard right now (fa_stream_get_clock). Cheap when
  * nothing changed: call it every frame and upload only when out_frame->changed. The
- * first call allocates the surface's pixels (FA_ERROR_OUT_OF_MEMORY if it can't). */
+ * first call allocates the surface's pixels (FA_ERROR_OUT_OF_MEMORY if it can't).
+ * This call, _update_at and the presentation calls below are for CD+G surfaces:
+ * a lyric surface (fa_lyric_surface_create) is FA_ERROR_INVALID_ARG. */
 FA_API fa_result FA_CALL fa_cdg_surface_update(fa_cdg_surface* surface, fa_cdg_frame* out_frame);
 /* Same, at a position you choose on the stream's timeline: for your own clock,
  * previews, or rendering to a video file.
@@ -2664,6 +2702,7 @@ FA_API fa_result FA_CALL fa_soundfont_open_system(fa_soundfont** out_font);
 FA_API void FA_CALL fa_soundfont_close(fa_soundfont* font);
 
 typedef struct fa_soundfont_info {
+    uint32_t struct_size;        /* sizeof(fa_soundfont_info), set before the call; filled up to it */
     char name[256];              /* the bank's name (INAM), "" if it has none */
     uint32_t preset_count;       /* instruments and drum kits */
     uint64_t sample_memory;      /* bytes of sample data held in memory */
@@ -2674,6 +2713,7 @@ FA_API fa_result FA_CALL fa_soundfont_get_info(fa_soundfont* font, fa_soundfont_
 /* One instrument or drum kit of a soundfont, by index (0 .. preset_count - 1, in bank and
  * program order). FA_ERROR_INVALID_ARG past the end. */
 typedef struct fa_soundfont_preset {
+    uint32_t struct_size;        /* sizeof(fa_soundfont_preset), set before the call; filled up to it */
     int32_t bank;                /* bank select MSB 0..127; 128 = drum kits (a stack's to_bank: up to 16383) */
     int32_t program;             /* 0..127 */
     char name[24];               /* UTF-8 */
@@ -2712,6 +2752,7 @@ typedef struct fa_soundfont_stack_entry {
 
 /* Every preset of `font` as they are: banks and programs FA_SOUNDFONT_ALL, volume 1. */
 FA_API void FA_CALL fa_soundfont_stack_entry_init(fa_soundfont_stack_entry* entry, fa_soundfont* font);
+/* count: 1..1024 entries. */
 FA_API fa_result FA_CALL fa_soundfont_open_stack(const fa_soundfont_stack_entry* entries, uint32_t count,
                                                  fa_soundfont** out_font);
 
@@ -2740,6 +2781,7 @@ typedef enum fa_midi_text_flags {
  * a karaoke screen joins the syllables of a line as they are and breaks before
  * the flagged ones. Spaces between words are kept as the file has them. */
 typedef struct fa_midi_text {
+    uint32_t struct_size;        /* sizeof(fa_midi_text), set before the call; filled up to it */
     fa_frames frame;             /* where it is heard (source frames) */
     fa_time time;                /* the same, in nanoseconds */
     int32_t type;                /* fa_midi_text_type */
@@ -2749,6 +2791,7 @@ typedef struct fa_midi_text {
 } fa_midi_text;
 
 typedef struct fa_midi_info {
+    uint32_t struct_size;        /* sizeof(fa_midi_info), set before the call; filled up to it */
     char title[256];             /* .kar @T line, else the name of the first track */
     char artist[256];            /* the second .kar @T line, "" if none */
     char copyright[256];         /* copyright event */
@@ -3259,12 +3302,14 @@ FA_API fa_result FA_CALL fa_stream_get_tracker_orders(fa_stream* stream, uint32_
  * FA_EVENT_TRACKER_INSTRUMENT the row's first frame channel << 16 | instrument, 0-based (FA_TRACKER_CELL_EVENTS)
  * FA_EVENT_TRACKER_SYNC     the row's first frame  channel << 16 | the Zxx parameter (FA_TRACKER_CELL_EVENTS)
  *
- * Delivered today: ENDED, POSITION, MARKER, LOOPED, CDG_CHANGED (when asked for), LOUDNESS_FINAL, RAMP_DONE, STARTED, SEEK_FAILED and DEVICE_CHANGED; MIDI_TEXT from MIDI
- * streams played on a device (decode-only streams list them with fa_stream_get_midi_text); TRACKER_ROW, TRACKER_INSTRUMENT and TRACKER_SYNC from
- * tracker modules played on a device (when asked for); METADATA from web
- * streams; STALLED and RESUMED from push, packet and web streams; DECODE_ERROR from packet
- * and disc streams, and once for a stored ZIP song that does not match its archive's CRC (value
- * FA_ERROR_UNSUPPORTED_FORMAT). The others are raised by the features that produce them as those land (see docs/features). */
+ * Who raises what: ENDED, POSITION, MARKER, LOOPED, CDG_CHANGED (when asked for), LOUDNESS_FINAL,
+ * RAMP_DONE, STARTED, SEEK_FAILED and DEVICE_CHANGED from streams of every kind; MIDI_TEXT from MIDI
+ * streams played on a device (decode-only streams list them with fa_stream_get_midi_text);
+ * TRACKER_ROW, TRACKER_INSTRUMENT and TRACKER_SYNC from tracker modules played on a device (when
+ * asked for); METADATA from web streams; STALLED and RESUMED from push, packet and web streams;
+ * DECODE_ERROR from packet and disc streams, and once for a stored ZIP song that does not match
+ * its archive's CRC (value FA_ERROR_UNSUPPORTED_FORMAT). The DJ mixer's events (INPUT_LOST,
+ * CUE_LOST, AUTOMIX_STARTED, AUTOMIX_DONE and DECK_EMPTY) go to fa_mixer_set_event_callback. */
 typedef enum fa_event_type {
     FA_EVENT_ENDED = 0,
     FA_EVENT_POSITION,        /* reached a requested frame */
@@ -3472,6 +3517,7 @@ typedef enum fa_encoder_state {
 } fa_encoder_state;
 
 typedef struct fa_encoder_status {
+    uint32_t struct_size; /* sizeof(fa_encoder_status), set before the call; filled up to it */
     fa_encoder_state state;
     fa_result error;             /* first error, FA_OK if none */
     int32_t paused;

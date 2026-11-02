@@ -18,7 +18,7 @@ static fa_frames length_of(const buf* f, fa_soundfont* font)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_open_options_init(&o);
     o.flags = FA_OPEN_DECODE_ONLY;
     o.soundfont = font;
@@ -80,8 +80,8 @@ static void test_stack(void)
     static const sfpreset pa[] = { { 0, 0, 0 } }, pb[] = { { 0, 0, 12 }, { 0, 1, 7 } };
     fa_soundfont *a = open_presets(pa, 1), *b = open_presets(pb, 2), *st = NULL, *st2 = NULL;
     fa_soundfont_stack_entry e[3];
-    fa_soundfont_info info;
-    fa_soundfont_preset p;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
+    fa_soundfont_preset p = { .struct_size = sizeof(p) };
     double level;
     CHECK(a && b);
 
@@ -366,8 +366,8 @@ static void test_dls_conditions_and_layers(void)
 {
     buf lins = { 0 }, lrgn = { 0 }, cdl = { 0 }, extra = { 0 };
     fa_soundfont* f;
-    fa_soundfont_info info;
-    fa_soundfont_preset p;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
+    fa_soundfont_preset p = { .struct_size = sizeof(p) };
     uint32_t i;
     int have[8] = { 0 };
     /* Program 0: a 440 Hz region if GM is in hardware (no), an 880 Hz one if DLS 2 is supported. */
@@ -493,8 +493,8 @@ static void test_length(void)
 static void test_system_bank(void)
 {
     fa_soundfont *sys = NULL, *st = NULL;
-    fa_soundfont_info info;
-    fa_soundfont_preset p;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
+    fa_soundfont_preset p = { .struct_size = sizeof(p) };
     fa_soundfont_stack_entry e[2];
     clock_t t0, t1;
     song s = { 0 };

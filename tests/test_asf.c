@@ -187,7 +187,7 @@ static float* forward_only(const uint8_t* d, size_t size, int32_t track, uint32_
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* out;
     m.p = d;
     m.n = size;
@@ -232,7 +232,7 @@ static void test_registry_and_probe(void)
 static void test_pcm_exact(void)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* all;
     int64_t n, i;
     double worst;
@@ -309,7 +309,7 @@ static void test_forward_only(void)
 static void test_tracks(void)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* all;
     int64_t n;
     fa_result r;
@@ -371,7 +371,7 @@ static void test_tracks(void)
 static void test_wmav2(void)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* all;
     int64_t n;
     fa_result r;
@@ -433,7 +433,7 @@ static void test_tags(void)
     fa_source src;
     fa_tag_loudness l;
     fa_tags* t = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     data_path(path, sizeof(path), "tone.wma");
     CHECK_EQ(fa_tags_read_path(path, 0, &t), FA_OK);
     CHECK_STR(fa_tags_get(t, FA_TAG_TITLE), "Test Tone");
@@ -638,7 +638,7 @@ static void test_compressed_payloads(void)
 {
     wbuf f = make_compressed();
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* all;
     int64_t n, i, total = CP_PACKETS * CP_SUBS * CP_SAMPLES;
     double worst;
@@ -664,7 +664,7 @@ static void test_compressed_payloads(void)
 static void exercise_memory(const uint8_t* data, size_t size, int32_t track)
 {
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[4096 * 2];
     int k;
     if (open_memory(data, size, track, &s) != FA_OK) return;

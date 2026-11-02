@@ -93,6 +93,7 @@ static int decode(const char* name, int32_t dynamic_range, decoded* d)
 {
     fa_stream* s = NULL;
     memset(d, 0, sizeof(*d));
+    d->info.struct_size = sizeof(d->info);
     if (open_file(name, dynamic_range, &s) != FA_OK) { fprintf(stderr, "  cannot open %s\n", name); return 0; }
     fa_stream_get_info(s, &d->info);
     d->pcm = read_all(s, d->info.format.channels, &d->frames);
@@ -361,7 +362,7 @@ static void test_raw_cbr_and_index(void)
     uint8_t* junk;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     decoded d;
     float* all;
     int64_t n, i;
@@ -515,7 +516,7 @@ static void test_dependent_frames_in_separate_packets(void)
     fa_codec_params p;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     decoded ref;
     float* out;
     int64_t n = 0, i;
@@ -618,7 +619,7 @@ static void test_garbage_does_not_crash(void)
         }
         if (fa_stream_open_memory(g_engine, copy, n % 5 == 4 ? size / 3 : size, NULL, &s) == FA_OK) {
             int64_t frames = 0;
-            fa_stream_info info;
+            fa_stream_info info = { .struct_size = sizeof(info) };
             fa_stream_get_info(s, &info);
             free(read_all(s, info.format.channels, &frames));
             fa_stream_close(s);
@@ -880,12 +881,13 @@ static void test_downmix_normalization_makeup(void)
     for (pass = 0; pass < 2; pass++) {
         fa_open_options o;
         fa_stream* s = NULL;
-        fa_loudness l;
+        fa_loudness l = { .struct_size = sizeof(l) };
         int64_t deadline = fa_monotonic_ns() + 10000000000LL;
         fa_open_options_init(&o);
         o.dolby_downmix = pass == 0 ? FA_DOLBY_DOWNMIX_AUTO : FA_DOLBY_DOWNMIX_ENGINE;
         CHECK_EQ(fa_stream_open_path(g_engine, path, &o, &s), FA_OK);
         memset(&l, 0, sizeof(l));
+        l.struct_size = sizeof(l);
         l.integrated_lufs = -20;
         l.range_lu = l.true_peak_dbtp = NAN;
         CHECK_EQ(fa_stream_set_loudness(s, &l), FA_OK);
@@ -904,7 +906,7 @@ static void test_dialnorm_loudness(void)
 {
     char path[512];
     fa_stream* s = NULL;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     int64_t deadline;
     int pass;
     for (pass = 0; pass < 2; pass++) {

@@ -19,7 +19,7 @@ CD+G songs pair an audio track with a stream of graphics that draws the lyrics, 
 fa_stream* song;
 fa_stream_open_path(engine, "Artist - Song.mp3", NULL, &song);   /* finds "Artist - Song.cdg" */
 
-fa_stream_info info;
+fa_stream_info info = { .struct_size = sizeof(info) };
 fa_stream_get_info(song, &info);
 if (!info.has_cdg) { /* show a cover image instead */ }
 
@@ -35,7 +35,7 @@ fa_stream_attach(song, device, NULL);
 fa_stream_play(song);
 
 /* In your render loop (each vsync, or a 60 Hz timer): */
-fa_cdg_frame frame;
+fa_cdg_frame frame = { .struct_size = sizeof(frame) };
 fa_cdg_surface_update(cdg, &frame);
 if (frame.changed) {
     /* Upload only the part that changed. */

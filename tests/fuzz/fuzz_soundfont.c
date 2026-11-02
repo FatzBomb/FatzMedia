@@ -51,7 +51,7 @@ static void play(tsf* bank)
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     fa_soundfont* font = NULL;
-    fa_soundfont_info info;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
     uint8_t* sf2 = NULL;
     size_t sf2_size = size;
     tsf* bank;
@@ -59,7 +59,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     fa_soundfont_get_info(font, &info);
     {
         /* Its presets, and a stack of it over itself moved to another bank. */
-        fa_soundfont_preset p;
+        fa_soundfont_preset p = { .struct_size = sizeof(p) };
         fa_soundfont_stack_entry e[2];
         fa_soundfont* st = NULL;
         uint32_t i;

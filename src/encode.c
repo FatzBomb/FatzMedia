@@ -265,10 +265,8 @@ static fa_result encoder_new(const fa_encoder_options* options, fa_encoder** out
     int oom = 0;
     *out = NULL;
     fa_encoder_options_init(&o);
-    if (options) {
-        if (options->struct_size < sizeof(o)) return FA_ERROR_INVALID_ARG;
-        o = *options;
-    }
+    if (options && fa_read_sized(&o, options, sizeof(o), FA_V1(fa_encoder_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     be = backend_for(o.format);
     if (!be) return FA_ERROR_INVALID_ARG;
     e = (fa_encoder*)calloc(1, sizeof(*e));
@@ -304,7 +302,7 @@ static fa_result encoder_new(const fa_encoder_options* options, fa_encoder** out
     e->tags.track = o.track_number;
     e->sink.buf = (uint8_t*)malloc(ENC_SINK_BUF);
     if (oom || !e->sink.buf) { encoder_free(e); return FA_ERROR_OUT_OF_MEMORY; }
-    if (e->req.channels > FA_TEMPO_MAX_CHANNELS || e->req.rate > 768000 || e->queue_ms > 60000) {
+    if (e->req.channels > FA_TEMPO_MAX_CHANNELS || e->req.rate > FA_MAX_SAMPLE_RATE || e->queue_ms > 60000) {
         encoder_free(e);
         return FA_ERROR_INVALID_ARG;
     }
@@ -581,7 +579,7 @@ static fa_result start(fa_encoder* e, int source, uint32_t in_rate, uint32_t in_
 {
     fa_enc_format f = e->req;
     fa_result r;
-    if (in_rate == 0 || in_rate > 768000 || in_channels == 0 || in_channels > FA_TEMPO_MAX_CHANNELS)
+    if (in_rate == 0 || in_rate > FA_MAX_SAMPLE_RATE || in_channels == 0 || in_channels > FA_TEMPO_MAX_CHANNELS)
         return FA_ERROR_INVALID_ARG;
     if (!f.rate) f.rate = in_rate;
     if (!f.channels) f.channels = in_channels;
@@ -926,22 +924,25 @@ static void fill_format(fa_audio_format* f, fa_sample_format sf, uint32_t rate, 
 FA_API fa_result FA_CALL fa_encoder_get_status(fa_encoder* encoder, fa_encoder_status* out)
 {
     fa_encoder* e = encoder;
-    if (!e || !out) return FA_ERROR_INVALID_ARG;
-    memset(out, 0, sizeof(*out));
+    fa_encoder_status st;
+    if (!e || !out || out->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
     fa_mutex_lock(&e->lock);
-    out->state = (fa_encoder_state)fa_load32(&e->state);
-    out->error = e->error;
+    st.state = (fa_encoder_state)fa_load32(&e->state);
+    st.error = e->error;
     fa_mutex_unlock(&e->lock);
-    out->paused = fa_load32(&e->paused);
-    out->frames = fa_load64(&e->frames_out);
-    out->bytes = fa_load64(&e->bytes);
-    out->dropped_frames = fa_load64(&e->dropped);
-    if (out->state != FA_ENCODER_IDLE) {
+    st.paused = fa_load32(&e->paused);
+    st.frames = fa_load64(&e->frames_out);
+    st.bytes = fa_load64(&e->bytes);
+    st.dropped_frames = fa_load64(&e->dropped);
+    if (st.state != FA_ENCODER_IDLE) {
         fa_sample_format sf = e->fmt.bits == 16 ? FA_FORMAT_S16 : e->fmt.bits == 24 ? FA_FORMAT_S24 : FA_FORMAT_F32;
-        out->duration = (fa_time)((double)out->frames * 1e9 / (double)e->fmt.rate + 0.5);
-        fill_format(&out->input, FA_FORMAT_F32, e->in_rate, e->in_channels);
-        fill_format(&out->output, sf, e->fmt.rate, e->fmt.channels);
+        st.duration = (fa_time)((double)st.frames * 1e9 / (double)e->fmt.rate + 0.5);
+        fill_format(&st.input, FA_FORMAT_F32, e->in_rate, e->in_channels);
+        fill_format(&st.output, sf, e->fmt.rate, e->fmt.channels);
     }
+    fa_copy_sized(out, &st, sizeof(st));
     return FA_OK;
 }
 

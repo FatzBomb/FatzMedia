@@ -405,7 +405,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         handle.DangerousAddRef(ref added);
         try
         {
-            FaCdgFrame f;
+            var f = NativeSized.New<FaCdgFrame>();
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_native == 0, this);

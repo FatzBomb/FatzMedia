@@ -150,7 +150,7 @@ public sealed class SoundFont : IDisposable
         var list = new SoundFontPreset[Info.PresetCount];
         for (int i = 0; i < list.Length; i++)
         {
-            FaSoundFontPreset p;
+            var p = NativeSized.New<FaSoundFontPreset>();
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_preset(Handle, (uint)i, &p));
             list[i] = new SoundFontPreset(p.Bank, p.Program, NativeText.Read(p.Name));
         }
@@ -167,7 +167,7 @@ public sealed class SoundFont : IDisposable
 
     private unsafe SoundFontInfo ReadInfo()
     {
-        FaSoundFontInfo n;
+        var n = NativeSized.New<FaSoundFontInfo>();
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_soundfont_get_info(Handle, &n));
         return new SoundFontInfo(NativeText.Read(n.Name), (int)n.PresetCount, (long)n.SampleMemory);
     }

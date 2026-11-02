@@ -585,7 +585,7 @@ FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* pa
 {
     fa_scan_job* j;
     fa_result r;
-    if (!engine || !path || !out_loudness) return FA_ERROR_INVALID_ARG;
+    if (!engine || !path || !out_loudness || out_loudness->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
     j = job_new(engine);
     if (!j) return FA_ERROR_OUT_OF_MEMORY;
     j->path = fa_strdup(path);
@@ -611,8 +611,8 @@ FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* pa
 
     r = j->status;
     if (r == FA_OK) {
-        *out_loudness = j->result;
-        out_loudness->gain_db = fa_engine_norm_gain_db(engine, j->result.integrated_lufs);
+        j->result.gain_db = fa_engine_norm_gain_db(engine, j->result.integrated_lufs);
+        fa_copy_sized(out_loudness, &j->result, sizeof(j->result));
     }
     job_free(j);
     return r;

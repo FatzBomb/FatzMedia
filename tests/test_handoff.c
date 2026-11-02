@@ -218,7 +218,7 @@ static double rms(const float* x, int64_t from, int64_t to, uint32_t channels)
 static void test_push_pcm_plays_exactly(void)
 {
     fa_stream* s = open_push_s16p();
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     CHECK(s != NULL);
     CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
     CHECK_EQ(info.format.sample_rate, g_dev->rate);
@@ -830,7 +830,7 @@ static void decode_file(const char* file, const char* codec, uint32_t rate, uint
     fa_codec_params p;
     fa_stream* s = NULL;
     fa_open_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     size_t size = 0, at = 0;
     uint8_t* data = load_file(file, &size);
     float* out;
@@ -939,7 +939,7 @@ static void test_aac_switch(void)
     fa_codec_params p;
     fa_stream* s = NULL;
     fa_open_options o;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     size_t size = 0, at = 0;
     uint8_t* data = load_file("aac_switch.aac", &size);
     float* out;

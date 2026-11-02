@@ -396,10 +396,8 @@ FA_API fa_result FA_CALL fa_mixer_add_mic(fa_mixer* mixer, const fa_mic_config* 
     if (!mixer || !out_mic) return FA_ERROR_INVALID_ARG;
     *out_mic = NULL;
     fa_mic_config_init(&c);
-    if (config) {
-        if (config->struct_size < sizeof(fa_mic_config)) return FA_ERROR_INVALID_ARG;
-        c = *config;
-    }
+    if (config && fa_read_sized(&c, config, sizeof(c), FA_V1(fa_mic_config)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if (c.channel < -1 || (c.flags & ~(FA_MIC_DUCKS_MUSIC | FA_MIC_OS_PROCESSING))) return FA_ERROR_INVALID_ARG;
     fa_mutex_lock(&mixer->lock);
     for (i = 0; i < FA_MIC_MAX; i++)

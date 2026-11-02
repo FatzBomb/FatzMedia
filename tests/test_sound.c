@@ -115,7 +115,7 @@ static void test_overlapping_copies_sum(void)
     float unit = unit_level();
     fa_sound* snd = make_sound(8192, 0.25f, 8, FA_SOUND_STEAL_OLDEST);
     fa_stream* a = NULL; fa_stream* b = NULL; fa_stream* c = NULL;
-    fa_sound_info info;
+    fa_sound_info info = { .struct_size = sizeof(info) };
     CHECK(unit > 0.05f);
     CHECK(snd != NULL);
     CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &a), FA_OK);
@@ -159,7 +159,7 @@ static void test_memory_shared(void)
     /* A voice the app closes lets go of its reference; the sound forgets it. */
     fa_stream_close(v[3]);
     {
-        fa_sound_info info;
+        fa_sound_info info = { .struct_size = sizeof(info) };
         CHECK_EQ(fa_sound_get_info(snd, &info), FA_OK);
         CHECK_EQ(info.voices, 3);
     }
@@ -244,7 +244,7 @@ static void test_voice_being_closed_not_used(void)
     fa_sound* snd = make_sound(20000, 0.1f, 2, FA_SOUND_STEAL_OLDEST);
     fa_stream* a = NULL; fa_stream* b = NULL; fa_stream* c = NULL; fa_stream* d = NULL;
     fa_stream* list[4];
-    fa_sound_info info;
+    fa_sound_info info = { .struct_size = sizeof(info) };
     uint32_t n = 0, i;
     void* owner;
     CHECK(snd != NULL);
@@ -274,7 +274,7 @@ static void test_ended_voice_reused(void)
 {
     fa_sound* snd = make_sound(1000, 0.3f, 4, FA_SOUND_STEAL_OLDEST);
     fa_stream* a = NULL; fa_stream* b = NULL;
-    fa_sound_info info;
+    fa_sound_info info = { .struct_size = sizeof(info) };
     int i;
     CHECK(snd != NULL);
     CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, 0.0f, &a), FA_OK);
@@ -300,7 +300,7 @@ static void test_lower_limit(void)
 {
     fa_sound* snd = make_sound(20000, 0.1f, 4, FA_SOUND_STEAL_OLDEST);
     fa_sound_options o;
-    fa_sound_info info;
+    fa_sound_info info = { .struct_size = sizeof(info) };
     fa_stream* v[4];
     fa_stream* list[4];
     fa_frames pos = 0;
@@ -337,7 +337,7 @@ static void test_load_formats(void)
     uint8_t wav[44 + sizeof(pcm)];
     fa_audio_format f;
     fa_sound* a = NULL; fa_sound* b = NULL;
-    fa_sound_info ia, ib;
+    fa_sound_info ia = { .struct_size = sizeof(ia) }, ib = { .struct_size = sizeof(ib) };
     uint32_t i, v;
     for (i = 0; i < 100; i++) { pcm[i * 2] = (int16_t)(i * 100); pcm[i * 2 + 1] = (int16_t)-(int)(i * 100); }
     memset(&f, 0, sizeof(f));
@@ -394,7 +394,7 @@ static void test_bad_play_args(void)
     CHECK_EQ(fa_sound_play(snd, g_dev, NULL, NAN, 0.0f, NULL), FA_ERROR_INVALID_ARG);
     CHECK_EQ(fa_sound_play(snd, g_dev, NULL, 1.0f, NAN, NULL), FA_ERROR_INVALID_ARG);
     {
-        fa_sound_info info;
+        fa_sound_info info = { .struct_size = sizeof(info) };
         CHECK_EQ(fa_sound_get_info(snd, &info), FA_OK);
         CHECK_EQ(info.voices, 0);
     }

@@ -261,7 +261,7 @@ FA_API fa_result FA_CALL fa_key_transpose(const fa_key_info* key, int32_t semito
 {
     fa_key_info k;
     int32_t tonic;
-    if (!key || !out_key || out_key->struct_size < sizeof(uint32_t) || key->struct_size < offsetof(fa_key_info, confidence) + sizeof(float) ||
+    if (!key || !out_key || out_key->struct_size < sizeof(uint32_t) || key->struct_size < FA_V1(fa_key_info) ||
         key->tonic < 0 || key->tonic > 11 || (key->minor != 0 && key->minor != 1))
         return FA_ERROR_INVALID_ARG;
     tonic = (int32_t)(((int64_t)key->tonic + semitones) % 12);

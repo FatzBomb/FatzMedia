@@ -149,6 +149,18 @@ static int app_buffer_ms(const fa_open_options* options)
            options->buffer_ms;
 }
 
+/* The app's open options under the struct_size rule: NULL stays NULL, else *options
+ * becomes `local`, a full copy with defaults past the caller's struct_size. */
+static fa_result read_open_options(const fa_open_options** options, fa_open_options* local)
+{
+    if (!*options) return FA_OK;
+    fa_open_options_init(local);
+    if (fa_read_sized(local, *options, sizeof(*local), FA_V1(fa_open_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
+    *options = local;
+    return FA_OK;
+}
+
 static fa_result stream_create(fa_engine* engine, const fa_open_options* options, struct fa_stream** out)
 {
     int i;
@@ -484,8 +496,9 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
 FA_API fa_result FA_CALL fa_stream_open_disc(fa_engine* engine, fa_disc* disc, int32_t track, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !disc || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !disc || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
     r = fa_disc_decoder_open(&s->decoder, &s->source, disc, track, s);
@@ -524,8 +537,9 @@ FA_API fa_result FA_CALL fa_stream_open_path(fa_engine* engine, const char* path
 {
     struct fa_stream* s; fa_result r;
     int zip = 0, in_place = 0;
-    if (!engine || !path || !out_stream) return FA_ERROR_INVALID_ARG;
-    *out_stream = NULL;
+    fa_open_options oo;
+    if (out_stream) *out_stream = NULL;
+    if (!engine || !path || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
     r = fa_source_open_path(&s->source, path);
@@ -565,8 +579,9 @@ FA_API fa_result FA_CALL fa_stream_open_path(fa_engine* engine, const char* path
 FA_API fa_result FA_CALL fa_stream_open_memory(fa_engine* engine, const void* data, size_t size, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
-    if (!engine || !data || size == 0 || !out_stream) return FA_ERROR_INVALID_ARG;
-    *out_stream = NULL;
+    fa_open_options oo;
+    if (out_stream) *out_stream = NULL;
+    if (!engine || !data || size == 0 || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
     r = fa_source_open_memory(&s->source, data, size);
@@ -587,8 +602,9 @@ FA_API fa_result FA_CALL fa_stream_open_memory(fa_engine* engine, const void* da
 FA_API fa_result FA_CALL fa_stream_open_io(fa_engine* engine, const fa_io_callbacks* io, void* user, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !io || !io->read || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !io || !io->read || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
     fa_source_open_io(&s->source, io, user);
@@ -623,8 +639,9 @@ static fa_result open_pushed(struct fa_stream* s)
 FA_API fa_result FA_CALL fa_stream_open_push(fa_engine* engine, const fa_audio_format* format, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !format || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !format || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     if (options && options->flags & FA_OPEN_LOOP) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
@@ -658,8 +675,9 @@ FA_API fa_result FA_CALL fa_stream_open_callback(fa_engine* engine, const fa_aud
                                                  void* user, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !format || !proc || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !format || !proc || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     if (options && options->flags & FA_OPEN_LOOP) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
@@ -704,16 +722,14 @@ static fa_result open_midi(fa_engine* engine, int realtime, const fa_midi_event*
 {
     struct fa_stream* s; fa_result r;
     fa_midi_stream_options mo;
+    fa_open_options oo;
     uint32_t rate;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !out_stream || (count && !events)) return FA_ERROR_INVALID_ARG;
+    if (!engine || !out_stream || (count && !events) || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     if (options && options->flags & FA_OPEN_LOOP && realtime) return FA_ERROR_INVALID_ARG;
     fa_midi_stream_options_init(&mo);
-    if (midi_options) {
-        size_t sz = midi_options->struct_size;
-        if (sz < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-        memcpy(&mo, midi_options, sz < sizeof(mo) ? sz : sizeof(mo));
-    }
+    if (midi_options && fa_read_sized(&mo, midi_options, sizeof(mo), FA_V1(fa_midi_stream_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if (mo.sample_rate && (mo.sample_rate < 8000 || mo.sample_rate > 192000)) return FA_ERROR_INVALID_ARG;
     if (mo.latency_ms && (mo.latency_ms < 10 || mo.latency_ms > 500)) return FA_ERROR_INVALID_ARG;
     rate = mo.sample_rate ? mo.sample_rate : fa_engine_midi_rate(engine);
@@ -753,8 +769,9 @@ FA_API fa_result FA_CALL fa_stream_open_capture(fa_engine* engine, const fa_capt
                                                 const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     if (options && options->flags & FA_OPEN_LOOP) return FA_ERROR_INVALID_ARG;
     r = stream_create(engine, options, &s);
     if (r != FA_OK) return r;
@@ -776,10 +793,15 @@ FA_API void FA_CALL fa_codec_params_init(fa_codec_params* params)
 FA_API fa_result FA_CALL fa_stream_open_packets(fa_engine* engine, const fa_codec_params* params, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s; fa_result r;
+    fa_open_options oo;
+    fa_codec_params cp;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !params || !out_stream || params->struct_size < sizeof(fa_codec_params)) return FA_ERROR_INVALID_ARG;
+    if (!engine || !params || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
+    fa_codec_params_init(&cp);
+    if (fa_read_sized(&cp, params, sizeof(cp), FA_V1(fa_codec_params)) != FA_OK) return FA_ERROR_INVALID_ARG;
+    params = &cp;
     if (!params->codec || !params->codec[0] || strlen(params->codec) >= 32) return FA_ERROR_INVALID_ARG;
-    if (params->sample_rate < 1000 || params->sample_rate > 768000 || params->channels == 0 || params->channels > 32)
+    if (params->sample_rate < 1000 || params->sample_rate > FA_MAX_SAMPLE_RATE || params->channels == 0 || params->channels > 32)
         return FA_ERROR_INVALID_ARG;
     if (params->extradata_size > 0 && !params->extradata) return FA_ERROR_INVALID_ARG;
     if (options && options->flags & FA_OPEN_LOOP) return FA_ERROR_INVALID_ARG;
@@ -808,18 +830,14 @@ FA_API void FA_CALL fa_net_options_init(fa_net_options* options)
 }
 
 /* The settings of fa_open_options.net, with defaults, into a config the download
- * buffer owns. Older callers' shorter structs are read only as far as they go. */
+ * buffer owns. */
 static fa_result net_config(const char* url, const fa_open_options* options, fa_net_config* cfg)
 {
     fa_net_options o;
     fa_result r = FA_OK;
     fa_net_options_init(&o);
-    if (options && options->struct_size >= offsetof(fa_open_options, net) + sizeof(options->net) && options->net) {
-        size_t sz = options->net->struct_size;
-        if (sz < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-        if (sz > sizeof(o)) sz = sizeof(o);
-        memcpy(&o, options->net, sz);
-    }
+    if (options && options->net && fa_read_sized(&o, options->net, sizeof(o), FA_V1(fa_net_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     memset(cfg, 0, sizeof(*cfg));
     cfg->url = copy_str(url, &r);
     cfg->user_agent = copy_str(o.user_agent ? o.user_agent : FA_NET_USER_AGENT, &r);
@@ -840,12 +858,13 @@ static fa_result net_config(const char* url, const fa_open_options* options, fa_
 FA_API fa_result FA_CALL fa_stream_open_url(fa_engine* engine, const char* url, const fa_open_options* options, fa_stream** out_stream)
 {
     struct fa_stream* s;
+    fa_open_options oo;
     fa_net_config cfg;
     fa_io_callbacks io;
     fa_url parsed;
     fa_result r;
     if (out_stream) *out_stream = NULL;
-    if (!engine || !url || !out_stream) return FA_ERROR_INVALID_ARG;
+    if (!engine || !url || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
     if (fa_url_parse(url, &parsed) != FA_OK) return FA_ERROR_INVALID_ARG;
     r = net_config(url, options, &cfg);
     if (r != FA_OK) return r;
@@ -877,8 +896,8 @@ FA_API fa_result FA_CALL fa_stream_open_url(fa_engine* engine, const char* url, 
         } else {
             char mime[128];
             fa_open_options o;
-            fa_open_options_init(&o);
-            if (options) memcpy(&o, options, options->struct_size < sizeof(o) ? options->struct_size : sizeof(o));
+            if (options) o = *options;
+            else fa_open_options_init(&o);
             /* The server's Content-Type is a tie-breaker when the app gave none. */
             if (!o.mime_hint && fa_net_get_header(s->net, "Content-Type", mime, sizeof(mime)) == FA_OK) {
                 mime[strcspn(mime, "; ")] = 0;
@@ -996,10 +1015,12 @@ FA_API void FA_CALL fa_stream_close(fa_stream* stream)
 
 FA_API fa_result FA_CALL fa_stream_get_info(fa_stream* stream, fa_stream_info* out_info)
 {
-    if (!stream || !out_info) return FA_ERROR_INVALID_ARG;
-    fa_decoder_get_info(&stream->decoder, out_info); /* fixed after open */
-    if (stream->zip_size > 0) out_info->file_size = stream->zip_size;
-    out_info->has_cdg = fa_stream_cdg_present(stream);
+    fa_stream_info info;
+    if (!stream || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    fa_decoder_get_info(&stream->decoder, &info); /* fixed after open */
+    if (stream->zip_size > 0) info.file_size = stream->zip_size;
+    info.has_cdg = fa_stream_cdg_present(stream);
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 
@@ -1021,40 +1042,50 @@ FA_API fa_result FA_CALL fa_stream_get_dynamic_range(fa_stream* stream, fa_dynam
 
 FA_API fa_result FA_CALL fa_stream_get_metadata(fa_stream* stream, fa_metadata* out_metadata)
 {
+    fa_metadata md;
     fa_net_meta m;
     const char* dash;
-    if (!stream || !out_metadata) return FA_ERROR_INVALID_ARG;
-    memset(out_metadata, 0, sizeof(*out_metadata));
-    if (!stream->net) return FA_OK;
-    fa_net_get_station(stream->net, out_metadata);
-    fa_net_meta_at(stream->net, fa_stream_position_now(stream), &m);
-    if (m.seq == 0) return FA_OK;
-    snprintf(out_metadata->stream_title, sizeof(out_metadata->stream_title), "%s", m.title);
-    snprintf(out_metadata->url, sizeof(out_metadata->url), "%s", m.url);
-    out_metadata->seq = m.seq;
-    dash = strstr(m.title, " - ");
-    if (dash) {
-        int len = (int)(dash - m.title);
-        snprintf(out_metadata->artist, sizeof(out_metadata->artist), "%.*s", len, m.title);
-        snprintf(out_metadata->title, sizeof(out_metadata->title), "%.767s", dash + 3);
+    if (!stream || !out_metadata || out_metadata->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&md, 0, sizeof(md));
+    md.struct_size = sizeof(md);
+    if (stream->net) {
+        fa_net_get_station(stream->net, &md);
+        fa_net_meta_at(stream->net, fa_stream_position_now(stream), &m);
     } else {
-        snprintf(out_metadata->title, sizeof(out_metadata->title), "%.767s", m.title);
+        m.seq = 0;
     }
+    if (m.seq != 0) {
+        snprintf(md.stream_title, sizeof(md.stream_title), "%s", m.title);
+        snprintf(md.url, sizeof(md.url), "%s", m.url);
+        md.seq = m.seq;
+        dash = strstr(m.title, " - ");
+        if (dash) {
+            int len = (int)(dash - m.title);
+            snprintf(md.artist, sizeof(md.artist), "%.*s", len, m.title);
+            snprintf(md.title, sizeof(md.title), "%.767s", dash + 3);
+        } else {
+            snprintf(md.title, sizeof(md.title), "%.767s", m.title);
+        }
+    }
+    fa_copy_sized(out_metadata, &md, sizeof(md));
     return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_stream_get_net_status(fa_stream* stream, fa_net_status* out_status)
 {
+    fa_net_status st;
     double bpf, secs = 0.0;
-    if (out_status) memset(out_status, 0, sizeof(*out_status));
-    if (!stream || !out_status || !stream->net) return FA_ERROR_INVALID_ARG;
-    fa_net_get_status(stream->net, out_status);
+    if (!stream || !out_status || out_status->struct_size < sizeof(uint32_t) || !stream->net) return FA_ERROR_INVALID_ARG;
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
+    fa_net_get_status(stream->net, &st);
     bpf = fa_net_bytes_per_frame(stream->net);
     if (bpf > 0 && stream->decoder.format.sample_rate)
-        secs = (double)out_status->buffered_bytes / bpf / (double)stream->decoder.format.sample_rate;
+        secs = (double)st.buffered_bytes / bpf / (double)stream->decoder.format.sample_rate;
     if (stream->dev_rate && stream->ring.data && !fa_load32(&stream->flushing))
         secs += (double)fa_ring_readable(&stream->ring) / (double)stream->dev_rate;
-    out_status->buffered = (fa_time)(secs * 1e9);
+    st.buffered = (fa_time)(secs * 1e9);
+    fa_copy_sized(out_status, &st, sizeof(st));
     return FA_OK;
 }
 
@@ -3466,13 +3497,8 @@ FA_API fa_result FA_CALL fa_stream_set_tempo_options(fa_stream* stream, const fa
     uint32_t lat;
     if (!stream) return FA_ERROR_INVALID_ARG;
     fa_tempo_options_init(&o);
-    if (options) {
-        if (options->struct_size < offsetof(fa_tempo_options, latency_ms)) return FA_ERROR_INVALID_ARG;
-        o.quality = options->quality;
-        o.keep_formants = options->keep_formants;
-        if (options->struct_size >= offsetof(fa_tempo_options, latency_ms) + sizeof(options->latency_ms))
-            o.latency_ms = options->latency_ms;
-    }
+    if (options && fa_read_sized(&o, options, sizeof(o), FA_V1(fa_tempo_options)) != FA_OK)
+        return FA_ERROR_INVALID_ARG;
     if (o.quality != FA_STRETCH_BEST && o.quality != FA_STRETCH_FAST && o.quality != FA_STRETCH_TRANSIENTS)
         return FA_ERROR_INVALID_ARG;
     fast = o.quality == FA_STRETCH_FAST;

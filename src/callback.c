@@ -116,7 +116,7 @@ fa_result fa_callback_decoder_open(fa_decoder* dec, const fa_audio_format* forma
     int planar, kind;
     if (!format || !proc) return FA_ERROR_INVALID_ARG;
     kind = fa_sample_kind(format->sample_format, &planar);
-    if (kind < 0 || planar || format->sample_rate < 1000 || format->sample_rate > 768000 ||
+    if (kind < 0 || planar || format->sample_rate < 1000 || format->sample_rate > FA_MAX_SAMPLE_RATE ||
         format->channels == 0 || format->channels > 32)
         return FA_ERROR_INVALID_ARG;
     c = (callback_src*)calloc(1, sizeof(*c));

@@ -30,7 +30,7 @@ int main(int argc, char** argv)
     fa_open_options opts;
     fa_tempo_options topts;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float tempo = 1.0f, pitch = 0.0f, rate = 1.0f, *buf;
     uint64_t total = 0;
     FILE* out;

@@ -411,7 +411,7 @@ int fa_alac_parse_config(const uint8_t* p, size_t n, fa_alac_info* out)
     out->channels = c[9];
     out->rate = fa_be32(c + 20);
     if (c[4] != 0 || out->frame_length == 0 || out->frame_length > ALAC_MAX_FRAME || out->channels == 0 ||
-        out->channels > 8 || out->rate == 0 || out->rate > 768000 ||
+        out->channels > 8 || out->rate == 0 || out->rate > FA_MAX_SAMPLE_RATE ||
         (out->bit_depth != 16 && out->bit_depth != 20 && out->bit_depth != 24 && out->bit_depth != 32))
         return 0;
     return 1;

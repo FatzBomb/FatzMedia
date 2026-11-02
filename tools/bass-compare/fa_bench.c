@@ -58,7 +58,7 @@ static fa_stream* open_stream(const char* path, int prescan, double* open_ms)
 
 static void print_info(fa_stream* s)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream_get_info(s, &info);
     printf("\"lib\":\"fatzaudio\",\"codec\":\"%s\",\"rate\":%u,\"channels\":%u,\"length\":%lld,",
            info.codec, info.format.sample_rate, info.format.channels, (long long)info.length_frames);
@@ -69,7 +69,7 @@ static void print_info(fa_stream* s)
  * is what a stream itself costs. bass_bench does the same. */
 static void warm_up(const char* path)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream* s = open_stream(path, 0, NULL);
     float* buf;
     int i;
@@ -86,7 +86,7 @@ static void warm_up(const char* path)
 /* Reads the stream to the end and prints the decode result. */
 static int decode_all(fa_stream* s, const char* outp, double t0, double open_ms, double base)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     double first_ms = -1;
     FILE* out = bench_open_out(outp);
     float* buf;
@@ -162,7 +162,7 @@ static int cmd_disc(const char* cue, int track, const char* outp)
 
 static int cmd_seek(const char* in, const char* outp, int prescan, long long frames, char** pos, int npos)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream* s = open_stream(in, prescan, NULL);
     FILE* out = bench_open_out(outp);
     float* buf;
@@ -204,7 +204,7 @@ static int cmd_multi(const char* in, int n)
     fa_stream** s = (fa_stream**)calloc((size_t)n, sizeof(*s));
     int* done = (int*)calloc((size_t)n, sizeof(int));
     double base, t0, open_ms = 0;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* buf;
     long long total = 0;
     int i, left = n;
@@ -240,7 +240,7 @@ static int cmd_multi(const char* in, int n)
 
 static int cmd_loudness(const char* in)
 {
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     double t0 = bench_now_ms();
     fa_result r = fa_scan_loudness_path(engine, in, &l);
     if (r != FA_OK) { printf("{\"lib\":\"fatzaudio\",\"error\":\"%s\"}\n", fa_result_string(r)); return 1; }
@@ -293,7 +293,7 @@ static void print_device(void)
 
 static double length_ms(fa_stream* s)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_stream_get_info(s, &info);
     return info.length_frames > 0 ? (double)info.length_frames * 1000.0 / info.format.sample_rate : 0;
 }

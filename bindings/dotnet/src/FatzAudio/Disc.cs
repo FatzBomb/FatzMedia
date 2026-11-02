@@ -214,6 +214,7 @@ public sealed class Disc : IDisposable
             FaDiscToc* t = (FaDiscToc*)NativeMemory.AllocZeroed((nuint)sizeof(FaDiscToc));
             try
             {
+                t->StructSize = (uint)sizeof(FaDiscToc);
                 FatzAudioException.ThrowIfFailed(NativeMethods.fa_disc_get_toc(Handle, t));
                 var tracks = new List<DiscTrack>(t->TrackCount);
                 FaDiscTrack* raw = (FaDiscTrack*)t->Tracks;

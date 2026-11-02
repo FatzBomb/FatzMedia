@@ -2,6 +2,18 @@ using System.Runtime.InteropServices;
 
 namespace FatzAudio.Native;
 
+// Versioned structs start with a uint StructSize (the C struct_size): a call reads or fills the struct up to it.
+internal static class NativeSized
+{
+    /// <summary>A zeroed <typeparamref name="T"/> with its leading StructSize set to its size.</summary>
+    public static T New<T>() where T : unmanaged
+    {
+        T v = default;
+        System.Runtime.CompilerServices.Unsafe.As<T, uint>(ref v) = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        return v;
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct FaAudioFormat
 {
@@ -39,6 +51,7 @@ internal unsafe struct FaEngineConfig
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaDeviceInfo
 {
+    public uint StructSize;
     public fixed byte Id[256];
     public fixed byte Name[256];
     public int Type;
@@ -91,6 +104,7 @@ internal unsafe struct FaNetOptions
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaMetadata
 {
+    public uint StructSize;
     public fixed byte StreamTitle[1024];
     public fixed byte Artist[256];
     public fixed byte Title[768];
@@ -107,6 +121,7 @@ internal unsafe struct FaMetadata
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaNetStatus
 {
+    public uint StructSize;
     public int Connected;
     public int HttpStatus;
     public int IsLive;
@@ -125,6 +140,7 @@ internal unsafe struct FaNetStatus
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaStreamInfo
 {
+    public uint StructSize;
     public FaAudioFormat Format;
     public fixed byte Codec[32];
     public fixed byte Container[32];
@@ -180,6 +196,7 @@ internal unsafe struct FaRamp
 [StructLayout(LayoutKind.Sequential)]
 internal struct FaLoudness
 {
+    public uint StructSize;
     public double IntegratedLufs;
     public double RangeLu;
     public double TruePeakDbtp;
@@ -261,6 +278,7 @@ internal struct FaCdgSurfaceConfig
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaCdgFrame
 {
+    public uint StructSize;
     public void* Pixels;
     public uint Width, Height;
     public int Stride;
@@ -444,6 +462,7 @@ internal struct FaLyricStyle
 [StructLayout(LayoutKind.Sequential)]
 internal struct FaCdgInfo
 {
+    public uint StructSize;
     public int Source;
     public ulong PackCount;
     public long CheckpointInterval;
@@ -497,6 +516,7 @@ internal struct FaDiscTrack
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaDiscToc
 {
+    public uint StructSize;
     public const int MaxTracks = 99;
     public int FirstTrack;
     public int LastTrack;
@@ -543,6 +563,7 @@ internal unsafe struct FaEncoderOutput
 [StructLayout(LayoutKind.Sequential)]
 internal struct FaEncoderStatus
 {
+    public uint StructSize;
     public int State;
     public int Error;
     public int Paused;
@@ -565,6 +586,7 @@ internal unsafe struct FaLameInfo
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaSoundFontInfo
 {
+    public uint StructSize;
     public fixed byte Name[256];
     public uint PresetCount;
     public ulong SampleMemory;
@@ -573,6 +595,7 @@ internal unsafe struct FaSoundFontInfo
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaSoundFontPreset
 {
+    public uint StructSize;
     public int Bank;
     public int Program;
     public fixed byte Name[24];
@@ -592,6 +615,7 @@ internal struct FaSoundFontStackEntry
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaMidiText
 {
+    public uint StructSize;
     public long Frame;
     public long Time;
     public int Type;
@@ -669,6 +693,7 @@ internal unsafe struct FaMidiCredits
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FaMidiInfo
 {
+    public uint StructSize;
     public fixed byte Title[256];
     public fixed byte Artist[256];
     public fixed byte Copyright[256];
@@ -906,6 +931,7 @@ internal unsafe struct FaSoundOptions
 [StructLayout(LayoutKind.Sequential)]
 internal struct FaSoundInfo
 {
+    public uint StructSize;
     public uint SampleRate;
     public uint Channels;
     public long Frames;

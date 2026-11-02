@@ -170,7 +170,7 @@ static int seek_matches(fa_stream* s, const float* full, int64_t total, uint32_t
 static void test_mp4_info_and_tracks(void)
 {
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* all;
     int64_t n;
     fa_result r;
@@ -256,7 +256,7 @@ static void test_m4a_aac(void)
 {
     static const int64_t targets[] = { 0, 1023, 1024, 1025, 20000, 47000, 5 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -285,7 +285,7 @@ static void test_mov_pcm(void)
 {
     static const int64_t targets[] = { 0, 1, 4095, 4096, 4097, 5999, 3000 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n, i;
     double worst = 0;
@@ -313,7 +313,7 @@ static void test_fragmented_mp4(void)
 {
     static const int64_t targets[] = { 0, 11024, 11025, 22050, 33333, 1 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -338,7 +338,7 @@ static void test_mkv_tracks_and_seek(void)
     static const int64_t pcm_targets[] = { 0, 1, 1023, 1024, 1025, 5000, 9999, 7777, 3 };
     static const int64_t mp3_targets[] = { 0, 1, 1151, 1152, 20000, 31000, 10000, 2 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n, i;
     double worst = 0;
@@ -387,7 +387,7 @@ static void test_webm_opus(void)
 {
     static const int64_t targets[] = { 0, 959, 960, 961, 30000, 90000, 48000, 7 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -436,7 +436,7 @@ static float* forward_only(const char* name, int32_t track, uint32_t ch, int64_t
     fa_io_callbacks io = { io_read, NULL, NULL, io_close };
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* out;
     m.p = data;
     m.n = size;
@@ -501,7 +501,7 @@ static void test_adts_file(void)
     static const int64_t targets[] = { 1023, 1024, 1025, 50000, 120000, 7 };
     static const int64_t start[] = { 0 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -559,7 +559,7 @@ static void test_adts_junk_and_tags(void)
     uint8_t* data = adts_with_junk(&size);
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *a, *b;
     int64_t na, nb;
     mem_io m;
@@ -611,7 +611,7 @@ static void test_adts_junk_and_format_change(void)
     uint32_t seed = 777;
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *x, *y;
     int64_t nx, ny, expect = (ADTS_FRAMES - 1) * 1024 + 25 * 940;   /* 1024 frames at 48 kHz last 940 at 44.1;
                                                                      the priming is dropped once, at the start */
@@ -871,7 +871,7 @@ static void test_mkv_lacing_and_live_layout(void)
     ebuf f = make_laced_mkv(&total);
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     double worst;
     fa_open_options_init(&o);
@@ -975,7 +975,7 @@ static void exercise_memory(const uint8_t* data, size_t size, int32_t track)
 {
     fa_open_options o;
     fa_stream* s = NULL;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float buf[4096 * 8];
     int k;
     fa_open_options_init(&o);
@@ -1037,7 +1037,7 @@ static void test_damaged_files_do_not_crash(void)
 static void test_scan_video_file(void)
 {
     char path[512];
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     data_path(path, sizeof(path), "av_tracks.mp4");
     CHECK_EQ(fa_scan_loudness_path(g_engine, path, &l), FA_OK);
     /* A 0.5 sine at 440 Hz, mono: about -9 LUFS. */
@@ -1352,7 +1352,7 @@ static void test_m4a_alac(void)
 {
     static const int64_t targets[] = { 0, 1, 4095, 4096, 4097, 9000, 3 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n, i;
     double worst = 0;
@@ -1387,7 +1387,7 @@ static void check_alac(const char* alac, const char* flac, uint32_t channels, ui
 {
     static const int64_t targets[] = { 0, 1, 4095, 4096, 4097, 9000, 3, 15000 };
     fa_stream *s, *f;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *a, *b;
     int64_t na, nb, i;
     double worst = 0;
@@ -1427,7 +1427,7 @@ static void test_aac_51_channel_order(void)
 {
     static const double hz[6] = { 500, 700, 900, 80, 1300, 1700 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     uint32_t k;
@@ -1564,7 +1564,7 @@ static void check_caf_sine(const char* name, const char* codec, uint32_t rate, i
 {
     static const int64_t targets[] = { 0, 1, 4095, 4096, 4097, 5999, 3000 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n, i;
     double worst = 0;
@@ -1599,7 +1599,7 @@ static void test_caf_mp3(void)
 {
     static const int64_t targets[] = { 0, 11024, 11025, 17000, 1 };
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;
@@ -1624,7 +1624,7 @@ static void check_caf_aac(const char* name, const char* adts, uint32_t rate, int
 {
     static const int64_t targets[] = { 0, 1, 2047, 2048, 2049, 9000, 5000 };
     fa_stream *s, *a;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float *got, *want;
     int64_t n, na, i;
     double worst = 0;
@@ -1887,7 +1887,7 @@ static void check_mp3(const char* name, uint32_t rate, uint32_t channels, int64_
     int prescan;
     for (prescan = 0; prescan < 2; prescan++) {
         fa_stream* s;
-        fa_stream_info info;
+        fa_stream_info info = { .struct_size = sizeof(info) };
         float* full;
         int64_t n;
         double worst, period = rate / 440.0, d;
@@ -1934,7 +1934,7 @@ static void test_mp3_junk(void)
     uint8_t* bad;
     fa_open_options o;
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     float* full;
     int64_t n;
     double worst;

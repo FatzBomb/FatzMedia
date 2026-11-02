@@ -39,7 +39,7 @@ The OS banks are small and General MIDI only: gm.dls sounds like the Windows MID
 ```c
 fa_soundfont* sys = NULL;
 if (fa_soundfont_open_system(&sys) == FA_OK) {
-    fa_soundfont_info info;
+    fa_soundfont_info info = { .struct_size = sizeof(info) };
     fa_soundfont_get_info(sys, &info);          /* e.g. "Microsoft GS Wavetable" */
     fa_soundfont_close(sys);
 }                                               /* FA_ERROR_NOT_FOUND: this OS has none */
@@ -191,13 +191,13 @@ if (song.MidiCredits is { } c)
 static void FA_CALL on_event(const fa_event* ev, void* user)
 {
     if (ev->type != FA_EVENT_MIDI_TEXT) return;
-    fa_midi_text t;
+    fa_midi_text t = { .struct_size = sizeof(t) };
     fa_stream_get_midi_text(ev->stream, (uint32_t)ev->value, &t);
     if (t.type == FA_MIDI_LYRIC)
         show_syllable(t.text, (t.flags & FA_MIDI_NEW_LINE) != 0);
 }
 
-fa_midi_info info;
+fa_midi_info info = { .struct_size = sizeof(info) };
 fa_stream_get_midi_info(song, &info);
 printf("%s - %s, %u syllables\n", info.artist, info.title, info.lyric_count);
 fa_stream_set_event_callback(song, on_event, NULL);

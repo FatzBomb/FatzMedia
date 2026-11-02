@@ -916,7 +916,7 @@ static void test_loudness(void)
     float* x = (float*)malloc((size_t)n * 2 * sizeof(float));
     buf w;
     fa_analysis* a;
-    fa_loudness l;
+    fa_loudness l = { .struct_size = sizeof(l) };
     for (i = 0; i < n; i++) x[i * 2] = x[i * 2 + 1] = (float)(0.1 * sin(2.0 * PI * 997.0 * (double)i / RATE));
     w = make_wav(x, n, 2);
     free(x);

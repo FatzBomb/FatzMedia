@@ -57,7 +57,7 @@ static void test_real_output(void)
     CHECK(g_engine->context.backend != ma_backend_null);
     CHECK_EQ(fa_device_count(g_engine, FA_DEVICE_PLAYBACK, &count), FA_OK);
     for (i = 0; i < count; i++) {
-        fa_device_info di;
+        fa_device_info di = { .struct_size = sizeof(di) };
         if (fa_device_get_info(g_engine, FA_DEVICE_PLAYBACK, i, &di) == FA_OK)
             printf("  output %u: %s, %u Hz, %u channels%s\n", i, di.name, di.native_sample_rate, di.native_channels,
                    di.is_default ? " (default)" : "");

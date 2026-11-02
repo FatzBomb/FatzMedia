@@ -17,10 +17,39 @@ Every function returns `fa_result`. `FA_OK` (0) means success, negative values a
 
 In .NET, errors become a `FatzAudioException` with an `ErrorCode`.
 
+## Versioned structs
+
+A struct whose first field is `struct_size` can gain fields at its end in a later version without breaking an app built
+against an older header. Set the size once and the rest follows:
+
+```c
+fa_stream_info info = { .struct_size = sizeof(info) };   /* structs the library fills */
+fa_stream_get_info(stream, &info);
+
+fa_open_options o;                                         /* structs you pass in */
+fa_open_options_init(&o);                                  /* sets struct_size and the defaults */
+o.flags = FA_OPEN_DECODE_ONLY;
+```
+
+- **Structs the library fills** (info, status, stats): set `struct_size` to `sizeof` before the call. The struct is
+  filled up to it, and `struct_size` is set to how much was filled. A `struct_size` of 0 (a struct that was never set
+  up) is `FA_ERROR_INVALID_ARG`.
+- **Structs you pass in** (options, configs): their `_init` function sets `struct_size` and the defaults, which are not
+  always zero. `struct_size` must cover at least the struct's first layout, else `FA_ERROR_INVALID_ARG`. Fields past it
+  take their defaults, and a bigger struct from a newer header is read up to the library's own size.
+- Structs **without** `struct_size` keep their layout until the next breaking version: array elements
+  (`fa_midi_event`, `fa_midi_mark`, `fa_tempo_segment`, ...), small values inside other structs (`fa_audio_format`,
+  `fa_rect`) and the event structs handed to callbacks.
+
+In .NET none of this shows: the binding sets the sizes.
+
 ## Time and position
 
 - **Frames** (`fa_frames`, int64) are sample-exact positions: one frame is one sample on every channel.
 - **Time** (`fa_time`, int64 nanoseconds) is used for durations, markers and clocks.
+- Other units are in the name: `_ms` milliseconds, `_seconds` seconds, `_db` decibels, `_lufs` / `_lu` loudness,
+  `_kbps` kilobits per second. Rates without a unit in the name are bits per second (`fa_stream_info.bitrate`); sizes
+  of data are bytes.
 - `fa_device_get_time()` is the **device clock**: the audio the device has mixed since it opened. Scheduled starts, ramps, crossfades and queues are timed on it, exact to the frame ([crossfade](features/crossfade.md)).
 - `fa_stream_get_clock()` returns the presentation time of the audio *currently leaving the speaker*, with device latency included. Sync video to this value and it stays in sync through pauses, seeks and tempo changes. CD+G surfaces follow it by themselves ([CD+G](features/cdg.md)).
 

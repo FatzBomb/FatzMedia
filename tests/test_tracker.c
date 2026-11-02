@@ -129,7 +129,7 @@ static void test_detect_and_info(void)
 {
     buf mod = make_mod();
     fa_stream* s = open_mod(&mod, NULL);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_tracker_info ti;
     char text[64];
     size_t len = 0;
@@ -172,7 +172,7 @@ static void test_detect_and_info(void)
         fa_tags_close(tags);
     }
     /* A struct from an older header (without `subsong`) is filled as far as it
-     * goes; one smaller than the first version is refused. */
+     * goes; one without even a struct_size is refused. */
     {
         fa_tracker_info small;
         memset(&small, 0x55, sizeof(small));
@@ -181,7 +181,12 @@ static void test_detect_and_info(void)
         CHECK_EQ(small.struct_size, offsetof(fa_tracker_info, duration) + sizeof(double));
         CHECK_EQ(small.subsong, 0x55555555);
         CHECK_NEAR(small.duration, ti.duration, 1e-9);
+        memset(&small, 0x55, sizeof(small));
         small.struct_size = 4;
+        CHECK_EQ(fa_stream_get_tracker_info(s, &small), FA_OK);
+        CHECK_EQ(small.struct_size, 4);
+        CHECK_EQ(small.subsongs, 0x55555555u);
+        small.struct_size = 0;
         CHECK_EQ(fa_stream_get_tracker_info(s, &small), FA_ERROR_INVALID_ARG);
     }
     fa_stream_close(s);
@@ -192,7 +197,7 @@ static void test_render_and_seek(void)
 {
     buf mod = make_mod();
     fa_stream* s = open_mod(&mod, NULL);
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_frames len, got, k;
     float *all, *other;
     double t = -1;
@@ -338,7 +343,7 @@ static void test_mp3_like_samples(void)
 {
     buf mod = make_mod();
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     size_t i, extra = 4000;
     uint8_t* d;
     /* Sample 2: 4000 bytes holding MPEG-1 layer III 128 kbit/s 44.1 kHz headers every 417 bytes. */
@@ -398,7 +403,7 @@ static void test_subsongs(void)
 {
     buf mod = make_two_songs();
     fa_stream* s;
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_tracker_info ti;
     fa_result r;
     double t;

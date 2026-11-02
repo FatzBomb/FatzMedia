@@ -75,6 +75,7 @@ static void whole_file_size(fa_decoder* dec)
 void fa_decoder_get_info(const fa_decoder* d, fa_stream_info* out)
 {
     memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(*out);
     out->format = d->format;
     snprintf(out->codec, sizeof(out->codec), "%s", d->codec);
     snprintf(out->container, sizeof(out->container), "%s", d->container);
