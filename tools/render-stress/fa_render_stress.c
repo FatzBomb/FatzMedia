@@ -170,13 +170,21 @@ typedef struct {
     uint8_t* mem[2];
     uint64_t rev[2];
     uint32_t frames, behind, slow;   /* slow: update_into over 8 ms */
+    uint32_t none;                   /* nothing new: no finished frame yet */
+    uint32_t resizes, events_seen;
     double max_ms, total_ms;
+    double lag_total_ms, lag_max_ms;  /* how far the frame shown was behind the clock */
+    uint32_t lagged;
+    double setter_max_ms, layout_max_ms; /* --events: set_presentation_size, get_layout */
+    uint32_t w, h;                   /* presentation size */
     const char* what;
 } surf;
 
 static surf g_surf[MAX_SURF];
 static int g_nsurf;
 static volatile int g_stop;
+static volatile int g_events;
+static fa_stream* g_streams[MAX_STREAMS];        /* --events: bumped by the main thread; odd = resize */
 
 /* arg: NULL draws every surface, else the surface it points to (--threads). */
 static void* draw_main(void* arg)
@@ -191,18 +199,62 @@ static void* draw_main(void* arg)
             fa_surface_frame fr;
             int64_t t0;
             double ms;
+            fa_result r;
+            fa_time at;
+            int ev = g_events;
+            if (ev != (int)u->events_seen) {
+                /* A resize, on the drawing thread as a player would on a window resize:
+                 * 3/4 of the size and back. */
+                u->events_seen = (uint32_t)ev;
+                if (ev % 2) {
+                    t0 = now_ns();
+                    if (u->resizes % 2) fa_surface_set_presentation_size(u->s, u->w, u->h);
+                    else fa_surface_set_presentation_size(u->s, u->w * 3 / 4, u->h * 3 / 4);
+                    ms = (double)(now_ns() - t0) / 1e6;
+                    if (ms > u->setter_max_ms) u->setter_max_ms = ms;
+                    u->resizes++;
+                }
+            }
             memset(&fr, 0, sizeof(fr));
             fr.struct_size = sizeof(fr);
+            if (fa_stream_get_clock(g_streams[u->stream], &at) != FA_OK) continue;
             t0 = now_ns();
-            if (fa_surface_update_into(u->s, FA_SURFACE_NOW, u->mem[b], (int32_t)(u->lay.width * 4), u->lay.width,
-                                       u->lay.height, u->rev[b], &fr) != FA_OK)
-                continue;
+            r = fa_surface_update_into(u->s, at, u->mem[b], (int32_t)(u->lay.width * 4), u->lay.width,
+                                       u->lay.height, u->rev[b], &fr);
             ms = (double)(now_ns() - t0) / 1e6;
+            if (ms > u->max_ms) u->max_ms = ms;
+            if (r == FA_ERROR_SIZE_MISMATCH) {
+                /* A new layout: get it and buffers of its size. */
+                t0 = now_ns();
+                if (fa_surface_get_layout(u->s, &u->lay) == FA_OK) {
+                    ms = (double)(now_ns() - t0) / 1e6;
+                    if (ms > u->layout_max_ms) u->layout_max_ms = ms;
+                    free(u->mem[0]);
+                    free(u->mem[1]);
+                    u->mem[0] = (uint8_t*)calloc((size_t)u->lay.width * u->lay.height, 4);
+                    u->mem[1] = (uint8_t*)calloc((size_t)u->lay.width * u->lay.height, 4);
+                    if (!u->mem[0] || !u->mem[1]) { fprintf(stderr, "out of memory\n"); exit(1); }
+                    u->rev[0] = u->rev[1] = 0;
+                }
+                continue;
+            }
+            if (r != FA_OK) continue;
             u->rev[b] = fr.revision;
             u->frames++;
             if (fr.behind) u->behind++;
+            if (fr.behind && !fr.dirty_count && !fr.time) {
+                u->none++;
+            } else {
+                /* Past a seek the frame can be of a later position: count the lag only. */
+                double lag = (double)(at - fr.time) / 1e6;
+                if (lag < 0) lag = 0;
+                if (lag < 1000.0) {
+                    u->lag_total_ms += lag;
+                    u->lagged++;
+                    if (lag > u->lag_max_ms) u->lag_max_ms = lag;
+                }
+            }
             if (ms > 8.0) u->slow++;
-            if (ms > u->max_ms) u->max_ms = ms;
             u->total_ms += ms;
         }
         b ^= 1;
@@ -251,6 +303,8 @@ static void add_surface(fa_surface* s, int stream, int render_ahead, uint32_t w,
     u->s = s;
     u->stream = stream;
     u->what = what;
+    u->w = w;
+    u->h = h;
     fa_surface_effects_init(&fx);
     fx.shadow.on = 1; fx.shadow.size = 1.0f; fx.shadow.distance = 1.0f; fx.shadow.fade = 0.5f;
     fx.outline.on = 1; fx.outline.size = 1.0f; fx.outline.fade = 0.3f;
@@ -284,6 +338,7 @@ static void usage(void)
     printf("fa_render_stress [--seconds N] [--render-ahead 0|1] [--workers N] [--burn N]\n"
            "                 [--size WxH] [--tempo T] [--soundfont file.sf2]\n"
            "                 [--extra N] [--latency ms] [--colours ms] [--lyrics N] [--threads]\n"
+           "                 [--events ms]\n"
            "  Two streams with tempo T (default 1.05 and 0.95), two CD+G surfaces each\n"
            "  (traced and blended, every effect), drawn at 60 Hz on the null output.\n"
            "  With a soundfont, the second stream is MIDI with lyrics and has a lyric\n"
@@ -291,13 +346,15 @@ static void usage(void)
            "  CD+G surface. --burn adds busy threads\n"
            "  standing in for the app's own work. --extra adds N more CD+G surfaces per\n"
            "  stream; --threads draws each surface on a thread of its own; --latency sets the tempo latency (default 150 ms); --colours how\n"
-           "  often the CD+G loads new colours, a full redraw (default 10000 ms). Run under\n"
-           "  taskset to pin the cores.\n");
+           "  often the CD+G loads new colours, a full redraw (default 10000 ms). --events\n"
+           "  ms: every ms, in turn, both streams seek (back, then forward) or every surface\n"
+           "  is resized to 3/4 and back. Run under taskset to pin the cores.\n");
 }
 
 int main(int argc, char** argv)
 {
-    int seconds = 30, ra = 1, burn = 0, extra = 0, latency = 0, colour_ms = 10000, lyrics = 1, i, k;
+    int seconds = 30, ra = 1, burn = 0, extra = 0, latency = 0, colour_ms = 10000, lyrics = 1, events_ms = 0, i, k;
+    int64_t next_event = 0;
     uint32_t workers = 0, w = 3840, h = 2160;
     double tempo[MAX_STREAMS] = { 1.05, 0.95 };
     const char* sf_path = NULL;
@@ -313,6 +370,7 @@ int main(int argc, char** argv)
     fa_time clock0[MAX_STREAMS];
     double max_lag[MAX_STREAMS] = { 0, 0 }, last_lag[MAX_STREAMS] = { 0, 0 };
     int moving[MAX_STREAMS] = { 0, 0 };
+    int64_t settle_until[MAX_STREAMS] = { 0, 0 };
     fa_time min_buf[MAX_STREAMS] = { INT64_MAX, INT64_MAX };
 
     for (i = 1; i < argc; i++) {
@@ -328,6 +386,7 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--colours") && i + 1 < argc) colour_ms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--lyrics") && i + 1 < argc) lyrics = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--threads")) per_surface = 1;
+        else if (!strcmp(argv[i], "--events") && i + 1 < argc) events_ms = atoi(argv[++i]);
         else { usage(); return 2; }
     }
     if (burn > 16) burn = 16;
@@ -380,6 +439,7 @@ int main(int argc, char** argv)
     }
     free(wav.p);
     free(cdg.p);
+    for (i = 0; i < MAX_STREAMS; i++) g_streams[i] = st[i];
 
     {
         fa_engine_stats es;
@@ -396,7 +456,24 @@ int main(int argc, char** argv)
     /* The clock should move at the tempo against wall time: lag is how far it fell
      * behind that since it first moved. */
     t_end = now_ns() + (int64_t)seconds * 1000000000;
+    if (events_ms > 0) next_event = now_ns() + (int64_t)events_ms * 1000000;
     while (now_ns() < t_end) {
+        if (events_ms > 0 && now_ns() >= next_event) {
+            int ev = g_events + 1;
+            next_event += (int64_t)events_ms * 1000000;
+            if (ev % 2 == 0) {
+                /* Both streams seek: back to half way, or forward by a quarter more. A
+                 * seek moves the clock, so the lag is measured again from here. */
+                for (i = 0; i < MAX_STREAMS; i++) {
+                    fa_frames pos;
+                    if (fa_stream_get_position(st[i], &pos) != FA_OK) continue;
+                    fa_stream_seek_async(st[i], ev % 4 ? pos / 2 : pos + pos / 4);
+                    moving[i] = 0;
+                    settle_until[i] = now_ns() + 300000000;   /* the refill, then steady again */
+                }
+            }
+            g_events = ev;
+        }
         for (i = 0; i < MAX_STREAMS; i++) {
             fa_time c;
             fa_stream_stats ss;
@@ -406,7 +483,7 @@ int main(int argc, char** argv)
             if (fa_stream_get_clock(st[i], &c) != FA_OK) continue;
             if (fa_stream_get_stats(st[i], &ss) == FA_OK && moving[i] && ss.buffered < min_buf[i]) min_buf[i] = ss.buffered;
             if (!moving[i]) {
-                if (c > 0) { moving[i] = 1; wall0[i] = now; clock0[i] = c; }
+                if (c > 0 && now >= settle_until[i]) { moving[i] = 1; wall0[i] = now; clock0[i] = c; }
                 continue;
             }
             last_lag[i] = (double)(now - wall0[i]) * tempo[i] / 1e6 - (double)(c - clock0[i]) / 1e6;
@@ -428,9 +505,14 @@ int main(int argc, char** argv)
     }
     for (i = 0; i < g_nsurf; i++) {
         surf* u = &g_surf[i];
-        printf("surface %d (stream %d, %s, %ux%u): %u frames, %u behind (%.0f%%), %u over 8 ms, update_into avg %.2f ms max %.1f ms\n",
+        printf("surface %d (stream %d, %s, %ux%u): %u frames, %u behind (%.0f%%, %u nothing new), %u over 8 ms, update_into avg %.2f ms max %.1f ms\n",
                i, u->stream, u->what, u->lay.width, u->lay.height, u->frames, u->behind,
-               u->frames ? 100.0 * u->behind / u->frames : 0.0, u->slow, u->frames ? u->total_ms / u->frames : 0.0, u->max_ms);
+               u->frames ? 100.0 * u->behind / u->frames : 0.0, u->none, u->slow, u->frames ? u->total_ms / u->frames : 0.0, u->max_ms);
+        printf("  frames shown %.1f ms behind the clock on average (max %.1f ms, seeks aside)\n",
+               u->lagged ? u->lag_total_ms / u->lagged : 0.0, u->lag_max_ms);
+        if (events_ms > 0)
+            printf("  %u resizes: set_presentation_size max %.1f ms, get_layout max %.1f ms\n", u->resizes, u->setter_max_ms,
+                   u->layout_max_ms);
     }
     {
         fa_engine_stats es;

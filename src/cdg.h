@@ -113,5 +113,8 @@ int fa_stream_cdg_present(struct fa_stream* s);
 fa_cdg_data* fa_cdg_find_sibling(const char* audio_path);
 /* Tests: how many blocks of effects were blended for new colours instead of drawn. */
 int32_t fa_cdg_test_blends(void);
+/* Tests: takes (1) or lets go of (0) the surface's work_lock on the calling thread, as
+ * a worker rendering ahead or another thread's setter holds it. */
+void fa_surface_test_hold(fa_surface* surface, int hold);
 
 #endif

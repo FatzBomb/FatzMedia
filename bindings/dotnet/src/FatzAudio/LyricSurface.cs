@@ -431,6 +431,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     private bool _renderAhead;
     private LyricStyle _style;
     private nint _native;
+    private int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
 
     internal LyricSurface(AudioStream stream, LyricStyle style)
     {
@@ -493,7 +494,6 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     }
 
     /// <inheritdoc/>
-    /// <remarks>Lyric frames are drawn on the calling thread for now; the setting is kept.</remarks>
     public bool RenderAhead
     {
         get => _renderAhead;
@@ -540,9 +540,25 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         FaSurfaceFrame f = default;
         f.StructSize = (uint)sizeof(FaSurfaceFrame);
         long t = time is { } at ? TimeConvert.ToNanoseconds(at) : long.MinValue;
-        using (var held = Hold())
-            FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(held.Native, t, (void*)destination,
-                stride, (uint)width, (uint)height, destinationRevision, &f));
+        var handle = Enter(out bool added);
+        try
+        {
+            nint native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
+            ObjectDisposedException.ThrowIf(native == 0, this);
+            try
+            {
+                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination,
+                    stride, (uint)width, (uint)height, destinationRevision, &f));
+            }
+            finally
+            {
+                SurfaceInterop.EndUpdate(ref _updating);
+            }
+        }
+        finally
+        {
+            if (added) handle.DangerousRelease();
+        }
         int count = (int)Math.Min(f.DirtyCount, 8u);
         for (int i = 0; i < count; i++)
             _dirty[i] = new PixelRect(f.Dirty[i * 4], f.Dirty[i * 4 + 1], f.Dirty[i * 4 + 2], f.Dirty[i * 4 + 3]);
@@ -564,9 +580,7 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     /// <summary>The stream held (which keeps the native surface alive) and the lock taken, for a native call.</summary>
     private Held Hold()
     {
-        var handle = _stream.Handle;
-        bool added = false;
-        handle.DangerousAddRef(ref added);
+        var handle = Enter(out bool added);
         Monitor.Enter(_lock);
         if (_native == 0)
         {
@@ -575,6 +589,15 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
             throw new ObjectDisposedException(GetType().FullName);
         }
         return new Held(this, added ? handle : null);
+    }
+
+    /// <summary>Holds the stream for a native call, which keeps the native stream (and so this surface) alive.</summary>
+    private StreamHandle Enter(out bool added)
+    {
+        var handle = _stream.Handle;
+        added = false;
+        handle.DangerousAddRef(ref added);
+        return handle;
     }
 
     private readonly ref struct Held
@@ -601,9 +624,8 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
     {
         lock (_lock)
         {
-            if (_native == 0) return;
-            NativeMethods.fa_surface_destroy(_native);
-            _native = 0;
+            nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+            if (native != 0) NativeMethods.fa_surface_destroy(native);
         }
     }
 
@@ -626,9 +648,9 @@ public sealed unsafe class LyricSurface : IKaraokeSurface, IStreamSurface
         {
             lock (_lock)
             {
-                if (_native == 0) return;
-                NativeMethods.fa_surface_destroy(_native);
-                _native = 0;
+                nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+                if (native == 0) return;
+                NativeMethods.fa_surface_destroy(native);
             }
             handle.UntrackSurface(this);
         }

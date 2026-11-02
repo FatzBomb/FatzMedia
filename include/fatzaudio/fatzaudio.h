@@ -2409,7 +2409,11 @@ typedef struct fa_surface_frame {
                                           keeping up), of a later position (after a seek
                                           back) or of graphics since replaced; a newer
                                           one follows. `time` above is the position it
-                                          shows. Always 0 without render-ahead */
+                                          shows. Also 1 with dirty_count 0, revision =
+                                          base_revision = dst_revision and time 0 when
+                                          there is nothing new yet (no finished frame):
+                                          keep showing what dst holds. Always 0 without
+                                          render-ahead */
     /* CD+G, as in fa_cdg_frame (for colouring INDEXED8 output on the GPU): */
     int32_t background_index, border_index;
     uint8_t background[4];
@@ -2427,19 +2431,23 @@ FA_API void FA_CALL fa_surface_destroy(fa_surface* surface);
 FA_API fa_result FA_CALL fa_surface_set_presentation_size(fa_surface* surface, uint32_t width, uint32_t height);
 /* Off (0) by default. On, a surface that renders into a bitmap of its own (CD+G with
  * presentation scaling; lyrics) has the engine's worker threads render its next frame
- * ahead, paced by the times update_into is called with, and update_into copies the
- * finished frame that fits `time` best. It does not wait for a worker that is
- * rendering: it shows the frame it has, and fa_surface_frame.behind says when that one
- * is late. When no worker is rendering and there is no fitting frame (the first, the
- * first after a change of layout or options, after a seek or new graphics, or more
- * than 1/60 s late) it draws the frame on the caller's thread. A lyric surface draws
- * a late frame there only when it is more than 100 ms late: below that it shows the
- * late frame (behind = 1) and drops it, since drawing here would leave the worker
- * behind again. Calls that change the
- * surface (options, sizes, the layout, fa_cdg_surface_update) wait for a running
- * render, at most one frame. It takes two more buffers of the layout's size. The
- * classic CD+G picture ignores it: it is drawn on the caller's thread either way. Off
- * frees the buffers. */
+ * ahead, paced by the times update_into is called with (and ahead by about as long as
+ * the workers' frames take), and update_into copies the finished frame that fits
+ * `time` best. It never draws a whole frame on the caller's thread and never waits,
+ * neither for a worker that is rendering nor for another thread's setter: when no
+ * finished frame fits (after a seek or a loop back, new graphics, or when the workers
+ * are late) it shows the last one with fa_surface_frame.behind = 1, and with none at
+ * all (the first, and the first after a change of layout, options, effects or style)
+ * it returns FA_OK with nothing new (dirty_count 0, revision = dst_revision, behind
+ * 1, time 0), while a worker renders the frame asked for. A change of layout is
+ * reported (FA_ERROR_SIZE_MISMATCH) once a call finds the surface free; until then
+ * the call returns nothing new. An engine with one worker thread never renders ahead:
+ * update_into draws there when no finished frame fits. Calls that change the surface
+ * (options, sizes, the layout, fa_cdg_surface_update) wait for a running render, at
+ * most one frame; fa_surface_get_layout right after FA_ERROR_SIZE_MISMATCH does not
+ * (no render for a new layout starts before a buffer of its size is passed). It takes
+ * two more buffers of the layout's size. The classic CD+G picture ignores it: it is
+ * drawn on the caller's thread either way. Off frees the buffers. */
 FA_API fa_result FA_CALL fa_surface_set_render_ahead(fa_surface* surface, int32_t enabled);
 /* Fills `out_layout` up to its struct_size and sets struct_size to the bytes filled. */
 FA_API fa_result FA_CALL fa_surface_get_layout(fa_surface* surface, fa_surface_layout* out_layout);

@@ -112,8 +112,11 @@ public readonly ref struct SurfaceUpdate
     /// <summary>Of that, drawing pixels (with render-ahead: the time the frame took on the worker).</summary>
     public TimeSpan RenderTime { get; }
     /// <summary>Render-ahead: true when the frame shown is more than 1/60 s older than the time asked for, of a later
-    /// position (after a seek back) or of graphics since replaced; <see cref="Time"/> is the position it shows. A newer
-    /// frame follows. Always false without render-ahead.</summary>
+    /// position (after a seek back) or of graphics or options since replaced; <see cref="Time"/> is the position it
+    /// shows. A newer frame follows. Also true, with <see cref="Dirty"/> empty, <see cref="Revision"/> the revision
+    /// passed in and <see cref="Time"/> zero, when there is nothing new yet (no finished frame: the first, or the first
+    /// after a new layout, options or style): keep showing what the buffer holds. Always false without
+    /// render-ahead.</summary>
     public bool Behind { get; }
     /// <summary>CD+G: as <see cref="CdgFrame.BackgroundIndex"/>.</summary>
     public int BackgroundIndex { get; }
@@ -227,10 +230,11 @@ public interface IKaraokeSurface : IDisposable
 
     /// <summary>Off by default. On, a surface that renders into a bitmap of its own (CD+G with
     /// <see cref="CdgPresentation.Scale"/>; lyrics) has the engine's workers render its next frame ahead, and
-    /// <see cref="UpdateInto(nint, int, int, int, ulong, TimeSpan?)"/> copies the finished one that fits best without
-    /// waiting for a worker (<see cref="SurfaceUpdate.Behind"/> says when it is late); with no worker busy and no fitting
-    /// frame it draws one itself. Takes two more buffers of the layout's size; the classic
-    /// CD+G picture ignores it.</summary>
+    /// <see cref="UpdateInto(nint, int, int, int, ulong, TimeSpan?)"/> copies the finished one that fits best: it never
+    /// draws a whole frame itself and never waits for a worker or for a setter on another thread
+    /// (<see cref="SurfaceUpdate.Behind"/> says when the frame is late, or that there is nothing new yet). An engine with
+    /// one worker thread does not render ahead: UpdateInto draws then. Takes two more buffers of the layout's size; the
+    /// classic CD+G picture ignores it.</summary>
     bool RenderAhead { get; set; }
 
     /// <summary>Outline, shadow and bevel; null (the default) for none. The next frame is drawn again in full.</summary>
@@ -263,6 +267,31 @@ public interface IKaraokeSurface : IDisposable
 /// <summary>Conversions every surface shares.</summary>
 internal static unsafe class SurfaceInterop
 {
+    /// <summary>UpdateInto takes no lock of the surface's, so a setter on another thread (which waits for a worker's
+    /// render, up to a frame) never makes the drawing thread wait. Instead it counts itself in
+    /// <paramref name="updating"/> and reads the handle after that (both full fences), and Dispose clears the handle
+    /// first and then waits here for the count to drop: either the call sees 0, or Dispose sees the call.</summary>
+    public static nint BeginUpdate(ref nint native, ref int updating)
+    {
+        Interlocked.Increment(ref updating);
+        nint n = Volatile.Read(ref native);
+        if (n == 0) Interlocked.Decrement(ref updating);
+        return n;
+    }
+
+    public static void EndUpdate(ref int updating) => Interlocked.Decrement(ref updating);
+
+    /// <summary>Clears the handle (caller holds the surface's lock, so no setter runs) and returns it once no
+    /// UpdateInto is using it; 0 when it was already cleared.</summary>
+    public static nint TakeForDestroy(ref nint native, ref int updating)
+    {
+        nint n = Interlocked.Exchange(ref native, 0);
+        if (n == 0) return 0;
+        var spin = new SpinWait();
+        while (Volatile.Read(ref updating) != 0) spin.SpinOnce();
+        return n;
+    }
+
     public static uint Argb(CdgColor c) => (uint)c.A << 24 | (uint)c.R << 16 | (uint)c.G << 8 | c.B;
 
     public static CdgColor FromArgb(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v, (byte)(v >> 24));

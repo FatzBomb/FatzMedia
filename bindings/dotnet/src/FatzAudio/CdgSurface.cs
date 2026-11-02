@@ -272,6 +272,7 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     private bool _renderAhead;
     private SurfaceEffects? _effects;
     private nint _native;
+    private int _updating;   // UpdateInto calls running (they take no lock: SurfaceInterop.BeginUpdate)
 
     internal CdgSurface(AudioStream stream, CdgSurfaceOptions options)
     {
@@ -379,9 +380,8 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     {
         lock (_lock)
         {
-            if (_native == 0) return;
-            NativeMethods.fa_cdg_surface_destroy(_native);
-            _native = 0;
+            nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+            if (native != 0) NativeMethods.fa_cdg_surface_destroy(native);
         }
     }
 
@@ -537,11 +537,16 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         var h = Enter(out bool added);
         try
         {
-            lock (_lock)
+            nint native = SurfaceInterop.BeginUpdate(ref _native, ref _updating);
+            ObjectDisposedException.ThrowIf(native == 0, this);
+            try
             {
-                ObjectDisposedException.ThrowIf(_native == 0, this);
-                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(_native, t, (void*)destination, stride,
+                FatzAudioException.ThrowIfFailed(NativeMethods.fa_surface_update_into(native, t, (void*)destination, stride,
                     (uint)width, (uint)height, destinationRevision, &f));
+            }
+            finally
+            {
+                SurfaceInterop.EndUpdate(ref _updating);
             }
         }
         finally
@@ -566,11 +571,19 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        // Under the lock (taken again inside, which Monitor allows), so another thread can't switch scaling on
-        // between this check and the draw.
+        if (Options.PixelFormat != CdgPixelFormat.Indexed8)
+        {
+            // Always 4 bytes a pixel: no lock, so a setter on another thread never makes this wait.
+            if (stride < width * 4 || destination.Length < (long)stride * (height - 1) + (long)width * 4)
+                throw new ArgumentException("The span is smaller than height rows of stride bytes.", nameof(destination));
+            fixed (byte* p = destination)
+                return UpdateInto((nint)p, stride, width, height, destinationRevision, time);
+        }
+        // Indexed8 is 1 or 4 bytes a pixel depending on scaling: under the lock, so another thread can't switch
+        // scaling on between this check and the draw (the pointer overload takes no lock and never waits).
         lock (_lock)
         {
-            int bpp = Options.PixelFormat == CdgPixelFormat.Indexed8 && _presentation?.Scale != true ? 1 : 4;
+            int bpp = _presentation?.Scale != true ? 1 : 4;
             if (stride < width * bpp || destination.Length < (long)stride * (height - 1) + (long)width * bpp)
                 throw new ArgumentException("The span is smaller than height rows of stride bytes.", nameof(destination));
             fixed (byte* p = destination)
@@ -606,9 +619,9 @@ public sealed unsafe class CdgSurface : IKaraokeSurface, IStreamSurface
         {
             lock (_lock)
             {
-                if (_native == 0) return;
-                NativeMethods.fa_cdg_surface_destroy(_native);
-                _native = 0;
+                nint native = SurfaceInterop.TakeForDestroy(ref _native, ref _updating);
+                if (native == 0) return;
+                NativeMethods.fa_cdg_surface_destroy(native);
             }
             handle.UntrackSurface(this);
         }

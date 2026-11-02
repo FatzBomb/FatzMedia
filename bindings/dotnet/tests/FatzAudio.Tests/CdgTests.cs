@@ -461,6 +461,60 @@ public class CdgTests
     }
 
     [Fact]
+    public void RenderAhead_NothingNewThenTheWorkersFrame_AndDisposeWhileUpdating()
+    {
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, WorkerThreads = 2 });
+        using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
+        var tile = new byte[16];
+        tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;
+        for (int i = 4; i < 16; i++) tile[i] = 0x01;
+        song.LoadCdg([.. SimpleCdg(), .. Pack(6, tile)]);
+        var cdg = song.CreateCdgSurface();
+        using var reference = song.CreateCdgSurface();
+        var presentation = new CdgPresentation { Scale = true, Smoothness = 2, EdgeBlend = true };
+        cdg.Presentation = presentation;
+        reference.Presentation = presentation;
+        cdg.PresentationSize = reference.PresentationSize = new PixelSize(900, 648);
+        cdg.RenderAhead = true;
+        var layout = cdg.GetLayout();
+        int stride = layout.Width * 4;
+        var buffer = new byte[stride * layout.Height];
+
+        // The first frame is never drawn on this thread: nothing new, then a worker's.
+        var first = cdg.UpdateInto(buffer, stride, layout.Width, layout.Height, 0, AfterPacks(4));
+        Assert.True(first.Behind);
+        Assert.Equal(0, first.Dirty.Length);
+        Assert.Equal(0UL, first.Revision);
+        var update = first;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (update.Behind && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(1);
+            update = cdg.UpdateInto(buffer, stride, layout.Width, layout.Height, update.Revision, AfterPacks(4));
+        }
+        Assert.False(update.Behind);
+        var expected = new byte[buffer.Length];
+        reference.UpdateInto(expected, stride, layout.Width, layout.Height, 0, AfterPacks(4));
+        Assert.True(expected.AsSpan().SequenceEqual(buffer));
+
+        // Disposed on another thread while this one keeps updating: ObjectDisposedException, never a crash.
+        var disposer = new Thread(() => { Thread.Sleep(20); cdg.Dispose(); });
+        disposer.Start();
+        ulong revision = update.Revision;
+        int n = 0;
+        try
+        {
+            for (; n < 1_000_000; n++)
+                revision = cdg.UpdateInto(buffer, stride, layout.Width, layout.Height, revision, AfterPacks(4 + n % 50)).Revision;
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        disposer.Join();
+        Assert.Throws<ObjectDisposedException>(() => cdg.UpdateInto(buffer, stride, layout.Width, layout.Height, 0));
+    }
+
+    [Fact]
     public void Effects_OutlineAroundTheShapeAndValidation()
     {
         using var engine = CreateHeadless();
