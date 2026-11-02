@@ -179,6 +179,32 @@ The same properties come without opening a stream, together with the tags, from 
 
 In .NET, `stream.PlayOn(device)` attaches (or moves) and plays, and `stream.Detach()` detaches.
 
+## Dropouts (underruns)
+
+The engine's worker threads decode each attached stream ahead of the mix. When an output callback finds too little decoded audio for a playing stream, that stream drops out for the rest of the callback: an underrun. `fa_stream_get_stats` (.NET `stream.GetStats()`) tells you how often that happened and how much is decoded ahead now, so a diagnostics panel can show it and an app can back off (turn off render-ahead or effects on its surfaces, or play fewer streams) when the count goes up:
+
+| Field | .NET | Meaning |
+|---|---|---|
+| `underruns` | `Underruns` | Output callbacks that found too little decoded audio for this stream while it played, since it was opened. The end of the stream, a pause and a stop are not counted; a push, callback or web stream that runs out of data is (it then also stalls, `FA_EVENT_STALLED`) |
+| `buffered` | `Buffered` | Decoded audio ready ahead of the mix now, as playing time (tempo and rate applied). 0 when the stream is not attached. With tempo, rate or pitch in use the stream keeps about `fa_tempo_options.latency_ms` (150 ms) decoded ahead, otherwise its whole buffer (`buffer_ms`) |
+
+Set `struct_size` first. It takes no lock, so it can be read every frame. `fa_engine_stats.underruns` (.NET `EngineStats.Underruns`) adds up every stream's dropouts since the engine was created, closed streams included ([how busy it is](playback.md#how-busy-it-is)).
+
+```c
+fa_stream_stats st = { sizeof(st) };
+fa_stream_get_stats(stream, &st);
+if (st.underruns > last_underruns) { /* the audio ran short: back off */ }
+last_underruns = st.underruns;
+```
+
+```csharp
+var st = stream.GetStats();
+if (st.Underruns > lastUnderruns) surface.RenderAhead = false;   // the audio ran short: back off
+lastUnderruns = st.Underruns;
+```
+
+Decoding comes first in the engine: the workers decode before they draw (render-ahead and the effects they help with, see [CD+G](cdg.md#drawing-into-your-own-buffers-fa_surface_update_into)), drawing never takes the last worker, and a worker that renders ahead runs at a lower priority. Underruns usually mean the machine as a whole is short of CPU time.
+
 ## Pitfalls
 
 - `fa_stream_open_memory` copies the data, so you can free your buffer right after the call.

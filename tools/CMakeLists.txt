@@ -54,3 +54,13 @@ if(WIN32)
         target_compile_definitions(bass_bench PRIVATE _CRT_SECURE_NO_WARNINGS)
     endif()
 endif()
+
+# Render-ahead against decoding under load (tools/render-stress/README.md).
+add_executable(fa_render_stress render-stress/fa_render_stress.c)
+target_link_libraries(fa_render_stress PRIVATE fatzaudio)
+target_compile_options(fa_render_stress PRIVATE ${FA_WARNINGS})
+if(MSVC)
+    target_compile_definitions(fa_render_stress PRIVATE _CRT_SECURE_NO_WARNINGS)
+elseif(NOT WIN32)
+    target_link_libraries(fa_render_stress PRIVATE Threads::Threads m)
+endif()

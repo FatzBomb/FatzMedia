@@ -762,6 +762,15 @@ internal struct FaEngineStats
     public uint Workers;
     public uint Devices;
     public uint AttachedStreams;
+    public uint Underruns;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct FaStreamStats
+{
+    public uint StructSize;
+    public uint Underruns;
+    public long Buffered;
 }
 
 [StructLayout(LayoutKind.Sequential)]

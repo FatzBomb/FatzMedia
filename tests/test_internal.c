@@ -2078,6 +2078,149 @@ static void test_loopback_gap_frames(void)
     CHECK_EQ(fa_loopback_gap_frames(1000 * ms + 999999, 0, 0, 48000), 48047);
 }
 
+/* Drawing work never takes the last worker: a shared job whose items are long (a 4K
+ * frame with effects) gets at most worker_count - 1 helpers, and a tempo stream
+ * played in real time meanwhile never runs dry. */
+typedef struct slow_job {
+    fa_atomic32 active, most;
+} slow_job;
+
+static void slow_item(void* ctx, int item, int slot)
+{
+    slow_job* j = (slow_job*)ctx;
+    (void)item;
+    if (slot > 0) {
+        int32_t a = fa_fetch_add32(&j->active, 1) + 1, m;
+        while ((m = fa_load32(&j->most)) < a && !fa_cas32(&j->most, m, a)) {}
+    }
+    fa_sleep_ms(250);
+    if (slot > 0) fa_fetch_add32(&j->active, -1);
+}
+
+static void slow_job_run(void* arg)
+{
+    fa_par_job pj;
+    memset(&pj, 0, sizeof(pj));
+    pj.run = slow_item;
+    pj.ctx = arg;
+    pj.count = 6;
+    pj.slots = 3;
+    fa_engine_parallel(g_engine, &pj);
+}
+
+static void test_drawing_leaves_a_worker_to_decode(void)
+{
+    fa_stream* s = open_attached(g_dev->rate * 10, 0, 0);
+    fa_stream_stats st;
+    fa_engine_stats es;
+    uint32_t chunk = g_dev->rate / 100, before;
+    float* out = (float*)malloc((size_t)chunk * 2 * sizeof(float));
+    slow_job j;
+    fa_thread t;
+    int64_t end;
+    int i;
+    CHECK(s != NULL && out != NULL);
+    memset(&st, 0, sizeof(st));
+    CHECK_EQ(fa_stream_get_stats(s, &st), FA_ERROR_INVALID_ARG);   /* struct_size not set */
+    CHECK_EQ(fa_stream_get_stats(NULL, &st), FA_ERROR_INVALID_ARG);
+    memset(&es, 0, sizeof(es));
+    es.struct_size = sizeof(es);
+    CHECK_EQ(fa_engine_get_stats(g_engine, &es), FA_OK);
+    before = es.underruns;
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.05f), FA_OK);   /* a 150 ms buffer */
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    for (i = 0; i < 2000 && fa_ring_readable(&s->ring) < (int64_t)g_dev->rate / 8; i++) fa_sleep_ms(1);
+    CHECK(fa_ring_readable(&s->ring) >= (int64_t)g_dev->rate / 8);
+
+    memset(&j, 0, sizeof(j));
+    CHECK(fa_thread_create(&t, slow_job_run, &j) == 0);
+    /* The audio thread, never faster than real time: 10 ms each 10 ms or more. */
+    end = fa_monotonic_ns() + 1000000000LL;
+    while (fa_monotonic_ns() < end) {
+        memset(out, 0, (size_t)chunk * 2 * sizeof(float));
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_stream_mix(s, g_dev, out, chunk);
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_fetch_add64(&g_dev->clock, chunk);
+        fa_sleep_ms(10);
+    }
+    fa_thread_join(&t);
+    printf("    most helpers at once: %d of %u workers\n", (int)fa_load32(&j.most), g_engine->worker_count);
+    CHECK(fa_load32(&j.most) >= 1);
+    CHECK(fa_load32(&j.most) <= (int32_t)g_engine->worker_count - 1);
+
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
+    CHECK_EQ(fa_stream_get_stats(s, &st), FA_OK);
+    CHECK_EQ(st.struct_size, sizeof(st));
+    printf("    underruns %u, buffered %.1f ms\n", st.underruns, (double)st.buffered / 1e6);
+    CHECK_EQ(st.underruns, 0);
+    CHECK(st.buffered > 0);
+    CHECK_EQ(fa_engine_get_stats(g_engine, &es), FA_OK);
+    CHECK_EQ(es.underruns, before);
+    free(out);
+    fa_stream_close(s);
+}
+
+/* Underruns count the callbacks that found a playing stream short, in the stream and
+ * in the engine's total; the end of the stream is not one. */
+static void test_underruns_counted(void)
+{
+    fa_stream* s = open_attached(g_dev->rate / 10, 0, 0);
+    fa_stream_stats st;
+    fa_engine_stats es;
+    float out[2 * 512];
+    uint32_t before;
+    int i;
+    CHECK(s != NULL);
+    memset(&es, 0, sizeof(es));
+    es.struct_size = sizeof(es);
+    CHECK_EQ(fa_engine_get_stats(g_engine, &es), FA_OK);
+    before = es.underruns;
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    /* Played to its end: none. */
+    for (i = 0; i < 40; i++) render_on(s, out, 512);
+    memset(&st, 0, sizeof(st));
+    st.struct_size = sizeof(st);
+    CHECK_EQ(fa_stream_get_stats(s, &st), FA_OK);
+    CHECK_EQ(st.underruns, 0);
+    fa_stream_close(s);
+    /* Short while playing: the workers held off (decode_lock), the ring emptied. */
+    s = open_attached(g_dev->rate * 2, 0, 0);
+    CHECK(s != NULL);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    render_on(s, out, 512);
+    fa_mutex_lock(&s->decode_lock);
+    while (fa_ring_readable(&s->ring) > 0) {
+        memset(out, 0, sizeof(out));
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_stream_mix(s, g_dev, out, 512);
+        fa_fetch_add64(&g_dev->epoch, 1);
+        fa_fetch_add64(&g_dev->clock, 512);
+    }
+    fa_fetch_add64(&g_dev->epoch, 1);
+    fa_stream_mix(s, g_dev, out, 512);
+    fa_fetch_add64(&g_dev->epoch, 1);
+    fa_mutex_unlock(&s->decode_lock);
+    CHECK_EQ(fa_stream_get_stats(s, &st), FA_OK);
+    CHECK(st.underruns >= 1);
+    CHECK_EQ(fa_engine_get_stats(g_engine, &es), FA_OK);
+    CHECK_EQ(es.underruns, before + st.underruns);
+    fa_stream_close(s);
+    /* Not attached: nothing buffered. */
+    s = NULL;
+    {
+        size_t n;
+        uint8_t* wav = make_wav(g_dev->rate, 1000, 0, &n);
+        CHECK_EQ(fa_stream_open_memory(g_engine, wav, n, NULL, &s), FA_OK);
+        free(wav);
+        CHECK_EQ(fa_stream_get_stats(s, &st), FA_OK);
+        CHECK_EQ(st.buffered, 0);
+        CHECK_EQ(st.underruns, 0);
+        fa_stream_close(s);
+    }
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -2089,6 +2232,8 @@ int main(void)
     printf("null device at %u Hz (not started: this test is the audio thread)\n", g_dev->rate);
 
     RUN(test_ring_wraps);
+    RUN(test_drawing_leaves_a_worker_to_decode);
+    RUN(test_underruns_counted);
     RUN(test_wake);
     RUN(test_event_thread_wakes);
     RUN(test_engine_destroy_wakes);

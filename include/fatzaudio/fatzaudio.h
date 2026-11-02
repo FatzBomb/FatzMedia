@@ -180,6 +180,8 @@ typedef struct fa_engine_stats {
     uint32_t workers;        /* decode worker threads */
     uint32_t devices;        /* open outputs */
     uint32_t attached_streams; /* streams attached to an output */
+    uint32_t underruns;      /* dropouts of all streams since the engine was created
+                                (fa_stream_stats.underruns added up, closed streams too) */
 } fa_engine_stats;
 
 FA_API fa_result FA_CALL fa_engine_get_stats(fa_engine* engine, fa_engine_stats* out_stats);
@@ -1269,6 +1271,22 @@ FA_API fa_result FA_CALL fa_stream_get_mute(fa_stream* stream, int32_t* out_mute
  * called every vsync (240 Hz and more) from any thread. Push and packet streams
  * that are not attached take the stream's lock briefly. */
 FA_API fa_result FA_CALL fa_stream_get_clock(fa_stream* stream, fa_time* out_pts);
+
+/* How well the decode workers keep up with a stream, for a diagnostics panel or to
+ * back off (render-ahead, effects, extra streams) when audio runs short. Set
+ * struct_size (sizeof(fa_stream_stats)) first; filled up to it. */
+typedef struct fa_stream_stats {
+    uint32_t struct_size;
+    uint32_t underruns;      /* output callbacks that found too little decoded audio for
+                                this stream while it played (a dropout), since it was
+                                opened. Its end, a pause and a stop are not counted; a
+                                push, callback or web stream that runs out of data is */
+    fa_time buffered;        /* decoded audio ready ahead of the mix, as playing time
+                                (tempo and rate applied). 0 when not attached */
+} fa_stream_stats;
+
+/* Cheap and lock-free: can be called every frame from any thread. */
+FA_API fa_result FA_CALL fa_stream_get_stats(fa_stream* stream, fa_stream_stats* out_stats);
 
 /* Decode-only streams (FA_OPEN_DECODE_ONLY): pull interleaved F32 PCM in the
  * format reported by fa_stream_get_info. `buffer` must hold frames * channels floats.
