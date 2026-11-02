@@ -78,11 +78,6 @@ internal sealed class MicHandle : SafeHandle
     }
 }
 
-/// <summary>
-/// Owns an <c>fa_stream*</c>, the GC handles of its callbacks, and references to the engine and
-/// the attached device so that native teardown always happens in a safe order
-/// (stream first, then device, then engine).
-/// </summary>
 /// <summary>A surface whose native object goes with its stream (<see cref="StreamHandle.TrackSurface"/>).</summary>
 internal interface IStreamSurface
 {
@@ -90,6 +85,11 @@ internal interface IStreamSurface
     void Orphan();
 }
 
+/// <summary>
+/// Owns an <c>fa_stream*</c>, the GC handles of its callbacks, and references to the engine and
+/// the attached device so that native teardown always happens in a safe order
+/// (stream first, then device, then engine).
+/// </summary>
 internal sealed class StreamHandle : SafeHandle
 {
     private EngineHandle? _engine;

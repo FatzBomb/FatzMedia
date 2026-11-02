@@ -45,11 +45,11 @@ public sealed class SoundFont : IDisposable
         }
     }
 
-    /// <summary>Loads a SoundFont 2 (.sf2) or DLS (.dls) bank.</summary>
-    /// <param name="path">Path of the .sf2 or .dls file.</param>
+    /// <summary>Loads a SoundFont 2 (.sf2, also SF3 with compressed samples) or DLS (.dls) bank.</summary>
+    /// <param name="path">Path of the .sf2, .sf3 or .dls file.</param>
     /// <returns>A soundfont that must be disposed.</returns>
     /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a usable bank
-    /// (<see cref="ErrorCode.UnsupportedFormat"/>; SF3 and SFZ are not supported yet).</exception>
+    /// (<see cref="ErrorCode.UnsupportedFormat"/>; SFZ is not supported).</exception>
     public static SoundFont FromFile(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -180,7 +180,7 @@ public sealed class SoundFont : IDisposable
 }
 
 /// <summary>One instrument or drum kit of a <see cref="SoundFont"/>.</summary>
-/// <param name="Bank">Bank select MSB 0..127; 128 for drum kits.</param>
+/// <param name="Bank">Bank select MSB 0..127; 128 for drum kits. A stack's presets go up to 16383 (<see cref="SoundFontStackEntry.ToBank"/>).</param>
 /// <param name="Program">0..127.</param>
 /// <param name="Name">The preset's name in the file.</param>
 public sealed record SoundFontPreset(int Bank, int Program, string Name);

@@ -67,6 +67,7 @@ public static class Equalizer
     /// <exception cref="ArgumentOutOfRangeException">Unknown preset.</exception>
     public static unsafe EqualizerBand[] GetPreset(EqualizerPreset preset)
     {
+        NativeLoader.EnsureInitialized();
         var bands = stackalloc FaEqBand[10];
         uint n;
         if (NativeMethods.fa_eq_get_preset((int)preset, bands, &n) < 0) throw new ArgumentOutOfRangeException(nameof(preset));
@@ -79,6 +80,7 @@ public static class Equalizer
     /// <exception cref="ArgumentOutOfRangeException">Unknown preset.</exception>
     public static unsafe string GetPresetName(EqualizerPreset preset)
     {
+        NativeLoader.EnsureInitialized();
         byte* p = NativeMethods.fa_eq_preset_name((int)preset);
         if (p == null) throw new ArgumentOutOfRangeException(nameof(preset));
         return NativeText.Read(p);

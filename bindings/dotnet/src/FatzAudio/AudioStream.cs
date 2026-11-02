@@ -1630,7 +1630,8 @@ public unsafe partial class AudioStream : IDisposable
     /// <returns>A task that completes when the crossfade is done.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="next"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> is negative.</exception>
-    /// <exception cref="FatzAudioException">This stream is not attached, or <paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <exception cref="InvalidOperationException">This stream is not attached to a device.</exception>
+    /// <exception cref="FatzAudioException"><paramref name="next"/> plays on another device (<see cref="ErrorCode.InvalidArgument"/>).</exception>
     /// <example>
     /// <code>
     /// await current.CrossfadeTo(next, TimeSpan.FromSeconds(5));
@@ -2154,10 +2155,10 @@ public unsafe partial class AudioStream : IDisposable
     public event EventHandler<StreamEventArgs>? DeviceChanged;
 
     /// <summary>
-    /// False when the native library does not deliver events yet (the callback registration returned
-    /// <see cref="ErrorCode.NotImplemented"/>). Poll <see cref="State"/> instead in that case.
+    /// Always true: every stream delivers events. Kept for code written against early previews, when events could be
+    /// missing; new code doesn't need to check it.
     /// </summary>
-    public bool EventsSupported { get; private set; }
+    public bool EventsSupported => true;
 
     private sealed class EventState
     {
@@ -2169,17 +2170,11 @@ public unsafe partial class AudioStream : IDisposable
     {
         var gc = _handle.Pin(new EventState(this));
         int rc = NativeMethods.fa_stream_set_event_callback(_handle, &OnNativeEvent, (void*)GCHandle.ToIntPtr(gc));
-        if (rc == (int)ErrorCode.NotImplemented)
-        {
-            _handle.Unpin(gc);
-            return;
-        }
         if (rc < 0)
         {
             _handle.Unpin(gc);
             throw new FatzAudioException((ErrorCode)rc);
         }
-        EventsSupported = true;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

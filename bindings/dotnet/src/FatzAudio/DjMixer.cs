@@ -461,20 +461,30 @@ public sealed partial class DjMixer : IDisposable
         return new LatencyCheck(modes, (CheckAdvice)r.Advice, (LatencyMode)r.AdvisedMode);
     }
 
+    /// <summary>The native latency struct, with no allocations (for <see cref="Mic.InputLatency"/> polled by meters).</summary>
+    internal unsafe FaMixerLatency ReadLatency()
+    {
+        FaMixerLatency l = default;
+        l.StructSize = (uint)sizeof(FaMixerLatency);
+        using (Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(_mixer, &l));
+        return l;
+    }
+
+    /// <summary>A mic latency from the native struct: negative means no mic in that slot.</summary>
+    internal static TimeSpan? MicNs(long ns) => ns < 0 ? null : TimeConvert.FromNanoseconds(ns);
+
     /// <summary>What the mixer's outputs and mic inputs add up to now.</summary>
     public unsafe MixerLatency Latency
     {
         get
         {
-            FaMixerLatency l = default;
-            l.StructSize = (uint)sizeof(FaMixerLatency);
-            using (Lease()) FatzAudioException.ThrowIfFailed(NativeMethods.fa_mixer_get_latency(_mixer, &l));
+            var l = ReadLatency();
             var input = new TimeSpan?[2];
             var monitor = new TimeSpan?[2];
             for (int i = 0; i < 2; i++)
             {
-                input[i] = l.MicInput[i] < 0 ? null : TimeConvert.FromNanoseconds(l.MicInput[i]);
-                monitor[i] = l.MicMonitor[i] < 0 ? null : TimeConvert.FromNanoseconds(l.MicMonitor[i]);
+                input[i] = MicNs(l.MicInput[i]);
+                monitor[i] = MicNs(l.MicMonitor[i]);
             }
             return new MixerLatency(TimeConvert.FromNanoseconds(l.Master), TimeConvert.FromNanoseconds(l.Cue),
                 TimeConvert.FromNanoseconds(l.CueAlignment), input, monitor, (CueAlign)l.CueAlign);
