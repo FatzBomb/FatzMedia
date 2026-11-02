@@ -144,9 +144,9 @@ static void test_detector_rule(void)
 static void test_detector_threshold(void)
 {
     const float thr = (float)pow(10.0, -40.0 / 20.0);
-    float x[3 * RATE];
-    short s16[3 * RATE];
-    float planar_l[3 * RATE], planar_r[3 * RATE];
+    static float x[3 * RATE];   /* static: 1.8 MB of arrays would overflow a 1 MB Windows stack */
+    static short s16[3 * RATE];
+    static float planar_l[3 * RATE], planar_r[3 * RATE];
     fa_silence_options o;
     fa_silence_detector* d = NULL;
     result r, r2;
