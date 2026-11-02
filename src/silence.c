@@ -254,7 +254,14 @@ static fa_result edge_scan(fa_decoder* dec, float threshold_db, uint32_t min_len
             if (r == FA_OK) r = feed(&sc, &lead, hi, 0, &at_end);
             if (r == FA_OK && hi >= 0) {
                 if (lead.pos != hi) { whole = 1; break; }   /* the decoder came up short */
-                fa_silence_det_skip_silent(&lead, end - hi);
+                /* What still sounds at hi (a tail the seek before a window cut off)
+                 * is read on until it has died away, as for a tail window. */
+                while (r == FA_OK && lead.pos < end && !(lead.run_start >= 0 && lead.pos - lead.run_start >= settle)) {
+                    fa_frames stop = lead.pos + FA_SILENCE_READ < end ? lead.pos + FA_SILENCE_READ : end;
+                    r = feed(&sc, &lead, stop, 0, &at_end);
+                    if (at_end) break;
+                }
+                if (r == FA_OK && lead.pos < end) fa_silence_det_skip_silent(&lead, end - lead.pos);
             }
             complete = 1;
             break;

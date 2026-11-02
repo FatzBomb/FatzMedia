@@ -444,8 +444,9 @@ public sealed class TrackAnalysis
             o.MinBpm = options.MinBpm;
             o.MaxBpm = options.MaxBpm;
             if (options.NoCache) o.Flags |= 1; // FA_ANALYZE_NO_CACHE
-            o.SilenceThresholdDb = options.Silence.ThresholdDb;
-            o.SilenceMinLengthMs = SilenceOptions.ToMilliseconds(options.Silence.MinLength);
+            var silence = SilenceOptions.ToNative(options.Silence);
+            o.SilenceThresholdDb = silence.ThresholdDb;
+            o.SilenceMinLengthMs = silence.MinLengthMs;
         }
         return o;
     }

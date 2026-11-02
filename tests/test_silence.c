@@ -498,6 +498,14 @@ static void cache_checks(const char* dir)
     fa_analysis_free(a);
     CHECK(stream_silence(s, &o, &other) == FA_OK);
     CHECK_EQ(other.info.flags, FA_SILENCE_COMPLETE | FA_SILENCE_FROM_CACHE);
+    /* A new kind with default options measures the cached kinds again: silence keeps
+     * its own settings (500 ms), not the request's defaults. */
+    fa_analysis_options_init(&ao);
+    ao.kinds = FA_ANALYZE_LOUDNESS;
+    CHECK(fa_analyze_stream(s, &ao, &a) == FA_OK);
+    fa_analysis_free(a);
+    CHECK(stream_silence(s, &o, &other) == FA_OK);
+    CHECK_EQ(other.info.flags, FA_SILENCE_COMPLETE | FA_SILENCE_FROM_CACHE);
     /* A truncated output struct is filled up to its size. */
     {
         fa_silence small;

@@ -110,13 +110,20 @@ public sealed class SilenceInfo
 
     internal static unsafe SilenceInfo Read(Getter get)
     {
+        // One call in the usual case: fa_stream_get_silence decodes on every call, and a second call could answer
+        // from a cache written in between, so the info and the regions always come from the same call.
         var s = NativeSized.New<FaSilence>();
         uint count = 0;
-        FatzAudioException.ThrowIfFailed(get(&s, null, 0, &count));
-        var native = new FaSilenceRegion[count];
-        if (count > 0)
+        var native = new FaSilenceRegion[16];
+        fixed (FaSilenceRegion* p = native)
+            FatzAudioException.ThrowIfFailed(get(&s, p, (uint)native.Length, &count));
+        if (count > native.Length)
+        {
+            native = new FaSilenceRegion[count];
+            s = NativeSized.New<FaSilence>();
             fixed (FaSilenceRegion* p = native)
-                FatzAudioException.ThrowIfFailed(get(null, p, count, &count));
+                FatzAudioException.ThrowIfFailed(get(&s, p, count, &count));
+        }
         var regions = new SilenceRegion[Math.Min(count, (uint)native.Length)];
         for (int i = 0; i < regions.Length; i++) regions[i] = new SilenceRegion(native[i].Start, native[i].End);
         return new SilenceInfo(s, regions);

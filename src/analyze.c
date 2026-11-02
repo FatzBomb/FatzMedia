@@ -639,8 +639,10 @@ static int covers(const fa_analysis* a, const fa_analysis_options* opt)
     return 1;
 }
 
-static fa_result run(const job* j, fa_analysis** out)
+static fa_result run(const job* jin, fa_analysis** out)
 {
+    job jm = *jin;               /* settings for kinds measured only to keep them cached */
+    const job* j = &jm;
     fa_analysis* a;
     fa_source src;
     uint64_t key = 0;
@@ -685,6 +687,11 @@ static fa_result run(const job* j, fa_analysis** out)
             /* Measure what was there too, so the file keeps it (a grid is folded
              * into the new range). */
             kinds |= a->kinds;
+            /* Silence kept but not asked for: measured again at its own settings. */
+            if (a->have_silence && !(jm.opt.kinds & FA_ANALYZE_SILENCE)) {
+                jm.opt.silence_threshold_db = a->silence.threshold_db;
+                jm.opt.silence_min_length_ms = a->silence.min_length_ms;
+            }
             free_parts(a);
             memset(a, 0, sizeof(*a));
         }
