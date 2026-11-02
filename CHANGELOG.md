@@ -580,6 +580,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- Tempo and pitch (final audit step 6): the stretcher no longer swells at its start. Each time it started over (a seek,
+  an attach, a reverse turn, a deck loop or jump join) its first ~20 ms reached up to 1.7x the input's level on steady
+  audio; it now starts at the input's level.
+- Deck loops (final audit step 6): a loop set past CUE_OUT (reversed: below CUE_IN) after the deck had decoded up to that
+  marker is now reached; the stream ended there before.
 - .NET binding fixes (final audit step 5):
   - `Equalizer.GetPreset` and `GetPresetName` now load and check the native library when they are the first call.
   - `GetMidiEvents` throws for a native error and for an unknown `type` (it returned an empty list); a stream that
