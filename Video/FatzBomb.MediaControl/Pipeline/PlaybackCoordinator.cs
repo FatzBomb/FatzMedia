@@ -195,7 +195,7 @@ internal sealed partial class PlaybackCoordinator : IDisposable
     public bool OpenAudio(string path) => _session.Audio?.Open(path) == true && TryLoadMidiLyrics(path);
 
     public bool OpenAudio(IArchiveEntryInfo archiveEntry) =>
-        _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key);
+        _session.Audio?.Open(archiveEntry) == true && TryLoadMidiLyrics(archiveEntry.Key, archiveEntry);
 
     /// <summary>
     /// Audio mode (043A): plays the soundtrack of a video file as plain audio, with no video
@@ -433,18 +433,25 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
     private void OnNetworkStreamMetadataChanged(object? sender, MediaStreamMetadataChangedEventArgs e) => NetworkStreamMetadataChanged?.Invoke(this, e);
 
-    private bool TryLoadMidiLyrics(string audioPath)
+    private bool TryLoadMidiLyrics(string audioPath, IArchiveEntryInfo? archiveEntry = null)
     {
         if (_session.Subtitle == null || !_midiLyricProvider.IsMidiFile(audioPath))
             return true;
 
         try
         {
-            var sourceHandle = _session.Audio?.Engine.SourceHandle ?? 0;
-            IReadOnlyList<SubtitleCue>? cues = _midiLyricProvider.ExtractLyrics(
-                sourceHandle,
-                audioPath,
-                _karaokeTransitionDuration);
+            // 037A slice 1: the built-in provider reads MIDI through an engine-neutral reader; a
+            // host-supplied provider still gets the BASS source handle.
+            IAudioEngine? engine = _session.Audio?.Engine;
+            IReadOnlyList<SubtitleCue>? cues = _midiLyricProvider is IMidiLyricReaderProvider readerProvider
+                ? readerProvider.ExtractLyrics(
+                    GetMidiEventReader(engine),
+                    audioPath,
+                    _karaokeTransitionDuration)
+                : _midiLyricProvider.ExtractLyrics(
+                    engine?.SourceHandle ?? 0,
+                    audioPath,
+                    _karaokeTransitionDuration);
             if (cues is { Count: > 0 })
             {
                 _ = _session.Subtitle?.LoadEmbeddedTracks(
@@ -461,4 +468,16 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
         return true;
     }
+
+    /// <summary>
+    /// The MIDI events of the open audio: from the engine when it reads them itself (the BASS
+    /// engines, on their source channel as before); for any other engine, its BASS source handle
+    /// as before this seam (null for 0). A FatzAudio engine will implement the reader itself.
+    /// </summary>
+    internal static IMidiEventReader? GetMidiEventReader(IAudioEngine? engine) => engine switch
+    {
+        null => null,
+        IMidiEventReaderSource source => source.GetMidiEventReader(),
+        _ => BassMidiEventReader.ForHandle(engine.SourceHandle),
+    };
 }

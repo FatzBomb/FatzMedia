@@ -15,7 +15,7 @@ namespace FatzBomb.MediaControl.Core.Audio;
 /// Optimized for real-time audio playback in karaoke and DJ applications.
 /// Features adaptive sample rate initialization for optimal audio quality.
 /// </summary>
-public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient
+public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAudioLoopControl, IAudioAnalysisOpenControl, IAudioTrimWindowProvider, IMediaFileAnalyzer, IAudioFadeGainTarget, INetworkAudioSource, IAudioFilterHost, IAudioVolumeSlide, IBassOutputClient, IMidiEventReaderSource
 {
     private readonly BassEqualizerFilter _equalizer = new();
 
@@ -230,6 +230,9 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     public int PlayHandle => _streamManager.PlayHandle;
 
     public int SourceHandle => _streamManager.DecodeHandle;
+
+    /// <summary>MIDI lyrics and metadata read the source channel through BASS, as before 037A slice 1.</summary>
+    IMidiEventReader? IMidiEventReaderSource.GetMidiEventReader() => BassMidiEventReader.ForHandle(SourceHandle);
 
     /// <inheritdoc/>
     public double Duration => _streamManager.DurationSeconds;
@@ -661,14 +664,14 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             if (!NormalizationGainCache.TryGetValue(gainKey, out var normalizationGain))
             {
                 // The same final gain as playback's analysis (NormalizationGainPolicy), as it shares the key.
-                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(handle, updateGain: false, cancellationToken: token).ConfigureAwait(false);
-                var peak = await _normalizer.AnalyzePeakAsync(handle, updateGain: false, cancellationToken: token).ConfigureAwait(false);
+                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(BassChannelLevelSource.ForHandle(handle), updateGain: false, cancellationToken: token).ConfigureAwait(false);
+                var peak = await _normalizer.AnalyzePeakAsync(BassChannelLevelSource.ForHandle(handle), updateGain: false, cancellationToken: token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
                 normalizationGain = AudioNormalizer.CalculateGainFromPeak(NormalizationGainPolicy.FinalPeak(quickPeak, peak));
                 NormalizationGainCache.Set(gainKey, normalizationGain);
             }
 
-            var scan = await _silenceAnalyzer.ScanAsync(handle, sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
+            var scan = await _silenceAnalyzer.ScanAsync(BassChannelLevelSource.ForHandle(handle), sourceDuration, _silenceTrim.ThresholdDecibels, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var result = SilenceTrimCalculator.Calculate(scan.SourceDuration, scan.SilenceRegions, normalizationGain, _silenceTrim);
             if (mediaKey is { } storeKey)
@@ -931,14 +934,14 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
     public async Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakQuickAsync(handle, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await _normalizer.AnalyzePeakQuickAsync(BassChannelLevelSource.ForHandle(handle), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async Task<double> AnalyzePeakAsync(CancellationToken cancellationToken = default)
     {
         var handle = _streamManager.GetAnalysisHandle();
-        return await _normalizer.AnalyzePeakAsync(handle, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await _normalizer.AnalyzePeakAsync(BassChannelLevelSource.ForHandle(handle), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1191,7 +1194,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
             if (normalizationGain is null)
             {
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Quick normalization analysis starting ({sourceLabel})");
-                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var quickPeak = await _normalizer.AnalyzePeakQuickAsync(BassChannelLevelSource.ForHandle(analysisHandle), updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
                 // Not cached: the quick gain never boosts, so it is not the source's gain.
                 ApplyNormalizationGainIfCurrent(
                     NormalizationGainPolicy.QuickGain(quickPeak),
@@ -1201,7 +1204,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                     cancellationToken);
 
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Deep normalization analysis starting ({sourceLabel})");
-                var deepPeak = await _normalizer.AnalyzePeakAsync(analysisHandle, updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var deepPeak = await _normalizer.AnalyzePeakAsync(BassChannelLevelSource.ForHandle(analysisHandle), updateGain: false, cancellationToken: cancellationToken).ConfigureAwait(false);
                 ApplyNormalizationGainIfCurrent(
                     AudioNormalizer.CalculateGainFromPeak(NormalizationGainPolicy.FinalPeak(quickPeak, deepPeak)),
                     cacheKey,
@@ -1216,7 +1219,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
                 cancellationToken.ThrowIfCancellationRequested();
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "AudioEngine", $"Silence analysis starting ({sourceLabel})");
                 var scan = await _silenceAnalyzer.ScanAsync(
-                    analysisHandle,
+                    BassChannelLevelSource.ForHandle(analysisHandle),
                     sourceDuration,
                     _silenceTrim.ThresholdDecibels,
                     cancellationToken).ConfigureAwait(false);

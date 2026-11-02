@@ -12,15 +12,26 @@ public interface IAudioEngine : IDisposable
     AudioEngineState State { get; }
 
     /// <summary>
-    /// Gets the underlying play handle if available (0 when closed).
-    /// Useful for integration with other components (e.g., CDG sync).
+    /// Gets the underlying BASS play handle if available (0 when closed). BASS-specific: an engine
+    /// that does not play through BASS returns 0.
     /// </summary>
+    /// <remarks>
+    /// Internal code no longer depends on it (037A slice 1): fades, the equalizer, normalization,
+    /// silence trim and MIDI lyrics go through engine-neutral seams. It stays for hosts; whether it
+    /// is deprecated is decided with BASS's removal (037A slice 6).
+    /// </remarks>
     int PlayHandle { get; }
 
     /// <summary>
-    /// Gets the raw decode/source handle (0 when closed). This is the unwrapped
-    /// BASS channel before tempo processing. Useful for MIDI marker extraction.
+    /// Gets the raw BASS decode/source handle (0 when closed): the unwrapped BASS channel before
+    /// tempo processing. BASS-specific: an engine that does not play through BASS returns 0.
     /// </summary>
+    /// <remarks>
+    /// Internal code no longer depends on it (037A slice 1): the built-in MIDI lyric provider reads
+    /// MIDI through an engine-neutral reader. It is still passed to a host-supplied
+    /// <see cref="IMidiLyricProvider"/>. Whether it is deprecated is decided with BASS's removal
+    /// (037A slice 6).
+    /// </remarks>
     int SourceHandle { get; }
 
     /// <summary>

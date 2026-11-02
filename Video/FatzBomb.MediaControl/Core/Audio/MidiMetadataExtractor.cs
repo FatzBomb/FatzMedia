@@ -1,15 +1,18 @@
 using System.Globalization;
-using ManagedBass.Midi;
 
 namespace FatzBomb.MediaControl.Core.Audio;
 
+/// <summary>
+/// Karaoke metadata (title, artist, key, tempo, ...) from a MIDI source's text events, read through
+/// an engine-neutral <see cref="IMidiEventReader"/> (037A slice 1).
+/// </summary>
 internal static class MidiMetadataExtractor
 {
     public static KaraokeMetadata Extract(
-        int stream,
+        IMidiEventReader reader,
         string sourcePath,
         TimeSpan duration,
-        IReadOnlyList<MidiMarker> lyricOrTextMarkers)
+        IReadOnlyList<MidiMark> lyricOrTextMarkers)
     {
         ParsedMarkerMetadata parsed = ParseMarkerMetadata(
             lyricOrTextMarkers.Select(static marker => marker.Text));
@@ -24,32 +27,32 @@ internal static class MidiMetadataExtractor
         var timeSignature = parsed.TimeSignature;
         List<string> additionalInfo = [.. parsed.AdditionalInfo];
 
-        MidiMarker[] trackNames = GetMarksSafe(stream, MidiMarkerType.TrackName);
+        IReadOnlyList<MidiMark> trackNames = reader.GetMarks(MidiMarkKind.TrackName);
         title ??= trackNames
             .OrderBy(static marker => marker.Track)
             .Select(static marker => marker.Text?.Trim())
             .FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text));
 
-        var standardCopyright = JoinMarkerText(GetMarksSafe(stream, MidiMarkerType.Copyright));
+        var standardCopyright = JoinMarkerText(reader.GetMarks(MidiMarkKind.Copyright));
         if (!string.IsNullOrWhiteSpace(standardCopyright))
             copyright = standardCopyright;
 
-        var rawKey = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.KeySignature));
+        var rawKey = FirstMarkerText(reader.GetMarks(MidiMarkKind.KeySignature));
         if (!string.IsNullOrWhiteSpace(rawKey))
             keySignature = FormatKeySignature(rawKey);
 
-        var rawTiming = FirstMarkerText(GetMarksSafe(stream, MidiMarkerType.TimeSignature));
+        var rawTiming = FirstMarkerText(reader.GetMarks(MidiMarkKind.TimeSignature));
         if (!string.IsNullOrWhiteSpace(rawTiming))
             timeSignature = rawTiming.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 
-        MidiEvent? initialTempo = GetEventsSafe(stream, MidiEventType.Tempo)
-            .Where(static midiEvent => midiEvent.Parameter > 0)
+        MidiTempoEvent? initialTempo = reader.GetTempoEvents()
+            .Where(static midiEvent => midiEvent.MicrosecondsPerQuarterNote > 0)
             .OrderBy(static midiEvent => midiEvent.Position)
-            .Cast<MidiEvent?>()
+            .Cast<MidiTempoEvent?>()
             .FirstOrDefault();
-        if (initialTempo is { Parameter: > 0 } tempoEvent)
+        if (initialTempo is { MicrosecondsPerQuarterNote: > 0 } tempoEvent)
         {
-            var beatsPerMinute = 60_000_000d / tempoEvent.Parameter;
+            var beatsPerMinute = 60_000_000d / tempoEvent.MicrosecondsPerQuarterNote;
             tempo = $"{Math.Round(beatsPerMinute):0} BPM";
         }
 
@@ -238,35 +241,11 @@ internal static class MidiMetadataExtractor
         || value.Contains("(c)", StringComparison.OrdinalIgnoreCase)
         || value.Contains('©');
 
-    private static MidiMarker[] GetMarksSafe(int stream, MidiMarkerType type)
-    {
-        try
-        {
-            return BassMidi.StreamGetMarks(stream, -1, type) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static MidiEvent[] GetEventsSafe(int stream, MidiEventType type)
-    {
-        try
-        {
-            return BassMidi.StreamGetEvents(stream, -1, type) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static string FirstMarkerText(IEnumerable<MidiMarker> markers) => markers
+    private static string FirstMarkerText(IEnumerable<MidiMark> markers) => markers
         .Select(static marker => marker.Text?.Trim())
         .FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
 
-    private static string JoinMarkerText(IEnumerable<MidiMarker> markers) => string.Join(
+    private static string JoinMarkerText(IEnumerable<MidiMark> markers) => string.Join(
         " • ",
         markers.Select(static marker => marker.Text?.Trim())
             .Where(static text => !string.IsNullOrWhiteSpace(text))
