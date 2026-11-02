@@ -188,6 +188,9 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_stream_get_clock(StreamHandle stream, out long pts);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_stream_get_stats(StreamHandle stream, FaStreamStats* stats);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_stream_set_loop(StreamHandle stream, int on);
 
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

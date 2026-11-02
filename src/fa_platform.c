@@ -99,6 +99,17 @@ void fa_thread_detach(fa_thread* t)
 }
 uintptr_t fa_thread_current_id(void) { return (uintptr_t)GetCurrentThreadId(); }
 
+int fa_thread_lower_priority(void)
+{
+    int was = GetThreadPriority(GetCurrentThread());
+    if (was == THREAD_PRIORITY_ERROR_RETURN || was <= THREAD_PRIORITY_BELOW_NORMAL) return FA_THREAD_PRIORITY_KEPT;
+    return SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL) ? was : FA_THREAD_PRIORITY_KEPT;
+}
+void fa_thread_restore_priority(int saved)
+{
+    if (saved != FA_THREAD_PRIORITY_KEPT) SetThreadPriority(GetCurrentThread(), saved);
+}
+
 void fa_sleep_ms(uint32_t ms) { Sleep(ms); }
 uint32_t fa_cpu_count(void)
 {
@@ -237,9 +248,11 @@ int64_t fa_monotonic_ns(void)
 #  include <dirent.h>
 #  if defined(__linux__) || defined(__ANDROID__)
 #    include <linux/futex.h>
+#    include <sys/resource.h>
 #    include <sys/syscall.h>
 #  elif defined(__APPLE__)
 #    include <dispatch/dispatch.h>
+#    include <pthread/qos.h>
 #  else
 #    include <semaphore.h>
 #  endif
@@ -405,6 +418,46 @@ void fa_thread_detach(fa_thread* t)
     t->impl = NULL;
 }
 uintptr_t fa_thread_current_id(void) { return (uintptr_t)pthread_self(); }
+
+#  if defined(__APPLE__)
+int fa_thread_lower_priority(void)
+{
+    qos_class_t was = qos_class_self();
+    if (was == QOS_CLASS_UNSPECIFIED) was = QOS_CLASS_DEFAULT;
+    if (was <= QOS_CLASS_UTILITY) return FA_THREAD_PRIORITY_KEPT;
+    return pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0) == 0 ? (int)was : FA_THREAD_PRIORITY_KEPT;
+}
+void fa_thread_restore_priority(int saved)
+{
+    if (saved != FA_THREAD_PRIORITY_KEPT) pthread_set_qos_class_self_np((qos_class_t)saved, 0);
+}
+#  elif defined(__linux__) || defined(__ANDROID__)
+/* Raising nice is always allowed; lowering it back only within RLIMIT_NICE (Android
+ * gives apps the room, desktop Linux usually not) or as root. */
+static int nice_can_return(int nice_value)
+{
+    struct rlimit rl;
+    if (geteuid() == 0) return 1;
+    if (getrlimit(RLIMIT_NICE, &rl) != 0) return 0;
+    return rl.rlim_cur == RLIM_INFINITY || (rlim_t)(20 - nice_value) <= rl.rlim_cur;
+}
+int fa_thread_lower_priority(void)
+{
+    pid_t tid = (pid_t)syscall(SYS_gettid);
+    int was;
+    errno = 0;
+    was = getpriority(PRIO_PROCESS, (id_t)tid);
+    if (errno != 0 || was + FA_THREAD_LOW_NICE > 19 || !nice_can_return(was)) return FA_THREAD_PRIORITY_KEPT;
+    return setpriority(PRIO_PROCESS, (id_t)tid, was + FA_THREAD_LOW_NICE) == 0 ? was : FA_THREAD_PRIORITY_KEPT;
+}
+void fa_thread_restore_priority(int saved)
+{
+    if (saved != FA_THREAD_PRIORITY_KEPT) setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), saved);
+}
+#  else
+int fa_thread_lower_priority(void) { return FA_THREAD_PRIORITY_KEPT; }
+void fa_thread_restore_priority(int saved) { (void)saved; }
+#  endif
 
 void fa_sleep_ms(uint32_t ms)
 {

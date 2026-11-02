@@ -33,6 +33,7 @@ On Windows the audio thread runs in the MMCSS "Pro Audio" class.
 | `audio_load_peak` | `AudioLoadPeak` | Percent: the slowest single callback of any output in the last 1 to 2 s. Spikes here, with a low average, point at something that blocks now and then |
 | `worker_load` | `WorkerLoad` | Percent of one core: the decode workers' time (decoding ahead and the tempo, pitch and effects that run with it) since the previous call; up to 100 times `workers` |
 | `workers`, `devices`, `attached_streams` | `Workers`, `Devices`, `AttachedStreams` | Decode workers, open outputs, streams attached to an output |
+| `underruns` | `Underruns` | Dropouts of all streams since the engine was created, closed streams included: each stream's own count is `fa_stream_get_stats` ([dropouts](streams.md#dropouts-underruns)) |
 
 Set `struct_size` first. It is cheap: call it from a UI timer (calls less than 100 ms apart repeat the previous `worker_load`). Mic inputs on the DJ mixer and capture streams are not counted in `audio_load`.
 

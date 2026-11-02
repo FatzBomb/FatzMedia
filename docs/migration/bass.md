@@ -59,6 +59,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_CONFIG_UPDATETHREADS / UPDATEPERIOD | `fa_engine_config.worker_threads`; workers refill the emptiest buffer first, nothing to tune | `AudioEngineOptions.WorkerThreads` | ✅ |
 | BASS_Update / BASS_ChannelUpdate | Not needed: worker threads keep buffers full | — | ➖ (by design) |
 | BASS_GetCPU | `fa_engine_get_stats`: the output callbacks' load (average and peak, in percent of real time) and the decode workers' load, plus counts of workers, outputs and attached streams ([how busy it is](../features/playback.md#how-busy-it-is)) | `engine.GetStats()` | ✅ |
+| Detecting dropouts (BASS has no underrun count: apps compare `BASS_ChannelGetData(h, NULL, BASS_DATA_AVAILABLE)` against the playback buffer, or listen) | New: `fa_stream_get_stats` gives a stream's `underruns` (output callbacks that found it short while playing) and `buffered` (decoded audio ready ahead); `fa_engine_stats.underruns` adds up all streams ([dropouts](../features/streams.md#dropouts-underruns)) | `stream.GetStats()`, `engine.GetStats().Underruns` | ✅ |
 | BASS_GetDSoundObject | Not provided (Windows-only escape hatch) | — | ➖ |
 
 ### Streams
