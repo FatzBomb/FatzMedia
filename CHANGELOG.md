@@ -589,6 +589,16 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- Flaky tests (final audit step 4):
+  - Levels, spectrum and loudness dipped when the audio callback was late (a loaded machine): the window ended at
+    the speaker position extrapolated from the clock, past the newest mixed audio, and read the gap as silence
+    (about -0.6 dB on the 400 ms momentary loudness, seen on macOS CI). The window now ends at the newest mixed
+    frame at most.
+  - WinHTTP: a request on a kept connection the server had closed failed with some errors other than the two
+    retried before; it is now tried once more on a new connection for every error but a timeout, an unknown
+    host, a refused connection, a cancel or out of memory.
+  - `test_net` waits up to 15 s for the first HTTPS request before the HTTPS cases (a test root certificate
+    added to the iOS simulator just before the run is not trusted at once).
 - MIDI (final audit step 3):
   - A GS EFX or XG insertion parameter change that needs a longer delay line (a longer delay time, more chorus
     depth, or a controller sweeping them) wiped the line, so the echoes already in it were lost; it also reallocated on
