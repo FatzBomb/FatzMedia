@@ -100,6 +100,7 @@ FA_API fa_result FA_CALL fa_mixer_get_mic_effects(fa_mixer* mixer, fa_mic_effect
 {
     fa_mic_effects e;
     if (!mixer || !out_effects || out_effects->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&e, 0, sizeof(e));
     e.struct_size = sizeof(e);
     e.reverb_size = fa_load_float(&mixer->fx[MFX_REVERB_SIZE]);
     e.reverb_damping = fa_load_float(&mixer->fx[MFX_REVERB_DAMPING]);

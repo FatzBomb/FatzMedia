@@ -39,8 +39,8 @@ updates the package and the native library together and rebuilds.
   Structs filled with their `_init` function are unaffected.
 - Output structs are filled up to any `struct_size` of 4 or more everywhere: `fa_stream_get_tracker_info`,
   `fa_mixer_get_mic_effects` and `fa_mixer_get_ducking` no longer refuse a shorter struct.
-- `fa_cdg_info` gained `disc_corrected` and `disc_dropped` at its end (it has no `struct_size`): rebuild against the new
-  header. .NET `CdgInfo` gained the two matching positional parameters.
+- `fa_cdg_info` gained `disc_corrected` and `disc_dropped` at its end (before it had a `struct_size`): rebuild against
+  the new header. .NET `CdgInfo` gained the two matching positional parameters.
 
 ### Added
 

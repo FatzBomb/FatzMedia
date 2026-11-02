@@ -194,7 +194,7 @@ static fa_sound_pcm* pcm_new(uint32_t rate, uint32_t channels, uint64_t mask)
 /* Reads a decode-only stream to its end into a new PCM buffer. */
 static fa_result decode_all(fa_stream* st, fa_sound_pcm** out)
 {
-    fa_stream_info info;
+    fa_stream_info info = { .struct_size = sizeof(info) };
     fa_sound_pcm* p;
     fa_frames cap, want, n = 0;
     uint64_t frame_bytes;

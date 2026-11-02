@@ -142,11 +142,11 @@ static void stream_discard(struct fa_stream* s)
     fa_stream_free_memory(s);
 }
 
-/* The app chose its own decode-ahead (fa_open_options.buffer_ms, when its struct has it). */
+/* The app chose its own decode-ahead (fa_open_options.buffer_ms). `options` was read
+ * by read_open_options: every field is there, defaults past the caller's struct_size. */
 static int app_buffer_ms(const fa_open_options* options)
 {
-    return options && options->struct_size >= offsetof(fa_open_options, buffer_ms) + sizeof(options->buffer_ms) &&
-           options->buffer_ms;
+    return options && options->buffer_ms;
 }
 
 /* The app's open options under the struct_size rule: NULL stays NULL, else *options
@@ -206,20 +206,16 @@ static fa_result stream_create(fa_engine* engine, const fa_open_options* options
         if (s->buffer_ms > 10000) s->buffer_ms = 10000;
     }
     s->audio_track = options ? options->audio_track : -1;
-    if (options && options->struct_size >= offsetof(fa_open_options, dynamic_range) + sizeof(options->dynamic_range) &&
-        options->dynamic_range >= FA_DYNAMIC_RANGE_FULL && options->dynamic_range <= FA_DYNAMIC_RANGE_NIGHT)
+    if (options && options->dynamic_range >= FA_DYNAMIC_RANGE_FULL && options->dynamic_range <= FA_DYNAMIC_RANGE_NIGHT)
         fa_store32(&s->dynamic_range, options->dynamic_range);
-    if (options && options->struct_size >= offsetof(fa_open_options, dolby_downmix) + sizeof(options->dolby_downmix) &&
-        options->dolby_downmix >= FA_DOLBY_DOWNMIX_AUTO && options->dolby_downmix <= FA_DOLBY_DOWNMIX_ENGINE)
+    if (options && options->dolby_downmix >= FA_DOLBY_DOWNMIX_AUTO && options->dolby_downmix <= FA_DOLBY_DOWNMIX_ENGINE)
         fa_store32(&s->dolby_downmix, options->dolby_downmix);
     /* MIDI files are played with the stream's soundfont, else the engine's. */
-    if (options && options->struct_size >= offsetof(fa_open_options, soundfont) + sizeof(options->soundfont) &&
-        options->soundfont)
+    if (options && options->soundfont)
         s->soundfont = fa_soundfont_retain(options->soundfont);
     else
         s->soundfont = fa_engine_soundfont(engine);
-    if (options && options->struct_size >= offsetof(fa_open_options, text_code_page) + sizeof(options->text_code_page) &&
-        (options->text_code_page == FA_CODE_PAGE_UTF8 || options->text_code_page == FA_CODE_PAGE_WINDOWS_1252 ||
+    if (options && (options->text_code_page == FA_CODE_PAGE_UTF8 || options->text_code_page == FA_CODE_PAGE_WINDOWS_1252 ||
          options->text_code_page == FA_CODE_PAGE_SHIFT_JIS))
         s->text_code_page = options->text_code_page;
     s->loud.integrated_lufs = s->loud.range_lu = s->loud.true_peak_dbtp = NAN;
@@ -318,11 +314,10 @@ static uint64_t zip_memory_limit(const fa_engine* engine)
                                               : FA_ZIP_DEFAULT_MEMORY_LIMIT;
 }
 
-/* The app's cancel flag, when this build of its struct has one. */
+/* The app's cancel flag (NULL = none). */
 static const volatile int32_t* open_cancel(const fa_open_options* options)
 {
-    return options && options->struct_size >= offsetof(fa_open_options, cancel) + sizeof(options->cancel)
-        ? options->cancel : NULL;
+    return options ? options->cancel : NULL;
 }
 
 /* Entry `e`, unpacked into a temp file in the engine's folder (deleted when closed).
