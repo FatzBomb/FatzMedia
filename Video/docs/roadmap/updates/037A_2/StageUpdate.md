@@ -237,7 +237,8 @@ Passed: 1-3, 5, 6, 8-10, 12-14. Details:
     FatzAudio's normalization with its limiter) becomes the only normalization; the peak rule is
     not kept as an option. Done on the FatzAudio engine before slice 6; BASS keeps the peak rule
     until it is removed. The public API (`Normalize`, `NormalizationGain`, `NormalizeChanged`)
-    stays; only the measurement changes.
+    stays; only the measurement changes. One new setting: the target loudness, default -14 LUFS
+    (the streaming standard); apps such as a karaoke host set their own.
   - An explicit output device is an option with FatzAudio too: map `AudioOutputDeviceIndex` (or a
     device id) to FatzAudio's device list with the device work of slice 5.
   - No BASS-only build: FatzAudio replaces BASS once proven, so the FatzAudio reference (and the

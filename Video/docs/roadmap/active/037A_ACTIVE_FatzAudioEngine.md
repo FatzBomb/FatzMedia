@@ -87,8 +87,10 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    source instead of two.
 Normalization (owner decision 2026-11-03): loudness (LUFS) is the only normalization on the
 FatzAudio engine, replacing our peak rule there before slice 6: FatzAudio's normalization and
-limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain; target
--16 LUFS proposed (headroom for singers' mics), with a cap on boosts. BASS keeps the peak rule
+limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain, with a
+cap on boosts. Target: a configuration setting whose default is the streaming-service standard,
+-14 LUFS integrated with peaks limited to -1 dBTP. This is a media engine, so it ships the
+universal default; an app (a karaoke host wanting about -16 LUFS for mic headroom) sets its own. BASS keeps the peak rule
 until it is removed; the public API is unchanged.
 
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
