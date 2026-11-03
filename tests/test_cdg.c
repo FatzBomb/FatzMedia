@@ -2064,13 +2064,21 @@ static void test_lone_cdg_plays(void)
     CHECK_EQ(fa_stream_get_state(s, &st), FA_OK);
     CHECK_EQ(st, FA_STATE_PLAYING);
 
-    /* Without the loop it ends after the last pack */
+    /* Without the loop it ends after the last pack. Seeking near the end first keeps
+     * the wait short on a loaded runner (the iOS simulator ran out of 8 s once). */
     CHECK_EQ(fa_stream_set_loop(s, 0), FA_OK);
-    deadline = fa_monotonic_ns() + 8000000000LL;
+    CHECK_EQ(fa_stream_seek(s, 147 * 570), FA_OK);
+    deadline = fa_monotonic_ns() + 20000000000LL;
     do {
         fa_sleep_ms(10);
         CHECK_EQ(fa_stream_get_state(s, &st), FA_OK);
     } while (st != FA_STATE_ENDED && fa_monotonic_ns() < deadline);
+    if (st != FA_STATE_ENDED) {
+        fa_frames pos = 0;
+        fa_stream_get_position(s, &pos);
+        fa_stream_get_clock(s, &clock);
+        fprintf(stderr, "  not ended: state %d, position %lld, clock %lld ns\n", (int)st, (long long)pos, (long long)clock);
+    }
     CHECK_EQ(st, FA_STATE_ENDED);
     fa_cdg_surface_destroy(surf);
     fa_stream_close(s);
