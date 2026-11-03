@@ -245,7 +245,19 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     fa_result r;
     env.dynamic_range = &s->dynamic_range;
     env.dolby_mix = &s->dolby_mix;
-    if (!s->soundfont) {
+    env.midi_lyrics_only = 0;
+    if (s->flags & FA_OPEN_MIDI_LYRICS_ONLY) {
+        /* Parse only: no soundfont of any kind, and nothing to normalize (silence). */
+        const uint8_t* head;
+        size_t n = fa_source_peek(&s->source, &head);
+        if (fa_probe_midi(head, n, 0)) {
+            env.midi_lyrics_only = 1;
+            s->flags |= FA_OPEN_NO_NORMALIZE;
+            fa_soundfont_release(s->soundfont);
+            s->soundfont = NULL;
+        }
+    }
+    if (!s->soundfont && !env.midi_lyrics_only) {
         /* A MIDI file and no soundfont from the app: the OS's own instruments. */
         const uint8_t* head;
         size_t n = fa_source_peek(&s->source, &head);

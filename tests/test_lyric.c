@@ -1655,6 +1655,71 @@ static void test_tempo_ramp(void)
     free(song.d);
 }
 
+/* FA_OPEN_MIDI_LYRICS_ONLY: an engine with no soundfont at all draws the same lyrics as one with a soundfont. */
+static void test_lyrics_only(void)
+{
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_open_options o;
+    fa_stream *s = NULL, *ref = open_song();
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
+    fa_midi_text txt = { .struct_size = sizeof(txt) };
+    fa_lyric_style st;
+    fa_surface *f = NULL, *fref = NULL;
+    fa_surface_frame fr;
+    target t, tref;
+    float pcm[512];
+    fa_frames got = 0;
+    uint32_t i;
+    int silent = 1;
+    const uint8_t note[3] = { 0x90, 60, 100 };
+    CHECK(ref != NULL);
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_SYSTEM_SOUNDFONT;
+    cfg.worker_threads = 2;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_memory(e, g_song.d, g_song.n, &o, &s), FA_ERROR_NO_SOUNDFONT);
+    o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_MIDI_LYRICS_ONLY;
+    CHECK_EQ(fa_stream_open_memory(e, g_song.d, g_song.n, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(info.length_frames > 0);
+    CHECK_EQ(fa_stream_get_midi_info(s, &mi), FA_OK);
+    CHECK(mi.lyric_count >= 7);
+    CHECK_EQ(fa_stream_get_midi_text(s, 0, &txt), FA_OK);
+    /* Silence, seekable. */
+    CHECK_EQ(fa_stream_read(s, pcm, 256, &got), FA_OK);
+    CHECK_EQ(got, 256);
+    for (i = 0; i < 512; i++) if (pcm[i] != 0.0f) silent = 0;
+    CHECK(silent);
+    CHECK_EQ(fa_stream_seek(s, info.length_frames / 2), FA_OK);
+    CHECK_EQ(fa_stream_read(s, pcm, 256, &got), FA_OK);
+    /* No synth to send to. */
+    CHECK_EQ(fa_stream_send_midi(s, 0, note, 3), FA_ERROR_NOT_IMPLEMENTED);
+    CHECK_EQ(fa_stream_set_soundfont(s, g_font), FA_ERROR_NOT_IMPLEMENTED);
+    /* The same frame as the soundfont engine's, at a time the app brings. */
+    style(&st, FA_LYRIC_CLASSIC);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &f), FA_OK);
+    CHECK_EQ(fa_lyric_surface_create(ref, &st, &fref), FA_OK);
+    CHECK(target_make(f, &t));
+    CHECK(target_make(fref, &tref));
+    CHECK_EQ(t.lay.width, tref.lay.width);
+    CHECK_EQ(draw_at(f, &t, 1300 * MS, &fr), FA_OK);
+    CHECK_EQ(draw_at(fref, &tref, 1300 * MS, &fr), FA_OK);
+    CHECK(count_color(&t, 255, 255, 0) > 500);
+    CHECK(memcmp(t.px, tref.px, (size_t)t.stride * t.lay.height) == 0);
+    fa_surface_destroy(f);
+    fa_surface_destroy(fref);
+    free(t.px);
+    free(tref.px);
+    fa_stream_close(s);
+    fa_stream_close(ref);
+    /* Other formats ignore the flag. */
+    fa_engine_destroy(e);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1696,6 +1761,7 @@ int main(void)
     RUN(test_render_ahead);
     RUN(test_update_into_never_waits);
     RUN(test_tempo_ramp);
+    RUN(test_lyrics_only);
     free(g_song.d);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);

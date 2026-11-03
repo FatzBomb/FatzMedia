@@ -291,6 +291,13 @@ public sealed record StreamOptions
     /// (for example <c>song.cdg</c> next to <c>song.mp3</c>). Graphics inside a ZIP archive are skipped too.
     /// </summary>
     public bool NoCdg { get; init; }
+    /// <summary>
+    /// A MIDI, KAR or RMID file is parsed for its lyrics, texts, marks, credits and length only: no soundfont is needed
+    /// (none is looked up) and there is no synth. The stream reads silence and is not normalized, so
+    /// <c>CreateLyricSurface</c> and the MIDI text and mark getters work on it, and the caller supplies the time to
+    /// <c>UpdateInto</c>. Live MIDI controls (sending events, changing the soundfont) throw. Other formats ignore the flag.
+    /// </summary>
+    public bool MidiLyricsOnly { get; init; }
     /// <summary>Audio track to use in multi-track containers; -1 selects the default.</summary>
     public int AudioTrack { get; init; } = -1;
     /// <summary>Optional MIME type hint; content sniffing still wins.</summary>

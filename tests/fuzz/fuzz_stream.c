@@ -136,6 +136,37 @@ static void exercise(const uint8_t* data, size_t size, int32_t track)
     fa_stream_close(s);
 }
 
+/* MIDI files read for their lyrics only: no soundfont, no synth. Parses the events and texts, reads silence, seeks,
+ * and lists every text and mark. Other formats open as usual. */
+static void exercise_lyrics_only(const uint8_t* data, size_t size)
+{
+    fa_open_options o;
+    fa_stream* s = NULL;
+    static float buf[8192];
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
+    uint32_t i, n = 0;
+    fa_frames got = 0;
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_MIDI_LYRICS_ONLY;
+    if (fa_stream_open_memory(g_engine, data, size, &o, &s) != FA_OK) return;
+    if (fa_stream_get_midi_info(s, &mi) == FA_OK) {
+        for (i = 0; i < mi.text_count && i < 64; i++) {
+            fa_midi_text t = { .struct_size = sizeof(t) };
+            (void)fa_stream_get_midi_text(s, i, &t);
+        }
+        (void)fa_stream_get_midi_marks(s, NULL, 0, &n);
+        for (i = 0; i < 4; i++) {
+            fa_stream_read(s, buf, 2048, &got);
+            for (n = 0; n < got * 2; n++)
+                if (buf[n] != 0.0f) { fprintf(stderr, "lyrics-only stream is not silent\n"); abort(); }
+        }
+        (void)fa_stream_seek(s, 100000);
+        fa_stream_read(s, buf, 2048, &got);
+        (void)fa_stream_send_midi(s, 0, (const uint8_t*)"\x90\x3C\x64", 3);
+    }
+    fa_stream_close(s);
+}
+
 /* The same SysEx on a real-time synth (the engine's soundfont), with notes sent after it, so the effects it sets run. */
 static void exercise_live(const uint8_t* data, size_t size)
 {
@@ -176,5 +207,6 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     exercise(data, size, -1);
     exercise(data, size, 1);
     exercise_live(data, size);
+    exercise_lyrics_only(data, size);
     return 0;
 }

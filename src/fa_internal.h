@@ -154,6 +154,7 @@ struct fa_decoder {
     struct fa_soundfont* soundfont;   /* borrowed, NULL = none */
     uint32_t midi_rate;               /* MIDI and tracker modules: output rate */
     int32_t text_code_page;           /* MIDI: FA_CODE_PAGE_*, 0 = detect */
+    int32_t midi_lyrics_only;         /* MIDI: parse only, no soundfont or synth (FA_OPEN_MIDI_LYRICS_ONLY) */
     /* Properties (fa_stream_info), set by the decoder when it knows them;
      * fa_decoder_open fills the rest in for whole-file formats. */
     int64_t audio_bytes;              /* coded audio data, -1 = unknown */
@@ -174,6 +175,7 @@ typedef struct fa_decoder_env {
                                          while the decoder is open), NULL = none */
     uint32_t midi_rate;               /* MIDI and tracker modules: output rate, 0 = FA_MIDI_DEFAULT_RATE */
     int32_t text_code_page;           /* MIDI: fa_open_options.text_code_page, 0 = detect */
+    int32_t midi_lyrics_only;         /* MIDI: parse only (FA_OPEN_MIDI_LYRICS_ONLY) */
 } fa_decoder_env;
 
 /* Could `data` (the start of a file, any length) be audio some decoder opens? The same

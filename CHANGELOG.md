@@ -45,6 +45,11 @@ once the real-device checks pass. There never was a 0.3.0 package: everything th
 
 ### Added
 
+- Lyrics without a soundfont (karaoke timing K6): `FA_OPEN_MIDI_LYRICS_ONLY` (.NET `StreamOptions.MidiLyricsOnly`)
+  parses a MIDI / KAR / RMID file for its lyrics, texts, marks, credits and length with no soundfont and no synth. The
+  stream reads silence and is not normalized; `fa_lyric_surface_create`, `fa_stream_get_midi_*` and `fa_stream_seek`
+  work on it, and the app brings its own time to `fa_surface_update_into`. Live MIDI (`fa_stream_send_midi*`,
+  `fa_stream_set_soundfont`) return `FA_ERROR_NOT_IMPLEMENTED`. Other formats ignore the flag.
 - .NET polish (final audit step 10), all additive except one event type (see below): `DjDeck.CuePointTime`, `LoopTime`
   (`DeckLoopTime`) and `SlipPositionTime`; `Disc.GetPregapTime`; `MidiEvent.FrameAt` / `TimeAt`;
   `AudioStream.CrossfadeToAsync` and `DjMixer.MeasureLatencyAsync` take a `CancellationToken`; `TrySendMidi` (never
