@@ -271,6 +271,7 @@ int fa_probe_wav(const uint8_t* data, size_t size, size_t id3_size);
 int fa_probe_flac(const uint8_t* data, size_t size, size_t id3_size);
 int fa_probe_mp3(const uint8_t* data, size_t size, size_t id3_size);
 int fa_probe_midi(const uint8_t* data, size_t size, size_t id3_size);
+int fa_midi_is_notes_free(fa_source* src);
 int fa_probe_tracker(const uint8_t* data, size_t size, size_t id3_size);
 /* First MPEG audio Layer III frame at or after `start`: bitrate (kbps), sample rate.
  * 0 if none is found in the window. */
