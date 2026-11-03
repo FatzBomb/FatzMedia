@@ -55,6 +55,22 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-043 - Audio formats that fail on both engines, and a BASS crash on a WMA
+
+Reported: 2026-11-03, owner format sweep during the 037A slice 2 smoke (Windows, WPF player, the
+same files on BASS and FatzAudio). Not caused by slice 2: each fails the same way on BASS.
+- **ALAC (`.m4a`), M4R, audio-only MP4, TS:** nothing plays; the player stays responsive.
+  Suspected from the code, not yet confirmed with logs: `.mp4` and `.ts` are registered as video
+  (`Bootstrap.LibraryLoader`), so an audio-only file goes to the video pipeline and does not fall
+  back to audio; `.m4r` is not registered at all (rejected as unsupported); ALAC is decoded by
+  neither engine and the FFmpeg fallback does not take over.
+- **WMA on BASS:** the player froze and closed (FatzAudio played the file). A crash on a file is
+  the most serious item here.
+- **Images opened on their own:** sometimes do not load; not yet investigated.
+
+Needed before fixing: the Log lines of each failing load, the Windows Application event for the
+WMA crash, and the sample files. Fix in its own PR after slice 2.
+
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 
 Reported: 2026-11-02, owner smoke of 037A slice 1. One video logged `Quick normalization complete,

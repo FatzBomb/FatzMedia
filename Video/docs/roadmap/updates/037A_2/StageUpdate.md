@@ -3,7 +3,7 @@
 Stage: 037A.2 - FatzAudioEngine for files and archives (opt-in; BASS stays the default)
 Date: 2026-11-03
 
-## Status: slice 2 implemented, pending manual smoke
+## Status: slice 2 implemented, owner smoke passed 2026-11-03
 
 A new package, `FatzBomb.MediaControl.Audio.FatzAudio`, plays audio files and archive entries
 through FatzAudio `1.0.0-rc.1` when a player is created with its factory
@@ -208,6 +208,26 @@ audio stays on BASS)`.
     start with `--audio=fatz`: a `Bootstrap` warning "Audio engine FatzAudio could not start ...; using
     BASS", and audio plays on BASS. Put it back.
 14. **Several players:** `--players=2 --audio=fatz`: both play independently.
+
+## Owner smoke results (2026-11-03, Windows, WPF player)
+
+Passed: 1-3, 5, 6, 8-10, 12-14. Details:
+- **4 (EQ):** works; the 31 Hz band was not audible on either engine (31.5 Hz is below most
+  speakers and most songs' content). `Equalizer_CutsTheBandItIsSetTo` measures the cut.
+- **6 (normalization):** same result on both. On BASS the song starts before the deep pass ends,
+  as designed (the quick pass applies first).
+- **7 (silence trim):** FatzAudio trims from the first open; BASS from the second open of the same
+  file only (ENG-040, confirmed). Once, a file opened with the Open button was not trimmed on
+  FatzAudio; the owner could not reproduce it, and a player-level test here (a second file loaded
+  into the same player while the first plays) trims correctly. Most likely a file whose edges
+  were above -50 dBFS RMS or a run without `--audio=fatz`. FatzAudio does not read BASS's analysis
+  cache: it detects on every open.
+- **11 (still on BASS):** not run (no stream URLs at hand); worked before this slice. The plain
+  http radio routing (now through FFmpeg) is therefore not verified on Windows.
+- **Formats:** AAC, AC3, AIFF, AMR, CAF, FLAC, IT, M4A, MOD, MID, MP3, OGG, OPUS, S3M, WAV, XM pass
+  on both engines; CD+G alone, KAR/MIDI and MP3+G pass on both; AVI, MKV, MOV, MP4, OGG, WEBM and
+  WMV video pass on both. WMA passes on FatzAudio. ALAC, M4R, audio-only MP4 and TS fail on both,
+  and a WMA froze and closed the player on BASS: ENG-043, not caused by this slice.
 
 ## Next
 
