@@ -2,7 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using FatzBomb.MediaControl.Audio.FatzAudio;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 
 namespace FatzBomb.MediaControl.Player.Avalonia;
@@ -121,6 +123,9 @@ internal sealed class AvaloniaPlayerEngineFactory(RendererOption renderer, IRead
     {
         IMediaControlPlatformFactory platform = PlatformComposition.Create(Renderers.Create(renderer.Kind));
         _platformFactory = platform;
+        // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
+        if (StartupOptions.Current.AudioEngine == PlayerAudioEngine.FatzAudio)
+            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };
         // Native loading blocks: CreateAsync runs it off the UI thread.
         return await MediaControl.Avalonia.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }

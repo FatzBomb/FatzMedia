@@ -1,3 +1,4 @@
+using FatzBomb.MediaControl.Audio.FatzAudio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
@@ -106,6 +107,9 @@ internal sealed class WinFormsPlayerEngineFactory(PlayerStartupOptions options) 
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         IMediaControlPlatformFactory platform = CreatePlatformFactory(selection);
         _platformFactory = platform;
+        // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
+        if (options.AudioEngine == PlayerAudioEngine.FatzAudio)
+            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };
         // Loading BASS and FFmpeg blocks: CreateAsync runs it off the UI thread.
         return await MediaControl.WinForms.Player.CreateAsync(configuration, NativeLibraryPaths, platform).ConfigureAwait(false);
     }
