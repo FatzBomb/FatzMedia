@@ -4,6 +4,11 @@ To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-01. Based on reading and mea
 `main` @ 17d2284 (PR 170) for our stage 037A; the evidence, with file:line references and
 numbers, is in `2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 
+**Status 2026-11-03:** FatzAudio 1.0.0-rc.1 answered requests 1, 4, 7, 8 and 9; 5 is dropped; 2, 3
+and 6 are open. See `2026-11-03_MediaControl_Reply_Rc1.md`. Request 9 as built: RMS over 50 ms
+windows at -50 dBFS by default (peak mode available), applied with the existing CUE_IN/CUE_OUT
+markers rather than a new option.
+
 Short version: the surfaces are in very good shape. Sync, seeking and tempo handling are as good
 as ours or better, and the CD+G fixes, Shift-JIS and effects are real gains for us. Nine
 requests, in priority order (8 was found by our slice-0 spike and blocks our karaoke slice;
