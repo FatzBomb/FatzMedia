@@ -90,7 +90,13 @@ FatzAudio engine, replacing our peak rule there before slice 6: FatzAudio's norm
 limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain, with a
 cap on boosts. Target: a configuration setting whose default is the streaming-service standard,
 -14 LUFS integrated with peaks limited to -1 dBTP. This is a media engine, so it ships the
-universal default; an app (a karaoke host wanting about -16 LUFS for mic headroom) sets its own. BASS keeps the peak rule
+universal default; an app (a karaoke host wanting about -16 LUFS for mic headroom) sets its own. No
+FatzAudio request needed: its normalization already takes the loudness from (best first) the app,
+ReplayGain 2 / R128 tags, its scan cache, then a scan split across all cores, gliding from a
+running estimate. To be at the right level from the first sample, our play-on-load waits for
+`FA_EVENT_LOUDNESS_FINAL` up to a short budget (about 300 ms, measured first) before starting a
+local file, as it waits for the quick pass today; a scan that takes longer starts on the estimate
+and glides. Apps with a library can pre-scan (`fa_scan_loudness_path`) so every play is instant. BASS keeps the peak rule
 until it is removed; the public API is unchanged.
 
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
