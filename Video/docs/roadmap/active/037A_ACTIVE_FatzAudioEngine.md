@@ -82,7 +82,9 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
 5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
-   0.75-1.5, seeks, loop wraps and pause/resume.
+   0.75-1.5, seeks, loop wraps and pause/resume. Also the explicit output device for FatzAudio (owner 2026-11-03:
+   `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event
+   source instead of two.
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
    then removed, and whether our CD+G engine and lyric renderers (DirectWrite and SkiaSharp) are
    deleted. No karaoke drawing code is removed before this decision.

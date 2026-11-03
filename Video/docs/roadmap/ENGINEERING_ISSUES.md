@@ -64,12 +64,13 @@ same files on BASS and FatzAudio). Not caused by slice 2: each fails the same wa
   (`Bootstrap.LibraryLoader`), so an audio-only file goes to the video pipeline and does not fall
   back to audio; `.m4r` is not registered at all (rejected as unsupported); ALAC is decoded by
   neither engine and the FFmpeg fallback does not take over.
-- **WMA on BASS:** the player froze and closed (FatzAudio played the file). A crash on a file is
-  the most serious item here.
-- **Images opened on their own:** sometimes do not load; not yet investigated.
+- **WMA on BASS:** the player froze and closed before its log appeared (FatzAudio played the
+  file). Owner decision 2026-11-03: not chased, since FatzAudio replaces BASS.
+- **Images opened on their own:** an image loaded after any non-image media stayed hidden. Cause:
+  the replaced item's `MediaStopped` reached the surface's auto-hide after the new `MediaLoaded`.
+  Fixed in PR 52, pending Windows check.
 
-Needed before fixing: the Log lines of each failing load, the Windows Application event for the
-WMA crash, and the sample files. Fix in its own PR after slice 2.
+Needed before fixing the formats: the Log lines of each failing load and the sample files. Fix in its own PR after slice 2.
 
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 

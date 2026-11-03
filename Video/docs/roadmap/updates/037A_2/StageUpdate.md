@@ -231,9 +231,15 @@ Passed: 1-3, 5, 6, 8-10, 12-14. Details:
 
 ## Next
 
-- Owner smoke above, then decide: `MinSound` as public `SilenceTrimOptions` setting; whether
-  normalization moves to FatzAudio's LUFS (slice 6, changes levels); mapping an explicit output
-  device to FatzAudio's device list.
+- Owner decisions (2026-11-03):
+  - `MinSound` stays internal at 200 ms, not a public setting (trim either trims or does not).
+  - Normalization: the peak rule on FatzAudio worked as expected; moving to FatzAudio's LUFS is
+    still decided in slice 6 with an A/B.
+  - An explicit output device is an option with FatzAudio too: map `AudioOutputDeviceIndex` (or a
+    device id) to FatzAudio's device list with the device work of slice 5.
+  - No BASS-only build: FatzAudio replaces BASS once proven, so the FatzAudio reference (and the
+    feed token, until the package is public) stays required.
+  - The WMA crash on BASS is not chased (BASS goes; FatzAudio plays the file): ENG-043.
 - Slice 3 (karaoke surfaces) and the slice-0 dropout rerun on 1.0.0-rc.1.
 
 ## Review notes (pre-PR, 2026-11-03)
