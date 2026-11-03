@@ -823,6 +823,29 @@ static void test_truepeak_block_matches_push(void)
     free(x);
 }
 
+/* The AVX true-peak path (chosen at run time on x86) sums each lane exactly as
+ * the SSE / plain path does, so both give the same peak to the bit. */
+static void test_truepeak_avx_matches_sse(void)
+{
+    uint32_t ch = 3, n = 20000, i;
+    float* x = (float*)malloc((size_t)n * ch * sizeof(float));
+    double tp[2];
+    int pass;
+    srand(11);
+    for (i = 0; i < n * ch; i++) x[i] = 0.9f * ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f);
+    for (pass = 0; pass < 2; pass++) {
+        fa_meter m;
+        CHECK_EQ(fa_meter_init(&m, 44100, ch, 1, 0), FA_OK);
+        if (pass == 1) m.tp->avx = 0;
+        CHECK_EQ(fa_meter_process(&m, x, n), FA_OK);
+        fa_truepeak_flush(m.tp);
+        tp[pass] = fa_meter_peak_dbtp(&m);
+        fa_meter_free(&m);
+    }
+    CHECK(tp[0] == tp[1]);
+    free(x);
+}
+
 /* Largest step between neighbouring output samples (channel 0). */
 static double max_step(const float* x, uint32_t from, uint32_t to)
 {
@@ -914,6 +937,7 @@ int main(void)
     RUN(test_limiter);
     RUN(test_limiter_releases_to_unity);
     RUN(test_truepeak_block_matches_push);
+    RUN(test_truepeak_avx_matches_sse);
     RUN(test_limiter_switching_is_smooth);
     RUN(test_scan_release_races);
     RUN(test_latency_includes_limiter);
