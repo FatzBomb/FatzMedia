@@ -1,10 +1,10 @@
 # Stage 037A - FatzAudio As A Second Audio Engine
 
 Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to FatzAudio). Slice 0
-done on Linux 2026-11-01 (`updates/037A_0`), pending the owner's Windows smoke (CI package
-access granted 2026-11-01: FatzBombMedia has Read on the FatzAudio package); render-ahead at 4K with two streams caused underruns there (a FatzAudio request before slice 3).
-Slice 1 (seams, no behaviour change) implemented 2026-11-01, pending manual smoke
-(`updates/037A_1`).
+done on Linux (`updates/037A_0`); slice 1 merged, owner smoke passed (`updates/037A_1`). FatzAudio
+1.0.0-rc.1 (2026-11-02, main @ 59741a5) answers our blocking requests 1 and 8 and request 9
+(silence detection); our reply is `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`. Slice 2
+next, pinned to `FatzAudio` `1.0.0-rc.1`.
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
@@ -46,7 +46,8 @@ linux-x64, net10.0). Raw CD+G packs were deliberately not built.
 
 Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner smoke.
 
-0. **Verify (spike).** Done when: a test project references the `FatzAudio` .NET package (the
+0. **Verify (spike).** Rerun the dropout measurement on 1.0.0-rc.1 (Linux here, Windows by the
+   owner) before slice 3. Done when: a test project references the `FatzAudio` .NET package (the
    GitHub Packages feed with a `read:packages` token, or a package built from FatzAudio's source
    until the token exists), opens a file, plays it to a null device, seeks, loops and reads the
    clock on Linux; the binding's native version check passes against the pinned version; and the

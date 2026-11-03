@@ -28,7 +28,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux, pending the
   owner's Windows smoke (`updates/037A_0`; CI package access granted). Slice 1 (seams for MIDI
   events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
-  change) implemented, pending manual smoke (`updates/037A_1`); slice 2 next. Analysis:
+  change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
+  our blocking surface requests and silence detection (reply:
+  `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`); slice 2 next, pinned to 1.0.0-rc.1. Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
