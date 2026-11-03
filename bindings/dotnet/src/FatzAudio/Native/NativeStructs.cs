@@ -703,6 +703,7 @@ internal unsafe struct FaMidiInfo
     public uint TextCount;
     public uint LyricCount;
     public int Karaoke;
+    public int HasNotes;
 }
 
 [StructLayout(LayoutKind.Sequential)]

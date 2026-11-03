@@ -363,6 +363,28 @@ public class MidiTests
     }
 
     [Fact]
+    public void NoNotes_OpensSilentWithoutSoundFont()
+    {
+        // One lyric at 1 s and the end of track at 2 s: nothing to sound, so no soundfont is needed.
+        byte[] song =
+        {
+            (byte)'M', (byte)'T', (byte)'h', (byte)'d', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0,
+            (byte)'M', (byte)'T', (byte)'r', (byte)'k', 0, 0, 0, 12,
+            0x87, 0x40, 0xFF, 0x05, 0x02, (byte)'A', (byte)'B',
+            0x87, 0x40, 0xFF, 0x2F, 0x00,
+        };
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var s = engine.OpenMemory(song, DecodeOnly);
+        Assert.False(s.MidiInfo!.HasNotes);
+        Assert.Equal(1, s.MidiInfo.LyricCount);
+        Assert.Equal(TimeSpan.FromSeconds(2), s.Info.Duration);
+        using var withNotes = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var font = SoundFont.FromMemory(SineSoundFont());
+        using var played = withNotes.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
+        Assert.True(played.MidiInfo!.HasNotes);
+    }
+
+    [Fact]
     public void SystemSoundFont_IsTheFallback()
     {
         // Whatever this machine has: CI images usually have no OS bank.

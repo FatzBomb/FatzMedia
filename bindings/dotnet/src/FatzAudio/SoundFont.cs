@@ -298,7 +298,8 @@ public sealed record MidiMark(MidiMarkType Type, int Value, int Value2, string T
 /// <param name="TextCount">Entries of <see cref="AudioStream.MidiTexts"/> (all types).</param>
 /// <param name="LyricCount">Of those, <see cref="MidiTextType.Lyric"/>.</param>
 /// <param name="IsKaraoke">A karaoke (.kar) file: "@K"/"@T" header lines or a "Words" track.</param>
-public sealed record MidiInfo(string Title, string Artist, string Copyright, int Format, int Tracks, int TextCount, int LyricCount, bool IsKaraoke);
+/// <param name="HasNotes">False: the song has no sounding note (only lyrics, texts, tempo and the like). It plays silent, needs no soundfont and ends at its last event.</param>
+public sealed record MidiInfo(string Title, string Artist, string Copyright, int Format, int Tracks, int TextCount, int LyricCount, bool IsKaraoke, bool HasNotes = true);
 
 /// <summary>
 /// A MIDI file's song information (<see cref="AudioStream.MidiCredits"/>), for intro and ending pages: the .kar "@T" and

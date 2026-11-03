@@ -26,6 +26,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   `FA_OPEN_NO_CDG` still does, and so does a web stream of a `.cdg` ([CD+G](docs/features/cdg.md#graphics-with-no-audio)).
   A ZIP whose audio entry cannot play here (a codec provider missing, protected content, no soundfont) now returns
   that error instead of `FA_ERROR_UNSUPPORTED_FORMAT`, and never falls back to its graphics' silence.
+- Notes-less MIDI/KAR plays silent without a soundfont (request 10, S2): a Standard MIDI File with no sounding note opens
+  with plain `fa_stream_open_*` as the same silent stream as `FA_OPEN_MIDI_LYRICS_ONLY`, with no soundfont looked up
+  (also with `FA_ENGINE_NO_SYSTEM_SOUNDFONT`), a length equal to the last event (no tail), and it plays, pauses, seeks and
+  changes tempo. New `fa_midi_info.has_notes` (.NET `MidiInfo.HasNotes`, an optional last record parameter). The header text
+  of `FA_OPEN_MIDI_LYRICS_ONLY` no longer says the app must bring the time: such streams can be played. A file with notes
+  and no soundfont still fails with `FA_ERROR_NO_SOUNDFONT`.
 - The clock at a given time (karaoke timing step K4, MediaControl request 2): `fa_stream_get_clock_at(stream,
   monotonic_ns, &pts)` gives the time heard at a moment you choose, such as the next vsync, and `fa_monotonic_time()`
   gives its time base. Now and past times read the clock's history; a future time past the mixed audio runs on at the

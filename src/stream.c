@@ -246,11 +246,14 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     env.dynamic_range = &s->dynamic_range;
     env.dolby_mix = &s->dolby_mix;
     env.midi_lyrics_only = 0;
-    if (s->flags & FA_OPEN_MIDI_LYRICS_ONLY) {
-        /* Parse only: no soundfont of any kind, and nothing to normalize (silence). */
+    {
+        /* Parse only: no soundfont of any kind, and nothing to normalize (silence). That is what the
+         * app asks for with FA_OPEN_MIDI_LYRICS_ONLY. A song with no notes gets it too when no soundfont
+         * is set (nothing would sound, so the OS's bank is not loaded for it); with a soundfont set the
+         * decoder finds out itself while it parses, and opens it the same way. */
         const uint8_t* head;
         size_t n = fa_source_peek(&s->source, &head);
-        if (fa_probe_midi(head, n, 0)) {
+        if (fa_probe_midi(head, n, 0) && ((s->flags & FA_OPEN_MIDI_LYRICS_ONLY) || (!s->soundfont && fa_midi_is_notes_free(&s->source)))) {
             env.midi_lyrics_only = 1;
             s->flags |= FA_OPEN_NO_NORMALIZE;
             fa_soundfont_release(s->soundfont);

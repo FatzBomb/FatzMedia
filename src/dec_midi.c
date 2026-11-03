@@ -2013,6 +2013,7 @@ static fa_result build(struct fa_midi* m, tml_message* first, const uint8_t* smf
     fa_frames last = 0;
     fa_result r = FA_OK;
     double rate = (double)m->rate;
+    int32_t has_notes = 0;
 
     m->info.format = smf[9];
     m->smpte = (smf[12] & 0x80) != 0;
@@ -2027,6 +2028,7 @@ static fa_result build(struct fa_midi* m, tml_message* first, const uint8_t* smf
      * events (short, not "@" headers or chord lines), if it has plenty of them. */
     for (msg = first; msg; msg = msg->next) {
         if (msg->seconds > FA_MIDI_MAX_SECONDS) break;
+        if (msg->type == TML_NOTE_ON && msg->velocity > 0) has_notes = 1;
         if (msg->type == TML_NOTE_ON || msg->type == TML_NOTE_OFF || msg->type == TML_CONTROL_CHANGE ||
             msg->type == TML_PROGRAM_CHANGE || msg->type == TML_PITCH_BEND ||
             msg->type == TML_CHANNEL_PRESSURE || msg->type == TML_KEY_PRESSURE)
@@ -2190,7 +2192,9 @@ static fa_result build(struct fa_midi* m, tml_message* first, const uint8_t* smf
     if (r != FA_OK) return r;
     m->nev = k;
     m->last_event = last;
-    m->length = last + (fa_frames)(FA_MIDI_TAIL_S * rate);
+    /* A song with no sounding note ends at its last event: there is nothing to die away. */
+    m->info.has_notes = has_notes;
+    m->length = has_notes ? last + (fa_frames)(FA_MIDI_TAIL_S * rate) : last;
     m->info.text_count = m->ntexts;
     m->info.lyric_count = m->nlyrics;
     /* Credits: the file's own events win over "@I" lines. */
@@ -2233,7 +2237,6 @@ static fa_result midi_parse(fa_source* src, uint32_t rate, int32_t code_page, in
     smf = find_smf(bytes, size, &smf_size);
     if (!smf || smf_size > (size_t)0x7FFFFFFF) { free(bytes); return FA_ERROR_UNSUPPORTED_FORMAT; }
     *out_rmid = smf != bytes;
-    if (no_font) { free(bytes); return FA_ERROR_NO_SOUNDFONT; }
     first = tml_load_memory(smf, (int)smf_size);
     if (!first) { free(bytes); return FA_ERROR_UNSUPPORTED_FORMAT; }
     m = (struct fa_midi*)calloc(1, sizeof(*m));
@@ -2244,8 +2247,27 @@ static fa_result midi_parse(fa_source* src, uint32_t rate, int32_t code_page, in
     tml_free(first);
     free(bytes);
     if (r != FA_OK) { midi_free(m); return r; }
+    /* Notes and no soundfont to play them: a MIDI file, but not one that can be heard. */
+    if (no_font && m->info.has_notes) { midi_free(m); return FA_ERROR_NO_SOUNDFONT; }
     *out = m;
     return FA_OK;
+}
+
+/* Does the MIDI file in `src` have no sounding note (only lyrics, texts, tempo and the
+ * like)? 1 = yes; 0 = it has notes, or it cannot be read. fa_stream_open uses it to skip
+ * the system soundfont for a file that plays silent (a parse that opening repeats: only done when
+ * there is no soundfont to fall back on). The source is left at its start. */
+int fa_midi_is_notes_free(fa_source* src)
+{
+    struct fa_midi* m = NULL;
+    int rmid = 0, r;
+    if (fa_source_seek(src, 0) != FA_OK) return 0;
+    r = midi_parse(src, FA_MIDI_DEFAULT_RATE, 0, 0, &m, &rmid) == FA_OK;
+    if (fa_source_seek(src, 0) != FA_OK) { if (r) midi_free(m); return 0; }   /* the decoder's own seek would fail too */
+    if (!r) return 0;
+    r = !m->info.has_notes;
+    midi_free(m);
+    return r;
 }
 
 /* The synth, effects and controls of a parsed song (or of none: a real-time stream). */
@@ -2294,8 +2316,9 @@ static fa_result midi_open(fa_decoder* dec)
     r = midi_parse(dec->src, dec->midi_rate ? dec->midi_rate : FA_MIDI_DEFAULT_RATE, dec->text_code_page,
                    !dec->soundfont && !dec->midi_lyrics_only, &m, &rmid);
     if (r != FA_OK) return r;
-    if (dec->midi_lyrics_only) {
-        /* No synth or effects: the length is the last event plus FA_MIDI_TAIL_S (not measured). */
+    if (dec->midi_lyrics_only || !m->info.has_notes) {
+        /* No synth or effects, silence. FA_OPEN_MIDI_LYRICS_ONLY: the length is the last event plus
+         * FA_MIDI_TAIL_S (not measured). A song with no notes, whatever the soundfont: the last event. */
         m->lyrics_only = 1;
         midi_publish(dec, m, rmid ? "rmid" : "smf");
         return FA_OK;
@@ -2444,6 +2467,7 @@ static fa_result build_events(struct fa_midi* m, const fa_midi_event* events, ui
     m->nev = k;
     if (sort_events(m->ev, k) != FA_OK) return FA_ERROR_OUT_OF_MEMORY;
     m->info.tracks = tracks;
+    m->info.has_notes = 1;
     m->last_event = last;
     m->length = last + (fa_frames)(FA_MIDI_TAIL_S * m->rate);
     return FA_OK;

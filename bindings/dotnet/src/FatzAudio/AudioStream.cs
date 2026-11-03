@@ -1184,7 +1184,7 @@ public unsafe partial class AudioStream : IDisposable
             if (rc == (int)ErrorCode.InvalidArgument) return null;
             FatzAudioException.ThrowIfFailed(rc);
             return new MidiInfo(NativeText.Read(n.Title), NativeText.Read(n.Artist), NativeText.Read(n.Copyright), n.Format, (int)n.Tracks,
-                (int)n.TextCount, (int)n.LyricCount, n.Karaoke != 0);
+                (int)n.TextCount, (int)n.LyricCount, n.Karaoke != 0, n.HasNotes != 0);
         }
     }
 

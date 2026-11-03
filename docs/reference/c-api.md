@@ -288,9 +288,12 @@ typedef enum fa_open_flags {
                                       is needed (none is looked up) and there is no synth.
                                       The stream reads silence and is not normalized, so
                                       fa_lyric_surface_create and fa_stream_get_midi_*
-                                      work on it, and the app brings the time itself
-                                      (fa_surface_update_into). Live MIDI controls
+                                      work on it. Live MIDI controls
                                       (send, soundfont) return FA_ERROR_NOT_IMPLEMENTED.
+                                      A song with no notes always opens this way (see
+                                      fa_midi_info.has_notes), flag or not. The stream
+                                      plays (silence, fa_stream_attach); a surface can
+                                      also be driven by the time the app brings.
                                       Other formats ignore the flag. */
 } fa_open_flags;
 
@@ -3142,6 +3145,9 @@ typedef struct fa_midi_info {
     uint32_t lyric_count;        /* of those, FA_MIDI_LYRIC */
     int32_t karaoke;             /* 1 = a karaoke (.kar) file: "@K"/"@T" header lines or a
                                     "Words" track. Its words are the lyrics */
+    int32_t has_notes;           /* 0 = the song has no sounding note (only lyrics, texts, tempo
+                                    and the like): it plays silent, needs no soundfont and ends
+                                    at its last event. 1 = it has notes (and a real-time stream) */
 } fa_midi_info;
 
 /* FA_ERROR_INVALID_ARG for streams that are not MIDI. */
