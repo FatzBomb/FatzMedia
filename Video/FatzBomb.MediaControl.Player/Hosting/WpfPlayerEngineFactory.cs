@@ -1,5 +1,7 @@
+using FatzBomb.MediaControl.Audio.FatzAudio;
 using FatzBomb.MediaControl.Core.Configuration;
 using FatzBomb.MediaControl.Player.Configuration;
+using FatzBomb.MediaControl.Player.Shared;
 using FatzBomb.MediaControl.Player.Shared.Hosting;
 
 using FatzMediaPlayer = FatzBomb.MediaControl.Wpf.Player;
@@ -35,6 +37,9 @@ internal sealed class WpfPlayerEngineFactory : IPlayerEngineFactory
         PlayerRendererSelection selection = _selection
             ?? throw new InvalidOperationException("ResolveRendererAsync must complete before CreatePlayerAsync.");
         _platformFactory = new WindowsMediaControlPlatformFactory(selection.CreateFactory());
+        // --audio=fatz (037A slice 2): FatzAudio plays audio files; BASS stays the default.
+        if (App.StartupOptions.AudioEngine == PlayerAudioEngine.FatzAudio)
+            configuration = configuration with { AudioEngineFactory = new FatzAudioEngineFactory() };
         return await FatzMediaPlayer.CreateAsync(configuration, NativeLibraryPaths, _platformFactory).ConfigureAwait(false);
     }
 }

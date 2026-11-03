@@ -9,6 +9,8 @@
 - `FatzBomb.MediaControl.Windows`: Windows platform composition, native integration, and hardware-decode policy.
 - `FatzBomb.MediaControl.Windows.Direct3D11`: optional convenience bundle pairing Windows services with the current renderer.
 - `FatzBomb.MediaControl.Wpf`: strict WPF adapter and controls; receives a platform/renderer factory from its host.
+- `FatzBomb.MediaControl.Audio.FatzAudio`: opt-in FatzAudio audio engine for files and archive
+  entries (`net10.0`, Core and the exact-pinned `FatzAudio` 1.0.0-rc.1 package; 037A slice 2).
 - `FatzBomb.MediaControl.Player`: WPF validation host. The Avalonia and WinForms test players
   (`.Player.Avalonia`, `.Player.WinForms`) bind the same view model,
   `FatzBomb.MediaControl.Player.Shared` (`net10.0`, Core only; Stage 044A).
@@ -281,7 +283,7 @@ named `window` handle.
 
 ## MIDI/KAR Karaoke Lyrics
 
-- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam is read through its `SourceHandle`, as before; a FatzAudio engine will implement the reader with FatzAudio's MIDI event API. A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
+- Lyric markers (MIDI meta event 5) and text markers (meta event 1) are read by the internal `MidiLyricCueBuilder` through the engine-neutral `IMidiEventReader` (037A slice 1). The BASS engines supply `BassMidiEventReader` on the open MIDI channel (`BassMidi.StreamGetMarks`, as before) through `IMidiEventReaderSource`; an engine without that seam is read through its `SourceHandle`, as before; the FatzAudio engine implements it with FatzAudio's MIDI texts and marks (`FatzAudioMidiEventReader`, 037A slice 2). A host-supplied `IMidiLyricProvider` is still called with `SourceHandle`. The public `MidiLyricExtractor` is an `[Obsolete]` forwarder, removed with 037A.
 - `MidiMetadataExtractor` (internal) reads, through the same reader, Soft Karaoke `@T` (title) and `@I` (information) markers plus standard MIDI meta events (TrackName, Copyright, KeySignature, TimeSignature, Tempo). Produces `KaraokeMetadata` with filename+duration fallback when no embedded metadata exists.
 - Supported formats: `.kar`, `.mid`, `.midi`, `.rmi`. Lyrics load for any of these when the file contains lyric or karaoke text markers.
 - Soft Karaoke (`/` newline, `\` clear screen), Tune1000 (`\r` line feed, `\n` new paragraph), and Solton (`<` line prefix) display controls are honored.
@@ -1064,6 +1066,46 @@ the BASS engines with the BASS calls they made before:
 The BASS effect stages, transport and device code keep their handles inside `AudioEngine`,
 `AudioStreamManager`, `VideoAudioEngine` and the `Bass*` helpers. See
 `roadmap/updates/037A_1/StageUpdate.md`.
+
+## FatzAudio Engine (Stage 037A, slice 2, pending manual smoke)
+
+- **Selection:** `MediaPlayerConfiguration.AudioEngineFactory` (public `IAudioEngineFactory` in
+  Core). `null`, the default, is the BASS `AudioEngine`. `MediaControlServiceProvider` always creates
+  the BASS engine first (it initializes BASS on the configured device, which video audio and the
+  soundtrack engine still need), then asks the factory; it disposes the BASS file engine (BASS stays
+  initialized) and uses the factory's engine, or warns (`Bootstrap`) and keeps BASS when the factory
+  throws. Audio availability is still BASS's (`IsAudioAvailable`): without BASS the player has no
+  audio, whichever engine is configured. The test players map `--audio=fatz` (`PlayerStartupOptions.AudioEngine`)
+  to `FatzAudioEngineFactory` in their host engine factories.
+- **Package:** `FatzBomb.MediaControl.Audio.FatzAudio` references Core and the `FatzAudio`
+  package only. It implements Core's internal seams, so it is Core's one non-test
+  `InternalsVisibleTo` friend (lockstep versioning); `check-core-boundary.ps1` pins that, the
+  project's place in the DAG, the exact package pin, and that Core never references FatzAudio.
+- **`FatzAudioEngine`** (`IAudioEngine`, `IAudioLoopControl`, `IAudioAnalysisOpenControl`,
+  `IAudioTrimWindowProvider`, `IAudioFadeGainTarget`, `IAudioFilterHost`, `IAudioVolumeSlide`,
+  `IMidiEventReaderSource`, `IAudioDeviceChangeSource`): one FatzAudio engine, default output device
+  and mix bus per player. Position is the stream's presentation clock. The stream's volume is the
+  fade stage (volume ramps); the bus carries user volume times the normalization gain. Loop is
+  FatzAudio's (`Looped` becomes one `PlaybackEnded` per wrap while `Playing`, as on BASS; `Ended` a
+  stop). Normalization keeps the BASS peak rule and `NormalizationGainCache` keys, measured by
+  `AudioNormalizer` on a decode-only FatzAudio stream (`FatzAudioLevelSource`); FatzAudio's loudness
+  normalization is off. Silence trim calls FatzAudio's `DetectSilence` at open (RMS, our threshold
+  and minimum silence, 200 ms minimum sound), turns the first and last audible frames into edge
+  regions for `SilenceTrimCalculator` (our padding and edge switches), and sets the window as
+  CUE_IN/CUE_OUT, so play, stop, end and loop follow it natively from the first play; the
+  `MediaAnalysisCache` is not used. MIDI lyrics and metadata come from `FatzAudioMidiEventReader`
+  (FatzAudio's MIDI texts and marks; Soft Karaoke `\` and `/` marks restored from FatzAudio's
+  flags). Formats FatzAudio cannot decode go through `FfmpegAudioFallback` as on BASS. It is not an
+  `IMediaFileAnalyzer` (prepared-next analysis is skipped) nor an `INetworkAudioSource`: plain http
+  audio then opens through FFmpeg into the BASS soundtrack engine, like https.
+- **Device changes:** with a factory, the registered `IAudioDeviceMonitor` is an
+  `AudioEngineDeviceMonitor` that forwards the engine's own moves (FatzAudio `DeviceChanged`: value 0
+  `DefaultDeviceChanged`, 1 `DeviceRemoved`) and the platform's BASS monitor (still watching video
+  audio). `AudioOutputDeviceIndex` is a BASS index and is not mapped: FatzAudio plays on the default
+  device and follows it.
+- **Unchanged on BASS:** with no factory, the service graph, the BASS engine and every BASS path are
+  as before; the only shared change is `PlaybackCoordinator.CanOpenNetworkAudio`, which is true for
+  the BASS engine. See `roadmap/updates/037A_2/StageUpdate.md`.
 
 ## CDG Snapshot Ownership (Stage 018A, slice 1)
 

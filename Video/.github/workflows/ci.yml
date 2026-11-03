@@ -17,6 +17,13 @@ on:
 
 permissions:
   contents: read
+  # The FatzAudio package (037A) is on GitHub Packages; this repository has Read under the
+  # package's "Manage Actions access", so the workflow's own token restores it.
+  packages: read
+
+env:
+  # Read by nuget.config as the FatzAudio source's password.
+  FATZAUDIO_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
   group: ci-${{ github.ref }}

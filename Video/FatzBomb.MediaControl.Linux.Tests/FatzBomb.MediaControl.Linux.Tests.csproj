@@ -21,6 +21,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+		<ProjectReference Include="..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj" />
 		<ProjectReference Include="..\FatzBomb.MediaControl.Linux\FatzBomb.MediaControl.Linux.csproj" />
 		<ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
 	</ItemGroup>

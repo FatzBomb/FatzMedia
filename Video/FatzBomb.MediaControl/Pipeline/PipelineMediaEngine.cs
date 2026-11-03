@@ -313,7 +313,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
         if (isVideo)
             return OpenThroughFfmpeg(source, route == MediaModeRoute.AudioOnly ? FfmpegNetworkRoute.Soundtrack : FfmpegNetworkRoute.Video);
 
-        if (NetworkAudioPolicy.OpensThroughFfmpeg(uri))
+        // An audio engine that cannot open URLs (FatzAudio, 037A slice 2) plays plain http audio
+        // through FFmpeg too.
+        if (NetworkAudioPolicy.OpensThroughFfmpeg(uri) || !_coordinator.CanOpenNetworkAudio)
             return OpenThroughFfmpeg(source, FfmpegNetworkRoute.Audio);
 
         if (!_coordinator.OpenNetworkAudio(uri))

@@ -38,6 +38,8 @@ public static class MediaControlServiceProvider
         var services = new ServiceCollection();
         RegisterCoreServices(services, configuration, audioAvailable);
         platformServices.AddPlatformServices(services, configuration);
+        if (configuration.AudioEngineFactory is not null)
+            RegisterEngineDeviceMonitor(services);
         RegisterMediaEngine(services, configuration, audioAvailable);
 
         return services.BuildServiceProvider();
@@ -87,6 +89,57 @@ public static class MediaControlServiceProvider
     }
 
     private static IAudioEngine CreateAudioEngine(
+        MediaPlayerConfiguration configuration,
+        MediaAnalysisCache analysisCache)
+    {
+        // The BASS engine is created and BASS initialized on the configured device in every case:
+        // video audio and soundtracks stay on BASS (037A slice 2), and it is the fallback.
+        AudioEngine bassEngine = CreateBassAudioEngine(configuration, analysisCache);
+        if (configuration.AudioEngineFactory is not { } factory)
+            return bassEngine;
+
+        try
+        {
+            IAudioEngine engine = factory.Create(configuration)
+                ?? throw new InvalidOperationException("The factory returned no engine.");
+            // Disposing the BASS file engine keeps BASS initialized for video audio.
+            bassEngine.Dispose();
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "Bootstrap", $"Audio engine: {factory.Name} (video audio stays on BASS)");
+            return engine;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRouter.Raise(
+                MediaDiagnosticLevel.Warning,
+                "Bootstrap",
+                $"Audio engine {factory.Name} could not start ({ex.Message}); using BASS.",
+                innerException: ex);
+            return bassEngine;
+        }
+    }
+
+    /// <summary>
+    /// With an <see cref="IAudioEngineFactory"/> engine, the device monitor also reports that
+    /// engine's own device moves (<see cref="IAudioDeviceChangeSource"/>); the platform's monitor,
+    /// when there is one, keeps watching BASS for video audio.
+    /// </summary>
+    private static void RegisterEngineDeviceMonitor(IServiceCollection services)
+    {
+        ServiceDescriptor? platformMonitor = services.LastOrDefault(static descriptor => descriptor.ServiceType == typeof(IAudioDeviceMonitor));
+        _ = services.AddSingleton<IAudioDeviceMonitor>(provider =>
+        {
+            IAudioDeviceMonitor? platform = platformMonitor switch
+            {
+                { ImplementationFactory: { } create } => create(provider) as IAudioDeviceMonitor,
+                { ImplementationInstance: IAudioDeviceMonitor instance } => instance,
+                { ImplementationType: { } type } => ActivatorUtilities.CreateInstance(provider, type) as IAudioDeviceMonitor,
+                _ => null,
+            };
+            return new AudioEngineDeviceMonitor(provider.GetRequiredService<IAudioEngine>() as IAudioDeviceChangeSource, platform);
+        });
+    }
+
+    private static AudioEngine CreateBassAudioEngine(
         MediaPlayerConfiguration configuration,
         MediaAnalysisCache analysisCache)
     {
