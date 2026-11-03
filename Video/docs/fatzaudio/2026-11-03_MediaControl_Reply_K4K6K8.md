@@ -93,7 +93,13 @@ analysed), and a MIDI trims on its sound. Please report, next to `first_audible`
   that only clear to the same colour do not count);
 - for MIDI/KAR: the first and last lyric or text event.
 
-The policy stays with the host, as an option that defaults to off for karaoke: trim only where
-the audio is silent *and* nothing is shown (start at the earlier of the first sound and the first
-graphics or lyric, end at the later of the last ones). With the times reported, an app can also
-choose its own rule.
+The policy stays with the host. Karaoke files get three trim modes (owner decision 2026-11-03):
+
+| Mode | Trims | Needs |
+|---|---|---|
+| No trim (default) | Nothing; the file plays as authored | - |
+| Silence with no drawing | Only where the audio is silent *and* nothing is drawn: start at the earlier of the first sound and the first graphics or lyric, end at the later of the last ones | The times above |
+| Silence regardless of drawing | Where the audio is silent, as for plain audio, even if graphics or lyrics show there | `first_audible` / `last_audible` (K9, already there) |
+
+So only the middle mode needs something new from you. With the times reported, an app can also
+apply its own rule.

@@ -80,8 +80,9 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    `AudioEngine.MonotonicTimeFromStopwatch` (the next vblank on Direct3D11, now plus the
    presentation lead elsewhere). A `.cdg` with no audio, or a MIDI/KAR with lyrics and no
    notes, needs FatzAudio request 10 (a playable silent stream); until it exists those files keep
-   our own clock. Silence trim for karaoke (request 11: graphics and lyric times next to the
-   audible times) is an option, off by default; today an MP3+G is never trimmed. Our own CD+G engine and both lyric
+   our own clock. Silence trim for karaoke has three modes (owner 2026-11-03): no trim (default;
+   today an MP3+G is never trimmed), silence with no drawing (needs request 11: graphics and
+   lyric times next to the audible times), and silence regardless of drawing (audible times only). Our own CD+G engine and both lyric
    renderers (DirectWrite on Direct3D11, SkiaSharp on Software and Vulkan) stay as the fallback
    until the decision slice.
 4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
