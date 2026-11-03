@@ -4,8 +4,9 @@ To: FatzAudio. From: FatzBomb.MediaControl, 2026-11-01. Based on reading and mea
 `main` @ 17d2284 (PR 170) for our stage 037A; the evidence, with file:line references and
 numbers, is in `2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 
-**Status 2026-11-03:** FatzAudio 1.0.0-rc.1 answered requests 1, 4, 7, 8 and 9; 5 is dropped; 2, 3
-and 6 are open. See `2026-11-03_MediaControl_Reply_Rc1.md`. Request 9 as built: RMS over 50 ms
+**Status 2026-11-03:** FatzAudio 1.0.0-rc.1 answered requests 1, 4, 7, 8 and 9; 5 is dropped
+(`2026-11-03_MediaControl_Reply_Rc1.md`). Requests 2, 3 and 6 were merged after rc.1 as K4, K6 and
+K8 (`2026-11-03_FatzAudio_Note_K4K6K8.md`); all requests are done or dropped. Request 9 as built: RMS over 50 ms
 windows at -50 dBFS by default (peak mode available), applied with the existing CUE_IN/CUE_OUT
 markers rather than a new option.
 

@@ -112,6 +112,8 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
+- `future/048A_IDEA_FatzMediaVideoRename.md` - rename the engine to `FatzMedia.Video` in the
+  FatzMedia family (owner 2026-11-03); its own stage, before any package is published.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27). **Not pursued**
   (owner 2026-10-28): step 0 measured the CPU copy at 0.3-0.8% of the CPU at 4K, no drops.

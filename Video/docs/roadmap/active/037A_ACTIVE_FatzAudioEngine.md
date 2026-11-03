@@ -4,7 +4,9 @@ Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to F
 done on Linux (`updates/037A_0`); slice 1 merged, owner smoke passed (`updates/037A_1`). FatzAudio
 1.0.0-rc.1 (2026-11-02, main @ 59741a5) answers our blocking requests 1 and 8 and request 9
 (silence detection); our reply is `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`. Slice 2
-next, pinned to `FatzAudio` `1.0.0-rc.1`.
+next, pinned to `FatzAudio` `1.0.0-rc.1`. K4 (clock at a present time), K6 (lyrics without a
+soundfont) and K8 (shaping) merged after rc.1 (FatzAudio main @ 5182a4e); slice 3 moves the pin to
+the build that carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
@@ -72,8 +74,11 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    flipped and FatzAudio's CD+G offset at 0); classic indexed CD+G as the default; render-ahead in
    scaled mode; next song's surfaces prepared early; a governor on `draw_ns`/`render_ns`/`behind`;
    linear sampling with mips for scaled bitmaps. With the FatzAudio engine the surfaces use its
-   stream; with BASS they use a decode-only FatzAudio stream for the same file (needs request 3 for
-   lyrics without a soundfont, or a GM bank). Our own CD+G engine and both lyric
+   stream; with BASS they use a FatzAudio stream for the same file that is never played (MIDI
+   lyrics: `StreamOptions.MidiLyricsOnly`, K6, no soundfont needed). The draw time comes from
+   `GetClockAt` (K4) at the frame's present time, passed through
+   `AudioEngine.MonotonicTimeFromStopwatch` (the next vblank on Direct3D11, now plus the
+   presentation lead elsewhere). Our own CD+G engine and both lyric
    renderers (DirectWrite on Direct3D11, SkiaSharp on Software and Vulkan) stay as the fallback
    until the decision slice.
 4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),
