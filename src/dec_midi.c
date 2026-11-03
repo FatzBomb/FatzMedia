@@ -740,7 +740,8 @@ int fa_midi_drawn_frames(const struct fa_midi* m, fa_frames* first, fa_frames* l
 {
     uint32_t i;
     int any = 0;
-    for (i = 0; m && i < m->ntexts; i++) {
+    if (!m || !m->nlyrics) return 0;   /* no lyrics: a plain MIDI's text events are not karaoke */
+    for (i = 0; i < m->ntexts; i++) {
         const midi_text* t = &m->texts[i];
         if (t->type != FA_MIDI_LYRIC && t->type != FA_MIDI_TEXT) continue;
         if (!any || t->frame < *first) *first = t->frame;

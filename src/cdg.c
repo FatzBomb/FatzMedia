@@ -444,16 +444,24 @@ static void moved(cdg_state* st, int dx, int dy)
     st->shift_y += dy;
 }
 
+/* A scroll's smooth-scroll offsets, kept within a tile. */
+static void scroll_offsets(const uint8_t* d, uint8_t* hoff, uint8_t* voff)
+{
+    *hoff = d[1] & 0x07;
+    *voff = d[2] & 0x0F;
+    if (*hoff > CDG_TILE_W - 1) *hoff = CDG_TILE_W - 1;
+    if (*voff > CDG_TILE_H - 1) *voff = CDG_TILE_H - 1;
+}
+
 /* Scroll by a tile: the whole screen moves; what leaves one side comes back on the
  * other (copy) or is filled with `color` (preset). */
 static void scroll(cdg_state* st, const uint8_t* d, int copy)
 {
     uint8_t color = d[0] & 0x0F;
     int hcmd = (d[1] >> 4) & 3, vcmd = (d[2] >> 4) & 3;
-    uint8_t hoff = d[1] & 0x07, voff = d[2] & 0x0F;
+    uint8_t hoff, voff;
     int y;
-    if (hoff > CDG_TILE_W - 1) hoff = CDG_TILE_W - 1;
-    if (voff > CDG_TILE_H - 1) voff = CDG_TILE_H - 1;
+    scroll_offsets(d, &hoff, &voff);
     if (hcmd == 1 || hcmd == 2) {
         for (y = 0; y < FA_CDG_HEIGHT; y++) {
             uint8_t* line = st->screen[y];
@@ -749,9 +757,8 @@ static int scroll_moves(const uint8_t* d)
 static int scroll_changes(const struct fa_cdg_index* ix, const cdg_state* st, const uint8_t* d, int preset)
 {
     int moves, one = 0;
-    uint8_t hoff = d[1] & 0x07, voff = d[2] & 0x0F;
-    if (hoff > CDG_TILE_W - 1) hoff = CDG_TILE_W - 1;
-    if (voff > CDG_TILE_H - 1) voff = CDG_TILE_H - 1;
+    uint8_t hoff, voff;
+    scroll_offsets(d, &hoff, &voff);
     moves = scroll_moves(d);
     if (!moves && hoff == st->hoff && voff == st->voff) return 0;
     while (one < 15 && !ix->px_count[one]) one++;
@@ -759,11 +766,32 @@ static int scroll_changes(const struct fa_cdg_index* ix, const cdg_state* st, co
     return preset && moves && shown_differs(st, one, d[0] & 0x0F);
 }
 
+/* Before a preset scroll that moves one way only: the band that leaves becomes the
+ * fill colour. Returns 0 when it moves both ways (the caller counts again after). */
+static int scroll_preset_count(struct fa_cdg_index* ix, const cdg_state* st, const uint8_t* d)
+{
+    int hcmd = (d[1] >> 4) & 3, vcmd = (d[2] >> 4) & 3, x0, x1, y0, y1, x, y;
+    int h = hcmd == 1 || hcmd == 2, v = vcmd == 1 || vcmd == 2;
+    if (h == v) return 0;
+    x0 = 0; x1 = FA_CDG_WIDTH; y0 = 0; y1 = FA_CDG_HEIGHT;
+    if (h) {
+        x0 = hcmd == 1 ? FA_CDG_WIDTH - CDG_TILE_W : 0;
+        x1 = x0 + CDG_TILE_W;
+    } else {
+        y0 = vcmd == 1 ? FA_CDG_HEIGHT - CDG_TILE_H : 0;
+        y1 = y0 + CDG_TILE_H;
+    }
+    for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++) ix->px_count[st->screen[y][x]]--;
+    ix->px_count[d[0] & 0x0F] += (uint32_t)((x1 - x0) * (y1 - y0));
+    return 1;
+}
+
 /* apply_pack for the index's decoder, noting the packs that change what is shown. */
 static int index_apply(struct fa_cdg_index* ix, cdg_state* st, const uint8_t* p)
 {
     const uint8_t* d = p + 4;
-    int code = (p[0] & 0x3F) == CDG_MODE_GRAPHICS ? p[1] & 0x3F : 0, changed = 0, op, i;
+    int code = (p[0] & 0x3F) == CDG_MODE_GRAPHICS ? p[1] & 0x3F : 0, changed = 0, counted = 0, op, i;
     uint8_t rgb[16][3];
     if (!ix->track_drawn) return apply_pack(st, p);
     switch (code) {
@@ -771,7 +799,10 @@ static int index_apply(struct fa_cdg_index* ix, cdg_state* st, const uint8_t* p)
     case CDG_TILE_NORMAL:
     case CDG_TILE_XOR: changed = tile_changes(ix, st, d, code == CDG_TILE_XOR); break;
     case CDG_SCROLL_PRESET:
-    case CDG_SCROLL_COPY: changed = scroll_changes(ix, st, d, code == CDG_SCROLL_PRESET); break;
+        changed = scroll_changes(ix, st, d, 1);
+        counted = scroll_preset_count(ix, st, d);
+        break;
+    case CDG_SCROLL_COPY: changed = scroll_changes(ix, st, d, 0); break;
     case CDG_COLORS_LOW:
     case CDG_COLORS_HIGH: memcpy(rgb, st->rgb, sizeof(rgb)); break;
     default: break;
@@ -785,8 +816,8 @@ static int index_apply(struct fa_cdg_index* ix, cdg_state* st, const uint8_t* p)
         int base = op == CDG_COLORS_LOW ? 0 : 8;
         for (i = base; i < base + 8; i++)
             if (ix->px_count[i] && memcmp(rgb[i], st->rgb[i], 3) != 0) changed = 1;
-    } else if (op == CDG_SCROLL_PRESET && scroll_moves(d)) {
-        px_recount(ix, st);                          /* a band came in, filled */
+    } else if (op == CDG_SCROLL_PRESET && scroll_moves(d) && !counted) {
+        px_recount(ix, st);                          /* moved both ways: bands came in, filled */
     }
     if (changed) {
         if (!ix->drawn_end) ix->drawn_first = st->next;

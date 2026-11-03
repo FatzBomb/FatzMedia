@@ -490,13 +490,12 @@ static fa_frames drawn_frame(double t, uint32_t rate, int up, fa_frames length)
 }
 
 /* The stream's karaoke drawing times (fa_silence.first_drawn, last_drawn). */
-static fa_result add_drawn(fa_stream* s, fa_silence* info)
+static void add_drawn(fa_stream* s, fa_silence* info)
 {
     fa_frames first = FA_FRAMES_UNSET, last = FA_FRAMES_UNSET, mf, ml;
     size_t pf = 0, pe = 0;
     uint32_t mrate = 0;
-    int have = 0, g = fa_cdg_drawn_packs(s, &pf, &pe);
-    if (g == -2) return FA_ERROR_OUT_OF_MEMORY;
+    int have = 0, g = fa_cdg_drawn_packs(s, &pf, &pe);   /* -2 (no memory for the index): not reported */
     if (g >= 0) have = 1;
     if (g == 1) {
         double offset = (double)fa_load64(&s->cdg_offset) / 1e9;
@@ -525,7 +524,6 @@ static fa_result add_drawn(fa_stream* s, fa_silence* info)
     if (have) info->flags |= FA_SILENCE_DRAWING;
     info->first_drawn = first;
     info->last_drawn = last;
-    return FA_OK;
 }
 
 FA_API fa_result FA_CALL fa_stream_get_silence(fa_stream* stream, const fa_silence_options* options,
@@ -541,8 +539,8 @@ FA_API fa_result FA_CALL fa_stream_get_silence(fa_stream* stream, const fa_silen
         return FA_ERROR_INVALID_ARG;
     if (!fa_silence_options_read(options, &opt)) return FA_ERROR_INVALID_ARG;
     if (fa_analysis_cached_silence(stream, &opt, &data) == FA_OK) {
-        r = add_drawn(stream, &data.info);
-        if (r == FA_OK) r = fa_silence_data_get(&data, out_silence, out_regions, capacity, out_count);
+        add_drawn(stream, &data.info);
+        r = fa_silence_data_get(&data, out_silence, out_regions, capacity, out_count);
         fa_silence_data_free(&data);
         return r;
     }
@@ -553,8 +551,8 @@ FA_API fa_result FA_CALL fa_stream_get_silence(fa_stream* stream, const fa_silen
         r = edge_scan(&rd->dec, &opt, &data);
         fa_stream_reader_close(rd);
         if (r == FA_OK) {
-            r = add_drawn(stream, &data.info);
-            if (r == FA_OK) r = fa_silence_data_get(&data, out_silence, out_regions, capacity, out_count);
+            add_drawn(stream, &data.info);
+            r = fa_silence_data_get(&data, out_silence, out_regions, capacity, out_count);
             fa_silence_data_free(&data);
         }
     }

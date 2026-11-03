@@ -146,7 +146,7 @@ public sealed class SilenceInfo
     /// <summary>
     /// Karaoke: the first frame at which the picture changes; null when nothing is drawn. CD+G: the start of the first pack
     /// that changes a pixel's shown colour, plus the stream's CD+G offset. MIDI/KAR: the first lyric or text event (a .kar's
-    /// "@" title lines count; markers and names do not).
+    /// "@" title lines count; markers and names do not; a file with no lyric reports nothing).
     /// </summary>
     /// <remarks>
     /// To trim only where the audio is silent and nothing is drawn, play from the earlier of <see cref="FirstAudible"/> and

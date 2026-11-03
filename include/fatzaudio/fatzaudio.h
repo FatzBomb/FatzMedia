@@ -2260,7 +2260,7 @@ FA_API fa_result FA_CALL fa_stream_get_beat_grid(fa_stream* stream, fa_beat_grid
  *   - MIDI/KAR: the first and the last lyric or text event (FA_MIDI_LYRIC,
  *     FA_MIDI_TEXT, so a .kar's "@" title lines count); last_drawn is the frame after
  *     the last. Markers, cue points, track and instrument names and copyright do not
- *     count. A lyric surface shows a line up to fa_lyric_style.lead_ms before its
+ *     count, nor does anything in a file with no lyric (a plain MIDI's comments). A lyric surface shows a line up to fa_lyric_style.lead_ms before its
  *     first syllable and keeps the last one on screen after it: widen the times by
  *     the style's lead if the trim must keep that too.
  * Both are filled when the answer comes from the analysis cache too (they are the

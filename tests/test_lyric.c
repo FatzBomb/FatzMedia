@@ -1922,6 +1922,26 @@ static void test_drawn_times(void)
     CHECK_EQ(si.first_drawn, 0);
     CHECK_EQ(si.last_drawn, r * 27 / 2 + 1);
     fa_stream_close(s);
+    /* A plain MIDI's text events (no lyric anywhere) are not karaoke. */
+    {
+        buf p = { 0 }, pt = { 0 };
+        put(&p, "MThd", 4); put32be(&p, 6); put8(&p, 0); put8(&p, 0); put8(&p, 0); put8(&p, 1); put8(&p, 480 >> 8); put8(&p, 480 & 255);
+        text_event(&pt, 0, "Sequenced by someone");
+        ev3(&pt, 0, 0x90, 69, 100);
+        ev3(&pt, 960, 0x80, 69, 0);
+        varlen(&pt, 0); put8(&pt, 0xFF); put8(&pt, 0x2F); put8(&pt, 0);
+        put(&p, "MTrk", 4); put32be(&p, (uint32_t)pt.n); put(&p, pt.d, pt.n);
+        s = open_buf(&p);
+        CHECK(s);
+        if (s) {
+            silence_of(s, &si);
+            CHECK(!(si.flags & FA_SILENCE_DRAWING));
+            CHECK_EQ(si.first_drawn, FA_FRAMES_UNSET);
+            fa_stream_close(s);
+        }
+        free(p.d);
+        free(pt.d);
+    }
     /* Markers and cue points do not count; a notes-less file (no soundfont) reports its
      * lyric and nothing audible. */
     put(&f, "MThd", 4); put32be(&f, 6); put8(&f, 0); put8(&f, 0); put8(&f, 0); put8(&f, 1); put8(&f, 480 >> 8); put8(&f, 480 & 255);

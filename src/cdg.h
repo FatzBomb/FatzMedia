@@ -111,7 +111,8 @@ int fa_cdg_render_one(fa_engine* e);
 int fa_stream_cdg_present(struct fa_stream* s);
 /* fa_stream_get_silence: the stream's graphics change what the screen shows from
  * pack *first up to (not including) *end. 1 = they do, 0 = graphics that never change
- * it, -1 = no graphics or a disc's (packs arrive while playing), -2 = out of memory. */
+ * it, -1 = no graphics or a disc's (packs arrive while playing), -2 = no memory for
+ * the index (not reported). */
 int fa_cdg_drawn_packs(struct fa_stream* stream, size_t* first, size_t* end);
 /* Looks for "<path without extension>.cdg" next to an audio file. */
 fa_cdg_data* fa_cdg_find_sibling(const char* audio_path);
