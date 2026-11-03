@@ -297,6 +297,47 @@ public class CdgTests
     }
 
     [Fact]
+    public void LoneCdg_OpensAsASilentStreamThatPlays()
+    {
+        var cdg = SimpleCdg(emptyPacksFirst: 300).Concat(new byte[24 * 297]).ToArray();   // 600 packs: 2 s, red from 1 s
+        string dir = Path.Combine(Path.GetTempPath(), "fa-cdg-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "Song.cdg");
+            File.WriteAllBytes(path, cdg);
+            using var engine = CreateHeadless();
+            using (var file = engine.OpenFile(path, DecodeOnly))
+            {
+                Assert.True(file.HasCdg);
+                Assert.Equal("cdg", file.Info.Container);
+                Assert.Equal(600L * 147, file.Info.LengthFrames);
+                Assert.Equal(TimeSpan.FromSeconds(2), file.Info.Duration);
+            }
+            Assert.Equal(ErrorCode.UnsupportedFormat,
+                Assert.Throws<FatzAudioException>(() => engine.OpenFile(path, DecodeOnly with { NoCdg = true })).ErrorCode);
+
+            using var output = engine.OpenOutput();
+            using var song = engine.OpenMemory(cdg);
+            using var surface = song.CreateCdgSurface(new CdgSurfaceOptions { PixelFormat = CdgPixelFormat.Indexed8 });
+            song.Tempo = 1.5f;
+            song.PlayOn(output);
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+            CdgFrame f;
+            do { Thread.Sleep(20); f = surface.Update(); }
+            while (f.Time < TimeSpan.FromSeconds(1.1) && DateTime.UtcNow < until);
+            Assert.True(f.Time >= TimeSpan.FromSeconds(1.1));
+            Assert.Equal(1, f.Pixels[100 * 300 + 100]);
+            while (song.State != StreamState.Ended && DateTime.UtcNow < until) Thread.Sleep(10);
+            Assert.Equal(StreamState.Ended, song.State);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void Surface_FollowsTheAudioClock()
     {
         using var engine = CreateHeadless();

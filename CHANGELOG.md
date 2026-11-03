@@ -18,6 +18,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- CD+G with no audio (MediaControl request 10): a lone `.cdg`, or a ZIP whose only playable entry is a `.cdg`, opens
+  with `fa_stream_open_path` / `_memory` / `_io` as a silent stream exactly as long as the graphics (pack count / 300 s,
+  44,100 Hz stereo) that plays, pauses, seeks, loops and changes tempo like any file, so its clock drives the CD+G
+  surface as with an MP3+G. Detected by the `.cdg` name, the MIME type `application/x-cdg`, or (unnamed bytes) by its
+  packs. New format `cdg` in `fa_format_get_info` (codec `none`). Before, these returned `FA_ERROR_UNSUPPORTED_FORMAT`;
+  `FA_OPEN_NO_CDG` still does, and so does a web stream of a `.cdg` ([CD+G](docs/features/cdg.md#graphics-with-no-audio)).
+  A ZIP whose audio entry cannot play here (a codec provider missing, protected content, no soundfont) now returns
+  that error instead of `FA_ERROR_UNSUPPORTED_FORMAT`, and never falls back to its graphics' silence.
 - The clock at a given time (karaoke timing step K4, MediaControl request 2): `fa_stream_get_clock_at(stream,
   monotonic_ns, &pts)` gives the time heard at a moment you choose, such as the next vsync, and `fa_monotonic_time()`
   gives its time base. Now and past times read the clock's history; a future time past the mixed audio runs on at the

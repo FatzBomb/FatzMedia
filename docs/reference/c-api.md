@@ -2432,7 +2432,13 @@ draw the lyrics. FatzAudio treats the graphics as a side stream of the audio:
   - fa_stream_load_cdg_path / fa_stream_load_cdg_memory attach graphics to any
     other stream (web streams, FFmpeg hand-off, other file names);
   - fa_stream_open_disc reads them from a CD+G disc's subcode while the track
-    plays (has_cdg turns 1 once they are found, usually within a second).
+    plays (has_cdg turns 1 once they are found, usually within a second);
+  - fa_stream_open_path / _memory / _io of a lone .cdg, or of a ZIP whose only
+    playable entry is one, gives a silent stream exactly as long as the graphics
+    (packs / 300 s, 44,100 Hz stereo, container "cdg", codec "none") that plays,
+    seeks, loops and changes tempo like a file, so its clock drives the surface.
+    Detected by a .cdg name, mime_hint "application/x-cdg", or (unnamed bytes)
+    by its packs; with FA_OPEN_NO_CDG it is FA_ERROR_UNSUPPORTED_FORMAT.
 fa_stream_info.has_cdg is 1 when a stream has graphics.
 
 To show them, create a surface (fa_cdg_surface_create) and call
@@ -4299,7 +4305,7 @@ FA_API fa_result FA_CALL fa_device_get_loudness_meter(fa_device* device, double*
 typedef enum fa_spectrum_flags {
     FA_SPECTRUM_LEFT      = 1 << 0,  /* the left channel only (default: both, mixed) */
     FA_SPECTRUM_RIGHT     = 1 << 1,  /* the right channel only */
-    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window (BASS_FFT_NOWINDOW) */
+    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window (BASS_DATA_FFT_NOWINDOW) */
 } fa_spectrum_flags;
 
 /* The magnitude spectrum of the last `size` frames being heard now, for a
