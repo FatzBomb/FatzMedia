@@ -32,7 +32,7 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   our blocking surface requests and silence detection (reply:
   `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`). Slice 2 (opt-in `FatzAudioEngine` for
   files and archives in the new `FatzBomb.MediaControl.Audio.FatzAudio` package, pinned to
-  1.0.0-rc.1; `--audio=fatz`) implemented, owner smoke passed 2026-11-03 (`updates/037A_2`). Analysis:
+  1.0.0-rc.1; `--audio=fatz`) merged, owner smoke passed 2026-11-03 (`updates/037A_2`). Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules
@@ -114,6 +114,10 @@ Engineering audit follow-ups are tracked in `ENGINEERING_ISSUES.md`.
 These are worthwhile directions, not problem-gated work. An idea becomes active when it
 is explicitly selected and moved into `active/` with bounded acceptance criteria.
 
+- `future/048A_IDEA_FatzMediaVideoRename.md` - rename the engine to `FatzMedia.Video` in the
+  FatzMedia family (owner 2026-11-03); its own stage, after the 037A decision.
+- `future/049A_IDEA_PresentTimeFeedback.md` - **planned** (owner 2026-11-03): correct the
+  present-time estimate with Direct3D11 present statistics, after 037A slice 3.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27). **Not pursued**
   (owner 2026-10-28): step 0 measured the CPU copy at 0.3-0.8% of the CPU at 4K, no drops.

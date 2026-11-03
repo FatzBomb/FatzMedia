@@ -68,7 +68,7 @@ same files on BASS and FatzAudio). Not caused by slice 2: each fails the same wa
   file). Owner decision 2026-11-03: not chased, since FatzAudio replaces BASS.
 - **Images opened on their own:** an image loaded after any non-image media stayed hidden. Cause:
   the replaced item's `MediaStopped` reached the surface's auto-hide after the new `MediaLoaded`.
-  Fixed in PR 52, pending Windows check.
+  Fixed in PR 52, owner verified on Windows 2026-11-03.
 
 Needed before fixing the formats: the Log lines of each failing load and the sample files. Fix in its own PR after slice 2.
 
