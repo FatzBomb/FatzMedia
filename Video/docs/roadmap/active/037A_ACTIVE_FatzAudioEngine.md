@@ -78,7 +78,8 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    lyrics: `StreamOptions.MidiLyricsOnly`, K6, no soundfont needed). The draw time comes from
    `GetClockAt` (K4) at the frame's present time, passed through
    `AudioEngine.MonotonicTimeFromStopwatch` (the next vblank on Direct3D11, now plus the
-   presentation lead elsewhere). Our own CD+G engine and both lyric
+   presentation lead elsewhere). A `.cdg` with no audio needs FatzAudio request 10 (a silent
+   stream with the graphics' length); until it exists those files keep our own clock. Our own CD+G engine and both lyric
    renderers (DirectWrite on Direct3D11, SkiaSharp on Software and Vulkan) stay as the fallback
    until the decision slice.
 4. **MIDI, trackers, network.** Soundfont/DLS direct (drops the DLS-to-SF2 step and ENG-028),

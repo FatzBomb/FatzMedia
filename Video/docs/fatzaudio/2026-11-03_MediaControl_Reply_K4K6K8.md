@@ -25,6 +25,18 @@ on the feed (an `rc.2`, or a CI version you will not delete), since we pin exact
    And one question (not a request): while BASS plays an MP3+G, can a CD+G surface run on a
    stream that is opened but never played, without decoding the audio?
 
+   **New request 10: CD+G files with no audio.** We play a `.cdg` on its own today (no audio
+   file next to it, or a ZIP holding only the `.cdg`), on a silent clock with play, pause, seek
+   and tempo. In FatzAudio the graphics are a side stream of an audio stream, so a lone `.cdg`
+   has nothing to open. Please let `fa_stream_open_path` / `fa_stream_open_memory` of a lone
+   `.cdg` (and of a ZIP with only a `.cdg`) open a silent stream whose length is the graphics'
+   (`pack_count / 300`), and that plays, pauses, seeks and changes tempo like any file stream, so
+   its clock drives the surface exactly as with an MP3+G. Without it we would keep our own
+   silent clock for these files after BASS goes, which is the second path we want to remove.
+   (Attaching the graphics to a silent `fa_stream_open_callback` stream with
+   `fa_stream_load_cdg_path` would work, but as far as we can see that stream has no length or
+   seek.)
+
 2. **Frame timer: .NET `Stopwatch` on every platform we ship.**
    - **Windows, Direct3D11:** a per-monitor vblank clock waits on `IDXGIOutput.WaitForVBlank`
      and keeps the blank times in `Stopwatch` ticks (QPC). We will pass the next blank through
