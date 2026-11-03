@@ -85,6 +85,12 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    0.75-1.5, seeks, loop wraps and pause/resume. Also the explicit output device for FatzAudio (owner 2026-11-03:
    `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event
    source instead of two.
+Normalization (owner decision 2026-11-03): loudness (LUFS) is the only normalization on the
+FatzAudio engine, replacing our peak rule there before slice 6: FatzAudio's normalization and
+limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain; target
+-16 LUFS proposed (headroom for singers' mics), with a cap on boosts. BASS keeps the peak rule
+until it is removed; the public API is unchanged.
+
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
    then removed, and whether our CD+G engine and lyric renderers (DirectWrite and SkiaSharp) are
    deleted. No karaoke drawing code is removed before this decision.
