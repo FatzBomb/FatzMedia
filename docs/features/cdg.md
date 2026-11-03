@@ -380,7 +380,7 @@ Only what is needed is read: the archive's directory at the end of the file, the
 | Compressed, bigger than the limit (or memory ran out), with `fa_engine_config.temp_directory` set | Unpacked into a temp file at open, CRC checked, then played from it. Entries over 4 GB unpacked return `FA_ERROR_TOO_LARGE` (only a damaged or hostile archive claims that much audio) | About 1 MB while unpacking |
 | Compressed, bigger than the limit, no temp directory | Not opened: `FA_ERROR_TOO_LARGE` (.NET `ErrorCode.TooLarge`). Tell the user to extract the archive, or set a temp directory | None |
 
-The `.cdg` is always unpacked into memory (a song's graphics are a few MB).
+The `.cdg` is always unpacked into memory (a song's graphics are a few MB). An archive with no audio at all plays its `.cdg` as a silent stream ([graphics with no audio](#graphics-with-no-audio)).
 
 **Other files in the archive** (a bundled video, a PDF, a text file) are told from the audio by their first 64 KB: for a compressed entry bigger than that, FatzAudio unpacks 64 KB and runs the same content probes the decoders use, and only unpacks the whole entry when one of them claims it. A 200 MB video in a karaoke ZIP costs a 64 KB read, whether the song is opened, tagged (`fa_tags_read_path`) or probed for a `.cdg`.
 
@@ -418,6 +418,32 @@ using var engine = AudioEngine.Create(new AudioEngineOptions { TempDirectory = P
 ```
 
 `fa_stream_open_io` needs `seek` and `length` callbacks for a ZIP, because its directory is at the end (`FA_ERROR_NOT_SEEKABLE` without them). When the audio was unpacked, the archive is no longer read, but `close` is still called once, when the stream closes. Loudness scans, analysis (`fa_analyze_stream`) and `fa_stream_get_tags` read a stored entry again from the archive file or block, and a song unpacked into a temp file through the same open file (every read moves to its own position first, so they never disturb playback), so both get the same final loudness, tags and analysis as an unzipped file. A stored song from app callbacks (`fa_stream_open_io`) still gets the running loudness estimate only, since the callbacks cannot be read twice.
+
+## Graphics with no audio
+
+A `.cdg` on its own (no audio file next to it, such as a lyrics track for a live band or a backing track played elsewhere), or a ZIP whose only playable entry is a `.cdg`, opens as a **silent stream** whose length is the graphics': pack count / 300 seconds, exactly (44,100 Hz stereo silence, 147 frames per pack; a part pack at the end is left out). It plays, pauses, seeks, loops and changes tempo and rate like any file stream, so its clock drives the surface exactly as with an MP3+G. Nothing else is needed: no second clock in your app.
+
+```c
+fa_stream* song;
+fa_stream_open_path(engine, "Song.cdg", NULL, &song);   /* or the .zip, or the bytes with fa_stream_open_memory */
+fa_cdg_surface* cdg;
+fa_cdg_surface_create(song, NULL, &cdg);
+fa_stream_attach(song, device, NULL);
+fa_stream_play(song);                                     /* silence; the surface follows its clock */
+```
+
+```csharp
+using var song = engine.OpenFile("Song.cdg");   // song.HasCdg, song.Info.Container == "cdg", Codec == "none"
+using var cdg = song.CreateCdgSurface();
+song.PlayOn(output);
+```
+
+- **Detection.** A path or ZIP entry ending in `.cdg` (any case), or `fa_open_options.mime_hint` `application/x-cdg`, always opens as CD+G. Bytes with no name (`fa_stream_open_memory`, `fa_stream_open_io`) open as CD+G when every pack in the first 8 KB is a CD+G or empty pack and at least one draws something, and no audio decoder claims them first. Graphics that draw nothing in their first second need the name or the MIME type.
+- **Opening a `.cdg` gives the silent stream even when `Song.mp3` is next to it**: you opened the graphics. To play MP3+G, open the audio as before.
+- **A ZIP with audio** plays the audio, as before; the silent stream is only for archives with none. A damaged `.cdg` entry there (bad CRC) fails the open (`FA_ERROR_UNSUPPORTED_FORMAT`), since nothing is left to play.
+- `FA_OPEN_NO_CDG` on a lone `.cdg` or a CD+G-only ZIP: `FA_ERROR_UNSUPPORTED_FORMAT`.
+- Silent streams are never normalized and have no tags. `fa_stream_get_silence` and `fa_analyze_stream` work (nothing is audible) for paths and memory; `fa_stream_set_cdg_offset` moves the graphics, not the length. `fa_stream_load_cdg_*` replaces the graphics but keeps the length.
+- `fa_format_get_info` lists it as the format `cdg`.
 
 ## The CD+G format
 

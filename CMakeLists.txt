@@ -96,6 +96,7 @@ set(FA_SOURCES
     src/aac_ps.c
     src/aac_tables.c
     src/dec_midi.c
+    src/dec_silence.c
     src/dec_tracker.c
     src/dls.c
     src/sf3.c

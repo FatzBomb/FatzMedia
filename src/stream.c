@@ -272,6 +272,11 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     r = fa_decoder_open(&s->decoder, &s->source, name_hint, options ? options->mime_hint : NULL,
                         options ? options->audio_track : -1, &env);
     if (r != FA_OK) return r;
+    if (fa_decoder_is_cdg(&s->decoder)) {
+        /* Graphics with no audio: nothing to play without them, nothing to normalize. */
+        if (s->flags & FA_OPEN_NO_CDG) { fa_decoder_close(&s->decoder); return FA_ERROR_UNSUPPORTED_FORMAT; }
+        s->flags |= FA_OPEN_NO_NORMALIZE;
+    }
     if ((s->flags & FA_OPEN_PRESCAN) && s->decoder.vt->prescan) s->decoder.vt->prescan(&s->decoder);
     s->decoder_ready = 1;
     fa_source_drop_prefix(&s->source);
@@ -301,6 +306,25 @@ static void stream_opened(struct fa_stream* s)
         fa_stream_start_analysis(s);
 }
 
+
+/* A lone .cdg (the silent decoder over its bytes): the same bytes are its graphics. */
+static fa_result attach_own_graphics(struct fa_stream* s)
+{
+    uint8_t* bytes;
+    size_t size;
+    fa_cdg_data* graphics;
+    fa_result r;
+    if (!fa_decoder_is_cdg(&s->decoder)) return FA_OK;
+    r = fa_source_seek(&s->source, 0);
+    if (r != FA_OK) return r;
+    r = s->source.length >= 0 ? fa_source_read_all(&s->source, (size_t)256 << 20, &bytes, &size)
+                              : fa_source_read_rest(&s->source, (size_t)256 << 20, &bytes, &size);
+    if (r != FA_OK) return r;
+    r = fa_cdg_data_adopt(bytes, size, &graphics);
+    if (r != FA_OK) return r;
+    fa_stream_cdg_attach(s, graphics);
+    return FA_OK;
+}
 
 static int source_is_zip(fa_source* src)
 {
@@ -471,8 +495,41 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
             }
             if (close_zip_entry(s, &arc, moved) != FA_OK) { r = FA_ERROR_IO; moved = 0; break; }
             moved = 0;
+            /* Audio that cannot play here (a codec provider missing, protected content):
+             * worth telling the app, and never replaced by the graphics' silence. */
+            if (r != FA_ERROR_UNSUPPORTED_FORMAT && r != FA_ERROR_NOT_FOUND && skipped == FA_ERROR_UNSUPPORTED_FORMAT)
+                skipped = r;
             /* The audio_track asked for is missing: no other entry is tried. */
             if (r == FA_ERROR_NOT_FOUND) break;
+        }
+    }
+    if (r == FA_ERROR_UNSUPPORTED_FORMAT && skipped == FA_ERROR_UNSUPPORTED_FORMAT && graphics) {
+        /* No audio, only the graphics: a silent stream as long as they are. A stored
+         * entry is a window on the archive (reopened by path for scans); a compressed
+         * one plays from a copy of the bytes already unpacked. */
+        fa_result opened = FA_OK;
+        const fa_zip_entry* e = &entries[cdg];
+        if (e->method == 0) {
+            opened = open_zip_entry(s, &arc, e, cancel, &unpacks, &moved);
+        } else {
+            uint8_t* copy = (uint8_t*)malloc((size_t)e->size);
+            if (!copy) opened = FA_ERROR_OUT_OF_MEMORY;
+            else {
+                memcpy(copy, graphics->packs, (size_t)e->size);
+                fa_source_open_memory_ref(&s->source, copy, (size_t)e->size);
+                s->source.owned = copy;
+            }
+        }
+        r = opened;
+        if (r == FA_OK) {
+            r = stream_open_decoder(s, e->name, options);
+            if (r == FA_OK) {
+                snprintf(s->path_name, sizeof(s->path_name), "%s", e->name);
+                chosen_crc = e->crc32;
+            } else {
+                if (close_zip_entry(s, &arc, moved) != FA_OK) r = FA_ERROR_IO;
+                moved = 0;
+            }
         }
     }
     free(entries);
@@ -566,6 +623,7 @@ FA_API fa_result FA_CALL fa_stream_open_path(fa_engine* engine, const char* path
             return open_cda(engine, path, track, options, out_stream);
         }
         r = stream_open_decoder(s, path, options);
+        if (r == FA_OK) r = attach_own_graphics(s);
     }
     /* Loudness scans and tags reopen path streams by name: a stored ZIP entry as
      * its bytes in the archive. An unpacked one cannot be reopened. */
@@ -577,7 +635,7 @@ FA_API fa_result FA_CALL fa_stream_open_path(fa_engine* engine, const char* path
         if (in_place) { s->path_offset = s->source.base; s->path_length = s->source.length; }
     }
     if (r != FA_OK) { stream_discard(s); return r; }
-    if (!zip && !(s->flags & FA_OPEN_NO_CDG)) {
+    if (!zip && !(s->flags & FA_OPEN_NO_CDG) && !fa_decoder_is_cdg(&s->decoder)) {
         fa_cdg_data* graphics = fa_cdg_find_sibling(path);
         if (graphics) fa_stream_cdg_attach(s, graphics);
     }
@@ -602,6 +660,7 @@ FA_API fa_result FA_CALL fa_stream_open_memory(fa_engine* engine, const void* da
         r = open_zip(s, options, &in_place);
     } else if (r == FA_OK) {
         r = stream_open_decoder(s, NULL, options);
+        if (r == FA_OK) r = attach_own_graphics(s);
     }
     if (r != FA_OK) { stream_discard(s); return r; }
     stream_opened(s);
@@ -623,6 +682,7 @@ FA_API fa_result FA_CALL fa_stream_open_io(fa_engine* engine, const fa_io_callba
         r = open_zip(s, options, &in_place);
     } else {
         r = stream_open_decoder(s, NULL, options);
+        if (r == FA_OK) r = attach_own_graphics(s);
     }
     if (r != FA_OK) {
         s->source.io.close = NULL; /* failure: the caller keeps ownership of `user` */
@@ -914,6 +974,13 @@ FA_API fa_result FA_CALL fa_stream_open_url(fa_engine* engine, const char* url, 
                 o.mime_hint = mime;
             }
             r = stream_open_decoder(s, parsed.path, &o);
+            if (r == FA_OK && fa_decoder_is_cdg(&s->decoder)) {
+                /* Graphics with no audio play only from a path, memory or app callbacks:
+                 * a download would be silence with nothing to show. */
+                fa_decoder_close(&s->decoder);
+                s->decoder_ready = 0;
+                r = FA_ERROR_UNSUPPORTED_FORMAT;
+            }
         }
     }
     if (s->net) {

@@ -409,6 +409,10 @@ for n, h in {"classic.bin": b"\0\0\0\0", "indexed_into.bin": bytes([0x02, 0x82, 
              "scaled_smooth7.bin": bytes([0x0B, 0x84 | (2 << 3), 29, 4]),   # 29 % 11 = 7, bit 4 edge blend
              "scaled_fx.bin": bytes([0x30, 0xA4 | (1 << 3), 0xC5, 0x3A]), "sized.bin": bytes([0x48, 0x48, 40, 70])}.items():
     open(os.path.join(cw, n), "wb").write(h + song)
+# CD+G with no audio (stream.c open_zip, dec_silence.c): a lone .cdg and ZIPs holding only one.
+open(os.path.join(here, "seeds", "zip", "lone.cdg"), "wb").write(song[:6000])
+zipseed("cdg_only.zip", [("readme.txt", b"karaoke"), ("Song.CDG", song[:6000])], zipfile.ZIP_STORED)
+zipseed("cdg_only_deflate.zip", [("Song.cdg", song[:6000])], zipfile.ZIP_DEFLATED)
 
 # Disc images: a .cue sheet, a NUL and the image (written as fuzz_cue.bin/.wav/.sub, see
 # fuzz_cue.c). Tracks with pregaps, indexes, flags and CD-Text lines; a WAVE image; a

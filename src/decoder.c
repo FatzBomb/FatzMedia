@@ -16,6 +16,7 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_asf,
     &fa_decoder_caf,
     &fa_decoder_tracker,
+    &fa_decoder_cdg,
 };
 const uint32_t fa_decoder_registry_count = (uint32_t)(sizeof(fa_decoder_registry) / sizeof(fa_decoder_registry[0]));
 
@@ -146,10 +147,15 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
 
     for (i = 0; i < count; i++) {
         const fa_decoder_vtable* vt = fa_decoder_registry[i];
-        int s = n ? vt->probe(head, n, id3) : 1;  /* nothing to look at: every format is possible */
+        int by_name = ext && list_contains(vt->extensions, ext, strlen(ext));
+        int by_mime = mime_hint && list_contains(vt->mime_types, mime_hint, strlen(mime_hint));
+        /* Nothing to look at: every format is possible, but silence for CD+G needs its name. */
+        int s = n ? vt->probe(head, n, id3) : vt != &fa_decoder_cdg;
+        /* CD+G with nothing drawn in the probe window: only its name or MIME type tells. */
+        if (s == 0 && vt == &fa_decoder_cdg && (by_name || by_mime)) s = 1;
         /* Name and mime type only break ties between formats the content allows. */
-        if (s > 0 && ext && list_contains(vt->extensions, ext, strlen(ext))) s += 2;
-        if (s > 0 && mime_hint && list_contains(vt->mime_types, mime_hint, strlen(mime_hint))) s += 1;
+        if (s > 0 && by_name) s += 2;
+        if (s > 0 && by_mime) s += 1;
         scores[i] = s;
         tried[i] = 0;
     }

@@ -264,6 +264,9 @@ extern const fa_decoder_vtable fa_decoder_tracker;
 extern const fa_decoder_vtable fa_decoder_caf;
 /* ASF / Windows Media Audio (demux_asf.c). */
 extern const fa_decoder_vtable fa_decoder_asf;
+/* CD+G graphics with no audio: silence for the graphics' length (dec_silence.c). */
+extern const fa_decoder_vtable fa_decoder_cdg;
+int fa_decoder_is_cdg(const fa_decoder* dec);
 
 /* Probing helpers (probe.c). */
 size_t fa_probe_id3v2_size(const uint8_t* data, size_t size);

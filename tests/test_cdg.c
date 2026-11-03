@@ -330,8 +330,24 @@ static void test_zip_pair(void)
     fa_stream_close(s);
     free(zip.p);
 
-    /* No audio inside: unsupported */
+    /* No audio inside, only the (deflated) graphics: a silent stream as long as they are */
+    files[1].crc_xor = 0;
     zip = make_zip(files, 2);
+    CHECK_EQ(fa_stream_open_memory(g_engine, zip.p, zip.n, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.has_cdg, 1);
+    CHECK_EQ(info.length_frames, (int64_t)(cdg.n / FA_CDG_PACK_BYTES) * 147);
+    CHECK(strcmp(info.container, "cdg") == 0);
+    fa_stream_close(s);
+    /* ... and with FA_OPEN_NO_CDG nothing is left to play */
+    o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_NO_CDG;
+    CHECK_EQ(fa_stream_open_memory(g_engine, zip.p, zip.n, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK(s == NULL);
+    free(zip.p);
+    /* A damaged lone .cdg: nothing to play either */
+    files[1].crc_xor = 1;
+    zip = make_zip(files, 2);
+    o.flags = FA_OPEN_DECODE_ONLY;
     CHECK_EQ(fa_stream_open_memory(g_engine, zip.p, zip.n, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
     CHECK(s == NULL);
     free(zip.p);
@@ -1844,6 +1860,230 @@ static void test_sibling_file(void)
     CHECK_EQ(info.has_cdg, 0);
     fa_stream_close(s);
     free(wav.p); free(cdg.p);
+}
+
+/* ---- CD+G with no audio: a silent stream as long as the graphics ---------------- */
+
+/* 2 s: palette, red at 0, blue at 1 s, nothing after. */
+static buf lone_cdg(void)
+{
+    buf c = { 0 };
+    colors(&c, 0, k_low);
+    preset(&c, 1, 0);
+    empty_packs_to(&c, 300);
+    preset(&c, 3, 0);
+    empty_packs_to(&c, 600);
+    return c;
+}
+
+static void check_lone(fa_stream* s, size_t packs)
+{
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float pcm[2 * 512];
+    fa_frames got = 0, total = 0;
+    int nonzero = 0, i;
+    fa_result r;
+    CHECK(s);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.has_cdg, 1);
+    CHECK_EQ(info.format.sample_rate, 44100);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.length_frames, (int64_t)packs * 147);
+    CHECK_EQ(info.duration, (fa_time)packs * 10000000 / 3);
+    CHECK_EQ(info.seekable, 1);
+    CHECK(strcmp(info.codec, "none") == 0);
+    CHECK(strcmp(info.container, "cdg") == 0);
+    while ((r = fa_stream_read(s, pcm, 512, &got)) == FA_OK && got > 0) {
+        for (i = 0; i < got * 2; i++) nonzero |= pcm[i] != 0.0f;
+        total += got;
+    }
+    CHECK_EQ(total, (int64_t)packs * 147);
+    CHECK(!nonzero);
+    CHECK_EQ(fa_stream_seek(s, 147 * 300), FA_OK);
+    CHECK_EQ(fa_stream_read(s, pcm, 512, &got), FA_OK);
+    CHECK_EQ(got, 512);
+}
+
+static void test_lone_cdg_open(void)
+{
+    buf c = lone_cdg(), junk = { 0 }, zeros = { 0 };
+    fa_open_options o;
+    fa_stream* s = NULL;
+    fa_io_callbacks io = { mio_read, mio_seek, NULL, mio_close };
+    mem_io m;
+    size_t i, packs = c.n / FA_CDG_PACK_BYTES;
+    write_file("cdg_lone.cdg", &c);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+
+    /* By path, memory, and app callbacks with and without a length */
+    CHECK_EQ(fa_stream_open_path(g_engine, "cdg_lone.cdg", &o, &s), FA_OK);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+    CHECK_EQ(fa_stream_open_memory(g_engine, c.p, c.n, &o, &s), FA_OK);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+    memset(&m, 0, sizeof(m)); m.b = &c; m.seekable = 1;
+    CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+    CHECK_EQ(m.closes, 1);
+    io.length = mio_length;
+    memset(&m, 0, sizeof(m)); m.b = &c; m.seekable = 1;
+    CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+
+    /* A trailing part pack is not played */
+    put8(&c, 9);
+    CHECK_EQ(fa_stream_open_memory(g_engine, c.p, c.n, &o, &s), FA_OK);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+    c.n--;
+
+    /* FA_OPEN_NO_CDG: nothing to play */
+    o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_NO_CDG;
+    CHECK_EQ(fa_stream_open_path(g_engine, "cdg_lone.cdg", &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK(s == NULL);
+    o.flags = FA_OPEN_DECODE_ONLY;
+
+    /* Not CD+G: text, and packs whose command is not graphics */
+    junk = make_text_junk(24 * 400);
+    CHECK_EQ(fa_stream_open_memory(g_engine, junk.p, junk.n, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    for (i = 0; i < 400; i++) { junk.p[i * 24] = 9; junk.p[i * 24 + 1] = 1; }
+    junk.p[200 * 24] = 0x20;   /* one pack in another mode gives it away */
+    CHECK_EQ(fa_stream_open_memory(g_engine, junk.p, junk.n, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK(s == NULL);
+
+    /* Nothing drawn in the first second: only the name or the MIME type tells */
+    empty_packs_to(&zeros, 600);
+    preset(&zeros, 1, 0);
+    write_file("cdg_quiet.cdg", &zeros);
+    CHECK_EQ(fa_stream_open_memory(g_engine, zeros.p, zeros.n, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK_EQ(fa_stream_open_path(g_engine, "cdg_quiet.cdg", &o, &s), FA_OK);
+    fa_stream_close(s); s = NULL;
+    o.mime_hint = "application/x-cdg";
+    CHECK_EQ(fa_stream_open_memory(g_engine, zeros.p, zeros.n, &o, &s), FA_OK);
+    fa_stream_close(s); s = NULL;
+    free(c.p); free(junk.p); free(zeros.p);
+}
+
+static void test_lone_cdg_zip_stored(void)
+{
+    buf c = lone_cdg(), zip;
+    zip_file f = { "Karaoke/Song.CDG", NULL, 0, 0 };
+    fa_open_options o;
+    fa_stream* s = NULL;
+    fa_silence sil = { .struct_size = sizeof(sil) };
+    f.data = &c;
+    zip = make_zip(&f, 1);
+    write_file("cdg_lone.zip", &zip);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_path(g_engine, "cdg_lone.zip", &o, &s), FA_OK);
+    check_lone(s, c.n / FA_CDG_PACK_BYTES);
+    /* Read again for scans (the entry in the archive): nothing audible */
+    CHECK_EQ(fa_stream_get_silence(s, NULL, &sil, NULL, 0, NULL), FA_OK);
+    CHECK_EQ(sil.first_audible, FA_FRAMES_UNSET);
+    CHECK_EQ(sil.length, (int64_t)(c.n / FA_CDG_PACK_BYTES) * 147);
+    fa_stream_close(s); s = NULL;
+    /* A lone .cdg is read again the same way */
+    write_file("cdg_lone.cdg", &c);
+    CHECK_EQ(fa_stream_open_path(g_engine, "cdg_lone.cdg", &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_silence(s, NULL, &sil, NULL, 0, NULL), FA_OK);
+    CHECK_EQ(sil.first_audible, FA_FRAMES_UNSET);
+    CHECK_EQ(sil.length, (int64_t)(c.n / FA_CDG_PACK_BYTES) * 147);
+    fa_stream_close(s);
+    free(zip.p); free(c.p);
+}
+
+static fa_atomic32 g_lone_looped;
+static void FA_CALL on_lone_event(const fa_event* ev, void* user)
+{
+    (void)user;
+    if (ev->type == FA_EVENT_LOOPED) fa_fetch_add32(&g_lone_looped, 1);
+}
+
+/* Played on a device: the clock drives the surface as with an MP3+G; pause, seek,
+ * tempo, loop and the end work as for any file. */
+static void test_lone_cdg_plays(void)
+{
+    buf c = lone_cdg(), w = make_wav(44100, 44100 * 2);
+    fa_stream* s = NULL;
+    fa_stream* pair = NULL;
+    fa_device* dev = NULL;
+    fa_cdg_surface* surf = NULL;
+    fa_cdg_surface* ref = NULL;
+    fa_cdg_frame fr = { .struct_size = sizeof(fr) }, rf = { .struct_size = sizeof(rf) };
+    fa_stream_state st = FA_STATE_STOPPED;
+    fa_time clock = 0;
+    fa_open_options o;
+    int64_t deadline;
+    fa_time t;
+    fa_open_options_init(&o);
+    CHECK_EQ(fa_stream_open_memory(g_engine, c.p, c.n, &o, &s), FA_OK);
+
+    /* The frame at any time is the one an audio stream with the same graphics shows */
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_memory(g_engine, w.p, w.n, &o, &pair), FA_OK);
+    CHECK_EQ(fa_stream_load_cdg_memory(pair, c.p, c.n), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(s, NULL, &surf), FA_OK);
+    CHECK_EQ(fa_cdg_surface_create(pair, NULL, &ref), FA_OK);
+    for (t = 0; t < 2100000000; t += 150000000) {
+        CHECK_EQ(fa_cdg_surface_update_at(surf, t, &fr), FA_OK);
+        CHECK_EQ(fa_cdg_surface_update_at(ref, t, &rf), FA_OK);
+        CHECK(memcmp(fr.pixels, rf.pixels, (size_t)fr.stride * fr.height) == 0);
+    }
+    fa_cdg_surface_destroy(ref);
+    fa_stream_close(pair);
+
+    CHECK_EQ(fa_device_open(g_engine, NULL, &dev), FA_OK);
+    CHECK_EQ(fa_device_start(dev), FA_OK);
+    CHECK_EQ(fa_stream_set_event_callback(s, on_lone_event, NULL), FA_OK);
+    CHECK_EQ(fa_stream_attach(s, dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 1.5f), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    deadline = fa_monotonic_ns() + 8000000000LL;
+    do {
+        fa_sleep_ms(20);
+        CHECK_EQ(fa_cdg_surface_update(surf, &fr), FA_OK);
+    } while (fr.time < 1100000000 && fa_monotonic_ns() < deadline);
+    CHECK(fr.time >= 1100000000);
+    CHECK(is_bgra(px(&fr, 100, 100), 0, 0, 15));
+    CHECK_EQ(fa_stream_pause(s), FA_OK);
+    CHECK_EQ(fa_stream_seek(s, 0), FA_OK);
+    CHECK_EQ(fa_stream_get_clock(s, &clock), FA_OK);
+    CHECK(clock < 1000000000);
+    CHECK_EQ(fa_cdg_surface_update(surf, &fr), FA_OK);
+    CHECK(fr.time < 1000000000);
+    CHECK(!is_bgra(px(&fr, 100, 100), 0, 0, 15));
+
+    /* Looping: it goes round and keeps playing */
+    fa_store32(&g_lone_looped, 0);
+    CHECK_EQ(fa_stream_seek(s, 147 * 500), FA_OK);
+    CHECK_EQ(fa_stream_set_loop(s, 1), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    deadline = fa_monotonic_ns() + 8000000000LL;
+    while (fa_load32(&g_lone_looped) == 0 && fa_monotonic_ns() < deadline) fa_sleep_ms(10);
+    CHECK(fa_load32(&g_lone_looped) > 0);
+    CHECK_EQ(fa_stream_get_state(s, &st), FA_OK);
+    CHECK_EQ(st, FA_STATE_PLAYING);
+
+    /* Without the loop it ends after the last pack. Seeking near the end first keeps
+     * the wait short on a loaded runner (the iOS simulator ran out of 8 s once). */
+    CHECK_EQ(fa_stream_set_loop(s, 0), FA_OK);
+    CHECK_EQ(fa_stream_seek(s, 147 * 570), FA_OK);
+    deadline = fa_monotonic_ns() + 20000000000LL;
+    do {
+        fa_sleep_ms(10);
+        CHECK_EQ(fa_stream_get_state(s, &st), FA_OK);
+    } while (st != FA_STATE_ENDED && fa_monotonic_ns() < deadline);
+    if (st != FA_STATE_ENDED) {
+        fa_frames pos = 0;
+        fa_stream_get_position(s, &pos);
+        fa_stream_get_clock(s, &clock);
+        fprintf(stderr, "  not ended: state %d, position %lld, clock %lld ns\n", (int)st, (long long)pos, (long long)clock);
+    }
+    CHECK_EQ(st, FA_STATE_ENDED);
+    fa_cdg_surface_destroy(surf);
+    fa_stream_close(s);
+    fa_device_close(dev);
+    free(c.p); free(w.p);
 }
 
 /* A whole song of tiles: going back replays from the first pack, which must stay cheap. */
@@ -4639,6 +4879,9 @@ int main(void)
     RUN(test_palette_changes);
     RUN(test_offset_and_replace);
     RUN(test_sibling_file);
+    RUN(test_lone_cdg_open);
+    RUN(test_lone_cdg_zip_stored);
+    RUN(test_lone_cdg_plays);
     RUN(test_replay_speed);
     RUN(test_follows_audio_clock);
     RUN(test_frame_state);
@@ -4670,6 +4913,9 @@ int main(void)
     RUN(test_presentation_costs);
     fa_engine_destroy(g_engine);
     remove("cdg_pair.zip");
+    remove("cdg_lone.cdg");
+    remove("cdg_lone.zip");
+    remove("cdg_quiet.cdg");
     remove("cdg_sibling.wav");
     remove("cdg_sibling.CDG");
     remove("cdg_alone.wav");
