@@ -54,6 +54,13 @@ internal sealed class MediaFile
 
     internal event EventHandler<MediaClosedEventArgs>? MediaClosed;
 
+    /// <summary>
+    /// True while a load stops the item it replaces, on the loading thread. That item's
+    /// <c>MediaStopped</c> must reach hosts before its <c>MediaClosed</c> and the new item's
+    /// <c>MediaLoaded</c>, which are raised during the load.
+    /// </summary>
+    internal bool IsStoppingReplacedMedia { get; private set; }
+
     /// <summary>Gets or sets whether Core should automatically load matching sidecar/archive backgrounds for overlay media.</summary>
     public bool BackgroundAutoDetect
     {
@@ -146,6 +153,10 @@ internal sealed class MediaFile
                 System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Skipped because media changed before playback could start");
                 return;
             }
+
+            // An image shows as loaded; there is nothing to start.
+            if (_mediaEngine.Content.HasFlag(MediaContent.Image))
+                return;
 
             System.Diagnostics.Debug.WriteLine("[MediaFile] PlayOnLoad: Quick normalization complete, starting playback");
 
@@ -249,8 +260,18 @@ internal sealed class MediaFile
         if (_mediaEngine.IsOpen)
         {
             System.Diagnostics.Debug.WriteLine("[MediaFile] Stopping current media before loading new media");
-            if (!(_mediaControls?.Stop() ?? false))
-                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "Stop failed or returned false");
+            // An image has no transport to stop.
+            var isImage = _mediaEngine.Content.HasFlag(MediaContent.Image);
+            IsStoppingReplacedMedia = true;
+            try
+            {
+                if (!(_mediaControls?.Stop() ?? false) && !isImage)
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "MediaFile", "Stop failed or returned false");
+            }
+            finally
+            {
+                IsStoppingReplacedMedia = false;
+            }
 
             RaiseMediaClosed();
         }

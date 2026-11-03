@@ -118,6 +118,29 @@ public sealed class MediaControlPlayerTests
     }
 
     [Fact]
+    public async Task LoadOverPlayingMedia_RaisesStoppedAndClosedForTheOldItemBeforeLoaded()
+    {
+        // A surface's auto-hide reads a MediaStopped that arrives after the new MediaLoaded as the
+        // new item stopping: an image (one frame, never started) loaded over playing media stayed
+        // hidden. The documented order is the old item's MediaStopped and MediaClosed, then MediaLoaded.
+        var engine = new TestMediaEngine();
+        using var player = new MediaControlPlayer(new TestPlatformFactory(engine), MediaPlayerConfiguration.Auto, []);
+        Assert.True(player.Load("song.mp3"));
+        Assert.True(player.Play());
+        await player.FlushControlOperationsAsync();
+
+        var order = new ConcurrentQueue<string>();
+        player.MediaStopped += (_, _) => order.Enqueue("stopped");
+        player.MediaClosed += (_, _) => order.Enqueue("closed");
+        player.MediaLoaded += (_, _) => order.Enqueue("loaded");
+
+        Assert.True(player.Load("next.mp3"));
+        await player.FlushControlOperationsAsync();
+
+        Assert.Equal(["stopped", "closed", "loaded"], order);
+    }
+
+    [Fact]
     public async Task Seek_RaisesCompletedThenPosition()
     {
         var engine = new TestMediaEngine();
