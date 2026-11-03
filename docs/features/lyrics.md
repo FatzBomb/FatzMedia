@@ -372,7 +372,8 @@ using var lyrics = song.CreateLyricSurface();
 ```
 
 - The stream reads silence up to the file's length (the last event plus a short tail; it is not measured by rendering) and
-  seeks, so it can also be pulled or attached to a device, but there is nothing to hear. It is never normalized.
+  seeks. It can be pulled, or attached to a device and played (`fa_stream_attach`, `fa_stream_play`: pause, seek, tempo and
+  the end event work, and its clock can drive the surface), but there is nothing to hear. It is never normalized.
 - `fa_stream_get_midi_info`, `_text`, `_marks`, `_credits` and `_events` work as on a playing stream. The lyric
   surface draws exactly what it draws with a soundfont. Set the stream's tempo parameter to the other engine's tempo if
   you want the animation lengths (wipe, scroll) to follow it.
@@ -387,3 +388,13 @@ using var lyrics = song.CreateLyricSurface();
 - Use a `dst_revision` of 0 for a buffer you have cleared or drawn into yourself.
 - The pixels are premultiplied BGRA. Blend with "one, one minus source alpha".
 - A line growing in during a page fade-in (`page_in_scale` above 1) is drawn again at that size while it is bigger than its normal drawing, so it is sharp; the bigger drawings are let go when the page has grown in. A line that could not be drawn for lack of memory is tried again after about 90 frames in which it is shown, and left out until then.
+
+### Files with lyrics and no notes
+
+A Standard MIDI File that carries only lyric, text and tempo events (a lyric track exported for a backing track) has nothing
+to sound, so it needs no soundfont and plain `fa_stream_open_*` opens it the same way, without the flag and whether or not
+the engine or the OS has a bank (none is looked up, so it is the same on every machine). Differences from the flag on a song
+with notes: the length is exactly the last event (end of track included), with no tail, and `fa_midi_info.has_notes` (.NET
+`MidiInfo.HasNotes`) is 0, so an app can tell a file that is silent by design from one opened lyrics-only on request. It plays,
+pauses, seeks, loops and changes tempo like any file stream, and a lyric surface follows its clock. A file with notes and no
+soundfont still fails with `FA_ERROR_NO_SOUNDFONT`.

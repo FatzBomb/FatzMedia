@@ -1788,6 +1788,101 @@ static void test_lyrics_only(void)
     fa_engine_destroy(e);
 }
 
+
+/* A MIDI file with lyrics at 1 s and 1.5 s, no note, and an end of track at 2 s. */
+static buf make_notes_free(void)
+{
+    buf f = { 0 }, t = { 0 };
+    put(&f, "MThd", 4); put32be(&f, 6); put8(&f, 0); put8(&f, 0); put8(&f, 0); put8(&f, 1); put8(&f, 480 >> 8); put8(&f, 480 & 255);
+    lyric(&t, 960, "AB");
+    lyric(&t, 480, "BA ");
+    varlen(&t, 480); put8(&t, 0xFF); put8(&t, 0x2F); put8(&t, 0);
+    put(&f, "MTrk", 4); put32be(&f, (uint32_t)t.n); put(&f, t.d, t.n);
+    free(t.d);
+    return f;
+}
+
+/* Attaches `s` to a null device, plays it from `from` and waits for the end (or `ms` of wall time). */
+static int plays_to_end(fa_engine* e, fa_stream* s, fa_frames from, int ms)
+{
+    fa_device* dev = NULL;
+    fa_stream_state st = FA_STATE_STOPPED;
+    fa_frames pos = 0;
+    int64_t deadline = fa_monotonic_ns() + (int64_t)ms * MS;
+    int ok = 0;
+    if (fa_device_open(e, NULL, &dev) != FA_OK) return 0;
+    fa_device_start(dev);
+    if (fa_stream_attach(s, dev, NULL) != FA_OK) { fa_device_close(dev); return 0; }
+    if (from > 0) fa_stream_seek(s, from);
+    fa_stream_play(s);
+    do {
+        fa_sleep_ms(10);
+        fa_stream_get_state(s, &st);
+    } while (st != FA_STATE_ENDED && fa_monotonic_ns() < deadline);
+    fa_stream_get_position(s, &pos);
+    ok = st == FA_STATE_ENDED && pos > from;
+    fa_device_close(dev);
+    return ok;
+}
+
+/* A song with no notes opens and plays silent with no soundfont (and none looked up), its length the last event; a
+ * lyrics-only (K6) stream plays too. */
+static void test_notes_free(void)
+{
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_open_options o;
+    fa_stream *s = NULL, *k6 = NULL, *pl = NULL;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_midi_info mi = { .struct_size = sizeof(mi) };
+    fa_surface* f = NULL;
+    fa_surface_frame fr;
+    fa_lyric_style st;
+    target t, t2;
+    buf nf = make_notes_free();
+    const uint8_t note[3] = { 0x90, 60, 100 };
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_SYSTEM_SOUNDFONT;
+    cfg.worker_threads = 2;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    fa_open_options_init(&o);
+    CHECK_EQ(fa_stream_open_memory(e, nf.d, nf.n, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK_EQ(info.length_frames, 2 * (fa_frames)info.format.sample_rate);   /* the last event, no tail */
+    CHECK_EQ(fa_stream_get_midi_info(s, &mi), FA_OK);
+    CHECK_EQ(mi.has_notes, 0);
+    CHECK(mi.lyric_count == 2);
+    CHECK_EQ(fa_stream_send_midi(s, 0, note, 3), FA_ERROR_NOT_IMPLEMENTED);
+    /* Plays: tempo 2 makes the 2 s song 1 s, and it ends. */
+    CHECK_EQ(fa_stream_set_param(s, FA_PARAM_TEMPO, 2.0f), FA_OK);
+    CHECK(plays_to_end(e, s, 0, 8000));
+    /* The lyrics draw as for a stream with a soundfont. */
+    CHECK_EQ(fa_stream_seek(s, 0), FA_OK);
+    style(&st, FA_LYRIC_CLASSIC);
+    CHECK_EQ(fa_lyric_surface_create(s, &st, &f), FA_OK);
+    CHECK(target_make(f, &t));
+    CHECK(target_make(f, &t2));
+    CHECK_EQ(draw_at(f, &t2, 100 * MS, &fr), FA_OK);
+    CHECK_EQ(draw_at(f, &t, 1800 * MS, &fr), FA_OK);
+    CHECK(memcmp(t.px, t2.px, (size_t)t.stride * t.lay.height) != 0);   /* the words appear */
+    fa_surface_destroy(f);
+    free(t.px);
+    free(t2.px);
+    fa_stream_close(s);
+    /* A song with notes and no soundfont still cannot open. */
+    CHECK_EQ(fa_stream_open_memory(e, g_song.d, g_song.n, &o, &pl), FA_ERROR_NO_SOUNDFONT);
+    /* A lyrics-only stream of it attaches and plays too (the end of the song, seeked to). */
+    o.flags = FA_OPEN_MIDI_LYRICS_ONLY;
+    CHECK_EQ(fa_stream_open_memory(e, g_song.d, g_song.n, &o, &k6), FA_OK);
+    CHECK_EQ(fa_stream_get_info(k6, &info), FA_OK);
+    CHECK_EQ(fa_stream_get_midi_info(k6, &mi), FA_OK);
+    CHECK_EQ(mi.has_notes, 1);
+    CHECK(plays_to_end(e, k6, info.length_frames - (fa_frames)info.format.sample_rate / 2, 8000));
+    fa_stream_close(k6);
+    free(nf.d);
+    fa_engine_destroy(e);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1831,6 +1926,7 @@ int main(void)
     RUN(test_update_into_never_waits);
     RUN(test_tempo_ramp);
     RUN(test_lyrics_only);
+    RUN(test_notes_free);
     free(g_song.d);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);
