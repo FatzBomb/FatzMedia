@@ -46,6 +46,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   `fa_surface_layout`: `text_shaper` (.NET `SurfaceLayout.TextShaper`). Without a shaper, and for text that needs
   none, lines are laid out as before ([lyrics](docs/features/lyrics.md#text-shaping-arabic-hebrew-indic-and-every-other-script)).
 
+- Drawing times for karaoke silence trim (MediaControl request 11, S3): `fa_stream_get_silence` also reports
+  `first_drawn` / `last_drawn` (new fields at the end of `fa_silence`) and sets `FA_SILENCE_DRAWING` when the stream has
+  CD+G graphics from a file or memory (the first and the last pack that changes a pixel's shown colour, plus the CD+G
+  offset; discs are not reported) or MIDI lyric or text events (the first and the last, `@` title lines included).
+  Filled from the analysis cache too; `fa_analysis_get_silence` and `fa_silence_detector_get` leave them unset. .NET:
+  `SilenceInfo.HasDrawing`, `FirstDrawn`, `LastDrawn`, `FirstDrawnTime`, `LastDrawnTime`
+  ([karaoke files](docs/features/analysis.md#karaoke-files-silence-and-drawing)).
+
 ### Changed
 
 - Loudness scans are faster: the K-weighting filter runs two channels per pass and the true-peak oversampler runs

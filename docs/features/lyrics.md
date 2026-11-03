@@ -398,3 +398,11 @@ with notes: the length is exactly the last event (end of track included), with n
 `MidiInfo.HasNotes`) is 0, so an app can tell a file that is silent by design from one opened lyrics-only on request. It plays,
 pauses, seeks, loops and changes tempo like any file stream, and a lyric surface follows its clock. A file with notes and no
 soundfont still fails with `FA_ERROR_NO_SOUNDFONT`.
+
+### When the lyrics start and end
+
+`fa_stream_get_silence` (.NET `DetectSilence()`) reports the frame of the first lyric or text event (`first_drawn`; a .kar's
+`@` title lines count, markers and names do not) and the frame after the last one (`last_drawn`), with
+`FA_SILENCE_DRAWING`, so a player can trim only where the song is silent and no words are shown. The surface shows a line up
+to the style's `lead_ms` before its first syllable: widen the window by it to keep that too. See
+[analysis: karaoke files](analysis.md#karaoke-files-silence-and-drawing).

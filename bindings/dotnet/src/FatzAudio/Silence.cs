@@ -95,6 +95,9 @@ public sealed class SilenceInfo
     {
         IsComplete = (s.Flags & 1) != 0;   // FA_SILENCE_COMPLETE
         FromCache = (s.Flags & 2) != 0;    // FA_SILENCE_FROM_CACHE
+        HasDrawing = (s.Flags & 4) != 0;   // FA_SILENCE_DRAWING
+        FirstDrawn = s.FirstDrawn >= 0 ? s.FirstDrawn : null;
+        LastDrawn = s.LastDrawn >= 0 ? s.LastDrawn : null;
         SampleRate = (int)s.SampleRate;
         FirstAudible = s.FirstAudible >= 0 ? s.FirstAudible : null;
         LastAudible = s.LastAudible >= 0 ? s.LastAudible : null;
@@ -133,6 +136,34 @@ public sealed class SilenceInfo
 
     /// <summary><see cref="LastAudible"/> as time from the start; null when nothing is audible.</summary>
     public TimeSpan? LastAudibleTime => LastAudible is long l ? ToTime(l) : null;
+
+    /// <summary>
+    /// True when the stream has karaoke drawing to report on: CD+G graphics from a file (not a disc) or MIDI lyric or text
+    /// events. Only <see cref="AudioStream.DetectSilence"/> sets it; an analysis or a <see cref="SilenceDetector"/> has no graphics.
+    /// </summary>
+    public bool HasDrawing { get; }
+
+    /// <summary>
+    /// Karaoke: the first frame at which the picture changes; null when nothing is drawn. CD+G: the start of the first pack
+    /// that changes a pixel's shown colour, plus the stream's CD+G offset. MIDI/KAR: the first lyric or text event (a .kar's
+    /// "@" title lines count; markers and names do not; a file with no lyric reports nothing).
+    /// </summary>
+    /// <remarks>
+    /// To trim only where the audio is silent and nothing is drawn, play from the earlier of <see cref="FirstAudible"/> and
+    /// <see cref="FirstDrawn"/> to the later of <see cref="LastAudible"/> and <see cref="LastDrawn"/>. A lyric surface shows a
+    /// line up to its style's lead before the first syllable: widen the window by that lead to keep it too.
+    /// </remarks>
+    public long? FirstDrawn { get; }
+
+    /// <summary>Karaoke: the frame after the last change of the picture (the end of the last CD+G pack that changes it, or the
+    /// frame after the last lyric or text event); null when nothing is drawn.</summary>
+    public long? LastDrawn { get; }
+
+    /// <summary><see cref="FirstDrawn"/> as time from the start; null when nothing is drawn.</summary>
+    public TimeSpan? FirstDrawnTime => FirstDrawn is long f ? ToTime(f) : null;
+
+    /// <summary><see cref="LastDrawn"/> as time from the start; null when nothing is drawn.</summary>
+    public TimeSpan? LastDrawnTime => LastDrawn is long l ? ToTime(l) : null;
 
     /// <summary>Sample rate in Hz of the frames.</summary>
     public int SampleRate { get; }

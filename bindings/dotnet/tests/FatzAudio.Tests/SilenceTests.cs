@@ -52,11 +52,44 @@ public class SilenceTests
     public void NativeStructs_MatchTheCLayout()
     {
         Assert.Equal(24, Marshal.SizeOf<Native.FaSilenceOptions>());
-        Assert.Equal(64, Marshal.SizeOf<Native.FaSilence>());
+        Assert.Equal(80, Marshal.SizeOf<Native.FaSilence>());
         Assert.Equal(16, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.FirstAudible)));
         Assert.Equal(40, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.ThresholdDb)));
         Assert.Equal(56, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.MinSoundMs)));
+        Assert.Equal(64, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.FirstDrawn)));
+        Assert.Equal(72, (int)Marshal.OffsetOf<Native.FaSilence>(nameof(Native.FaSilence.LastDrawn)));
         Assert.Equal(16, Marshal.SizeOf<Native.FaSilenceRegion>());
+    }
+
+    [Fact]
+    public void DetectSilence_CdgGraphics_ReportsWhenTheDrawingStartsAndEnds()
+    {
+        // 300 empty packs, a palette load (colour 0 stays black: nothing changes), then a red clear at pack 301 and a
+        // green border at 302: the picture changes from 301/300 s to 303/300 s.
+        var packs = new byte[303 * 24];
+        void Pack(int at, int instruction, int index, byte value)
+        {
+            packs[at * 24] = 9;
+            packs[at * 24 + 1] = (byte)instruction;
+            packs[at * 24 + 4 + index] = value;
+        }
+        Pack(300, 30, 2, 15 << 2);   // colour 1: red
+        packs[300 * 24 + 4 + 4] = 3; packs[300 * 24 + 4 + 5] = 3 << 4;   // colour 2: green
+        Pack(301, 1, 0, 1);
+        Pack(302, 2, 0, 2);
+        using var engine = CreateHeadless();
+        using var song = engine.OpenMemory(FloatWav(Tones(4, (2.0, 3.0))), DecodeOnly);
+        var plain = song.DetectSilence();
+        Assert.False(plain.HasDrawing);
+        Assert.Null(plain.FirstDrawn);
+        Assert.Null(plain.LastDrawnTime);
+        song.LoadCdg(packs);
+        var s = song.DetectSilence();
+        Assert.True(s.HasDrawing);
+        Assert.Equal(301L * Rate / 300, s.FirstDrawn);
+        Assert.Equal((303L * Rate + 299) / 300, s.LastDrawn);
+        Assert.Equal(2 * Rate, s.FirstAudible);   // the tone starts later: the title screen is kept
+        Assert.NotNull(s.FirstDrawnTime);
     }
 
     [Fact]

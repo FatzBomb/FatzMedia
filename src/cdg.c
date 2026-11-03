@@ -103,6 +103,12 @@ struct fa_cdg_index {
     uint8_t ink[CDG_ROWS][CDG_COLS]; /* tiles now holding something other than the background */
     size_t border_ink;            /* 1 + the last pack that left that in a border tile; 0 = none */
     int box[4];                   /* tiles that ever held it: col0, row0, col1, row1 (empty: 0s) */
+    /* What the screen shows (files, fa_stream_get_silence): the pixels of each colour
+     * index, and the packs [drawn_first, drawn_end) from the first to the last that
+     * changed a pixel's shown colour (drawn_end 0 = none). */
+    int track_drawn;
+    uint32_t px_count[16];
+    size_t drawn_first, drawn_end;
 };
 
 /* A surface's layout: what its buffer holds and where (layout_want, layout_apply). */
@@ -438,16 +444,24 @@ static void moved(cdg_state* st, int dx, int dy)
     st->shift_y += dy;
 }
 
+/* A scroll's smooth-scroll offsets, kept within a tile. */
+static void scroll_offsets(const uint8_t* d, uint8_t* hoff, uint8_t* voff)
+{
+    *hoff = d[1] & 0x07;
+    *voff = d[2] & 0x0F;
+    if (*hoff > CDG_TILE_W - 1) *hoff = CDG_TILE_W - 1;
+    if (*voff > CDG_TILE_H - 1) *voff = CDG_TILE_H - 1;
+}
+
 /* Scroll by a tile: the whole screen moves; what leaves one side comes back on the
  * other (copy) or is filled with `color` (preset). */
 static void scroll(cdg_state* st, const uint8_t* d, int copy)
 {
     uint8_t color = d[0] & 0x0F;
     int hcmd = (d[1] >> 4) & 3, vcmd = (d[2] >> 4) & 3;
-    uint8_t hoff = d[1] & 0x07, voff = d[2] & 0x0F;
+    uint8_t hoff, voff;
     int y;
-    if (hoff > CDG_TILE_W - 1) hoff = CDG_TILE_W - 1;
-    if (voff > CDG_TILE_H - 1) voff = CDG_TILE_H - 1;
+    scroll_offsets(d, &hoff, &voff);
     if (hcmd == 1 || hcmd == 2) {
         for (y = 0; y < FA_CDG_HEIGHT; y++) {
             uint8_t* line = st->screen[y];
@@ -666,13 +680,159 @@ static void prepass(struct fa_cdg_index* ix, const cdg_state* st, const uint8_t*
     }
 }
 
+/* ---- what the screen shows (first and last drawing) -------------------------------- */
+
+/* Colour indices a and b show different colours (transparency does not count). */
+static int shown_differs(const cdg_state* st, int a, int b) { return memcmp(st->rgb[a], st->rgb[b], 3) != 0; }
+
+/* Some pixel shows another colour than index `color` does. */
+static int shows_other(const struct fa_cdg_index* ix, const cdg_state* st, int color)
+{
+    int i;
+    for (i = 0; i < 16; i++)
+        if (ix->px_count[i] && shown_differs(st, i, color)) return 1;
+    return 0;
+}
+
+static void px_recount(struct fa_cdg_index* ix, const cdg_state* st)
+{
+    const uint8_t* px = &st->screen[0][0];
+    size_t i;
+    memset(ix->px_count, 0, sizeof(ix->px_count));
+    for (i = 0; i < (size_t)FA_CDG_WIDTH * FA_CDG_HEIGHT; i++) ix->px_count[px[i] & 0x0F]++;
+}
+
+/* Pixel (x, y) is about to become index n: counts it, 1 when its shown colour changes. */
+static int px_set(struct fa_cdg_index* ix, const cdg_state* st, int x, int y, uint8_t n)
+{
+    uint8_t o = st->screen[y][x];
+    if (o == n) return 0;
+    ix->px_count[o]--;
+    ix->px_count[n]++;
+    return shown_differs(st, o, n);
+}
+
+/* Before a tile pack: what tile() is about to write. */
+static int tile_changes(struct fa_cdg_index* ix, const cdg_state* st, const uint8_t* d, int xor_mode)
+{
+    uint8_t c0 = d[0] & 0x0F, c1 = d[1] & 0x0F;
+    int row = d[2] & 0x1F, col = d[3] & 0x3F, i, j, changed = 0;
+    if (row >= CDG_ROWS || col >= CDG_COLS) return 0;
+    for (i = 0; i < CDG_TILE_H; i++) {
+        uint8_t bits = d[4 + i] & 0x3F;
+        int y = row * CDG_TILE_H + i;
+        for (j = 0; j < CDG_TILE_W; j++) {
+            int x = col * CDG_TILE_W + j;
+            uint8_t c = (bits >> (5 - j)) & 1 ? c1 : c0;
+            changed |= px_set(ix, st, x, y, xor_mode ? (uint8_t)((st->screen[y][x] ^ c) & 0x0F) : c);
+        }
+    }
+    return changed;
+}
+
+/* Before a border preset: what border_preset() is about to write. */
+static int border_changes(struct fa_cdg_index* ix, const cdg_state* st, uint8_t color)
+{
+    int x, y, changed = 0;
+    for (y = 0; y < FA_CDG_HEIGHT; y++) {
+        int inner = y >= CDG_BORDER_Y && y < FA_CDG_HEIGHT - CDG_BORDER_Y;
+        for (x = 0; x < FA_CDG_WIDTH; x++) {
+            if (inner && x == CDG_BORDER_X) x = FA_CDG_WIDTH - CDG_BORDER_X;
+            changed |= px_set(ix, st, x, y, color);
+        }
+    }
+    return changed;
+}
+
+/* A scroll's data moves the screen by a tile (not only its offsets). */
+static int scroll_moves(const uint8_t* d)
+{
+    int hcmd = (d[1] >> 4) & 3, vcmd = (d[2] >> 4) & 3;
+    return hcmd == 1 || hcmd == 2 || vcmd == 1 || vcmd == 2;
+}
+
+/* Before a scroll pack: the screen moving, or its smooth-scroll offsets changing, is
+ * seen unless the screen shows one colour (and a preset scroll fills in that colour).
+ * A screen of several colours counts even if the move happens to show the same. */
+static int scroll_changes(const struct fa_cdg_index* ix, const cdg_state* st, const uint8_t* d, int preset)
+{
+    int moves, one = 0;
+    uint8_t hoff, voff;
+    scroll_offsets(d, &hoff, &voff);
+    moves = scroll_moves(d);
+    if (!moves && hoff == st->hoff && voff == st->voff) return 0;
+    while (one < 15 && !ix->px_count[one]) one++;
+    if (shows_other(ix, st, one)) return 1;
+    return preset && moves && shown_differs(st, one, d[0] & 0x0F);
+}
+
+/* Before a preset scroll that moves one way only: the band that leaves becomes the
+ * fill colour. Returns 0 when it moves both ways (the caller counts again after). */
+static int scroll_preset_count(struct fa_cdg_index* ix, const cdg_state* st, const uint8_t* d)
+{
+    int hcmd = (d[1] >> 4) & 3, vcmd = (d[2] >> 4) & 3, x0, x1, y0, y1, x, y;
+    int h = hcmd == 1 || hcmd == 2, v = vcmd == 1 || vcmd == 2;
+    if (h == v) return 0;
+    x0 = 0; x1 = FA_CDG_WIDTH; y0 = 0; y1 = FA_CDG_HEIGHT;
+    if (h) {
+        x0 = hcmd == 1 ? FA_CDG_WIDTH - CDG_TILE_W : 0;
+        x1 = x0 + CDG_TILE_W;
+    } else {
+        y0 = vcmd == 1 ? FA_CDG_HEIGHT - CDG_TILE_H : 0;
+        y1 = y0 + CDG_TILE_H;
+    }
+    for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++) ix->px_count[st->screen[y][x]]--;
+    ix->px_count[d[0] & 0x0F] += (uint32_t)((x1 - x0) * (y1 - y0));
+    return 1;
+}
+
+/* apply_pack for the index's decoder, noting the packs that change what is shown. */
+static int index_apply(struct fa_cdg_index* ix, cdg_state* st, const uint8_t* p)
+{
+    const uint8_t* d = p + 4;
+    int code = (p[0] & 0x3F) == CDG_MODE_GRAPHICS ? p[1] & 0x3F : 0, changed = 0, counted = 0, op, i;
+    uint8_t rgb[16][3];
+    if (!ix->track_drawn) return apply_pack(st, p);
+    switch (code) {
+    case CDG_BORDER_PRESET: changed = border_changes(ix, st, d[0] & 0x0F); break;
+    case CDG_TILE_NORMAL:
+    case CDG_TILE_XOR: changed = tile_changes(ix, st, d, code == CDG_TILE_XOR); break;
+    case CDG_SCROLL_PRESET:
+        changed = scroll_changes(ix, st, d, 1);
+        counted = scroll_preset_count(ix, st, d);
+        break;
+    case CDG_SCROLL_COPY: changed = scroll_changes(ix, st, d, 0); break;
+    case CDG_COLORS_LOW:
+    case CDG_COLORS_HIGH: memcpy(rgb, st->rgb, sizeof(rgb)); break;
+    default: break;
+    }
+    op = apply_pack(st, p);
+    if (op == CDG_MEMORY_PRESET) {                   /* (a skipped repeat gives 0) */
+        changed = shows_other(ix, st, st->bg);
+        memset(ix->px_count, 0, sizeof(ix->px_count));
+        ix->px_count[st->bg] = FA_CDG_WIDTH * FA_CDG_HEIGHT;
+    } else if (op == CDG_COLORS_LOW || op == CDG_COLORS_HIGH) {
+        int base = op == CDG_COLORS_LOW ? 0 : 8;
+        for (i = base; i < base + 8; i++)
+            if (ix->px_count[i] && memcmp(rgb[i], st->rgb[i], 3) != 0) changed = 1;
+    } else if (op == CDG_SCROLL_PRESET && scroll_moves(d) && !counted) {
+        px_recount(ix, st);                          /* moved both ways: bands came in, filled */
+    }
+    if (changed) {
+        if (!ix->drawn_end) ix->drawn_first = st->next;
+        ix->drawn_end = st->next + 1;
+    }
+    return op;
+}
+
 /* Runs the index's decoder over packs [build.next, upto), saving each checkpoint. */
 static void index_advance(struct fa_cdg_index* ix, const fa_cdg_data* d, size_t upto)
 {
     cdg_state* st = &ix->build;
     while (st->next < upto) {
         const uint8_t* p = d->packs + st->next * FA_CDG_PACK_BYTES;
-        int op = apply_pack(st, p);
+        int op = index_apply(ix, st, p);
         if (op) prepass(ix, st, p + 4, op);
         st->next++;
         if (st->next % ix->step == 0 && st->next / ix->step == ix->count + 1 && ix->count < ix->cap) {
@@ -692,6 +852,8 @@ static void index_build(fa_cdg_data* d)
     if (!d || d->index || d->from_disc) return;
     ix = index_new(d->count);
     if (!ix) return;
+    ix->track_drawn = 1;
+    ix->px_count[0] = FA_CDG_WIDTH * FA_CDG_HEIGHT;   /* state_reset: all index 0 */
     index_advance(ix, d, d->count);
     d->index = ix;
 }
@@ -2207,6 +2369,26 @@ FA_API fa_result FA_CALL fa_stream_get_cdg_info(fa_stream* stream, fa_cdg_info* 
     fa_mutex_unlock(&stream->cdg_lock);
     fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
+}
+
+int fa_cdg_drawn_packs(struct fa_stream* stream, size_t* first, size_t* end)
+{
+    fa_cdg_data* d;
+    int r = -1;
+    fa_mutex_lock(&stream->cdg_lock);
+    d = stream->cdg;
+    if (d && !d->from_disc) {
+        index_build(d);
+        if (!d->index) {
+            r = -2;
+        } else {
+            *first = d->index->drawn_first;
+            *end = d->index->drawn_end;
+            r = d->index->drawn_end ? 1 : 0;
+        }
+    }
+    fa_mutex_unlock(&stream->cdg_lock);
+    return r;
 }
 
 FA_API fa_result FA_CALL fa_cdg_surface_create(fa_stream* stream, const fa_cdg_surface_config* config, fa_cdg_surface** out_surface)
