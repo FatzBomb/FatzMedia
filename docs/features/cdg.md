@@ -445,6 +445,10 @@ song.PlayOn(output);
 - Silent streams are never normalized and have no tags. `fa_stream_get_silence` and `fa_analyze_stream` work (nothing is audible) for paths and memory; `fa_stream_set_cdg_offset` moves the graphics, not the length. `fa_stream_load_cdg_*` replaces the graphics but keeps the length.
 - `fa_format_get_info` lists it as the format `cdg`.
 
+### When the drawing starts and ends
+
+`fa_stream_get_silence` (.NET `DetectSilence()`) reports the frames of the first and the last pack that change what the screen shows (`first_drawn`, `last_drawn`, flag `FA_SILENCE_DRAWING`), next to the first and last audible frame, so a player can trim only where the audio is silent *and* nothing is drawn, keeping a title screen or a count-in over a silent intro. Presets to the colour already shown, palette loads of unused colours and transparency changes do not count; the CD+G offset is included. It works on every stream with graphics from a file or memory (an MP3+G, a ZIP, a lone `.cdg`), not on discs. The rule and an example are in [analysis: karaoke files](analysis.md#karaoke-files-silence-and-drawing).
+
 ## The CD+G format
 
 Every instruction of the CD+G "TV graphics" mode is implemented: memory preset (clear the screen), border preset, tile block in normal and XOR mode, scroll preset and scroll copy (horizontal and vertical, with the smooth-scroll offsets), define transparent colour, and both halves of the colour table. Repeated memory-preset packs (repeat count above 0) are copies of one clear, sent several times in case one is damaged on a disc: a copy with a higher count than the preset just applied, of the same colour and within 32 packs (about 0.1 s) of it, is skipped even if a border or tiles were drawn between the copies, and so is any repeat while the screen is still clean in that colour. A preset in another colour, or with a count that goes back, is a new clear. The palette starts black until the first colour-table load. CD+EG (extended graphics) packs are ignored, and so are packs of other subcode modes.

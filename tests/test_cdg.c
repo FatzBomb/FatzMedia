@@ -2087,6 +2087,123 @@ static void test_lone_cdg_plays(void)
 }
 
 /* A whole song of tiles: going back replays from the first pack, which must stay cheap. */
+/* fa_stream_get_silence's drawing times of graphics `c` on an 8 kHz tone of `seconds`. */
+static void drawn_of(const buf* c, uint32_t seconds, fa_time offset, fa_silence* out)
+{
+    fa_stream* s = open_wav_stream(seconds, FA_OPEN_DECODE_ONLY | FA_OPEN_NO_CDG);
+    memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(*out);
+    out->first_drawn = out->last_drawn = -2;
+    CHECK(s);
+    if (!s) return;
+    CHECK_EQ(fa_stream_load_cdg_memory(s, c->p, c->n), FA_OK);
+    CHECK_EQ(fa_stream_set_cdg_offset(s, offset), FA_OK);
+    CHECK_EQ(fa_stream_get_silence(s, NULL, out, NULL, 0, NULL), FA_OK);
+    fa_stream_close(s);
+}
+
+static void test_drawn_times(void)
+{
+    static const uint8_t k_high[8][3] = { { 1, 2, 3 } };
+    buf c = { 0 }, d = { 0 };
+    fa_silence si;
+    fa_stream* s;
+    /* Nothing changes the shown picture before 2 s: a preset to the black already
+     * shown, a palette load that keeps index 0 black, a black border, transparency,
+     * scrolls of the one-colour screen. */
+    preset(&c, 0, 0);
+    colors(&c, 0, k_low);
+    border(&c, 0);
+    transparent(&c, 0, 63);
+    scroll(&c, 1, 0, 1, 0, 0, 0);
+    scroll(&c, 0, 0, 0, 3, 2, 5);
+    empty_packs_to(&c, 600);
+    tile(&c, 0, 0, 4, 5, 10, 0x3F);             /* 2 s: white on black */
+    empty_packs_to(&c, 9000);
+    tile(&c, 0, 0, 0, 5, 10, 0x3F);             /* 30 s: wiped back to black */
+    empty_packs_to(&c, 9100);
+    preset(&c, 0, 0);                           /* a clear of a black screen */
+    preset(&c, 0, 1);
+    colors(&c, 1, k_high);                      /* colours no pixel uses */
+    scroll(&c, 0, 0, 2, 0, 0, 0);
+    empty_packs_to(&c, 9600);
+    drawn_of(&c, 40, 0, &si);
+    CHECK(si.flags & FA_SILENCE_DRAWING);
+    CHECK_EQ(si.sample_rate, 8000);
+    CHECK_EQ(si.first_drawn, 16000);
+    CHECK_EQ(si.last_drawn, (9001 * 8000 + 299) / 300);
+    CHECK(si.first_audible == 0);                /* the tone */
+    /* The offset moves both; times before the start are kept at 0. */
+    drawn_of(&c, 40, 1000000000, &si);
+    CHECK_EQ(si.first_drawn, 24000);
+    CHECK_EQ(si.last_drawn, (9001 * 8000 + 299) / 300 + 8000);
+    drawn_of(&c, 40, -3000000000LL, &si);
+    CHECK_EQ(si.first_drawn, 0);
+    CHECK_EQ(si.last_drawn, (9001 * 8000 + 299) / 300 - 24000);
+    /* Each of these changes what is shown: a palette load of a colour in use, a scroll
+     * of a screen of two colours, a border preset, a preset to another colour. */
+    colors(&d, 0, k_low);
+    tile(&d, 0, 0, 4, 5, 10, 0x3F);
+    empty_packs_to(&d, 300);
+    scroll(&d, 1, 0, 1, 0, 0, 0);
+    empty_packs_to(&d, 900);
+    {
+        uint8_t grey[8][3];
+        memcpy(grey, k_low, sizeof(grey));
+        grey[4][0] = 9;
+        colors(&d, 0, (const uint8_t(*)[3])grey);
+    }
+    drawn_of(&d, 10, 0, &si);
+    CHECK_EQ(si.first_drawn, (1 * 8000) / 300);
+    CHECK_EQ(si.last_drawn, (901 * 8000 + 299) / 300);
+    free(d.p);
+    memset(&d, 0, sizeof(d));
+    colors(&d, 0, k_low);
+    empty_packs_to(&d, 30);
+    border(&d, 2);
+    empty_packs_to(&d, 60);
+    preset(&d, 3, 0);
+    drawn_of(&d, 10, 0, &si);
+    CHECK_EQ(si.first_drawn, (30 * 8000) / 300);
+    CHECK_EQ(si.last_drawn, (61 * 8000 + 299) / 300);
+    free(d.p);
+    /* Graphics that never change the picture: the flag, no times. */
+    memset(&d, 0, sizeof(d));
+    preset(&d, 0, 0);
+    empty_packs_to(&d, 300);
+    drawn_of(&d, 5, 0, &si);
+    CHECK(si.flags & FA_SILENCE_DRAWING);
+    CHECK_EQ(si.first_drawn, FA_FRAMES_UNSET);
+    CHECK_EQ(si.last_drawn, FA_FRAMES_UNSET);
+    free(d.p);
+    /* No graphics: neither. */
+    s = open_wav_stream(5, FA_OPEN_DECODE_ONLY | FA_OPEN_NO_CDG);
+    CHECK(s);
+    memset(&si, 0, sizeof(si));
+    si.struct_size = sizeof(si);
+    CHECK_EQ(fa_stream_get_silence(s, NULL, &si, NULL, 0, NULL), FA_OK);
+    CHECK(!(si.flags & FA_SILENCE_DRAWING));
+    CHECK_EQ(si.first_drawn, FA_FRAMES_UNSET);
+    CHECK_EQ(si.last_drawn, FA_FRAMES_UNSET);
+    fa_stream_close(s);
+    /* A lone .cdg: nothing audible, the graphics' times (red at pack 1, blue at 1 s). */
+    free(c.p);
+    c = lone_cdg();
+    s = NULL;
+    CHECK_EQ(fa_stream_open_memory(g_engine, c.p, c.n, NULL, &s), FA_OK);
+    if (s) {
+        memset(&si, 0, sizeof(si));
+        si.struct_size = sizeof(si);
+        CHECK_EQ(fa_stream_get_silence(s, NULL, &si, NULL, 0, NULL), FA_OK);
+        CHECK(si.flags & FA_SILENCE_DRAWING);
+        CHECK_EQ(si.first_audible, FA_FRAMES_UNSET);
+        CHECK_EQ(si.first_drawn, 147);
+        CHECK_EQ(si.last_drawn, 301 * 147);
+        fa_stream_close(s);
+    }
+    free(c.p);
+}
+
 static void test_replay_speed(void)
 {
     buf c = { 0 };
@@ -4911,6 +5028,7 @@ int main(void)
     RUN(test_render_ahead);
     RUN(test_update_into_never_waits);
     RUN(test_presentation_costs);
+    RUN(test_drawn_times);
     fa_engine_destroy(g_engine);
     remove("cdg_pair.zip");
     remove("cdg_lone.cdg");

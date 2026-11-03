@@ -384,6 +384,8 @@ static int decode_silence(fa_analysis* a, reader* r)
     q->info.first_audible = (fa_frames)get_u64(r);
     q->info.last_audible = (fa_frames)get_u64(r);
     q->info.length = a->length;
+    q->info.first_drawn = FA_FRAMES_UNSET;
+    q->info.last_drawn = FA_FRAMES_UNSET;
     count = get_u32(r);
     if (r->bad || count > (r->n - r->at) / 16) return 0;
     if (q->info.first_audible == FA_FRAMES_UNSET ? q->info.last_audible != FA_FRAMES_UNSET
