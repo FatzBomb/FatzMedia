@@ -30,7 +30,9 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
   change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
   our blocking surface requests and silence detection (reply:
-  `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`); slice 2 next, pinned to 1.0.0-rc.1. Analysis:
+  `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`). Slice 2 (opt-in `FatzAudioEngine` for
+  files and archives in the new `FatzBomb.MediaControl.Audio.FatzAudio` package, pinned to
+  1.0.0-rc.1; `--audio=fatz`) implemented, pending manual smoke (`updates/037A_2`). Analysis:
   `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md`.
 - `active/041A_ACTIVE_EngineInternalFollowUps.md` - small engine follow-ups left by completed
   stages 010A, 015A, 017A, 019A and 022A; slice 1 extracts the video loop-boundary rules

@@ -1,6 +1,6 @@
 # Native Dependency Distribution Policy
 
-Updated: 2026-10-25
+Updated: 2026-11-03
 
 The repository tracks no native DLLs or executables. The Gyan GPL-enabled `ffmpeg.exe`, `ffplay.exe`,
 and `ffprobe.exe` fixtures were removed on 2026-10-17 (owner decision): the app never runs
@@ -124,6 +124,63 @@ must obtain the appropriate BASS licence. Un4seen states that BASS licences appl
 the licensee's end-user products and do not permit reselling or sublicensing BASS.
 This control therefore does not redistribute BASS; a developer purchasing or using
 the control remains responsible for their own BASS rights and each add-on's terms.
+
+## FatzAudio (opt-in audio engine, 037A slice 2)
+
+`FatzBomb.MediaControl.Audio.FatzAudio` plays audio files through FatzAudio when a player is
+created with its `FatzAudioEngineFactory` (`MediaPlayerConfiguration.AudioEngineFactory`; the test
+players' `--audio=fatz`). BASS stays the default, and with FatzAudio selected BASS still plays
+video audio and network audio, so the BASS rules above still apply.
+
+- **Package:** `FatzAudio`, pinned to exactly `1.0.0-rc.1` (`Version="[1.0.0-rc.1]"`; the core
+  boundary script checks the exact pin). Unlike BASS and FFmpeg, its native library ships inside
+  the package (`runtimes/win-x64/native/fatzaudio.dll`, `runtimes/linux-x64/native/libfatzaudio.so`,
+  SONAME `libfatzaudio.so.1`) and is copied to the output by the build; nothing goes in `native/`.
+  The binding refuses a native library of another major.minor version (`InvalidOperationException`
+  at the first call); the player then warns and uses BASS.
+- **Linux:** the package's library is built on Ubuntu 22.04 and needs glibc 2.35 or later.
+- **MIDI:** FatzAudio loads SF2, SF3 and DLS directly (no DLS-to-SF2 conversion). Without
+  `MidiSoundfontPath` it uses the system bank (Windows `gm.dls`, an installed `.sf2` on Linux);
+  with no bank at all a MIDI file does not open.
+- **Licence:** FatzAudio's own code is proprietary (all rights reserved, the package's `LICENSE`);
+  its third-party components keep their licences (`THIRD_PARTY_NOTICES.md` in FatzAudio).
+
+### Restoring the package
+
+The feed is GitHub Packages, `https://nuget.pkg.github.com/FatzBomb75/index.json`, which needs a
+token even to read. The repository's `nuget.config`:
+
+- maps only `FatzAudio` to that feed (`packageSourceMapping`); every other package comes from
+  nuget.org;
+- reads the password from the environment variable `FATZAUDIO_PACKAGES_TOKEN` (user name
+  `FatzBomb75`);
+- takes NuGet's vulnerability data from nuget.org only (`auditSources`), so projects that do not use
+  FatzAudio restore without the token.
+
+**CI:** the owner gave this repository Read under the package's "Manage Actions access", so
+`.github/workflows/ci.yml` declares `permissions: packages: read` and sets
+`FATZAUDIO_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. The Windows native smoke workflow packs only
+Core and the Windows packages, which do not use FatzAudio, so it needs no token.
+
+**Developers:** create a classic personal access token with only `read:packages` (fine-grained
+tokens cannot read GitHub Packages) and set it before restoring:
+
+```powershell
+setx FATZAUDIO_PACKAGES_TOKEN <token>   # new terminals; or $env:FATZAUDIO_PACKAGES_TOKEN = '<token>' for this one
+dotnet restore FatzBomb.MediaControl.sln
+```
+
+```bash
+export FATZAUDIO_PACKAGES_TOKEN=<token>
+dotnet restore FatzBomb.MediaControl.sln
+```
+
+Without a token, the projects that reference the engine (the engine package, the three test
+players, `FatzBomb.MediaControl.Linux.Tests`, and so the whole solution) do not restore. A folder
+feed holding the exact `FatzAudio.1.0.0-rc.1.nupkg` (FatzAudio's CI `nuget` artifact, or a package
+packed from FatzAudio's source at 59741a5 as `docs/roadmap/updates/037A_2/StageUpdate.md` describes) works instead: pass a
+nuget.config of your own with that folder mapped to `FatzAudio` (`dotnet restore --configfile`).
+Never commit a token or a local feed path.
 
 ## FFmpeg Policy
 
