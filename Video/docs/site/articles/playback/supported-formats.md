@@ -25,7 +25,7 @@ Plain audio plays through BASS. The extensions the player accepts depend on whic
 | `basswv` (Linux) | `.wv` |
 | `bassmidi` | `.mid` `.midi` `.kar` `.rmi` |
 
-When FFmpeg is loaded, it also decodes a fixed set of audio extensions, and the file plays through the same BASS output chain: `.aac` `.ac3` `.aif` `.aifc` `.aiff` `.amr` `.ape` `.au` `.caf` `.dff` `.dsf` `.dts` `.eac3` `.flac` `.m4a` `.m4b` `.mka` `.mp2` `.mp3` `.mpc` `.oga` `.ogg` `.opus` `.spx` `.tak` `.tta` `.w64` `.wav` `.wma` `.wv`. A missing plugin therefore does not make a format unplayable as long as FFmpeg is present. BASS is still needed for the sound output.
+When FFmpeg is loaded, it also decodes a fixed set of audio extensions, and the file plays through the same BASS output chain: `.aac` `.ac3` `.aif` `.aifc` `.aiff` `.alac` `.amr` `.ape` `.au` `.caf` `.dff` `.dsf` `.dts` `.eac3` `.flac` `.m4a` `.m4b` `.m4r` `.mka` `.mp2` `.mp3` `.mpc` `.oga` `.ogg` `.opus` `.spx` `.tak` `.tta` `.w64` `.wav` `.wma` `.wv`. A missing plugin therefore does not make a format unplayable as long as FFmpeg is present. BASS is still needed for the sound output.
 
 Notes:
 
@@ -42,6 +42,8 @@ All video decoding goes through FFmpeg. The player registers these container ext
 Which codecs inside those containers play is up to the FFmpeg build you ship. Hardware decoding is used when available (Direct3D 11/12 and DXVA2 on Windows) and falls back to software; set `MediaPlayerConfiguration.VideoDecoding` to `Auto` (the default), `Hardware` or `Software`. HDR10 and HLG video is tone mapped to SDR by default (`MediaPlayerConfiguration.HdrToneMapping`).
 
 Video plays its soundtrack through BASS. Without BASS it plays silently.
+
+A local file in a video container with no video stream, such as an audio-only `.mp4` or `.ts` (cover art does not count as video), plays as audio, the way [Audio mode](player-modes.md) plays a video's soundtrack. The log says so with an Info line.
 
 ## Subtitles
 

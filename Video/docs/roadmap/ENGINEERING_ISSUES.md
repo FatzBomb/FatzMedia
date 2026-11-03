@@ -59,18 +59,20 @@ needs Windows to verify.
 
 Reported: 2026-11-03, owner format sweep during the 037A slice 2 smoke (Windows, WPF player, the
 same files on BASS and FatzAudio). Not caused by slice 2: each fails the same way on BASS.
-- **ALAC (`.m4a`), M4R, audio-only MP4, TS:** nothing plays; the player stays responsive.
-  Suspected from the code, not yet confirmed with logs: `.mp4` and `.ts` are registered as video
-  (`Bootstrap.LibraryLoader`), so an audio-only file goes to the video pipeline and does not fall
-  back to audio; `.m4r` is not registered at all (rejected as unsupported); ALAC is decoded by
-  neither engine and the FFmpeg fallback does not take over.
+- **ALAC, M4R, audio-only MP4, TS:** nothing played; the player stayed responsive. Owner log:
+  `sample.alac` and `sample.m4r` were "Rejected (Unsupported)" (the extensions were not registered);
+  `sample.mp4` and `sample.ts` failed with OpenFailed (registered as video, so the video pipeline
+  opened them, found no picture and failed). Fixed (pending Windows check): `.alac` and `.m4r` join
+  the FFmpeg audio extensions (FatzAudio decodes both natively; BASS plays them through the FFmpeg
+  conversion), and a local video file with no video stream (cover art does not count) plays its
+  audio through the soundtrack path, as Audio mode does, with an Info line saying so. Verified on
+  Linux with real FFmpeg and FatzAudio on generated AAC-in-MP4, AAC-in-TS, cover-art-only MP4,
+  M4R and ALAC files.
 - **WMA on BASS:** the player froze and closed before its log appeared (FatzAudio played the
   file). Owner decision 2026-11-03: not chased, since FatzAudio replaces BASS.
 - **Images opened on their own:** an image loaded after any non-image media stayed hidden. Cause:
   the replaced item's `MediaStopped` reached the surface's auto-hide after the new `MediaLoaded`.
   Fixed in PR 52, owner verified on Windows 2026-11-03.
-
-Needed before fixing the formats: the Log lines of each failing load and the sample files. Fix in its own PR after slice 2.
 
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 

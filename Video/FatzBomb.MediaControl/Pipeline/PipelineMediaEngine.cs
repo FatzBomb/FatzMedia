@@ -228,9 +228,9 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
             FileType.CdgArchive when fileTree.CdgEntry != null =>
                 _coordinator.OpenStandaloneCdg(fileTree.CdgEntry),
             FileType.VideoSubtitle when !string.IsNullOrWhiteSpace(fileTree.VideoPath) && !string.IsNullOrWhiteSpace(fileTree.SubtitlePath) =>
-                _coordinator.OpenVideo(fileTree.VideoPath, fileTree.SubtitlePath),
+                _coordinator.OpenVideo(fileTree.VideoPath, fileTree.SubtitlePath) || OpenSoundtrackWhenNoVideo(fileTree.VideoPath),
             FileType.Video when !string.IsNullOrWhiteSpace(fileTree.VideoPath) =>
-                _coordinator.OpenVideo(fileTree.VideoPath),
+                _coordinator.OpenVideo(fileTree.VideoPath) || OpenSoundtrackWhenNoVideo(fileTree.VideoPath),
             FileType.VideoArchive when fileTree.VideoEntry != null =>
                 _coordinator.OpenVideo(fileTree.VideoEntry),
             FileType.Image when !string.IsNullOrWhiteSpace(fileTree.ImagePath) =>
@@ -474,6 +474,17 @@ internal sealed class PipelineMediaEngine : IMediaEngine, ILoopPlaybackControl, 
     /// Audio mode (043A): opens only the audio of a video file (its soundtrack, no video decoder)
     /// or of MP3+G (the CD+G graphics are ignored).
     /// </summary>
+    // A video container with no video stream (an audio-only .mp4 or .ts, or one with only cover
+    // art) plays its audio, as Audio mode plays a video's soundtrack.
+    private bool OpenSoundtrackWhenNoVideo(string path)
+    {
+        if (!_coordinator.LastVideoOpenHadNoVideo)
+            return false;
+
+        DiagnosticRouter.Raise(MediaDiagnosticLevel.Info, "PipelineMediaEngine", $"{Path.GetFileName(path)} has no video stream; playing its audio.", sourcePath: path);
+        return _coordinator.OpenSoundtrack(path);
+    }
+
     private bool OpenAudioOnly(FileTree fileTree, string path)
     {
         var isVideo = fileTree.Type is FileType.Video or FileType.VideoSubtitle or FileType.VideoArchive;
