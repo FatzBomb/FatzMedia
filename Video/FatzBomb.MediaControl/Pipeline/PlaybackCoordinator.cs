@@ -224,8 +224,12 @@ internal sealed partial class PlaybackCoordinator : IDisposable
 
     public bool OpenNetworkAudio(Uri uri) => _session.Audio?.OpenUrl(uri.AbsoluteUri) == true;
 
-    /// <summary>Whether the file audio engine opens URLs itself (BASS); otherwise network audio goes through FFmpeg.</summary>
-    public bool CanOpenNetworkAudio => _session.Audio?.Engine is INetworkAudioSource;
+    /// <summary>
+    /// Whether network audio goes to the audio pipeline (BASS opens URLs itself, and with no pipeline
+    /// <see cref="OpenNetworkAudio"/> reports the failure as before); false for an engine that cannot
+    /// open URLs, whose network audio goes through FFmpeg.
+    /// </summary>
+    public bool CanOpenNetworkAudio => _session.Audio?.Engine is null or INetworkAudioSource;
 
     /// <summary>Gets the network capabilities of the open audio source, or <see langword="null"/>.</summary>
     public MediaSourceCapabilities? NetworkAudioCapabilities =>

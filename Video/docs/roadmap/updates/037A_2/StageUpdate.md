@@ -215,3 +215,19 @@ audio stays on BASS)`.
   normalization moves to FatzAudio's LUFS (slice 6, changes levels); mapping an explicit output
   device to FatzAudio's device list.
 - Slice 3 (karaoke surfaces) and the slice-0 dropout rerun on 1.0.0-rc.1.
+
+## Review notes (pre-PR, 2026-11-03)
+
+Fixed before the PR: archive entries FatzAudio cannot decode go through the FFmpeg conversion as
+on BASS; a normalization change no longer cuts a running `SlideVolume` short; closing waits for a
+cancelled analysis before deleting an FFmpeg temp file; a late `Ended` after Play or a seek is
+ignored; a trim window the stream refuses plays untrimmed instead of failing the open;
+`CanOpenNetworkAudio` keeps the BASS path exactly as before when no audio pipeline is attached.
+
+Known, not fixed in this slice:
+- **One device change can reach the host twice with `--audio=fatz`:** the platform's BASS monitor
+  (kept for video audio) and FatzAudio both report it, and the BASS notice's wording mentions BASS.
+  Revisit with slice 5, when video audio moves off BASS.
+- **Building the solution needs `FATZAUDIO_PACKAGES_TOKEN`:** the test players and Linux.Tests
+  reference the FatzAudio package, which GitHub Packages serves only with a token, even to read.
+- `AnalyzePeakAsync` called while the engine closes may throw instead of returning 0.

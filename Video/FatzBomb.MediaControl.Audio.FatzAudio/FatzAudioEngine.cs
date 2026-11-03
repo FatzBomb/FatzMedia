@@ -2,6 +2,7 @@ using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Audio;
 using FatzBomb.MediaControl.Core.Audio.Fade;
 using FatzBomb.MediaControl.Core.Configuration;
+using FatzBomb.MediaControl.Core.Files;
 using FatzBomb.MediaControl.Core.Threading;
 using Fa = global::FatzAudio;
 
@@ -51,6 +52,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     private AudioEqualizerSettings _equalizer = AudioEqualizerSettings.Disabled;
     private bool _loopPlayback;
     private double _userVolume = 1;
+    private long _slideEndTicks;
     private int _fadeSession;
     private bool _disposed;
 
@@ -103,7 +105,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
 
         _normalizer.NormalizationGainChanged += (_, gain) =>
         {
-            ApplyOutputVolume(TimeSpan.Zero);
+            ApplyOutputVolume(RemainingSlide());
             NormalizationGainChanged?.Invoke(this, gain);
         };
 
@@ -145,7 +147,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                 return;
 
             field = value;
-            ApplyOutputVolume(TimeSpan.Zero);
+            ApplyOutputVolume(RemainingSlide());
         }
     } = true;
 
@@ -293,16 +295,16 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             archiveEntry.Key,
             AudioEngine.CreateArchiveNormalizationCacheKey(archiveEntry),
             "archive",
-            detectSilence: false);
+            detectSilence: false,
+            archiveEntry);
     }
 
-    private bool OpenCore(OpenedSource source, string label, string normalizationKey, string sourceLabel, bool detectSilence)
+    private bool OpenCore(OpenedSource source, string label, string normalizationKey, string sourceLabel, bool detectSilence, IArchiveEntryInfo? archiveEntry = null)
     {
         if (_disposed)
             return false;
 
-        CancelNormalizationAnalysis(join: false);
-        CloseStream();
+        CloseStream(CancelNormalizationAnalysis(join: false));
 
         Fa.AudioStream? stream = null;
         ConvertedAudio? converted = null;
@@ -313,12 +315,12 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                 stream = source.Open(_engine, PlaybackOptions);
             }
             catch (Fa.FatzAudioException ex) when (ex.ErrorCode == Fa.ErrorCode.UnsupportedFormat
-                && source.Path is { } path
+                && (source.Path ?? archiveEntry?.Key) is { } path
                 && FfmpegAudioFallback.CanRetryWithFfmpeg(path))
             {
                 // A format FatzAudio does not decode (WMA off Windows, DTS, ...): FFmpeg converts it
-                // to a float WAV, as for BASS.
-                converted = FfmpegAudioFallback.Take(path, MediaOpenCancellation.Current)
+                // to a float WAV, as for BASS (archive entries through a temp file, as there).
+                converted = (source.Path is null && archiveEntry is not null ? TakeArchiveConversion(archiveEntry) : FfmpegAudioFallback.Take(path, MediaOpenCancellation.Current))
                     ?? throw new InvalidOperationException($"FFmpeg could not convert '{path}'.", ex);
                 source = converted.IsInMemory
                     ? OpenedSource.ForMemory(converted.InMemoryData, path)
@@ -348,11 +350,29 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
                 _activeTrimWindow = trimWindow;
                 if (trimWindow is not null)
                 {
-                    if (trimWindow.PlayableStart > 0)
-                        opened.Markers.CueIn = TimeSpan.FromSeconds(trimWindow.PlayableStart);
-                    if (trimWindow.PlayableEnd < duration)
-                        opened.Markers.CueOut = TimeSpan.FromSeconds(trimWindow.PlayableEnd);
-                    opened.Position = TimeSpan.FromSeconds(trimWindow.PlayableStart);
+                    try
+                    {
+                        if (trimWindow.PlayableStart > 0)
+                            opened.Markers.CueIn = TimeSpan.FromSeconds(trimWindow.PlayableStart);
+                        if (trimWindow.PlayableEnd < duration)
+                            opened.Markers.CueOut = TimeSpan.FromSeconds(trimWindow.PlayableEnd);
+                        opened.Position = TimeSpan.FromSeconds(trimWindow.PlayableStart);
+                    }
+                    catch (Exception ex) when (ex is Fa.FatzAudioException or ArgumentException or InvalidOperationException)
+                    {
+                        DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Silence trim could not be applied, playing untrimmed: {ex.Message}", sourcePath: label, innerException: ex);
+                        _activeTrimWindow = null;
+                        try
+                        {
+                            opened.Markers.CueIn = null;
+                            opened.Markers.CueOut = null;
+                            opened.Position = TimeSpan.Zero;
+                        }
+                        catch (Exception resetEx) when (resetEx is Fa.FatzAudioException or ArgumentException or InvalidOperationException)
+                        {
+                            // Best effort: the open still succeeds.
+                        }
+                    }
                 }
 
                 opened.Loop = _loopPlayback;
@@ -379,6 +399,19 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             converted?.Dispose();
             CloseStream();
             return false;
+        }
+    }
+
+    private static ConvertedAudio? TakeArchiveConversion(IArchiveEntryInfo archiveEntry)
+    {
+        var tempPath = TempMediaFile.CreateFromArchiveEntry(archiveEntry);
+        try
+        {
+            return FfmpegAudioFallback.Take(tempPath, MediaOpenCancellation.Current);
+        }
+        finally
+        {
+            TempMediaFile.TryDelete(tempPath);
         }
     }
 
@@ -469,8 +502,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         if (_disposed)
             return;
 
-        CancelNormalizationAnalysis(join: false);
-        CloseStream();
+        CloseStream(CancelNormalizationAnalysis(join: false));
         _normalizer.ResetGain(clearFxHandle: true);
         Closed?.Invoke(this, EventArgs.Empty);
         SetState(AudioEngineState.Stopped);
@@ -479,12 +511,14 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     public void SetVolume(double volume01)
     {
         _userVolume = Math.Clamp(double.IsFinite(volume01) ? volume01 : 0, 0, 1);
+        Volatile.Write(ref _slideEndTicks, 0);
         ApplyOutputVolume(TimeSpan.Zero);
     }
 
     void IAudioVolumeSlide.SlideVolume(double volume01, TimeSpan duration)
     {
         _userVolume = Math.Clamp(double.IsFinite(volume01) ? volume01 : 0, 0, 1);
+        Volatile.Write(ref _slideEndTicks, duration > TimeSpan.Zero ? Environment.TickCount64 + (long)duration.TotalMilliseconds : 0);
         ApplyOutputVolume(duration);
     }
 
@@ -574,8 +608,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             return;
 
         _disposed = true;
-        CancelNormalizationAnalysis(join: true);
-        CloseStream();
+        CloseStream(CancelNormalizationAnalysis(join: true));
         SetState(AudioEngineState.Stopped);
         _bus.Dispose();
         _output.Dispose();
@@ -684,7 +717,8 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     /// Cancels the running analysis. It reads its own decode stream, so an open or close need not
     /// wait for it; disposal joins it before the native engine goes.
     /// </summary>
-    private void CancelNormalizationAnalysis(bool join)
+    /// <returns>The cancelled analysis while it still runs (it may still read the source), else null.</returns>
+    private Task? CancelNormalizationAnalysis(bool join)
     {
         _ = Interlocked.Increment(ref _analysisGeneration);
         CancellationTokenSource? cts;
@@ -713,6 +747,17 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         if (join || task is null || task.IsCompleted)
             cts?.Dispose();
         _normalizationReady = true;
+        return task is { IsCompleted: false } ? task : null;
+    }
+
+    /// <summary>
+    /// What is left of a running <see cref="IAudioVolumeSlide.SlideVolume"/>: a gain change while a
+    /// slide runs ramps over the rest of it, since setting the bus volume would cut the slide short.
+    /// </summary>
+    private TimeSpan RemainingSlide()
+    {
+        var remaining = Volatile.Read(ref _slideEndTicks) - Environment.TickCount64;
+        return remaining > 0 ? TimeSpan.FromMilliseconds(remaining) : TimeSpan.Zero;
     }
 
     /// <summary>User volume times the normalization gain (when on), on the player's bus.</summary>
@@ -738,7 +783,9 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     private bool ApplyEqualizerLocked() =>
         TryLocked(stream => stream.SetEqualizer(FatzAudioMappings.ToEqualizerBands(_equalizer)), "Equalizer");
 
-    private void CloseStream()
+    /// <param name="pendingAnalysis">A cancelled analysis still running: an FFmpeg conversion it may be
+    /// reading is released when it finishes, so its temp file is not deleted while open.</param>
+    private void CloseStream(Task? pendingAnalysis = null)
     {
         Fa.AudioStream? stream;
         ConvertedAudio? converted;
@@ -763,7 +810,10 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             stream.Dispose();
         }
 
-        converted?.Dispose();
+        if (converted is not null && pendingAnalysis is not null)
+            _ = pendingAnalysis.ContinueWith(_ => converted.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        else
+            converted?.Dispose();
     }
 
     private void EndFadeSessionLocked(bool restoreGain)
@@ -831,6 +881,10 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         double end;
         lock (_gate)
         {
+            // Played again (or seeked) before this event arrived: the pass it reports is gone.
+            if (sender is Fa.AudioStream { State: Fa.StreamState.Playing or Fa.StreamState.Paused })
+                return;
+
             // A fade that ran to the end must not leave a replay muted.
             EndFadeSessionLocked(restoreGain: true);
             end = _activeTrimWindow?.PlayableEnd ?? _duration;
