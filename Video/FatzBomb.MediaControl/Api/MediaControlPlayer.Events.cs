@@ -92,7 +92,14 @@ public partial class MediaControlPlayer
         ClearPendingSeek();
         _positionNotifier.Stop();
         EventHandler? handler = MediaStopped;
-        if (handler != null)
+        if (handler == null)
+            return;
+
+        // The item a load replaces: raised now, before that load's MediaClosed and MediaLoaded
+        // (queued, it arrived after them and auto-hide hid the new item).
+        if (File.IsStoppingReplacedMedia)
+            HostEventDispatcher.Raise(this, handler, nameof(MediaStopped));
+        else
             _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, nameof(MediaStopped)));
     }
 
