@@ -56,6 +56,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Changed
 
+- Loudness scans are faster: the K-weighting filter runs two channels per pass and the true-peak oversampler runs
+  eight samples per SIMD step, or sixteen with AVX on x86 CPUs that have it (chosen at run time). The loudness math of
+  a 4-minute stereo song drops from about 0.37 s to 0.26 s of one core; a whole scan of a FLAC or MP3 file is about 20 %
+  faster. Results are bit-identical to before (checked on x86 and ARM), so cached results stay valid. The real-time
+  limiter's true-peak check gets the same speed-up.
 - macOS and iOS: the engine's monotonic time is now `mach_absolute_time` (`CLOCK_UPTIME_RAW`, which stops while the
   machine sleeps) instead of `CLOCK_MONOTONIC`, so CADisplayLink / CVDisplayLink times and .NET `Stopwatch` timestamps
   can be passed in as they are. Windows converts QueryPerformanceCounter to ns exactly in integers (it went through

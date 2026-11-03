@@ -44,9 +44,12 @@ For each stream, the first of these that is available wins:
 - **Once per file.** With a cache directory set, the result is stored under a fingerprint of the file's content (size plus the first, middle and last 64 KB), so renamed or moved files are still recognised and nothing is scanned twice. Entries written by an older version of the measurement are ignored and the file is scanned again.
 - **Nothing waits for it.** Analysis starts when the stream is opened, on scan threads separate from the playback workers (one per core, minus one left for playback).
 
-- **True peak only where it can matter.** The 4x oversampling filter runs four output samples at a time on SIMD (SSE on x86, NEON on ARM), and blocks of 256 frames that cannot beat the peak found so far are skipped (no interpolated point can exceed a known bound times the samples it comes from). The result is the same as computing every point.
+- **True peak only where it can matter.** The 4x oversampling filter runs eight output samples at a time on SIMD (SSE on x86, NEON on ARM), sixteen with AVX on x86 processors that have it (picked at run time, so one binary still runs on older CPUs), and blocks of 256 frames that cannot beat the peak found so far are skipped (no interpolated point can exceed a known bound times the samples it comes from). Every path adds the same products in the same order, so the result is the same, to the bit, as computing every point one at a time.
+- **Two channels per filter pass.** The K-weighting filter runs a pair of channels in one loop, so each channel's steps fill the other's wait on its previous sample. The arithmetic per channel is unchanged, so the measured loudness is identical.
 
 Measured on the CI test file (3 minutes of stereo 44.1 kHz WAV, 4-core container): about 0.4 s, roughly 450x real time. A 10-minute 192 kbit/s MP3 scans in about 0.6 s on 4 cores (1000x real time), faster than decoding it once on one core.
+
+A 4-minute 44.1 kHz stereo song, loudly mastered, on a 4-core 2.1 GHz x86 container (2026-11-03): about 0.1 s for FLAC, 0.12 s for 192 kbit/s MP3 and 0.18 s for AAC on all cores. On one core the loudness math (filter and true peak, decoding excluded) takes about 0.26 s of that, and decoding 0.13 s (FLAC) to 0.34 s (AAC).
 
 ### Playback never waits
 

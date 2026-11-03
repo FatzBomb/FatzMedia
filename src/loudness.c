@@ -20,12 +20,46 @@
 #if defined(__SSE__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
 #  include <xmmintrin.h>
 #  define FA_TP_SSE 1
+/* AVX (8 lanes, still separate multiply and add, so each lane's sum is the SSE
+ * one) is chosen at run time; the build stays SSE-only. */
+#  if defined(__GNUC__) || defined(__clang__)
+#    include <immintrin.h>
+#    include <cpuid.h>
+#    define FA_TP_AVX 1
+#    define FA_TARGET_AVX __attribute__((target("avx")))
+#  elif defined(_MSC_VER)
+#    include <immintrin.h>
+#    include <intrin.h>
+#    define FA_TP_AVX 1
+#    define FA_TARGET_AVX
+#  endif
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
 #  include <arm_neon.h>
 #  define FA_TP_NEON 1
 #endif
 
 /* ---- True peak ------------------------------------------------------------- */
+
+#if defined(FA_TP_AVX)
+/* Whether the CPU has AVX and the OS saves the YMM registers. */
+static int tp_have_avx(void)
+{
+    unsigned lo;
+#  if defined(__GNUC__) || defined(__clang__)
+    unsigned a, b, c, d, hi;
+    if (!__get_cpuid(1, &a, &b, &c, &d)) return 0;
+    if (!(c & (1u << 27)) || !(c & (1u << 28))) return 0;   /* OSXSAVE, AVX */
+    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    (void)hi;
+#  else
+    int r[4];
+    __cpuid(r, 1);
+    if (!(r[2] & (1 << 27)) || !(r[2] & (1 << 28))) return 0;
+    lo = (unsigned)_xgetbv(0);
+#  endif
+    return (lo & 6) == 6;                                       /* XMM and YMM state */
+}
+#endif
 
 fa_result fa_truepeak_init(fa_truepeak* tp, uint32_t rate, uint32_t channels)
 {
@@ -67,6 +101,9 @@ fa_result fa_truepeak_init(fa_truepeak* tp, uint32_t rate, uint32_t channels)
     for (t = 0; t < FA_TP_TAPS; t++)
         for (p = 0; p < FA_TP_PHASES; p++)
             for (n = 0; n < 4; n++) tp->wide[(t * FA_TP_PHASES + p) * 4 + n] = tp->coef[t][p];
+#endif
+#if defined(FA_TP_AVX)
+    tp->avx = tp_have_avx();
 #endif
     return FA_OK;
 }
@@ -145,9 +182,107 @@ void fa_truepeak_flush(fa_truepeak* tp)
     free(zero);
 }
 
+/* Eight samples at once (two vectors of four, each lane one sample): the largest
+ * |interpolated value| over the four phases for samples x[TAPS - 1 + 0..3] (m0)
+ * and x[TAPS - 1 + 4..7] (m1). Each lane is summed in tap order exactly as the
+ * four-sample loop and tp_phases sum it, so the results are bit-identical; two
+ * vectors keep eight independent sums in flight, so the adds don't wait on each
+ * other's latency. */
+#if defined(FA_TP_SSE)
+static void tp_eight(const float* wide, const float* x, __m128* m0, __m128* m1)
+{
+    const __m128 sign = _mm_set1_ps(-0.0f);
+    __m128 a0 = _mm_setzero_ps(), a1 = a0, a2 = a0, a3 = a0, b0 = a0, b1 = a0, b2 = a0, b3 = a0, c;
+    int t;
+    for (t = 0; t < FA_TP_TAPS; t++) {
+        const __m128 x0 = _mm_loadu_ps(x + t), x1 = _mm_loadu_ps(x + 4 + t);
+        const float* w = wide + t * FA_TP_PHASES * 4;
+        c = _mm_loadu_ps(w);      a0 = _mm_add_ps(a0, _mm_mul_ps(c, x0)); b0 = _mm_add_ps(b0, _mm_mul_ps(c, x1));
+        c = _mm_loadu_ps(w + 4);  a1 = _mm_add_ps(a1, _mm_mul_ps(c, x0)); b1 = _mm_add_ps(b1, _mm_mul_ps(c, x1));
+        c = _mm_loadu_ps(w + 8);  a2 = _mm_add_ps(a2, _mm_mul_ps(c, x0)); b2 = _mm_add_ps(b2, _mm_mul_ps(c, x1));
+        c = _mm_loadu_ps(w + 12); a3 = _mm_add_ps(a3, _mm_mul_ps(c, x0)); b3 = _mm_add_ps(b3, _mm_mul_ps(c, x1));
+    }
+    *m0 = _mm_max_ps(_mm_max_ps(_mm_andnot_ps(sign, a0), _mm_andnot_ps(sign, a1)),
+                     _mm_max_ps(_mm_andnot_ps(sign, a2), _mm_andnot_ps(sign, a3)));
+    *m1 = _mm_max_ps(_mm_max_ps(_mm_andnot_ps(sign, b0), _mm_andnot_ps(sign, b1)),
+                     _mm_max_ps(_mm_andnot_ps(sign, b2), _mm_andnot_ps(sign, b3)));
+}
+#  if defined(FA_TP_AVX)
+/* tp_eight for sixteen samples with AVX: lane i of m0 is sample i, of m1 sample
+ * 8 + i, each summed exactly as tp_eight sums it (no fused multiply-add). */
+FA_TARGET_AVX static void tp_sixteen(const fa_truepeak* tp, const float* x, __m256* m0, __m256* m1)
+{
+    const __m256 sign = _mm256_set1_ps(-0.0f);
+    __m256 a0 = _mm256_setzero_ps(), a1 = a0, a2 = a0, a3 = a0, b0 = a0, b1 = a0, b2 = a0, b3 = a0, c;
+    int t;
+    for (t = 0; t < FA_TP_TAPS; t++) {
+        const __m256 x0 = _mm256_loadu_ps(x + t), x1 = _mm256_loadu_ps(x + 8 + t);
+        c = _mm256_broadcast_ss(&tp->coef[t][0]); a0 = _mm256_add_ps(a0, _mm256_mul_ps(c, x0)); b0 = _mm256_add_ps(b0, _mm256_mul_ps(c, x1));
+        c = _mm256_broadcast_ss(&tp->coef[t][1]); a1 = _mm256_add_ps(a1, _mm256_mul_ps(c, x0)); b1 = _mm256_add_ps(b1, _mm256_mul_ps(c, x1));
+        c = _mm256_broadcast_ss(&tp->coef[t][2]); a2 = _mm256_add_ps(a2, _mm256_mul_ps(c, x0)); b2 = _mm256_add_ps(b2, _mm256_mul_ps(c, x1));
+        c = _mm256_broadcast_ss(&tp->coef[t][3]); a3 = _mm256_add_ps(a3, _mm256_mul_ps(c, x0)); b3 = _mm256_add_ps(b3, _mm256_mul_ps(c, x1));
+    }
+    *m0 = _mm256_max_ps(_mm256_max_ps(_mm256_andnot_ps(sign, a0), _mm256_andnot_ps(sign, a1)),
+                        _mm256_max_ps(_mm256_andnot_ps(sign, a2), _mm256_andnot_ps(sign, a3)));
+    *m1 = _mm256_max_ps(_mm256_max_ps(_mm256_andnot_ps(sign, b0), _mm256_andnot_ps(sign, b1)),
+                        _mm256_max_ps(_mm256_andnot_ps(sign, b2), _mm256_andnot_ps(sign, b3)));
+}
+
+/* tp_block's measuring of lin + 0 .. n (whole groups of sixteen) with AVX:
+ * returns how many samples it measured and stores the largest value in *m. */
+FA_TARGET_AVX static int tp_block_avx(const fa_truepeak* tp, const float* lin, int n, float* m)
+{
+    int j = 0, k;
+    float v[8];
+    __m256 mx = _mm256_setzero_ps(), e0, e1;
+    for (; j + 16 <= n; j += 16) {
+        tp_sixteen(tp, lin + j, &e0, &e1);
+        mx = _mm256_max_ps(mx, _mm256_max_ps(e0, e1));
+    }
+    _mm256_storeu_ps(v, mx);
+    for (k = 0; k < 8; k++) if (v[k] > *m) *m = v[k];
+    _mm256_zeroupper();
+    return j;
+}
+
+/* tp_each's sixteen-sample groups with AVX; returns how many samples it did. */
+FA_TARGET_AVX static int tp_each_avx(const fa_truepeak* tp, const float* lin, int n, float* peaks)
+{
+    const __m256 sign = _mm256_set1_ps(-0.0f);
+    int j = 0;
+    __m256 e0, e1;
+    for (; j + 16 <= n; j += 16) {
+        tp_sixteen(tp, lin + j, &e0, &e1);
+        e0 = _mm256_max_ps(e0, _mm256_andnot_ps(sign, _mm256_loadu_ps(lin + FA_TP_TAPS - 1 + j)));
+        e1 = _mm256_max_ps(e1, _mm256_andnot_ps(sign, _mm256_loadu_ps(lin + FA_TP_TAPS + 7 + j)));
+        _mm256_storeu_ps(peaks + j, _mm256_max_ps(_mm256_loadu_ps(peaks + j), e0));
+        _mm256_storeu_ps(peaks + j + 8, _mm256_max_ps(_mm256_loadu_ps(peaks + j + 8), e1));
+    }
+    _mm256_zeroupper();
+    return j;
+}
+#  endif
+#elif defined(FA_TP_NEON)
+static void tp_eight(const float* wide, const float* x, float32x4_t* m0, float32x4_t* m1)
+{
+    float32x4_t a0 = vdupq_n_f32(0.0f), a1 = a0, a2 = a0, a3 = a0, b0 = a0, b1 = a0, b2 = a0, b3 = a0, c;
+    int t;
+    for (t = 0; t < FA_TP_TAPS; t++) {
+        const float32x4_t x0 = vld1q_f32(x + t), x1 = vld1q_f32(x + 4 + t);
+        const float* w = wide + t * FA_TP_PHASES * 4;
+        c = vld1q_f32(w);      a0 = vaddq_f32(a0, vmulq_f32(c, x0)); b0 = vaddq_f32(b0, vmulq_f32(c, x1));
+        c = vld1q_f32(w + 4);  a1 = vaddq_f32(a1, vmulq_f32(c, x0)); b1 = vaddq_f32(b1, vmulq_f32(c, x1));
+        c = vld1q_f32(w + 8);  a2 = vaddq_f32(a2, vmulq_f32(c, x0)); b2 = vaddq_f32(b2, vmulq_f32(c, x1));
+        c = vld1q_f32(w + 12); a3 = vaddq_f32(a3, vmulq_f32(c, x0)); b3 = vaddq_f32(b3, vmulq_f32(c, x1));
+    }
+    *m0 = vmaxq_f32(vmaxq_f32(vabsq_f32(a0), vabsq_f32(a1)), vmaxq_f32(vabsq_f32(a2), vabsq_f32(a3)));
+    *m1 = vmaxq_f32(vmaxq_f32(vabsq_f32(b0), vabsq_f32(b1)), vmaxq_f32(vabsq_f32(b2), vabsq_f32(b3)));
+}
+#endif
+
 /* The largest |value| among the samples lin[TAPS - 1 .. TAPS - 1 + n) of one
  * channel and the points interpolated up to each: lin holds the TAPS - 1
- * samples before them first. Four samples at a time, each SIMD lane one sample,
+ * samples before them first. Eight (then four) samples at a time, each SIMD lane one sample,
  * each sum in tap order as tp_push forms it, so the result is the same. */
 static float tp_block(const fa_truepeak* tp, const float* lin, int n)
 {
@@ -161,7 +296,15 @@ static float tp_block(const fa_truepeak* tp, const float* lin, int n)
         const float* wide = tp->wide;
         int t;
         const __m128 sign = _mm_set1_ps(-0.0f);
-        __m128 mx = _mm_setzero_ps();
+        __m128 mx = _mm_setzero_ps(), e0, e1;
+#  if defined(FA_TP_AVX)
+        if (tp->avx) j = tp_block_avx(tp, lin, n, &m);
+#  endif
+        for (; j + 8 <= n; j += 8) {
+            tp_eight(wide, lin + j, &e0, &e1);
+            mx = _mm_max_ps(mx, e0);
+            mx = _mm_max_ps(mx, e1);
+        }
         for (; j + 4 <= n; j += 4) {
             __m128 a0 = _mm_setzero_ps(), a1 = a0, a2 = a0, a3 = a0;
             for (t = 0; t < FA_TP_TAPS; t++) {
@@ -182,7 +325,12 @@ static float tp_block(const fa_truepeak* tp, const float* lin, int n)
     {
         const float* wide = tp->wide;
         int t;
-        float32x4_t mx = vdupq_n_f32(0.0f);
+        float32x4_t mx = vdupq_n_f32(0.0f), e0, e1;
+        for (; j + 8 <= n; j += 8) {
+            tp_eight(wide, lin + j, &e0, &e1);
+            mx = vmaxq_f32(mx, e0);
+            mx = vmaxq_f32(mx, e1);
+        }
         for (; j + 4 <= n; j += 4) {
             float32x4_t a0 = vdupq_n_f32(0.0f), a1 = a0, a2 = a0, a3 = a0;
             for (t = 0; t < FA_TP_TAPS; t++) {
@@ -210,7 +358,7 @@ static float tp_block(const fa_truepeak* tp, const float* lin, int n)
 /* For each of the n samples lin[TAPS - 1 + j] of one channel: raises peaks[j] to
  * the largest |value| among the sample and the points interpolated up to it,
  * summed as tp_push sums them, so peaks[j] is what tp_push returns for that frame.
- * Four samples per SIMD vector, as in tp_block. */
+ * Eight (then four) samples at a time, as in tp_block. */
 static void tp_each(const fa_truepeak* tp, const float* lin, int n, float* peaks)
 {
     int j = 0, p;
@@ -220,6 +368,17 @@ static void tp_each(const fa_truepeak* tp, const float* lin, int n, float* peaks
         const float* wide = tp->wide;
         int t;
         const __m128 sign = _mm_set1_ps(-0.0f);
+#  if defined(FA_TP_AVX)
+        if (tp->avx) j = tp_each_avx(tp, lin, n, peaks);
+#  endif
+        for (; j + 8 <= n; j += 8) {
+            __m128 e0, e1;
+            tp_eight(wide, lin + j, &e0, &e1);
+            e0 = _mm_max_ps(e0, _mm_andnot_ps(sign, _mm_loadu_ps(lin + FA_TP_TAPS - 1 + j)));
+            e1 = _mm_max_ps(e1, _mm_andnot_ps(sign, _mm_loadu_ps(lin + FA_TP_TAPS + 3 + j)));
+            _mm_storeu_ps(peaks + j, _mm_max_ps(_mm_loadu_ps(peaks + j), e0));
+            _mm_storeu_ps(peaks + j + 4, _mm_max_ps(_mm_loadu_ps(peaks + j + 4), e1));
+        }
         for (; j + 4 <= n; j += 4) {
             __m128 a0 = _mm_setzero_ps(), a1 = a0, a2 = a0, a3 = a0, m;
             for (t = 0; t < FA_TP_TAPS; t++) {
@@ -238,6 +397,14 @@ static void tp_each(const fa_truepeak* tp, const float* lin, int n, float* peaks
 #elif defined(FA_TP_NEON)
         const float* wide = tp->wide;
         int t;
+        for (; j + 8 <= n; j += 8) {
+            float32x4_t e0, e1;
+            tp_eight(wide, lin + j, &e0, &e1);
+            e0 = vmaxq_f32(e0, vabsq_f32(vld1q_f32(lin + FA_TP_TAPS - 1 + j)));
+            e1 = vmaxq_f32(e1, vabsq_f32(vld1q_f32(lin + FA_TP_TAPS + 3 + j)));
+            vst1q_f32(peaks + j, vmaxq_f32(vld1q_f32(peaks + j), e0));
+            vst1q_f32(peaks + j + 4, vmaxq_f32(vld1q_f32(peaks + j + 4), e1));
+        }
         for (; j + 4 <= n; j += 4) {
             float32x4_t a0 = vdupq_n_f32(0.0f), a1 = a0, a2 = a0, a3 = a0, m;
             for (t = 0; t < FA_TP_TAPS; t++) {
@@ -465,22 +632,77 @@ static double filter_channel(fa_meter* m, const float* x, int64_t n, uint32_t c)
     return acc;
 }
 
+/* filter_channel for channels c and c + 1 in one loop, with the same arithmetic
+ * per channel (so the same results): the two channels' filters are independent,
+ * so each one's steps fill the other's wait on its previous sample. */
+static void filter_pair(fa_meter* m, const float* x, int64_t n, uint32_t c, double* e)
+{
+    double* z = m->z + (size_t)c * 4;
+    double z0 = z[0], z1 = z[1], z2 = z[2], z3 = z[3], acc = 0.0;
+    double w0 = z[4], w1 = z[5], w2 = z[6], w3 = z[7], acc2 = 0.0;
+    const double b00 = m->b[0][0], b01 = m->b[0][1], b02 = m->b[0][2], a01 = m->a[0][1], a02 = m->a[0][2];
+    const double b10 = m->b[1][0], b11 = m->b[1][1], b12 = m->b[1][2], a11 = m->a[1][1], a12 = m->a[1][2];
+    uint32_t stride = m->channels;
+    int64_t i;
+    for (i = 0; i < n; i++) {
+        double in = (double)x[(size_t)i * stride + c];
+        double in2 = (double)x[(size_t)i * stride + c + 1];
+        double y1 = b00 * in + z0, v1 = b00 * in2 + w0;
+        double y2, v2;
+        z0 = b01 * in - a01 * y1 + z1;
+        w0 = b01 * in2 - a01 * v1 + w1;
+        z1 = b02 * in - a02 * y1;
+        w1 = b02 * in2 - a02 * v1;
+        y2 = b10 * y1 + z2;
+        v2 = b10 * v1 + w2;
+        z2 = b11 * y1 - a11 * y2 + z3;
+        w2 = b11 * v1 - a11 * v2 + w3;
+        z3 = b12 * y1 - a12 * y2;
+        w3 = b12 * v1 - a12 * v2;
+        acc += y2 * y2;
+        acc2 += v2 * v2;
+    }
+    if (fabs(z0) < 1e-30) z0 = 0.0;
+    if (fabs(z1) < 1e-30) z1 = 0.0;
+    if (fabs(z2) < 1e-30) z2 = 0.0;
+    if (fabs(z3) < 1e-30) z3 = 0.0;
+    if (fabs(w0) < 1e-30) w0 = 0.0;
+    if (fabs(w1) < 1e-30) w1 = 0.0;
+    if (fabs(w2) < 1e-30) w2 = 0.0;
+    if (fabs(w3) < 1e-30) w3 = 0.0;
+    z[0] = z0; z[1] = z1; z[2] = z2; z[3] = z3;
+    z[4] = w0; z[5] = w1; z[6] = w2; z[7] = w3;
+    e[0] = acc;
+    e[1] = acc2;
+}
+
+/* K-weights n frames of every channel, two at a time, and with `sum` adds each
+ * channel's weighted sum of squares to subacc in channel order. */
+static void filter_all(fa_meter* m, const float* x, int64_t n, int sum)
+{
+    uint32_t c = 0, k;
+    double e[2];
+    while (c < m->channels) {
+        uint32_t two = c + 1 < m->channels;
+        if (two) filter_pair(m, x, n, c, e);
+        else e[0] = filter_channel(m, x, n, c);
+        for (k = 0; k <= two; k++, c++)
+            if (sum && m->weight[c] != 0.0) m->subacc += m->weight[c] * e[k];
+    }
+}
+
 fa_result fa_meter_process(fa_meter* m, const float* x, int64_t frames)
 {
-    uint32_t c;
     while (frames > 0) {
         int64_t n = frames;
         if (m->skip > 0) {
             if (n > m->skip) n = m->skip;
-            for (c = 0; c < m->channels; c++) filter_channel(m, x, n, c);
+            filter_all(m, x, n, 0);
             if (m->with_peak) tp_process(m->tp, x, n, 0);
             m->skip -= n;
         } else {
             if (n > m->sublen - m->subfill) n = m->sublen - m->subfill;
-            for (c = 0; c < m->channels; c++) {
-                double e = filter_channel(m, x, n, c);
-                if (m->weight[c] != 0.0) m->subacc += m->weight[c] * e;
-            }
+            filter_all(m, x, n, 1);
             if (m->with_peak) tp_process(m->tp, x, n, 1);
             m->subfill += n;
             if (m->subfill == m->sublen) {

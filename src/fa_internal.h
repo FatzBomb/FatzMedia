@@ -853,6 +853,7 @@ typedef struct fa_truepeak {
     float coef[FA_TP_TAPS][FA_TP_PHASES];   /* tap-major: the phases of one tap side by side */
     float* wide;                /* SIMD builds: coef[t][p] repeated 4 times, [t][p][4] (block measuring) */
     float bound;                /* largest sum of |coef| of a phase */
+    int avx;                    /* x86: the CPU and OS run AVX, so blocks go 16 samples at a time */
     float* hist;                /* per channel: 2 x FA_TP_TAPS */
     int pos;
     float peak;                 /* largest |value| measured so far, linear */
