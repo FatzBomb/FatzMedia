@@ -736,6 +736,21 @@ const fa_frames* fa_midi_text_frames(const struct fa_midi* m, uint32_t* out_coun
     return m ? m->text_frames : NULL;
 }
 
+int fa_midi_drawn_frames(const struct fa_midi* m, fa_frames* first, fa_frames* last, uint32_t* out_rate)
+{
+    uint32_t i;
+    int any = 0;
+    for (i = 0; m && i < m->ntexts; i++) {
+        const midi_text* t = &m->texts[i];
+        if (t->type != FA_MIDI_LYRIC && t->type != FA_MIDI_TEXT) continue;
+        if (!any || t->frame < *first) *first = t->frame;
+        if (!any || t->frame > *last) *last = t->frame;
+        any = 1;
+    }
+    if (any) *out_rate = m->rate;
+    return any;
+}
+
 /* Ends every voice of `key` started for (channel, key-as-in-the-file). */
 static void end_notes(struct fa_midi* m, int ch, int key)
 {

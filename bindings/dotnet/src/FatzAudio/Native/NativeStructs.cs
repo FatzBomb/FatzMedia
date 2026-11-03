@@ -747,6 +747,8 @@ internal struct FaSilence
     public uint Mode;
     public uint WindowMs;
     public uint MinSoundMs;
+    public long FirstDrawn;
+    public long LastDrawn;
 }
 
 [StructLayout(LayoutKind.Sequential)]

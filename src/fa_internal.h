@@ -448,6 +448,9 @@ uint32_t fa_tracker_cells_in(const struct fa_tracker* t, fa_frames from, fa_fram
 /* Frames of the text events, sorted, fixed while the decoder is open (read by the
  * audio thread to raise FA_EVENT_MIDI_TEXT). */
 const fa_frames* fa_midi_text_frames(const struct fa_midi* m, uint32_t* out_count);
+/* fa_stream_get_silence: the frames (at *out_rate) of the first and last lyric or text
+ * event (FA_MIDI_LYRIC, FA_MIDI_TEXT); 0 when the file has none. */
+int fa_midi_drawn_frames(const struct fa_midi* m, fa_frames* first, fa_frames* last, uint32_t* out_rate);
 
 /* ---- Track analysis (analyze.c, beat.c, key.c, beat_grid.c) ------------------ */
 

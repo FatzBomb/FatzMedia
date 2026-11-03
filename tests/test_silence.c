@@ -673,6 +673,9 @@ static void cache_checks(const char* dir)
         c.info.struct_size = sizeof(c.info);
         CHECK(fa_analysis_get_silence(a, &c.info, c.regs, MAX_REGIONS, &c.n) == FA_OK);
         CHECK(c.n == after.n && memcmp(c.regs, after.regs, c.n * sizeof(c.regs[0])) == 0);
+        CHECK(!(c.info.flags & FA_SILENCE_DRAWING));   /* an analysis has no graphics */
+        CHECK_EQ(c.info.first_drawn, FA_FRAMES_UNSET);
+        CHECK_EQ(c.info.last_drawn, FA_FRAMES_UNSET);
         {
             fa_beat_grid g;
             memset(&g, 0, sizeof(g));
@@ -707,6 +710,25 @@ static void cache_checks(const char* dir)
     fa_analysis_free(a);
     CHECK(stream_silence(s, &o, &other) == FA_OK);
     CHECK_EQ(other.info.flags, FA_SILENCE_COMPLETE | FA_SILENCE_FROM_CACHE);
+    /* CD+G graphics: their drawing times come with the cached result too (a palette
+     * load, then a red tile at pack 300 = 1 s). */
+    {
+        uint8_t cdg[301 * 24];
+        result g;
+        memset(cdg, 0, sizeof(cdg));
+        cdg[0] = 9; cdg[1] = 30;                 /* load colours 0-7: 1 = red */
+        cdg[4 + 2] = 15 << 2;
+        cdg[300 * 24] = 9; cdg[300 * 24 + 1] = 6; /* tile: colour 1 on 0, row 5, col 10 */
+        cdg[300 * 24 + 5] = 1;
+        cdg[300 * 24 + 6] = 5;
+        cdg[300 * 24 + 7] = 10;
+        memset(cdg + 300 * 24 + 8, 0x3F, 12);
+        CHECK(fa_stream_load_cdg_memory(s, cdg, sizeof(cdg)) == FA_OK);
+        CHECK(stream_silence(s, &o, &g) == FA_OK);
+        CHECK_EQ(g.info.flags, FA_SILENCE_COMPLETE | FA_SILENCE_FROM_CACHE | FA_SILENCE_DRAWING);
+        CHECK_EQ(g.info.first_drawn, LOW_RATE);
+        CHECK_EQ(g.info.last_drawn, ((fa_frames)301 * LOW_RATE + 299) / 300);
+    }
     /* A truncated output struct is filled up to its size. */
     {
         fa_silence small;

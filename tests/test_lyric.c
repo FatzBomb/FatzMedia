@@ -1883,6 +1883,74 @@ static void test_notes_free(void)
     fa_engine_destroy(e);
 }
 
+static void meta(buf* t, uint32_t delta, unsigned type, const char* text)
+{
+    size_t n = strlen(text);
+    varlen(t, delta); put8(t, 0xFF); put8(t, type); varlen(t, (uint32_t)n); put(t, text, n);
+}
+
+static void silence_of(fa_stream* s, fa_silence* out)
+{
+    memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(*out);
+    CHECK_EQ(fa_stream_get_silence(s, NULL, out, NULL, 0, NULL), FA_OK);
+}
+
+/* fa_silence.first_drawn / last_drawn: the first and last lyric or text event. */
+static void test_drawn_times(void)
+{
+    fa_silence si;
+    fa_stream* s;
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_open_options o;
+    buf titled = make_titled("@TSong", "@IArtist", 3, 16), f = { 0 }, t = { 0 };
+    fa_frames r;
+    /* The song: lyrics at 1 s and 10.5 s. */
+    s = open_song();
+    CHECK(s);
+    silence_of(s, &si);
+    r = si.sample_rate;
+    CHECK(si.flags & FA_SILENCE_DRAWING);
+    CHECK_EQ(si.first_drawn, r);
+    CHECK_EQ(si.last_drawn, r * 21 / 2 + 1);
+    fa_stream_close(s);
+    /* "@" title lines at 0 count: the title shows before the first lyric (4 s). */
+    s = open_buf(&titled);
+    CHECK(s);
+    silence_of(s, &si);
+    CHECK_EQ(si.first_drawn, 0);
+    CHECK_EQ(si.last_drawn, r * 27 / 2 + 1);
+    fa_stream_close(s);
+    /* Markers and cue points do not count; a notes-less file (no soundfont) reports its
+     * lyric and nothing audible. */
+    put(&f, "MThd", 4); put32be(&f, 6); put8(&f, 0); put8(&f, 0); put8(&f, 0); put8(&f, 1); put8(&f, 480 >> 8); put8(&f, 480 & 255);
+    meta(&t, 0, 0x06, "Intro");
+    meta(&t, 0, 0x03, "Track");
+    lyric(&t, 1920, "AB");
+    meta(&t, 960, 0x07, "Cue");
+    varlen(&t, 960); put8(&t, 0xFF); put8(&t, 0x2F); put8(&t, 0);
+    put(&f, "MTrk", 4); put32be(&f, (uint32_t)t.n); put(&f, t.d, t.n);
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_SYSTEM_SOUNDFONT;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    fa_open_options_init(&o);
+    s = NULL;
+    CHECK_EQ(fa_stream_open_memory(e, f.d, f.n, &o, &s), FA_OK);
+    if (s) {
+        silence_of(s, &si);
+        CHECK(si.flags & FA_SILENCE_DRAWING);
+        CHECK_EQ(si.first_audible, FA_FRAMES_UNSET);
+        CHECK_EQ(si.first_drawn, 2 * (fa_frames)si.sample_rate);
+        CHECK_EQ(si.last_drawn, 2 * (fa_frames)si.sample_rate + 1);
+        fa_stream_close(s);
+    }
+    fa_engine_destroy(e);
+    free(f.d);
+    free(t.d);
+    free(titled.d);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1927,6 +1995,7 @@ int main(void)
     RUN(test_tempo_ramp);
     RUN(test_lyrics_only);
     RUN(test_notes_free);
+    RUN(test_drawn_times);
     free(g_song.d);
     fa_soundfont_close(g_font);
     fa_engine_destroy(g_engine);

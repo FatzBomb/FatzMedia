@@ -2336,6 +2336,29 @@ Three ways to get it, all giving the same answer for the same audio:
 MIDI files and tracker modules are measured on their rendered audio, so release
 tails, reverb and sample decay count as audible (their note events would end too
 early). Rendering silence costs next to nothing.
+
+Karaoke: a title screen or a count-in is often drawn over silent audio, so
+fa_stream_get_silence also reports when the drawing starts and ends (first_drawn,
+last_drawn, with FA_SILENCE_DRAWING set; stream frames, as the audible times). The
+policy is the app's: to trim only where the audio is silent and nothing is drawn,
+play from the earlier of first_audible and first_drawn to the later of last_audible
+and last_drawn (an UNSET one does not count).
+  - CD+G graphics (a file, memory or ZIP; a lone .cdg too): from the start of the
+    first pack to the end of the last that changes a pixel's shown colour, border
+    included, plus the CD+G offset (fa_stream_set_cdg_offset) as it is when asked.
+    A memory preset to the colour already shown, a palette load of colours no pixel
+    uses and a scroll of a one-colour screen do not count; transparency changes do
+    not count; any scroll of a screen of several colours counts. Discs are not
+    reported (their packs arrive while playing).
+  - MIDI/KAR: the first and the last lyric or text event (FA_MIDI_LYRIC,
+    FA_MIDI_TEXT, so a .kar's "@" title lines count); last_drawn is the frame after
+    the last. Markers, cue points, track and instrument names and copyright do not
+    count. A lyric surface shows a line up to fa_lyric_style.lead_ms before its
+    first syllable and keeps the last one on screen after it: widen the times by
+    the style's lead if the trim must keep that too.
+Both are filled when the answer comes from the analysis cache too (they are the
+stream's, not the audio's). fa_analysis_get_silence and fa_silence_detector_get
+leave them FA_FRAMES_UNSET with the flag clear: they have no graphics.
 ```
 
 Functions: `fa_silence_options_init`, `fa_stream_get_silence`, `fa_analysis_get_silence`, `fa_silence_detector_create`, `fa_silence_detector_feed`, `fa_silence_detector_get`, `fa_silence_detector_free`
@@ -2361,7 +2384,10 @@ FA_API void FA_CALL fa_silence_options_init(fa_silence_options* options);
 typedef enum fa_silence_flags {
     FA_SILENCE_COMPLETE   = 1 << 0,  /* the regions cover the whole stream; without it
                                         only the leading and trailing ones are known */
-    FA_SILENCE_FROM_CACHE = 1 << 1   /* read from the analysis cache, not measured now */
+    FA_SILENCE_FROM_CACHE = 1 << 1,  /* read from the analysis cache, not measured now */
+    FA_SILENCE_DRAWING    = 1 << 2   /* the stream has karaoke drawing to report on (CD+G
+                                        graphics from a file, or MIDI lyric or text
+                                        events): first_drawn and last_drawn are its */
 } fa_silence_flags;
 
 typedef struct fa_silence_region {
@@ -2384,6 +2410,10 @@ typedef struct fa_silence {
     uint32_t mode;           /* fa_silence_mode */
     uint32_t window_ms;      /* RMS window; 0 for PEAK */
     uint32_t min_sound_ms;   /* RMS shortest sound; 0 for PEAK */
+    fa_frames first_drawn;   /* karaoke: the first frame at which the picture changes
+                                (below); FA_FRAMES_UNSET when nothing is drawn */
+    fa_frames last_drawn;    /* the frame after the last change; FA_FRAMES_UNSET when
+                                nothing is drawn */
 } fa_silence;
 
 /* A stream's silence (above). options NULL = defaults. Copies up to `capacity`

@@ -174,7 +174,9 @@ Every result says which settings made it (`fa_silence.mode`, `threshold_db`, `mi
 | `last_audible` | `LastAudible`, `LastAudibleTime` | The frame after the last audible one: the value for `CUE_OUT` |
 | `length` | `Length` | Frames measured (the stream's length; a detector: the frames fed so far) |
 | `sample_rate` | `SampleRate` | Of the frames |
-| `flags` | `IsComplete`, `FromCache` | `FA_SILENCE_COMPLETE`: the regions cover the whole song. Without it only the leading and trailing regions are known. `FA_SILENCE_FROM_CACHE`: read from the analysis cache |
+| `flags` | `IsComplete`, `FromCache`, `HasDrawing` | `FA_SILENCE_COMPLETE`: the regions cover the whole song. Without it only the leading and trailing regions are known. `FA_SILENCE_FROM_CACHE`: read from the analysis cache. `FA_SILENCE_DRAWING`: the stream has karaoke drawing to report on ([karaoke](#karaoke-files-silence-and-drawing)) |
+| `first_drawn` | `FirstDrawn`, `FirstDrawnTime` | Karaoke: the first frame at which the picture changes (CD+G graphics, MIDI lyrics). `FA_FRAMES_UNSET` (.NET null) when nothing is drawn, and always from an analysis or a detector |
+| `last_drawn` | `LastDrawn`, `LastDrawnTime` | Karaoke: the frame after the last change of the picture |
 | `mode`, `threshold_db`, `min_length_ms`, `window_ms`, `min_sound_ms` | `Mode`, `ThresholdDb`, `MinLength`, `Window`, `MinSound` | The settings that produced the result (`window_ms` and `min_sound_ms` are 0 for Peak) |
 | regions | `Regions` | `fa_silence_region { start, end }` (end is the frame after the last silent one), in order. The silence before the first audible frame and after the last one are regions too, when they are long enough |
 
@@ -237,6 +239,53 @@ var exact = song.DetectSilence(new SilenceOptions { Mode = SilenceMode.Peak, Thr
 A song with minutes of silence before a hidden track gets its leading and trailing regions here; the gap in the middle comes from the analysis.
 
 **MIDI files and tracker modules** are measured on their rendered audio, with the stream's soundfont, not on their note events. The events would put the end at the last note-off; the audio includes what keeps sounding after it (release envelopes, reverb and chorus, which are on by default, and a module's sample decay). Rendering silence costs next to nothing, and a seek in these formats plays its events forward without rendering them. A seek clears what was still ringing, so a tail window that ends where a note is still dying away reads on past its end until the tail is gone: the answer matches a render of the whole song.
+
+### Karaoke files: silence and drawing
+
+An MP3+G often has silent audio while its graphics show a title screen or a count-in, and a KAR's title text can come before its first note. A trim on the audio alone cuts those. So `fa_stream_get_silence` also reports when the drawing starts and ends, in the same frames as the audible times, and sets `FA_SILENCE_DRAWING` (.NET `HasDrawing`) when the stream has something to report on:
+
+| Source | `first_drawn` | `last_drawn` |
+|---|---|---|
+| CD+G graphics (an MP3+G, a ZIP, graphics loaded with `fa_stream_load_cdg_*`, a [lone `.cdg`](cdg.md#graphics-with-no-audio)) | The start of the first pack that changes what the screen shows | The end of the last such pack (pack n ends at (n + 1) / 300 s) |
+| MIDI/KAR | The first lyric or text event (`FA_MIDI_LYRIC`, `FA_MIDI_TEXT`: a .kar's `@` title lines count) | The frame after the last one |
+
+- **CD+G:** a pack counts when some pixel's shown colour (its palette RGB, the border included) is different after it. A memory preset to the colour already shown (the repeats at a song's start and end), a palette load of colours no pixel uses and a scroll of a one-colour screen do not count; transparency changes do not count; a scroll of a screen of several colours does. Both times include the CD+G offset (`fa_stream_set_cdg_offset`) as it is when you ask, kept within the stream. CD+G read from a disc is not reported (its packs arrive while it plays), and neither is the flag.
+- **MIDI/KAR:** markers, cue points, track and instrument names and copyright do not count. A [lyric surface](lyrics.md) shows a line up to `fa_lyric_style.lead_ms` (default 400 ms) before its first syllable and keeps the last one on screen after it, so widen the window by your style's lead if the trim should keep that too.
+- Graphics that never change the picture: the flag is set and both times are `FA_FRAMES_UNSET`. A stream with no graphics and no lyrics: neither.
+- The times are the stream's, not the audio's: they come with a cached result too. `fa_analysis_get_silence` and `fa_silence_detector_get` leave them `FA_FRAMES_UNSET` with the flag clear.
+- Streams with no audio ([a lone `.cdg`](cdg.md#graphics-with-no-audio), [a MIDI with lyrics and no notes](lyrics.md#files-with-lyrics-and-no-notes)) report nothing audible and their drawing times.
+
+The policy is yours. A player with three trim modes for karaoke files:
+
+| Mode | Trims | Start, end |
+|---|---|---|
+| No trim (default) | Nothing; the file plays as authored | - |
+| Silence with no drawing | Only where the audio is silent and nothing is drawn | The earlier of `first_audible` and `first_drawn`; the later of `last_audible` and `last_drawn` (an unset one does not count) |
+| Silence regardless of drawing | Where the audio is silent, as for plain audio | `first_audible`, `last_audible` |
+
+```c
+fa_silence s = { .struct_size = sizeof(s) };
+if (fa_stream_get_silence(song, NULL, &s, NULL, 0, NULL) == FA_OK) {
+    fa_frames in = s.first_audible, out = s.last_audible;
+    if (s.first_drawn != FA_FRAMES_UNSET && (in == FA_FRAMES_UNSET || s.first_drawn < in)) in = s.first_drawn;
+    if (s.last_drawn != FA_FRAMES_UNSET && (out == FA_FRAMES_UNSET || s.last_drawn > out)) out = s.last_drawn;
+    if (in != FA_FRAMES_UNSET) {
+        fa_stream_set_marker(song, FA_MARKER_CUE_IN, in);
+        fa_stream_set_marker(song, FA_MARKER_CUE_OUT, out);
+    }
+}
+```
+
+```csharp
+var s = song.DetectSilence();
+long? Min(long? a, long? b) => a is null ? b : b is null ? a : Math.Min(a.Value, b.Value);
+long? Max(long? a, long? b) => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
+if (Min(s.FirstAudible, s.FirstDrawn) is long cueIn && Max(s.LastAudible, s.LastDrawn) is long cueOut)
+{
+    song.Markers.CueIn = s.ToTime(cueIn);
+    song.Markers.CueOut = s.ToTime(cueOut);
+}
+```
 
 **Push, packet, web, callback and app-I/O streams** cannot be read twice, so `fa_stream_get_silence` returns `FA_ERROR_NOT_SEEKABLE` (as `fa_analyze_stream` does). Feed the audio to a detector instead.
 
