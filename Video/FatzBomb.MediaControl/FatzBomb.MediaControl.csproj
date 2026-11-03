@@ -41,6 +41,9 @@
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Portable.Tests" />
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Linux.Tests" />
 		<InternalsVisibleTo Include="FatzBomb.MediaControl.Avalonia.Tests" />
+		<!-- 037A slice 2: the FatzAudio engine implements Core's internal audio seams (fades, EQ,
+		     loop, trim, MIDI reader, level source). Packages version in lockstep. -->
+		<InternalsVisibleTo Include="FatzBomb.MediaControl.Audio.FatzAudio" />
 	</ItemGroup>
 
 </Project>
