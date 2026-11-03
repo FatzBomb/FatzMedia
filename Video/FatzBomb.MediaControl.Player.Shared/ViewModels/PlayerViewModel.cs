@@ -514,7 +514,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
             ReportNativeDependencies(player.NativeDependencies);
             var loadResetSummary = $"Load resets: Pitch={ResetPitchOnMediaLoad}, Tempo={ResetTempoOnMediaLoad}";
             var transformSummary = $"Visual transform={BaseVisualTransformState}";
-            var trimSummary = $"Silence trim={Options.TrimSilence}";
+            var trimSummary = $"Silence trim={Options.TrimSilence} | Audio engine={Options.AudioEngine}";
             var hostSummary = DescribeHostStartup() is { Length: > 0 } host ? $" | {host}" : string.Empty;
             StatusText = $"Renderer: {renderer.Summary}{hostSummary} | {transformSummary} | {loadResetSummary} | {trimSummary} | Native DLL path: {string.Join("; ", NativeLibraryPaths)}";
         }

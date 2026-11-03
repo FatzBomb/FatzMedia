@@ -61,7 +61,7 @@ The thread column says where the handler runs. "Control queue" means the player'
 | `MediaClosed` | `MediaClosedEventArgs` (`Source`) | The media was closed or replaced by a new load. | Operation thread |
 | `MediaStarted` | none | Playback started or resumed, before the first presented frame. | Operation thread |
 | `MediaPaused` | `MediaPausedEventArgs` (`Position`) | Playback paused. | Operation thread |
-| `MediaStopped` | none | Playback was stopped. | Control queue |
+| `MediaStopped` | none | Playback was stopped, or a new load replaced playing media. | Control queue; for a replaced item, the load's operation thread, before that load's `MediaClosed` and `MediaLoaded` |
 | `MediaEnded` | none | The media reached its natural end. | Control queue |
 | `MediaLooped` | `MediaLoopedEventArgs` (`Position`) | Loop playback began its next pass. | Control queue |
 | `StateChanged` | `MediaStateChangedEventArgs` (`PreviousState`, `CurrentState`) | The playback state changed. | Control queue |

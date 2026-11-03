@@ -55,6 +55,23 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-043 - Audio formats that fail on both engines, and a BASS crash on a WMA
+
+Reported: 2026-11-03, owner format sweep during the 037A slice 2 smoke (Windows, WPF player, the
+same files on BASS and FatzAudio). Not caused by slice 2: each fails the same way on BASS.
+- **ALAC (`.m4a`), M4R, audio-only MP4, TS:** nothing plays; the player stays responsive.
+  Suspected from the code, not yet confirmed with logs: `.mp4` and `.ts` are registered as video
+  (`Bootstrap.LibraryLoader`), so an audio-only file goes to the video pipeline and does not fall
+  back to audio; `.m4r` is not registered at all (rejected as unsupported); ALAC is decoded by
+  neither engine and the FFmpeg fallback does not take over.
+- **WMA on BASS:** the player froze and closed before its log appeared (FatzAudio played the
+  file). Owner decision 2026-11-03: not chased, since FatzAudio replaces BASS.
+- **Images opened on their own:** an image loaded after any non-image media stayed hidden. Cause:
+  the replaced item's `MediaStopped` reached the surface's auto-hide after the new `MediaLoaded`.
+  Fixed in PR 52, owner verified on Windows 2026-11-03.
+
+Needed before fixing the formats: the Log lines of each failing load and the sample files. Fix in its own PR after slice 2.
+
 ### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
 
 Reported: 2026-11-02, owner smoke of 037A slice 1. One video logged `Quick normalization complete,
@@ -86,8 +103,9 @@ the current behaviour.
   analysis exists at open, so a first play is untrimmed (`PrepareNextAsync`/`AnalyzeAsync`
   fill the cache). Owner decision 2026-11-02: silence detection belongs in the audio engine;
   requested from FatzAudio (request 9 in `docs/fatzaudio/2026-11-01_MediaControl_Request_SurfaceTiming.md`),
-  and the FatzAudio engine (037A slice 2) trims on the first play with it. The BASS path keeps
-  today's behaviour until then.
+  and the FatzAudio engine (037A slice 2) trims on the first play with it. Implemented
+  2026-11-03 for the FatzAudio engine (`--audio=fatz`), pending the owner's smoke
+  (`updates/037A_2`); the BASS path keeps today's behaviour.
 - **A found sidecar background beats an explicit one** (`ResolveCoreBackground` returns
   `sidecar ?? explicit`); `ignoreSidecar` only affects backgrounds, not `.cdg` or subtitle pairing.
 - **Sidecar probing is case-sensitive on Linux** (`Song.CDG` next to `Song.mp3` is not found);

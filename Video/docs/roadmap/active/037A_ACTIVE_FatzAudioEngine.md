@@ -4,9 +4,11 @@ Status: Active (owner decision 2026-11-01: start 037A, karaoke drawing goes to F
 done on Linux (`updates/037A_0`); slice 1 merged, owner smoke passed (`updates/037A_1`). FatzAudio
 1.0.0-rc.1 (2026-11-02, main @ 59741a5) answers our blocking requests 1 and 8 and request 9
 (silence detection); our reply is `docs/fatzaudio/2026-11-03_MediaControl_Reply_Rc1.md`. Slice 2
-next, pinned to `FatzAudio` `1.0.0-rc.1`. K4 (clock at a present time), K6 (lyrics without a
-soundfont) and K8 (shaping) merged after rc.1 (FatzAudio main @ 5182a4e); slice 3 moves the pin to
-the build that carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`).
+(FatzAudioEngine for files and archives, opt-in with `MediaPlayerConfiguration.AudioEngineFactory`
+and `--audio=fatz`, pinned to `FatzAudio` `1.0.0-rc.1`) merged 2026-11-03, owner smoke passed
+(`updates/037A_2`). K4 (clock at a present time), K6 (lyrics without a soundfont) and K8
+(shaping) merged in FatzAudio after rc.1 (main @ 5182a4e); slice 3 moves the pin to the build that
+carries them (reply `docs/fatzaudio/2026-11-03_MediaControl_Reply_K4K6K8.md`).
 Written 2026-10-20 as an idea from FatzAudio's answer to our two notes; revised 2026-11-01 against
 FatzAudio `main` @ 17d2284 (PR 170), read and measured on Linux:
 `docs/fatzaudio/2026-11-01_MediaControl_Analysis_KaraokeHandOff.md` (sync, cost, stalls,
@@ -89,7 +91,23 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
 5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
-   0.75-1.5, seeks, loop wraps and pause/resume.
+   0.75-1.5, seeks, loop wraps and pause/resume. Also the explicit output device for FatzAudio (owner 2026-11-03:
+   `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event
+   source instead of two.
+Normalization (owner decision 2026-11-03): loudness (LUFS) is the only normalization on the
+FatzAudio engine, replacing our peak rule there before slice 6: FatzAudio's normalization and
+limiter, the quick turn-down-only pass on a first play, then a glide to the measured gain, with a
+cap on boosts. Target: a configuration setting whose default is the streaming-service standard,
+-14 LUFS integrated with peaks limited to -1 dBTP. This is a media engine, so it ships the
+universal default; an app (a karaoke host wanting about -16 LUFS for mic headroom) sets its own. No
+FatzAudio request needed: its normalization already takes the loudness from (best first) the app,
+ReplayGain 2 / R128 tags, its scan cache, then a scan split across all cores, gliding from a
+running estimate. To be at the right level from the first sample, our play-on-load waits for
+`FA_EVENT_LOUDNESS_FINAL` up to a short budget (about 300 ms, measured first) before starting a
+local file, as it waits for the quick pass today; a scan that takes longer starts on the estimate
+and glides. Apps with a library can pre-scan (`fa_scan_loudness_path`) so every play is instant. BASS keeps the peak rule
+until it is removed; the public API is unchanged.
+
 6. **Decision (separate from the build).** Whether FatzAudio becomes the default, whether BASS is
    then removed, and whether our CD+G engine and lyric renderers (DirectWrite and SkiaSharp) are
    deleted. No karaoke drawing code is removed before this decision.

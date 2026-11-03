@@ -1351,7 +1351,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         _normalizationReady = true;
     }
 
-    private static string CreatePathNormalizationCacheKey(string filePath)
+    internal static string CreatePathNormalizationCacheKey(string filePath)
     {
         try
         {
@@ -1364,7 +1364,7 @@ public sealed class AudioEngine : IAudioEngine, IAudioOutputDeviceProvider, IAud
         }
     }
 
-    private static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
+    internal static string CreateArchiveNormalizationCacheKey(IArchiveEntryInfo archiveEntry) => $"archive|{archiveEntry.Key}|{archiveEntry.Size?.ToString() ?? "unknown"}";
 
     private MediaAnalysisCacheKey? CreateMediaAnalysisCacheKey(string filePath, bool analyzeSilence) =>
         analyzeSilence

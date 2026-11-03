@@ -136,6 +136,15 @@ public sealed record PlayerStartupOptions
     /// </summary>
     public bool LightweightSurfacesWindow { get; init; }
 
+    /// <summary>
+    /// Gets the audio engine for audio files (<c>--audio=bass|fatz</c>, 037A slice 2); BASS by
+    /// default. The host supplies the FatzAudio engine.
+    /// </summary>
+    public PlayerAudioEngine AudioEngine { get; init; }
+
+    /// <summary>Gets an <c>--audio=</c> value that is not an engine name (then BASS applies), or null.</summary>
+    public string? UnknownAudioEngine { get; init; }
+
     /// <summary>Gets the equalizer gains in dB (<c>--eq=g1,...,g10</c>), which also turn it on; null when not given.</summary>
     public IReadOnlyList<double>? EqualizerGains { get; init; }
 
@@ -151,6 +160,7 @@ public sealed record PlayerStartupOptions
         Uri? positionalUrl = positional is not null && PlayerViewModel.TryParseNetworkUrl(positional, out Uri? parsedUrl) ? parsedUrl : null;
         var surface = Values(args, "--surface=").LastOrDefault();
         var decoding = Values(args, "--decoding=").LastOrDefault();
+        var audio = Values(args, "--audio=").LastOrDefault();
         Uri? networkUri = Values(args, "--url=")
             .Select(static value => PlayerViewModel.TryParseNetworkUrl(value, out Uri? uri) ? uri : null)
             .FirstOrDefault(static uri => uri is not null);
@@ -189,6 +199,8 @@ public sealed record PlayerStartupOptions
                 .LastOrDefault(static count => count is not null) ?? 1,
             PreferFrameSinkSurface = IsValue(surface, "framesink"),
             UnknownSurface = surface is null || IsValue(surface, "framesink") || IsValue(surface, "auto") ? null : surface,
+            AudioEngine = PlayerAudioEngineRules.Parse(audio) ?? PlayerAudioEngine.Bass,
+            UnknownAudioEngine = audio is not null && PlayerAudioEngineRules.Parse(audio) is null ? audio : null,
             SoftwareDecoding = IsValue(decoding, "software"),
             UnknownDecoding = decoding is null || IsValue(decoding, "software") || IsValue(decoding, "auto") ? null : decoding,
             SecondScreen = Values(args, "--second-screen=", trimQuotes: false)
@@ -231,7 +243,7 @@ public sealed record PlayerStartupOptions
 
     /// <summary>
     /// Gets a warning for each player value that was not understood (<c>--renderer=</c>,
-    /// <c>--surface=</c>, <c>--decoding=</c>), naming the default used instead. Hosts log them.
+    /// <c>--surface=</c>, <c>--decoding=</c>, <c>--audio=</c>), naming the default used instead. Hosts log them.
     /// </summary>
     public IReadOnlyList<string> DescribeUnknownValues()
     {
@@ -242,6 +254,8 @@ public sealed record PlayerStartupOptions
             warnings.Add($"Unknown --surface value '{surface}' (use auto or framesink); using auto.");
         if (UnknownDecoding is { } decoding)
             warnings.Add($"Unknown --decoding value '{decoding}' (use auto or software); using auto.");
+        if (UnknownAudioEngine is { } audio)
+            warnings.Add($"Unknown --audio value '{audio}' (use {PlayerAudioEngineRules.Usage}); using bass.");
         return warnings;
     }
 

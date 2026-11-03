@@ -16,7 +16,8 @@
             "FatzBomb.MediaControl.Linux/FatzBomb.MediaControl.Linux.csproj",
             "FatzBomb.MediaControl.Wpf/FatzBomb.MediaControl.Wpf.csproj",
             "FatzBomb.MediaControl.Avalonia/FatzBomb.MediaControl.Avalonia.csproj",
-            "FatzBomb.MediaControl.WinForms/FatzBomb.MediaControl.WinForms.csproj"
+            "FatzBomb.MediaControl.WinForms/FatzBomb.MediaControl.WinForms.csproj",
+            "FatzBomb.MediaControl.Audio.FatzAudio/FatzBomb.MediaControl.Audio.FatzAudio.csproj"
           ]
         }
       ],

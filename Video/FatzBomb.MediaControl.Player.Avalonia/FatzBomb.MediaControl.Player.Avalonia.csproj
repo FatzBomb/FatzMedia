@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FatzBomb.MediaControl\FatzBomb.MediaControl.csproj" />
+    <ProjectReference Include="..\FatzBomb.MediaControl.Audio.FatzAudio\FatzBomb.MediaControl.Audio.FatzAudio.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Avalonia\FatzBomb.MediaControl.Avalonia.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Player.Shared\FatzBomb.MediaControl.Player.Shared.csproj" />
     <ProjectReference Include="..\FatzBomb.MediaControl.Rendering.Software\FatzBomb.MediaControl.Rendering.Software.csproj" />
