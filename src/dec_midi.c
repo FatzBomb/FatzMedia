@@ -699,6 +699,7 @@ struct fa_midi {
      * qw without a lock and keeps what is not due yet in `pend`, in frame order (equal
      * frames as sent), from pend_head on. */
     int realtime;               /* fa_stream_open_midi: no file, endless */
+    int lyrics_only;            /* FA_OPEN_MIDI_LYRICS_ONLY: parsed only; no synth, no effects, reads silence */
     fa_mutex send_lock;
     int send_lock_ready;
     fa_atomic_ptr queue;        /* live_event[FA_MIDI_QUEUE] */
@@ -1379,6 +1380,15 @@ static fa_result midi_read(fa_decoder* dec, float* out, fa_frames frames, fa_fra
 {
     struct fa_midi* m = (struct fa_midi*)dec->impl;
     fa_frames done = 0;
+    if (m->lyrics_only) {   /* silence up to the parsed length */
+        fa_frames n = m->length - m->rpos;
+        if (n > frames) n = frames;
+        if (n < 0) n = 0;
+        memset(out, 0, (size_t)n * 2 * sizeof(float));
+        m->rpos += n;
+        *got = n;
+        return n > 0 ? FA_OK : FA_ERROR_END_OF_STREAM;
+    }
     while (done < frames) {
         fa_frames k;
         if (m->blk_off == m->blk_len) {
@@ -1658,6 +1668,10 @@ static fa_result midi_seek(fa_decoder* dec, fa_frames frame)
     fa_soundfont* font;
     fa_result r;
     if (m->realtime) return FA_ERROR_NOT_SEEKABLE;   /* a soundfont change's fade plays on */
+    if (m->lyrics_only) {
+        m->rpos = frame < 0 ? 0 : frame > m->length ? m->length : frame;
+        return FA_OK;
+    }
     font = take_font(m);
     fade_end(m);
     r = seek_to_font(m, frame, font, NULL, NULL);
@@ -2277,8 +2291,15 @@ static fa_result midi_open(fa_decoder* dec)
     struct fa_midi* m;
     int rmid = 0;
     fa_result r;
-    r = midi_parse(dec->src, dec->midi_rate ? dec->midi_rate : FA_MIDI_DEFAULT_RATE, dec->text_code_page, !dec->soundfont, &m, &rmid);
+    r = midi_parse(dec->src, dec->midi_rate ? dec->midi_rate : FA_MIDI_DEFAULT_RATE, dec->text_code_page,
+                   !dec->soundfont && !dec->midi_lyrics_only, &m, &rmid);
     if (r != FA_OK) return r;
+    if (dec->midi_lyrics_only) {
+        /* No synth or effects: the length is the last event plus FA_MIDI_TAIL_S (not measured). */
+        m->lyrics_only = 1;
+        midi_publish(dec, m, rmid ? "rmid" : "smf");
+        return FA_OK;
+    }
     r = midi_start(m, dec->soundfont);
     if (r == FA_OK) r = measure_length(m);
     if (r != FA_OK) { midi_free(m); return r; }
@@ -2507,6 +2528,7 @@ FA_API fa_result FA_CALL fa_stream_set_soundfont(fa_stream* stream, fa_soundfont
 {
     fa_soundfont *f, *old;
     if (!stream || !stream->midi) return FA_ERROR_INVALID_ARG;
+    if (stream->midi->lyrics_only) return FA_ERROR_NOT_IMPLEMENTED;
     /* NULL: as at open, the engine's, else the OS's instruments. */
     f = font ? fa_soundfont_retain(font) : fa_engine_soundfont(stream->engine);
     if (!f) f = fa_engine_system_soundfont(stream->engine);
@@ -2648,6 +2670,7 @@ FA_API fa_result FA_CALL fa_stream_send_midi_events(fa_stream* stream, const fa_
     uint32_t i, w, r;
     fa_result res = FA_OK;
     if (!stream || !stream->midi || (count && !events) || count > FA_MIDI_QUEUE) return FA_ERROR_INVALID_ARG;
+    if (stream->midi->lyrics_only) return FA_ERROR_NOT_IMPLEMENTED;
     for (i = 0; i < count; i++) {
         midi_event e;
         if (event_of(&events[i], &e) != FA_OK) return FA_ERROR_INVALID_ARG;
@@ -2696,6 +2719,7 @@ FA_API fa_result FA_CALL fa_stream_send_midi(fa_stream* stream, fa_frames frame,
     int status = 0;
     fa_result r;
     if (!stream || !stream->midi || (size && !bytes) || (frame < 0 && frame != FA_MIDI_NOW)) return FA_ERROR_INVALID_ARG;
+    if (stream->midi->lyrics_only) return FA_ERROR_NOT_IMPLEMENTED;
     if (!size) return FA_OK;
     ev = (fa_midi_event*)calloc(size < FA_MIDI_QUEUE ? size : FA_MIDI_QUEUE, sizeof(*ev));
     if (!ev) return FA_ERROR_OUT_OF_MEMORY;

@@ -1029,6 +1029,7 @@ internal unsafe ref struct NativeOptions
         if (options.Prescan) flags |= 1u << 2;
         if (options.NoNormalize) flags |= 1u << 3;
         if (options.NoCdg) flags |= 1u << 4;
+        if (options.MidiLyricsOnly) flags |= 1u << 5;
         o._ptr->Flags = flags;
         o._ptr->AudioTrack = options.AudioTrack;
         o._ptr->DynamicRange = (int)options.DynamicRange;

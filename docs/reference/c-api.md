@@ -280,9 +280,18 @@ typedef enum fa_open_flags {
     FA_OPEN_PRESCAN     = 1 << 2,  /* build exact seek index / length before returning */
     FA_OPEN_NO_NORMALIZE = 1 << 3, /* opt this stream out of engine normalization
                                       (jingles, sound effects, already-mastered mixes) */
-    FA_OPEN_NO_CDG       = 1 << 4  /* no CD+G graphics: fa_stream_open_path does not look
+    FA_OPEN_NO_CDG       = 1 << 4, /* no CD+G graphics: fa_stream_open_path does not look
                                       for a matching .cdg next to the audio, and ZIP
                                       archives play without theirs (see "CD+G") */
+    FA_OPEN_MIDI_LYRICS_ONLY = 1 << 5 /* a MIDI / KAR / RMID file is parsed for its lyrics,
+                                      texts, marks, credits and length only: no soundfont
+                                      is needed (none is looked up) and there is no synth.
+                                      The stream reads silence and is not normalized, so
+                                      fa_lyric_surface_create and fa_stream_get_midi_*
+                                      work on it, and the app brings the time itself
+                                      (fa_surface_update_into). Live MIDI controls
+                                      (send, soundfont) return FA_ERROR_NOT_IMPLEMENTED.
+                                      Other formats ignore the flag. */
 } fa_open_flags;
 
 typedef struct fa_net_options fa_net_options;
@@ -4290,7 +4299,7 @@ FA_API fa_result FA_CALL fa_device_get_loudness_meter(fa_device* device, double*
 typedef enum fa_spectrum_flags {
     FA_SPECTRUM_LEFT      = 1 << 0,  /* the left channel only (default: both, mixed) */
     FA_SPECTRUM_RIGHT     = 1 << 1,  /* the right channel only */
-    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window (BASS_DATA_FFT_NOWINDOW) */
+    FA_SPECTRUM_NO_WINDOW = 1 << 2   /* no Hann window (BASS_FFT_NOWINDOW) */
 } fa_spectrum_flags;
 
 /* The magnitude spectrum of the last `size` frames being heard now, for a

@@ -349,6 +349,37 @@ if (fr.behind) { /* late (a dropped frame), or nothing new yet (dirty_count 0): 
 surface.RenderAhead = true;   // check SurfaceUpdate.Behind on each frame
 ```
 
+## Lyrics without a soundfont
+
+When another engine plays the song (the app's own player, a video, a DJ deck) and FatzAudio only draws the lyrics, open the
+file with `FA_OPEN_MIDI_LYRICS_ONLY`. The file is parsed for its lyrics, texts, marks, credits and length, but no
+soundfont is needed (and none is looked up, not even the OS's) and there is no synth, so opening costs a parse and nothing
+runs on the workers.
+
+```c
+fa_open_options o;
+fa_open_options_init(&o);
+o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_MIDI_LYRICS_ONLY;
+fa_stream_open_path(engine, "song.kar", &o, &song);
+fa_lyric_surface_create(song, &style, &lyrics);
+/* every frame: the time of the other engine's clock */
+fa_surface_update_into(lyrics, other_engine_time, pixels, stride, w, h, rev, &frame);
+```
+
+```csharp
+using var song = engine.OpenFile("song.kar", new StreamOptions { DecodeOnly = true, MidiLyricsOnly = true });
+using var lyrics = song.CreateLyricSurface();
+```
+
+- The stream reads silence up to the file's length (the last event plus a short tail; it is not measured by rendering) and
+  seeks, so it can also be pulled or attached to a device, but there is nothing to hear. It is never normalized.
+- `fa_stream_get_midi_info`, `_text`, `_marks`, `_credits` and `_events` work as on a playing stream. The lyric
+  surface draws exactly what it draws with a soundfont. Set the stream's tempo parameter to the other engine's tempo if
+  you want the animation lengths (wipe, scroll) to follow it.
+- Sending MIDI (`fa_stream_send_midi*`) and changing the soundfont return `FA_ERROR_NOT_IMPLEMENTED`; loudness and
+  silence analysis of such a stream fail with `FA_ERROR_NO_SOUNDFONT`, since there is no sound to measure.
+- A file that is not MIDI opens as usual and ignores the flag.
+
 ## Pitfalls
 
 - The bitmap is the whole presentation area when an intro or ending page can show, else only the block of lyrics. Draw it at `bitmap_x`, `bitmap_y` in the presentation area; do not stretch it to the screen.
