@@ -365,6 +365,24 @@ internal sealed unsafe class MediaDemuxer : IDisposable
             : ffmpeg.av_find_best_stream(_formatContext, mediaType, -1, -1, null, 0);
 
     /// <summary>
+    /// Whether the source has a video stream to play: cover art (an attached picture) does not count.
+    /// </summary>
+    public bool HasPlayableVideoStream()
+    {
+        for (var index = 0; index < (int)StreamCount; index++)
+        {
+            AVStream* stream = _formatContext->streams[index];
+            if (stream->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO
+                && (stream->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The video stream to play. A local file keeps FFmpeg's best stream. A network source with
     /// several video renditions (HLS variants, DASH representations) plays the one
     /// <see cref="NetworkVariantPolicy"/> picks, so the picture and audio cursors agree on it.

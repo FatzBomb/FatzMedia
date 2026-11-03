@@ -40,8 +40,8 @@ public static class FileTypes
 
     internal static IReadOnlyList<string> FfmpegAudioExtensions { get; } =
     [
-        ".aac", ".ac3", ".aif", ".aifc", ".aiff", ".amr", ".ape", ".au", ".caf", ".dff", ".dsf", ".dts",
-        ".eac3", ".flac", ".m4a", ".m4b", ".mka", ".mp2", ".mp3", ".mpc", ".oga", ".ogg", ".opus", ".spx",
+        ".aac", ".ac3", ".aif", ".aifc", ".aiff", ".alac", ".amr", ".ape", ".au", ".caf", ".dff", ".dsf", ".dts",
+        ".eac3", ".flac", ".m4a", ".m4b", ".m4r", ".mka", ".mp2", ".mp3", ".mpc", ".oga", ".ogg", ".opus", ".spx",
         ".tak", ".tta", ".w64", ".wav", ".wma", ".wv",
     ];
     public static bool IsVideo(string filename) => Video.Contains(Path.GetExtension(filename));

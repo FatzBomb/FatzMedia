@@ -22,7 +22,7 @@ internal sealed partial class VideoPipeline(
     IPrecisionWaiterFactory precisionWaiterFactory,
     IVideoPipelinePlatformServices platformServices,
     RendererVideoDecodeServices hardwareAccelerationServices,
-    bool usesAudio) : IVideoEngine, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
+    bool usesAudio) : IVideoEngine, IVideoOpenOutcome, IMediaLoopEventSource, IRendererRefreshRateSink, INetworkVideoEngine
 {
     // Held by the presentation loop while a network picture without sound waits for data (ENG-034).
     private readonly HoldableClock _clock = new(clock ?? throw new ArgumentNullException(nameof(clock)));
@@ -145,6 +145,12 @@ internal sealed partial class VideoPipeline(
 
     public string? LastNetworkError { get; private set; }
 
+    /// <summary>
+    /// The last local open failed because the file has no video stream (audio only, or only cover
+    /// art), so the caller can play it as audio.
+    /// </summary>
+    public bool LastOpenHadNoVideo { get; private set; }
+
     public event EventHandler<MediaBufferingChangedEventArgs>? NetworkBufferingChanged;
     public bool IsOpen => _isOpen;
     public double Duration { get; private set; }
@@ -265,12 +271,20 @@ internal sealed partial class VideoPipeline(
     {
         Close();
         LastNetworkError = null;
+        LastOpenHadNoVideo = false;
         _generation++;
         _loopStartFrameSnapshot = null;
         _sharedDemuxer = new SharedDemuxer();
         if (!(network is null ? _sharedDemuxer.Open(path) : _sharedDemuxer.Open(path, network)))
         {
             LastNetworkError = _sharedDemuxer.LastNetworkError;
+            Close();
+            return false;
+        }
+
+        if (network is null && !_sharedDemuxer.HasPlayableVideoStream())
+        {
+            LastOpenHadNoVideo = true;
             Close();
             return false;
         }

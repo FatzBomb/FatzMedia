@@ -122,6 +122,9 @@ internal sealed unsafe class SharedDemuxer : IDisposable
 
     public int FindBestStream(AVMediaType mediaType) => _demuxer.FindBestStream(mediaType);
 
+    /// <inheritdoc cref="MediaDemuxer.HasPlayableVideoStream"/>
+    public bool HasPlayableVideoStream() => _demuxer.HasPlayableVideoStream();
+
     public AVStream* GetStream(int index) => _demuxer.GetStream(index);
 
     public void SetStreamDiscard(int index, AVDiscard discard) => _demuxer.SetStreamDiscard(index, discard);

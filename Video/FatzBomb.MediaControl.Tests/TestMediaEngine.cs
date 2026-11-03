@@ -220,8 +220,15 @@ internal sealed class TestMediaEngine : IMediaEngine, ILoopPlaybackControl, IMed
     }
 }
 
-internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, IPresentationTimingSink, INetworkVideoEngine
+internal sealed class TestVideoEngine : IVideoEngine, IVideoOpenOutcome, IRendererRefreshRateSink, IPresentationTimingSink, INetworkVideoEngine
 {
+    /// <summary>A local open finds no video stream (an audio-only container) and fails.</summary>
+    public bool OpenFindsNoVideo { get; set; }
+
+    public bool LastOpenHadNoVideo { get; private set; }
+
+    public List<string> OpenedPaths { get; } = [];
+
     /// <summary>
     /// One network open attempt (Stage 039A): returns whether it connected. Unset, every attempt
     /// connects to content with no usable stream (fails with no <see cref="LastNetworkError"/>).
@@ -276,8 +283,10 @@ internal sealed class TestVideoEngine : IVideoEngine, IRendererRefreshRateSink, 
 
     public bool Open(string path)
     {
-        IsOpen = true;
-        return true;
+        OpenedPaths.Add(path);
+        LastOpenHadNoVideo = OpenFindsNoVideo;
+        IsOpen = !OpenFindsNoVideo;
+        return IsOpen;
     }
 
     public bool Open(IArchiveEntryInfo archiveEntry)

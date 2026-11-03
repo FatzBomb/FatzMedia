@@ -334,6 +334,9 @@ internal sealed partial class PlaybackCoordinator : IDisposable
         return true;
     }
 
+    /// <summary>Whether the last local <see cref="OpenVideo(string)"/> failed because the file has no video stream.</summary>
+    public bool LastVideoOpenHadNoVideo => _session.Video is IVideoOpenOutcome { LastOpenHadNoVideo: true };
+
     public bool OpenVideo(IArchiveEntryInfo videoEntry)
     {
         CancelEmbeddedSubtitleScan();
