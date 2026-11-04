@@ -204,36 +204,53 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
     }
 
     [Fact]
-    public void Normalization_UsesThePeakRule_OnTheBus()
+    public void Normalization_IsFatzAudiosLoudness_AtTheConfiguredTarget_AndCached()
     {
         if (!OperatingSystem.IsLinux())
             return;
 
-        // A 0.4 peak: the quick pass may only attenuate (1.0), the deep pass boosts to 0.8 / 0.4.
-        var wav = FatzAudioTestMedia.WriteWav(_root, "quiet.wav", new FatzAudioTestMedia.Section(5, Amplitude: 0.4));
-        using FatzAudioEngine engine = CreateEngine();
-        var gains = new BlockingCollection<double>();
-        engine.NormalizationGainChanged += (_, gain) => gains.Add(gain);
-        engine.SetVolume(0.5);
+        // A 1 kHz sine at 0.1 in both channels measures about -20 LUFS: +6 dB (x2) to reach -14.
+        var wav = FatzAudioTestMedia.WriteWav(_root, "quiet.wav", new FatzAudioTestMedia.Section(5, Hz: 1000, Amplitude: 0.1));
+        var cache = Path.Combine(_root, "cache");
+        var configuration = new MediaPlayerConfiguration { Normalization = new NormalizationOptions { CacheDirectory = cache } };
+        using (FatzAudioEngine engine = CreateEngine(configuration))
+        {
+            var gains = new BlockingCollection<double>();
+            engine.NormalizationGainChanged += (_, gain) => gains.Add(gain);
+            engine.SetVolume(0.5);
 
-        Assert.True(engine.Open(wav));
-        Assert.True(gains.TryTake(out var quick, Timeout));
-        Assert.Equal(1.0, quick, 3);
-        Assert.True(gains.TryTake(out var deep, Timeout));
-        Assert.InRange(deep, 1.95, 2.05);
-        Assert.True(engine.IsNormalizationReady);
-        Assert.Equal(deep, engine.NormalizationGain, 6);
-        Assert.Equal(0.5 * deep, engine.OutputVolume, 3);
+            Assert.True(engine.Open(wav));
+            Assert.True(engine.IsNormalizationReady);
+            Assert.True(gains.TryTake(out var gain, Timeout));
+            Assert.InRange(gain, 1.9, 2.1);
+            Assert.Equal(gain, engine.NormalizationGain, 6);
+            Fa.Loudness loudness = engine.CurrentStream!.GetLoudness();
+            Assert.Equal(Fa.LoudnessSource.Scan, loudness.Source);
+            Assert.InRange(loudness.IntegratedLufs, -20.5, -19.5);
 
-        engine.Normalize = false;
-        Assert.Equal(0.5f, engine.OutputVolume, 3);
+            // The gain is FatzAudio's, on the stream: the bus carries only the user volume.
+            Assert.Equal(0.5f, engine.OutputVolume, 3);
 
-        // A second open of the same file uses the shared gain cache, as the BASS engine does.
-        engine.Normalize = true;
-        Assert.True(engine.Open(wav));
-        Assert.True(gains.TryTake(out var cached, Timeout));
-        Assert.Equal(deep, cached, 6);
-        Assert.True(engine.IsNormalizationReady);
+            // Off: FatzAudio applies nothing; the gain reported is still the song's, as on BASS.
+            engine.Normalize = false;
+            Assert.True(SpinUntil(() => engine.CurrentStream!.GetLoudness().GainDb == 0));
+            Assert.InRange(engine.NormalizationGain, 1.9, 2.1);
+            engine.Normalize = true;
+            Assert.InRange(engine.NormalizationGain, 1.9, 2.1);
+        }
+
+        // The scan went to the cache folder; a new engine (a new run) reads it back at open.
+        Assert.NotEmpty(Directory.GetFiles(cache, "*.loudness"));
+        using (FatzAudioEngine engine = CreateEngine(configuration with { Normalization = configuration.Normalization with { TargetLufs = -20 } }))
+        {
+            var gains = new BlockingCollection<double>();
+            engine.NormalizationGainChanged += (_, gain) => gains.Add(gain);
+            Assert.True(engine.Open(wav));
+            Assert.True(gains.TryTake(out var gain, Timeout));
+            Assert.InRange(gain, 0.95, 1.05);
+            Assert.Equal(Fa.LoudnessSource.Cache, engine.CurrentStream!.GetLoudness().Source);
+            Assert.False(gains.TryTake(out _, TimeSpan.FromMilliseconds(200)));
+        }
     }
 
     [Fact]
@@ -290,7 +307,7 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
             return;
 
         IServiceProvider services = MediaControlServiceProvider.Create(
-            new MediaPlayerConfiguration { AudioEngineFactory = new FatzAudioEngineFactory(nullOutput: true) },
+            WithoutUserCache(new MediaPlayerConfiguration { AudioEngineFactory = new FatzAudioEngineFactory(nullOutput: true) }),
             [],
             new AudioPlatformServices());
         try
@@ -305,8 +322,14 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
         }
     }
 
+    // The loudness cache is off unless a test sets its own folder: tests never write to the user's.
     private static FatzAudioEngine CreateEngine(MediaPlayerConfiguration? configuration = null) =>
-        (FatzAudioEngine)new FatzAudioEngineFactory(nullOutput: true).Create(configuration ?? new MediaPlayerConfiguration());
+        (FatzAudioEngine)new FatzAudioEngineFactory(nullOutput: true).Create(WithoutUserCache(configuration ?? new MediaPlayerConfiguration()));
+
+    private static MediaPlayerConfiguration WithoutUserCache(MediaPlayerConfiguration configuration) =>
+        configuration.Normalization.CacheDirectory is null
+            ? configuration with { Normalization = configuration.Normalization with { CacheDirectory = string.Empty } }
+            : configuration;
 
     private static List<double> Sample(FatzAudioEngine engine, TimeSpan duration)
     {

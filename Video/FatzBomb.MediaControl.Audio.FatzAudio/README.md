@@ -26,8 +26,10 @@ The test players take `--audio=fatz` (and `--audio=bass`, the default).
   Q 1.414).
 - Fades (`FadeInAsync`, `FadeOutAsync`, prepared-next transitions): FatzAudio volume ramps on the
   stream.
-- Normalization: MediaControl's peak rule (quick and deep pass, the same gains and gain cache as
-  BASS), measured on a FatzAudio decode-only stream, applied on the player's mix bus.
+- Normalization: FatzAudio's loudness (LUFS) normalization with its true-peak limiter, set by
+  `MediaPlayerConfiguration.Normalization` (default -14 LUFS, -1 dBTP). Each song's loudness comes
+  from ReplayGain/R128 tags, FatzAudio's scan cache (a per-user folder by default) or a scan on all
+  cores; a first play starts on FatzAudio's running estimate and glides to the measured level.
 - Silence trim: FatzAudio's silence detection at open, so it applies from the first play; the
   trimmed window is the stream's cue-in and cue-out.
 - The default output device, followed by FatzAudio; its device moves raise

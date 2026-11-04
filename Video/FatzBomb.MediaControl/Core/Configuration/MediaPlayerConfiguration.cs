@@ -140,6 +140,13 @@ public readonly record struct MediaPlayerConfiguration
     public SilenceTrimOptions SilenceTrim { get; init; }
 
     /// <summary>
+    /// Loudness (LUFS) normalization on the FatzAudio engine: the target, the limiter ceiling and
+    /// the cache folder. The default is -14 LUFS with peaks limited to
+    /// -1 dBTP. The BASS engine ignores it and keeps its peak rule.
+    /// </summary>
+    public NormalizationOptions Normalization { get; init; }
+
+    /// <summary>
     /// Bounded retry policy for network sources. <see langword="null"/> uses
     /// <see cref="NetworkRetryPolicy.Default"/> (one attempt, no retry).
     /// </summary>
