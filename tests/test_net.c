@@ -571,6 +571,7 @@ static fa_atomic32 g_drop_served;  /* /drop.wav requests */
 static fa_atomic32 g_stall_served; /* /stall.wav requests */
 static fa_atomic32 g_seg_drop;     /* /hls/flaky*.ts: the next request of segment 1 breaks off */
 static fa_atomic32 g_live_served;  /* /live-close requests */
+static fa_atomic32 g_cdg_sent;     /* bytes of /endless.cdg sent */
 static fa_atomic32 g_cookie_ok;    /* /hls/cseg*.ts requests with the expected cookies */
 static fa_atomic32 g_cookie_bad;   /* ... and without them (refused) */
 static char g_cookie_line[512];    /* the Cookie line of the last /hls/cseg*.ts request */
@@ -652,6 +653,24 @@ static void serve_chunked(sock_t s, const uint8_t* body, size_t n)
         snprintf(line, sizeof(line), "%zx\r\n", k);
         if (send_str(s, line) || send_all(s, body + off, k) || send_str(s, "\r\n")) return;
         off += k;
+    }
+    send_str(s, "0\r\n\r\n");
+}
+
+/* A long lone CD+G, chunked (no Content-Length): a memory preset, then empty packs,
+ * 32 MB unless the client hangs up first. */
+static void serve_endless_cdg(sock_t s)
+{
+    uint8_t packs[2400];
+    char line[32];
+    memset(packs, 0, sizeof(packs));
+    packs[0] = 9; packs[1] = 1;
+    send_str(s, "HTTP/1.1 200 OK\r\nContent-Type: application/x-cdg\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
+    snprintf(line, sizeof(line), "%zx\r\n", sizeof(packs));
+    while (!fa_load32(&g_stop) && fa_load32(&g_cdg_sent) < 32 << 20) {
+        if (send_str(s, line) || send_all(s, packs, sizeof(packs)) || send_str(s, "\r\n")) return;
+        fa_fetch_add32(&g_cdg_sent, (int32_t)sizeof(packs));
+        packs[0] = 0; packs[1] = 0;
     }
     send_str(s, "0\r\n\r\n");
 }
@@ -929,6 +948,7 @@ static int handle_request(sock_t s, int id)
     else if (strcmp(path, "/xing.mp3") == 0) serve_bytes(s, req, g_mp3x, g_mp3x_n, "audio/mpeg", 1, 0);
     else if (strcmp(path, "/noranges.wav") == 0) serve_bytes(s, req, g_wav, g_wav_n, "audio/wav", 0, 0);
     else if (strcmp(path, "/chunked.wav") == 0) serve_chunked(s, g_wav, g_wav_n);
+    else if (strcmp(path, "/endless.cdg") == 0) serve_endless_cdg(s);
     else if (strcmp(path, "/drop.wav") == 0) {
         /* The first connection breaks off after 100000 bytes. */
         int first = fa_fetch_add32(&g_drop_served, 1) == 0;
@@ -1886,6 +1906,19 @@ static void test_no_ranges_and_chunked(void)
     for (i = 0; i < n; i++) if (got[i * 2] != wav_left(i)) { CHECK_EQ(i, -1); }
     free(got);
     fa_stream_close(s);
+}
+
+/* A lone .cdg over the web is silence with nothing to show: refused from its first
+ * bytes, without downloading the rest (before, all 32 MB were read first). */
+static void test_lone_cdg_refused(void)
+{
+    fa_result r;
+    int64_t t0 = fa_monotonic_ns();
+    fa_store32(&g_cdg_sent, 0);
+    CHECK(open_url("/endless.cdg", FA_OPEN_DECODE_ONLY, &r) == NULL);
+    CHECK_EQ(r, FA_ERROR_UNSUPPORTED_FORMAT);
+    printf("  refused after %.0f ms, %d bytes sent\n", (fa_monotonic_ns() - t0) / 1e6, fa_load32(&g_cdg_sent));
+    CHECK(fa_load32(&g_cdg_sent) < 16 << 20);
 }
 
 static void test_redirect_and_errors(void)
@@ -4007,6 +4040,7 @@ int main(void)
     RUN(test_mp3_over_http);
     RUN(test_no_ranges_and_chunked);
     RUN(test_redirect_and_errors);
+    RUN(test_lone_cdg_refused);
     RUN(test_reconnect_resumes);
     RUN(test_icy_radio_decode_only);
     RUN(test_ogg_radio_titles);

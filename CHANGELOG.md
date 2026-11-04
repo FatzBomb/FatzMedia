@@ -68,6 +68,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Fixed
 
+- A lone `.cdg` through `fa_stream_open_io` with no `length` callback was read twice (once to count the packs, once
+  for the graphics); it is now read once and the bytes kept. A web stream of
+  a lone `.cdg` is refused from its first bytes instead of after the decoder opened, so one from a server that sends
+  no `Content-Length` is no longer downloaded whole before `FA_ERROR_UNSUPPORTED_FORMAT`.
 - The presentation clock (`fa_stream_get_clock`) could step back by up to about 1 ms when an audio callback arrived
   late: the smoothed callback time moved later at once. The step is now spread over the next callback, so two reads in
   a row never go backwards while playing. Seen once as a .NET CI failure in `CdgTests.Surface_FollowsTheAudioClock`.

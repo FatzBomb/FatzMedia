@@ -177,6 +177,7 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
             dec->midi_rate = env->midi_rate ? env->midi_rate : FA_MIDI_DEFAULT_RATE;
             dec->text_code_page = env->text_code_page;
             dec->midi_lyrics_only = env->midi_lyrics_only;
+            dec->no_cdg = env->no_cdg;
         } else {
             dec->midi_rate = FA_MIDI_DEFAULT_RATE;
         }

@@ -246,6 +246,7 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     env.dynamic_range = &s->dynamic_range;
     env.dolby_mix = &s->dolby_mix;
     env.midi_lyrics_only = 0;
+    env.no_cdg = (s->flags & FA_OPEN_NO_CDG) != 0;
     {
         /* Parse only: no soundfont of any kind, and nothing to normalize (silence). That is what the
          * app asks for with FA_OPEN_MIDI_LYRICS_ONLY. A song with no notes gets it too when no soundfont
@@ -274,7 +275,6 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
     if (r != FA_OK) return r;
     if (fa_decoder_is_cdg(&s->decoder)) {
         /* Graphics with no audio: nothing to play without them, nothing to normalize. */
-        if (s->flags & FA_OPEN_NO_CDG) { fa_decoder_close(&s->decoder); return FA_ERROR_UNSUPPORTED_FORMAT; }
         s->flags |= FA_OPEN_NO_NORMALIZE;
     }
     if ((s->flags & FA_OPEN_PRESCAN) && s->decoder.vt->prescan) s->decoder.vt->prescan(&s->decoder);
@@ -315,11 +315,13 @@ static fa_result attach_own_graphics(struct fa_stream* s)
     fa_cdg_data* graphics;
     fa_result r;
     if (!fa_decoder_is_cdg(&s->decoder)) return FA_OK;
-    r = fa_source_seek(&s->source, 0);
-    if (r != FA_OK) return r;
-    r = s->source.length >= 0 ? fa_source_read_all(&s->source, (size_t)256 << 20, &bytes, &size)
-                              : fa_source_read_rest(&s->source, (size_t)256 << 20, &bytes, &size);
-    if (r != FA_OK) return r;
+    if (!fa_decoder_cdg_take(&s->decoder, &bytes, &size)) {
+        /* The size was known, so the decoder read nothing: read them now. */
+        r = fa_source_seek(&s->source, 0);
+        if (r != FA_OK) return r;
+        r = fa_source_read_all(&s->source, (size_t)256 << 20, &bytes, &size);
+        if (r != FA_OK) return r;
+    }
     r = fa_cdg_data_adopt(bytes, size, &graphics);
     if (r != FA_OK) return r;
     fa_stream_cdg_attach(s, graphics);
@@ -973,14 +975,8 @@ FA_API fa_result FA_CALL fa_stream_open_url(fa_engine* engine, const char* url, 
                 mime[strcspn(mime, "; ")] = 0;
                 o.mime_hint = mime;
             }
+            /* Graphics with no audio are refused by their decoder (dec_silence.c). */
             r = stream_open_decoder(s, parsed.path, &o);
-            if (r == FA_OK && fa_decoder_is_cdg(&s->decoder)) {
-                /* Graphics with no audio play only from a path, memory or app callbacks:
-                 * a download would be silence with nothing to show. */
-                fa_decoder_close(&s->decoder);
-                s->decoder_ready = 0;
-                r = FA_ERROR_UNSUPPORTED_FORMAT;
-            }
         }
     }
     if (s->net) {

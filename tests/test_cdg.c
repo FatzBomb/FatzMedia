@@ -1923,8 +1923,16 @@ static void test_lone_cdg_open(void)
     check_lone(s, packs); fa_stream_close(s); s = NULL;
     memset(&m, 0, sizeof(m)); m.b = &c; m.seekable = 1;
     CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
+    CHECK_EQ(m.read_bytes, (int64_t)c.n);   /* read once: counted and kept as the graphics */
     check_lone(s, packs); fa_stream_close(s); s = NULL;
     CHECK_EQ(m.closes, 1);
+    /* ... so callbacks that cannot seek open it too */
+    io.seek = NULL;
+    memset(&m, 0, sizeof(m)); m.b = &c;
+    CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
+    CHECK_EQ(m.read_bytes, (int64_t)c.n);
+    check_lone(s, packs); fa_stream_close(s); s = NULL;
+    io.seek = mio_seek;
     io.length = mio_length;
     memset(&m, 0, sizeof(m)); m.b = &c; m.seekable = 1;
     CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
@@ -1940,6 +1948,12 @@ static void test_lone_cdg_open(void)
     o.flags = FA_OPEN_DECODE_ONLY | FA_OPEN_NO_CDG;
     CHECK_EQ(fa_stream_open_path(g_engine, "cdg_lone.cdg", &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
     CHECK(s == NULL);
+    io.length = NULL;   /* refused before it is read, also with no length to go by */
+    memset(&m, 0, sizeof(m)); m.b = &c; m.seekable = 1;
+    CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK(s == NULL);
+    CHECK(m.read_bytes < (int64_t)c.n);
+    io.length = mio_length;
     o.flags = FA_OPEN_DECODE_ONLY;
 
     /* Not CD+G: text, and packs whose command is not graphics */
