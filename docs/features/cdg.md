@@ -442,6 +442,8 @@ song.PlayOn(output);
 - **Opening a `.cdg` gives the silent stream even when `Song.mp3` is next to it**: you opened the graphics. To play MP3+G, open the audio as before.
 - **A ZIP with audio** plays the audio, as before; the silent stream is only for archives with none. A damaged `.cdg` entry there (bad CRC) fails the open (`FA_ERROR_UNSUPPORTED_FORMAT`), since nothing is left to play.
 - `FA_OPEN_NO_CDG` on a lone `.cdg` or a CD+G-only ZIP: `FA_ERROR_UNSUPPORTED_FORMAT`.
+- **App callbacks** (`fa_stream_open_io`) with no `length` callback: the bytes are read once, to count the packs, and kept as the graphics.
+- **Web streams** (`fa_stream_open_url`): `FA_ERROR_UNSUPPORTED_FORMAT`, since a download would be silence with nothing to show. It is decided from the first bytes, so nothing more is downloaded, even from a server that sends no `Content-Length`.
 - Silent streams are never normalized and have no tags. `fa_stream_get_silence` and `fa_analyze_stream` work (nothing is audible) for paths and memory; `fa_stream_set_cdg_offset` moves the graphics, not the length. `fa_stream_load_cdg_*` replaces the graphics but keeps the length.
 - `fa_format_get_info` lists it as the format `cdg`.
 

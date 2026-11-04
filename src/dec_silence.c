@@ -15,6 +15,9 @@
 
 typedef struct {
     fa_frames pos;
+    uint8_t* kept;   /* app callbacks with no size: the bytes read to count them, until
+                        the stream takes them as its graphics (fa_decoder_cdg_take) */
+    size_t kept_size;
 } silence_state;
 
 /* CD+G: every pack's command (low 6 bits of byte 0) is 0 (nothing), 0x09 (TV
@@ -43,19 +46,32 @@ static fa_result silence_open(fa_decoder* dec)
 {
     fa_source* src = dec->src;
     int64_t bytes = src->length;
+    uint8_t* kept = NULL;
+    size_t kept_size = 0;
     silence_state* st;
+    /* A download would be silence with nothing to show: graphics with no audio play
+     * only from a path, memory or app callbacks. Refused before anything more is
+     * read, so a server that sends no length is not downloaded whole first. With
+     * FA_OPEN_NO_CDG there is nothing to play either. */
+    if (src->remote || dec->no_cdg) return FA_ERROR_UNSUPPORTED_FORMAT;
     if (bytes < 0) {
-        /* App callbacks with no size: count the bytes. */
-        uint8_t buf[16384];
-        int64_t got;
-        bytes = 0;
-        while ((got = fa_source_read(src, buf, sizeof(buf))) > 0) bytes += got;
-        if (got < 0) return (fa_result)got;
-        if (fa_source_seek(src, 0) != FA_OK) return FA_ERROR_NOT_SEEKABLE;
+        /* App callbacks with no size: read them once and keep the bytes, which are
+         * also the graphics the stream attaches. */
+        fa_result r = fa_source_read_rest(src, (size_t)256 << 20, &kept, &kept_size);
+        if (r != FA_OK) return r;
+        if (kept_size) {
+            /* Give back the slack of the growing read: the bytes stay for the stream's life. */
+            uint8_t* fit = (uint8_t*)realloc(kept, kept_size);
+            if (fit) kept = fit;
+        }
+        bytes = (int64_t)kept_size;
+        dec->file_size = bytes;
     }
-    if (bytes < FA_CDG_PACK_BYTES) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (bytes < FA_CDG_PACK_BYTES) { free(kept); return FA_ERROR_UNSUPPORTED_FORMAT; }
     st = (silence_state*)calloc(1, sizeof(*st));
-    if (!st) return FA_ERROR_OUT_OF_MEMORY;
+    if (!st) { free(kept); return FA_ERROR_OUT_OF_MEMORY; }
+    st->kept = kept;
+    st->kept_size = kept_size;
     dec->impl = st;
     dec->format.sample_rate = SILENCE_RATE;
     dec->format.channels = SILENCE_CHANNELS;
@@ -87,7 +103,9 @@ static fa_result silence_seek(fa_decoder* dec, fa_frames frame)
 
 static void silence_close(fa_decoder* dec)
 {
-    free(dec->impl);
+    silence_state* st = (silence_state*)dec->impl;
+    if (st) free(st->kept);
+    free(st);
     dec->impl = NULL;
 }
 
@@ -98,3 +116,14 @@ const fa_decoder_vtable fa_decoder_cdg = {
 };
 
 int fa_decoder_is_cdg(const fa_decoder* dec) { return dec->vt == &fa_decoder_cdg; }
+
+int fa_decoder_cdg_take(fa_decoder* dec, uint8_t** out_data, size_t* out_size)
+{
+    silence_state* st = (silence_state*)dec->impl;
+    if (!fa_decoder_is_cdg(dec) || !st || !st->kept) return 0;
+    *out_data = st->kept;
+    *out_size = st->kept_size;
+    st->kept = NULL;
+    st->kept_size = 0;
+    return 1;
+}
