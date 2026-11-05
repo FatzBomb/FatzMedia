@@ -22,7 +22,7 @@ You do not have to do anything for a normal recovery. The signals are diagnostic
 | `DeviceRecovery` | Warning | `Retrying GPU device recovery (<reason>).` (a retry after a failed recovery) |
 | `D3D11.DeviceLost` (Direct3D11), `Vulkan.DeviceLost`, `Software.DeviceLost` | Info | `GPU device recovered after N attempt(s).` |
 | same category | Warning | `Device-lost recovery attempt N/M failed.` |
-| `D3D11.DeviceLost.RecoveryFailed` (or the Vulkan or Software equivalent) | Error | `GPU device-lost recovery failed after N attempts; retrying every 10 s while a surface is attached.` |
+| `D3D11.DeviceLost.RecoveryFailed` (or the Vulkan or Software equivalent) | Error | `GPU device-lost recovery failed after N attempt(s); retrying every 10 s while a surface is attached.` |
 | `DeviceRecovery` | Info | `Reopening <name> after the GPU device was recovered.` |
 | `Decoder.DeviceLost` | Error / Info | `Hardware video decode device lost; recovering via software fallback.` then `Video decode fell back to software after device loss; audio and CD+G overlay continue uninterrupted.` |
 | `Decoder.DeviceLost.RecoveryFailed` | Error | The software fallback itself failed. The video engine goes to its error state. |
@@ -37,6 +37,34 @@ player.MediaDiagnostic += (_, e) =>
 ```
 
 The picture may freeze or go black for the moment the recovery takes (typically a second or two), then returns. The surface keeps its place in your layout; you do not re-attach it.
+
+## When the renderer cannot recover
+
+Sometimes the device cannot be re-created in the same process. After an NVIDIA GPU reset, for example, every `vkCreateInstance` fails with `VK_ERROR_INCOMPATIBLE_DRIVER` until the process restarts. The player then raises `MediaError` once, with `MediaErrorCode.RendererDeviceLost`. Sound continues, but no picture appears until the player is recreated with another renderer. When the renderer reports that it cannot be re-created, the player stops the recovery attempts after the first one, so this error comes as soon as the driver answers. During a GPU reset the driver itself can hold every graphics call for 10-15 s.
+
+To keep the show going, recreate the player on the next renderer (Vulkan to Direct3D11, Direct3D11 to WARP, WARP to Software), load the same media and seek to where it was:
+
+```csharp
+player.MediaError += (_, e) =>
+{
+    if (e.Code != MediaErrorCode.RendererDeviceLost)
+        return;
+
+    Dispatcher.BeginInvoke(async () =>
+    {
+        var source = currentSource;          // what you loaded
+        var position = player.Position;
+        var wasPlaying = player.State == MediaPlayerState.Playing;
+        await RecreatePlayerAsync(nextRenderer);   // your own: dispose, create, attach the surface
+        await player.LoadAsync(source);
+        await player.SeekAsync(position.TotalSeconds);
+        if (wasPlaying)
+            await player.PlayAsync();
+    });
+};
+```
+
+The test players do the renderer switch (the players come back empty).
 
 Hosts that build on the lower-level `IMediaPresentationCoordinator` interface also get its `DeviceRecovered` event, raised on the recovery thread after a successful recovery. A host using `MediaControlPlayer` does not need it, because the player already reopens its video.
 

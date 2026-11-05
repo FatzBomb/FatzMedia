@@ -132,6 +132,12 @@ device (in the background)` are timed in the log); and once `vkCreateInstance` h
 reports the failure. Expected: the switch to Direct3D11 about 2-3 s after the reset instead of about 30 s.
 Test: `FailedRecovery_StopsAtOnce_WhenTheRendererCannotBeRecreated`.
 
+Owner check (2026-11-05): the switch to Direct3D11 came 16 s after the loss (was about 30 s). The old
+device's close took 14.7 s in the background, off the recovery path. The one attempt left now waits
+in `vkCreateInstance` itself (14.1 s, until the driver finished its reset; then
+`VK_ERROR_INCOMPATIBLE_DRIVER`). That is the NVIDIA driver holding graphics calls during the reset, not
+ours to cut. ENG-050 is closed apart from that. The failure message now counts the attempts made.
+
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 
 Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
@@ -152,6 +158,10 @@ new run scanned again. FatzAudio creates only the last level of `cache_directory
 Reported: 2026-11-05, owner smoke (loop and seek checks; the default BASS engine). Engine and files not
 yet narrowed down: compare BASS and `--audio=fatz` on the same file, and with fades on and off.
 
+
+FatzAudio (2026-11-05): its seeks were hard cuts; a short fade fix is built and ships with its next
+release. Owner decision: checked on FatzAudio only; BASS is going away, so BASS-only audio issues are
+not fixed.
 ### ENG-046 - WPF frame-sink (composited) resize lags behind the drag
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 4b: WPF with `--surface=framesink`): the video
