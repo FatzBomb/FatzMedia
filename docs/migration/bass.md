@@ -67,8 +67,8 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 | BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
 |---|---|---|---|
-| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA) |
-| BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3)) | `new StreamOptions { Prescan = true }` | ✅ |
+| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/MP2/MP1/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA). Also Sun `.au`, which BASS does not read |
+| BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3-mp2-and-mp1)) | `new StreamOptions { Prescan = true }` | ✅ |
 | BASS_StreamCreateFile (memory) | `fa_stream_open_memory` | `engine.OpenMemory(bytes)`, `await engine.OpenMemoryAsync(bytes, null, token)` | ✅ |
 | BASS_StreamCreateFileUser | `fa_stream_open_io`; `close` is called once by `fa_stream_close`, never on a failed open ([custom I/O](../features/streams.md#custom-io-your-own-reader)) | `engine.OpenStream(System.IO.Stream)` | ✅ |
 | BASS_StreamCreateURL | `fa_stream_open_url`: HTTP/HTTPS files with range seeking, Icecast/Shoutcast radio, HLS, `.pls`/`.m3u`; reconnects by itself ([web streams](../features/web-streams.md)) | `engine.OpenUrl(url)` | ✅ WAV/FLAC/MP3/OGG/Opus/AAC/AC-3/MP4/Matroska built in |
@@ -1137,7 +1137,7 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 |---|---|---|
 | `STREAM_WAV`, `_WAV_PCM`, `_WAV_FLOAT`, `_WAV` (ADPCM) | `pcm` (µ-law, A-law and ADPCM are decoded; the codec name says which) | `wav`, `aiff` |
 | `STREAM_AIFF` | `pcm` | `aiff` |
-| `STREAM_MP1`, `STREAM_MP2` | not supported (`FA_ERROR_UNSUPPORTED_FORMAT`): only Layer III plays | |
+| `STREAM_MP1`, `STREAM_MP2` | `mp1`, `mp2` for `.mp1`/`.mp2`/`.mpa` files (a Layer I/II file reports the layer); inside MP4 and MPEG-1/2 system files the codec name is `mp3`, as the container does not say the layer | `mp2` (the file format for Layers I and II), `matroska`, `mp4` |
 | `STREAM_MP3` | `mp3` | `mp3` (also inside MP4, Matroska, ASF, CAF) |
 | `STREAM_OGG` | `vorbis` | `ogg` |
 | `STREAM_OPUS` | `opus` | `ogg`, `webm`, `matroska`, `mp4` |

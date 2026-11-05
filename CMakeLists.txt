@@ -58,6 +58,8 @@ set(FA_SOURCES
     src/decoder.c
     src/dec_miniaudio.c
     src/dec_mp3.c
+    src/dec_au.c
+    src/codec_g711.c
     src/fa_platform.c
     src/ring.c
     src/curve.c

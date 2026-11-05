@@ -1,4 +1,7 @@
-/* MP3 files: our own framing around minimp3's frame decoder (from miniaudio).
+/* MP3 files (and MP1/MP2, MPEG audio Layers I and II): our own framing around
+ * minimp3's frame decoder (from miniaudio). Layers I and II have no bit reservoir
+ * and no encoder delay header: they play from the first decoded sample, and their
+ * length is counted by hopping the file at open.
  *
  * Seeking is exact and fast. The decoder learns where every frame starts by
  * hopping from header to header (no decoding), keeps the offset of every 16th
@@ -27,6 +30,8 @@
 
 typedef struct mp3_hdr {
     int mpeg1;
+    int layer;                   /* 1..3 */
+    int spf;                     /* samples per frame */
     uint32_t rate;
     int channels;
     int size;                    /* bytes, with padding */
@@ -57,26 +62,35 @@ typedef struct mp3_dec {
     int64_t known, known_off;
 } mp3_dec;
 
-static const uint16_t kbps_v1[16] = { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0 };
-static const uint16_t kbps_v2[16] = { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 };
 static const uint32_t rates[3] = { 44100, 48000, 32000 };
 
-/* A Layer III header with a bitrate (free format is left to dr_mp3). */
+/* A header with a bitrate (free format is left to dr_mp3), of any layer. */
 static int parse_hdr(const uint8_t* p, mp3_hdr* h)
 {
-    int version, br, sr, pad, side;
+    int version, layer, br, sr, pad, side;
+    unsigned kbps;
     if (p[0] != 0xFF || (p[1] & 0xE0) != 0xE0) return 0;
     version = (p[1] >> 3) & 3;           /* 0 MPEG-2.5, 2 MPEG-2, 3 MPEG-1 */
+    layer = 4 - ((p[1] >> 1) & 3);       /* 1..3, 4 = reserved */
     br = p[2] >> 4;
     sr = (p[2] >> 2) & 3;
-    if (version == 1 || ((p[1] >> 1) & 3) != 1 || br == 0 || br == 15 || sr == 3 || (p[3] & 3) == 2) return 0;
+    if (version == 1 || layer == 4 || br == 0 || br == 15 || sr == 3 || (p[3] & 3) == 2) return 0;
     pad = (p[2] >> 1) & 1;
     h->mpeg1 = version == 3;
+    h->layer = layer;
+    h->spf = layer == 1 ? 384 : (layer == 3 && !h->mpeg1) ? 576 : 1152;
     h->rate = rates[sr] >> (version == 3 ? 0 : version == 2 ? 1 : 2);
     h->channels = (p[3] >> 6) == 3 ? 1 : 2;
-    h->size = h->mpeg1 ? 144000 * kbps_v1[br] / (int)h->rate + pad : 72000 * kbps_v2[br] / (int)h->rate + pad;
-    side = h->mpeg1 ? (h->channels == 1 ? 17 : 32) : (h->channels == 1 ? 9 : 17);
-    h->payload = h->size - 4 - ((p[1] & 1) ? 0 : 2) - side;
+    kbps = fa_mpa_kbps(h->mpeg1, layer, br);
+    if (layer == 1) h->size = (int)((12000u * kbps / h->rate + (unsigned)pad) * 4);
+    else if (layer == 2 || h->mpeg1) h->size = (int)(144000u * kbps / h->rate + (unsigned)pad);
+    else h->size = (int)(72000u * kbps / h->rate + (unsigned)pad);
+    if (layer == 3) {
+        side = h->mpeg1 ? (h->channels == 1 ? 17 : 32) : (h->channels == 1 ? 9 : 17);
+        h->payload = h->size - 4 - ((p[1] & 1) ? 0 : 2) - side;
+    } else {
+        h->payload = h->size - 6;        /* no reservoir to fill: only has to be positive */
+    }
     h->key[0] = p[1] & 0xFE;             /* sync, version, layer */
     h->key[1] = p[2] & 0x0C;             /* rate */
     h->key[2] = 0;
@@ -378,10 +392,10 @@ static fa_result mp3_open(fa_decoder* dec)
     }
     m->key[0] = h.key[0];
     m->key[1] = h.key[1];
-    m->spf = h.mpeg1 ? 1152 : 576;
+    m->spf = h.spf;
     m->channels = (uint32_t)h.channels;
     p = window(m, off, (size_t)h.size, &avail);
-    if (avail >= (size_t)h.size && xing(p, &h, &xframes, &delay, &padding)) {
+    if (h.layer == 3 && avail >= (size_t)h.size && xing(p, &h, &xframes, &delay, &padding)) {
         off += h.size;
         dec->lead_bytes = h.size;   /* not audio: left out of the bitrate */
     }
@@ -397,7 +411,7 @@ static fa_result mp3_open(fa_decoder* dec)
             m->end = -1;
         }
     } else {
-        m->skip = MP3_DECODER_DELAY;
+        m->skip = h.layer == 3 ? MP3_DECODER_DELAY : 0;
         m->end = xframes >= 0 ? xframes * m->spf : -1;
     }
 
@@ -405,7 +419,7 @@ static fa_result mp3_open(fa_decoder* dec)
     dec->format.sample_rate = h.rate;
     dec->format.channels = m->channels;
     dec->seekable = dec->src->seekable;
-    snprintf(dec->codec, sizeof(dec->codec), "mp3");
+    snprintf(dec->codec, sizeof(dec->codec), "%s", h.layer == 3 ? "mp3" : h.layer == 2 ? "mp2" : "mp1");
     if (m->end >= 0) dec->length = m->end > m->skip ? (fa_frames)(m->end - m->skip) : 0;
     else hop_all(dec);   /* no frame count in the file: counted once now */
     return FA_OK;
@@ -415,4 +429,12 @@ const fa_decoder_vtable fa_decoder_mp3 = {
     "mp3", "MPEG-1/2/2.5 Layer III", "mp3",
     "audio/mpeg;audio/mp3;audio/x-mp3",
     fa_probe_mp3, mp3_open, mp3_read, mp3_seek, mp3_close, 1, NULL, hop_all
+};
+
+/* Layers I and II share the reader above. Not claimed by fa_decoder_mp3's probe
+ * (which accepts Layer III only), so a Layer II file gets its own registry entry. */
+const fa_decoder_vtable fa_decoder_mp2 = {
+    "mp2", "MPEG-1/2 Layers I and II (MP1, MP2)", "mp2;mp1;mpa;m2a;mpga",
+    "audio/mpeg;audio/x-mpeg;audio/mp2;audio/x-mp2",
+    fa_probe_mp2, mp3_open, mp3_read, mp3_seek, mp3_close, 1, NULL, hop_all
 };

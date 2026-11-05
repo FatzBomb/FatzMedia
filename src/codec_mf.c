@@ -15,7 +15,9 @@
  * mfplat.dll is loaded at run time, never imported: Windows N and KN editions
  * without the Media Feature Pack, and Server Core, have no Media Foundation, and
  * fatzaudio.dll must still load there. When anything is missing (the DLL, the
- * decoder, the format), opening returns FA_ERROR_UNSUPPORTED_FORMAT.
+ * decoder, the format), opening returns FA_ERROR_UNSUPPORTED_FORMAT; for Windows
+ * Media Audio with no Media Foundation at all it returns FA_ERROR_PROVIDER_MISSING,
+ * so an app can tell the user to install the Media Feature Pack.
  *
  * COM: the decoder is created in the multithreaded apartment of the opening
  * thread (or in its single-threaded apartment if it already has one; both
@@ -517,7 +519,7 @@ fa_result fa_mf_codec_open(fa_codec* c, const fa_codec_params* p)
     else return FA_ERROR_UNSUPPORTED_FORMAT;
     if (p->extradata_size > 0 && !p->extradata) return FA_ERROR_UNSUPPORTED_FORMAT;
     InitOnceExecuteOnce(&mf_once, mf_load, NULL, NULL);
-    if (!mf.ok) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (!mf.ok) return kind == 1 ? FA_ERROR_UNSUPPORTED_FORMAT : FA_ERROR_PROVIDER_MISSING;
     if (kind == 1) return open_aac(c, p);
     return open_wma(c, p, tag, clsid);
 }

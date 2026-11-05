@@ -7,6 +7,8 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_wav,
     &fa_decoder_flac,
     &fa_decoder_mp3,
+    &fa_decoder_mp2,
+    &fa_decoder_au,
     &fa_decoder_mp4,
     &fa_decoder_mkv,
     &fa_decoder_ogg,
@@ -99,7 +101,7 @@ int fa_decoder_recognizes(const uint8_t* data, size_t size)
 {
     uint32_t i, count = fa_decoder_registry_count;
     size_t n = size < FA_PROBE_BYTES ? size : FA_PROBE_BYTES, id3;
-    if (count > 16) count = 16;
+    if (count > 24) count = 24;
     if (n == 0) return 1;
     id3 = fa_probe_id3v2_size(data, n);
     if (id3 > 0 && id3 + 16 > n) {
@@ -120,13 +122,13 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
     uint8_t after[FA_PROBE_BYTES];
     const uint8_t* head;
     size_t n, id3;
-    int scores[16];
-    int tried[16];
+    int scores[24];
+    int tried[24];
     uint32_t i, count = fa_decoder_registry_count;
     const char* ext = extension_of(name_hint);
     fa_result last = FA_ERROR_UNSUPPORTED_FORMAT;
 
-    if (count > 16) count = 16;
+    if (count > 24) count = 24;
     memset(dec, 0, sizeof(*dec));
     n = fa_source_peek(src, &head);
     if (n == 0) return src->length == 0 ? FA_ERROR_UNSUPPORTED_FORMAT : !src->prefix_filled ? FA_ERROR_OUT_OF_MEMORY : FA_ERROR_IO;

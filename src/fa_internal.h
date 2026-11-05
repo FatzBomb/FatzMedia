@@ -251,6 +251,8 @@ extern const uint32_t fa_decoder_registry_count;
 extern const fa_decoder_vtable fa_decoder_wav;
 extern const fa_decoder_vtable fa_decoder_flac;
 extern const fa_decoder_vtable fa_decoder_mp3;
+extern const fa_decoder_vtable fa_decoder_mp2;
+extern const fa_decoder_vtable fa_decoder_au;
 /* Containers with packet codecs (demux_mp4.c, demux_mkv.c). */
 extern const fa_decoder_vtable fa_decoder_mp4;
 extern const fa_decoder_vtable fa_decoder_mkv;
@@ -280,6 +282,11 @@ size_t fa_probe_id3v2_size(const uint8_t* data, size_t size);
 int fa_probe_wav(const uint8_t* data, size_t size, size_t id3_size);
 int fa_probe_flac(const uint8_t* data, size_t size, size_t id3_size);
 int fa_probe_mp3(const uint8_t* data, size_t size, size_t id3_size);
+/* MPEG audio Layers I and II (MP1, MP2). */
+int fa_probe_mp2(const uint8_t* data, size_t size, size_t id3_size);
+/* Bitrate (kbit/s) of an MPEG audio header: mpeg1 = MPEG-1 (else 2/2.5), layer 1..3,
+ * index = the header's 4-bit bitrate field. 0 if not valid or free format. */
+unsigned fa_mpa_kbps(int mpeg1, int layer, int index);
 int fa_probe_midi(const uint8_t* data, size_t size, size_t id3_size);
 int fa_midi_is_notes_free(fa_source* src);
 int fa_probe_tracker(const uint8_t* data, size_t size, size_t id3_size);
@@ -2018,6 +2025,12 @@ fa_result fa_flac_codec_open(fa_codec* c, const fa_codec_params* p);
 /* codec_alac.c: the built-in ALAC decoder, from the ALACSpecificConfig (bare, in
  * its 'alac' box, or after a 'frma' box) in the extradata. */
 fa_result fa_alac_codec_open(fa_codec* c, const fa_codec_params* p);
+/* G.711 ("pcm_mulaw", "pcm_alaw", one byte per sample) and QuickTime IMA 4:1 ADPCM
+ * ("ima4": packets of 34 bytes per channel, 64 frames each), codec_g711.c. */
+fa_result fa_g711_codec_open(fa_codec* c, const fa_codec_params* p);
+fa_result fa_ima4_codec_open(fa_codec* c, const fa_codec_params* p);
+/* n G.711 bytes to n floats. */
+void fa_g711_to_f32(const uint8_t* in, int alaw, size_t n, float* out);
 typedef struct fa_alac_info {
     const uint8_t* config;      /* the 24-byte ALACSpecificConfig, within the extradata */
     uint32_t frame_length, rate, channels, bit_depth;
