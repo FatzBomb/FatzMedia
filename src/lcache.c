@@ -8,9 +8,13 @@
  * scan thread, never the audio thread), into a table in memory; lookups after that
  * never touch the disk.
  *
- * Writes append a whole record in one write that other processes' appends cannot
- * split (fa_append_utf8), so two apps may share the folder. A record cut short by a
- * crash fails its checksum and the reader finds the next one by its marker. When the
+ * Engines in one process that name the same folder share one cache (one table, one
+ * lock). Between processes, every read and write of the file happens under a lock on
+ * "loudness.fac.lock" (fa_file_lock), so two apps on one folder never lose each
+ * other's records; each write appends a whole record in one write as well. Nothing in
+ * the file is trusted: another version's file, or one whose header is damaged, is
+ * dropped and written again; a record cut short by a crash, or damaged, fails its
+ * checksum and the reader finds the next one by its marker. When the
  * file grows past its limit (default 5 MB, about 109,000 songs), or holds much that is
  * stale, it is rewritten: the records other processes appended meanwhile are merged
  * in, the songs used least recently are dropped down to 3/4 of the limit, and the new
@@ -35,6 +39,7 @@
 #define LC_DEFAULT_LIMIT (5u * 1024u * 1024u)
 #define LC_MIN_LIMIT (16u * 1024u)
 #define LC_TOUCH_MINUTES (24u * 60u)
+#define LC_LOCK_WAIT_MS 2000u            /* past this, write anyway: it is only a cache */
 
 typedef struct lc_entry {
     uint64_t key;
@@ -50,6 +55,9 @@ struct fa_lcache {
     fa_mutex lock;
     char* dir;
     char path[1100];
+    char lock_path[1110];
+    struct fa_lcache* next;  /* in g_caches, under g_caches_lock */
+    uint32_t refs;           /* engines using it, under g_caches_lock */
     uint64_t limit;
     int loaded;
     lc_entry* e;
@@ -61,6 +69,10 @@ struct fa_lcache {
     double load_ms;
     uint64_t seq;         /* the last lc_entry.seq handed out */
 };
+
+/* One cache per folder in the process: engines on the same folder share it. */
+static fa_lazy_mutex g_caches_lock;
+static fa_lcache* g_caches;
 
 static uint32_t now_minutes(void)
 {
@@ -151,10 +163,13 @@ static void table_reset(fa_lcache* c)
     c->n = c->cap = c->nslots = 0;
 }
 
-/* Adds or replaces. A record from the file (keep_newer 1) replaces one used no more
- * recently, so the later of two records wins; merged in later (keep_newer 2) only one
- * used less recently, so what this process saw since stays. Returns the entry, NULL
- * when out of memory. */
+/* Adds or replaces. A record read from the file (keep_newer 1) replaces one used no
+ * more recently, so the later of two records wins. Merged in later (keep_newer 2), a
+ * record used more recently than our copy replaces it and one used less recently does
+ * not; used in the same minute, its values win (every write of ours is in the file too,
+ * appended under the file lock, so the later record there is the newest measurement)
+ * while our copy keeps its order of use, which a hit in this process may have moved.
+ * Returns the entry, NULL when out of memory. */
 static lc_entry* upsert(fa_lcache* c, const lc_entry* x, int keep_newer)
 {
     uint32_t* s;
@@ -164,7 +179,14 @@ static lc_entry* upsert(fa_lcache* c, const lc_entry* x, int keep_newer)
     s = slot_of(c, x->key, x->size, x->track);
     if (*s) {
         lc_entry* old = &c->e[*s - 1];
-        if ((keep_newer == 1 && old->used > x->used) || (keep_newer == 2 && old->used >= x->used)) {
+        if (keep_newer && old->used > x->used) {
+            if (x->used_disk > old->used_disk) old->used_disk = x->used_disk;
+            return old;
+        }
+        if (keep_newer == 2 && old->used == x->used) {
+            old->lufs = x->lufs;
+            old->range = x->range;
+            old->peak = x->peak;
             if (x->used_disk > old->used_disk) old->used_disk = x->used_disk;
             return old;
         }
@@ -285,6 +307,13 @@ static void append(fa_lcache* c, const lc_entry* x)
     else rewrite(c);   /* gone (another app cleared the cache): start it again, header first */
 }
 
+/* The lock other processes see, around every read and write of the file. */
+static void* file_lock(fa_lcache* c)
+{
+    fa_mkdir_utf8(c->dir);
+    return fa_file_lock(c->lock_path, LC_LOCK_WAIT_MS);
+}
+
 static void ensure_loaded(fa_lcache* c)
 {
     int64_t t0;
@@ -297,25 +326,76 @@ static void ensure_loaded(fa_lcache* c)
 
 /* ---- Internal API ----------------------------------------------------------------- */
 
+/* The file's path with no trailing slash (and on Windows one kind of slash), so
+ * "a/b", "a/b/" and "a\\b" find the same cache. */
+static void cache_path(const char* dir, char* out, size_t cap)
+{
+    size_t i, n;
+    snprintf(out, cap, "%s", dir);
+    n = strlen(out);
+#if defined(_WIN32)
+    for (i = 0; i < n; i++)
+        if (out[i] == '\\') out[i] = '/';
+#else
+    (void)i;
+#endif
+    while (n > 1 && out[n - 1] == '/') out[--n] = 0;
+    snprintf(out + n, cap - n, "/%s", LC_NAME);
+}
+
+static int same_path(const char* a, const char* b)
+{
+#if defined(_WIN32) || defined(__APPLE__)
+    /* Folders whose names differ only in case are one folder there (by default). */
+    for (; *a && *b; a++, b++) {
+        int x = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a, y = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
+        if (x != y) return 0;
+    }
+    return *a == *b;
+#else
+    return strcmp(a, b) == 0;
+#endif
+}
+
 fa_lcache* fa_lcache_new(const char* dir)
 {
     fa_lcache* c;
-    size_t n;
+    char path[sizeof(c->path)];
     if (!dir || !dir[0]) return NULL;
+    cache_path(dir, path, sizeof(path));
+    fa_lazy_mutex_lock(&g_caches_lock);
+    for (c = g_caches; c; c = c->next) {
+        if (same_path(c->path, path)) {
+            c->refs++;
+            fa_lazy_mutex_unlock(&g_caches_lock);
+            return c;
+        }
+    }
     c = (fa_lcache*)calloc(1, sizeof(*c));
-    if (!c) return NULL;
-    if (fa_mutex_init(&c->lock) != 0) { free(c); return NULL; }
-    c->dir = fa_strdup(dir);
-    if (!c->dir) { fa_mutex_destroy(&c->lock); free(c); return NULL; }
-    n = strlen(dir);
-    snprintf(c->path, sizeof(c->path), "%s%s%s", dir, (dir[n - 1] == '/' || dir[n - 1] == '\\') ? "" : "/", LC_NAME);
-    c->limit = LC_DEFAULT_LIMIT;
+    if (c && fa_mutex_init(&c->lock) != 0) { free(c); c = NULL; }
+    if (c && !(c->dir = fa_strdup(dir))) { fa_mutex_destroy(&c->lock); free(c); c = NULL; }
+    if (c) {
+        memcpy(c->path, path, sizeof(path));
+        snprintf(c->lock_path, sizeof(c->lock_path), "%s.lock", path);
+        c->limit = LC_DEFAULT_LIMIT;
+        c->refs = 1;
+        c->next = g_caches;
+        g_caches = c;
+    }
+    fa_lazy_mutex_unlock(&g_caches_lock);
     return c;
 }
 
 void fa_lcache_free(fa_lcache* c)
 {
+    fa_lcache** p;
     if (!c) return;
+    fa_lazy_mutex_lock(&g_caches_lock);
+    if (--c->refs > 0) { fa_lazy_mutex_unlock(&g_caches_lock); return; }
+    for (p = &g_caches; *p; p = &(*p)->next) {
+        if (*p == c) { *p = c->next; break; }
+    }
+    fa_lazy_mutex_unlock(&g_caches_lock);
     table_reset(c);
     free(c->dir);
     fa_mutex_destroy(&c->lock);
@@ -328,7 +408,11 @@ int fa_lcache_get(fa_lcache* c, uint64_t key, int64_t size, int32_t track, fa_lo
     int found = 0;
     if (!c) return 0;
     fa_mutex_lock(&c->lock);
-    ensure_loaded(c);
+    if (!c->loaded) {
+        void* fl = file_lock(c);
+        ensure_loaded(c);
+        fa_file_unlock(fl);
+    }
     if (c->nslots && *(s = slot_of(c, key, size, track))) {
         lc_entry* x = &c->e[*s - 1];
         uint32_t now = now_minutes();
@@ -339,9 +423,12 @@ int fa_lcache_get(fa_lcache* c, uint64_t key, int64_t size, int32_t track, fa_lo
         if (now > x->used) x->used = now;
         x->seq = ++c->seq;
         if (x->used > x->used_disk && x->used - x->used_disk >= LC_TOUCH_MINUTES) {   /* used: tell the file, once a day at most */
+            void* fl;
             x->used_disk = x->used;
             c->stale_bytes += LC_REC;
+            fl = file_lock(c);
             append(c, x);         /* last: a rewrite in it may move the entries */
+            fa_file_unlock(fl);
         }
     }
     fa_mutex_unlock(&c->lock);
@@ -351,6 +438,7 @@ int fa_lcache_get(fa_lcache* c, uint64_t key, int64_t size, int32_t track, fa_lo
 void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, const fa_loudness* l)
 {
     lc_entry x, *in;
+    void* fl;
     if (!c) return;
     memset(&x, 0, sizeof(x));
     x.key = key;
@@ -361,6 +449,7 @@ void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, cons
     x.peak = (float)l->true_peak_dbtp;
     x.used = x.used_disk = now_minutes();
     fa_mutex_lock(&c->lock);
+    fl = file_lock(c);
     x.seq = ++c->seq;
     ensure_loaded(c);
     in = upsert(c, &x, 0);
@@ -368,6 +457,7 @@ void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, cons
         append(c, in);
         if (c->file_bytes > (int64_t)c->limit || c->stale_bytes > c->file_bytes / 2) rewrite(c);
     }
+    fa_file_unlock(fl);
     fa_mutex_unlock(&c->lock);
 }
 
@@ -376,7 +466,11 @@ void fa_lcache_set_limit(fa_lcache* c, uint64_t bytes)
     if (!c) return;
     fa_mutex_lock(&c->lock);
     c->limit = bytes ? bytes : LC_DEFAULT_LIMIT;
-    if (c->loaded && c->file_bytes > (int64_t)c->limit) rewrite(c);
+    if (c->loaded && c->file_bytes > (int64_t)c->limit) {
+        void* fl = file_lock(c);
+        rewrite(c);
+        fa_file_unlock(fl);
+    }
     fa_mutex_unlock(&c->lock);
 }
 
@@ -400,12 +494,15 @@ static void clear_one(const char* folder, const char* name, void* user)
 
 void fa_lcache_clear(fa_lcache* c)
 {
+    void* fl;
     if (!c) return;
     fa_mutex_lock(&c->lock);
+    fl = file_lock(c);
     table_reset(c);
     c->loaded = 1;
     c->file_bytes = c->stale_bytes = 0;
     fa_folder_each_file(c->dir, clear_one, NULL);
+    fa_file_unlock(fl);
     fa_mutex_unlock(&c->lock);
 }
 

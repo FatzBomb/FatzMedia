@@ -770,8 +770,8 @@ static void test_lcache_two_writers_and_a_torn_record(void)
     FILE* f;
     fa_mkdir_utf8("lcache-share");
     a = fa_lcache_new("lcache-share");
-    b = fa_lcache_new("lcache-share");
-    CHECK(a && b);
+    b = fa_lcache_new("lcache-share/.");               /* another spelling: as another process would */
+    CHECK(a && b && a != b);
     fa_lcache_clear(a);
     fa_lcache_put(a, 1, 10, -1, &l);
     l.integrated_lufs = -12.0;
@@ -797,6 +797,145 @@ static void test_lcache_two_writers_and_a_torn_record(void)
     CHECK_EQ(file_size("lcache-share/loudness.fac"), 16 + 4 * 48);
     fa_lcache_clear(a);
     fa_lcache_free(a);
+}
+
+/* Engines on one folder share one cache, however the folder is spelled. */
+static void test_lcache_one_per_folder(void)
+{
+    fa_lcache *a, *b;
+    fa_engine_config cfg;
+    fa_engine *e1, *e2;
+    fa_loudness l = lc_value(-9.5), got;
+    fa_mkdir_utf8("lcache-one");
+    a = fa_lcache_new("lcache-one");
+    b = fa_lcache_new("lcache-one/");
+    CHECK(a && a == b);
+    fa_lcache_clear(a);
+    fa_lcache_put(a, 7, 10, -1, &l);
+    fa_lcache_free(a);                                /* b still holds it */
+    CHECK(fa_lcache_get(b, 7, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -9.5, 1e-6);
+    fa_lcache_free(b);
+
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.cache_directory = "lcache-one";
+    CHECK_EQ(fa_engine_create(&cfg, &e1), FA_OK);
+    cfg.cache_directory = "lcache-one/";
+    CHECK_EQ(fa_engine_create(&cfg, &e2), FA_OK);
+    CHECK(e1->lcache && e1->lcache == e2->lcache);
+    fa_engine_destroy(e1);
+    CHECK(fa_lcache_get(e2->lcache, 7, 10, -1, &got));   /* from the file, by the engine left */
+    CHECK_EQ(fa_engine_clear_cache(e2), FA_OK);
+    fa_engine_destroy(e2);
+}
+
+/* Two processes writing at once (two caches on one folder, spelled two ways), with
+ * enough rewrites in between: no song either one wrote is lost. */
+typedef struct lc_writer { fa_lcache* c; uint64_t first; } lc_writer;
+static void lc_write_many(void* arg)
+{
+    lc_writer* w = (lc_writer*)arg;
+    fa_loudness l = lc_value(-20.0);
+    uint64_t i;
+    int pass;
+    for (pass = 0; pass < 8; pass++) {          /* each pass makes the one before stale: rewrites */
+        for (i = 0; i < 400; i++) {
+            l.integrated_lufs = -20.0 - pass - (double)i / 1000.0;
+            fa_lcache_put(w->c, w->first + i, 10, -1, &l);
+        }
+    }
+}
+
+static void test_lcache_two_processes(void)
+{
+    lc_writer w[2];
+    fa_thread t[2];
+    fa_lcache* c;
+    fa_loudness got;
+    uint64_t i;
+    int k, lost = 0, wrong = 0;
+    fa_mkdir_utf8("lcache-race");
+    w[0].c = fa_lcache_new("lcache-race");
+    w[1].c = fa_lcache_new("lcache-race/.");
+    CHECK(w[0].c && w[1].c && w[0].c != w[1].c);
+    fa_lcache_clear(w[0].c);
+    fa_lcache_set_limit(w[0].c, 128 * 1024);       /* room for all 800 songs, not for all passes */
+    fa_lcache_set_limit(w[1].c, 128 * 1024);
+    w[0].first = 1000;
+    w[1].first = 5000;
+    for (k = 0; k < 2; k++) CHECK_EQ(fa_thread_create(&t[k], lc_write_many, &w[k]), 0);
+    for (k = 0; k < 2; k++) fa_thread_join(&t[k]);
+    for (k = 0; k < 2; k++) fa_lcache_free(w[k].c);
+
+    c = fa_lcache_new("lcache-race/./.");          /* a third process, later */
+    for (k = 0; k < 2; k++) {
+        for (i = 0; i < 400; i++) {
+            if (!fa_lcache_get(c, w[k].first + i, 10, -1, &got)) lost++;
+            else if (fabs(got.integrated_lufs - (-27.0 - (double)i / 1000.0)) > 1e-4) wrong++;
+        }
+    }
+    CHECK_EQ(lost, 0);
+    CHECK_EQ(wrong, 0);
+    CHECK(file_size("lcache-race/loudness.fac") <= 128 * 1024);
+    fa_lcache_clear(c);
+    fa_lcache_free(c);
+}
+
+/* A damaged file is never trusted: a bad header is dropped and the file written again,
+ * garbage between records is skipped. */
+static void test_lcache_damaged_file(void)
+{
+    fa_lcache* c;
+    fa_loudness l = lc_value(-8.0), got;
+    uint8_t junk[4096];
+    FILE* f;
+    size_t i;
+    uint32_t x = 12345;
+    for (i = 0; i < sizeof(junk); i++) { x = x * 1103515245u + 12345u; junk[i] = (uint8_t)(x >> 16); }
+    fa_mkdir_utf8("lcache-bad");
+
+    /* Cut inside the header. */
+    f = fopen("lcache-bad/loudness.fac", "wb");
+    CHECK(f != NULL);
+    fwrite("FatzA", 1, 5, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(!fa_lcache_get(c, 1, 10, -1, &got));
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16);   /* written again, empty */
+    fa_lcache_put(c, 1, 10, -1, &l);
+    fa_lcache_free(c);
+
+    /* Junk where the header should be: another program's file, or a damaged disk. */
+    f = fopen("lcache-bad/loudness.fac", "wb");
+    CHECK(f != NULL);
+    fwrite(junk, 1, sizeof(junk), f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(!fa_lcache_get(c, 1, 10, -1, &got));
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16);
+    fa_lcache_put(c, 2, 10, -1, &l);
+    fa_lcache_free(c);
+
+    /* A good header, junk, a good record, more junk with a stray marker in it. */
+    f = fopen("lcache-bad/loudness.fac", "ab");
+    CHECK(f != NULL);
+    fwrite(junk, 1, 1000, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad/.");
+    l.integrated_lufs = -7.0;
+    fa_lcache_put(c, 3, 10, -1, &l);
+    fa_lcache_free(c);
+    f = fopen("lcache-bad/loudness.fac", "ab");
+    CHECK(f != NULL);
+    memcpy(junk + 100, "FALR", 4);
+    fwrite(junk, 1, 2000, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(fa_lcache_get(c, 2, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -8.0, 1e-6);
+    CHECK(fa_lcache_get(c, 3, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -7.0, 1e-6);
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16 + 2 * 48);   /* the junk is gone */
+    fa_lcache_clear(c);
+    fa_lcache_free(c);
 }
 
 /* A full 5 MB cache written as the format says, then read: how long the first lookup takes. */
@@ -1454,6 +1593,9 @@ int main(void)
     RUN(test_close_during_scan);
     RUN(test_lcache_keeps_recently_used);
     RUN(test_lcache_two_writers_and_a_torn_record);
+    RUN(test_lcache_one_per_folder);
+    RUN(test_lcache_two_processes);
+    RUN(test_lcache_damaged_file);
     RUN(test_lcache_load_time);
     RUN(test_cache_api);
     RUN(test_key_ignores_tags);

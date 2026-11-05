@@ -2012,11 +2012,13 @@ FA_API fa_result FA_CALL fa_engine_set_normalization(fa_engine* engine, fa_norma
 
 /* The loudness cache in fa_engine_config.cache_directory is one file ("loudness.fac",
  * 48 bytes per song), read into memory once, on the first lookup (a scan thread),
- * and appended to as songs are measured. Several apps may share the folder. When it
- * outgrows max_bytes it is rewritten keeping the songs used most recently (a cache
- * hit or a scan) within 3/4 of the limit, so songs played often are never dropped.
- * max_bytes: 0 = default, 5 MB (about 109,000 songs); at least 16 KB. Without a
- * cache directory these do nothing and return FA_OK. */
+ * and appended to as songs are measured. Engines in one process on the same folder
+ * share one cache (the limit and a clear apply to all of them); several apps may
+ * share the folder too (a file lock, loudness.fac.lock, keeps their writes apart).
+ * When it outgrows max_bytes it is rewritten keeping the songs used most recently (a
+ * cache hit or a scan) within 3/4 of the limit, so songs played often are never
+ * dropped. max_bytes: 0 = default, 5 MB (about 109,000 songs); at least 16 KB.
+ * Without a cache directory these do nothing and return FA_OK. */
 FA_API fa_result FA_CALL fa_engine_set_cache_size(fa_engine* engine, uint64_t max_bytes);
 /* Deletes the cached loudness of every song and the cached track analysis
  * (fa_analyze_*) in the cache directory, FatzAudio's own files only. Songs are

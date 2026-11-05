@@ -254,6 +254,36 @@ int fa_remove_utf8(const char* path)
     return ok ? 0 : -1;
 }
 
+void* fa_file_lock(const char* path, uint32_t timeout_ms)
+{
+    wchar_t* wp = widen(path);
+    HANDLE h;
+    int64_t until = fa_monotonic_ns() + (int64_t)timeout_ms * 1000000;
+    if (!wp) return NULL;
+    h = CreateFileW(wp, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wp);
+    if (h == INVALID_HANDLE_VALUE) return NULL;
+    for (;;) {
+        OVERLAPPED ov;
+        memset(&ov, 0, sizeof(ov));
+        if (LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov)) return h;
+        if (fa_monotonic_ns() >= until) break;
+        Sleep(2);
+    }
+    CloseHandle(h);
+    return NULL;
+}
+
+void fa_file_unlock(void* lock)
+{
+    OVERLAPPED ov;
+    if (!lock) return;
+    memset(&ov, 0, sizeof(ov));
+    UnlockFileEx((HANDLE)lock, 0, 1, 0, &ov);
+    CloseHandle((HANDLE)lock);
+}
+
 void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user)
 {
     char pattern[1024];
@@ -296,6 +326,7 @@ int64_t fa_monotonic_ns(void)
 #  include <sys/types.h>
 #  include <dirent.h>
 #  include <fcntl.h>
+#  include <sys/file.h>
 #  if defined(__linux__) || defined(__ANDROID__)
 #    include <linux/futex.h>
 #    include <sys/resource.h>
@@ -652,6 +683,31 @@ int fa_append_utf8(const char* path, const void* data, size_t n)
 }
 
 int fa_remove_utf8(const char* path) { return unlink(path) == 0 ? 0 : -1; }
+
+/* flock: held by the open file, so it also keeps two threads apart. */
+void* fa_file_lock(const char* path, uint32_t timeout_ms)
+{
+    int fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0666);
+    int64_t until = fa_monotonic_ns() + (int64_t)timeout_ms * 1000000;
+    if (fd < 0) return NULL;
+    for (;;) {
+        if (flock(fd, LOCK_EX | LOCK_NB) == 0) return (void*)(intptr_t)(fd + 1);
+        if (errno != EWOULDBLOCK && errno != EINTR) break;
+        if (fa_monotonic_ns() >= until) break;
+        fa_sleep_ms(2);
+    }
+    close(fd);
+    return NULL;
+}
+
+void fa_file_unlock(void* lock)
+{
+    int fd;
+    if (!lock) return;
+    fd = (int)(intptr_t)lock - 1;
+    flock(fd, LOCK_UN);
+    close(fd);
+}
 
 void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user)
 {

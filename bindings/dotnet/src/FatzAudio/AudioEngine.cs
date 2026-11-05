@@ -891,7 +891,8 @@ public sealed partial class AudioEngine : IDisposable
     /// Sets the largest size of the loudness cache file (<see cref="AudioEngineOptions.CacheDirectory"/>). The file holds
     /// 48 bytes per song and is read into memory once, on the first lookup; when it outgrows the limit it is rewritten
     /// keeping the songs used most recently (a cache hit or a scan) within 3/4 of it, so songs played often are never
-    /// dropped. Several apps may share the folder. Does nothing without a cache directory.
+    /// dropped. Engines in one process on the same folder share one cache, so this limit applies to all of them; several
+    /// apps may share the folder too (a file lock keeps their writes apart). Does nothing without a cache directory.
     /// </summary>
     /// <param name="maxBytes">The limit in bytes, at least 16 KB; 0 restores the default, 5 MB (about 109,000 songs).</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxBytes"/> is negative.</exception>
@@ -904,7 +905,8 @@ public sealed partial class AudioEngine : IDisposable
 
     /// <summary>
     /// Deletes the cached loudness of every song and the cached track analysis in the cache directory (FatzAudio's own
-    /// files only). Songs are measured again as they are played. Does nothing without a cache directory.
+    /// files only), for every engine in this process that uses the same folder. Songs are measured again as they are
+    /// played. Does nothing without a cache directory.
     /// </summary>
     public void ClearCache() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_clear_cache(Handle));
 
