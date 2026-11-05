@@ -382,6 +382,13 @@ static const field_map field_maps[] = {
     { FA_TAG_FORMAT_TRACKER, "TITLE", FA_TAG_TITLE }, { FA_TAG_FORMAT_TRACKER, "ARTIST", FA_TAG_ARTIST },
     { FA_TAG_FORMAT_TRACKER, "COMMENT", FA_TAG_COMMENT },
 
+    { FA_TAG_FORMAT_CAF, "title", FA_TAG_TITLE }, { FA_TAG_FORMAT_CAF, "artist", FA_TAG_ARTIST },
+    { FA_TAG_FORMAT_CAF, "album", FA_TAG_ALBUM }, { FA_TAG_FORMAT_CAF, "composer", FA_TAG_COMPOSER },
+    { FA_TAG_FORMAT_CAF, "genre", FA_TAG_GENRE }, { FA_TAG_FORMAT_CAF, "recorded date", FA_TAG_DATE },
+    { FA_TAG_FORMAT_CAF, "year", FA_TAG_DATE }, { FA_TAG_FORMAT_CAF, "track number", FA_TAG_TRACK | MAP_SPLIT },
+    { FA_TAG_FORMAT_CAF, "comments", FA_TAG_COMMENT }, { FA_TAG_FORMAT_CAF, "copyright", FA_TAG_COPYRIGHT },
+    { FA_TAG_FORMAT_CAF, "encoding application", FA_TAG_ENCODER }, { FA_TAG_FORMAT_CAF, "tempo", FA_TAG_BPM },
+
     { FA_TAG_FORMAT_LYRICS3, "LYR", FA_TAG_LYRICS }, { FA_TAG_FORMAT_LYRICS3, "ETT", FA_TAG_TITLE },
     { FA_TAG_FORMAT_LYRICS3, "EAR", FA_TAG_ARTIST }, { FA_TAG_FORMAT_LYRICS3, "EAL", FA_TAG_ALBUM },
     { FA_TAG_FORMAT_LYRICS3, "INF", FA_TAG_COMMENT }
@@ -550,8 +557,12 @@ static int read_source(fa_tags* t, fa_source* src, const char* name, uint32_t fl
 {
     if (audio_only || !(flags & FA_TAGS_NO_INFO)) {
         fa_decoder dec;
+        fa_decoder_env env;
+        fa_result r;
+        memset(&env, 0, sizeof(env));
+        env.info_only = !audio_only;   /* a codec nobody decodes still gives its details; in an archive such an entry is not a song */
         fa_source_seek(src, 0);
-        fa_result r = fa_decoder_open(&dec, src, name, NULL, -1, NULL);
+        r = fa_decoder_open(&dec, src, name, NULL, -1, &env);
         if (r == FA_OK) {
             if (!(flags & FA_TAGS_NO_INFO)) {
                 fa_decoder_get_info(&dec, &t->info);
@@ -563,6 +574,8 @@ static int read_source(fa_tags* t, fa_source* src, const char* name, uint32_t fl
             fa_source_seek(src, 0);
             if (fa_midi_read_tags(src, (flags & FA_TAGS_NO_INFO) ? NULL : &t->info, &t->sink) == FA_OK && !(flags & FA_TAGS_NO_INFO))
                 t->have_info = 1;
+        } else if (!audio_only && r == FA_ERROR_UNSUPPORTED_FORMAT && fa_dts_core_info(src, &t->info)) {
+            t->have_info = 1;   /* a raw DTS file: no decoder, but the header says what it is */
         } else if (audio_only) {
             return 0;
         }

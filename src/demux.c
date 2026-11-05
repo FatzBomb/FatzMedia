@@ -554,7 +554,26 @@ fa_result fa_track_open(fa_track* t, fa_decoder* dec, const fa_demux_ops* ops, v
     t->p = *p;
     t->length = -1;
     r = fa_codec_open(&t->codec, &p->codec);
-    if (r != FA_OK) return r;
+    if (r != FA_OK) {
+        /* Details only (the tags reader): what the container says about a codec nobody
+         * decodes here. The track cannot be read; the decoder is only asked for info. */
+        if (dec->info_only && (r == FA_ERROR_UNSUPPORTED_FORMAT || r == FA_ERROR_PROVIDER_MISSING) &&
+            p->codec.sample_rate != 0 && p->codec.sample_rate <= FA_MAX_SAMPLE_RATE && p->codec.channels != 0 && p->codec.channels <= 32) {
+            int64_t end = p->end;
+            dec->format.sample_rate = p->codec.sample_rate;
+            dec->format.channels = p->codec.channels;
+            if (p->last_pts != FA_DEMUX_NO_PTS && p->last_end >= p->last_pts) end = p->last_end;
+            dec->length = -1;
+            if (end != FA_DEMUX_NO_PTS && end >= p->start)
+                dec->length = (fa_frames)llround((double)(end - p->start) * p->time_base * p->codec.sample_rate);
+            snprintf(dec->codec, sizeof(dec->codec), "%s", p->codec.codec);
+            if (p->codec.bit_rate > 0 && p->codec.bit_rate < 0xFFFFFFFF) dec->bitrate = (uint32_t)p->codec.bit_rate;
+            dec->undecodable = 1;
+            t->eof = 1;
+            return FA_OK;
+        }
+        return r;
+    }
     t->codec_ready = 1;
     t->codec.dynamic_range = dec->dynamic_range;
     t->codec.dolby_mix = dec->dolby_mix;

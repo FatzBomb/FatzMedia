@@ -256,9 +256,14 @@ public sealed record Spectrum(float[] Magnitudes, float BinHz);
 /// </param>
 /// <param name="Bitrate">Average bits per second (<see cref="AudioBytes"/> over the duration, else the codec's nominal rate); 0 when unknown.</param>
 /// <param name="BitsPerSample">Bit depth of PCM and lossless sources (WAV, AIFF, FLAC, ALAC, CD); 0 for lossy codecs.</param>
+/// <param name="CanDecode">
+/// True when FatzAudio can play the file. False only in the details <see cref="Tags.Info"/> gives for a file whose codec
+/// nobody decodes here (DTS, TrueHD, WMA off Windows, ...): the codec, container, format, duration and bitrate are what
+/// the file says, and opening a stream fails.
+/// </param>
 public sealed record StreamInfo(
     AudioFormat Format, string Codec, string Container, TimeSpan? Duration, long LengthFrames,
-    bool CanSeek, int AudioTrackCount, bool HasCdg, long? FileSize = null, long? AudioBytes = null, int Bitrate = 0, int BitsPerSample = 0)
+    bool CanSeek, int AudioTrackCount, bool HasCdg, long? FileSize = null, long? AudioBytes = null, int Bitrate = 0, int BitsPerSample = 0, bool CanDecode = true)
 {
     internal static unsafe StreamInfo FromNative(in Native.FaStreamInfo n)
     {
@@ -271,7 +276,7 @@ public sealed record StreamInfo(
                 NativeText.Read(container),
                 duration, n.LengthFrames, n.Seekable != 0, n.AudioTrackCount, n.HasCdg != 0,
                 n.FileSize >= 0 ? n.FileSize : null, n.AudioBytes >= 0 ? n.AudioBytes : null,
-                (int)Math.Min(n.Bitrate, int.MaxValue), (int)n.BitsPerSample);
+                (int)Math.Min(n.Bitrate, int.MaxValue), (int)n.BitsPerSample, n.CanDecode != 0);
     }
 }
 

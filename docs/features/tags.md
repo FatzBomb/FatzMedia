@@ -15,6 +15,7 @@ FatzAudio reads the title, artist, album and the rest of a file's tags, its embe
 | AIFF text chunks | AIFF, AIFF-C | `NAME`, `AUTH`, `(c) `, `ANNO` | - |
 | Matroska tags | MKV, MKA, WebM | Global and album-level `SimpleTag`s; the segment title as a fallback; tags aimed at one track, chapter, edition or attachment as `TRACK:<uid>/NAME` and so on | Image attachments (`cover.*` is the front cover) |
 | MIDI | MID, KAR, RMI | Title, artist, copyright | - |
+| CAF `info` chunk | CAF | `title`, `artist`, `album`, `composer`, `genre`, `recorded date`, `year`, `track number`, `comments`, `copyright`, `encoding application`, `tempo`, and any other key as an item (`FA_TAG_FORMAT_CAF`) | - |
 
 A ZIP (MP3+G) is read through the audio file inside it: the one named like the `.cdg`, else the first audio file. Text in any encoding the format allows (Latin-1, UTF-16 with or without BOM, UTF-8) comes out as UTF-8; a file that claims UTF-8 but isn't is read as Latin-1, so nothing is lost. "Isn't UTF-8" is strict: overlong forms, UTF-16 surrogates and code points above U+10FFFF count as not UTF-8, the same check MIDI text, stream titles and HTTP headers use.
 
@@ -58,7 +59,7 @@ These come out as ordinary items (`fa_tags_get_item`, .NET `tags.Items` or `tags
 
 Unless `FA_TAGS_NO_INFO` is set, the reader also opens a decoder on the file (headers only, nothing is decoded) and keeps its `fa_stream_info`: `fa_tags_get_info` (.NET: `tags.Info`, plus the shortcuts `Duration`, `Bitrate`, `Channels`, `SampleRate`, `BitsPerSample`, `Codec`, `FileSize`, `AudioSize` and `HasCdg`). The fields are the same as `fa_stream_get_info` gives for a stream of that file; [streams.md](streams.md#stream-info) describes them. `audio_bytes` is the coded audio alone, without tags, cover art, headers or other tracks, which is what a bitrate needs.
 
-`fa_tags_get_info` returns `FA_ERROR_NOT_FOUND` when no decoder recognised the file (an unsupported codec still gives its tags). A MIDI file is read without a soundfont, whole (the length comes from its events): codec `midi`, container `smf` or `rmid`, 44.1 kHz stereo, the duration, and the title, artist and copyright as `FA_TAG_FORMAT_MIDI` items. `FA_TAGS_NO_INFO` skips that, as it skips the decoder for other files.
+`fa_tags_get_info` returns `FA_ERROR_NOT_FOUND` when the file is not audio any reader recognises. A file whose codec nobody decodes here (DTS, TrueHD, WMA off Windows, ... in Matroska, MP4, ASF, AVI or FLV, and a raw `.dts` file) still gives its details, read from the container: codec, container, rate, channels, duration, size and bitrate, with `can_decode` (.NET `Info.CanDecode`, `tags.CanDecode`) 0. Opening a stream on such a file fails as before, so an app can show the details and grey the file out. A bitrate is the container's own figure; a raw `.dts` file's length assumes frames of constant size, as DTS core frames are. TrueHD and MLP are only read inside a container, not as raw `.thd`/`.mlp` files. A WMA file protected by DRM still returns `FA_ERROR_PROTECTED_CONTENT`. A MIDI file is read without a soundfont, whole (the length comes from its events): codec `midi`, container `smf` or `rmid`, 44.1 kHz stereo, the duration, and the title, artist and copyright as `FA_TAG_FORMAT_MIDI` items. `FA_TAGS_NO_INFO` skips that, as it skips the decoder for other files.
 
 ## C
 

@@ -987,6 +987,198 @@ static void test_matroska_tags(void)
 }
 
 
+/* ---- Details for formats nobody decodes (A5) ------------------------------------------- */
+
+static void put_be64(buf* b, uint64_t v) { put_be32(b, (uint32_t)(v >> 32)); put_be32(b, (uint32_t)v); }
+
+static void ebml_double(buf* out, uint32_t id, double d)
+{
+    uint64_t u;
+    uint8_t b8[8];
+    int i;
+    memcpy(&u, &d, 8);
+    for (i = 0; i < 8; i++) b8[i] = (uint8_t)(u >> (56 - 8 * i));
+    ebml_el(out, id, b8, 8);
+}
+
+static void ebml_uint1(buf* out, uint32_t id, unsigned v)
+{
+    uint8_t x = (uint8_t)v;
+    ebml_el(out, id, &x, 1);
+}
+
+/* A Matroska file with one audio track of `codec_id`, `duration_ms` long and no frames. */
+static void make_mkv_track(buf* file, const char* codec_id, double rate, unsigned channels, double duration_ms)
+{
+    buf hdr = { 0 }, seg = { 0 }, info = { 0 }, tracks = { 0 }, te = { 0 }, au = { 0 };
+    ebml_el(&hdr, 0x4282, "matroska", 8);
+    ebml_buf(file, 0x1A45DFA3, &hdr);
+    ebml_el(&info, 0x2AD7B1, "\x0F\x42\x40", 3);                 /* 1 ms per tick */
+    ebml_double(&info, 0x4489, duration_ms);
+    ebml_buf(&seg, 0x1549A966, &info);
+    ebml_uint1(&te, 0xD7, 1);
+    ebml_uint1(&te, 0x83, 2);
+    ebml_el(&te, 0x86, codec_id, strlen(codec_id));
+    ebml_double(&au, 0xB5, rate);
+    ebml_uint1(&au, 0x9F, channels);
+    ebml_buf(&te, 0xE1, &au);
+    ebml_buf(&tracks, 0xAE, &te);
+    ebml_buf(&seg, 0x1654AE6B, &tracks);
+    ebml_buf(file, 0x18538067, &seg);
+    buf_free(&hdr); buf_free(&seg); buf_free(&info); buf_free(&tracks); buf_free(&te); buf_free(&au);
+}
+
+static void test_undecodable_matroska(void)
+{
+    buf file = { 0 };
+    fa_tags* t = NULL;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    fa_stream* s = NULL;
+    /* DTS in Matroska: nobody decodes it, but the container says what it is. */
+    make_mkv_track(&file, "A_DTS", 48000, 6, 5000);
+    CHECK_EQ(fa_tags_read_memory(file.p, file.n, 0, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+    CHECK_EQ(info.can_decode, 0);
+    CHECK_STR(info.codec, "dts");
+    CHECK_STR(info.container, "matroska");
+    CHECK_EQ(info.format.sample_rate, 48000);
+    CHECK_EQ(info.format.channels, 6);
+    CHECK_EQ(info.duration, 5000000000LL);
+    CHECK_EQ(info.length_frames, 240000);
+    fa_tags_close(t);
+    /* NoInfo: no details and nothing opened. */
+    CHECK_EQ(fa_tags_read_memory(file.p, file.n, FA_TAGS_NO_INFO, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_ERROR_NOT_FOUND);
+    fa_tags_close(t);
+    /* The stream itself still refuses the file. */
+    CHECK(fa_stream_open_memory(g_engine, file.p, file.n, NULL, &s) != FA_OK);
+    CHECK(s == NULL);
+    buf_free(&file);
+    /* TrueHD too; a decodable codec reports can_decode 1. */
+    make_mkv_track(&file, "A_TRUEHD", 96000, 8, 2000);
+    CHECK_EQ(fa_tags_read_memory(file.p, file.n, 0, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+    CHECK_EQ(info.can_decode, 0);
+    CHECK_STR(info.codec, "truehd");
+    CHECK_EQ(info.format.channels, 8);
+    fa_tags_close(t);
+    buf_free(&file);
+    {
+        buf wav = make_wav(1, 1);
+        CHECK_EQ(fa_tags_read_memory(wav.p, wav.n, 0, &t), FA_OK);
+        CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+        CHECK_EQ(info.can_decode, 1);
+        fa_tags_close(t);
+        buf_free(&wav);
+    }
+}
+
+/* A raw DTS core stream: `frames` frames of 48 kHz 5.1 (AMODE 9 + LFE), 1024 samples, 2012 bytes. */
+static void make_dts(buf* b, int frames, unsigned sfreq)
+{
+    int i;
+    for (i = 0; i < frames; i++) {
+        uint8_t f[2012] = { 0 };
+        unsigned nblks = 31, fsize = sizeof(f) - 1, amode = 9, rate = 15;
+        f[0] = 0x7F; f[1] = 0xFE; f[2] = 0x80; f[3] = 0x01;
+        f[4] = (uint8_t)(0x80 | 0x7C | ((nblks >> 6) & 1));           /* FTYPE 1, SHORT 31, CPF 0 */
+        f[5] = (uint8_t)(((nblks & 63) << 2) | ((fsize >> 12) & 3));
+        f[6] = (uint8_t)(fsize >> 4);
+        f[7] = (uint8_t)(((fsize & 15) << 4) | (amode >> 2));
+        f[8] = (uint8_t)(((amode & 3) << 6) | (sfreq << 2) | (rate >> 3));
+        f[9] = (uint8_t)((rate & 7) << 5);
+        f[10] = (uint8_t)(1 << 1);                                      /* LFF 1: an LFE channel */
+        put(b, f, sizeof(f));
+    }
+}
+
+static void test_raw_dts(void)
+{
+    buf b = { 0 };
+    fa_tags* t = NULL;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    make_dts(&b, 10, 13);
+    CHECK_EQ(fa_tags_read_memory(b.p, b.n, 0, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+    CHECK_EQ(info.can_decode, 0);
+    CHECK_STR(info.codec, "dts");
+    CHECK_STR(info.container, "dts");
+    CHECK_EQ(info.format.sample_rate, 48000);
+    CHECK_EQ(info.format.channels, 6);
+    CHECK_EQ(info.length_frames, 10240);
+    CHECK_EQ(info.audio_bytes, 20120);
+    CHECK_EQ(info.bitrate, 754500);                                     /* 2012 bytes per 1024 samples */
+    fa_tags_close(t);
+    buf_free(&b);
+    /* Not DTS: a sync word alone, a bad rate, a second frame that is not one. */
+    make_dts(&b, 1, 13);
+    { uint8_t z[2012] = { 0 }; put(&b, z, sizeof(z)); }
+    CHECK_EQ(fa_tags_read_memory(b.p, b.n, 0, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_ERROR_NOT_FOUND);
+    fa_tags_close(t);
+    buf_free(&b);
+    make_dts(&b, 4, 0);
+    CHECK_EQ(fa_tags_read_memory(b.p, b.n, 0, &t), FA_OK);
+    CHECK_EQ(fa_tags_get_info(t, &info), FA_ERROR_NOT_FOUND);
+    fa_tags_close(t);
+    buf_free(&b);
+}
+
+static void caf_chunk(buf* b, const char* type, const buf* body)
+{
+    put_str(b, type);
+    put_be64(b, body->n);
+    put_buf(b, body);
+}
+
+static void test_caf_info_tags(void)
+{
+    buf f = { 0 }, desc = { 0 }, info = { 0 }, data = { 0 };
+    fa_tags* t = NULL;
+    fa_stream_info si = { .struct_size = sizeof(si) };
+    static const char* const kv[] = { "title", "CAF Song", "artist", "CAF Artist", "album", "CAF Album", "comments", "a note",
+                                      "year", "1999", "track number", "3/12", "encoding application", "unit test" };
+    unsigned i;
+    put_str(&f, "caff"); put_be16(&f, 1); put_be16(&f, 0);
+    {   /* 'desc': 8000 Hz, linear PCM, 16 bit mono, big-endian */
+        union { double d; uint64_t u; } r;
+        r.d = 8000.0;
+        put_be64(&desc, r.u);
+        put_str(&desc, "lpcm"); put_be32(&desc, 0); put_be32(&desc, 2); put_be32(&desc, 1);
+        put_be32(&desc, 1); put_be32(&desc, 16);      /* 1 channel, 16 bits */
+    }
+    put_be32(&info, sizeof(kv) / sizeof(kv[0]) / 2);
+    for (i = 0; i < sizeof(kv) / sizeof(kv[0]); i++) put_strz(&info, kv[i]);
+    { uint8_t z[400] = { 0 }; put_be32(&data, 0); put(&data, z, sizeof(z)); }
+    caf_chunk(&f, "desc", &desc);
+    caf_chunk(&f, "info", &info);
+    caf_chunk(&f, "data", &data);
+    CHECK_EQ(fa_tags_read_memory(f.p, f.n, 0, &t), FA_OK);
+    CHECK_STR(fa_tags_get(t, FA_TAG_TITLE), "CAF Song");
+    CHECK_STR(fa_tags_get(t, FA_TAG_ARTIST), "CAF Artist");
+    CHECK_STR(fa_tags_get(t, FA_TAG_ALBUM), "CAF Album");
+    CHECK_STR(fa_tags_get(t, FA_TAG_COMMENT), "a note");
+    CHECK_STR(fa_tags_get(t, FA_TAG_DATE), "1999");
+    CHECK_STR(fa_tags_get(t, FA_TAG_TRACK), "3");
+    CHECK_STR(fa_tags_get(t, FA_TAG_TRACK_TOTAL), "12");
+    CHECK_STR(fa_tags_get(t, FA_TAG_ENCODER), "unit test");
+    CHECK_STR(item_value(t, "title"), "CAF Song");
+    {
+        fa_tag_item it;
+        CHECK_EQ(fa_tags_get_item(t, 0, &it), FA_OK);
+        CHECK_EQ(it.format, FA_TAG_FORMAT_CAF);
+    }
+    CHECK_EQ(fa_tags_get_info(t, &si), FA_OK);                         /* a CAF that decodes still has its details */
+    CHECK_EQ(si.can_decode, 1);
+    fa_tags_close(t);
+    /* A file cut off inside the 'info' chunk: no crash, no half pairs. */
+    f.n = 8 + 12 + desc.n + 12 + 40;
+    t = read_mem(&f, 0);
+    CHECK(t != NULL);
+    fa_tags_close(t);
+    buf_free(&f); buf_free(&desc); buf_free(&info); buf_free(&data);
+}
+
 static void test_matroska_targeted_tags(void)
 {
     buf file = { 0 }, seg = { 0 }, tags = { 0 }, hdr = { 0 };
@@ -1537,6 +1729,9 @@ int main(void)
     RUN(test_wav_aiff);
     RUN(test_matroska_tags);
     RUN(test_matroska_targeted_tags);
+    RUN(test_undecodable_matroska);
+    RUN(test_raw_dts);
+    RUN(test_caf_info_tags);
     RUN(test_flac_cuesheet_and_vendor);
     RUN(test_midi_without_soundfont);
     RUN(test_id3_compressed);
