@@ -170,7 +170,7 @@ public enum LoudnessSource
 {
     /// <summary>Nothing is known yet.</summary>
     None = 0,
-    /// <summary>A running estimate from the audio decoded so far (live streams, or while a scan runs).</summary>
+    /// <summary>A running estimate from the audio decoded so far (live streams, or while a scan runs and no chunk is done).</summary>
     Estimate = 1,
     /// <summary>ReplayGain 2 or R128 tags in the file.</summary>
     Tags = 2,
@@ -182,6 +182,11 @@ public enum LoudnessSource
     App = 5,
     /// <summary>A Dolby stream's dialogue level (<see cref="AudioEngine.SetDialnorm"/>).</summary>
     Dialnorm = 6,
+    /// <summary>
+    /// Not final yet: the loudness of the scan chunks finished so far, spread over the whole file (a far better
+    /// guess than the running estimate of the intro).
+    /// </summary>
+    Partial = 7,
 }
 
 /// <summary>When the output limiter runs (see <see cref="AudioEngine.SetLimiter"/>).</summary>
@@ -495,10 +500,16 @@ public sealed record AudioEngineOptions
     /// <summary>Decode worker threads; 0 uses the number of cores (at most 8).</summary>
     public int WorkerThreads { get; init; }
     /// <summary>
-    /// Directory for the loudness scan cache (one small file per scanned file, keyed by its content, so
-    /// renamed or moved files still hit); created if missing. Null disables the cache.
+    /// Directory for the loudness cache (one file, <c>loudness.fac</c>, 48 bytes per song) and cached track analysis,
+    /// keyed by a fingerprint of the audio, so renamed, moved or retagged files still hit; created if missing. Null
+    /// disables the cache.
     /// </summary>
     public string? CacheDirectory { get; init; }
+    /// <summary>
+    /// Largest size of the loudness cache file in bytes; null uses the default, 5 MB (about 109,000 songs). When it
+    /// grows past this, the songs used least recently are dropped. At least 16 KB. See <see cref="AudioEngine.SetCacheSize"/>.
+    /// </summary>
+    public long? CacheMaxBytes { get; init; }
     /// <summary>
     /// Where compressed songs in ZIP archives (MP3+G) too big for <see cref="ZipMemoryLimitMb"/> are
     /// unpacked, in a <c>fatzaudio-tmp</c> folder inside it. The files are deleted when the stream

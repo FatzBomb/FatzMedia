@@ -97,7 +97,13 @@ public sealed partial class AudioEngine : IDisposable
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_create(&config, out var native));
             var handle = new EngineHandle();
             Marshal.InitHandle(handle, native);
-            return new AudioEngine(handle);
+            var engine = new AudioEngine(handle);
+            if (options?.CacheMaxBytes is { } max)
+            {
+                try { engine.SetCacheSize(max); }
+                catch { engine.Dispose(); throw; }
+            }
+            return engine;
         }
         finally
         {
@@ -862,9 +868,11 @@ public sealed partial class AudioEngine : IDisposable
     /// <summary>
     /// Turns loudness normalization on or off for every stream played on any device. Each stream's
     /// loudness comes from <see cref="AudioStream.SetLoudness"/>, then ReplayGain/R128 tags, then the scan
-    /// cache, then a background scan that decodes only the audio, in chunks on all cores. Playback never
-    /// waits: it starts with the best value known and glides to the exact gain when the scan is done
-    /// (<see cref="AudioStream.LoudnessFinal"/>). Gain is target minus loudness, limited to -30..+12 dB.
+    /// cache, then a background scan that decodes only the audio, in chunks on all cores. A first play waits
+    /// briefly for the final value (200 ms by default, <see cref="SetNormalizationStartWait"/>); otherwise playback
+    /// starts with the best value known (<see cref="LoudnessSource.Partial"/>, else the running estimate) and glides
+    /// to the exact gain when the scan is done (<see cref="AudioStream.LoudnessFinal"/>). Gain is target minus
+    /// loudness, limited to -30..+12 dB.
     /// </summary>
     /// <param name="mode">Normalization mode.</param>
     /// <param name="targetLufs">Target loudness: -16 suits music players, -14 matches streaming services, -23 is EBU broadcast. Allowed -60..0.</param>
@@ -878,6 +886,63 @@ public sealed partial class AudioEngine : IDisposable
     /// </example>
     public void SetNormalization(NormalizeMode mode, double targetLufs = -16.0) =>
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization(Handle, (int)mode, targetLufs));
+
+    /// <summary>
+    /// Sets the largest size of the loudness cache file (<see cref="AudioEngineOptions.CacheDirectory"/>). The file holds
+    /// 48 bytes per song and is read into memory once, on the first lookup; when it outgrows the limit it is rewritten
+    /// keeping the songs used most recently (a cache hit or a scan) within 3/4 of it, so songs played often are never
+    /// dropped. Several apps may share the folder. Does nothing without a cache directory.
+    /// </summary>
+    /// <param name="maxBytes">The limit in bytes, at least 16 KB; 0 restores the default, 5 MB (about 109,000 songs).</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxBytes"/> is negative.</exception>
+    /// <exception cref="FatzAudioException"><paramref name="maxBytes"/> is under 16 KB (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    public void SetCacheSize(long maxBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_cache_size(Handle, (ulong)maxBytes));
+    }
+
+    /// <summary>
+    /// Deletes the cached loudness of every song and the cached track analysis in the cache directory (FatzAudio's own
+    /// files only). Songs are measured again as they are played. Does nothing without a cache directory.
+    /// </summary>
+    public void ClearCache() => FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_clear_cache(Handle));
+
+    /// <summary>
+    /// Holds the first audio of a normalized stream until its loudness is final, for at most <paramref name="wait"/>
+    /// (default 200 ms; zero starts at once). 200 ms still feels instant, and most songs are measured by then on a
+    /// current desktop; tagged and cached songs start at once. If more than 75% of the audio is scanned when the wait
+    /// runs out, it waits for the final value up to <paramref name="wait"/> longer, so a guess is not followed at once
+    /// by the final value. Otherwise the stream starts on the best value so far (<see cref="LoudnessSource.Partial"/>,
+    /// else the estimate), raises <see cref="AudioStream.LoudnessProvisional"/>, and glides to the final gain as usual.
+    /// </summary>
+    /// <remarks>
+    /// Applies to <see cref="AudioStream.Play"/> of a stream not heard since it was opened, while its scan runs. While
+    /// held the state is <see cref="StreamState.Playing"/> but nothing is mixed: the position and
+    /// <see cref="AudioStream.Clock"/> stay at the start, so CD+G and video wait with it. Never held: scheduled starts
+    /// (<see cref="AudioStream.PlayAt"/>, crossfades, <see cref="AudioStream.QueueNext"/>, sync and auto-mix), streams
+    /// faded or crossfaded away while held, streams on a DJ mixer deck, streams opted out of normalization, and live, web, disc and app-I/O streams (never scanned).
+    /// </remarks>
+    /// <param name="wait">Longest hold, zero to 10 seconds.</param>
+    /// <param name="maxProvisionalBoostDb">
+    /// The most boost while the loudness is not final, with or without a wait: 0 allows only cuts until the value is
+    /// final, 6 keeps a guess from boosting a quiet intro by the full 12 dB. Allowed 0..12; 12 (the default) adds no cap.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="wait"/> is negative or over 10 seconds.</exception>
+    /// <exception cref="FatzAudioException"><paramref name="maxProvisionalBoostDb"/> is out of range (<see cref="ErrorCode.InvalidArgument"/>).</exception>
+    /// <example>
+    /// <code>
+    /// engine.SetNormalization(NormalizeMode.Track, -14);
+    /// engine.SetNormalizationStartWait(TimeSpan.FromMilliseconds(200), maxProvisionalBoostDb: 6);
+    /// </code>
+    /// </example>
+    public void SetNormalizationStartWait(TimeSpan wait, double maxProvisionalBoostDb = 12.0)
+    {
+        if (wait < TimeSpan.Zero || wait > TimeSpan.FromSeconds(10))
+            throw new ArgumentOutOfRangeException(nameof(wait), wait, "The wait must be between zero and 10 seconds.");
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization_start_wait(
+            Handle, (uint)Math.Round(wait.TotalMilliseconds), maxProvisionalBoostDb));
+    }
 
     /// <summary>
     /// Lets the dialogue level that Dolby streams (AC-3, E-AC-3) state ("dialnorm") count as their loudness

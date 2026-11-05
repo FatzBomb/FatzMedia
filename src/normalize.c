@@ -22,18 +22,56 @@ float fa_engine_norm_gain_db(fa_engine* e, double lufs)
     return g;
 }
 
-float fa_stream_norm_target_db(struct fa_stream* s)
+/* A value that is not final yet: the scan so far, then the running estimate. */
+static float provisional_lufs(struct fa_stream* s, fa_loudness_source* out_source)
 {
-    int mode = fa_load32(&s->engine->norm_mode);
-    float lufs;
-    if (mode == FA_NORMALIZE_OFF || (s->flags & (FA_OPEN_NO_NORMALIZE | FA_OPEN_DECODE_ONLY))) return 0.0f;
-    lufs = NAN;
+    float lufs = fa_load_float(&s->norm_partial);
+    if (lufs == lufs) { *out_source = FA_LOUDNESS_PARTIAL; return lufs; }
+    lufs = fa_load_float(&s->norm_est);
+    *out_source = lufs == lufs ? FA_LOUDNESS_ESTIMATE : FA_LOUDNESS_NONE;
+    return lufs;
+}
+
+/* The loudness the gain is made from: final (album, track) first, then a provisional
+ * value. *out_final says which; *out_source is set for a provisional one. */
+static float stream_lufs(struct fa_stream* s, int mode, int* out_final, fa_loudness_source* out_source)
+{
+    float lufs = NAN;
     if (mode == FA_NORMALIZE_ALBUM) lufs = fa_load_float(&s->norm_album);
     if (lufs != lufs) lufs = fa_load_float(&s->norm_track);
-    if (lufs != lufs) lufs = fa_load_float(&s->norm_est);
+    *out_final = lufs == lufs;
+    *out_source = FA_LOUDNESS_NONE;
+    return *out_final ? lufs : provisional_lufs(s, out_source);
+}
+
+int fa_stream_norm_applies(struct fa_stream* s)
+{
+    return fa_load32(&s->engine->norm_mode) != FA_NORMALIZE_OFF && !(s->flags & (FA_OPEN_NO_NORMALIZE | FA_OPEN_DECODE_ONLY));
+}
+
+int fa_stream_norm_provisional(struct fa_stream* s)
+{
+    int final;
+    fa_loudness_source src;
+    stream_lufs(s, fa_load32(&s->engine->norm_mode), &final, &src);
+    return final ? -1 : (int)src;
+}
+
+float fa_stream_norm_target_db(struct fa_stream* s)
+{
+    int final;
+    fa_loudness_source src;
+    float lufs, g;
+    if (!fa_stream_norm_applies(s)) return 0.0f;
+    lufs = stream_lufs(s, fa_load32(&s->engine->norm_mode), &final, &src);
+    g = fa_engine_norm_gain_db(s->engine, lufs);
+    if (!final) {
+        float cap = fa_load_float(&s->engine->norm_prov_boost);   /* a guess boosts at most this */
+        if (g > cap) g = cap;
+    }
     /* The loudness is of the source's channels; a Dolby downmix scaled down so it
      * cannot clip gets that back (the limiter catches the peaks). */
-    return fa_engine_norm_gain_db(s->engine, lufs) + fa_load_float(&s->dolby_makeup);
+    return g + fa_load_float(&s->dolby_makeup);
 }
 
 /* Starts tags/cache/scan for the stream once. */
@@ -43,7 +81,9 @@ void fa_stream_start_analysis(struct fa_stream* s)
     fa_mutex_lock(&s->norm_lock);
     if (!s->scan_job && !s->loud.is_final && !s->analysis_tried) {
         s->analysis_tried = 1;
+        fa_store32(&s->norm_pending, 1);   /* before the job can deliver */
         s->scan_job = fa_scan_start_stream(s, 1);
+        if (!s->scan_job) fa_store32(&s->norm_pending, 0);
     }
     fa_mutex_unlock(&s->norm_lock);
 }
@@ -61,6 +101,7 @@ void fa_stream_loudness_ready(struct fa_stream* s, const fa_loudness* l, double 
         }
         if (album_lufs == album_lufs) fa_store_float(&s->norm_album, (float)album_lufs);
     }
+    fa_store32(&s->norm_pending, 0);      /* after the value: a held first play starts on it */
     fa_mutex_unlock(&s->norm_lock);
     if (post) {
         fa_event ev;
@@ -72,6 +113,11 @@ void fa_stream_loudness_ready(struct fa_stream* s, const fa_loudness* l, double 
         ev.value = 0;
         fa_engine_post_event(s->engine, &ev);
     }
+}
+
+void fa_stream_loudness_partial(struct fa_stream* s, double lufs)
+{
+    fa_store_float(&s->norm_partial, (float)lufs);
 }
 
 /* ---- Public API ------------------------------------------------------------------ */
@@ -91,6 +137,16 @@ FA_API fa_result FA_CALL fa_engine_set_normalization(fa_engine* engine, fa_norma
             if (!(s->flags & FA_OPEN_NO_NORMALIZE)) fa_stream_start_analysis(s);
         fa_mutex_unlock(&engine->list_lock);
     }
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_engine_set_normalization_start_wait(fa_engine* engine, uint32_t wait_ms,
+                                                                double max_provisional_boost_db)
+{
+    if (!engine || wait_ms > 10000 || !(max_provisional_boost_db >= 0.0 && max_provisional_boost_db <= FA_NORM_MAX_BOOST_DB))
+        return FA_ERROR_INVALID_ARG;
+    fa_store_float(&engine->norm_prov_boost, (float)max_provisional_boost_db);
+    fa_store32(&engine->norm_start_wait_ms, (int32_t)wait_ms);
     return FA_OK;
 }
 
@@ -119,12 +175,12 @@ FA_API fa_result FA_CALL fa_stream_get_loudness(fa_stream* stream, fa_loudness* 
     if (stream->loud.is_final) {
         l = stream->loud;
     } else {
-        float est = fa_load_float(&stream->norm_est);
+        fa_loudness_source src;
         memset(&l, 0, sizeof(l));
-        l.integrated_lufs = est;
+        l.integrated_lufs = provisional_lufs(stream, &src);
         l.range_lu = NAN;
         l.true_peak_dbtp = NAN;
-        l.source = est == est ? FA_LOUDNESS_ESTIMATE : FA_LOUDNESS_NONE;
+        l.source = src;
     }
     fa_mutex_unlock(&stream->norm_lock);
     l.gain_db = fa_stream_norm_target_db(stream);
@@ -150,6 +206,7 @@ FA_API fa_result FA_CALL fa_stream_set_loudness(fa_stream* stream, const fa_loud
     fa_store_float(&stream->norm_album, NAN);   /* the app's value wins in album mode too */
     job = stream->scan_job;
     stream->scan_job = NULL;
+    fa_store32(&stream->norm_pending, 0);
     fa_mutex_unlock(&stream->norm_lock);
     fa_scan_release(job);
     return FA_OK;

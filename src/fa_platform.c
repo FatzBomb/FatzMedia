@@ -229,6 +229,52 @@ void fa_temp_folder_sweep(const char* folder)
     }
     free(wp);
 }
+/* FILE_APPEND_DATA alone: the system moves each write to the end itself, atomically. */
+int fa_append_utf8(const char* path, const void* data, size_t n)
+{
+    wchar_t* wp = widen(path);
+    HANDLE h;
+    DWORD done = 0;
+    BOOL ok;
+    if (!wp) return -1;
+    h = CreateFileW(wp, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wp);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    ok = WriteFile(h, data, (DWORD)n, &done, NULL);
+    CloseHandle(h);
+    return ok && done == (DWORD)n ? 0 : -1;
+}
+
+int fa_remove_utf8(const char* path)
+{
+    wchar_t* wp = widen(path);
+    int ok = wp && DeleteFileW(wp);
+    free(wp);
+    return ok ? 0 : -1;
+}
+
+void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user)
+{
+    char pattern[1024];
+    wchar_t* wp;
+    WIN32_FIND_DATAW fd;
+    HANDLE find;
+    if (snprintf(pattern, sizeof(pattern), "%s/*", folder) >= (int)sizeof(pattern)) return;
+    wp = widen(pattern);
+    if (!wp) return;
+    find = FindFirstFileW(wp, &fd);
+    free(wp);
+    if (find == INVALID_HANDLE_VALUE) return;
+    do {
+        char name[1024];
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, name, (int)sizeof(name), NULL, NULL) <= 0) continue;
+        fn(folder, name, user);
+    } while (FindNextFileW(find, &fd));
+    FindClose(find);
+}
+
 /* QueryPerformanceCounter, in integers: whole seconds and the remainder apart, so
  * the result is exact (a double loses nanoseconds after ~100 days of uptime) and
  * matches Stopwatch.GetTimestamp() * 1e9 / Stopwatch.Frequency done the same way. */
@@ -249,6 +295,7 @@ int64_t fa_monotonic_ns(void)
 #  include <sys/stat.h>
 #  include <sys/types.h>
 #  include <dirent.h>
+#  include <fcntl.h>
 #  if defined(__linux__) || defined(__ANDROID__)
 #    include <linux/futex.h>
 #    include <sys/resource.h>
@@ -589,6 +636,33 @@ void fa_temp_folder_sweep(const char* folder)
         if (strncmp(ent->d_name, "fa-", 3) != 0 || strlen(ent->d_name) != 9) continue;
         if (snprintf(path, sizeof(path), "%s/%s", folder, ent->d_name) >= (int)sizeof(path)) continue;
         if (lstat(path, &st) == 0 && S_ISREG(st.st_mode) && now - st.st_mtime > 60) unlink(path);
+    }
+    closedir(d);
+}
+
+/* O_APPEND: each write goes to the end as one piece. */
+int fa_append_utf8(const char* path, const void* data, size_t n)
+{
+    int fd = open(path, O_WRONLY | O_APPEND);
+    ssize_t w;
+    if (fd < 0) return -1;
+    w = write(fd, data, n);
+    close(fd);
+    return w == (ssize_t)n ? 0 : -1;
+}
+
+int fa_remove_utf8(const char* path) { return unlink(path) == 0 ? 0 : -1; }
+
+void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user)
+{
+    DIR* d = opendir(folder);
+    struct dirent* ent;
+    if (!d) return;
+    while ((ent = readdir(d)) != NULL) {
+        char path[1024];
+        struct stat st;
+        if (snprintf(path, sizeof(path), "%s/%s", folder, ent->d_name) >= (int)sizeof(path)) continue;
+        if (lstat(path, &st) == 0 && S_ISREG(st.st_mode)) fn(folder, ent->d_name, user);
     }
     closedir(d);
 }

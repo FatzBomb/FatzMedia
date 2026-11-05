@@ -189,6 +189,12 @@ int fa_system_soundfont_path(int index, char* out, size_t cap);
 FILE* fa_temp_file_create(const char* folder);
 /* Deletes files fa_temp_file_create left behind (a power cut, a crash). */
 void fa_temp_folder_sweep(const char* folder);
+/* Appends `n` bytes to an existing file in one write that other processes
+ * appending to it cannot split. 0 on success, -1 also when the file is missing. */
+int fa_append_utf8(const char* path, const void* data, size_t n);
+int fa_remove_utf8(const char* path);                     /* 0 if removed */
+/* Calls fn for each regular file in `folder` with its name (no path). */
+void fa_folder_each_file(const char* folder, void (*fn)(const char* folder, const char* name, void* user), void* user);
 uint32_t fa_cpu_count(void);
 int64_t fa_monotonic_ns(void);
 

@@ -10,7 +10,7 @@ internal static class NativeConstants
     public const int EventEnded = 0, EventPosition = 1, EventMarker = 2, EventMetadata = 3, EventStalled = 4,
         EventResumed = 5, EventDecodeError = 6, EventDeviceChanged = 7, EventLoudnessFinal = 8, EventRampDone = 9,
         EventStarted = 10, EventMidiText = 11, EventLooped = 12, EventCdgChanged = 13, EventSeekFailed = 14,
-        EventTrackerRow = 15, EventTrackerInstrument = 21, EventTrackerSync = 22;
+        EventTrackerRow = 15, EventTrackerInstrument = 21, EventTrackerSync = 22, EventLoudnessProvisional = 23;
 
     // fa_curve_kind
     public const int CurveLinear = 0, CurveEqualPower = 1, CurveLog = 2, CurveExp = 3, CurveSCurve = 4, CurveBezier = 5, CurvePoints = 6;

@@ -79,6 +79,8 @@ set(FA_SOURCES
     src/walk.c
     src/walk.h
     src/scan.c
+    src/lcache.c
+    src/fingerprint.c
     src/normalize.c
     src/limiter.c
     src/analysis.c

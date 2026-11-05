@@ -727,7 +727,7 @@ static fa_result run(const job* jin, fa_analysis** out)
     if (dir && dir[0] && !(j->opt.flags & FA_ANALYZE_NO_CACHE)) {
         r = open_source(j, &src);
         if (r != FA_OK) { free(a); return r; }
-        if (fa_scan_cache_key(&src, &j->env, &key)) {
+        if (fa_scan_cache_key(&src, &j->env, &key, &key_size)) {
             const uint8_t* head;
             size_t n = fa_source_peek(&src, &head);
             /* A module renders at the engine's rate, and its frames are in it (MIDI
@@ -739,7 +739,6 @@ static fa_result run(const job* jin, fa_analysis** out)
                 key = fa_fnv1a(key, rb, sizeof(rb));
             }
             use_cache = 1;
-            key_size = src.length;
         }
         fa_source_close(&src);
     }
@@ -770,7 +769,7 @@ static fa_result run(const job* jin, fa_analysis** out)
     if (r != FA_OK) { fa_analysis_free(a); return r; }
     if (use_cache) {
         cache_write(dir, path, a);
-        if (a->have_loudness) fa_scan_cache_write_loudness(dir, key, key_size, j->audio_track, &a->loudness);
+        if (a->have_loudness) fa_lcache_put(j->engine->lcache, key, key_size, j->audio_track, &a->loudness);
     }
     if (a->have_loudness) a->loudness.gain_db = fa_engine_norm_gain_db(j->engine, a->loudness.integrated_lufs);
     *out = a;

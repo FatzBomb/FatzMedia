@@ -49,6 +49,7 @@ public class HeaderConstantsTests
         Assert.Equal(NativeConstants.EventTrackerRow, e["FA_EVENT_TRACKER_ROW"]);
         Assert.Equal(NativeConstants.EventTrackerInstrument, e["FA_EVENT_TRACKER_INSTRUMENT"]);
         Assert.Equal(NativeConstants.EventTrackerSync, e["FA_EVENT_TRACKER_SYNC"]);
+        Assert.Equal(NativeConstants.EventLoudnessProvisional, e["FA_EVENT_LOUDNESS_PROVISIONAL"]);
     }
 
     [Fact]
