@@ -174,6 +174,67 @@ public sealed class Tags
         return Take(native);
     }
 
+    /// <summary>
+    /// Reads the tags of a file through a <see cref="Stream"/>, touching only the bytes the tags are in (the start for ID3v2,
+    /// the end for ID3v1, APE and Lyrics3, atoms for MP4): a media library can scan a file behind a slow or remote
+    /// <see cref="Stream"/> without reading all of it.
+    /// </summary>
+    /// <param name="source">A readable, seekable stream. It is left open and its position is not restored.</param>
+    /// <param name="options">What to skip.</param>
+    /// <returns>The tags; empty for data without any.</returns>
+    /// <exception cref="ArgumentException"><paramref name="source"/> cannot read or seek.</exception>
+    /// <example>
+    /// <code>
+    /// using var file = File.OpenRead("song.mp3");
+    /// var tags = Tags.Read(file, TagReadOptions.NoPictures | TagReadOptions.NoInfo);   // the tag blocks only
+    /// </code>
+    /// </example>
+    public static unsafe Tags Read(Stream source, TagReadOptions options = TagReadOptions.None)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!source.CanRead || !source.CanSeek) throw new ArgumentException("The stream must be readable and seekable.", nameof(source));
+        NativeLoader.EnsureInitialized();
+        var gc = GCHandle.Alloc(new IoState(source, leaveOpen: true));
+        try
+        {
+            FaIoCallbacks io = default;
+            io.Read = &IoState.Read;
+            io.Seek = &IoState.Seek;
+            io.Length = &IoState.Length;
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_io(&io, (void*)GCHandle.ToIntPtr(gc), (uint)options, out nint native));
+            return Take(native);
+        }
+        finally { gc.Free(); }
+    }
+
+    /// <summary>Reads the tags and properties of one entry of an archive file, without unpacking the others.</summary>
+    /// <param name="archivePath">The archive (ZIP).</param>
+    /// <param name="entryName">The entry's name, matched as <see cref="Archives.Archive.Find"/> does; null reads the song the
+    /// pairing rules pick, as <see cref="Read(string, TagReadOptions)"/> of the archive does.</param>
+    /// <param name="options">What to skip.</param>
+    /// <returns>The tags. <see cref="HasCdg"/> says whether the entry has graphics; <see cref="FileSize"/> is the archive's size.</returns>
+    /// <exception cref="FatzAudioException">The archive or the entry is missing (<see cref="ErrorCode.NotFound"/>).</exception>
+    public static Tags Read(string archivePath, string? entryName, TagReadOptions options = TagReadOptions.None)
+    {
+        ArgumentNullException.ThrowIfNull(archivePath);
+        NativeLoader.EnsureInitialized();
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive_entry(archivePath, entryName, (uint)options, out nint native));
+        return Take(native);
+    }
+
+    /// <summary>Reads the tags and properties of one entry of an open archive.</summary>
+    /// <param name="archive">The archive.</param>
+    /// <param name="entry">The entry; null reads the song the pairing rules pick.</param>
+    /// <param name="options">What to skip.</param>
+    /// <returns>The tags.</returns>
+    /// <exception cref="FatzAudioException">The entry cannot be read (<see cref="ErrorCode.UnsupportedFormat"/>).</exception>
+    public static Tags Read(Archives.Archive archive, Archives.ArchiveEntry? entry = null, TagReadOptions options = TagReadOptions.None)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_tags_read_archive(archive.Handle, entry?.Index ?? -1, (uint)options, out nint native));
+        return Take(native);
+    }
+
     internal static Tags FromStream(StreamHandle stream, TagReadOptions options)
     {
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_stream_get_tags(stream, (uint)options, out nint native));

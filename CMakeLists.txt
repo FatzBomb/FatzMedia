@@ -146,7 +146,10 @@ set(FA_SOURCES
     src/font_find.c
     src/shape.c
     src/shape.h
-    src/zip.c
+    src/archive/zip.c
+    src/archive/crc32.c
+    src/archive/names.c
+    src/archive/archive.c
     src/tempo.c
     src/resample.c
     src/resample_device.c

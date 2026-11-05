@@ -303,6 +303,14 @@ public sealed record StreamOptions
     /// <c>UpdateInto</c>. Live MIDI controls (sending events, changing the soundfont) throw. Other formats ignore the flag.
     /// </summary>
     public bool MidiLyricsOnly { get; init; }
+    /// <summary>
+    /// Opening an archive (<see cref="AudioEngine.OpenFile"/>, <see cref="AudioEngine.OpenMemory"/>, <see cref="AudioEngine.OpenStream"/>
+    /// of a ZIP): the entry to play, '/'-separated, matched exactly first, then ignoring case and the kind of slash
+    /// (<see cref="ErrorCode.NotFound"/> if there is none). Null plays the song the pairing rules pick (see
+    /// <see cref="Archives.Archive"/>). A <c>.cdg</c> entry with the same name as its song is attached; naming a <c>.cdg</c>
+    /// plays its song, or the graphics as silence. Other sources ignore it.
+    /// </summary>
+    public string? ArchiveEntry { get; init; }
     /// <summary>Audio track to use in multi-track containers; -1 selects the default. For <see cref="AudioEngine.OpenPackets"/> and
     /// <see cref="AudioEngine.CreatePushStream"/> with <see cref="SourceIdentity"/>: the track of the original file the stream plays.</summary>
     public int AudioTrack { get; init; } = -1;

@@ -47,6 +47,8 @@ typedef struct fa_source {
     size_t prefix_len;
     const uint8_t* prefix;  /* the first bytes: prefix_buf, or the memory block itself */
     uint8_t* prefix_buf;
+    void (*release)(void* ctx);   /* called when the source closes: what the memory `mem` points into (an archive) */
+    void* release_ctx;
 } fa_source;
 
 fa_result fa_source_open_path(fa_source* src, const char* path);
@@ -572,6 +574,7 @@ fa_result fa_analysis_cached_silence(struct fa_stream* s, const fa_silence_optio
 #define FA_V1(type) FA_V1_##type
 #define FA_V1_fa_engine_config        FA_SIZE_TO(fa_engine_config, cache_directory)
 #define FA_V1_fa_open_options         FA_SIZE_TO(fa_open_options, mime_hint)
+#define FA_V1_fa_archive_options      FA_SIZE_TO(fa_archive_options, cancel)
 #define FA_V1_fa_codec_params         FA_SIZE_TO(fa_codec_params, time_base)
 #define FA_V1_fa_net_options          FA_SIZE_TO(fa_net_options, hls_max_bandwidth)
 #define FA_V1_fa_capture_options      FA_SIZE_TO(fa_capture_options, flags)

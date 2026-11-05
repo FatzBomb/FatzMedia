@@ -3,6 +3,7 @@
  * and RFC 1951 (DEFLATE). Archives are read through a source: only the directory
  * and the entries asked for are read, never the whole file. */
 #include "cdg.h"
+#include "archive/archive.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,51 +19,12 @@
 #define ZIP64_LOCATOR_SIZE 20
 #define ZIP_MAX_DIRECTORY ((uint64_t)16 << 20)
 
-/* ---- CRC-32 (IEEE 802.3, reflected) ---------------------------------------- */
-
-/* Slice-by-8: crc_tab[k][n] is the CRC of byte n followed by k zero bytes, so
- * eight bytes are folded in with eight lookups. Built once per process. */
-static uint32_t crc_tab[8][256];
-static fa_atomic32 crc_state;
-
-static int crc_build(void* ctx)
-{
-    uint32_t n, k, c;
-    (void)ctx;
-    for (n = 0; n < 256; n++) {
-        c = n;
-        for (k = 0; k < 8; k++) c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-        crc_tab[0][n] = c;
-    }
-    for (n = 0; n < 256; n++)
-        for (k = 1; k < 8; k++) crc_tab[k][n] = (crc_tab[k - 1][n] >> 8) ^ crc_tab[0][crc_tab[k - 1][n] & 0xFF];
-    return 1;
-}
-
-static void crc_init(void) { fa_once(&crc_state, crc_build, NULL); }
-
-/* `crc` is the CRC of the bytes before `data` (0 to start). */
-static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t size)
-{
-    crc_init();
-    crc ^= 0xFFFFFFFFu;
-    for (; size >= 8; data += 8, size -= 8) {
-        uint32_t a = crc ^ fa_le32(data), b = fa_le32(data + 4);
-        crc = crc_tab[7][a & 0xFF] ^ crc_tab[6][(a >> 8) & 0xFF] ^ crc_tab[5][(a >> 16) & 0xFF] ^ crc_tab[4][a >> 24] ^
-              crc_tab[3][b & 0xFF] ^ crc_tab[2][(b >> 8) & 0xFF] ^ crc_tab[1][(b >> 16) & 0xFF] ^ crc_tab[0][b >> 24];
-    }
-    while (size--) crc = crc_tab[0][(crc ^ *data++) & 0xFF] ^ (crc >> 8);
-    return crc ^ 0xFFFFFFFFu;
-}
-
-uint32_t fa_crc32(const uint8_t* data, size_t size) { return crc32_update(0, data, size); }
-uint32_t fa_crc32_update(uint32_t crc, const uint8_t* data, size_t size) { return crc32_update(crc, data, size); }
-
 /* ---- DEFLATE ------------------------------------------------------------------ */
 
 #define INF_MAX_BITS 15
 #define INF_MAX_LITLEN 288
-#define INF_MAX_DIST 30
+#define INF_MAX_DIST 32
+#define INF_DIST_CODES 30                /* DEFLATE uses 30 distance codes, Deflate64 32 */
 
 typedef struct inf_huff {
     uint16_t count[INF_MAX_BITS + 1];   /* codes of each length */
@@ -89,7 +51,7 @@ typedef struct inf_codes_t {
     uint32_t dist_tab[1u << INF_DIST_ROOT];
 } inf_codes_t;
 
-#define INF_WINDOW 32768                 /* the farthest a match reaches back */
+#define INF_WINDOW 65536                 /* the farthest a match reaches back (Deflate64: 64 KB) */
 #define INF_IN_CHUNK 65536               /* input read from a source at a time */
 #define INF_OUT_CHUNK (1u << 20)         /* output kept before writing to a file */
 #define INF_FAST_OUT (258 + 8)           /* the longest match, plus a word copy's overshoot */
@@ -118,6 +80,7 @@ typedef struct inf_state {
     int io_error;                       /* the source or the file failed */
     const volatile int32_t* cancel;              /* the app's flag: non-zero stops at the next chunk (NULL: never) */
     int cancelled;                      /* ... and it did */
+    int d64;                            /* Deflate64 (ZIP method 9): 64 KB window, longer matches */
 } inf_state;
 
 static int inf_cancelled(inf_state* s)
@@ -150,7 +113,7 @@ static int inf_room(inf_state* s)
     keep = INF_WINDOW;
     n = s->out_pos - keep;
     if (fwrite(s->out, 1, n, s->sink) != n) { s->io_error = 1; return -1; }
-    s->crc = crc32_update(s->crc, s->out, n);
+    s->crc = fa_crc32_update(s->crc, s->out, n);
     memmove(s->out, s->out + n, keep);
     s->flushed += n;
     s->out_pos = keep;
@@ -207,23 +170,25 @@ static const uint16_t len_base[29] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 
                                        35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 };
 static const uint8_t len_extra[29] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
                                        3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0 };
-static const uint16_t dist_base[30] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+static const uint16_t dist_base[32] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
                                         257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
-                                        8193, 12289, 16385, 24577 };
-static const uint8_t dist_extra[30] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-                                        7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13 };
+                                        8193, 12289, 16385, 24577, 32769, 49153 };
+static const uint8_t dist_extra[32] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+                                        7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14 };
 
-static uint32_t inf_entry(int kind, int sym, int len)
+static uint32_t inf_entry(int kind, int sym, int len, int d64)
 {
     if (kind == INF_KIND_LITLEN) {
         if (sym < 256) return (uint32_t)sym << 16 | INF_E_LIT | (uint32_t)len;
         if (sym == 256) return INF_E_END | (uint32_t)len;
         sym -= 257;
         if (sym >= 29) return INF_E_BAD | (uint32_t)len;
+        /* Deflate64: the last length code is 3 + 16 extra bits instead of 258. */
+        if (d64 && sym == 28) return 3u << 16 | 16u << 8 | (uint32_t)len;
         return (uint32_t)len_base[sym] << 16 | (uint32_t)len_extra[sym] << 8 | (uint32_t)len;
     }
     if (kind == INF_KIND_DIST) {
-        if (sym >= 30) return INF_E_BAD | (uint32_t)len;
+        if (sym >= (d64 ? 32 : INF_DIST_CODES)) return INF_E_BAD | (uint32_t)len;
         return (uint32_t)dist_base[sym] << 16 | (uint32_t)dist_extra[sym] << 8 | (uint32_t)len;
     }
     return (uint32_t)sym << 16 | (uint32_t)len;
@@ -232,14 +197,14 @@ static uint32_t inf_entry(int kind, int sym, int len)
 /* Fills the table for the codes of at most `root` bits. Huffman codes are packed
  * most significant bit first, so a code sits at its bit-reversed index, repeated
  * for every value of the bits after it. */
-static void inf_table(uint32_t* t, int root, const inf_huff* h, int kind)
+static void inf_table(uint32_t* t, int root, const inf_huff* h, int kind, int d64)
 {
     uint32_t code = 0, size = 1u << root;
     int len, index = 0, i;
     memset(t, 0, size * sizeof(*t));
     for (len = 1; len <= root; len++) {
         for (i = 0; i < h->count[len]; i++, index++, code++) {
-            uint32_t rev = 0, c = code, at, e = inf_entry(kind, h->symbol[index], len);
+            uint32_t rev = 0, c = code, at, e = inf_entry(kind, h->symbol[index], len, d64);
             int b;
             for (b = 0; b < len; b++) { rev = (rev << 1) | (c & 1); c >>= 1; }
             for (at = rev; at < size; at += 1u << len) t[at] = e;
@@ -276,7 +241,7 @@ static uint32_t inf_decode(inf_state* s, const uint32_t* t, int root, const inf_
     if (!(e & 0xFF)) {
         int used, sym = inf_slow(h, s->bitbuf, s->bitcnt, &used);
         if (sym < 0) return 0;
-        e = inf_entry(kind, sym, used);
+        e = inf_entry(kind, sym, used, s->d64);
     }
     len = e & 0xFF;
     if ((int)len > s->bitcnt) return 0;
@@ -294,7 +259,7 @@ static int inf_codes(inf_state* s, const inf_codes_t* c)
         /* With 8 input bytes, room for a whole match and that much output to go,
          * one word load gives the bits for a whole symbol and nothing needs a
          * bounds check but the match distance. */
-        if (s->in_size - s->in_pos >= 8 && s->out_cap - s->out_pos >= INF_FAST_OUT && inf_left(s) >= 258) {
+        if (!s->d64 && s->in_size - s->in_pos >= 8 && s->out_cap - s->out_pos >= INF_FAST_OUT && inf_left(s) >= 258) {
             s->bitbuf |= fa_le64(s->in + s->in_pos) << s->bitcnt;
             s->in_pos += (size_t)(63 - s->bitcnt) >> 3;
             s->bitcnt |= 56;
@@ -389,31 +354,33 @@ static int inf_stored(inf_state* s)
 }
 
 /* The fixed codes (RFC 1951 3.2.6), built once per process. */
-static inf_codes_t inf_fixed_codes;
+static inf_codes_t inf_fixed_codes[2];   /* DEFLATE, Deflate64 */
 static fa_atomic32 inf_fixed_state;
 
 static int inf_fixed_build(void* ctx)
 {
-    inf_codes_t* c = &inf_fixed_codes;
     uint8_t lengths[INF_MAX_LITLEN];
-    int i;
+    int i, d64;
     (void)ctx;
-    for (i = 0; i < 144; i++) lengths[i] = 8;
-    for (; i < 256; i++) lengths[i] = 9;
-    for (; i < 280; i++) lengths[i] = 7;
-    for (; i < INF_MAX_LITLEN; i++) lengths[i] = 8;
-    inf_build(&c->lit, lengths, INF_MAX_LITLEN);
-    for (i = 0; i < INF_MAX_DIST; i++) lengths[i] = 5;
-    inf_build(&c->dist, lengths, INF_MAX_DIST);
-    inf_table(c->lit_tab, INF_LIT_ROOT, &c->lit, INF_KIND_LITLEN);
-    inf_table(c->dist_tab, INF_DIST_ROOT, &c->dist, INF_KIND_DIST);
+    for (d64 = 0; d64 < 2; d64++) {
+        inf_codes_t* c = &inf_fixed_codes[d64];
+        for (i = 0; i < 144; i++) lengths[i] = 8;
+        for (; i < 256; i++) lengths[i] = 9;
+        for (; i < 280; i++) lengths[i] = 7;
+        for (; i < INF_MAX_LITLEN; i++) lengths[i] = 8;
+        inf_build(&c->lit, lengths, INF_MAX_LITLEN);
+        for (i = 0; i < INF_MAX_DIST; i++) lengths[i] = 5;
+        inf_build(&c->dist, lengths, INF_MAX_DIST);
+        inf_table(c->lit_tab, INF_LIT_ROOT, &c->lit, INF_KIND_LITLEN, d64);
+        inf_table(c->dist_tab, INF_DIST_ROOT, &c->dist, INF_KIND_DIST, d64);
+    }
     return 1;
 }
 
 static int inf_fixed(inf_state* s)
 {
     fa_once(&inf_fixed_state, inf_fixed_build, NULL);
-    return inf_codes(s, &inf_fixed_codes);
+    return inf_codes(s, &inf_fixed_codes[s->d64 ? 1 : 0]);
 }
 
 static int inf_dynamic(inf_state* s)
@@ -427,11 +394,11 @@ static int inf_dynamic(inf_state* s)
     nlen = (int)inf_bits(s, 5) + 257;
     ndist = (int)inf_bits(s, 5) + 1;
     ncode = (int)inf_bits(s, 4) + 4;
-    if (s->error || nlen > 286 || ndist > INF_MAX_DIST) return -1;
+    if (s->error || nlen > 286 || ndist > (s->d64 ? INF_MAX_DIST : INF_DIST_CODES)) return -1;
     memset(lengths, 0, sizeof(lengths));
     for (i = 0; i < ncode; i++) lengths[order[i]] = (uint8_t)inf_bits(s, 3);
     if (s->error || inf_build(&lencode, lengths, 19) != 0) return -1;
-    inf_table(len_tab, INF_LEN_ROOT, &lencode, INF_KIND_LEN);
+    inf_table(len_tab, INF_LEN_ROOT, &lencode, INF_KIND_LEN, 0);
     i = 0;
     while (i < nlen + ndist) {
         uint32_t e = inf_decode(s, len_tab, INF_LEN_ROOT, &lencode, INF_KIND_LEN);
@@ -453,8 +420,8 @@ static int inf_dynamic(inf_state* s)
     }
     if (lengths[256] == 0) return -1; /* no end-of-block code */
     if (inf_build(&c.lit, lengths, nlen) != 0 || inf_build(&c.dist, lengths + nlen, ndist) != 0) return -1;
-    inf_table(c.lit_tab, INF_LIT_ROOT, &c.lit, INF_KIND_LITLEN);
-    inf_table(c.dist_tab, INF_DIST_ROOT, &c.dist, INF_KIND_DIST);
+    inf_table(c.lit_tab, INF_LIT_ROOT, &c.lit, INF_KIND_LITLEN, s->d64);
+    inf_table(c.dist_tab, INF_DIST_ROOT, &c.dist, INF_KIND_DIST, s->d64);
     return inf_codes(s, &c);
 }
 
@@ -569,6 +536,22 @@ static int apply_zip64_extra(fa_zip_entry* e, const uint8_t* extra, size_t extra
     return -1;
 }
 
+/* The extended timestamp extra field (0x5455: flags, then UTC mtime, atime, ctime as
+ * 32-bit seconds, each only when its flag bit is set; the central copy holds mtime only). */
+static void read_times(fa_zip_entry* e, const uint8_t* extra, size_t extra_len)
+{
+    while (extra_len >= 4) {
+        uint32_t id = fa_le16(extra), len = fa_le16(extra + 2);
+        if (len > extra_len - 4) return;
+        if (id == 0x5455 && len >= 5 && (extra[4] & 1)) {
+            e->mtime_ns = (int64_t)fa_le32(extra + 5) * 1000000000ll;
+            return;
+        }
+        extra += 4 + len;
+        extra_len -= 4 + len;
+    }
+}
+
 static int by_offset(const void* a, const void* b)
 {
     const fa_zip_entry* x = *(const fa_zip_entry* const*)a;
@@ -657,8 +640,8 @@ fa_result fa_zip_list(fa_source* src, fa_zip_entry** out_entries, uint32_t* out_
         extra_len = fa_le16(h + 30);
         skip = ZIP_CENTRAL_SIZE + name_len + extra_len + fa_le16(h + 32);
         if (cd_size - pos < skip) goto done;
-        /* Directories and encrypted entries are left out. */
-        if (name_len == 0 || h[ZIP_CENTRAL_SIZE + name_len - 1] == '/' || (flags & 1)) { pos += skip; continue; }
+        /* Directories are left out; encrypted entries are listed (and refused when read). */
+        if (name_len == 0 || h[ZIP_CENTRAL_SIZE + name_len - 1] == '/') { pos += skip; continue; }
         if (n == cap) {
             fa_zip_entry* grown;
             cap = cap ? cap * 2 : 16;
@@ -670,6 +653,11 @@ fa_result fa_zip_list(fa_source* src, fa_zip_entry** out_entries, uint32_t* out_
         e = &entries[n];
         memset(e, 0, sizeof(*e));
         e->method = fa_le16(h + 10);
+        e->flags = (uint16_t)flags;
+        e->dos_time = fa_le16(h + 12);
+        e->dos_date = fa_le16(h + 14);
+        e->mtime_ns = e->atime_ns = e->ctime_ns = INT64_MIN;
+        read_times(e, h + ZIP_CENTRAL_SIZE + name_len, extra_len);
         e->crc32 = fa_le32(h + 16);
         comp32 = fa_le32(h + 20);
         size32 = fa_le32(h + 24);
@@ -710,11 +698,14 @@ fa_result fa_zip_entry_offset(fa_source* src, const fa_zip_entry* e, int64_t* ou
     if (fa_le32(h) != ZIP_LOCAL_SIG) return FA_ERROR_UNSUPPORTED_FORMAT;
     data_pos = e->header_offset + ZIP_LOCAL_SIZE + fa_le16(h + 26) + fa_le16(h + 28);
     if (data_pos > len || len - data_pos < e->compressed_size) return FA_ERROR_UNSUPPORTED_FORMAT;
-    if (e->method != 0 && e->method != 8) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (e->flags & 1) return FA_ERROR_PROTECTED_CONTENT;   /* encrypted: no password support */
+    if (e->method != 0 && e->method != 8 && e->method != 9) return FA_ERROR_UNSUPPORTED_FORMAT;
     if (e->method == 0 && e->compressed_size != e->size) return FA_ERROR_UNSUPPORTED_FORMAT;
     /* DEFLATE expands at most 1032:1 (258-byte matches in about two bits each), so a
      * larger declared size is a lie: refuse it before allocating. */
     if (e->method == 8 && e->size / 1032 > e->compressed_size + 1024) return FA_ERROR_UNSUPPORTED_FORMAT;
+    /* Deflate64 matches reach 65,538 bytes: at most about 26,000:1. */
+    if (e->method == 9 && e->size / 32768 > e->compressed_size + 1024) return FA_ERROR_UNSUPPORTED_FORMAT;
     *out_offset = (int64_t)data_pos;
     return FA_OK;
 }
@@ -748,7 +739,8 @@ static fa_result unpack(fa_source* src, const fa_zip_entry* e, uint8_t* out, siz
         s.in_buf = (uint8_t*)malloc(INF_IN_CHUNK);
         if (!s.in_buf) return FA_ERROR_OUT_OF_MEMORY;
     }
-    if (e->method == 8) {
+    if (e->method == 8 || e->method == 9) {
+        s.d64 = e->method == 9;
         r = inf_run(&s);
         /* The prefix ends where the output buffer is full: the stream goes on, which
          * inf_run counts as a failure. */
@@ -764,7 +756,7 @@ static fa_result unpack(fa_source* src, const fa_zip_entry* e, uint8_t* out, siz
     if (r == FA_OK && sink) {
         if (fwrite(s.out, 1, s.out_pos, sink) != s.out_pos || fflush(sink) != 0) r = FA_ERROR_IO;
     }
-    if (r == FA_OK && crc32_update(s.crc, s.out, s.out_pos) != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
+    if (r == FA_OK && fa_crc32_update(s.crc, s.out, s.out_pos) != e->crc32) r = FA_ERROR_UNSUPPORTED_FORMAT;
     return r;
 }
 
@@ -799,59 +791,4 @@ fa_result fa_zip_extract_prefix(fa_source* src, const fa_zip_entry* e, uint8_t* 
     *got = 0;
     if (cap == 0) return FA_OK;
     return unpack(src, e, buf, cap, NULL, NULL, got);
-}
-
-/* ---- The audio entry of a karaoke archive ----------------------------------------- */
-
-int fa_zip_visit_audio(fa_source* src, int (*visit)(void* ctx, fa_source* entry, const char* name), void* ctx,
-                       int* out_has_cdg)
-{
-    fa_zip_entry* e;
-    uint32_t count, i, pass, unpacks = 0;
-    int cdg = -1, taken = 0;
-    int64_t size = src->length;
-    if (out_has_cdg) *out_has_cdg = 0;
-    if (fa_zip_list(src, &e, &count) != FA_OK) return 0;
-    for (i = 0; i < count && cdg < 0; i++) if (fa_cdg_is_cdg_name(e[i].name)) cdg = (int)i;
-    if (out_has_cdg) *out_has_cdg = cdg >= 0;
-    for (pass = 0; pass < 2 && !taken; pass++) {
-        for (i = 0; i < count && !taken; i++) {
-            size_t stem = cdg >= 0 ? strlen(e[cdg].name) - 4 : 0;
-            int preferred = cdg >= 0 && strncmp(e[i].name, e[cdg].name, stem) == 0 && e[i].name[stem] == '.';
-            int64_t offset;
-            if ((int)i == cdg || fa_cdg_is_cdg_name(e[i].name) || preferred != (pass == 0) || e[i].size == 0) continue;
-            if (e[i].method == 0) {
-                if (fa_zip_entry_offset(src, &e[i], &offset) != FA_OK ||
-                    fa_source_set_window(src, offset, (int64_t)e[i].size) != FA_OK)
-                    continue;
-                taken = visit(ctx, src, e[i].name);
-                fa_source_set_window(src, 0, size);
-            } else {
-                uint8_t* audio;
-                fa_source mem;
-                /* Not audio (a video, a PDF): told from a 64 KB prefix, not by unpacking it. */
-                if (e[i].size > FA_ZIP_PROBE_BYTES) {
-                    uint8_t* head;
-                    size_t got = 0;
-                    int ok;
-                    fa_result pr;
-                    if (unpacks >= FA_ZIP_MAX_UNPACKS) continue;   /* the unpack limit: only small or stored ones */
-                    head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
-                    if (!head) continue;
-                    pr = fa_zip_extract_prefix(src, &e[i], head, FA_ZIP_PROBE_BYTES, &got);
-                    ok = pr != FA_OK || fa_decoder_recognizes(head, got);
-                    free(head);
-                    if (!ok) continue;
-                    unpacks++;
-                }
-                if (fa_zip_extract(src, &e[i], FA_ZIP_DEFAULT_MEMORY_LIMIT, NULL, &audio) != FA_OK) continue;
-                fa_source_open_memory_ref(&mem, audio, (size_t)e[i].size);
-                taken = visit(ctx, &mem, e[i].name);
-                fa_source_close(&mem);
-                free(audio);
-            }
-        }
-    }
-    free(e);
-    return taken;
 }

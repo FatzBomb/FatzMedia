@@ -361,3 +361,52 @@ internal sealed class EncoderHandle : SafeHandle
     }
 }
 
+
+/// <summary>Owns an <c>fa_archive*</c> and the GC handle of its I/O callbacks (freed after the native close, which calls them).</summary>
+internal sealed class ArchiveHandle : SafeHandle
+{
+    private GCHandle _io;
+
+    /// <summary>Runs after the native close (frees the cancel flag the archive read).</summary>
+    public Action? OnRelease;
+
+    public ArchiveHandle() : base(0, true) { }
+    public override bool IsInvalid => handle == 0;
+
+    public void Initialize(nint native, GCHandle? io)
+    {
+        if (io is { } g) _io = g;
+        SetHandle(native);
+    }
+
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.fa_archive_close(handle);
+        if (_io.IsAllocated) _io.Free();
+        OnRelease?.Invoke();
+        return true;
+    }
+}
+
+/// <summary>Owns an <c>fa_archive_reader*</c> and keeps its archive alive.</summary>
+internal sealed class ArchiveReaderHandle : SafeHandle
+{
+    private ArchiveHandle? _archive;
+
+    public ArchiveReaderHandle() : base(0, true) { }
+    public override bool IsInvalid => handle == 0;
+
+    public void Initialize(nint native, ArchiveHandle archive)
+    {
+        _archive = HandleRef.AddRef(archive);
+        SetHandle(native);
+    }
+
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.fa_archive_reader_close(handle);
+        _archive?.DangerousRelease();
+        _archive = null;
+        return true;
+    }
+}
