@@ -91,7 +91,7 @@ public class EngineTests
     [Fact]
     public void OpenOutput_Default_ControlsVolume()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var output = engine.OpenOutput();
         output.Volume = 0.5f;
         Assert.Equal(0.5f, output.Volume, 3);
@@ -176,7 +176,7 @@ public class EngineTests
     [Fact]
     public void Info_IsCachedWhileUnchanged()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var s = engine.OpenMemory(TestAudio.SineWav(1.0, 22050, 440.0), new StreamOptions { DecodeOnly = true });
         var first = s.Info;
         Assert.Same(first, s.Info);
@@ -189,7 +189,7 @@ public class EngineTests
     [Fact]
     public void LevelsAndSpectrum_FollowPlayback()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var output = engine.OpenOutput();
         using var s = engine.OpenMemory(TestAudio.SineWav(3.0, 48000, 1500.0));
         Assert.Equal(0f, s.GetLevels().Peak[0]);            // not playing; starts recording
@@ -253,7 +253,7 @@ public class EngineTests
     [Fact]
     public void Volume_RoundTrips_OnAttachedStream()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var output = engine.OpenOutput();
         using var s = engine.OpenMemory(TestAudio.SineWav());
         s.PlayOn(output);

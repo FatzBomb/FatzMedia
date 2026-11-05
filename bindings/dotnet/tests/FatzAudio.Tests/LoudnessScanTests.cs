@@ -9,7 +9,7 @@ public class LoudnessScanTests
     private const int Rate = 44100;
 
     private static AudioEngine Create(string? cache) =>
-        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = cache });
+        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
     private static string TempDir() => Path.Combine(Path.GetTempPath(), $"fa-feed-{Guid.NewGuid():N}");
 

@@ -10,7 +10,7 @@ public class PushStreamTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static async Task WaitFor(Func<bool> condition)
     {

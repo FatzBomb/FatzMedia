@@ -8,7 +8,7 @@ public class CrossfadeTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static async Task WaitFor(Func<bool> condition)
     {

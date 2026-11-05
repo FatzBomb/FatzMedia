@@ -6,7 +6,7 @@ namespace FatzAudio.Tests;
 /// <summary>The additive .NET polish of final audit step 10: time companions, async opens, raw formats, error args.</summary>
 public class PolishTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void DeckTimes_FollowTheStreamsRate()

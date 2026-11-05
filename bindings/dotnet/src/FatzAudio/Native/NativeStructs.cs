@@ -841,6 +841,15 @@ internal unsafe struct FaMixerConfig
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FaCacheInfo
+{
+    public uint StructSize;
+    public byte* Directory;
+    public int Status;
+    public uint IsDefault;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct FaEngineStats
 {
     public uint StructSize;

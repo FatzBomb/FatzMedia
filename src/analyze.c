@@ -527,7 +527,7 @@ static void cache_write(const char* dir, const char* path, const fa_analysis* a)
     encode(a, &b);
     /* Past the read limit (a waveform of about a day) it could not be read back. */
     if (b.failed || b.n > FA_ANALYSIS_MAX_CACHE) { free(b.d); return; }
-    fa_mkdir_utf8(dir);
+    fa_mkdirs_utf8(dir);
     snprintf(tmp, sizeof(tmp), "%s.%llx.tmp", path, (unsigned long long)fa_thread_current_id());
     f = fa_fopen_utf8(tmp, "wb");
     if (f) {

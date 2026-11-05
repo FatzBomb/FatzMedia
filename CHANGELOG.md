@@ -126,6 +126,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Changed
 
+- Cache folder (MediaControl): `fa_engine_config.cache_directory` is now created with all its parents (it was one level, so
+  a missing parent silently switched the cache off), also when the cache writes. It is optional: NULL uses the OS's
+  per-user cache folder plus `FatzAudio` (Windows `%LOCALAPPDATA%`, Linux `XDG_CACHE_HOME` or `~/.cache`, macOS and iOS
+  `~/Library/Caches`, Android the app's cache). **Behaviour change:** NULL used to mean "no cache"; use the new flag
+  `FA_ENGINE_NO_CACHE` (.NET `AudioEngineOptions.NoCache`) for that. New `fa_engine_get_cache_info` / `fa_cache_info`
+  (.NET `AudioEngine.GetCacheInfo()`, `CacheInfo`) report the folder and whether it works (`FA_ERROR_IO` when it cannot be
+  made or written); the engine still starts. ([normalization](docs/features/normalization.md#the-cache))
+
 - Which entry of a ZIP plays is one shared rule now (`fa_archive_pick`): a `.cdg` that matches no song is no longer
   attached when the archive holds several songs; names compare ignoring case; an archive with only encrypted
   audio gives `FA_ERROR_PROTECTED_CONTENT`; `fa_fingerprint_archive_entry` with a `NULL` name means the pick.

@@ -6,7 +6,7 @@ namespace FatzAudio.Tests;
 /// <summary>Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decode natively, with the dynamic range modes.</summary>
 public class DolbyTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static string FindTestFile(string relative)
     {

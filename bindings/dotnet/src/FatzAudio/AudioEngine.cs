@@ -82,6 +82,7 @@ public sealed partial class AudioEngine : IDisposable
                 if (options.NullOutput) config.Flags |= 1; // FA_ENGINE_NULL_OUTPUT
                 if (options.NoSystemSoundFont) config.Flags |= 2; // FA_ENGINE_NO_SYSTEM_SOUNDFONT
                 if (options.NoTempFiles) config.Flags |= 4; // FA_ENGINE_NO_TEMP_FILES
+                if (options.NoCache) config.Flags |= 8; // FA_ENGINE_NO_CACHE
                 if (options.CacheDirectory is { } dir)
                 {
                     cachePtr = Marshal.StringToCoTaskMemUTF8(dir);
@@ -921,6 +922,29 @@ public sealed partial class AudioEngine : IDisposable
     /// </example>
     public void SetNormalization(NormalizeMode mode, double targetLufs = -16.0) =>
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_set_normalization(Handle, (int)mode, targetLufs));
+
+    /// <summary>
+    /// Tells where the loudness and analysis cache is and whether it works. The cache is only an optimisation, so a
+    /// folder that cannot be made or written never fails the engine or a scan; check this once after
+    /// <see cref="Create"/> and log <see cref="CacheInfo.Status"/> when it is not <see cref="ErrorCode.Ok"/>. It also
+    /// turns to <see cref="ErrorCode.Io"/> after a later write fails (disk full, folder made read-only).
+    /// </summary>
+    /// <returns>The folder in use and its status.</returns>
+    /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
+    /// <example>
+    /// <code>
+    /// var cache = engine.GetCacheInfo();
+    /// if (cache.Status != ErrorCode.Ok) log.Warn($"Loudness cache off ({cache.Status}): {cache.Directory}");
+    /// </code>
+    /// </example>
+    public unsafe CacheInfo GetCacheInfo()
+    {
+        FaCacheInfo info = default;
+        info.StructSize = (uint)sizeof(FaCacheInfo);
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_get_cache_info(Handle, &info));
+        return new CacheInfo(info.Directory == null ? null : Marshal.PtrToStringUTF8((nint)info.Directory),
+            (ErrorCode)info.Status, info.IsDefault != 0);
+    }
 
     /// <summary>
     /// Sets the largest size of the loudness cache file (<see cref="AudioEngineOptions.CacheDirectory"/>). The file holds

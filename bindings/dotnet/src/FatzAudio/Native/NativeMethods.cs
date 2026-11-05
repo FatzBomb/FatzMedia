@@ -27,6 +27,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_engine_get_stats(EngineHandle engine, FaEngineStats* stats);
 
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_engine_get_cache_info(EngineHandle engine, FaCacheInfo* info);
+
     // ---- Supported formats -------------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial uint fa_format_count();

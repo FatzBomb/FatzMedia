@@ -109,7 +109,7 @@ typedef struct fa_audio_format {
 
 ### Library
 
-Functions: `fa_version`, `fa_result_string`, `fa_engine_config_init`, `fa_engine_create`, `fa_engine_destroy`, `fa_engine_get_stats`
+Functions: `fa_version`, `fa_result_string`, `fa_engine_config_init`, `fa_engine_create`, `fa_engine_destroy`, `fa_engine_get_stats`, `fa_engine_get_cache_info`
 
 ```c
 FA_API uint32_t FA_CALL fa_version(void); /* (major << 16) | (minor << 8) | patch */
@@ -125,7 +125,10 @@ typedef enum fa_engine_flags {
     /* No temp files in the OS temp directory: with temp_directory NULL, a compressed ZIP
      * entry past zip_memory_limit_mb fails with FA_ERROR_TOO_LARGE. A temp_directory
      * the app sets still works. */
-    FA_ENGINE_NO_TEMP_FILES = 1 << 2
+    FA_ENGINE_NO_TEMP_FILES = 1 << 2,
+    /* No cache: with cache_directory NULL, FatzAudio does not use the OS's per-user cache folder either;
+     * loudness is measured again every time and track analysis is not kept. */
+    FA_ENGINE_NO_CACHE = 1 << 3
 } fa_engine_flags;
 
 typedef struct fa_engine_config {
@@ -136,8 +139,13 @@ typedef struct fa_engine_config {
     const char* cache_directory;  /* loudness scan cache (one file, loudness.fac, of
                                      48 bytes per song, at most 5 MB by default:
                                      fa_engine_set_cache_size) and track analysis
-                                     results, keyed by content. NULL = disabled.
-                                     Created if missing (one level).
+                                     results, keyed by content. NULL = the OS's per-user
+                                     cache folder + "FatzAudio" (Windows %LOCALAPPDATA%,
+                                     Linux XDG_CACHE_HOME or ~/.cache, macOS and iOS
+                                     ~/Library/Caches, Android the app's cache), or no
+                                     cache with FA_ENGINE_NO_CACHE. Created with all its
+                                     parents if missing; if that fails the engine still
+                                     starts and fa_engine_get_cache_info says so.
                                      The string is copied */
     uint32_t flags;               /* fa_engine_flags */
     /* ZIP archives (MP3+G). Stored entries always play straight from the archive.
@@ -180,6 +188,17 @@ typedef struct fa_engine_stats {
 } fa_engine_stats;
 
 FA_API fa_result FA_CALL fa_engine_get_stats(fa_engine* engine, fa_engine_stats* out_stats);
+
+/* Where the cache is and whether it works. Set struct_size (sizeof(fa_cache_info)) first. */
+typedef struct fa_cache_info {
+    uint32_t struct_size;
+    const char* directory;   /* the folder in use (valid until fa_engine_destroy); NULL = no cache */
+    fa_result status;        /* FA_OK = works so far; FA_ERROR_IO = the folder could not be made, or the
+                                last write of the cache file failed; FA_ERROR_NOT_FOUND = no cache */
+    uint32_t is_default;     /* 1 = FatzAudio chose the folder (cache_directory was NULL) */
+} fa_cache_info;
+
+FA_API fa_result FA_CALL fa_engine_get_cache_info(fa_engine* engine, fa_cache_info* out_info);
 ```
 
 
