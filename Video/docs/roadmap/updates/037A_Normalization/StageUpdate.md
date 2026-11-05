@@ -144,3 +144,14 @@ dotnet build FatzBomb.MediaControl.sln -c Release
 
 Report: each step pass/fail, and for step 1 whether a first play's start was noticeably off or
 gliding (that decides how urgent request 12 is).
+
+## Follow-up (2026-11-05): our peak measurement dropped (owner decision)
+
+The FatzAudio engine no longer measures peaks itself. `AnalyzePeakQuickAsync` and `AnalyzePeakAsync`
+(public `IAudioEngine` members, so kept) return FatzAudio's true peak as a linear level once the
+song's loudness is final; 0 with no song, for silence, when no peak is known, or when the song closes
+while waiting. `FatzAudioLevelSource` (the decode-only stream it read) is deleted, and the engine no
+longer keeps archive bytes or an in-memory FFmpeg conversion after the open (FatzAudio copies what it
+opens), so an archive song is held once instead of twice. Note: a true peak is slightly above the
+sample peak BASS reports for the same file. Test: the normalization test also checks both peak calls
+(a 0.1 sine reads 0.1, no song reads 0).

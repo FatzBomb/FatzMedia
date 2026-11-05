@@ -32,7 +32,6 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     private const string Category = "FatzAudioEngine";
 
     private static readonly Fa.StreamOptions PlaybackOptions = new() { NoCdg = true };
-    private static readonly Fa.StreamOptions DecodeOptions = new() { DecodeOnly = true, NoCdg = true, NoNormalize = true };
 
     private readonly Fa.AudioEngine _engine;
     private readonly Fa.OutputDevice _output;
@@ -40,13 +39,12 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     private readonly Fa.SoundFont? _soundFont;
     private readonly SilenceTrimOptions _silenceTrim;
     private readonly NormalizationOptions _normalization;
-    private readonly AudioNormalizer _normalizer = new();
     private readonly object? _diagnosticOwner;
 
     // Guards the open stream and everything bound to it; never held while raising events.
     private readonly Lock _gate = new();
     private Fa.AudioStream? _stream;
-    private OpenedSource? _source;
+    private CancellationTokenSource? _streamLifetime;
     private ConvertedAudio? _converted;
     private int _sampleRate;
     private double _duration;
@@ -359,11 +357,12 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             stream.LoudnessFinal += OnStreamLoudnessFinal;
             lock (_gate)
             {
-                // From here CloseStream owns the stream and the conversion.
+                // From here CloseStream owns the stream and a temp-file conversion. FatzAudio copies
+                // memory it opens, so archive bytes and in-memory conversions are not kept.
                 Fa.AudioStream opened = stream;
                 _stream = stream;
-                _source = source;
-                _converted = converted;
+                _streamLifetime = new CancellationTokenSource();
+                _converted = converted is { IsInMemory: false } ? converted : null;
                 stream = null;
                 converted = null;
                 _sampleRate = info.Format.SampleRate;
@@ -628,11 +627,11 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         }
     }
 
-    public async Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) =>
-        await AnalyzeCurrentAsync(level => _normalizer.AnalyzePeakQuickAsync(level, updateGain: false, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    /// <summary>The song's true peak from FatzAudio's loudness measurement (see <see cref="TruePeakAsync"/>).</summary>
+    public Task<double> AnalyzePeakQuickAsync(CancellationToken cancellationToken) => TruePeakAsync(cancellationToken);
 
-    public async Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) =>
-        await AnalyzeCurrentAsync(level => _normalizer.AnalyzePeakAsync(level, updateGain: false, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    /// <summary>The song's true peak from FatzAudio's loudness measurement (see <see cref="TruePeakAsync"/>).</summary>
+    public Task<double> AnalyzePeakAsync(CancellationToken cancellationToken) => TruePeakAsync(cancellationToken);
 
     public void Dispose()
     {
@@ -648,16 +647,53 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         _engine.Dispose();
     }
 
-    private async Task<double> AnalyzeCurrentAsync(Func<IAudioLevelSource, Task<double>> analyze)
+    /// <summary>
+    /// The open song's peak as a linear level (1 = full scale): FatzAudio's true peak once its
+    /// loudness is final (from tags, the cache or a scan; tags give the tagged sample peak). 0 with
+    /// no song, for digital silence, when no peak is known, or when the song closes first.
+    /// </summary>
+    private async Task<double> TruePeakAsync(CancellationToken cancellationToken)
     {
-        OpenedSource? source;
+        Fa.AudioStream? stream;
+        CancellationToken lifetime;
         lock (_gate)
-            source = _source;
-        if (source is null)
+        {
+            stream = _stream;
+            lifetime = _streamLifetime?.Token ?? CancellationToken.None;
+        }
+
+        if (stream is null)
             return 0;
 
-        using FatzAudioLevelSource level = new(source.Open(_engine, DecodeOptions));
-        return await analyze(level).ConfigureAwait(false);
+        var final = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnFinal(object? sender, EventArgs e) => final.TrySetResult();
+        stream.LoudnessFinal += OnFinal;
+        try
+        {
+            if (!stream.GetLoudness().IsFinal)
+            {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime);
+                try
+                {
+                    await final.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return 0;
+                }
+            }
+
+            var peakDbtp = stream.GetLoudness().TruePeakDbtp;
+            return double.IsFinite(peakDbtp) ? Math.Pow(10, peakDbtp / 20) : 0;
+        }
+        catch (Exception ex) when (ex is Fa.FatzAudioException or ObjectDisposedException)
+        {
+            return 0;
+        }
+        finally
+        {
+            stream.LoudnessFinal -= OnFinal;
+        }
     }
 
     /// <summary>FatzAudio's normalization for every stream of this engine: on at the target, or off.</summary>
@@ -703,12 +739,14 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
     {
         Fa.AudioStream? stream;
         ConvertedAudio? converted;
+        CancellationTokenSource? lifetime;
         lock (_gate)
         {
             stream = _stream;
             converted = _converted;
+            lifetime = _streamLifetime;
             _stream = null;
-            _source = null;
+            _streamLifetime = null;
             _converted = null;
             _duration = 0;
             _sampleRate = 0;
@@ -716,6 +754,8 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
             _fadeSession = NextSession(_fadeSession);
         }
 
+        // Ends any peak query waiting on this song (not disposed: a query may still link to it).
+        lifetime?.Cancel();
         if (stream is not null)
         {
             stream.Ended -= OnStreamEnded;
