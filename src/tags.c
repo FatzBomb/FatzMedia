@@ -6,6 +6,7 @@
  * a fa_tag_sink, so each format is parsed once for both uses. */
 #include "fa_internal.h"
 #include "cdg.h"
+#include "archive/archive.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -582,18 +583,33 @@ static int zip_tags_visit(void* ctx, fa_source* entry, const char* name)
     return read_source(c->t, entry, name, c->flags, 1);   /* not audio (a text file): the next entry */
 }
 
-/* A karaoke ZIP: the audio entry (the one named like the .cdg first). A stored
- * entry is read in place, through a window on `src`. */
-static fa_result read_zip(fa_tags* t, fa_source* src, uint32_t flags)
+/* An archive: the entry named, else the song the pairing rules pick (a karaoke ZIP's
+ * audio, the one named like the .cdg first). A stored entry is read in place, through a
+ * window on the archive's source. An unreadable pick gives empty tags, a named entry
+ * that is missing its error. */
+static fa_result read_archive(fa_tags* t, fa_archive* a, const char* entry_name, uint32_t flags)
 {
     zip_tags_ctx c = { t, flags };
     int has_cdg = 0;
-    int64_t size = src->length;
-    if (fa_zip_visit_audio(src, zip_tags_visit, &c, &has_cdg) && t->have_info) {
+    int64_t size = a->srcp->length;
+    fa_result why = FA_OK;
+    int taken = fa_archive_visit(a, entry_name, zip_tags_visit, &c, &has_cdg, &why);
+    if (taken && t->have_info) {
         t->info.has_cdg = has_cdg;
         t->info.file_size = size;
     }
+    if (!taken && entry_name) return why != FA_OK ? why : FA_ERROR_UNSUPPORTED_FORMAT;
     return FA_OK;
+}
+
+static fa_result read_zip(fa_tags* t, fa_source* src, uint32_t flags)
+{
+    fa_archive* a;
+    fa_result r = fa_archive_borrow(src, NULL, &a);
+    if (r != FA_OK) return FA_OK;   /* damaged: no tags */
+    r = read_archive(t, a, NULL, flags);
+    fa_archive_release(a);
+    return r;
 }
 
 static fa_result read_any(fa_tags* t, fa_source* src, const char* path, uint32_t flags)
@@ -644,6 +660,60 @@ FA_API fa_result FA_CALL fa_tags_read_memory(const void* data, size_t size, uint
     if (r != FA_OK) { fa_tags_close(t); return r; }
     *out_tags = t;
     return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_tags_read_io(const fa_io_callbacks* io, void* user, uint32_t flags, fa_tags** out_tags)
+{
+    fa_source src;
+    fa_tags* t;
+    fa_result r;
+    if (out_tags) *out_tags = NULL;
+    if (!io || !io->read || !out_tags) return FA_ERROR_INVALID_ARG;
+    r = fa_source_open_io(&src, io, user);
+    if (r != FA_OK) return r;
+    src.io.close = NULL;   /* the app's: tags are read and `user` stays open */
+    t = tags_new(flags);
+    if (!t) { fa_source_close(&src); return FA_ERROR_OUT_OF_MEMORY; }
+    r = read_any(t, &src, NULL, flags);
+    fa_source_close(&src);
+    if (r != FA_OK) { fa_tags_close(t); return r; }
+    *out_tags = t;
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_tags_read_archive(fa_archive* archive, int32_t index, uint32_t flags, fa_tags** out_tags)
+{
+    fa_tags* t;
+    fa_result r;
+    if (out_tags) *out_tags = NULL;
+    if (!archive || !out_tags) return FA_ERROR_INVALID_ARG;
+    if (index >= 0 && (uint32_t)index >= archive->count) return FA_ERROR_NOT_FOUND;
+    t = tags_new(flags);
+    if (!t) return FA_ERROR_OUT_OF_MEMORY;
+    r = read_archive(t, archive, index >= 0 ? archive->pub[index].name : NULL, flags);
+    if (r != FA_OK) { fa_tags_close(t); return r; }
+    *out_tags = t;
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_tags_read_archive_entry(const char* archive_path, const char* entry_name, uint32_t flags,
+                                                    fa_tags** out_tags)
+{
+    fa_archive* a;
+    fa_result r;
+    if (out_tags) *out_tags = NULL;
+    if (!archive_path || !out_tags) return FA_ERROR_INVALID_ARG;
+    r = fa_archive_open_path(archive_path, NULL, &a);
+    if (r != FA_OK) return r;
+    if (entry_name) {
+        uint32_t idx;
+        r = fa_archive_find(a, entry_name, &idx);
+        if (r == FA_OK) r = fa_tags_read_archive(a, (int32_t)idx, flags, out_tags);
+    } else {
+        r = fa_tags_read_archive(a, -1, flags, out_tags);
+    }
+    fa_archive_close(a);
+    return r;
 }
 
 FA_API fa_result FA_CALL fa_stream_get_tags(fa_stream* stream, uint32_t flags, fa_tags** out_tags)

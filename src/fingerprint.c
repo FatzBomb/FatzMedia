@@ -20,6 +20,7 @@
  * it is encoded again. */
 #include "fa_internal.h"
 #include "cdg.h"
+#include "archive/archive.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -290,7 +291,13 @@ static fa_result fingerprint_source(fa_source* src, fa_fingerprint* out)
     fp.struct_size = sizeof(fp);
     if (read_at(src, 0, head, sizeof(head)) && fa_zip_probe(head, sizeof(head))) {
         zip_key_ctx c = { 0, 0, 0 };
-        if (!fa_zip_visit_audio(src, zip_key_visit, &c, NULL)) return FA_ERROR_UNSUPPORTED_FORMAT;
+        fa_archive* a;
+        fa_result r = fa_archive_borrow(src, NULL, &a);
+        int taken;
+        if (r != FA_OK) return FA_ERROR_UNSUPPORTED_FORMAT;
+        taken = fa_archive_visit(a, NULL, zip_key_visit, &c, NULL, NULL);
+        fa_archive_release(a);
+        if (!taken) return FA_ERROR_UNSUPPORTED_FORMAT;
         if (c.found < 0) return FA_ERROR_IO;
         fp.key = c.key;
         fp.audio_bytes = c.size;
@@ -328,44 +335,35 @@ FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa
 FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
                                                       fa_fingerprint* out_fingerprint)
 {
-    fa_source src;
-    fa_zip_entry* e = NULL;
-    uint32_t count = 0, i;
-    uint8_t head[4];
+    fa_archive* a;
+    fa_source entry;
+    uint32_t idx;
     fa_result r;
-    if (!archive_path || !entry_name || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t))
-        return FA_ERROR_INVALID_ARG;
-    r = fa_source_open_path(&src, archive_path);
+    if (!archive_path || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    if (!entry_name) return fa_fingerprint_path(archive_path, out_fingerprint);   /* the pick, as a file */
+    r = fa_archive_open_path(archive_path, NULL, &a);
     if (r != FA_OK) return r;
-    if (!read_at(&src, 0, head, sizeof(head)) || !fa_zip_probe(head, sizeof(head))) {
-        fa_source_close(&src);
-        return FA_ERROR_UNSUPPORTED_FORMAT;
-    }
-    r = fa_zip_list(&src, &e, &count);
-    if (r != FA_OK) { fa_source_close(&src); return r; }
-    r = FA_ERROR_NOT_FOUND;
-    for (i = 0; i < count; i++) {
-        if (strcmp(e[i].name, entry_name) != 0) continue;
-        if (e[i].size == 0) { r = FA_ERROR_UNSUPPORTED_FORMAT; break; }
-        if (e[i].method == 0) {
-            int64_t offset;
-            r = fa_zip_entry_offset(&src, &e[i], &offset);
-            if (r == FA_OK) r = fa_source_set_window(&src, offset, (int64_t)e[i].size);
-            if (r == FA_OK) r = fingerprint_source(&src, out_fingerprint);
-        } else {
-            uint8_t* data = NULL;
-            fa_source mem;
-            r = fa_zip_extract(&src, &e[i], FA_ZIP_DEFAULT_MEMORY_LIMIT, NULL, &data);
-            if (r == FA_OK) {
-                fa_source_open_memory_ref(&mem, data, (size_t)e[i].size);
-                r = fingerprint_source(&mem, out_fingerprint);
-                fa_source_close(&mem);
-                free(data);
-            }
+    r = fa_archive_find(a, entry_name, &idx);
+    if (r == FA_OK && a->pub[idx].size == 0) r = FA_ERROR_UNSUPPORTED_FORMAT;
+    if (r == FA_OK && a->pub[idx].method == FA_METHOD_STORED) {
+        int64_t offset;
+        fa_mutex_lock(&a->lock);
+        r = fa_archive_entry_offset(a, idx, &offset);
+        if (r == FA_OK) r = fa_source_set_window(a->srcp, offset, a->pub[idx].size);
+        if (r == FA_OK) r = fingerprint_source(a->srcp, out_fingerprint);
+        fa_mutex_unlock(&a->lock);
+    } else if (r == FA_OK) {
+        uint8_t* data = NULL;
+        fa_mutex_lock(&a->lock);
+        r = fa_archive_unpack(a, idx, a->memory_limit, NULL, &data);
+        fa_mutex_unlock(&a->lock);
+        if (r == FA_OK) {
+            fa_source_open_memory_ref(&entry, data, (size_t)a->pub[idx].size);
+            r = fingerprint_source(&entry, out_fingerprint);
+            fa_source_close(&entry);
+            free(data);
         }
-        break;
     }
-    free(e);
-    fa_source_close(&src);
+    fa_archive_close(a);
     return r;
 }

@@ -11,6 +11,7 @@
  * (fa_device_wait_quiescent), then takes decode_lock so no worker runs either. */
 #include "net.h"
 #include "cdg.h"
+#include "archive/archive.h"
 #include "disc.h"
 #include "encode.h"
 #include "ac3.h"
@@ -336,18 +337,12 @@ static int source_is_zip(fa_source* src)
     return fa_zip_probe(p, n);
 }
 
-/* Prefers entries named like the .cdg ("song.mp3" for "song.cdg"). */
-static int same_stem(const char* a, const char* cdg_name)
+/* The archive limits of an open: the engine's memory limit and the app's cancel flag. */
+static void archive_options_of(const fa_engine* engine, const fa_open_options* options, fa_archive_options* out)
 {
-    size_t n = strlen(cdg_name) - 4; /* without ".cdg" */
-    return strncmp(a, cdg_name, n) == 0 && a[n] == '.';
-}
-
-/* Moves s->source (the archive) to `arc`, ready to open one of its entries. */
-static void take_archive(struct fa_stream* s, fa_source* arc)
-{
-    *arc = s->source;
-    memset(&s->source, 0, sizeof(s->source));
+    fa_archive_options_init(out);
+    out->memory_limit_mb = engine->config.zip_memory_limit_mb;
+    out->cancel = options ? options->cancel : NULL;
 }
 
 static uint64_t zip_memory_limit(const fa_engine* engine)
@@ -362,24 +357,25 @@ static const volatile int32_t* open_cancel(const fa_open_options* options)
     return options ? options->cancel : NULL;
 }
 
-/* Entry `e`, unpacked into a temp file in the engine's folder (deleted when closed).
- * Scans and tag reads open it again through the shared file (fa_source_open_shared). */
-static fa_result unpack_to_temp(struct fa_stream* s, fa_source* arc, const fa_zip_entry* e,
-                                const volatile int32_t* cancel)
+/* Entry `i` of the archive, unpacked into a temp file in the engine's folder (deleted
+ * when closed). Scans and tag reads open it again through the shared file
+ * (fa_source_open_shared). */
+static fa_result unpack_to_temp(struct fa_stream* s, fa_archive* a, uint32_t i, const volatile int32_t* cancel)
 {
     fa_engine* engine = s->engine;
     fa_shared_file* shared;
     FILE* f;
     fa_result r;
-    if (!engine->temp_folder || e->size > FA_ZIP_TEMP_LIMIT) return FA_ERROR_TOO_LARGE;
+    int64_t size = a->pub[i].size;
+    if (!engine->temp_folder || (uint64_t)size > FA_ZIP_TEMP_LIMIT) return FA_ERROR_TOO_LARGE;
     /* Made again here: the app may have created the directory after the engine. */
     fa_mkdir_utf8(engine->config.temp_directory);
     fa_mkdir_utf8(engine->temp_folder);
     f = fa_temp_file_create(engine->temp_folder);
     if (!f) return FA_ERROR_IO;
-    r = fa_zip_extract_file(arc, e, cancel, f);
+    r = fa_archive_unpack_file(a, i, cancel, f);
     if (r != FA_OK) { fclose(f); return r; }
-    r = fa_shared_file_new(f, (int64_t)e->size, &shared);   /* closes f when it fails */
+    r = fa_shared_file_new(f, size, &shared);   /* closes f when it fails */
     if (r != FA_OK) return r;
     memset(&s->source, 0, sizeof(s->source));
     fa_source_open_shared(&s->source, shared);
@@ -387,59 +383,86 @@ static fa_result unpack_to_temp(struct fa_stream* s, fa_source* arc, const fa_zi
     return FA_OK;
 }
 
-/* Makes s->source entry `e` of the archive `arc`. A stored entry is a window on the
- * archive itself, which moves into s->source (*moved = 1); a compressed one is
- * unpacked into memory, or into a temp file past the memory limit (or when memory
- * runs out). */
-static fa_result open_zip_entry(struct fa_stream* s, fa_source* arc, const fa_zip_entry* e,
-                                const volatile int32_t* cancel, uint32_t* unpacks, int* moved)
+/* How an entry became the stream's source. */
+enum { ENTRY_COPY = 0, ENTRY_TOOK_ARCHIVE = 1, ENTRY_WINDOW = 2 };
+
+/* Makes s->source entry `i` of the archive `a`. A stored entry is a window: on the
+ * archive's own source, which moves into s->source when `take` is set (*how =
+ * ENTRY_TOOK_ARCHIVE), else on a source of its own (the path reopened, or the archive's
+ * memory, which the archive then outlives: ENTRY_WINDOW). Any other entry is unpacked
+ * into memory, or into a temp file past the memory limit (or when memory runs out). */
+static fa_result open_archive_entry(struct fa_stream* s, fa_archive* a, uint32_t i, int take,
+                                    const volatile int32_t* cancel, uint32_t* unpacks, int* how)
 {
     int64_t offset;
     uint8_t* data;
     fa_result r;
-    *moved = 0;
-    if (e->method == 0) {
-        r = fa_zip_entry_offset(arc, e, &offset);
+    const fa_archive_entry* e = &a->pub[i];
+    *how = ENTRY_COPY;
+    if (e->method == FA_METHOD_STORED) {
+        fa_mutex_lock(&a->lock);
+        r = fa_archive_entry_offset(a, i, &offset);
+        fa_mutex_unlock(&a->lock);
         if (r != FA_OK) return r;
-        s->source = *arc;
-        r = fa_source_set_window(&s->source, offset, (int64_t)e->size);
-        if (r != FA_OK) { *arc = s->source; memset(&s->source, 0, sizeof(s->source)); return r; }
-        *moved = 1;
-        return FA_OK;
+        if (take) {
+            s->source = *a->srcp;
+            r = fa_source_set_window(&s->source, offset, e->size);
+            if (r != FA_OK) { *a->srcp = s->source; memset(&s->source, 0, sizeof(s->source)); return r; }
+            *how = ENTRY_TOOK_ARCHIVE;
+            return FA_OK;
+        }
+        if (a->srcp->kind == FA_SOURCE_FILE && a->path && !a->srcp->shared) {
+            if (fa_source_open_path_window(&s->source, a->path, offset, e->size) == FA_OK) { *how = ENTRY_WINDOW; return FA_OK; }
+        } else if (a->srcp->kind == FA_SOURCE_MEMORY) {
+            if (fa_source_open_memory_ref(&s->source, a->srcp->mem, a->srcp->mem_size) == FA_OK) {
+                if (fa_source_set_window(&s->source, offset, e->size) == FA_OK) {
+                    s->source.release = (void (*)(void*))fa_archive_release;
+                    s->source.release_ctx = fa_archive_retain(a);
+                    *how = ENTRY_WINDOW;
+                    return FA_OK;
+                }
+                fa_source_close(&s->source);
+            }
+        }
+        /* App callbacks cannot be read from two places: a copy plays instead. */
     }
     /* Not audio (a bundled video, a PDF) is told from the first 64 KB, not a full unpack. */
-    if (e->size > FA_ZIP_PROBE_BYTES) {
+    if (e->size > FA_ZIP_PROBE_BYTES && e->method != FA_METHOD_STORED) {
         uint8_t* head;
         size_t got = 0;
+        int ok;
         if (*unpacks >= FA_ZIP_MAX_UNPACKS) return FA_ERROR_UNSUPPORTED_FORMAT;
         head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
         if (!head) return FA_ERROR_OUT_OF_MEMORY;
-        r = fa_zip_extract_prefix(arc, e, head, FA_ZIP_PROBE_BYTES, &got);
-        got = r == FA_OK && !fa_decoder_recognizes(head, got) ? 0 : 1;
+        r = fa_archive_prefix(a, i, head, FA_ZIP_PROBE_BYTES, &got);
+        ok = r != FA_OK || fa_decoder_recognizes(head, got);
         free(head);
-        if (!got) return FA_ERROR_UNSUPPORTED_FORMAT;
+        if (!ok) return FA_ERROR_UNSUPPORTED_FORMAT;
         (*unpacks)++;
     }
-    r = fa_zip_extract(arc, e, zip_memory_limit(s->engine), cancel, &data);
+    fa_mutex_lock(&a->lock);
+    r = fa_archive_unpack(a, i, zip_memory_limit(s->engine), cancel, &data);
     if (r == FA_OK) {
-        fa_source_open_memory_ref(&s->source, data, (size_t)e->size);
+        fa_mutex_unlock(&a->lock);
+        fa_source_open_memory_ref(&s->source, data, (size_t)e->size ? (size_t)e->size : 1);
         s->source.owned = data;
         return FA_OK;
     }
-    if (r != FA_ERROR_TOO_LARGE && r != FA_ERROR_OUT_OF_MEMORY) return r;
-    if (r == FA_ERROR_OUT_OF_MEMORY && !s->engine->temp_folder) return r;
-    return unpack_to_temp(s, arc, e, cancel);
+    if ((r == FA_ERROR_TOO_LARGE || r == FA_ERROR_OUT_OF_MEMORY) && !(r == FA_ERROR_OUT_OF_MEMORY && !s->engine->temp_folder))
+        r = unpack_to_temp(s, a, i, cancel);
+    fa_mutex_unlock(&a->lock);
+    return r;
 }
 
-/* Undoes open_zip_entry after the decoder refused the entry. FA_ERROR_IO when the
+/* Undoes open_archive_entry after the decoder refused the entry. FA_ERROR_IO when the
  * archive cannot be read as a whole again (app callbacks that failed to seek). */
-static fa_result close_zip_entry(struct fa_stream* s, fa_source* arc, int moved)
+static fa_result close_archive_entry(struct fa_stream* s, fa_archive* a, int how)
 {
     fa_result r = FA_OK;
     if (s->decoder_ready) { fa_decoder_close(&s->decoder); s->decoder_ready = 0; }
-    if (moved) {
+    if (how == ENTRY_TOOK_ARCHIVE) {
         r = fa_source_set_window(&s->source, 0, s->source.whole_length);
-        *arc = s->source;
+        *a->srcp = s->source;
         memset(&s->source, 0, sizeof(s->source));
     } else {
         fa_source_close(&s->source);
@@ -447,74 +470,101 @@ static fa_result close_zip_entry(struct fa_stream* s, fa_source* arc, int moved)
     return r;
 }
 
-/* A ZIP archive in s->source (karaoke downloads: song.mp3 + song.cdg). Only its
- * directory and the entries used are read. The audio entry becomes the stream's
- * source, the .cdg entry its graphics. On failure s->source is the archive again. */
-static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, int* in_place)
+/* An archive's song becomes the stream: entry `entry_name` (NULL: the pairing rules,
+ * see the header), its graphics the stream's .cdg. Only the directory and the entries
+ * used are read. With `take` the archive's source (a->srcp) is the stream's own to use
+ * and move: a stored entry plays from it, and on failure s->source is the archive again.
+ * Without, `a` is shared and stays as it is. */
+static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options* options, fa_archive* a,
+                                     const char* entry_name, int take, int* in_place)
 {
-    fa_source arc;
-    fa_zip_entry* entries;
+    fa_archive_choice ch[FA_ARCHIVE_MAX_CHOICES];
     fa_cdg_data* graphics = NULL;
-    uint32_t count, i, pass, chosen_crc = 0, unpacks = 0;
-    int cdg = -1, moved = 0;
+    int32_t graphics_index = -1;
+    uint32_t n, k, chosen = 0, unpacks = 0;
+    int how = ENTRY_COPY, graphics_only = -1;
     const volatile int32_t* cancel = open_cancel(options);
-    fa_result r, skipped = FA_ERROR_UNSUPPORTED_FORMAT;
+    fa_result r, why = FA_OK, skipped = FA_ERROR_UNSUPPORTED_FORMAT;
     *in_place = 0;
-    r = fa_zip_list(&s->source, &entries, &count);
-    if (r != FA_OK) return r;
-    take_archive(s, &arc);
-    s->zip_size = arc.length;
-    for (i = 0; i < count && cdg < 0; i++)
-        if (fa_cdg_is_cdg_name(entries[i].name)) cdg = (int)i;
-    if (cdg >= 0 && !(s->flags & FA_OPEN_NO_CDG)) {
-        uint8_t* bytes;
-        /* Read first: a stored audio entry takes the archive's source with it.
-         * Damaged graphics leave a playable song: the stream simply has none. */
-        fa_result gr = fa_zip_extract(&arc, &entries[cdg], zip_memory_limit(s->engine), cancel, &bytes);
-        if (gr == FA_ERROR_CANCELLED) skipped = gr;
-        else if (gr == FA_OK && fa_cdg_data_adopt(bytes, (size_t)entries[cdg].size, &graphics) != FA_OK)
+    s->zip_size = a->srcp->length;
+    n = fa_archive_choices(a, entry_name, ch, FA_ARCHIVE_MAX_CHOICES, &why);
+    if (n == 0) {
+        r = why;
+        goto finish;
+    }
+    r = FA_ERROR_UNSUPPORTED_FORMAT;
+    for (k = 0; k < n && r != FA_OK; k++) {
+        fa_result opened;
+        const fa_archive_choice* c = &ch[k];
+        if (c->graphics_only) { graphics_only = (int)k; continue; }
+        if (c->cdg >= 0 && !(s->flags & FA_OPEN_NO_CDG) && graphics_index != c->cdg) {
+            uint8_t* bytes;
+            fa_result gr;
+            /* Read first: a stored audio entry takes the archive's source with it.
+             * Damaged graphics leave a playable song: the stream simply has none. */
+            fa_cdg_data_free(graphics);
             graphics = NULL;
-    }
-    r = skipped == FA_ERROR_CANCELLED ? skipped : FA_ERROR_UNSUPPORTED_FORMAT;
-    for (pass = 0; pass < 2 && r != FA_OK && r != FA_ERROR_NOT_FOUND && r != FA_ERROR_IO && r != FA_ERROR_CANCELLED; pass++) {
-        for (i = 0; i < count && r != FA_OK; i++) {
-            fa_result opened;
-            int preferred = cdg >= 0 && same_stem(entries[i].name, entries[cdg].name);
-            if ((int)i == cdg || fa_cdg_is_cdg_name(entries[i].name) || preferred != (pass == 0)) continue;
-            opened = open_zip_entry(s, &arc, &entries[i], cancel, &unpacks, &moved);
-            if (opened == FA_ERROR_CANCELLED) { r = opened; break; }
-            if (opened != FA_OK) {
-                /* Too big to unpack, out of memory or a temp file that failed is worth
-                 * telling the app, unless another entry plays. */
-                if (opened == FA_ERROR_TOO_LARGE || opened == FA_ERROR_OUT_OF_MEMORY || opened == FA_ERROR_IO)
-                    if (skipped == FA_ERROR_UNSUPPORTED_FORMAT || opened == FA_ERROR_TOO_LARGE) skipped = opened;
-                continue;
-            }
-            r = stream_open_decoder(s, entries[i].name, options);
-            if (r == FA_OK) {
-                snprintf(s->path_name, sizeof(s->path_name), "%s", entries[i].name);
-                chosen_crc = entries[i].crc32;
-                break;
-            }
-            if (close_zip_entry(s, &arc, moved) != FA_OK) { r = FA_ERROR_IO; moved = 0; break; }
-            moved = 0;
-            /* Audio that cannot play here (a codec provider missing, protected content):
-             * worth telling the app, and never replaced by the graphics' silence. */
-            if (r != FA_ERROR_UNSUPPORTED_FORMAT && r != FA_ERROR_NOT_FOUND && skipped == FA_ERROR_UNSUPPORTED_FORMAT)
-                skipped = r;
-            /* The audio_track asked for is missing: no other entry is tried. */
-            if (r == FA_ERROR_NOT_FOUND) break;
+            graphics_index = c->cdg;
+            fa_mutex_lock(&a->lock);
+            gr = fa_archive_unpack(a, (uint32_t)c->cdg, zip_memory_limit(s->engine), cancel, &bytes);
+            fa_mutex_unlock(&a->lock);
+            if (gr == FA_ERROR_CANCELLED) { r = gr; break; }
+            if (gr == FA_OK && fa_cdg_data_adopt(bytes, (size_t)a->pub[c->cdg].size, &graphics) != FA_OK) graphics = NULL;
+        } else if (c->cdg < 0 && graphics) {
+            fa_cdg_data_free(graphics);   /* this song has none */
+            graphics = NULL;
+            graphics_index = -1;
         }
+        opened = open_archive_entry(s, a, c->audio, take, cancel, &unpacks, &how);
+        if (opened == FA_ERROR_CANCELLED) { r = opened; break; }
+        if (opened != FA_OK) {
+            /* Too big to unpack, out of memory or a temp file that failed is worth
+             * telling the app, unless another entry plays. */
+            if (opened == FA_ERROR_TOO_LARGE || opened == FA_ERROR_OUT_OF_MEMORY || opened == FA_ERROR_IO || opened == FA_ERROR_PROTECTED_CONTENT)
+                if (skipped == FA_ERROR_UNSUPPORTED_FORMAT || opened == FA_ERROR_TOO_LARGE) skipped = opened;
+            continue;
+        }
+        r = stream_open_decoder(s, a->pub[c->audio].name, options);
+        if (r == FA_OK) {
+            chosen = c->audio;
+            snprintf(s->path_name, sizeof(s->path_name), "%s", a->pub[c->audio].name);
+            break;
+        }
+        if (close_archive_entry(s, a, how) != FA_OK) { r = FA_ERROR_IO; how = ENTRY_COPY; break; }
+        how = ENTRY_COPY;
+        /* Audio that cannot play here (a codec provider missing, protected content):
+         * worth telling the app, and never replaced by the graphics' silence. */
+        if (r != FA_ERROR_UNSUPPORTED_FORMAT && r != FA_ERROR_NOT_FOUND && skipped == FA_ERROR_UNSUPPORTED_FORMAT)
+            skipped = r;
+        /* The audio_track asked for is missing: no other entry is tried. */
+        if (r == FA_ERROR_NOT_FOUND) break;
     }
-    if (r == FA_ERROR_UNSUPPORTED_FORMAT && skipped == FA_ERROR_UNSUPPORTED_FORMAT && graphics) {
+    if (r == FA_ERROR_UNSUPPORTED_FORMAT && skipped == FA_ERROR_UNSUPPORTED_FORMAT && graphics_only >= 0 &&
+        !(s->flags & FA_OPEN_NO_CDG)) {
         /* No audio, only the graphics: a silent stream as long as they are. A stored
          * entry is a window on the archive (reopened by path for scans); a compressed
          * one plays from a copy of the bytes already unpacked. */
+        uint32_t ci = ch[graphics_only].audio;
+        const fa_archive_entry* e = &a->pub[ci];
         fa_result opened = FA_OK;
-        const fa_zip_entry* e = &entries[cdg];
-        if (e->method == 0) {
-            opened = open_zip_entry(s, &arc, e, cancel, &unpacks, &moved);
-        } else {
+        if (graphics_index != (int32_t)ci) {
+            uint8_t* bytes;
+            fa_cdg_data_free(graphics);
+            graphics = NULL;
+            graphics_index = (int32_t)ci;
+            fa_mutex_lock(&a->lock);
+            opened = fa_archive_unpack(a, ci, zip_memory_limit(s->engine), cancel, &bytes);
+            fa_mutex_unlock(&a->lock);
+            if (opened == FA_OK && fa_cdg_data_adopt(bytes, (size_t)e->size, &graphics) != FA_OK) graphics = NULL;
+            if (opened != FA_OK || !graphics) {
+                if (opened == FA_ERROR_CANCELLED) { r = opened; goto finish; }
+                goto finish;
+            }
+            opened = FA_OK;
+        }
+        if (graphics && e->method == FA_METHOD_STORED) {
+            opened = open_archive_entry(s, a, ci, take, cancel, &unpacks, &how);
+        } else if (graphics) {
             uint8_t* copy = (uint8_t*)malloc((size_t)e->size);
             if (!copy) opened = FA_ERROR_OUT_OF_MEMORY;
             else {
@@ -523,43 +573,94 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
                 s->source.owned = copy;
             }
         }
-        r = opened;
+        r = graphics ? opened : FA_ERROR_UNSUPPORTED_FORMAT;
         if (r == FA_OK) {
             r = stream_open_decoder(s, e->name, options);
             if (r == FA_OK) {
+                chosen = ci;
                 snprintf(s->path_name, sizeof(s->path_name), "%s", e->name);
-                chosen_crc = e->crc32;
             } else {
-                if (close_zip_entry(s, &arc, moved) != FA_OK) r = FA_ERROR_IO;
-                moved = 0;
+                if (close_archive_entry(s, a, how) != FA_OK) r = FA_ERROR_IO;
+                how = ENTRY_COPY;
             }
         }
     }
-    free(entries);
+finish:
     if (r == FA_ERROR_UNSUPPORTED_FORMAT) r = skipped;
     if (r != FA_OK) {
         fa_cdg_data_free(graphics);
-        s->source = arc;   /* stream_discard closes it (and the app's callbacks) */
+        if (take) s->source = *a->srcp;   /* stream_discard closes it (and the app's callbacks) */
         return r;
     }
-    if (!moved) {
+    if (take && how != ENTRY_TOOK_ARCHIVE) {
         /* The audio was unpacked: the archive is no longer read, but the app's
          * callbacks are closed with the stream, as for any other source. */
-        if (arc.io.close) {
-            s->source.io.close = arc.io.close;
-            s->source.io_user = arc.io_user;
-            arc.io.close = NULL;
+        if (a->srcp->io.close) {
+            s->source.io.close = a->srcp->io.close;
+            s->source.io_user = a->srcp->io_user;
+            a->srcp->io.close = NULL;
         }
-        fa_source_close(&arc);
+        fa_source_close(a->srcp);
     }
-    *in_place = moved;
+    *in_place = how != ENTRY_COPY;
     /* A stored entry is played from the archive unchecked: the worker checks it
      * while the stream plays (zip_crc_step), if it can read the bytes again. */
-    if (moved && s->source.kind != FA_SOURCE_IO && !(s->flags & FA_OPEN_DECODE_ONLY)) {
-        s->zcrc_expect = chosen_crc;
+    if (*in_place && s->source.kind != FA_SOURCE_IO && !(s->flags & FA_OPEN_DECODE_ONLY)) {
+        s->zcrc_expect = a->pub[chosen].crc32;
         fa_store32(&s->zcrc_pending, 1);
     }
     if (graphics) fa_stream_cdg_attach(s, graphics);
+    return FA_OK;
+}
+
+/* A ZIP archive in s->source (karaoke downloads: song.mp3 + song.cdg). The song becomes the
+ * stream's source, the .cdg its graphics. On failure s->source is the archive again. */
+static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, int* in_place)
+{
+    fa_source arc;
+    fa_archive* a;
+    fa_archive_options ao;
+    fa_result r;
+    *in_place = 0;
+    archive_options_of(s->engine, options, &ao);
+    r = fa_archive_borrow(&s->source, &ao, &a);
+    if (r != FA_OK) return r;
+    arc = s->source;                          /* the stream's source moves to `arc`, which `a` reads */
+    memset(&s->source, 0, sizeof(s->source));
+    a->srcp = &arc;
+    r = open_archive_stream(s, options, a, options ? options->archive_entry : NULL, 1, in_place);
+    fa_archive_release(a);
+    return r;
+}
+
+FA_API fa_result FA_CALL fa_stream_open_archive(fa_engine* engine, fa_archive* archive, int32_t index,
+                                                const fa_open_options* options, fa_stream** out_stream)
+{
+    struct fa_stream* s; fa_result r;
+    int in_place = 0;
+    const char* entry = NULL;
+    fa_open_options oo;
+    if (out_stream) *out_stream = NULL;
+    if (!engine || !archive || !out_stream || read_open_options(&options, &oo) != FA_OK) return FA_ERROR_INVALID_ARG;
+    if (index >= 0) {
+        if ((uint32_t)index >= archive->count) return FA_ERROR_NOT_FOUND;
+        entry = archive->pub[index].name;
+    } else {
+        entry = options ? options->archive_entry : NULL;
+    }
+    r = stream_create(engine, options, &s);
+    if (r != FA_OK) return r;
+    r = open_archive_stream(s, options, archive, entry, 0, &in_place);
+    if (r == FA_OK && in_place && archive->path) {
+        /* Loudness scans and tags reopen the stored entry by its place in the file. */
+        s->path = fa_strdup(archive->path);
+        if (!s->path) r = FA_ERROR_OUT_OF_MEMORY;
+        s->path_offset = s->source.base;
+        s->path_length = s->source.length;
+    }
+    if (r != FA_OK) { stream_discard(s); return r; }
+    stream_opened(s);
+    *out_stream = s;
     return FA_OK;
 }
 
