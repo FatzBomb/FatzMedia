@@ -55,6 +55,14 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
+
+Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
+at 333x250 matched 99.1% of pixels exactly; some edge pixels take the neighbouring CD+G pixel (channel
+delta 255). lavapipe matches exactly, so the GPU's nearest-texel rounding at texel boundaries differs
+from the Software renderer's integer mapping. Not visible in practice. Fix: compute the source texel in
+the shader with the Software renderer's integer formula (`texelFetch`) instead of a nearest sampler.
+
 ### ENG-048 - FatzAudio loudness cache never written on a fresh machine (fixed)
 
 Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a

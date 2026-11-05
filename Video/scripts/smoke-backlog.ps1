@@ -352,7 +352,8 @@ function Test-3 {
     foreach ($u in @('https://expired.badssl.com/stream.mp3', 'https://self-signed.badssl.com/stream.mp3', 'https://wrong.host.badssl.com/stream.mp3')) {
         $null = Test-Run "Bad certificate refused: $u" 'Wpf' @("--url=$u", '--net-retries=3') -Expect @('certificate verification failed') -Seconds 4
     }
-    $null = Test-Run 'Invalid certificate allowed on request' 'Wpf' @('--url=https://self-signed.badssl.com/stream.mp3', '--net-allow-invalid-certs') -Expect @('No playable audio stream') -Seconds 4
+    # badssl.com has no stream.mp3: with checks off the request gets through and the server answers 404.
+    $null = Test-Run 'Invalid certificate allowed on request' 'Wpf' @('--url=https://self-signed.badssl.com/stream.mp3', '--net-allow-invalid-certs') -Expect @('Certificate verification is off') -Reject @('certificate verification failed') -Seconds 4
     $r = Invoke-Run 'Wpf' @('--url=https://ice2.somafm.com/groovesalad-128-mp3') 'net-https-radio' -Seconds 25 -KeepOpen
     Say-Do @('Listen: a station (Groove Salad) should be playing.', 'Try volume, EQ and Pause/Play.')
     Wait-Enter
@@ -609,7 +610,8 @@ function Test-12 {
     if (-not (Start-Step 12 'Remaining guided checks' 'The rest of ENG-039 batches 1, 4b, 4c and 5, and 026B step 6. The script starts each player; you look and answer.' '15')) { return }
     if ($Media.v1080) {
         $null = Test-Run 'Direct3D11 keeps hardware decoding (no fallback warning)' 'Wpf' @($Media.v1080) -Reject @('in software until it is opened again') -Seconds 6
-        $r = Test-Run 'Avalonia WARP: first frame, then software decoding with one warning' 'Ava' @('--renderer=warp', $Media.v1080) -Expect @('in software until it is opened again') -Reject @('Hardware video decode restored') -Seconds 8 -Shot
+        # WARP has no hardware decoder, so the renderer asks for software decoding from the start.
+        $r = Test-Run 'Avalonia WARP decodes in software from the start and plays' 'Ava' @('--renderer=warp', $Media.v1080) -Expect @('software decoding') -Reject @('Hardware video decode restored') -Seconds 8 -Shot
         $p = Start-Player 'Wpf' @($Media.v1080)
         [void](Wait-Window $p)
         Say-Do @('Turn Loop on and let it wrap twice: gapless, sound in sync.', 'Seek ten times while playing: picture and sound stay aligned.')

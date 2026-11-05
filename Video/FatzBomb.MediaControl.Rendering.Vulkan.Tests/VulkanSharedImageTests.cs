@@ -96,8 +96,16 @@ public sealed class VulkanSharedImageTests
             return;
 
         using var backend = new VulkanRendererBackend(() => VulkanOffscreenCompositor.TryCreate(out _));
+        // A kind this platform's Vulkan path cannot export: on Windows it serves Direct3D11 textures
+        // (Stage 045A), so ask for a Linux file descriptor there, and for a Direct3D11 texture elsewhere.
+        MediaSharedGpuImageHandleKind unservable = OperatingSystem.IsWindows()
+            ? MediaSharedGpuImageHandleKind.VulkanOpaqueFd
+            : MediaSharedGpuImageHandleKind.D3D11TextureNtHandle;
+        MediaSharedGpuImageSyncKinds sync = OperatingSystem.IsWindows()
+            ? MediaSharedGpuImageSyncKinds.Semaphores
+            : MediaSharedGpuImageSyncKinds.KeyedMutex;
         var consumer = new RecordingConsumer(new MediaSharedGpuImageRequest(
-            [new MediaSharedGpuImageCapability(MediaSharedGpuImageHandleKind.D3D11TextureNtHandle, MediaSharedGpuImageSyncKinds.KeyedMutex)]));
+            [new MediaSharedGpuImageCapability(unservable, sync)]));
         using var handle = new MediaSharedGpuImageConsumerHandle(consumer);
 
         Assert.False(backend.AttachSurface(Surface(handle, 8, 8)));

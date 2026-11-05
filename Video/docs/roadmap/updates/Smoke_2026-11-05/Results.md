@@ -36,11 +36,20 @@ Machine: RTX 5090 (driver 32.0.16.1088), 3 screens, Windows 10.0.26220, 20 logic
 - **Clicks and pops on loop wraps and seeks** (engine not confirmed; BASS is the default). ENG-047.
 - **WMA on BASS does not load** (no BASS WMA plug-in): known and accepted (ENG-043; FatzAudio plays it).
 
-**Needs the logs to judge** (owner to send `logs\` from the results folder):
-- Network: `--net-allow-invalid-certs` did not log "No playable audio stream"; the faststart MP4 from
-  the script's local web server ended `Stopped`. Either can be the script's simple server or the check.
-- Avalonia WARP: no "in software until it is opened again" warning; it may pick software decoding
-  before the open on WARP (no hardware decoder there), which would make the expectation stale.
+**Judged from the logs (received the same day): all pass, the script's expectations were wrong.**
+- `--net-allow-invalid-certs`: "Certificate verification is off for this https source", the request got
+  through the self-signed certificate and badssl.com answered 404 (it has no `stream.mp3`). Correct.
+- Faststart MP4 from the script's web server: "Network stream connected: NetworkFile, seekable=False,
+  duration=12.0s ... Streaming"; the `Stopped` was the stats-timing fault above.
+- Avalonia WARP: the renderer chooses software decoding up front ("software decoding (the renderer runs
+  on the CPU)"), so no switch and no warning. Correct.
+
+**Vulkan tests on the RTX 5090: 99 of 102** (CI never reaches these: it has no GPU, so they return early).
+- `Backend_DeclinesAConsumerThatImportsNoDescriptorKind` and
+  `Factory_ProbeMatchesSupportAndAsksForFrameSinkAndSoftwareDecoding`: stale since 045A (Vulkan serves
+  Direct3D11 shared textures on Windows; software decoding only without Vulkan Video). Tests fixed.
+- `CdgOnly_MatchesSoftwareExactly(333x250)`: 99.1% of pixels exact, some edge pixels take the neighbouring
+  CD+G pixel on NVIDIA (lavapipe is exact). Real: ENG-049.
 
 **Passed (owner or automatic):** normalization levels, Normalize off/on, no clipping, BASS peak rule;
 HDR pictures; Avalonia shared GPU image and frame sink, 4 players, second screen (all steps);
@@ -54,6 +63,8 @@ all player-mode checks (startup rules and switching, MP3+G after Audio and back)
 default sound device (audio over the GPU's HDMI): both are Windows' own reaction to a forced GPU reset.
 The HLS clip (Big Buck Bunny) had no sound because Background mode never plays audio, by design.
 Different volumes between the generated test tones: to check on the rerun with the cache working.
+
+Test 11's own results (`FatzBomb-smoke-...` on the Desktop) were not in the logs zip: still to send.
 
 ## Rerun
 
