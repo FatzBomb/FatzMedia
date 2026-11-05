@@ -2885,6 +2885,7 @@ static void start_locked(struct fa_stream* s, int64_t at_frame)
     if (st == FA_STATE_ENDED || st == FA_STATE_STOPPED) rewind_locked(s);
     collect_events(s);
     if (at_frame < 0) {
+        if (st == FA_STATE_PAUSED && declick_on(s)) fa_store32(&s->dk_resume, 1);   /* the mixer fades the stream in */
         fa_store32(&s->state, FA_STATE_PLAYING);
         return;
     }
@@ -2921,6 +2922,11 @@ FA_API fa_result FA_CALL fa_stream_pause(fa_stream* stream)
     fa_mutex_lock(&stream->api_lock);
     if (!is_attached(stream)) r = FA_ERROR_INVALID_ARG;
     else {
+        if (audible_now(stream)) {   /* the mixer fades the stream out, then pauses it */
+            fa_store32(&stream->dk_req, 2);
+            wait_fade_out(stream);
+            fa_device_wait_quiescent(stream->device);   /* the callback that paused it is done */
+        }
         /* The mixer may start a scheduled stream, or a push or web stream may start or
          * stop buffering, meanwhile: retry until the state we saw is the one we replaced. */
         for (;;) {
@@ -5115,10 +5121,21 @@ static int norm_start_held(struct fa_stream* s)
 
 /* Mixes `s` into `out`; *mixed_off and *mixed_n say which frames of the callback
  * carried its audio. */
+/* The fade-out a seek or a pause asked for has been played (and its clock record written): the seek's
+ * flush or the pause takes over, from the next callback. */
+static void dk_finish(struct fa_stream* s, int dk)
+{
+    if (dk && fa_cas32(&s->dk_req, dk, 0)) {
+        if (dk == 1) fa_store32(&s->flushing, 1);
+        else fa_cas32(&s->state, FA_STATE_PLAYING, FA_STATE_PAUSED);
+    }
+}
+
 static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t frames, int64_t* mixed_off,
                        int64_t* mixed_n)
 {
-    int dk = 0;   /* a seek waits for a fade-out */
+    int dk = 0;   /* a seek or a pause waits for a fade-out (its dk_req value) */
+    int64_t fi_n = 0;   /* a resume fades in over this many frames */
     int64_t dk_n = 0, avail, n, done = 0, clock, off = 0, played0, hold;
     int p, playing, audible, ended = 0, at_cue_out = 0, looping;
     fa_frames loop_end, loop_back;
@@ -5191,8 +5208,8 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         int64_t cut = frames_to_cue_out(s, played0);
         if (cut >= 0 && cut <= n) { n = cut; at_cue_out = 1; }
     }
-    if (fa_load32(&s->dk_req)) {
-        dk = 1;
+    if (fa_load32(&s->dk_resume) && fa_exchange32(&s->dk_resume, 0)) fi_n = declick_frames(dev->rate);
+    if ((dk = fa_load32(&s->dk_req)) != 0) {
         dk_n = declick_frames(dev->rate);
         if (n > dk_n) n = dk_n;
         else dk_n = n;   /* little buffered: the fade is quicker, but still reaches silence */
@@ -5211,7 +5228,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     eq_on = eq && fa_eq_begin(&eq->st, &eq->shared, dev->rate,
                               (fa_load32(&s->eq_restart) && fa_exchange32(&s->eq_restart, 0)) | (s->mute_next != clock + off));
 
-    if (n > 0 && !dk && !fa_load32(&dev->mix_blockwise) && mute0 == mute_target && s->norm_db == norm_target &&
+    if (n > 0 && !dk && fi_n == 0 && !fa_load32(&dev->mix_blockwise) && mute0 == mute_target && s->norm_db == norm_target &&
         steady_gain(s, &mk, bus, played0, n, looping, &lv)) {
         mix_steady(s, dev, out + off * 2, clock + off, off, played0, n, norm_lin, mute0, &mk, &lv, bus, eq_on ? eq : NULL, tap);
         done = n;
@@ -5276,7 +5293,11 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
             fa_bus_gains_at(bus, dev, off + done + blk, 0, &bl1, &br1);
             l0 *= bl0; r0 *= br0; l1 *= bl1; r1 *= br1;
         }
-        if (dk_n > 0) {   /* a seek is waiting: fade out */
+        if (fi_n > 0 && done < fi_n) {   /* a resume: fade in */
+            float f0 = 1.0f - declick_w(done, fi_n), f1 = 1.0f - declick_w(done + blk, fi_n);
+            l0 *= f0; r0 *= f0; l1 *= f1; r1 *= f1;
+        }
+        if (dk_n > 0) {   /* a seek or pause is waiting: fade out */
             float f0 = declick_w(done, dk_n), f1 = declick_w(done + blk, dk_n);
             l0 *= f0; r0 *= f0; l1 *= f1; r1 *= f1;
         }
@@ -5316,7 +5337,6 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     for (p = 0; p < FA_STREAM_LANES; p++) fa_store_float(&s->lanes[p].current, s->lanes[p].v.value);
     s->mute_level = mute0;
     s->mute_next = clock + off + done;
-    if (dk && fa_cas32(&s->dk_req, 1, 0)) fa_store32(&s->flushing, 1);   /* faded out: the seek takes over */
     *mixed_off = off;
     *mixed_n = done;
     if (done > 0) {
@@ -5329,12 +5349,14 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         marker_events(s, dev, &mk, played0, played0 + done, 0);
         heard_events(s, dev, played0, played0 + done, 0);
         end_stream(s, dev);
+        dk_finish(s, dk);
         return;
     }
     if (at_cue_out) {
         marker_events(s, dev, &mk, played0, played0 + done, 1);
         heard_events(s, dev, played0, played0 + done, 1);
         end_stream(s, dev);
+        dk_finish(s, dk);
         return;
     }
     if (n < (int64_t)frames - off && !dk) {
@@ -5342,6 +5364,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
             marker_events(s, dev, &mk, played0, played0 + done, 1);
             heard_events(s, dev, played0, played0 + done, 1);
             end_stream(s, dev);
+            dk_finish(s, dk);
             return;
         }
         fa_fetch_add32(&s->underruns, 1);
@@ -5357,6 +5380,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     }
     marker_events(s, dev, &mk, played0, played0 + done, 0);
     heard_events(s, dev, played0, played0 + done, 0);
+    dk_finish(s, dk);
 }
 
 void fa_stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t frames)

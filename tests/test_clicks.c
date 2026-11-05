@@ -117,6 +117,24 @@ static void seek_proc(void* arg)
 
 /* Seeks from another thread (the audio thread here is the one rendering), as an app's
  * UI thread would, and keeps rendering while the call waits for a callback. */
+static void pause_proc(void* arg)
+{
+    seek_job* j = (seek_job*)arg;
+    fa_stream_pause(j->s);
+    j->done = 1;
+}
+
+/* Pauses from another thread, as an app's UI thread would, while this one plays the audio thread. */
+static void pause_while_rendering(fa_stream* s)
+{
+    seek_job j;
+    fa_thread t;
+    j.s = s; j.to = 0; j.async = 0; j.done = 0;
+    fa_thread_create(&t, pause_proc, &j);
+    while (!j.done) render(64);
+    fa_thread_join(&t);
+}
+
 static void seek_while_rendering(fa_stream* s, fa_frames to, int async)
 {
     seek_job j;
@@ -174,6 +192,24 @@ int main(void)
             render(len * 4);
             snprintf(nm, sizeof nm, "%.0f Hz stepped loop x3", hz);
             expect(report(nm, hz, 64, g_rec_frames - 2048, 0.2), 0.2);
+            fa_stream_close(s);
+
+            /* Pause and resume in the middle of a tone: the tone fades out, silence, then fades in. */
+            s = open_sine(hz, rate * 3, rate, 0);
+            reset();
+            fa_stream_play(s);
+            render(4000);
+            pause_while_rendering(s);
+            render(3000);
+            fa_stream_play(s);
+            render(4000);
+            pause_while_rendering(s);
+            render(2000);
+            fa_stream_play(s);
+            render(3000);
+            snprintf(nm, sizeof nm, "%.0f Hz pause and resume x2", hz);
+            if (fa_load32(&s->dk_timeouts) > 0) { g_starved++; report(nm, hz, 64, g_rec_frames - 2048, thr); }
+            else expect(report(nm, hz, 64, g_rec_frames - 2048, thr), thr);
             fa_stream_close(s);
 
             for (k = 0; k < 2; k++) {
