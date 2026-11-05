@@ -982,6 +982,7 @@ fa_result fa_codec_to_sink(int codec, fa_cin in, uint64_t usize, fa_sink_fn sink
     o.fn = sink; o.ctx = ctx; o.produced = 0; o.limit = usize; o.stopped = 0; o.overflow = 0;
     if (cancelled(cancel)) return FA_ERROR_CANCELLED;
     if (codec == FA_CODEC_BZIP2) r = bz_sink(in, &o, cancel);
+    else if (codec == FA_CODEC_BZIP2_PLAIN) r = bz_sequential(in, &o, cancel);
     else if (codec == FA_CODEC_LZMA_ZIP) r = lzma_zip_sink(in, usize, &o, cancel);
     else if (codec == FA_CODEC_XZ) r = xz_sink(in, &o, cancel);
     else r = FA_ERROR_INVALID_ARG;
