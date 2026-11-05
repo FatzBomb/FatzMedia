@@ -700,6 +700,27 @@ public sealed class MediaPresentationCoordinatorTests
     }
 
     [Fact]
+    public void FailedRecovery_StopsAtOnce_WhenTheRendererCannotBeRecreated()
+    {
+        // ENG-050: after an NVIDIA GPU reset Vulkan is refused for the rest of the process; the
+        // back-off would only delay the host's switch to another renderer.
+        var time = new ManualTimeProvider();
+        var backend = new RecordingRendererBackend { InitializeSucceeds = true };
+        using var coordinator = CreateCoordinator(backend, new TestMediaEngine(), time);
+        coordinator.RecoveryBackoff = [TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30)];
+        Assert.True(coordinator.AttachPresentationSurface(CreatePrimarySurface(1280, 720)));
+        backend.InitializeSucceeds = false;
+        backend.CanRetryDeviceRecovery = false;
+        backend.DeviceLost = true;
+
+        var failures = 0;
+        coordinator.DeviceRecoveryFailed += (_, _) => Interlocked.Increment(ref failures);
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref failures) == 1, TimeSpan.FromSeconds(5)), "reported without the 30 s back-off");
+        Assert.Equal(1, backend.CleanupCount);
+    }
+
+    [Fact]
     public void HardwareFrames_AreDroppedWhileRecovering()
     {
         var time = new ManualTimeProvider();
@@ -1283,6 +1304,7 @@ public sealed class MediaPresentationCoordinatorTests
         public nint NativeDeviceHandle => 0;
 
         public bool InitializeSucceeds { get; set; } = true;
+        public bool CanRetryDeviceRecovery { get; set; } = true;
 
         public bool Initialize()
         {

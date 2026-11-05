@@ -71,4 +71,13 @@ public interface IMediaRendererBackend : IDisposable
         reason = null;
         return false;
     }
+
+    /// <summary>
+    /// Whether another device-recovery attempt can succeed (ENG-050). False when the platform has
+    /// refused the renderer's API for the rest of the process (after an NVIDIA GPU reset, every
+    /// <c>vkCreateInstance</c> fails with <c>VK_ERROR_INCOMPATIBLE_DRIVER</c>): Core then stops
+    /// the attempts and reports the failure at once, so the host can switch renderers. The default
+    /// is true.
+    /// </summary>
+    bool CanRetryDeviceRecovery => true;
 }

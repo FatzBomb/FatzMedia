@@ -121,6 +121,17 @@ that is on a device being reset. A normal close still waits for the device to go
 logged when they take over 250 ms, so any time left shows where it goes. Test:
 `ClosingADeviceThatOnlyTimedOut_DoesNotWaitForTheWholeDevice` (lavapipe).
 
+Owner check of that fix (2026-11-05): still 15.1 s, and none of the close timings appeared, so the wait was
+elsewhere in the clean-up (most likely a heartbeat probe blocked in the driver while holding the
+compositor's probe gate, which the close takes first); then six attempts with back-off (about 16 s) before
+the switch. Second fix: a lost device's compositor is detached under the locks and closed on its own
+thread, so recovery tries the new device at once (`Vulkan clean-up lock wait` and `Closing the lost Vulkan
+device (in the background)` are timed in the log); and once `vkCreateInstance` has returned
+`VK_ERROR_INCOMPATIBLE_DRIVER` the renderer reports that it cannot be re-created
+(`IMediaRendererBackend.CanRetryDeviceRecovery`, default true), so Core stops after the first attempt and
+reports the failure. Expected: the switch to Direct3D11 about 2-3 s after the reset instead of about 30 s.
+Test: `FailedRecovery_StopsAtOnce_WhenTheRendererCannotBeRecreated`.
+
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 
 Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`

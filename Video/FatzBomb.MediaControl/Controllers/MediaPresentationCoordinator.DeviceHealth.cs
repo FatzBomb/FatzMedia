@@ -159,6 +159,13 @@ public sealed partial class MediaPresentationCoordinator
                 }
 
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _rendererBackend.DeviceLostDiagnosticCategory, $"Device-lost recovery attempt {attempt}/{attempts} failed.");
+                if (!_rendererBackend.CanRetryDeviceRecovery)
+                {
+                    // ENG-050: the platform refuses the renderer for the rest of the process;
+                    // waiting out the back-off only delays the host's switch to another renderer.
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _rendererBackend.DeviceLostDiagnosticCategory, "The renderer cannot be re-created in this process; no more recovery attempts.");
+                    break;
+                }
             }
 
             if (!recovered && !cancellationToken.IsCancellationRequested && !_disposed)
