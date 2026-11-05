@@ -1,4 +1,5 @@
 using FatzBomb.MediaControl.Controllers;
+using FatzBomb.MediaControl.Core.Threading;
 using FatzBomb.MediaControl.Core.Abstractions;
 using System.Diagnostics;
 
@@ -26,6 +27,19 @@ public partial class MediaControlPlayer
         Task queued = _controlOperations.Enqueue(ReopenAfterDeviceRecovery);
         if (queued.IsFaulted)
             Volatile.Write(ref _deviceRecoveryReopenQueued, 0);
+    }
+
+    // Raised on the coordinator's recovery thread, once per failed recovery (ENG-050): the host decides
+    // whether to recreate the player with another renderer.
+    private void OnPresentationDeviceRecoveryFailed(object? sender, EventArgs e)
+    {
+        if (_disposed || MediaError is not { } handler)
+            return;
+
+        var args = new MediaErrorEventArgs(
+            MediaErrorCode.RendererDeviceLost,
+            "The GPU device was lost and the renderer could not recover it; no picture until the player is recreated with another renderer (sound continues).");
+        _ = _controlOperations.Enqueue(() => HostEventDispatcher.Raise(this, handler, args, nameof(MediaError)));
     }
 
     /// <summary>On the control queue: reopens the open media when it shows video (its own, or a video background).</summary>

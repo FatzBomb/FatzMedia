@@ -83,6 +83,34 @@ public static class PlayerRendererRules
         : [PlayerRendererRequest.Vulkan, PlayerRendererRequest.Software];
 
     /// <summary>
+    /// The renderer to rebuild the players with after <paramref name="current"/> lost its GPU device
+    /// and could not recover it (ENG-050), or null when there is nothing further (the software
+    /// renderer). On Windows: Vulkan to Direct3D11 (another driver path on the same GPU), a GPU
+    /// Direct3D11 to WARP, WARP to software; elsewhere every GPU renderer goes to software.
+    /// </summary>
+    public static PlayerRendererRequest? FallbackAfterDeviceLoss(PlayerRendererRequest current, bool windows) => (current, windows) switch
+    {
+        (PlayerRendererRequest.Software, _) => null,
+        (PlayerRendererRequest.Vulkan, true) => PlayerRendererRequest.Direct3D11,
+        (PlayerRendererRequest.Warp, true) => PlayerRendererRequest.Software,
+        (_, true) => PlayerRendererRequest.Warp,
+        _ => PlayerRendererRequest.Software,
+    };
+
+    /// <summary>
+    /// <see cref="FallbackAfterDeviceLoss"/> followed until a renderer the window can offer
+    /// (<paramref name="isAvailable"/>), or null when none is left.
+    /// </summary>
+    public static PlayerRendererRequest? NextAvailableAfterDeviceLoss(PlayerRendererRequest current, bool windows, Func<PlayerRendererRequest, bool> isAvailable)
+    {
+        ArgumentNullException.ThrowIfNull(isAvailable);
+        PlayerRendererRequest? next = FallbackAfterDeviceLoss(current, windows);
+        while (next is { } candidate && !isAvailable(candidate))
+            next = FallbackAfterDeviceLoss(candidate, windows);
+        return next;
+    }
+
+    /// <summary>
     /// How video is decoded for a renderer and the status/log wording for it (Stage 045A; one table
     /// for every test player since ENG-039). A renderer that presents hardware frames gets
     /// <see cref="VideoDecodingMethod.Auto"/> (hardware where the GPU decodes the codec, else

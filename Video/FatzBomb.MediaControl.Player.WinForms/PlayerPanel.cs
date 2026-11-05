@@ -113,6 +113,13 @@ internal sealed class PlayerPanel : UserControl, IPlayerSlot
     /// <summary>Raised when the user asks for full screen (double-click, button); the form owns the window state.</summary>
     public event EventHandler? FullScreenToggleRequested;
 
+    /// <inheritdoc />
+    public event EventHandler? RendererDeviceLost
+    {
+        add => _viewModel.RendererDeviceLost += value;
+        remove => _viewModel.RendererDeviceLost -= value;
+    }
+
     /// <summary>Creates the engine and loads the startup media; then, at startup, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
     public async Task InitializeAsync()
     {

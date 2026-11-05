@@ -679,8 +679,11 @@ public sealed class MediaPresentationCoordinatorTests
         backend.InitializeSucceeds = false;
         backend.DeviceLost = true;
 
+        var failures = 0;
+        coordinator.DeviceRecoveryFailed += (_, _) => Interlocked.Increment(ref failures);
         time.Advance(TimeSpan.FromSeconds(1));
         Assert.True(SpinWait.SpinUntil(() => backend.CleanupCount == 3 && !coordinator.IsRecoveryRunning, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref failures) == 1, TimeSpan.FromSeconds(5)), "one failure report (ENG-050)");
 
         // Given up: retried after 10 s, not at every tick.
         time.Advance(TimeSpan.FromSeconds(5));
@@ -692,6 +695,8 @@ public sealed class MediaPresentationCoordinatorTests
             () => backend.PresentedFrames.Any(static frame => frame.Reason == "device-lost recovery completed"),
             TimeSpan.FromSeconds(5)));
         Assert.Equal(4, backend.CleanupCount);
+        // The retry after 10 s is not a new failure report.
+        Assert.Equal(1, Volatile.Read(ref failures));
     }
 
     [Fact]

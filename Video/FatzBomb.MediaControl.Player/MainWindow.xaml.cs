@@ -118,6 +118,21 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerView>
         }
     }
 
+    void IPlayerSetHost<PlayerView>.FallBackRenderer()
+    {
+        PlayerRendererRequest current = RendererBox.SelectedItem is ComboBoxItem { Tag: PlayerRendererRequest selected } ? selected : App.StartupOptions.RendererRequest;
+        var choices = PlayerRendererSelection.Choices.ToList();
+        if (PlayerRendererRules.NextAvailableAfterDeviceLoss(current, windows: true, request => choices.Exists(choice => choice.Request == request)) is not { } next)
+        {
+            InfoText.Text = "The renderer lost its GPU device and no other renderer is left.";
+            return;
+        }
+
+        System.Diagnostics.Trace.WriteLine($"[Player] The {current} renderer lost its GPU device for good; switching to {next} (ENG-050).");
+        // The box's SelectionChanged switches the renderer and rebuilds the players.
+        RendererBox.SelectedIndex = choices.FindIndex(choice => choice.Request == next);
+    }
+
     void IPlayerSetHost<PlayerView>.ReportFailure(string what, Exception exception)
     {
         System.Diagnostics.Trace.WriteLine($"[Player] {what}: {exception}");

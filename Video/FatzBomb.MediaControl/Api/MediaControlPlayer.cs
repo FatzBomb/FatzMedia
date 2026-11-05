@@ -1038,6 +1038,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         ClearPendingSeek();
         try { _presentationCoordinator.FramePresented -= OnPresentationFramePresented; } catch { }
         try { _presentationCoordinator.DeviceRecovered -= OnPresentationDeviceRecovered; } catch { }
+        try { _presentationCoordinator.DeviceRecoveryFailed -= OnPresentationDeviceRecoveryFailed; } catch { }
         try { DiagnosticRouter.DiagnosticOccurred -= OnDiagnosticOccurred; } catch { }
         try { BassOutputWatchdog.OutputAvailabilityChanged -= OnAudioOutputAvailabilityChanged; } catch { }
         try
@@ -1131,6 +1132,7 @@ public partial class MediaControlPlayer : IMediaControlSession
         SubscribeNetworkEvents();
         _presentationCoordinator.FramePresented += OnPresentationFramePresented;
         _presentationCoordinator.DeviceRecovered += OnPresentationDeviceRecovered;
+        _presentationCoordinator.DeviceRecoveryFailed += OnPresentationDeviceRecoveryFailed;
         if (_mediaEngine is IMediaErrorSource reinitErrorSource)
             reinitErrorSource.ErrorOccurred += OnEngineErrorOccurred;
         DiagnosticRouter.DiagnosticOccurred += OnDiagnosticOccurred;

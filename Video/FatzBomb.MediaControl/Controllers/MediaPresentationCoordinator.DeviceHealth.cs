@@ -66,6 +66,9 @@ public sealed partial class MediaPresentationCoordinator
     /// </summary>
     public event EventHandler? DeviceRecovered;
 
+    /// <inheritdoc />
+    public event EventHandler? DeviceRecoveryFailed;
+
     /// <summary>
     /// The pauses between recovery attempts; one attempt more than pauses. Tests shorten them.
     /// </summary>
@@ -113,6 +116,7 @@ public sealed partial class MediaPresentationCoordinator
     {
         using DiagnosticRouter.OwnerScope owner = DiagnosticRouter.EnterOwner(_diagnosticOwner);
         var recovered = false;
+        var reportFailure = false;
         var wasRenderingActive = _isRenderingActive;
         try
         {
@@ -159,6 +163,9 @@ public sealed partial class MediaPresentationCoordinator
 
             if (!recovered && !cancellationToken.IsCancellationRequested && !_disposed)
             {
+                // The first failure of an episode is reported to the player (ENG-050); the 10 s
+                // retries after it are not.
+                reportFailure = Volatile.Read(ref _recoveryFailedAtPlusOne) == 0;
                 Volatile.Write(ref _recoveryFailedAtPlusOne, _timeProvider.GetTimestamp() + 1);
                 DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Error,
@@ -171,6 +178,18 @@ public sealed partial class MediaPresentationCoordinator
             if (recovered)
                 Volatile.Write(ref _recoveryFailedAtPlusOne, 0);
             Volatile.Write(ref _recoveryInProgress, 0);
+        }
+
+        if (reportFailure && !_disposed)
+        {
+            try
+            {
+                DeviceRecoveryFailed?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MediaPresentationCoordinator] DeviceRecoveryFailed handler failed: {ex.Message}");
+            }
         }
 
         if (!recovered || _disposed)

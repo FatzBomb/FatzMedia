@@ -11,6 +11,9 @@ public interface IPlayerSlot
     /// <summary>Raised when the user asks for full screen (double-click, button); the controller owns the decision.</summary>
     event EventHandler? FullScreenToggleRequested;
 
+    /// <summary>Raised when this player's renderer lost its GPU device for good (ENG-050); the controller asks the window to fall back.</summary>
+    event EventHandler? RendererDeviceLost;
+
     /// <summary>Gets whether this player has the keyboard focus (F11 shows the focused player).</summary>
     bool IsKeyboardFocusWithin { get; }
 
@@ -65,6 +68,13 @@ public interface IPlayerSetHost<TSlot>
 
     /// <summary>Makes the window full screen (saving its state) or restores it.</summary>
     void SetWindowFullScreen(bool fullScreen);
+
+    /// <summary>
+    /// A player's renderer lost its GPU device for good (ENG-050): switch the window to the next renderer
+    /// (<see cref="PlayerRendererRules.FallbackAfterDeviceLoss"/>) and rebuild the players, or report that
+    /// there is none. Called at most once per build.
+    /// </summary>
+    void FallBackRenderer();
 
     /// <summary>Reports a failure the controller caught (a rebuild, a player's teardown) on the status line and the log.</summary>
     void ReportFailure(string what, Exception exception);

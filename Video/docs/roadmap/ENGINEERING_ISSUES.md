@@ -82,6 +82,15 @@ recovery fails, fall back through the renderer chain (036A) to Direct3D11 on Win
 texture), with a Warning; also cut the 13 s stall. Direct3D11 recovered in 1 attempt in the same run.
 ENG-038's GPU-reset step is covered by this.
 
+Fix (2026-11-05, pending the owner's GPU-reset check): when every recovery attempt fails, the coordinator
+raises `DeviceRecoveryFailed` once (not on the 10 s retries) and the player raises `MediaError` with the
+new `MediaErrorCode.RendererDeviceLost` (public, additive). The test players' window then rebuilds its
+players on the next renderer (`PlayerRendererRules.FallbackAfterDeviceLoss`: Vulkan to Direct3D11 on
+Windows, a GPU Direct3D11 to WARP, WARP to software; elsewhere to software), once per build; loaded files
+are not kept, as with any renderer change. A deeper Vulkan clean-up was not tried: the decoder had already
+left the device and `vkCreateInstance` itself fails, so the driver's state in the process is gone. Still
+open: the 13 s stall before the failure is known. Check: `smoke-audit.ps1 -Steps 3` (3d).
+
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 
 Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
@@ -119,6 +128,11 @@ Engine checked (2026-11-05): with a real MKV of two embedded tracks, a chosen tr
 after the scan, over time and across a seek, and Off chosen right after an open survives the scan
 (`LinuxSubtitleSelectionNativeTests`). So the engine keeps the choice; open questions for the owner: the
 exact steps (WPF picker, or a reopen: a reopen starts again from the file's default track by design).
+
+Closed 2026-11-05, not a bug: the owner changed the track or chose Off, then reloaded the file, and the
+reload chose the first embedded track again, as designed. Found while checking: the default choice is
+the first embedded track, not the track the file marks as default, and "forced" tracks (shown even with
+subtitles off) are not recognised; both are possible follow-ups, not decided.
 
 ### ENG-044 - F11 full screen picks player 1 and sometimes does nothing
 

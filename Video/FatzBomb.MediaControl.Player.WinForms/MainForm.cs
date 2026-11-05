@@ -170,6 +170,21 @@ internal sealed class MainForm : Form, IPlayerSetHost<PlayerPanel>
         }
     }
 
+    void IPlayerSetHost<PlayerPanel>.FallBackRenderer()
+    {
+        var choices = PlayerRendererSelection.Choices.ToList();
+        PlayerRendererRequest current = _rendererBox.SelectedIndex >= 0 ? choices[_rendererBox.SelectedIndex].Request : _options.RendererRequest;
+        if (PlayerRendererRules.NextAvailableAfterDeviceLoss(current, windows: true, request => choices.Exists(choice => choice.Request == request)) is not { } next)
+        {
+            _info.Text = "The renderer lost its GPU device and no other renderer is left.";
+            return;
+        }
+
+        System.Diagnostics.Trace.WriteLine($"[Player.WinForms] The {current} renderer lost its GPU device for good; switching to {next} (ENG-050).");
+        // The box's SelectedIndexChanged switches the renderer and rebuilds the players.
+        _rendererBox.SelectedIndex = choices.FindIndex(choice => choice.Request == next);
+    }
+
     void IPlayerSetHost<PlayerPanel>.ReportFailure(string what, Exception exception)
     {
         System.Diagnostics.Trace.WriteLine($"[Player.WinForms] {what}: {exception}");

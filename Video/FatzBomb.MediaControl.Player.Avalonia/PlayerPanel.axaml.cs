@@ -95,6 +95,13 @@ public partial class PlayerPanel : UserControl, IPlayerSlot
     /// <summary>Raised when the user asks for full screen (double-click, button); the window owns the layout.</summary>
     public event EventHandler? FullScreenToggleRequested;
 
+    /// <inheritdoc />
+    public event EventHandler? RendererDeviceLost
+    {
+        add => ViewModel.RendererDeviceLost += value;
+        remove => ViewModel.RendererDeviceLost -= value;
+    }
+
     private string Label => $"P{_index}";
 
     /// <summary>Creates the engine and loads the startup media; then, in the first build, opens player 1's second screen when <c>--second-screen=</c> asked.</summary>
