@@ -107,6 +107,7 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_ChannelGetLength + bitrate + file size for a media library (a decode stream per file just to read them) | `fa_tags_read_path`: tags, cover and properties in one call, no engine or stream ([tags](../features/tags.md)) | `Tags.Read(path)` | ✅ |
 | BASS_ChannelGetLength | `fa_stream_info.length_frames` or `.duration` (ns) | `stream.Info.Duration` | ✅ |
 | BASS_ChannelGetPosition / SetPosition | `fa_stream_get_position` / `fa_stream_seek` (frames); seek refills 100 ms before returning | `stream.Position` (TimeSpan) | ✅ |
+| Clicks when you BASS_ChannelSetPosition a playing stream or loop it at a point that is not a zero crossing (BASS cuts hard) | Nothing to do: a seek fades out and in over 1.5 ms and a stepped loop wrap is smoothed over about 2 ms; `FA_ENGINE_NO_DECLICK` restores hard cuts ([clicks](../features/playback.md#clicks-at-seeks-and-loop-wraps)) | `AudioEngineOptions.NoDeclick` | ✅ |
 | BASS_ChannelGetPosition with BASS_POS_DECODE | Not needed: the position always counts what was played, never what was decoded ahead | — | ➖ (by design) |
 | BASS_ChannelBytes2Seconds / Seconds2Bytes | Not needed: frames ÷ sample rate, or use TimeSpan in .NET | — | ➖ (by design) |
 | BASS_ChannelSetAttribute VOL / PAN | `fa_stream_set_param` VOLUME / PAN, de-zippered over 5 ms ([ramps](../features/ramps.md)) | `Volume` / `Pan` | ✅ |

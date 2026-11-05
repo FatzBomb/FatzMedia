@@ -83,6 +83,7 @@ public sealed partial class AudioEngine : IDisposable
                 if (options.NoSystemSoundFont) config.Flags |= 2; // FA_ENGINE_NO_SYSTEM_SOUNDFONT
                 if (options.NoTempFiles) config.Flags |= 4; // FA_ENGINE_NO_TEMP_FILES
                 if (options.NoCache) config.Flags |= 8; // FA_ENGINE_NO_CACHE
+                if (options.NoDeclick) config.Flags |= 32; // FA_ENGINE_NO_DECLICK
                 if (options.CacheDirectory is { } dir)
                 {
                     cachePtr = Marshal.StringToCoTaskMemUTF8(dir);

@@ -548,6 +548,12 @@ public sealed record AudioEngineOptions
     /// <see cref="ErrorCode.TooLarge"/> when <see cref="TempDirectory"/> is null.
     /// </summary>
     public bool NoTempFiles { get; init; }
+    /// <summary>
+    /// Play seeks and loop wraps exactly as the file has them. By default a seek on a playing stream fades the old
+    /// audio out and the new in (1.5 ms each) and a loop that jumps back with a step is smoothed over about 2 ms, so
+    /// neither clicks.
+    /// </summary>
+    public bool NoDeclick { get; init; }
     /// <summary>Compressed ZIP entries up to this many MB are unpacked into memory; 0 uses 256.</summary>
     public int ZipMemoryLimitMb { get; init; }
     /// <summary>

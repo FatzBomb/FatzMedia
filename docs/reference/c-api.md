@@ -131,7 +131,13 @@ typedef enum fa_engine_flags {
     FA_ENGINE_NO_CACHE = 1 << 3,
     /* No recently-unpacked cache: every open of an archive song lists the archive and unpacks the song again
      * (see fa_engine_config.archive_cache_seconds). */
-    FA_ENGINE_NO_ARCHIVE_CACHE = 1 << 4
+    FA_ENGINE_NO_ARCHIVE_CACHE = 1 << 4,
+    /* Splices are played exactly as they come: no short fades. By default a seek on a
+     * playing stream fades the old audio out and the new in (1.5 ms each), and a loop
+     * that jumps back with a step in the signal (a loop point that is not on a zero
+     * crossing) has the step smoothed over about 2 ms, so neither clicks. With this
+     * flag, a seek or a loop wrap is a hard cut, sample for sample as the file has it. */
+    FA_ENGINE_NO_DECLICK = 1 << 5
 } fa_engine_flags;
 
 typedef struct fa_engine_config {
