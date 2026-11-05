@@ -64,7 +64,22 @@ default sound device (audio over the GPU's HDMI): both are Windows' own reaction
 The HLS clip (Big Buck Bunny) had no sound because Background mode never plays audio, by design.
 Different volumes between the generated test tones: to check on the rerun with the cache working.
 
-Test 11's own results (`FatzBomb-smoke-...` on the Desktop) were not in the logs zip: still to send.
+## Test 11: `smoke-audit.ps1` tests 2, 3, 4, 6, 8, 9, 10 (received the same day)
+
+- **2 refresh-rate query: pass.** The probe output is unchanged (the shipped struct fails, packed 292 bytes
+  works, which the player now uses); the cadence lines name the real 59.973 Hz.
+- **3 GPU reset: 3a WPF Direct3D11, 3b Avalonia Direct3D11 shared texture, 3c CD+G: pass** ("GPU device
+  recovered after 1 attempt(s)", the media reopened, picture and sound back). **3d Avalonia Vulkan: fail**,
+  black, `vkCreateInstance ... ErrorIncompatibleDriver` on every attempt: ENG-050. The whole-screen black
+  moment and Windows moving its default audio device (HDMI audio on the GPU) are Windows' own reaction to
+  the forced reset.
+- **4 resize: pass** (no flashes; one export line). The owner saw the WPF frame sink lag: ENG-046.
+- **6 loop point: fail**, the background video hitches at each loop, with and without trim: ENG-051.
+- **8 Avalonia close during a rebuild, second screen: pass** (clean exit in 15.5 s, nothing left running; no
+  reopen after a Renderer or Players change, in Avalonia and WPF).
+- **9 lyric memory: pass**, 0.33 MB/s allocated with a KAR (target under 10; the audit found 234), 0.19 MB/s
+  with an MP3.
+- **10 large MKV with subtitles:** picture at once (pass), but the scan read the 3 GB file twice: ENG-052.
 
 ## Rerun
 

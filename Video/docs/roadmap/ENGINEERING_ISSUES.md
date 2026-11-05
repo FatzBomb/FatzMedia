@@ -55,6 +55,33 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-052 - Embedded subtitle scan reads a large MKV twice
+
+Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
+showed its picture at once (the scan runs after the open, ENG-039 P5-1), but the process read 6,672 MB
+within 5 s: the whole file twice. On a laptop disk or a network share that competes with playback. The
+scan should read the file once at most (one pass for all text tracks, sharing the open demuxer or
+reading only the subtitle packets' clusters), and at a lower priority than playback.
+
+### ENG-051 - Background video hitches at the song's loop point
+
+Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 6, WPF, BASS): a song looping with a same-name
+background video: the video hitches at each loop point, with and without `--trim-silence` (the earlier
+audit could not reproduce it). The background restarts from frame 1 at the wrap as designed; the restart
+itself is visible. Look at pre-seeking the background to its start ahead of the wrap, as the primary video
+loop does (011A).
+
+### ENG-050 - Vulkan does not recover from a GPU reset on Windows
+
+Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 3d, Avalonia, Vulkan, RTX 5090): after
+`dxcap -forcetdr` the device loss is detected (`vkWaitForFences ... ErrorDeviceLost`), the presentation
+call blocks 13.2 s, and every recovery attempt fails with `vkCreateInstance failed: ErrorIncompatibleDriver`
+(6 attempts, then every 10 s): the picture stays black until the player restarts; sound continues. The
+driver's Vulkan state in the process does not come back, so retrying cannot fix it. Proposed: when Vulkan
+recovery fails, fall back through the renderer chain (036A) to Direct3D11 on Windows (frame sink or shared
+texture), with a Warning; also cut the 13 s stall. Direct3D11 recovered in 1 attempt in the same run.
+ENG-038's GPU-reset step is covered by this.
+
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 
 Reported: 2026-11-05, owner smoke (Vulkan tests on an RTX 5090): `CdgOnly_MatchesSoftwareExactly`
@@ -75,11 +102,12 @@ new run scanned again. FatzAudio creates only the last level of `cache_directory
 Reported: 2026-11-05, owner smoke (loop and seek checks; the default BASS engine). Engine and files not
 yet narrowed down: compare BASS and `--audio=fatz` on the same file, and with fades on and off.
 
-### ENG-046 - WPF native window resize lags behind the drag
+### ENG-046 - WPF frame-sink (composited) resize lags behind the drag
 
-Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` resize test, WPF): the video catches up after the
-window, no black flashes. Check the live-resize path (`SetPresentationSurfaceLiveResize`) and the swap
-chain resize per step.
+Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 4b: WPF with `--surface=framesink`): the video
+catches up after the window, no black flashes. On this path each frame is read back and copied into a
+`WriteableBitmap` on the UI thread at the surface's size, so a resize storm reallocates and copies at
+every size: the cost 047A slice 1 removes. Re-check after 047A; until then compare with the native window.
 
 ### ENG-045 - Embedded subtitle choice returns to the default track
 
