@@ -135,8 +135,9 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
 - `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
   SharpCompress and rar dropped; after FatzAudio's archive API.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
-  (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27). **Not pursued**
-  (owner 2026-10-28): step 0 measured the CPU copy at 0.3-0.8% of the CPU at 4K, no drops.
+  (`D3DImage`) instead of a CPU copy: **planned, queue item 2 after 051A** (owner 2026-11-05; UI-thread
+  time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5
+  and R7 decided in the idea.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 

@@ -1,14 +1,36 @@
 # Idea 047A - WPF Composited Surface from a Shared GPU Image
 
 Prepared: 2026-10-27
-Status: **not pursued** (owner, 2026-10-28). The step 0 measurement found the WPF CPU copy costs
+Status: **planned, queue item 2 after 051A** (owner, 2026-11-05: the UI-thread cost matters for
+every WPF host that animates over video, TriviaBomb and the karaoke app alike, and most shows run on
+laptops). Earlier: not pursued (owner, 2026-10-28). The step 0 measurement found the WPF CPU copy costs
 well under 1% of the CPU at 4K on the owner's machine, with no dropped frames, so the spike's risks
 (R1, R5) are not worth taking. Results below. Kept here as the record; reopen only if a slower
 machine or a 4K60 source shows real cost.
-**Reopen check (2026-11-05, TriviaBomb):** step 0 used 30 fps clips with an idle UI. TriviaBomb shows
-60 fps clips under heavy WPF animation on the same UI thread. Measure that case (with 054A's round):
-a 1080p60 clip in `--surface=framesink` with an animated overlay, fps and dropped frames; reopen the
-spike only if it drops frames where the native window does not.
+**Why it is planned again (2026-11-05).** Step 0 measured CPU % with 30 fps clips and an idle UI on a
+desktop. The cost that matters is UI-thread time: each composited frame is written into the
+`WriteableBitmap` on the UI thread (about 8 MB per 1080p frame, an estimated 1-2 ms), so two or three
+1080p60 surfaces can take 3-5 ms of every 16.7 ms UI frame from the host's animations. On laptops
+(shared memory, power limits) the copy costs more. This stage removes that per-frame UI-thread work.
+
+**Guards decided (2026-11-05):**
+- R1: `D3DImage.Lock()` blocks until WPF's render thread has copied the previous back buffer, so a
+  texture of the ring (2-3) is reused only after a later successful lock; the producer waits for its
+  GPU work (event query, off the UI thread) before announcing; `TryLock` with a short timeout skips a
+  frame instead of blocking the UI.
+- R5: `IsFrontBufferAvailableChanged` -> release and show the frame sink; on return recreate the
+  Direct3D 9Ex device and re-import; sticky frame sink after repeated failures (as Avalonia).
+- R7 (laptops, hybrid GPUs): create the renderer device on WPF's adapter, compare LUIDs, frame sink on
+  a mismatch. R8: hand-written COM calls (about six), not `Vortice.Direct3D9`.
+
+**Before and after numbers:** 051A adds a UI-thread time counter to `WpfCompositedSurfaceHost`; measure
+2-3 composited 1080p60 surfaces under an animated WPF screen, on the desktop and on a laptop, before
+and after.
+
+**What it does not change:** a UI-thread stall still pauses composited video (each frame needs a short
+UI-thread call); WPF still shows frames on its own beat (up to one frame later than the native window);
+SDR only. The native window stays the choice for HDR, exact frame timing, or a heavy UI thread with no
+WPF content over the video. Composited is the choice whenever WPF content goes over the video.
 
 ## What it changes
 

@@ -25,8 +25,10 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
   1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **next**.
-  2. `047A` WPF shared GPU surface - stays "not pursued" (step 0: composited costs <1% CPU, no drops);
-     reopen check: a 1080p60 clip under an animated WPF overlay.
+  2. `047A` WPF shared GPU surface - **planned again** (owner 2026-11-05): the cost that matters is
+     UI-thread time per frame (1-2 ms per 1080p surface, estimated), for every host animating over
+     video; most shows run on laptops. Guards for R1/R5/R7 are in the idea; 051A adds the UI-thread
+     time counter for before/after numbers (desktop and laptop).
   3. `052A` host image overlay layer + "change together" + `FadePictureAsync`.
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
@@ -45,6 +47,8 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - No `Simple` player mode; idle costs are fixed in `Full`.
 - TriviaBomb (a WPF trivia host replacing LibVLC) designs for `WpfComposited`; native mode cannot
   switch overlay and video in the same frame (the overlay is a separate layered window).
+- Composited (with 047A) is the mode when WPF content goes over video; native stays the mode for HDR,
+  exact frame timing, or a heavy UI thread with nothing WPF on top (a UI stall pauses composited video).
 
 ## How to verify
 
@@ -71,13 +75,13 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Next steps
 
-1. Owner: the normalization smoke (`updates/037A_Normalization`), and the 054A/047A measurements
-   (`--mode=full` vs `--mode=background` on a plain 1080p clip; a 1080p60 clip in
-   `--surface=framesink` with an animated overlay).
+1. Owner: the normalization smoke (`updates/037A_Normalization`), and the 054A measurement
+   (`--mode=full` vs `--mode=background` on a plain 1080p clip). 047A's before numbers come after 051A
+   adds the UI-thread counter.
 2. Start `051A`: move it to `active/`, write acceptance criteria, then implement across WPF, Avalonia
    and WinForms (WPF composited: raise in `WpfCompositedSurfaceHost.PublishPendingFrame`, same
    dispatcher turn as the bitmap write, after the host is visible; check that a hidden surface is
-   still presented to).
+   still presented to). Also add the composited UI-thread time counter (047A's before numbers).
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
 
