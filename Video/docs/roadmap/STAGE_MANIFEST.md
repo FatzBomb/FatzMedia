@@ -135,6 +135,8 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   position, events and surfaces.
 - `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
   SharpCompress and rar dropped; after FatzAudio's archive API.
+- `future/057A_IDEA_UiFriendlyAsyncApi.md` - **planned** (owner 2026-11-05, test-player audit):
+  `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`, and the players use Core's events instead of polling.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy: **planned, queue item 2 after 051A** (owner 2026-11-05; UI-thread
   time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5

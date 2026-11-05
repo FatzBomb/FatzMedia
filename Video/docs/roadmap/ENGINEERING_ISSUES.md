@@ -55,6 +55,41 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-057 - Small items from the test-player audit
+
+Reported: 2026-11-05 (audit). Low priority, each small:
+- WPF: after re-parenting the surface for full screen the player calls `RefreshPresentationLayout`
+  twice by hand (Render and ApplicationIdle priority, `Player/PlayerView.xaml.cs`): `MediaSurface` does
+  not notice a grid row/span or margin change that keeps its size.
+- Pitch (±12) and tempo (50-200) limits are hard-coded in the view model (`PlayerViewModel.cs`); Core
+  documents tempo as 5-5000 and has no range constants. Expose the ranges from Core.
+- The view model re-applies about 13 engine settings after creating a player (`PlayerViewModel.cs`);
+  055A's `ReconfigureAsync` covers carrying them over.
+
+### ENG-056 - Avalonia player re-parses the file-dialog filter string
+
+Reported: 2026-11-05 (audit). `Player.Avalonia/AvaloniaPlayerHost.cs` (`ToFileTypes`) splits
+`OpenFileDialogFilter` back into types, because the player exposes only the string while Core has the
+structured `AcceptedMediaTypes.Filters`. Expose the structured filters on the player (and optionally an
+Avalonia `FilePickerFileType` helper).
+
+### ENG-055 - A missing native library folder throws
+
+Reported: 2026-11-05 (audit). `MediaControlPlayer.ResolveNativeLibraryPaths` throws
+`DirectoryNotFoundException` for a folder that does not exist, so each player filters its list first
+(`Player/Configuration/PlayerNativeLibraries.cs`, `Player.Avalonia/NativePaths.cs`,
+`Player.Shared/Hosting/PlayerNativePaths.cs`), while the Windows bootstrap and `LinuxNativeLibraryLocator`
+already skip missing folders. Proposed: skip it with a Warning (public behaviour change: owner's call).
+
+### ENG-054 - Second-screen open/close copied in all three test players
+
+Reported: 2026-11-05 (audit). `Player/PlayerView.xaml.cs` (`OpenSecondScreen`/`CloseSecondScreen`),
+`Player.Avalonia/PlayerPanel.axaml.cs` and `Player.WinForms/PlayerPanel.cs` each list the screens, pick
+one that is not the owner's (`Player.Shared/Presentation/PlayerScreenChooser.cs`), create a
+`SecondaryPresentationWindow`, call `ShowOnScreen` and track its close (about 50 lines each). A projector
+app needs the same: an adapter helper (`ShowOnOtherScreen(owner, preferred)`) with the screen rule in Core.
+Fits 052A or its own small item.
+
 ### ENG-053 - WinForms: other players stutter when one goes full screen
 
 Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,

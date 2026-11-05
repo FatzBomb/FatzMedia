@@ -13,5 +13,9 @@ Owner decision 2026-11-05 (TriviaBomb, a WPF host replacing LibVLC). Queue item 
 - Docs: the A/B swap pattern (two `Background`-mode players; load into the hidden one; on the event,
   in one UI-thread turn show it, hide the old one, change the screen). The same for an inset clip.
 - `PresentationFramePresented` (every frame, background thread, not per load) stays as is.
+- Check (test-player audit 2026-11-05): the shared view model waits a fixed 500 ms before the startup
+  media loads, "so the surface binds to the new player first" (`PlayerViewModel.cs`, `StartupMediaDelay`).
+  Find what a load before the surface attaches loses (first frame, attach diagnostics); the package should
+  accept either order, and the delay goes.
 - Tests: tracker/adapter logic through the existing doubles; WPF same-frame behaviour is a manual
   smoke on Windows.

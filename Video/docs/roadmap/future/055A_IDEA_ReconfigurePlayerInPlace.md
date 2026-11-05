@@ -33,7 +33,14 @@ player's window catches `MediaError` with `RendererDeviceLost`, picks the next r
    elsewhere), with a Warning and an event naming the old and new renderer (proposed
    `RendererChanged`). `RendererDeviceLost` stays as the error when no tier is left, or when the host
    turns the automatic fallback off (an option, on by default; name decided in the stage).
-3. **`Auto` renderer choice in the package:** the ranking each test player does today
+3. **Surface and decoding paired with the renderer by the package** (test-player audit 2026-11-05):
+   Core reports `RequiresFrameSinkSurface` and `RequiresSoftwareDecoding` per renderer, but only the
+   036A fallback chain reads them; the players pair them by hand (`Player/ViewModels/MainWindowViewModel.cs`,
+   `Player/App.xaml.cs`, `PlayerRendererRules.DescribeDecoding`, `Player.Avalonia/Renderers.cs`, which
+   also ignores Vulkan). The WinForms and Avalonia surfaces already fall back to a frame sink on their
+   own; the WPF `MediaSurface` should pick composited mode itself when the renderer needs a frame sink,
+   and Core should pick software decoding from the chosen renderer's availability.
+4. **`Auto` renderer choice in the package:** the ranking each test player does today
    (`Renderers.Probe`/`Choose` in the Avalonia player, `PlayerRendererSelection` in WPF,
    `PlayerRendererRules` in Player.Shared): best available for the surface type (Vulkan, Direct3D11,
    WARP, Software as each platform allows), using the factories' existing `ProbeAvailability`.

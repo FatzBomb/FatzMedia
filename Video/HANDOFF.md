@@ -45,6 +45,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
      2026-11-05): renderer fallback in place**: the swap in place, then the automatic switch after an
      unrecoverable device loss (media kept at its position; moves out of the test players), then an
      `Auto` renderer choice in the package.
+  6b. `057A` UI-friendly async API (audit 2026-11-05): `BeginScrubAsync`/`EndScrubAsync`, `DisposeAsync`,
+     the players use Core's events instead of polling. Audit items also in 055A slice 1 (surface and
+     decoding paired by the package), 051A (the 500 ms startup delay) and ENG-054 to ENG-057.
   7. After rc.4: rc.4 pin move + start wait/cache size pass-through; `050A` tags and file info;
      `056A` archives through FatzAudio's reader, SharpCompress and rar dropped.
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
