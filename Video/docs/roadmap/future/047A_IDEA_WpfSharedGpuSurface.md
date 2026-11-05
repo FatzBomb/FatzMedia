@@ -5,6 +5,10 @@ Status: **not pursued** (owner, 2026-10-28). The step 0 measurement found the WP
 well under 1% of the CPU at 4K on the owner's machine, with no dropped frames, so the spike's risks
 (R1, R5) are not worth taking. Results below. Kept here as the record; reopen only if a slower
 machine or a 4K60 source shows real cost.
+**Reopen check (2026-11-05, TriviaBomb):** step 0 used 30 fps clips with an idle UI. TriviaBomb shows
+60 fps clips under heavy WPF animation on the same UI thread. Measure that case (with 054A's round):
+a 1080p60 clip in `--surface=framesink` with an animated overlay, fps and dropped frames; reopen the
+spike only if it drops frames where the native window does not.
 
 ## What it changes
 

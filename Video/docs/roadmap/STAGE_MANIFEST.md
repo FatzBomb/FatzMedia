@@ -120,6 +120,20 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   FatzMedia family (owner 2026-11-03); its own stage, after the 037A decision.
 - `future/049A_IDEA_PresentTimeFeedback.md` - **planned** (owner 2026-11-03): correct the
   present-time estimate with Direct3D11 present statistics, after 037A slice 3.
+- `future/050A_IDEA_TagsAndFileInformation.md` - **planned** (owner 2026-11-05): `player.Tags` and
+  `MediaInfo.ReadAsync` (tags, details, hashes, cover-art thumbnails); after FatzAudio rc.4 and 056A.
+- `future/051A_IDEA_FirstFrameReadySignal.md` - **planned, next** (owner 2026-11-05): a per-surface
+  first-frame-ready event on the UI thread and the A/B swap pattern (TriviaBomb).
+- `future/052A_IDEA_ImageOverlayAndPictureFade.md` - **planned**: a host image overlay layer on every
+  renderer, "change together" with a load, and `FadePictureAsync`.
+- `future/053A_IDEA_StreamMediaSource.md` - **planned**: `MediaInputSource.FromStream` through FFmpeg
+  custom I/O.
+- `future/054A_IDEA_FullIdleCostCheck.md` - **planned**: measure and fix idle-feature costs in `Full`
+  (no `Simple` mode, owner).
+- `future/055A_IDEA_ReconfigurePlayerInPlace.md` - **planned**: `ReconfigureAsync` keeps media,
+  position, events and surfaces.
+- `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
+  SharpCompress and rar dropped; after FatzAudio's archive API.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
   (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27). **Not pursued**
   (owner 2026-10-28): step 0 measured the CPU copy at 0.3-0.8% of the CPU at 4K, no drops.
