@@ -127,10 +127,13 @@ public sealed partial class MediaPresentationCoordinator
 
             TimeSpan[] backoff = RecoveryBackoff;
             var attempts = backoff.Length + 1;
+            var made = 0;
             for (var attempt = 1; attempt <= attempts && !cancellationToken.IsCancellationRequested; attempt++)
             {
                 if (attempt > 1 && cancellationToken.WaitHandle.WaitOne(backoff[attempt - 2]))
                     break;
+
+                made = attempt;
 
                 // No present runs meanwhile, and no surface call sees a half-built device.
                 lock (_presentGate)
@@ -159,6 +162,13 @@ public sealed partial class MediaPresentationCoordinator
                 }
 
                 DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _rendererBackend.DeviceLostDiagnosticCategory, $"Device-lost recovery attempt {attempt}/{attempts} failed.");
+                if (!_rendererBackend.CanRetryDeviceRecovery)
+                {
+                    // ENG-050: the platform refuses the renderer for the rest of the process;
+                    // waiting out the back-off only delays the host's switch to another renderer.
+                    DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, _rendererBackend.DeviceLostDiagnosticCategory, "The renderer cannot be re-created in this process; no more recovery attempts.");
+                    break;
+                }
             }
 
             if (!recovered && !cancellationToken.IsCancellationRequested && !_disposed)
@@ -170,7 +180,7 @@ public sealed partial class MediaPresentationCoordinator
                 DiagnosticRouter.Raise(
                     MediaDiagnosticLevel.Error,
                     _rendererBackend.DeviceLostRecoveryFailedDiagnosticCategory,
-                    $"GPU device-lost recovery failed after {attempts} attempts; retrying every {RecoveryRetryInterval.TotalSeconds:0} s while a surface is attached.");
+                    $"GPU device-lost recovery failed after {made} attempt(s); retrying every {RecoveryRetryInterval.TotalSeconds:0} s while a surface is attached.");
             }
         }
         finally

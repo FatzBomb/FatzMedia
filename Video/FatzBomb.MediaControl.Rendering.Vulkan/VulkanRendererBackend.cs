@@ -408,14 +408,26 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
 
     public void CleanupResources()
     {
+        VulkanOffscreenCompositor? lostCompositor = null;
+        var start = Stopwatch.GetTimestamp();
         lock (_renderGate)
         {
             lock (_sync)
             {
+                VulkanStallMeter.Report(start, "Vulkan clean-up lock wait");
+                // ENG-050: a lost device's objects are destroyed off the recovery path. After an
+                // NVIDIA GPU reset, calls on the old device (and a heartbeat probe holding the
+                // compositor's probe gate) blocked until the driver finished the reset, about 15 s,
+                // before the new device was even tried. Nothing else uses the old compositor once it
+                // is detached here; its Dispose destroys the retired images with it.
+                var deviceLost = _deviceLost || _compositor?.SharedDevice?.IsLost == true;
                 // Surfaces stay attached: their shared images are exported again on the next frame.
                 foreach (Target target in _targets.Values)
-                    RetireSharedNoLock(target);
-                _compositor?.Dispose();
+                    RetireSharedNoLock(target, destroyImages: !deviceLost);
+                if (deviceLost)
+                    lostCompositor = _compositor;
+                else
+                    _compositor?.Dispose();
                 _compositor = null;
                 IsInitialized = false;
                 _initializationFailed = false;
@@ -424,7 +436,37 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
                 _allocationFailures = 0;
             }
         }
+
+        if (lostCompositor is not null)
+            DisposeLostCompositor(lostCompositor);
     }
+
+    /// <summary>Disposes a lost device's compositor on its own thread, timing it (ENG-050).</summary>
+    private static void DisposeLostCompositor(VulkanOffscreenCompositor compositor)
+    {
+        // The player's diagnostics owner flows with the execution context.
+        _ = Task.Run(() =>
+        {
+            var start = Stopwatch.GetTimestamp();
+            try
+            {
+                compositor.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Vulkan", $"Closing the lost Vulkan device failed: {ex.Message}");
+            }
+
+            VulkanStallMeter.Report(start, "Closing the lost Vulkan device (in the background)");
+        });
+    }
+
+    /// <summary>
+    /// Whether another recovery attempt can succeed (ENG-050): not once <c>vkCreateInstance</c>
+    /// has returned <c>VK_ERROR_INCOMPATIBLE_DRIVER</c>, which after a GPU reset stays so for the
+    /// rest of the process.
+    /// </summary>
+    public bool CanRetryDeviceRecovery => VulkanOffscreenCompositor.LastCreateInstanceResult != Silk.NET.Vulkan.Result.ErrorIncompatibleDriver;
 
     /// <summary>
     /// Decoded frames are drawn only when FFmpeg decoded them on this renderer's device; nothing is
@@ -923,7 +965,7 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
         return PresentResult.Failed;
     }
 
-    private void RetireSharedNoLock(Target target)
+    private void RetireSharedNoLock(Target target, bool destroyImages = true)
     {
         SharedTarget? shared = target.Shared;
         target.Shared = null;
@@ -931,7 +973,8 @@ internal sealed class VulkanRendererBackend(Func<VulkanOffscreenCompositor?> com
             return;
 
         shared.Set.Retire();
-        _compositor?.DestroyExportedImages(shared.Images, closeDescriptors: false);
+        if (destroyImages)
+            _compositor?.DestroyExportedImages(shared.Images, closeDescriptors: false);
         shared.Ring.Dispose();
     }
 
