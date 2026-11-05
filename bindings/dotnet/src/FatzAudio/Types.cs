@@ -303,8 +303,16 @@ public sealed record StreamOptions
     /// <c>UpdateInto</c>. Live MIDI controls (sending events, changing the soundfont) throw. Other formats ignore the flag.
     /// </summary>
     public bool MidiLyricsOnly { get; init; }
-    /// <summary>Audio track to use in multi-track containers; -1 selects the default.</summary>
+    /// <summary>Audio track to use in multi-track containers; -1 selects the default. For <see cref="AudioEngine.OpenPackets"/> and
+    /// <see cref="AudioEngine.CreatePushStream"/> with <see cref="SourceIdentity"/>: the track of the original file the stream plays.</summary>
     public int AudioTrack { get; init; } = -1;
+    /// <summary>
+    /// <see cref="AudioEngine.OpenPackets"/> and <see cref="AudioEngine.CreatePushStream"/> only: which song the stream plays,
+    /// as the <see cref="AudioFingerprint"/> of the original file (with <see cref="AudioTrack"/> naming the track in it, -1 for
+    /// the default track). Loudness normalization then finds the song in the cache and takes part in a <see cref="LoudnessScan"/>
+    /// of the same song, as a stream opened from the file itself does. Other opens ignore it.
+    /// </summary>
+    public AudioFingerprint? SourceIdentity { get; init; }
     /// <summary>Optional MIME type hint; content sniffing still wins.</summary>
     public string? MimeHint { get; init; }
     /// <summary>

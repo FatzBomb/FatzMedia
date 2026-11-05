@@ -18,6 +18,15 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Loudness of audio your app feeds (MediaControl request 13): `fa_scan_open_packets` / `fa_scan_open_push`,
+  `fa_scan_push_packet` / `fa_scan_push_frame`, `fa_scan_wants_more`, `fa_scan_finish`, `fa_scan_close` (new
+  `fa_scan_options`, `fa_scan_feed`; .NET `AudioEngine.OpenLoudnessScan`, `LoudnessScan`, `LoudnessScanOptions`). The feed
+  runs on the caller's thread, measures with the same meter as a scan by path and stores the result in the cache under
+  the original file's `fa_fingerprint`. New field `fa_open_options.source_identity` (at the end of the struct; .NET
+  `StreamOptions.SourceIdentity`) lets a packet or push stream name its song, so the cache, the start wait and the
+  provisional value apply to it as to a file stream. A cached song or a Dolby dialogue level (`fa_engine_set_dialnorm`) is
+  reported by `fa_scan_wants_more` = 0 so the app can skip reading the file
+  ([normalization](docs/features/normalization.md#streams-you-feed-packets-and-decoded-frames)).
 - Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
   directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.
   The free space is checked first (song size + 64 MB) and a short disk returns the new `FA_ERROR_DISK_FULL` (-23, .NET

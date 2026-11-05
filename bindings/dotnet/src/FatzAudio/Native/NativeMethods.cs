@@ -388,6 +388,31 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_scan_loudness_path(EngineHandle engine, string path, ref FaLoudness loudness);
 
+    // ---- Loudness of fed audio -----------------------------------------------
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_scan_options_init(FaScanOptions* options);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_open_packets(EngineHandle engine, FaCodecParams* parameters, FaScanOptions* options, out nint feed);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_open_push(EngineHandle engine, FaAudioFormat* format, FaScanOptions* options, out nint feed);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_wants_more(ScanHandle feed);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_push_packet(ScanHandle feed, FaPacket* packet);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_push_frame(ScanHandle feed, FaAudioFrame* frame);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_scan_finish(ScanHandle feed, ref FaLoudness loudness);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_scan_close(nint feed);
+
     // ---- Track analysis ----------------------------------------------------
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void fa_analysis_options_init(FaAnalysisOptions* options);

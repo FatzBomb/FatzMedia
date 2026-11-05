@@ -293,6 +293,29 @@ internal sealed class SoundHandle : SafeHandle
     }
 }
 
+/// <summary>Owns an <c>fa_scan_feed*</c> and keeps its engine alive.</summary>
+internal sealed class ScanHandle : SafeHandle
+{
+    private EngineHandle? _engine;
+
+    public ScanHandle() : base(0, true) { }
+    public override bool IsInvalid => handle == 0;
+
+    public void Initialize(nint native, EngineHandle engine)
+    {
+        _engine = HandleRef.AddRef(engine);
+        SetHandle(native);
+    }
+
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.fa_scan_close(handle);
+        _engine?.DangerousRelease();
+        _engine = null;
+        return true;
+    }
+}
+
 internal static class HandleRef
 {
     public static T AddRef<T>(T handle) where T : SafeHandle

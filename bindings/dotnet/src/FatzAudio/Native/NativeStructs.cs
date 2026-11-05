@@ -83,6 +83,7 @@ internal unsafe struct FaOpenOptions
     public int TextCodePage;
     public int* Cancel;
     public int DolbyDownmix;
+    public FaFingerprint* SourceIdentity;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -466,6 +467,15 @@ internal struct FaFingerprint
     public uint StructSize;
     public ulong Key;
     public long AudioBytes;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FaScanOptions
+{
+    public uint StructSize;
+    public FaFingerprint* Identity;
+    public int AudioTrack;
+    public double DurationSeconds;
 }
 
 [StructLayout(LayoutKind.Sequential)]

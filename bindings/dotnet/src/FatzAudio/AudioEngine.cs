@@ -1081,6 +1081,7 @@ internal unsafe ref struct NativeOptions
     private byte* _userAgent, _headers, _proxy;
     private SoundFontHandle? _font;
     private int* _cancel;
+    private FaFingerprint* _identity;
     private CancellationTokenRegistration _cancelRegistration;
 
     public readonly FaOpenOptions* Pointer => _ptr;
@@ -1103,6 +1104,14 @@ internal unsafe ref struct NativeOptions
         o._ptr->DynamicRange = (int)options.DynamicRange;
         o._ptr->DolbyDownmix = (int)options.DolbyDownmix;
         o._ptr->TextCodePage = (int)options.TextCodePage;
+        if (options.SourceIdentity is { } identity)
+        {
+            o._identity = (FaFingerprint*)NativeMemory.AllocZeroed((nuint)sizeof(FaFingerprint));
+            o._identity->StructSize = (uint)sizeof(FaFingerprint);
+            o._identity->Key = identity.Key;
+            o._identity->AudioBytes = identity.AudioBytes;
+            o._ptr->SourceIdentity = o._identity;
+        }
         if (options.CancellationToken.CanBeCanceled)
         {
             // The native open reads this flag while it unpacks; the token sets it from any thread.
@@ -1164,6 +1173,8 @@ internal unsafe ref struct NativeOptions
         if (_headers != null) Marshal.FreeCoTaskMem((nint)_headers);
         if (_proxy != null) Marshal.FreeCoTaskMem((nint)_proxy);
         if (_net != null) NativeMemory.Free(_net);
+        if (_identity != null) NativeMemory.Free(_identity);
+        _identity = null;
         if (_ptr != null) NativeMemory.Free(_ptr);
         _font?.DangerousRelease();
         _font = null;
