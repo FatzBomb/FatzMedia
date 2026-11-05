@@ -57,3 +57,11 @@ From the repository root (`git pull`, then build):
 5. **FFmpeg fallback:** with `bassflac.dll` removed from `native\`, open a long FLAC and Stop or
    open another file during the conversion: the load ends at once. A zip with `song.flac` +
    `song.cdg` plays with sound.
+
+## Linux run (2026-11-05)
+
+Smoke step 5 (BASSFLAC missing): on Linux a FLAC plays through the FFmpeg conversion when `libbassflac.so`
+is absent (`LinuxFormatMatrixNativeTests.Flac_WithoutBassFlac_PlaysThroughTheFfmpegConversion`, run on its
+own: BASS plug-ins stay loaded for the process). Not run: the cancel-during-conversion part and the
+song.flac + song.cdg zip; both stay in the Windows smoke.
+

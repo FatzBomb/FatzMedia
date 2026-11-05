@@ -87,6 +87,41 @@ if [ ! -e "$bass/libbass.so" ]; then
   fi
   rm -rf "$tmpb"
 fi
+# Format matrix and player modes (LinuxFormatMatrixNativeTests, LinuxPlayerModesNativeTests): the
+# file set of scripts/smoke-backlog.ps1 test 1, plus a picture, a silent video and a music video.
+if [ -n "$enc" ]; then
+  f="$media/formats"; mkdir -p "$f"
+  tone=(-f lavfi -i "sine=frequency=440:duration=12:sample_rate=48000" -ac 2)
+  pic=(-f lavfi -i "testsrc2=size=640x360:rate=30:duration=12")
+  gen "$f/tone.mp3" "${tone[@]}" -c:a libmp3lame -b:a 192k
+  gen "$f/tone.mp2" "${tone[@]}" -c:a mp2
+  gen "$f/tone.ac3" "${tone[@]}" -c:a ac3
+  gen "$f/tone-aac.m4a" "${tone[@]}" -c:a aac
+  gen "$f/tone-alac.m4a" "${tone[@]}" -c:a alac
+  gen "$f/tone-alac.caf" "${tone[@]}" -c:a alac
+  gen "$f/tone.m4r" "${tone[@]}" -c:a aac -f ipod
+  gen "$f/tone.flac" "${tone[@]}" -c:a flac
+  gen "$f/tone.wav" "${tone[@]}" -c:a pcm_s16le
+  gen "$f/tone.aiff" "${tone[@]}" -c:a pcm_s16be
+  gen "$f/tone.ogg" "${tone[@]}" -c:a libvorbis
+  gen "$f/tone.opus" "${tone[@]}" -c:a libopus
+  gen "$f/tone.wma" "${tone[@]}" -c:a wmav2
+  gen "$f/tone.wv" "${tone[@]}" -c:a wavpack
+  gen "$f/tone.tta" "${tone[@]}" -c:a tta
+  gen "$f/tone.mka" "${tone[@]}" -c:a flac
+  gen "$f/tone.au" "${tone[@]}" -c:a pcm_s16be
+  gen "$f/tone.dts" "${tone[@]}" -c:a dca -strict -2
+  gen "$f/audio-only.mp4" "${tone[@]}" -c:a aac
+  gen "$f/audio-only.ts" "${tone[@]}" -c:a aac -f mpegts
+  gen "$f/cover.png" -f lavfi -i "testsrc2=size=300x300" -frames:v 1
+  gen "$f/cover-only.mp4" "${tone[@]}" -i "$f/cover.png" -map 0:a -map 1:v -c:a aac -c:v png -disposition:v attached_pic
+  gen "$f/divx-mp3.avi" "${pic[@]}" "${tone[@]}" -c:v mpeg4 -vtag XVID -c:a libmp3lame
+  gen "$f/mpeg2-mp2.mpg" "${pic[@]}" "${tone[@]}" -c:v mpeg2video -c:a mp2 -f mpeg
+  gen "$f/video-aac.mp4" "${pic[@]}" "${tone[@]}" -c:v mpeg4 -c:a aac
+  gen "$f/silent-video.mp4" "${pic[@]}" -c:v mpeg4
+  gen "$f/picture.jpg" -f lavfi -i "testsrc2=size=640x360" -frames:v 1
+  gen "$f/long-10min.wv" -f lavfi -i "sine=frequency=330:duration=600:sample_rate=48000" -ac 2 -c:a wavpack
+fi
 if [ -n "$enc" ]; then
   gen "$media/tone.mp3" -f lavfi -i "sine=frequency=440:duration=12:sample_rate=44100" -ac 2 -c:a libmp3lame -b:a 192k
   gen "$media/tone.flac" -f lavfi -i "sine=frequency=440:duration=12:sample_rate=44100" -ac 2 -c:a flac

@@ -667,22 +667,26 @@ foreach ($k in $Exe.Keys) {
 $all = 1..12
 if (-not $Steps) {
     Write-Host ''
-    Write-Host 'Tests (A = automatic, G = guided):' -ForegroundColor Cyan
-    Write-Host '   1  A  Audio formats on BASS and FatzAudio (ENG-043, 033A)            ~12 min'
-    Write-Host '   2  AG Loudness normalization on FatzAudio (037A)                     ~8 min'
-    Write-Host '   3  A  Network sources (039A_3; needs internet)                       ~8 min'
-    Write-Host '   4  AG HDR tone mapping and HDR output (042A)                         ~10 min'
-    Write-Host '   5  AG Player modes (043A)                                            ~8 min'
-    Write-Host '   6  A  Avalonia shared GPU image and second screen (027A)             ~8 min'
-    Write-Host '   7  A  Vulkan tests on your GPU (026A)                                ~3 min'
-    Write-Host '   8  AG Text on Software and Vulkan (ENG-040, ENG-039 4c)              ~5 min'
-    Write-Host '   9  A  Native libraries missing (ENG-039)                             ~3 min'
-    Write-Host '  10  G  Player set, full screen, closing (ENG-039 4a)                  ~10 min'
-    Write-Host '  11  AG Audit tests: GPU reset, resize, ... (runs smoke-audit.ps1)     ~25 min'
-    Write-Host '  12  G  Remaining guided checks (ENG-039 1, 4b, 4c, 5; 026B)           ~15 min'
-    $Steps = Read-Host 'Which tests? Enter or "all" = 1-12, or a list like 1,2,7'
+    Write-Host 'Tests (A = automatic, G = guided; L = Claude also runs the cross-platform part on Linux):' -ForegroundColor Cyan
+    Write-Host '   1  A  L Audio formats on BASS and FatzAudio (ENG-043, 033A)          ~12 min'
+    Write-Host '   2  AG   Loudness normalization on FatzAudio (037A)                   ~8 min'
+    Write-Host '   3  A  L Network sources (039A_3; certificates only here)             ~8 min'
+    Write-Host '   4  AG   HDR tone mapping and HDR output (042A)                       ~10 min'
+    Write-Host '   5  AG L Player modes (043A; surfaces and UI only here)               ~8 min'
+    Write-Host '   6  A    Avalonia shared GPU image and second screen (027A)           ~8 min'
+    Write-Host '   7  A    Vulkan tests on your GPU (026A)                              ~3 min'
+    Write-Host '   8  AG   Text on Software and Vulkan (ENG-040, ENG-039 4c)            ~5 min'
+    Write-Host '   9  A  L Native libraries missing (ENG-039)                           ~3 min'
+    Write-Host '  10  G    Player set, full screen, closing (ENG-039 4a)                ~10 min'
+    Write-Host '  11  AG   Audit tests: GPU reset, resize, ... (runs smoke-audit.ps1)   ~25 min'
+    Write-Host '  12  G    Remaining guided checks (ENG-039 1, 4b, 4c, 5; 026B)         ~15 min'
+    Write-Host ''
+    Write-Host 'Suggested order: the Windows-only tests first (2,4,6,7,8,10,11,12), then 1,3,5,9.' -ForegroundColor Cyan
+    Write-Host 'The L tests still matter here: they check the Windows decoders, DLLs and players.' -ForegroundColor DarkGray
+    $Steps = Read-Host 'Which tests? Enter = suggested order, "all" = 1-12, or a list like 2,4,7'
 }
-if (-not $Steps -or $Steps.Trim().ToLowerInvariant() -eq 'all') { $selected = $all }
+if (-not $Steps) { $selected = @(2, 4, 6, 7, 8, 10, 11, 12, 1, 3, 5, 9) }
+elseif ($Steps.Trim().ToLowerInvariant() -eq 'all') { $selected = $all }
 else {
     $selected = @($Steps -split '[,\s]+' | Where-Object { $_ } | ForEach-Object {
             if ($_ -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } else { [int]$_ } })

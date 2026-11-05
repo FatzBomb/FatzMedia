@@ -68,6 +68,9 @@ same files on BASS and FatzAudio). Not caused by slice 2: each fails the same wa
   audio through the soundtrack path, as Audio mode does, with an Info line saying so. Verified on
   Linux with real FFmpeg and FatzAudio on generated AAC-in-MP4, AAC-in-TS, cover-art-only MP4,
   M4R and ALAC files.
+  Linux run 2026-11-05 (`LinuxFormatMatrixNativeTests`, BASS and FatzAudio engines): `.alac`-family M4A
+  and CAF, `.m4r`, audio-only MP4 and TS and a cover-art-only MP4 all load and play on both engines;
+  Windows check still pending (`smoke-backlog.ps1` test 1).
 - **WMA on BASS:** the player froze and closed before its log appeared (FatzAudio played the
   file). Owner decision 2026-11-03: not chased, since FatzAudio replaces BASS.
 - **Images opened on their own:** an image loaded after any non-image media stayed hidden. Cause:
