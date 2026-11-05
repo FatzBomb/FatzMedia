@@ -30,7 +30,8 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
      video; most shows run on laptops; venue displays are 4K. Slice 1: shared GPU image with the
      R1/R5/R7 guards. Slice 2: composited video on its own dispatcher thread (`HostVisual`/`VisualTarget`),
      so a busy app UI thread no longer pauses it. 051A adds the UI-thread time counter for before/after
-     numbers (desktop and laptop). Open: an `Auto` presentation mode (see the owner questions).
+     numbers (desktop and laptop). Slice 3: `WpfPresentationMode.Auto` (one-way switch to composited
+     when the surface's own overlay content, opacity, transform or clip needs it; decided in the idea).
   3. `052A` host image overlay layer + "change together" + `FadePictureAsync`.
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
@@ -89,9 +90,7 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Open questions for the owner
 
-- `WpfPresentationMode.Auto` (composited when the surface has `OverlayContent`, opacity, a transform or
-  a clip; native for HDR or nothing over the video; switched when those change). Content the app places
-  over the surface elsewhere in its tree cannot be detected reliably, so the app says so (sets the mode).
+- After 047A: should `WpfPresentationMode.Auto` become the default (a behaviour change for existing apps)?
 
 - Provisional boost cap default: 6 dB (our suggestion) or FatzAudio's 12 (none)?
 - FatzAudio's public fingerprint: build it (half a day on their side)?
