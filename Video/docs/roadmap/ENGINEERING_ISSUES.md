@@ -74,16 +74,6 @@ same files on BASS and FatzAudio). Not caused by slice 2: each fails the same wa
   the replaced item's `MediaStopped` reached the surface's auto-hide after the new `MediaLoaded`.
   Fixed in PR 52, owner verified on Windows 2026-11-03.
 
-### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
-
-Reported: 2026-11-02, owner smoke of 037A slice 1. One video logged `Quick normalization complete,
-gain=1.000` and `Deep normalization complete, gain=1.000`, which looked like a scan that read no
-audio. Resolved the same day, not a bug: it was a background video with a silent audio track, so the
-peak was 0 and the gain correctly stayed 1.0 (the owner confirmed normalization works on other
-videos). Diagnostics only: the deep line now says "no audible audio found; gain left at 1.0" for a
-peak of 0, and the normalization lines carry the file as their source path (the log did not name
-the video).
-
 ### ENG-040 - Library gaps found while writing the user guide
 
 Reported: 2026-10-31, while writing `docs/site` (the DocFX user guide). Each was found by reading
@@ -120,7 +110,7 @@ the current behaviour.
   the AppBase-relative branch of the Windows bootstrap is unreachable. `DLLPath` is read only by
   the lightweight surfaces and `AudioOutputDevices`.
 
-**Missing public API:** no stream/byte-array `MediaInputSource`; no mute; no equalizer presets;
+**Missing public API:** no stream/byte-array `MediaInputSource` (planned: 053A, owner 2026-11-05); no mute; no equalizer presets;
 no `DisposeAsync`; CD+G background override colour (`ICdgEngine.BackgroundOverrideArgb`) and
 `CdgVisuals` not on `IMediaControlSession`; no display refresh-rate override on the player
 (`IMediaEngine.SetDisplayRefreshRate` only; Linux has `LinuxPlatformOptions`); `DeviceRecovered`
@@ -533,6 +523,18 @@ details in `complete/045A_COMPLETED_GpuDecodingEveryPath.md` (Not in this stage)
   tell a transient failure from a permanent one.
 
 ## Completed
+
+### ENG-041 - Video audio logged as normalized at gain 1.000 when it has no audible audio
+
+Reported: 2026-11-02, owner smoke of 037A slice 1. One video logged `Quick normalization complete,
+gain=1.000` and `Deep normalization complete, gain=1.000`, which looked like a scan that read no
+audio. Resolved the same day, not a bug: it was a background video with a silent audio track, so the
+peak was 0 and the gain correctly stayed 1.0 (the owner confirmed normalization works on other
+videos). Diagnostics only: the deep line now says "no audible audio found; gain left at 1.0" for a
+peak of 0, and the normalization lines carry the file as their source path (the log did not name
+the video).
+
+Status: resolved 2026-11-02, not a bug (moved to Completed 2026-11-05).
 
 ### ENG-042 - Cached karaoke raster differed from an uncached one once on Windows CI
 

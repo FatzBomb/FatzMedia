@@ -43,7 +43,10 @@ before the first frame when already known at load (no flash); a later first over
 Per surface. HDR media plays tone-mapped once a surface is composited. Content the app places over the
 surface from elsewhere in its window cannot be detected: such apps set `WpfComposited`, and the docs
 recommend `OverlayContent` for content over video. A read-only `EffectivePresentationMode` and a change
-event report the mode in use. Whether `Auto` becomes the default is a separate decision after 047A.
+event report the mode in use. **`Auto` becomes the default once 047A has landed** (owner 2026-11-05;
+a behaviour change for existing apps, noted in that slice's update). Apps that overlay the surface from
+outside it set `WpfComposited`; XAML apps normally declare `OverlayContent` up front, so `Auto` decides
+at load with no flash.
 
 **Venues run 4K displays (owner 2026-11-05).** A full-screen composited surface is read back at the
 surface's size, not the source's: about 33 MB a frame at 4K, about 2 GB/s at 60 fps, whatever the clip's

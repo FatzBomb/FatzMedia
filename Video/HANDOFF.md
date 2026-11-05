@@ -35,11 +35,18 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   3. `052A` host image overlay layer + "change together" + `FadePictureAsync`.
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
-  6. `055A` `ReconfigureAsync` (change a player's configuration in place).
+  6. `055A` `ReconfigureAsync`: extends 043A's existing `SetModeAsync` (mode on the fly, media kept at
+     its position) to the audio engine, renderer, device and other settings.
   7. After rc.4: rc.4 pin move + start wait/cache size pass-through; `050A` tags and file info;
      `056A` archives through FatzAudio's reader, SharpCompress and rar dropped.
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
-  The code audit from the previous handoff was not run.
+- The October code audit (ENG-039, round 2) is done: five batches implemented, each pending the
+  owner's smoke (`updates/ENG-039/`). The old "next: code audit" item is closed.
+- **Owner smoke backlog** (implemented, waiting for a Windows run): ENG-039 batches 1, 2, 4a, 4b, 4c, 5;
+  037A slice 0 (Windows rerun) and normalization; ENG-043 (ALAC/M4R/audio-only MP4/TS); 039A_3;
+  026A slices 1-2 (Vulkan); 026B (BASS/player on Linux); 027A slices 2 and 5 (Avalonia);
+  033A slice 2; 042A slices 1-2 (HLG, HDR output); 043A slices 1-2 (modes); ENG-040 text on
+  Software/Vulkan. Stages move to `complete/` as these pass.
 
 ## Decisions this session (owner)
 
@@ -50,6 +57,8 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - No `Simple` player mode; idle costs are fixed in `Full`.
 - TriviaBomb (a WPF trivia host replacing LibVLC) designs for `WpfComposited`; native mode cannot
   switch overlay and video in the same frame (the overlay is a separate layered window).
+- `WpfPresentationMode.Auto` becomes the default once 047A has landed; apps overlaying from outside the
+  surface set `WpfComposited`.
 - Composited (with 047A) is the mode when WPF content goes over video; native stays the mode for HDR,
   exact frame timing, or a heavy UI thread with nothing WPF on top (a UI stall pauses composited video).
 
@@ -90,7 +99,6 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 
 ## Open questions for the owner
 
-- After 047A: should `WpfPresentationMode.Auto` become the default (a behaviour change for existing apps)?
 
 - Provisional boost cap default: 6 dB (our suggestion) or FatzAudio's 12 (none)?
 - FatzAudio's public fingerprint: build it (half a day on their side)?
