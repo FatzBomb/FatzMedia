@@ -42,6 +42,8 @@ public enum TagFormat
     Tracker = 11,
     /// <summary>Lyrics3 v1.00 and v2.00 at the end of an MP3.</summary>
     Lyrics3 = 12,
+    /// <summary>A CAF file's <c>info</c> chunk (title, artist, album, comments, ...).</summary>
+    Caf = 13,
 }
 
 /// <summary>What a picture shows: the ID3v2 / FLAC picture types.</summary>
@@ -357,6 +359,8 @@ public sealed class Tags
     public int? SampleRate => Info?.Format.SampleRate;
     /// <summary>Bit depth of PCM and lossless files, null for lossy codecs.</summary>
     public int? BitsPerSample => Info is { BitsPerSample: > 0 } i ? i.BitsPerSample : null;
+    /// <summary>False when the file's codec is not decoded here (DTS, TrueHD, WMA off Windows): the other details are still the file's own.</summary>
+    public bool? CanDecode => Info?.CanDecode;
     /// <summary>Codec name such as <c>mp3</c>, <c>aac</c> or <c>flac</c>.</summary>
     public string? Codec => Info?.Codec;
     /// <summary>Bytes of the file.</summary>

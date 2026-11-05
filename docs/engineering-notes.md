@@ -170,3 +170,10 @@ was found (a PR, a review, or a thread).
   together use up to twice `zip_memory_limit_mb`; when the blob header allocation fails after an unpack the open fails with
   `FA_ERROR_OUT_OF_MEMORY` instead of falling back to a plain copy; two concurrent opens of one cached archive share one
   `cancel` flag (the last opener's).
+
+**Archives A5 (details for undecodable formats), left over:** a raw `.dts` file with a leading ID3v2 tag is not recognised (the
+sync word is looked for at offset 0 only); 14-bit DTS words and DTS-HD extension substreams are not read (the core's figures
+are given); raw `.thd`/`.mlp` are not read (TrueHD only inside a container); inside a ZIP/tar an entry whose codec is not
+decoded (DTS in MKV) is not taken as the song, so `Tags.Read(archive)` does not give its details (`Tags.Read(archive, entry)`
+does not either: the archive path keeps the "audio means decodable" rule); the CAF `info` chunk is read once, and not after a
+`data` chunk of size -1.

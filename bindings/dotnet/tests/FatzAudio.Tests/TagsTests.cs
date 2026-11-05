@@ -149,5 +149,7 @@ public class TagsTests
         Assert.Equal(s.Info.AudioBytes, tags.AudioSize);
         Assert.Equal(24, s.Info.BitsPerSample);
         Assert.NotNull(s.Info.FileSize);
+        Assert.True(s.Info.CanDecode);
+        Assert.True(tags.CanDecode);
     }
 }

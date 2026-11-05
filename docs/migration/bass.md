@@ -103,6 +103,8 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 | BASS_ChannelPause / BASS_ChannelStop | `fa_stream_pause` / `fa_stream_stop` | `Pause()` / `Stop()` | ✅ |
 | BASS_ChannelIsActive | `fa_stream_get_state` | `stream.State` | ✅ |
 | BASS_ChannelGetInfo | `fa_stream_get_info` (the source's own format; unchanged by attaching), plus `bits_per_sample` (`origres`), `file_size`, `audio_bytes` and `bitrate` ([stream info](../features/streams.md#stream-info)) | `stream.Info` | ✅ |
+| BASS_ChannelGetInfo / `BASS_StreamGetFilePosition` on a file BASS has no plugin for (DTS, TrueHD) | `fa_tags_get_info` reads codec, container, rate, channels, duration, size and bitrate from the container with `can_decode` = 0; opening a stream still fails ([tags](../features/tags.md)). BASS gave only an error | `Tags.Read(path).Info` (`CanDecode`) | ✅ |
+| BASS_TAG_… of a CAF file (none in BASS) | CAF `info` chunk (`title`, `artist`, `album`, ...) as `FA_TAG_FORMAT_CAF` items and the common fields | `TagFormat.Caf` | ✅ |
 | BASS_ChannelGetAttribute `BASS_ATTRIB_BITRATE` | `fa_stream_info.bitrate` (average bits per second; also from `fa_tags_get_info` without opening a stream) | `Info.Bitrate`, `Tags.Bitrate` | ✅ |
 | BASS_ChannelGetLength + bitrate + file size for a media library (a decode stream per file just to read them) | `fa_tags_read_path`: tags, cover and properties in one call, no engine or stream ([tags](../features/tags.md)) | `Tags.Read(path)` | ✅ |
 | BASS_ChannelGetLength | `fa_stream_info.length_frames` or `.duration` (ns) | `stream.Info.Duration` | ✅ |

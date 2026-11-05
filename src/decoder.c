@@ -93,6 +93,7 @@ void fa_decoder_get_info(const fa_decoder* d, fa_stream_info* out)
     out->audio_bytes = d->audio_bytes > 0 ? d->audio_bytes : -1;
     out->bits_per_sample = d->bits_per_sample;
     out->bitrate = d->bitrate;
+    out->can_decode = d->undecodable ? 0 : 1;
     if (d->audio_bytes > 0 && d->length > 0 && d->format.sample_rate > 0) {
         double bps = (double)d->audio_bytes * 8.0 * d->format.sample_rate / (double)d->length;
         if (bps < 4294967295.0) out->bitrate = (uint32_t)(bps + 0.5);
@@ -182,6 +183,7 @@ fa_result fa_decoder_open(fa_decoder* dec, fa_source* src, const char* name_hint
             dec->text_code_page = env->text_code_page;
             dec->midi_lyrics_only = env->midi_lyrics_only;
             dec->no_cdg = env->no_cdg;
+            dec->info_only = env->info_only;
         } else {
             dec->midi_rate = FA_MIDI_DEFAULT_RATE;
         }
