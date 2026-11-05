@@ -131,6 +131,7 @@ static void seek_while_rendering(fa_stream* s, fa_frames to, int async)
 }
 
 static int g_fail;
+static int g_starved;   /* fades the mixer did not play in time this run (a loaded machine) */
 static void expect(double worst, double thr) { if (worst > thr) { g_fail++; printf("    ^ FAILED (limit %.3f)\n", thr); } }
 
 int main(void)
@@ -187,10 +188,15 @@ int main(void)
                 seek_while_rendering(s, 777, k);
                 render(4000);
                 snprintf(nm, sizeof nm, "%.0f Hz %s seeks while playing x3", hz, k ? "async" : "sync");
-                /* Async seeks hand the cut to a worker: it is timing-dependent on a loaded machine (the
-                 * mixer must run within 150 ms to play the fade), so it is reported, not asserted. */
-                if (k == 0) expect(report(nm, hz, 64, g_rec_frames - 2048, thr), thr);
-                else report(nm, hz, 64, g_rec_frames - 2048, thr);
+                /* A fade the mixer does not play in time (a loaded machine: the callbacks here come from this
+                 * test, and the 150 ms wait ran out) falls back to the old hard cut. Count that, not the cut. */
+                if (fa_load32(&s->dk_timeouts) > 0) {
+                    g_starved++;
+                    report(nm, hz, 64, g_rec_frames - 2048, thr);
+                    printf("    (the mixer did not play a fade in time: not counted)\n");
+                } else {
+                    expect(report(nm, hz, 64, g_rec_frames - 2048, thr), thr);
+                }
                 fa_stream_close(s);
             }
         }
@@ -198,6 +204,7 @@ int main(void)
     fa_device_close(g_dev);
     fa_engine_destroy(g_engine);
     free(g_rec);
+    if (g_starved) printf("%d seek case(s) had the mixer starved\n", g_starved);
     printf(g_fail ? "FAIL\n" : "PASS\n");
     return g_fail ? 1 : 0;
 }

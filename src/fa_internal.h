@@ -1622,6 +1622,7 @@ struct fa_stream {
     uint32_t voice_rate;                 /* device rate the ramp counters are in */
     fa_atomic32 was_audible;             /* written by the audio thread: mixed in the previous callback */
     fa_atomic32 dk_req;                  /* a seek asks the mixer to fade this stream out, then keep out (flushing) */
+    fa_atomic32 dk_timeouts;             /* fades the mixer did not play in time (a seek then cuts as before) */
     fa_atomic64 dk_deadline;             /* monotonic ns after which an async seek stops waiting for that fade */
     fa_atomic32 dk_in;                         /* decode side: the next restart fades its first frames in */
     int wrap_valid;                      /* decode side: wrap_last holds the last frames read */

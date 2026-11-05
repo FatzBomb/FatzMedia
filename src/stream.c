@@ -2665,6 +2665,7 @@ static void wait_fade_out(struct fa_stream* s)
 {
     int64_t until = fa_monotonic_ns() + 50000000;
     while (fa_load32(&s->dk_req) && fa_monotonic_ns() < until) fa_sleep_ms(1);
+    if (fa_load32(&s->dk_req)) fa_fetch_add32(&s->dk_timeouts, 1);
     fa_store32(&s->dk_req, 0);
 }
 
@@ -5415,6 +5416,7 @@ int fa_stream_work(struct fa_stream* s, int64_t max_frames)
                 fa_mutex_unlock(&s->api_lock);
                 return 0;
             }
+            if (fa_load32(&s->dk_req)) fa_fetch_add32(&s->dk_timeouts, 1);   /* the mixer never played the fade */
             fa_store32(&s->dk_req, 0);
             fa_store32(&s->flushing, 1);
             fa_device_wait_quiescent(s->device);   /* the mixer now skips this stream */
