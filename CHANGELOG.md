@@ -18,6 +18,15 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Loudness of audio your app feeds (MediaControl request 13): `fa_scan_open_packets` / `fa_scan_open_push`,
+  `fa_scan_push_packet` / `fa_scan_push_frame`, `fa_scan_wants_more`, `fa_scan_finish`, `fa_scan_close` (new
+  `fa_scan_options`, `fa_scan_feed`; .NET `AudioEngine.OpenLoudnessScan`, `LoudnessScan`, `LoudnessScanOptions`). The feed
+  runs on the caller's thread, measures with the same meter as a scan by path and stores the result in the cache under
+  the original file's `fa_fingerprint`. New field `fa_open_options.source_identity` (at the end of the struct; .NET
+  `StreamOptions.SourceIdentity`) lets a packet or push stream name its song, so the cache, the start wait and the
+  provisional value apply to it as to a file stream. A cached song or a Dolby dialogue level (`fa_engine_set_dialnorm`) is
+  reported by `fa_scan_wants_more` = 0 so the app can skip reading the file
+  ([normalization](docs/features/normalization.md#streams-you-feed-packets-and-decoded-frames)).
 - Archives: public `fa_archive_*` API (list, find, pick, read, seekable reader) and .NET `Archive`; ZIP reads Deflate64, flags,
   times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
   `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when

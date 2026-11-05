@@ -82,7 +82,9 @@ void fa_stream_start_analysis(struct fa_stream* s)
     if (!s->scan_job && !s->loud.is_final && !s->analysis_tried) {
         s->analysis_tried = 1;
         fa_store32(&s->norm_pending, 1);   /* before the job can deliver */
-        s->scan_job = fa_scan_start_stream(s, 1);
+        /* A fed song (packet and push streams with a source identity) looks in the cache and
+         * for a running feed (scan_feed.c); everything else is read from its file. */
+        s->scan_job = s->idslot ? fa_id_start(s) : fa_scan_start_stream(s, 1);
         if (!s->scan_job) fa_store32(&s->norm_pending, 0);
     }
     fa_mutex_unlock(&s->norm_lock);

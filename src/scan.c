@@ -50,6 +50,10 @@ struct fa_scan_job {
     size_t mem_size;
     fa_shared_file* shared;        /* ... or the temp file of an unpacked ZIP song (a reference) */
     int32_t audio_track;
+    int ident;                     /* a fed song: look it up by identity (scan_feed.c), read no file */
+    uint64_t id_key;
+    int64_t id_size;
+    int quiet;                     /* ident: nothing to say yet, a running feed will */
     int use_tags;
     int use_dialnorm;              /* fa_engine_set_dialnorm when the job started */
     fa_atomic64 dolby_mix;         /* env.dolby_mix: the dialogue level of a Dolby stream */
@@ -177,6 +181,17 @@ static int run_prepare(fa_scan_job* j)
     fa_frames length;
 
     if (fa_load32(&j->cancel)) return 1;
+    if (j->ident) {
+        fa_loudness cached;
+        memset(&cached, 0, sizeof(cached));
+        if (j->engine->lcache && fa_lcache_get(j->engine->lcache, j->id_key, j->id_size, j->audio_track, &cached)) {
+            set_result(j, cached.integrated_lufs, cached.range_lu, cached.true_peak_dbtp, FA_LOUDNESS_CACHE);
+            return 1;
+        }
+        j->status = FA_ERROR_NOT_FOUND;
+        j->quiet = fa_feed_running(j->engine, j->id_key, j->id_size, j->audio_track);
+        return 1;
+    }
     r = open_source(j, &src);
     if (r != FA_OK) { j->status = r; return 1; }
 
@@ -406,6 +421,7 @@ static void finish_locked(fa_engine* e, fa_scan_job* j)
 /* Hands the result to the stream, outside scan_lock. */
 static void deliver(fa_scan_job* j)
 {
+    if (j->quiet) return;      /* a running feed delivers */
     if (j->stream && !fa_load32(&j->cancel)) {
         if (j->status == FA_OK) fa_stream_loudness_ready(j->stream, &j->result, j->album_lufs);
         else {
@@ -556,6 +572,19 @@ fa_scan_job* fa_scan_start_stream(struct fa_stream* s, int use_tags)
         j->mem = s->source.mem;
         j->mem_size = s->source.mem_size;
     }
+    enqueue(s->engine, j);
+    return j;
+}
+
+fa_scan_job* fa_scan_start_identity(struct fa_stream* s, uint64_t key, int64_t size, int32_t track)
+{
+    fa_scan_job* j = job_new(s->engine);
+    if (!j) return NULL;
+    j->stream = s;
+    j->ident = 1;
+    j->id_key = key;
+    j->id_size = size;
+    j->audio_track = track;
     enqueue(s->engine, j);
     return j;
 }

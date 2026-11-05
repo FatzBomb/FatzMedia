@@ -412,6 +412,14 @@ typedef struct fa_open_options {
                                 same name as its song is attached; naming a .cdg plays its
                                 song, or the graphics as silence. Copied by the call. Other
                                 sources ignore it */
+    const struct fa_fingerprint* source_identity; /* fa_stream_open_packets and fa_stream_open_push
+                                only; NULL = none (default). Says which song the stream plays:
+                                the fingerprint of the original file (fa_fingerprint_path), with
+                                audio_track naming the track in it (-1 = the file's default
+                                track). With it, loudness normalization finds the song in the
+                                cache and takes part in a fed scan (fa_scan_open_packets) of the
+                                same song, as a stream opened from the file itself does. Copied
+                                by the call. Other opens ignore it */
 } fa_open_options;
 
 /* fa_open_options.text_code_page, and fa_midi_credits.code_page. */
@@ -2307,6 +2315,75 @@ FA_API fa_result FA_CALL fa_stream_set_loudness(fa_stream* stream, const fa_loud
 /* Standalone scan, no playback: decodes only the audio, in chunks on all cores,
  * and blocks until done. Uses and fills the cache. Tags are ignored (this measures). */
 FA_API fa_result FA_CALL fa_scan_loudness_path(fa_engine* engine, const char* path, fa_loudness* out_loudness);
+
+/* ---- Loudness of audio you feed ---------------------------------------------
+ *
+ * For audio FatzAudio cannot open itself (a track of a video file that your demuxer
+ * reads, a codec your own decoder handles), feed it to a scan in the background and
+ * the result is what fa_scan_loudness_path would give, stored in the same cache under
+ * the song's identity. Playing streams of the same song (fa_open_options.source_identity)
+ * pick the result up from the cache, or from the scan while it runs: the start wait
+ * (fa_engine_set_normalization_start_wait) and the provisional value work as for a file.
+ *
+ *   fa_fingerprint id = { sizeof(id) };
+ *   fa_fingerprint_path(path, &id);                      // of the original file
+ *   fa_scan_options so; fa_scan_options_init(&so);
+ *   so.identity = &id; so.duration_seconds = 215.0;      // the duration helps the start wait
+ *   fa_scan_open_packets(engine, &params, &so, &feed);   // or fa_scan_open_push
+ *   if (fa_scan_wants_more(feed))                        // 0: cached, or a Dolby dialnorm
+ *       while (read packet) fa_scan_push_packet(feed, &pkt);
+ *   fa_scan_finish(feed, &loudness);
+ *   fa_scan_close(feed);
+ *
+ * The feed runs on the calling thread, which decodes and measures as it pushes (far
+ * faster than real time: 180 s of PCM measure in 0.15 s on one core, plus the codec's
+ * decode time); FatzAudio starts no thread for it. Feed from the start of the track,
+ * in order, once. Calls on one feed must not overlap;
+ * different feeds may run on different threads. */
+typedef struct fa_scan_feed fa_scan_feed;
+
+typedef struct fa_scan_options {
+    uint32_t struct_size;            /* sizeof(fa_scan_options); fa_scan_options_init sets it */
+    const struct fa_fingerprint* identity; /* required: fa_fingerprint_path of the original file.
+                                        Copied by the call */
+    int32_t audio_track;             /* the track in that file, -1 = its default track (default).
+                                        Use -1 when FatzAudio could open the same file itself,
+                                        so both share one cache entry */
+    double duration_seconds;         /* the track's length, 0 = unknown (default). With it, the
+                                        scan reports its progress, which the start wait uses */
+} fa_scan_options;
+
+FA_API void FA_CALL fa_scan_options_init(fa_scan_options* options);
+
+/* Compressed packets of one audio track (the same params as fa_stream_open_packets);
+ * FatzAudio decodes them. FA_ERROR_UNSUPPORTED_FORMAT when it cannot decode the codec.
+ * Dolby streams measure at full range. */
+FA_API fa_result FA_CALL fa_scan_open_packets(fa_engine* engine, const fa_codec_params* params,
+                                              const fa_scan_options* options, fa_scan_feed** out_feed);
+/* Decoded frames (fa_audio_frame, as for fa_stream_push_frame). format: the sample
+ * rate and channel count of every frame to come (its sample format is not used);
+ * a frame in another rate or channel count is refused. */
+FA_API fa_result FA_CALL fa_scan_open_push(fa_engine* engine, const fa_audio_format* format,
+                                           const fa_scan_options* options, fa_scan_feed** out_feed);
+/* 0 when feeding more is pointless because the result is known already: the song is in
+ * the cache, or (fa_engine_set_dialnorm on) a Dolby stream's first unit gave its
+ * dialogue level. Check it after opening, and now and then while feeding, and skip the
+ * rest of the file. fa_scan_finish still gives the result. */
+FA_API int32_t FA_CALL fa_scan_wants_more(fa_scan_feed* feed);
+/* A packet (fa_scan_open_packets feeds) or a frame (fa_scan_open_push feeds), in
+ * order. pts is not used. A packet that cannot be decoded returns its error and is
+ * skipped; keep feeding. A frame or packet after fa_scan_wants_more turned 0 is ignored. */
+FA_API fa_result FA_CALL fa_scan_push_packet(fa_scan_feed* feed, const fa_packet* packet);
+FA_API fa_result FA_CALL fa_scan_push_frame(fa_scan_feed* feed, const fa_audio_frame* frame);
+/* Ends the feed: gives back what the decoder still held, computes the result, stores it
+ * in the cache (fa_engine_config.cache_directory) and hands it to the playing streams of
+ * the song, which glide to it. Call again for the same result. out_loudness.source is
+ * FA_LOUDNESS_SCAN, FA_LOUDNESS_CACHE or FA_LOUDNESS_DIALNORM; gain_db is what
+ * normalization applies. FA_ERROR_END_OF_STREAM when nothing was fed. */
+FA_API fa_result FA_CALL fa_scan_finish(fa_scan_feed* feed, fa_loudness* out_loudness);
+/* Frees the feed. Without fa_scan_finish nothing is stored, and streams waiting for
+ * it stop waiting. NULL is fine. */
+FA_API void FA_CALL fa_scan_close(fa_scan_feed* feed);
 
 /* ---- Track analysis: beat grid, key, waveform ---------------------------
  *

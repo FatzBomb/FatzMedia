@@ -81,6 +81,7 @@ set(FA_SOURCES
     src/walk.c
     src/walk.h
     src/scan.c
+    src/scan_feed.c
     src/lcache.c
     src/fingerprint.c
     src/normalize.c

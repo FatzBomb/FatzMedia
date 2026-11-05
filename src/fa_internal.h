@@ -605,6 +605,7 @@ fa_result fa_analysis_cached_silence(struct fa_stream* s, const fa_silence_optio
 #define FA_V1_fa_mic_effects          FA_SIZE_TO(fa_mic_effects, echo_tone)
 #define FA_V1_fa_ducking              FA_SIZE_TO(fa_ducking, threshold_db)
 #define FA_V1_fa_silence_options      FA_SIZE_TO(fa_silence_options, min_length_ms)
+#define FA_V1_fa_scan_options         FA_SIZE_TO(fa_scan_options, identity)
 
 /* Reads a caller's input struct into `dst`, which holds the defaults (`full` bytes,
  * the library's sizeof): the first min(struct_size, full) bytes of `src` replace
@@ -1015,6 +1016,19 @@ int fa_scan_spread_chunk(int i, int n);
  * rate), 0 if none could be made; a file's path "<dir>/<key>-<size>-<track>.<ext>". */
 int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size);
 int fa_scan_cache_key(fa_source* src, const fa_decoder_env* env, uint64_t* out_key, int64_t* out_size);
+/* Fed scans (scan_feed.c). A packet or push stream opened with a source identity has a slot
+ * in the engine's registry: fa_id_attach at open (after the stream exists), fa_id_detach
+ * at close (waits for a delivery in progress). fa_id_start looks the song up in the cache
+ * and in the running feeds; it is called outside norm_lock. */
+fa_result fa_id_attach(struct fa_stream* s, const struct fa_fingerprint* id, int32_t track);
+void fa_id_detach(struct fa_stream* s);
+/* The stream's analysis, as a job on the scan threads (they deliver, so nothing is delivered under
+ * the caller's locks): the cache, else a running feed. NULL when out of memory. */
+fa_scan_job* fa_id_start(struct fa_stream* s);
+/* Is a fed scan of this song running? */
+int fa_feed_running(fa_engine* e, uint64_t key, int64_t size, int32_t track);
+/* scan.c: a job that looks the song up by identity instead of reading a file. */
+fa_scan_job* fa_scan_start_identity(struct fa_stream* s, uint64_t key, int64_t size, int32_t track);
 void fa_scan_cache_path(const char* dir, uint64_t key, int64_t size, int32_t track, const char* ext, char* out,
                         size_t cap);
 /* The loudness cache (lcache.c): one file in the cache directory, read once into memory. */
@@ -1190,6 +1204,8 @@ struct fa_engine {
     fa_cond scan_cond;           /* work queued or a job finished */
     fa_scan_job* scan_queue;
     fa_lcache* lcache;           /* NULL without a cache directory */
+    struct fa_idslot* id_slots;  /* streams with a source identity (scan_feed.c), under scan_lock */
+    struct fa_scan_feed* feeds;  /* fed scans that are running, under scan_lock */
     fa_thread* scan_threads;
     uint32_t scan_thread_count;
     int scan_started;
@@ -1625,6 +1641,7 @@ struct fa_stream {
     int32_t text_code_page;      /* fa_open_options.text_code_page (MIDI), 0 = detect */
     fa_mutex norm_lock;          /* scan_job, loud, loud_source */
     fa_scan_job* scan_job;
+    struct fa_idslot* idslot;    /* packet/push streams with a source identity (scan_feed.c) */
     int analysis_tried;
     fa_loudness loud;            /* final measurement (valid when loud.is_final) */
     fa_atomic32 norm_track;      /* float LUFS used for gain, NAN = unknown */

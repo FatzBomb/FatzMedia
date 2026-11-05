@@ -929,6 +929,56 @@ static void test_dialnorm_loudness(void)
     }
 }
 
+/* A fed scan (fa_scan_open_packets) takes the dialogue level too: the first unit answers. */
+static void test_fed_scan_dialnorm(void)
+{
+    size_t size = 0, at = 0;
+    uint8_t* data = load_file("dolby/mix_alt.ac3", &size);
+    fa_ac3_header h;
+    fa_codec_params cp;
+    fa_scan_options so;
+    fa_fingerprint id = { .struct_size = sizeof(id), .key = 77, .audio_bytes = 78 };
+    int pass;
+    CHECK(data != NULL);
+    CHECK(fa_ac3_parse_header(data, size, &h));
+    for (pass = 0; pass < 2; pass++) {
+        fa_scan_feed* f = NULL;
+        fa_loudness l = { .struct_size = sizeof(l) };
+        int units = 0;
+        CHECK_EQ(fa_engine_set_dialnorm(g_engine, pass == 0), FA_OK);
+        fa_codec_params_init(&cp);
+        cp.codec = "ac3";
+        cp.sample_rate = h.rate;
+        cp.channels = (uint32_t)h.channels;
+        fa_scan_options_init(&so);
+        so.identity = &id;
+        CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_OK);
+        for (at = 0; at + 8 <= size && fa_scan_wants_more(f); units++) {
+            fa_ac3_header u;
+            fa_packet p;
+            if (!fa_ac3_parse_header(data + at, size - at, &u) || at + u.frame_size > size) break;
+            memset(&p, 0, sizeof(p));
+            p.data = data + at;
+            p.size = u.frame_size;
+            p.pts = FA_PTS_NONE;
+            CHECK_EQ(fa_scan_push_packet(f, &p), FA_OK);
+            at += u.frame_size;
+        }
+        if (pass == 0) {
+            CHECK_EQ(units, 1);                      /* decided by the first unit */
+            CHECK_EQ(fa_scan_finish(f, &l), FA_OK);
+            CHECK_EQ(l.source, FA_LOUDNESS_DIALNORM);
+            CHECK_NEAR(l.integrated_lufs, -20.0, 0);
+        } else {
+            CHECK(units > 1);                        /* off: measured */
+            CHECK_EQ(fa_scan_finish(f, &l), FA_OK);
+            CHECK_EQ(l.source, FA_LOUDNESS_SCAN);
+        }
+        fa_scan_close(f);
+    }
+    free(data);
+}
+
 static void test_registry_lists_dolby(void)
 {
     uint32_t i, n = fa_format_count();
@@ -970,6 +1020,7 @@ int main(void)
     RUN(test_downmix_on_the_device);
     RUN(test_downmix_normalization_makeup);
     RUN(test_dialnorm_loudness);
+    RUN(test_fed_scan_dialnorm);
 
     fa_engine_destroy(g_engine);
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }

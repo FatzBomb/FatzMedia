@@ -827,6 +827,7 @@ FA_API fa_result FA_CALL fa_stream_open_push(fa_engine* engine, const fa_audio_f
     if (r != FA_OK) return r;
     r = fa_push_init_pcm(s, format);
     if (r == FA_OK) r = open_pushed(s);
+    if (r == FA_OK && options) r = fa_id_attach(s, options->source_identity, s->audio_track);
     if (r != FA_OK) { stream_discard(s); return r; }
     stream_opened(s);
     *out_stream = s;
@@ -989,6 +990,7 @@ FA_API fa_result FA_CALL fa_stream_open_packets(fa_engine* engine, const fa_code
     if (r != FA_OK) return r;
     r = fa_push_init_packets(s, params);
     if (r == FA_OK) r = open_pushed(s);
+    if (r == FA_OK && options) r = fa_id_attach(s, options->source_identity, s->audio_track);
     if (r != FA_OK) { stream_discard(s); return r; }
     stream_opened(s);
     *out_stream = s;
@@ -1155,6 +1157,7 @@ FA_API void FA_CALL fa_stream_close(fa_stream* stream)
     stream->scan_job = NULL;
     fa_mutex_unlock(&stream->norm_lock);
     fa_scan_release(job);
+    fa_id_detach(stream);   /* a fed scan delivering to it finishes first */
 
     /* Stop event delivery and wait for a callback that is running right now,
      * unless we are that callback. */

@@ -1360,6 +1360,366 @@ static void test_scheduled_start_never_waits(void)
     CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 200, 12.0), FA_OK);
 }
 
+/* ---- scans of fed audio (MediaControl request 13) ----------------------------------- */
+
+static fa_engine* fed_engine(const char* dir)
+{
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.worker_threads = 2;
+    cfg.cache_directory = dir;
+    if (fa_engine_create(&cfg, &e) != FA_OK) return NULL;
+    return e;
+}
+
+/* Feeds x (stereo F32 at `rate`) as PCM packets, blocks of 4096 frames, the first `part`
+ * of the frames only (0 = all). */
+static fa_result feed_packets(fa_scan_feed* f, const float* x, int64_t frames, int64_t part)
+{
+    int64_t at = 0, end = part ? part : frames;
+    while (at < end) {
+        int64_t n = end - at < 4096 ? end - at : 4096;
+        fa_packet p;
+        fa_result r;
+        memset(&p, 0, sizeof(p));
+        p.data = x + at * 2;
+        p.size = (size_t)n * 2 * sizeof(float);
+        p.pts = FA_PTS_NONE;
+        r = fa_scan_push_packet(f, &p);
+        if (r != FA_OK) return r;
+        at += n;
+    }
+    return FA_OK;
+}
+
+static fa_result feed_frames(fa_scan_feed* f, const float* x, int64_t frames, uint32_t rate, int64_t part)
+{
+    int64_t at = 0, end = part ? part : frames;
+    while (at < end) {
+        int64_t n = end - at < 4096 ? end - at : 4096;
+        const void* planes[1];
+        fa_audio_frame fr;
+        fa_result r;
+        planes[0] = x + at * 2;
+        memset(&fr, 0, sizeof(fr));
+        fr.format.sample_format = FA_FORMAT_F32;
+        fr.format.sample_rate = rate;
+        fr.format.channels = 2;
+        fr.data = planes;
+        fr.frames = n;
+        fr.pts = FA_PTS_NONE;
+        r = fa_scan_push_frame(f, &fr);
+        if (r != FA_OK) return r;
+        at += n;
+    }
+    return FA_OK;
+}
+
+static void fed_params(fa_codec_params* cp, uint32_t rate)
+{
+    fa_codec_params_init(cp);
+    cp->codec = "pcm_f32le";
+    cp->sample_rate = rate;
+    cp->channels = 2;
+}
+
+static void test_fed_scan_matches_path_scan(void)
+{
+    uint32_t rate = 44100;
+    int64_t n;
+    size_t size;
+    float* x = make_signal(rate, 2, g_song, 6, 440.0, &n);
+    uint8_t* wav = make_wav(rate, 2, x, n, NULL, 0, &size);
+    fa_loudness path = { .struct_size = sizeof(path) }, a = { .struct_size = sizeof(a) }, b = { .struct_size = sizeof(b) };
+    fa_fingerprint id = { .struct_size = sizeof(id) };
+    fa_scan_options so;
+    fa_codec_params cp;
+    fa_audio_format af;
+    fa_scan_feed *f1 = NULL, *f2 = NULL;
+    int64_t t0;
+    CHECK(write_file("loudness-fed.wav", wav, size));
+    free(wav);
+    CHECK_EQ(fa_scan_loudness_path(g_engine, "loudness-fed.wav", &path), FA_OK);
+    CHECK_EQ(fa_fingerprint_path("loudness-fed.wav", &id), FA_OK);
+    fa_scan_options_init(&so);
+    so.identity = &id;
+
+    fed_params(&cp, rate);
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f1), FA_OK);
+    CHECK_EQ(fa_scan_wants_more(f1), 1);
+    t0 = fa_monotonic_ns();
+    CHECK_EQ(feed_packets(f1, x, n, 0), FA_OK);
+    CHECK_EQ(fa_scan_finish(f1, &a), FA_OK);
+    printf("  fed scan of %.0f s of audio on one thread: %.1f ms\n", (double)n / rate, (double)(fa_monotonic_ns() - t0) / 1e6);
+    CHECK_EQ(a.source, FA_LOUDNESS_SCAN);
+    CHECK_EQ(a.is_final, 1);
+    CHECK_NEAR(a.integrated_lufs, path.integrated_lufs, 0.02);
+    CHECK_NEAR(a.range_lu, path.range_lu, 0.1);
+    CHECK_NEAR(a.true_peak_dbtp, path.true_peak_dbtp, 0.01);
+    CHECK_EQ(fa_scan_finish(f1, &b), FA_OK);     /* again: the same result */
+    CHECK(a.integrated_lufs == b.integrated_lufs);
+    CHECK_EQ(fa_scan_push_packet(f1, &(fa_packet){ x, 8, 0, 0 }), FA_ERROR_INVALID_ARG);   /* after the end */
+    fa_scan_close(f1);
+
+    memset(&af, 0, sizeof(af));
+    af.sample_rate = rate;
+    af.channels = 2;
+    af.sample_format = FA_FORMAT_F32;
+    CHECK_EQ(fa_scan_open_push(g_engine, &af, &so, &f2), FA_OK);
+    CHECK_EQ(feed_frames(f2, x, n, rate, 0), FA_OK);
+    CHECK_EQ(fa_scan_finish(f2, &b), FA_OK);
+    CHECK(b.integrated_lufs == a.integrated_lufs);   /* decoded frames or packets: the same numbers */
+    CHECK(b.true_peak_dbtp == a.true_peak_dbtp);
+    /* A frame in another rate, a packet into a frame feed: refused. */
+    CHECK_EQ(feed_frames(f2, x, 4096, 48000, 0), FA_ERROR_INVALID_ARG);   /* after the end */
+    fa_scan_close(f2);
+    free(x);
+}
+
+static void test_fed_scan_errors(void)
+{
+    fa_loudness l = { .struct_size = sizeof(l) };
+    fa_fingerprint id = { .struct_size = sizeof(id), .key = 1, .audio_bytes = 2 };
+    fa_scan_options so;
+    fa_codec_params cp;
+    fa_audio_format af;
+    fa_scan_feed* f = NULL;
+    float x[8] = { 0 };
+    fa_scan_options_init(&so);
+    fed_params(&cp, 44100);
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_ERROR_INVALID_ARG);   /* no identity */
+    CHECK(f == NULL);
+    so.identity = &id;
+    cp.codec = "not_a_codec";
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_ERROR_UNSUPPORTED_FORMAT);
+    fed_params(&cp, 44100);
+    so.duration_seconds = -1.0;
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_ERROR_INVALID_ARG);
+    so.duration_seconds = 0.0;
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_OK);
+    CHECK_EQ(fa_scan_finish(f, &l), FA_ERROR_END_OF_STREAM);                         /* nothing fed */
+    CHECK_EQ(fa_scan_push_frame(f, NULL), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(feed_frames(f, x, 4, 44100, 0), FA_ERROR_INVALID_ARG);                 /* finished */
+    fa_scan_close(f);
+    memset(&af, 0, sizeof(af));
+    af.sample_rate = 44100;
+    af.channels = 2;
+    af.sample_format = FA_FORMAT_F32;
+    CHECK_EQ(fa_scan_open_push(g_engine, &af, &so, &f), FA_OK);
+    CHECK_EQ(feed_frames(f, x, 4, 48000, 0), FA_ERROR_UNSUPPORTED_FORMAT);
+    {
+        fa_packet p = { x, 8, 0, 0 };
+        CHECK_EQ(fa_scan_push_packet(f, &p), FA_ERROR_INVALID_ARG);                  /* a frame feed */
+    }
+    fa_scan_close(f);
+    fa_scan_close(NULL);
+    CHECK_EQ(fa_scan_wants_more(NULL), 0);
+}
+
+/* The stream's analysis is a job on a scan thread: it has looked the song up when pending clears. */
+static int wait_not_pending(fa_stream* s)
+{
+    int i;
+    for (i = 0; i < 2000 && fa_load32(&s->norm_pending); i++) fa_sleep_ms(2);
+    return !fa_load32(&s->norm_pending);
+}
+
+static void fed_clean(const char* dir)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "%s/loudness.fac", dir);
+    remove(path);
+    snprintf(path, sizeof(path), "%s/loudness.fac.lock", dir);
+    remove(path);
+}
+
+static fa_stream* open_fed_stream(fa_engine* e, uint32_t rate, const fa_fingerprint* id)
+{
+    fa_open_options o;
+    fa_audio_format af;
+    fa_stream* s = NULL;
+    memset(&af, 0, sizeof(af));
+    af.sample_rate = rate;
+    af.channels = 2;
+    af.sample_format = FA_FORMAT_F32;
+    fa_open_options_init(&o);
+    o.source_identity = id;
+    if (fa_stream_open_push(e, &af, &o, &s) != FA_OK) return NULL;
+    return s;
+}
+
+static int wait_final_in(fa_stream* s, fa_loudness* l)
+{
+    int i;
+    for (i = 0; i < 2000; i++) {
+        fa_stream_get_loudness(s, l);
+        if (l->is_final) return 1;
+        fa_sleep_ms(2);
+    }
+    return 0;
+}
+
+/* The scan, the cache and the playing stream of one song, whichever starts first. */
+static void test_fed_scan_reaches_streams_and_cache(void)
+{
+    uint32_t rate = 44100;
+    int64_t n;
+    float* x = make_signal(rate, 2, g_song, 6, 440.0, &n);
+    fa_engine* e;
+    fa_loudness first = { .struct_size = sizeof(first) }, l = { .struct_size = sizeof(l) }, c = { .struct_size = sizeof(c) };
+    fa_fingerprint id = { .struct_size = sizeof(id), .key = 0x1234abcdULL, .audio_bytes = 777 };
+    fa_scan_options so;
+    fa_codec_params cp;
+    fa_scan_feed *f = NULL, *f2 = NULL;
+    fa_stream *s, *s2;
+    prov_events ev;
+    float partial;
+    fed_clean("fed-cache");
+    e = fed_engine("fed-cache");
+    CHECK(e != NULL);
+    CHECK_EQ(fa_engine_set_normalization(e, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    fa_scan_options_init(&so);
+    so.identity = &id;
+    so.duration_seconds = (double)n / rate;
+    fed_params(&cp, rate);
+
+    /* 1. The stream first: it waits for the feed, sees its progress, gets its result. */
+    s = open_fed_stream(e, rate, &id);
+    CHECK(s != NULL);
+    memset(&ev, 0, sizeof(ev));
+    fa_stream_set_event_callback(s, prov_cb, &ev);
+    CHECK_EQ(fa_stream_get_loudness(s, &l), FA_OK);
+    CHECK_EQ(l.is_final, 0);
+    CHECK(wait_not_pending(s));                               /* no feed yet: nothing to wait for */
+    CHECK_EQ(fa_scan_open_packets(e, &cp, &so, &f), FA_OK);
+    CHECK_EQ(fa_load32(&s->norm_pending), 1);                 /* the feed started: it waits for it */
+    CHECK_EQ(feed_packets(f, x, n, n * 6 / 10), FA_OK);
+    CHECK(fa_load32(&s->norm_progress) > 500 && fa_load32(&s->norm_progress) < 700);
+    partial = fa_load_float(&s->norm_partial);
+    CHECK(partial == partial);                                 /* past a quarter: a value so far */
+    fa_stream_get_loudness(s, &l);
+    CHECK_EQ(l.is_final, 0);
+    CHECK_EQ(l.source, FA_LOUDNESS_PARTIAL);
+    CHECK_EQ(feed_packets(f, x + (n * 6 / 10) * 2, n - n * 6 / 10, 0), FA_OK);
+    CHECK_EQ(fa_scan_finish(f, &first), FA_OK);
+    CHECK(wait_final_in(s, &l));
+    CHECK_EQ(l.source, FA_LOUDNESS_SCAN);
+    CHECK_NEAR(l.integrated_lufs, first.integrated_lufs, 1e-6);
+    CHECK_EQ(fa_load32(&s->norm_pending), 0);
+    CHECK(wait_count(&ev.finals, 1));
+    fa_scan_close(f);
+
+    /* 2. The song is in the cache: a feed has nothing to do, a new stream starts final. */
+    CHECK_EQ(fa_scan_open_packets(e, &cp, &so, &f2), FA_OK);
+    CHECK_EQ(fa_scan_wants_more(f2), 0);
+    CHECK_EQ(fa_scan_finish(f2, &c), FA_OK);
+    CHECK_EQ(c.source, FA_LOUDNESS_CACHE);
+    CHECK_NEAR(c.integrated_lufs, first.integrated_lufs, 1e-6);
+    CHECK_NEAR(c.true_peak_dbtp, first.true_peak_dbtp, 1e-6);
+    fa_scan_close(f2);
+    s2 = open_fed_stream(e, rate, &id);
+    CHECK(s2 != NULL);
+    CHECK_EQ(fa_stream_get_loudness(s2, &l), FA_OK);
+    CHECK(wait_final_in(s2, &l));
+    CHECK_EQ(l.source, FA_LOUDNESS_CACHE);
+    CHECK_NEAR(l.gain_db, -23.0 - first.integrated_lufs, 0.01);
+    CHECK_EQ(fa_load32(&s2->norm_pending), 0);
+    {
+        /* Another track of the same file is another song. */
+        fa_open_options o;
+        fa_audio_format af;
+        fa_stream* s3 = NULL;
+        memset(&af, 0, sizeof(af));
+        af.sample_rate = rate; af.channels = 2; af.sample_format = FA_FORMAT_F32;
+        fa_open_options_init(&o);
+        o.source_identity = &id;
+        o.audio_track = 1;
+        CHECK_EQ(fa_stream_open_push(e, &af, &o, &s3), FA_OK);
+        fa_stream_get_loudness(s3, &l);
+        CHECK_EQ(l.is_final, 0);
+        fa_stream_close(s3);
+    }
+    fa_stream_close(s2);
+    fa_stream_close(s);
+
+    /* 3. Closing a feed early frees the stream from waiting; closing a stream during a feed is safe. */
+    id.key = 0x99ULL;
+    s = open_fed_stream(e, rate, &id);
+    CHECK(s != NULL);
+    fa_stream_get_loudness(s, &l);
+    CHECK(wait_not_pending(s));
+    CHECK_EQ(fa_scan_open_packets(e, &cp, &so, &f), FA_OK);
+    CHECK_EQ(fa_load32(&s->norm_pending), 1);
+    CHECK_EQ(feed_packets(f, x, n, n / 3), FA_OK);
+    fa_scan_close(f);
+    CHECK_EQ(fa_load32(&s->norm_pending), 0);
+    fa_stream_get_loudness(s, &l);
+    CHECK_EQ(l.is_final, 0);
+    CHECK_EQ(fa_scan_open_packets(e, &cp, &so, &f), FA_OK);
+    CHECK_EQ(feed_packets(f, x, n, n / 3), FA_OK);
+    fa_stream_close(s);                                        /* the feed goes on without it */
+    CHECK_EQ(feed_packets(f, x + (n / 3) * 2, n / 3, 0), FA_OK);
+    CHECK_EQ(fa_scan_finish(f, &l), FA_OK);
+    fa_scan_close(f);
+
+    /* 4. A path scan and a fed scan share an entry: the feed's identity is the file's fingerprint. */
+    {
+        fa_fingerprint fp = { .struct_size = sizeof(fp) };
+        fa_loudness viaf = { .struct_size = sizeof(viaf) };
+        CHECK_EQ(fa_fingerprint_path("loudness-fed.wav", &fp), FA_OK);
+        so.identity = &fp;
+        so.duration_seconds = 0.0;
+        CHECK_EQ(fa_scan_open_packets(e, &cp, &so, &f), FA_OK);
+        CHECK_EQ(feed_packets(f, x, n, 0), FA_OK);
+        CHECK_EQ(fa_scan_finish(f, &first), FA_OK);
+        fa_scan_close(f);
+        CHECK_EQ(fa_scan_loudness_path(e, "loudness-fed.wav", &viaf), FA_OK);
+        CHECK_EQ(viaf.source, FA_LOUDNESS_CACHE);
+        CHECK_NEAR(viaf.integrated_lufs, first.integrated_lufs, 1e-6);
+    }
+    /* Turning normalization on starts the analysis of open streams under the engine's list lock: a cached
+     * song must still be delivered (by a scan thread), not on that thread. */
+    {
+        fa_fingerprint fp = { .struct_size = sizeof(fp) };
+        fa_stream* s4;
+        CHECK_EQ(fa_fingerprint_path("loudness-fed.wav", &fp), FA_OK);
+        CHECK_EQ(fa_engine_set_normalization(e, FA_NORMALIZE_OFF, -23.0), FA_OK);
+        s4 = open_fed_stream(e, rate, &fp);
+        CHECK(s4 != NULL);
+        CHECK_EQ(fa_engine_set_normalization(e, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+        CHECK(wait_final_in(s4, &l));
+        CHECK_EQ(l.source, FA_LOUDNESS_CACHE);
+        fa_stream_close(s4);
+    }
+    fa_engine_destroy(e);
+    free(x);
+}
+
+/* No cache directory: a fed scan still gives its result, and nothing is stored. */
+static void test_fed_scan_without_cache(void)
+{
+    fa_loudness l = { .struct_size = sizeof(l) };
+    fa_fingerprint id = { .struct_size = sizeof(id), .key = 5, .audio_bytes = 6 };
+    fa_scan_options so;
+    fa_codec_params cp;
+    fa_scan_feed* f = NULL;
+    static float x[2 * 96000];
+    int i;
+    for (i = 0; i < 2 * 96000; i++) x[i] = (float)(0.1 * sin(2.0 * PI * 440.0 * (i / 2) / 48000.0));
+    fa_scan_options_init(&so);
+    so.identity = &id;
+    fed_params(&cp, 48000);
+    CHECK_EQ(fa_scan_open_packets(g_engine, &cp, &so, &f), FA_OK);
+    CHECK_EQ(feed_packets(f, x, 96000, 0), FA_OK);
+    CHECK_EQ(fa_scan_wants_more(f), 1);
+    CHECK_EQ(fa_scan_finish(f, &l), FA_OK);
+    CHECK_EQ(fa_scan_wants_more(f), 0);
+    CHECK(l.integrated_lufs < -10.0 && l.integrated_lufs > -40.0);
+    fa_scan_close(f);
+}
+
 /* ---- limiter ------------------------------------------------------------------------- */
 
 static void test_limiter(void)
@@ -1609,6 +1969,10 @@ int main(void)
     RUN(test_start_wait_runs_out);
     RUN(test_start_wait_nearly_done_waits_longer);
     RUN(test_scheduled_start_never_waits);
+    RUN(test_fed_scan_matches_path_scan);
+    RUN(test_fed_scan_errors);
+    RUN(test_fed_scan_reaches_streams_and_cache);
+    RUN(test_fed_scan_without_cache);
     RUN(test_limiter);
     RUN(test_limiter_releases_to_unity);
     RUN(test_truepeak_block_matches_push);
