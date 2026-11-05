@@ -260,8 +260,8 @@ uint32_t fa_archive_choices(fa_archive* a, const char* entry_name, fa_archive_ch
     fa_result dummy;
     if (!error) error = &dummy;
     *error = FA_OK;
-    a->encrypted_candidates = 0;
     fa_mutex_lock(&a->lock);
+    a->encrypted_candidates = 0;
     used = (uint8_t*)calloc(a->count ? a->count : 1, 1);
     if (!used) { *error = FA_ERROR_OUT_OF_MEMORY; goto done; }
     for (i = 0; i < a->count; i++) {

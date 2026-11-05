@@ -359,8 +359,11 @@ FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* a, int32_t index, fa
         fa_mutex_lock(&a->lock);
         r = fa_archive_entry_offset(a, idx, &offset);
         if (r == FA_OK) r = fa_source_set_window(a->srcp, offset, a->pub[idx].size);
-        if (r == FA_OK) r = fingerprint_source(a->srcp, out_fingerprint);
-        fa_source_set_window(a->srcp, 0, a->srcp->whole_length);
+        if (r == FA_OK) {
+            /* Only a window that was set is undone: with none, whole_length is 0 and a restore would empty the source. */
+            r = fingerprint_source(a->srcp, out_fingerprint);
+            fa_source_set_window(a->srcp, 0, a->srcp->whole_length);
+        }
         fa_mutex_unlock(&a->lock);
     } else {
         uint8_t* data = NULL;

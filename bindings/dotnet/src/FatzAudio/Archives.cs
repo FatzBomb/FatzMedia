@@ -170,9 +170,13 @@ public sealed unsafe class Archive : IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
         NativeLoader.EnsureInitialized();
-        using var o = NativeArchiveOptions.Create(options);
-        int rc = NativeMethods.fa_archive_open_path(path, o.Pointer, out nint native);
-        return Finish(rc, native, null, options, o);
+        var o = NativeArchiveOptions.Create(options);
+        try
+        {
+            int rc = NativeMethods.fa_archive_open_path(path, o.Pointer, out nint native);
+            return Finish(rc, native, null, options, ref o);
+        }
+        finally { o.Dispose(); }
     }
 
     /// <summary>Opens an archive held in memory. The bytes are copied.</summary>
@@ -185,10 +189,14 @@ public sealed unsafe class Archive : IDisposable
     {
         if (data.IsEmpty) throw new ArgumentException("No data.", nameof(data));
         NativeLoader.EnsureInitialized();
-        using var o = NativeArchiveOptions.Create(options);
-        using var pin = data.Pin();
-        int rc = NativeMethods.fa_archive_open_memory(pin.Pointer, (nuint)data.Length, o.Pointer, out nint native);
-        return Finish(rc, native, null, options, o);
+        var o = NativeArchiveOptions.Create(options);
+        try
+        {
+            using var pin = data.Pin();
+            int rc = NativeMethods.fa_archive_open_memory(pin.Pointer, (nuint)data.Length, o.Pointer, out nint native);
+            return Finish(rc, native, null, options, ref o);
+        }
+        finally { o.Dispose(); }
     }
 
     /// <summary>Opens an archive from a seekable <see cref="Stream"/>.</summary>
@@ -203,19 +211,23 @@ public sealed unsafe class Archive : IDisposable
         ArgumentNullException.ThrowIfNull(source);
         if (!source.CanRead || !source.CanSeek) throw new ArgumentException("The stream must be readable and seekable.", nameof(source));
         NativeLoader.EnsureInitialized();
-        using var o = NativeArchiveOptions.Create(options);
-        var gc = GCHandle.Alloc(new IoState(source, leaveOpen));
-        FaIoCallbacks io = default;
-        io.Read = &IoState.Read;
-        io.Seek = &IoState.Seek;
-        io.Length = &IoState.Length;
-        io.Close = &IoState.Close;
-        int rc = NativeMethods.fa_archive_open_io(&io, (void*)GCHandle.ToIntPtr(gc), o.Pointer, out nint native);
-        if (rc < 0) gc.Free();   // the native call has already closed the stream through the callbacks
-        return Finish(rc, native, rc < 0 ? null : gc, options, o);
+        var o = NativeArchiveOptions.Create(options);
+        try
+        {
+            var gc = GCHandle.Alloc(new IoState(source, leaveOpen));
+            FaIoCallbacks io = default;
+            io.Read = &IoState.Read;
+            io.Seek = &IoState.Seek;
+            io.Length = &IoState.Length;
+            io.Close = &IoState.Close;
+            int rc = NativeMethods.fa_archive_open_io(&io, (void*)GCHandle.ToIntPtr(gc), o.Pointer, out nint native);
+            if (rc < 0) gc.Free();   // the native call has already closed the stream through the callbacks
+            return Finish(rc, native, rc < 0 ? null : gc, options, ref o);
+        }
+        finally { o.Dispose(); }
     }
 
-    private static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, NativeArchiveOptions o)
+    private static Archive Finish(int rc, nint native, GCHandle? io, ArchiveOptions? options, ref NativeArchiveOptions o)
     {
         FatzAudioException.ThrowIfFailed(rc);
         var handle = new ArchiveHandle();

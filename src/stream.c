@@ -440,6 +440,7 @@ static fa_result open_archive_entry(struct fa_stream* s, fa_archive* a, uint32_t
         if (!ok) return FA_ERROR_UNSUPPORTED_FORMAT;
         (*unpacks)++;
     }
+    if (e->size <= 0) return FA_ERROR_UNSUPPORTED_FORMAT;   /* an empty entry is not audio */
     fa_mutex_lock(&a->lock);
     r = fa_archive_unpack(a, i, zip_memory_limit(s->engine), cancel, &data);
     if (r == FA_OK) {
