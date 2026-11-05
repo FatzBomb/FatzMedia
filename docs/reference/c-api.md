@@ -60,8 +60,9 @@ enum {
     FA_ERROR_PROTECTED_CONTENT = -16, /* DRM-protected or encrypted content (WMA DRM,
                                         FairPlay, encrypted MP4/MKV, SAMPLE-AES HLS) */
     FA_ERROR_TOO_LARGE = -17,        /* a compressed ZIP entry is bigger than
-                                        fa_engine_config.zip_memory_limit_mb and no
-                                        temp_directory is set: extract it first */
+                                        fa_engine_config.zip_memory_limit_mb and cannot go
+                                        to a temp file (FA_ENGINE_NO_TEMP_FILES, or over 4 GB
+                                        unpacked): extract it first */
     FA_ERROR_SIZE_MISMATCH = -18,    /* fa_surface_update_into: the buffer is not the
                                         size fa_surface_get_layout reports */
     FA_ERROR_NOT_ENOUGH_CHANNELS = -19, /* FA_CUE_CHANNELS: the output device has no channels
@@ -72,7 +73,9 @@ enum {
                                         microphone prompt, Windows privacy settings) */
     FA_ERROR_OUT_OF_RANGE = -21,     /* fa_deck_sync: the tempo it needs is outside the deck's
                                         FA_DECK_SYNC_RANGE, also at half or double time */
-    FA_ERROR_CANCELLED = -22         /* the app's fa_open_options.cancel flag stopped an open */
+    FA_ERROR_CANCELLED = -22,        /* the app's fa_open_options.cancel flag stopped an open */
+    FA_ERROR_DISK_FULL = -23         /* a ZIP entry needs a temp file and the disk has too little
+                                        free space for it (nothing was written) */
 };
 
 typedef struct fa_engine fa_engine;   /* one per process is typical */
@@ -118,7 +121,11 @@ typedef enum fa_engine_flags {
     FA_ENGINE_NULL_OUTPUT = 1 << 0,
     /* MIDI files opened without a soundfont fail with FA_ERROR_NO_SOUNDFONT instead
      * of playing with the OS's instruments (fa_soundfont_open_system). */
-    FA_ENGINE_NO_SYSTEM_SOUNDFONT = 1 << 1
+    FA_ENGINE_NO_SYSTEM_SOUNDFONT = 1 << 1,
+    /* No temp files in the OS temp directory: with temp_directory NULL, a compressed ZIP
+     * entry past zip_memory_limit_mb fails with FA_ERROR_TOO_LARGE. A temp_directory
+     * the app sets still works. */
+    FA_ENGINE_NO_TEMP_FILES = 1 << 2
 } fa_engine_flags;
 
 typedef struct fa_engine_config {
@@ -133,12 +140,13 @@ typedef struct fa_engine_config {
     uint32_t flags;               /* fa_engine_flags */
     /* ZIP archives (MP3+G). Stored entries always play straight from the archive.
      * Compressed ones are unpacked into memory up to zip_memory_limit_mb (0 = 256).
-     * A bigger one is unpacked into temp_directory when it is set (a "fatzaudio-tmp"
-     * folder inside it, created if missing; the file is deleted when the stream
-     * closes, also if the app crashes), else the open fails with FA_ERROR_TOO_LARGE.
-     * The directory is created if missing (one level); FA_ERROR_IO when a song needs
-     * it and it cannot be written. The string is copied. */
-    const char* temp_directory;   /* NULL = never write temp files */
+     * A bigger one is unpacked into a temp file (a "fatzaudio-tmp" folder inside
+     * temp_directory; the file is deleted when the stream closes, also if the app
+     * crashes). The directory is created if missing (one level); FA_ERROR_IO when a
+     * song needs it and it cannot be written, FA_ERROR_DISK_FULL when the disk has
+     * too little free space. The string is copied. */
+    const char* temp_directory;   /* NULL = the OS temp directory (TMPDIR, Windows temp
+                                     path); FA_ENGINE_NO_TEMP_FILES = no temp files */
     uint32_t zip_memory_limit_mb;
 } fa_engine_config;
 

@@ -2,6 +2,9 @@
 #include "cdg.h"
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#  include <unistd.h>
+#endif
 
 FA_API uint32_t FA_CALL fa_version(void)
 {
@@ -34,6 +37,7 @@ FA_API const char* FA_CALL fa_result_string(fa_result result)
     case FA_ERROR_PERMISSION_DENIED: return "permission denied (microphone)";
     case FA_ERROR_OUT_OF_RANGE: return "out of range";
     case FA_ERROR_CANCELLED: return "cancelled";
+    case FA_ERROR_DISK_FULL: return "not enough free disk space for a temp file";
     default: return "unknown result";
     }
 }
@@ -304,15 +308,22 @@ FA_API fa_result FA_CALL fa_engine_get_stats(fa_engine* engine, fa_engine_stats*
 /* The app's temp directory gets a folder of FatzAudio's own, so the sweep never
  * touches the app's files. One that cannot be made now is tried again when a song
  * needs it (FA_ERROR_IO then). */
-static fa_result temp_folder_prepare(fa_engine* e)
+static fa_result temp_folder_prepare(fa_engine* e, const char* dir, int make_dir)
 {
-    const char* dir = e->config.temp_directory;
     size_t n = strlen(dir);
     int sep = dir[n - 1] == '/' || dir[n - 1] == '\\';
-    char* folder = (char*)malloc(n + 16);
+    char* folder = (char*)malloc(n + 40);
     if (!folder) return FA_ERROR_OUT_OF_MEMORY;
-    snprintf(folder, n + 16, "%s%sfatzaudio-tmp", dir, sep ? "" : "/");
-    if (fa_mkdir_utf8(dir) == 0 && fa_mkdir_utf8(folder) == 0) fa_temp_folder_sweep(folder);
+#if defined(_WIN32)
+    snprintf(folder, n + 40, "%s%sfatzaudio-tmp", dir, sep ? "" : "/");
+#else
+    /* The OS directory is shared by every user (/tmp): one folder each, or the first
+     * user's would lock the others out. The app's own directory is its own. */
+    if (make_dir) snprintf(folder, n + 40, "%s%sfatzaudio-tmp", dir, sep ? "" : "/");
+    else snprintf(folder, n + 40, "%s%sfatzaudio-tmp-%lu", dir, sep ? "" : "/", (unsigned long)getuid());
+#endif
+    /* Under the OS directory the folder is only made when a song needs it. */
+    if (make_dir ? (fa_mkdir_utf8(dir) == 0 && fa_mkdir_utf8(folder) == 0) : 1) fa_temp_folder_sweep(folder);
     e->temp_folder = folder;
     return FA_OK;
 }
@@ -346,9 +357,14 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
     }
     if (e->config.temp_directory && e->config.temp_directory[0]) {
         e->config.temp_directory = fa_strdup(e->config.temp_directory);
-        if (!e->config.temp_directory || temp_folder_prepare(e) != FA_OK) { free_strings(e); free(e); return FA_ERROR_OUT_OF_MEMORY; }
+        if (!e->config.temp_directory || temp_folder_prepare(e, e->config.temp_directory, 1) != FA_OK) { free_strings(e); free(e); return FA_ERROR_OUT_OF_MEMORY; }
     } else {
+        /* No folder from the app: the OS's temp directory, so a big song just works.
+         * The OS directory itself is not made; its fatzaudio-tmp folder is, and swept. */
+        char os_dir[1024];
         e->config.temp_directory = NULL;
+        if (!(e->config.flags & FA_ENGINE_NO_TEMP_FILES) && fa_os_temp_dir(os_dir, sizeof(os_dir)) &&
+            temp_folder_prepare(e, os_dir, 0) != FA_OK) { free_strings(e); free(e); return FA_ERROR_OUT_OF_MEMORY; }
     }
 
     if (ma_mutex_init(&e->lock) != MA_SUCCESS) { free_strings(e); free(e); return FA_ERROR_GENERIC; }

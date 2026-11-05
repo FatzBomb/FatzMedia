@@ -81,6 +81,7 @@ public sealed partial class AudioEngine : IDisposable
                 config.WorkerThreads = (uint)Math.Max(0, options.WorkerThreads);
                 if (options.NullOutput) config.Flags |= 1; // FA_ENGINE_NULL_OUTPUT
                 if (options.NoSystemSoundFont) config.Flags |= 2; // FA_ENGINE_NO_SYSTEM_SOUNDFONT
+                if (options.NoTempFiles) config.Flags |= 4; // FA_ENGINE_NO_TEMP_FILES
                 if (options.CacheDirectory is { } dir)
                 {
                     cachePtr = Marshal.StringToCoTaskMemUTF8(dir);

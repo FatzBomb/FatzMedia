@@ -18,6 +18,14 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
+  directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.
+  The free space is checked first (song size + 64 MB) and a short disk returns the new `FA_ERROR_DISK_FULL` (-23, .NET
+  `ErrorCode.DiskFull`) before anything is written. Leftovers of crashed runs in `fatzaudio-tmp` are swept at engine
+  start. `FA_ENGINE_NO_TEMP_FILES` (.NET `AudioEngineOptions.NoTempFiles`) turns the OS-directory fallback off (the old
+  behaviour, `FA_ERROR_TOO_LARGE`); a `temp_directory` the app sets still works. On Linux/macOS/Android the folder is
+  `fatzaudio-tmp-<uid>`, so users sharing `/tmp` do not collide. Before, such songs failed with `FA_ERROR_TOO_LARGE` unless the app set a folder.
+
 - CD+G with no audio (MediaControl request 10): a lone `.cdg`, or a ZIP whose only playable entry is a `.cdg`, opens
   with `fa_stream_open_path` / `_memory` / `_io` as a silent stream exactly as long as the graphics (pack count / 300 s,
   44,100 Hz stereo) that plays, pauses, seeks, loops and changes tempo like any file, so its clock drives the CD+G

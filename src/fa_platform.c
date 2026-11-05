@@ -202,6 +202,29 @@ FILE* fa_temp_file_create(const char* folder)
     return f;
 }
 
+int fa_os_temp_dir(char* out, size_t cap)
+{
+    wchar_t dir[MAX_PATH + 2];
+    DWORD n = GetTempPathW(MAX_PATH + 1, dir);
+    int len;
+    if (n == 0 || n > MAX_PATH) return 0;
+    while (n > 3 && (dir[n - 1] == L'\\' || dir[n - 1] == L'/')) dir[--n] = 0;   /* keep "C:\" whole */
+    len = WideCharToMultiByte(CP_UTF8, 0, dir, -1, out, (int)cap, NULL, NULL);
+    return len > 0;
+}
+
+int fa_free_space(const char* path, uint64_t* bytes)
+{
+    wchar_t* wp = widen(path);
+    ULARGE_INTEGER avail;
+    int ok;
+    if (!wp) return 0;
+    ok = GetDiskFreeSpaceExW(wp, &avail, NULL, NULL) != 0;
+    free(wp);
+    if (ok) *bytes = avail.QuadPart;
+    return ok;
+}
+
 /* Files still open (another process's) cannot be deleted: only leftovers go. */
 void fa_temp_folder_sweep(const char* folder)
 {
@@ -247,6 +270,7 @@ int64_t fa_monotonic_ns(void)
 #  include <time.h>
 #  include <unistd.h>
 #  include <sys/stat.h>
+#  include <sys/statvfs.h>
 #  include <sys/types.h>
 #  include <dirent.h>
 #  if defined(__linux__) || defined(__ANDROID__)
@@ -573,6 +597,38 @@ FILE* fa_temp_file_create(const char* folder)
     f = fdopen(fd, "w+b");
     if (!f) close(fd);
     return f;
+}
+
+int fa_os_temp_dir(char* out, size_t cap)
+{
+    const char* const candidates[] = {
+        getenv("TMPDIR"),
+#  if defined(__ANDROID__)
+        "/data/local/tmp",
+#  endif
+        "/tmp"
+    };
+    size_t i;
+    for (i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        const char* dir = candidates[i];
+        size_t n;
+        if (!dir || dir[0] != '/' || access(dir, W_OK | X_OK) != 0) continue;
+        n = strlen(dir);
+        while (n > 1 && dir[n - 1] == '/') n--;
+        if (n + 1 > cap) continue;
+        memcpy(out, dir, n);
+        out[n] = 0;
+        return 1;
+    }
+    return 0;
+}
+
+int fa_free_space(const char* path, uint64_t* bytes)
+{
+    struct statvfs sv;
+    if (statvfs(path, &sv) != 0) return 0;
+    *bytes = (uint64_t)sv.f_bavail * (uint64_t)sv.f_frsize;
+    return 1;
 }
 
 /* Names live only for a moment (see above), so a leftover is one that survived a

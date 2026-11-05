@@ -41,8 +41,8 @@ public enum ErrorCode
     /// <summary>The file or stream is DRM-protected or encrypted (protected WMA, FairPlay or Common Encryption MP4, encrypted Matroska, SAMPLE-AES HLS) and cannot be played.</summary>
     ProtectedContent = -16,
     /// <summary>
-    /// A compressed song in a ZIP archive is bigger than <see cref="AudioEngineOptions.ZipMemoryLimitMb"/> and no
-    /// <see cref="AudioEngineOptions.TempDirectory"/> is set: extract the archive first, or set one.
+    /// A compressed song in a ZIP archive is bigger than <see cref="AudioEngineOptions.ZipMemoryLimitMb"/> and
+    /// <see cref="AudioEngineOptions.NoTempFiles"/> forbids a temp file (or it unpacks to over 4 GB): extract it first.
     /// </summary>
     TooLarge = -17,
     /// <summary>The buffer passed to <see cref="IKaraokeSurface.UpdateInto(nint, int, int, int, ulong, TimeSpan?)"/> is
@@ -59,6 +59,8 @@ public enum ErrorCode
     OutOfRange = -21,
     /// <summary>An open was stopped by <see cref="StreamOptions.CancellationToken"/> (unpacking a ZIP song).</summary>
     Cancelled = -22,
+    /// <summary>A ZIP song needs a temp file and the disk has too little free space for it; nothing was written.</summary>
+    DiskFull = -23,
 }
 
 /// <summary>

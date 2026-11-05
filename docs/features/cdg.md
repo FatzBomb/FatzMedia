@@ -377,8 +377,8 @@ Only what is needed is read: the archive's directory at the end of the file, the
 |---|---|---|
 | Stored (uncompressed, the usual case) | Straight from the archive, like a plain file | None beyond a plain file's |
 | Compressed, up to the memory limit (256 MB unless `fa_engine_config.zip_memory_limit_mb` says otherwise) | Unpacked into memory at open, CRC checked | The song's unpacked size |
-| Compressed, bigger than the limit (or memory ran out), with `fa_engine_config.temp_directory` set | Unpacked into a temp file at open, CRC checked, then played from it. Entries over 4 GB unpacked return `FA_ERROR_TOO_LARGE` (only a damaged or hostile archive claims that much audio) | About 1 MB while unpacking |
-| Compressed, bigger than the limit, no temp directory | Not opened: `FA_ERROR_TOO_LARGE` (.NET `ErrorCode.TooLarge`). Tell the user to extract the archive, or set a temp directory | None |
+| Compressed, bigger than the limit (or memory ran out) | Unpacked into a temp file at open (in `fa_engine_config.temp_directory`, else the OS temp directory), CRC checked, then played from it. Entries over 4 GB unpacked return `FA_ERROR_TOO_LARGE` (only a damaged or hostile archive claims that much audio); too little free space returns `FA_ERROR_DISK_FULL` before anything is written | About 1 MB while unpacking |
+| Same, with `FA_ENGINE_NO_TEMP_FILES` and no `temp_directory` set | Not opened: `FA_ERROR_TOO_LARGE` (.NET `ErrorCode.TooLarge`) | None |
 
 The `.cdg` is always unpacked into memory (a song's graphics are a few MB). An archive with no audio at all plays its `.cdg` as a silent stream ([graphics with no audio](#graphics-with-no-audio)).
 
@@ -404,17 +404,17 @@ cts.Cancel();   // from the UI: the open throws FatzAudioException (ErrorCode.Ca
 
 A stored entry played in place is not CRC checked at open, since that would read the whole song first. Instead the engine's decode worker checks it in the background, 256 KB at a time, while the stream is attached to a device (decode-only streams, and archives opened with `fa_stream_open_io`, whose callbacks cannot be read twice, are not checked). A mismatch is reported once as `FA_EVENT_DECODE_ERROR` (value `FA_ERROR_UNSUPPORTED_FORMAT`; .NET `AudioStream.DecodeError`) and playback goes on: a damaged byte plays like a damaged byte in an unzipped MP3, a short glitch, never a crash. The check ends within a second or two on a normal song, so set the event callback right after the open. Compressed entries are always checked while they are unpacked, and a bad one fails the open.
 
-The temp directory is off by default, so FatzAudio never writes to disk unless the app asks. When it is set, FatzAudio works in a `fatzaudio-tmp` folder inside it and never touches anything else there. The directory and that folder are created if missing (not the directory's parents); if they cannot be written when a song needs them, the open fails with `FA_ERROR_IO`. Each unpacked song is deleted when its stream closes, and also if the app crashes: Windows opens the file with delete-on-close, and Linux, macOS, iOS and Android remove its name as soon as it exists. Files left by a power cut are deleted the next time an engine is created with that directory. On Android and iOS, pass the app's cache directory.
+You do not need to set anything: a song too big for memory is unpacked into the OS temp directory (Windows: the user's temp path; Linux, macOS, iOS and Android: `TMPDIR`, which iOS and the .NET Android runtime set to the app's own sandbox, else `/tmp`, on Android `/data/local/tmp`). Set `temp_directory` only to choose another drive; it always wins. Either way FatzAudio works in a `fatzaudio-tmp` folder inside it (`fatzaudio-tmp-<uid>` in the OS directory off Windows, since `/tmp` is shared; created only when a song needs it) and never touches anything else there. A `temp_directory` and that folder are created if missing (not the directory's parents); if they cannot be written when a song needs them, the open fails with `FA_ERROR_IO`. Before unpacking, the free space of that drive is checked: the song's size plus 64 MB must be free, else the open fails at once with `FA_ERROR_DISK_FULL` (.NET `ErrorCode.DiskFull`) and nothing is written. Each unpacked song is deleted when its stream closes, and also if the app crashes: Windows opens the file with delete-on-close, and Linux, macOS, iOS and Android remove its name as soon as it exists. Files left by a power cut are deleted the next time an engine is created. Apps that do not want the OS directory used set `FA_ENGINE_NO_TEMP_FILES` (.NET `NoTempFiles`) and get `FA_ERROR_TOO_LARGE` instead (a `temp_directory` they set still works).
 
 ```c
 fa_engine_config cfg;
 fa_engine_config_init(&cfg);
-cfg.temp_directory = "C:\\Users\\me\\AppData\\Local\\MyPlayer";   /* opt in */
+cfg.temp_directory = "D:\\Scratch";   /* optional: pick the drive; the default is the OS temp directory */
 fa_engine_create(&cfg, &engine);
 ```
 
 ```csharp
-using var engine = AudioEngine.Create(new AudioEngineOptions { TempDirectory = Path.GetTempPath() });
+using var engine = AudioEngine.Create(new AudioEngineOptions { TempDirectory = @"D:\Scratch" });   // optional: pick the drive
 ```
 
 `fa_stream_open_io` needs `seek` and `length` callbacks for a ZIP, because its directory is at the end (`FA_ERROR_NOT_SEEKABLE` without them). When the audio was unpacked, the archive is no longer read, but `close` is still called once, when the stream closes. Loudness scans, analysis (`fa_analyze_stream`) and `fa_stream_get_tags` read a stored entry again from the archive file or block, and a song unpacked into a temp file through the same open file (every read moves to its own position first, so they never disturb playback), so both get the same final loudness, tags and analysis as an unzipped file. A stored song from app callbacks (`fa_stream_open_io`) still gets the running loudness estimate only, since the callbacks cannot be read twice.
