@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FatzBomb.MediaControl.Core.Abstractions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FatzBomb.MediaControl.Player.Shared.Presentation;
 
@@ -29,13 +30,17 @@ public partial class PlayerViewModel
 
         StatsText = PlayerStatsLine.Format(Label ?? "Player", PlaybackState, _frameCounter.TakeFramesPerSecond(), process, surface);
 
-        // Every fifth line goes to the debug log too, so scripts (scripts/smoke-backlog.ps1) can read
-        // fps and the presentation path without screen scraping.
-        if (++_statsTraceCount % 5 == 1)
+        // Every fifth line, and every line whose playback state changed, goes to the debug log too, so
+        // scripts (scripts/smoke-backlog.ps1) can read the state, fps and the presentation path.
+        if (++_statsTraceCount % 5 == 1 || PlaybackState != _statsTracedState)
+        {
+            _statsTracedState = PlaybackState;
             Trace.WriteLine($"[Stats] {StatsText}");
+        }
     }
 
     private int _statsTraceCount;
+    private MediaPlayerState? _statsTracedState;
 
     // The status line goes to the debug log as well ("Loaded: ...", "Could not load: ..."), for scripts.
     partial void OnStatusTextChanged(string value) =>

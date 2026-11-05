@@ -47,6 +47,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
 - The October code audit (ENG-039, round 2) is done: five batches implemented, each pending the
   owner's smoke (`updates/ENG-039/`). The old "next: code audit" item is closed.
+- **First owner run of the backlog script: 2026-11-05** (`updates/Smoke_2026-11-05/Results.md`): most
+  failures were the script's (fixed); product findings ENG-044 to ENG-048 (ENG-048, the loudness cache
+  folder, fixed). Waiting for: the run's `logs\` folder, test 11's results, and a rerun of 1, 2, 4, 7, 9, 10.
 - **Owner smoke backlog: `scripts/smoke-backlog.ps1`** (2026-11-05) runs it, 12 tests, mostly
   automatic (it makes its own test media with FFmpeg, reads the players' logs for the expected lines,
   measures CPU, serves a local web file; you answer only what needs eyes or ears): formats on both

@@ -186,7 +186,12 @@ function Test-Run([string]$Name, [string]$Kind, [string[]]$PlayerArgs, [string[]
     if ($found.Count) { $detail += 'unexpected: ' + ($found -join ' | ') }
     $stats = Get-LastStats $r.Log
     if ($stats) { $detail += 'stats: ' + ($stats -replace '^.*\[Stats\]\s*', '') }
-    Add-Check $Name ($missing.Count -eq 0 -and $found.Count -eq 0) ($detail -join '; ')
+    $pass = $missing.Count -eq 0 -and $found.Count -eq 0
+    if (-not $pass) {
+        $problems = @(Get-LogLines $r.Log '[Diagnostic]' | Where-Object { $_ -match '\[(Warning|Error)\]' } | Select-Object -First 3 | ForEach-Object { $_ -replace '^.*\[Diagnostic\]\s*', '' })
+        if ($problems) { $detail += 'log: ' + ($problems -join ' / ') }
+    }
+    Add-Check $Name $pass ($detail -join '; ')
     return $r
 }
 
@@ -281,8 +286,7 @@ function Test-1 {
             if (-not $f) { Add-Info "$k ($engine): not made by this FFmpeg build"; continue }
             $r = Invoke-Run 'Wpf' @("--audio=$engine", $f) ("fmt-$engine-" + ($k -replace '[^A-Za-z0-9]+', '-')) -Seconds 4
             $loaded = @(Get-LogLines $r.Log '[Status]' | Where-Object { $_ -match 'Loaded:' }).Count -gt 0
-            $stats = Get-LastStats $r.Log
-            $playing = $stats -match ' Playing \|'
+            $playing = @(Get-LogLines $r.Log '[Stats]' | Where-Object { $_ -match ' Playing \|' }).Count -gt 0
             $how = @()
             if (@(Get-LogLines $r.Log 'with FFmpeg in').Count) { $how += 'converted by FFmpeg' }
             if (@(Get-LogLines $r.Log 'FatzAudio cannot decode').Count) { $how += 'FatzAudio handed it to FFmpeg' }
@@ -396,15 +400,20 @@ function Test-4 {
     if (-not $hlg -and -not $hdr10) { Add-Info 'skipped: no HLG or HDR10 clip'; return }
     Say-Do @('Turn Windows HDR OFF for now (Settings > Display > Use HDR).')
     Wait-Enter
-    if ($hlg) {
-        $null = Test-Run 'HLG on Direct3D11 is tone mapped on the GPU' 'Wpf' @($hlg) -Expect @('HLG HDR, tone mapped to SDR', 'HLG video is tone mapped to SDR', 'on the GPU (Direct3D11 shader)') -Seconds 6 -Shot
-        $null = Test-Run 'HLG with --hdr-tonemap-cpu' 'Wpf' @('--hdr-tonemap-cpu', $hlg) -Expect @('HLG video is tone mapped to SDR') -Seconds 6 -Shot
-        $null = Test-Run 'HLG with --no-hdr-tonemap' 'Wpf' @('--no-hdr-tonemap', $hlg) -Expect @('without tone mapping') -Seconds 6 -Shot
-        $null = Test-Run 'HLG on the Software renderer' 'Wpf' @('--renderer=software', '--surface=framesink', $hlg) -Expect @('HLG video is tone mapped to SDR') -Seconds 6 -Shot
-        $null = Test-Run 'HLG on Vulkan (Avalonia)' 'Ava' @('--renderer=vulkan', $hlg) -Expect @('HLG video is tone mapped to SDR') -Seconds 6 -Shot
+    # Each clip is checked for tone mapping whatever its transfer; the log says which one it is, so a
+    # swapped pick (an HDR10 file chosen as HLG) is reported instead of failing every check.
+    foreach ($c in @(@{ Label = 'HLG'; File = $hlg; Other = 'HDR10' }, @{ Label = 'HDR10'; File = $hdr10; Other = 'HLG' })) {
+        if (-not $c.File) { continue }
+        $r = Test-Run ("{0} clip on Direct3D11 is tone mapped on the GPU" -f $c.Label) 'Wpf' @($c.File) -Expect @('tone mapped to SDR', 'on the GPU (Direct3D11 shader)') -Seconds 6 -Shot
+        if (@(Get-LogLines $r.Log ("{0} video is tone mapped" -f $c.Other)).Count -gt 0) {
+            Add-Info ("the file chosen as {0} ({1}) is really {2}: the two picks were swapped" -f $c.Label, (Split-Path $c.File -Leaf), $c.Other)
+        }
+        $null = Test-Run ("{0} clip with --hdr-tonemap-cpu" -f $c.Label) 'Wpf' @('--hdr-tonemap-cpu', $c.File) -Expect @('tone mapped to SDR') -Seconds 6 -Shot
+        $null = Test-Run ("{0} clip with --no-hdr-tonemap" -f $c.Label) 'Wpf' @('--no-hdr-tonemap', $c.File) -Expect @('without tone mapping') -Seconds 6 -Shot
+        $null = Test-Run ("{0} clip on the Software renderer" -f $c.Label) 'Wpf' @('--renderer=software', '--surface=framesink', $c.File) -Expect @('tone mapped to SDR') -Seconds 6 -Shot
+        $null = Test-Run ("{0} clip on Vulkan (Avalonia)" -f $c.Label) 'Ava' @('--renderer=vulkan', $c.File) -Expect @('tone mapped to SDR') -Seconds 6 -Shot
     }
     if ($hdr10) {
-        $null = Test-Run 'HDR10 on Direct3D11 is tone mapped' 'Wpf' @($hdr10) -Expect @('HDR10 video is tone mapped to SDR') -Seconds 6 -Shot
         $null = Test-Run 'HDR10 with --hdr-output on an SDR desktop stays SDR' 'Wpf' @('--hdr-output', $hdr10) -Expect @('D3D11.HdrOutput', 'not in HDR mode') -Seconds 6
     }
     Say "Screenshots are in $ShotsOut."
@@ -470,7 +479,7 @@ function Test-6 {
     if (-not (Need-Media @('v1080'))) { return }
     $r = Test-Run 'Avalonia Direct3D11 uses the shared GPU image' 'Ava' @('--renderer=direct3d11', $Media.v1080) -Expect @('via shared GPU image') -Seconds 12 -Shot
     $r = Test-Run 'Avalonia --surface=framesink uses the frame sink' 'Ava' @('--renderer=direct3d11', '--surface=framesink', $Media.v1080) -Expect @('via frame sink') -Seconds 12
-    $null = Test-Run 'Avalonia Vulkan falls back to the frame sink with a reason' 'Ava' @('--renderer=vulkan', $Media.v1080) -Expect @('via frame sink') -Seconds 8
+    $null = Test-Run 'Avalonia Vulkan uses the shared GPU image (045A)' 'Ava' @('--renderer=vulkan', $Media.v1080) -Expect @('via shared GPU image') -Seconds 8
     $null = Test-Run 'Avalonia Software falls back to the frame sink with a reason' 'Ava' @('--renderer=software', $Media.v1080) -Expect @('via frame sink') -Seconds 8
     foreach ($mode in @(@{ N = 'shared GPU image'; A = @('--renderer=direct3d11') }, @{ N = 'frame sink'; A = @('--renderer=direct3d11', '--surface=framesink') })) {
         $p = Start-Player 'Ava' ($mode.A + @($Media.v1080))
@@ -503,10 +512,15 @@ function Test-7 {
     if (-not (Start-Step 7 'Vulkan renderer tests on your GPU' '026A slices 1-2: the Vulkan tests ran only on a software Vulkan so far. Fully automatic.' '3')) { return }
     $out = Join-Path $LogsOut 'vulkan-tests.txt'
     & dotnet test (Join-Path $Repo 'FatzBomb.MediaControl.Rendering.Vulkan.Tests') -c Release --logger 'console;verbosity=normal' 2>&1 | Tee-Object -FilePath $out | Out-Null
-    $summary = @(Select-String -Path $out -Pattern 'Passed!|Failed!' | ForEach-Object { $_.Line.Trim() })
-    $device = @(Select-String -Path $out -Pattern 'llvmpipe|lavapipe|NVIDIA|AMD|Intel|Radeon|GeForce' | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() })
-    Add-Check 'Vulkan tests pass on this machine' (($summary -join ' ') -match 'Passed!' -and ($summary -join ' ') -notmatch 'Failed!') ($summary -join ' ')
-    Add-Check 'They ran on the real GPU, not a software Vulkan' (($device -join ' ') -notmatch 'llvmpipe|lavapipe' -and $device.Count -gt 0) ($device -join ' ')
+    $summary = @(Select-String -Path $out -Pattern 'Passed!|Failed!|Total tests|^\s*(Passed|Failed|Skipped|Total):\s*\d+' | ForEach-Object { $_.Line.Trim() })
+    $failedTests = @(Select-String -Path $out -Pattern '^\s*Failed\s+\S+' | ForEach-Object { $_.Line.Trim() } | Select-Object -First 5)
+    # Device names come from the tests' own output lines, never from test names ("...OnLavapipe").
+    $device = @(Select-String -Path $out -Pattern 'NVIDIA|GeForce|Radeon|AMD|Intel|llvmpipe|lavapipe' |
+        Where-Object { $_.Line -notmatch '^\s*(Passed|Failed|Skipped)\s' } | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() })
+    $ok = $LASTEXITCODE -eq 0 -and $failedTests.Count -eq 0 -and $summary.Count -gt 0
+    Add-Check 'Vulkan tests pass on this machine' $ok (($summary + $failedTests) -join ' | ') 
+    if ($device.Count -gt 0) { Add-Check 'They ran on the real GPU, not a software Vulkan' (($device -join ' ') -notmatch 'llvmpipe|lavapipe') ($device -join ' ') }
+    else { Add-Info "no device name printed; see $out" }
 }
 
 # 8. Text on the Software and Vulkan renderers (ENG-040), software renderer smoothness (ENG-039 4c)
@@ -535,18 +549,26 @@ function Test-8 {
 # 9. Without BASS, and without the BASS FLAC plug-in (ENG-039 batches 1 and 5)
 function Test-9 {
     if (-not (Start-Step 9 'Native libraries missing' 'ENG-039: players start without BASS (FFmpeg only); a FLAC plays through FFmpeg when bassflac.dll is missing. Fully automatic.' '3')) { return }
-    $nativeSrc = Get-ChildItem -Path (Split-Path $Exe.Wpf) -Recurse -Filter 'avcodec*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $nativeSrc) { Add-Info 'skipped: no native folder with FFmpeg found next to the WPF player'; return }
-    $src = $nativeSrc.DirectoryName
-    $noBass = Join-Path $OutDir 'native-no-bass'
-    $noFlac = Join-Path $OutDir 'native-no-bassflac'
-    New-Item -ItemType Directory -Force -Path $noBass, $noFlac | Out-Null
-    Get-ChildItem $src -File | Where-Object { $_.Name -notmatch '^bass' } | Copy-Item -Destination $noBass -Force
-    Get-ChildItem $src -File | Where-Object { $_.Name -ne 'bassflac.dll' } | Copy-Item -Destination $noFlac -Force
-    $null = Test-Run 'Two players start without BASS, each with a warning' 'Wpf' @("--native=$noBass", '--players=2') -Expect @('Native libraries loaded without BASS') -Seconds 4 -Shot
+    # The player always searches its own native folder too, so --native cannot hide BASS: run copies of
+    # the WPF player's folder with BASS (or only BASSFLAC) removed instead.
+    $playerDir = Split-Path $Exe.Wpf
+    $exeName = Split-Path $Exe.Wpf -Leaf
+    foreach ($v in @(@{ Kind = 'NoBass'; Dir = 'player-no-bass'; Pattern = '^bass.*\.dll$'; Label = 'WPF player without BASS' },
+                     @{ Kind = 'NoFlac'; Dir = 'player-no-bassflac'; Pattern = '^bassflac\.dll$'; Label = 'WPF player without BASSFLAC' })) {
+        $copy = Join-Path $OutDir $v.Dir
+        if (-not (Test-Path $copy)) {
+            Say-Info "Copying the WPF player to $copy ..."
+            Copy-Item -Path $playerDir -Destination $copy -Recurse -Force
+            Get-ChildItem -Path $copy -Recurse -File | Where-Object { $_.Name -match $v.Pattern } | Remove-Item -Force
+        }
+        $Exe[$v.Kind] = Join-Path $copy $exeName
+        $LogNames[$v.Kind] = $LogNames.Wpf
+        $PlayerNames[$v.Kind] = $v.Label
+    }
+    $null = Test-Run 'Two players start without BASS, each with a warning' 'NoBass' @('--players=2') -Expect @('without BASS') -Seconds 4 -Shot
     if ($script:FfmpegExe) {
         $flac = New-Media 'long-flac-4min.flac' @('-f', 'lavfi', '-i', 'sine=frequency=500:duration=240:sample_rate=48000', '-ac', '2', '-c:a', 'flac')
-        $r = Test-Run 'FLAC without bassflac.dll plays through FFmpeg' 'Wpf' @("--native=$noFlac", $flac) -Expect @('with FFmpeg in') -Seconds 4
+        $null = Test-Run 'FLAC without bassflac.dll plays through FFmpeg' 'NoFlac' @($flac) -Expect @('with FFmpeg in') -Seconds 4
     }
 }
 
@@ -568,7 +590,7 @@ function Test-10 {
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $p.WaitForExit(600000) | Out-Null
         $log = Save-RunLog $k "playerset-$k"
-        Add-Info ("{0}: player dispose lines in the log: {1}; the window took {2:F0} s" -f $PlayerNames[$k], @(Get-LogLines $log 'dispos').Count, $sw.Elapsed.TotalSeconds)
+        Add-Info ("{0}: the window was open {1:F0} s" -f $PlayerNames[$k], $sw.Elapsed.TotalSeconds)
         Add-Check "$($PlayerNames[$k]) closed cleanly" $p.HasExited ''
         Add-Answer "$($PlayerNames[$k]) player set, full screen and Escape rules" 'Did every step behave as described?'
     }

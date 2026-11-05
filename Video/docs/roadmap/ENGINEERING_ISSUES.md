@@ -55,6 +55,36 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-048 - FatzAudio loudness cache never written on a fresh machine (fixed)
+
+Reported: 2026-11-05, owner smoke (`updates/Smoke_2026-11-05`): the cache folder stayed empty and a
+new run scanned again. FatzAudio creates only the last level of `cache_directory`; our default
+`%LOCALAPPDATA%\FatzBomb.MediaControl\AudioCache` needs two. Fixed: `FatzAudioEngine` creates the folder
+(a warning and no cache when it cannot). The engine test uses a two-level folder (fails without the fix).
+
+### ENG-047 - Clicks and pops on loop wraps and seeks
+
+Reported: 2026-11-05, owner smoke (loop and seek checks; the default BASS engine). Engine and files not
+yet narrowed down: compare BASS and `--audio=fatz` on the same file, and with fades on and off.
+
+### ENG-046 - WPF native window resize lags behind the drag
+
+Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` resize test, WPF): the video catches up after the
+window, no black flashes. Check the live-resize path (`SetPresentationSurfaceLiveResize`) and the swap
+chain resize per step.
+
+### ENG-045 - Embedded subtitle choice returns to the default track
+
+Reported: 2026-11-05, owner smoke (an MKV with embedded subtitles, WPF): choosing a track or Off keeps
+reverting to the default embedded track (ENG-039 P5-1 expected the choice to stick, also when made
+before the scan finishes).
+
+### ENG-044 - F11 full screen picks player 1 and sometimes does nothing
+
+Reported: 2026-11-05, owner smoke (ENG-039 batch 4a, WPF and Avalonia): F11 always makes player 1 full
+screen instead of the focused player, and sometimes does nothing; double-click works as expected.
+WinForms passed.
+
 ### ENG-043 - Audio formats that fail on both engines, and a BASS crash on a WMA
 
 Reported: 2026-11-03, owner format sweep during the 037A slice 2 smoke (Windows, WPF player, the
