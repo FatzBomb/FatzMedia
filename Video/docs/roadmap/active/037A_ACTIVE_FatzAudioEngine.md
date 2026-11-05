@@ -94,7 +94,15 @@ Each slice has its own update note (`updates/037A_<n>/StageUpdate.md`) and owner
    MIDI texts/marks, `GetTrackerTime` for the tracker timeline, network playback.
 5. **Video audio.** Push or packet streams with FatzAudio tempo and clock replacing the BASS
    push stream; the video clock follows `fa_stream_get_clock`. Owner smoke for sync at tempo
-   0.75-1.5, seeks, loop wraps and pause/resume. Also the explicit output device for FatzAudio (owner 2026-11-03:
+   0.75-1.5, seeks, loop wraps and pause/resume. Plan (owner 2026-11-05): FFmpeg demuxes every video
+   file (AVI/DivX, MPG, TS included); the audio goes to FatzAudio as a packet stream when it decodes
+   the codec (MP3, AC-3, AAC, ...) and as a push stream of FFmpeg-decoded frames otherwise (MP2 until
+   request 14, DTS, TrueHD, ...). Never FFmpeg handles across the libraries. The same push path
+   replaces the whole-file WAV conversion for audio files FatzAudio cannot decode (no open delay).
+   Normalization for these streams needs request 13 (scan from fed audio, source identity); FatzAudio
+   request 14 asks for MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path and DTS core
+   (`docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`). FatzAudio suggests `BufferMs` 250
+   for video soundtracks. Also the explicit output device for FatzAudio (owner 2026-11-03:
    `AudioOutputDeviceIndex` or a device id mapped to FatzAudio's device list) and one device-event
    source instead of two.
 Normalization (owner decision 2026-11-03; implemented 2026-11-04 as `MediaPlayerConfiguration.Normalization`,

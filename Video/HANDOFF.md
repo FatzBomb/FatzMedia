@@ -21,6 +21,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   - Answered: formats it cannot decode (037A doc), web-stream titles exist, `LoadCdg(bytes)` exists,
     `Tags.Read(bytes)` = `Tags.Read(path)`, stream details in `tags.Info`, a neutral stream costs
     ~0.3-0.5% of a core (no `NoEffects` option needed).
+  - Sent 2026-11-05: requests 13 (scan from fed audio, source identity on packet/push streams) and 14
+    (MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path, DTS core):
+    `docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`; the 037A slice 5 plan uses them.
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
 - **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
