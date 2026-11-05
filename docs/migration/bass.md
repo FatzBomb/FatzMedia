@@ -186,7 +186,8 @@ BASS has no normalization: apps measure each file themselves with a decode pass 
 | BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
 |---|---|---|---|
 | Your own analysis: decode stream (`BASS_STREAM_DECODE`) + `BASS_ChannelGetData`/`GetLevel` loop, compute a gain, then `BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, gain)` | `fa_engine_set_normalization(engine, FA_NORMALIZE_TRACK, -16)` once. Tags, cache and a parallel audio-only background scan; playback starts at once and glides to the exact gain | `engine.SetNormalization(NormalizeMode.Track, -16)` | ✅ |
-| Storing your analysis result and reapplying it next time | `fa_stream_set_loudness` (wins over everything); results cached automatically in `fa_engine_config.cache_directory` | `stream.SetLoudness(lufs)`, `AudioEngineOptions.CacheDirectory` | ✅ |
+| Storing your analysis result and reapplying it next time | `fa_stream_set_loudness` (wins over everything); results cached automatically in `fa_engine_config.cache_directory`: one file, 5 MB by default, songs used least recently dropped first, keyed by the audio so retagged files still hit ([the cache](../features/normalization.md#the-cache)) | `stream.SetLoudness(lufs)`, `AudioEngineOptions.CacheDirectory` | ✅ |
+| Limiting or clearing that stored data | `fa_engine_set_cache_size(engine, bytes)`, `fa_engine_clear_cache(engine)` | `SetCacheSize(bytes)` or `AudioEngineOptions.CacheMaxBytes`, `ClearCache()` | ✅ |
 | Analysing files ahead of playback (library import) | `fa_scan_loudness_path`: audio only, all cores, cached | `engine.ScanLoudness(path)` | ✅ |
 | Your own silence scan (BASS has none): a decode stream + `BASS_ChannelGetLevel`/`GetData` loop to find the first and last sound, then `BASS_ChannelSetPosition` and a `BASS_SYNC_POS` to stop there | `fa_stream_get_silence` between open and play (a few ms: the start and the end only; complete from the analysis cache), then `fa_stream_set_marker` `FA_MARKER_CUE_IN` / `CUE_OUT` ([silence](../features/analysis.md#silence)). `BASS_ChannelGetLevelEx` with `BASS_LEVEL_RMS` over 50 ms is the default mode (`FA_SILENCE_RMS`, clicks and ticks under 200 ms ignored); a peak loop is `FA_SILENCE_PEAK` | `stream.DetectSilence()`, `stream.Markers.CueIn` / `CueOut` | ✅ |
 | Silence regions of a whole song (gaps, a hidden track after minutes of silence) | `fa_analyze_path` / `fa_analyze_stream` with `FA_ANALYZE_SILENCE`, then `fa_analysis_get_silence`; cached | `AnalysisKinds.Silence`, `TrackAnalysis.Silence` | ✅ |
@@ -194,6 +195,7 @@ BASS has no normalization: apps measure each file themselves with a decode pass 
 | The same scan on PCM you feed BASS yourself (`BASS_StreamPutData` from FFmpeg) | `fa_silence_detector_create` / `_feed` (any sample format, the same planes you push) / `_get` | `SilenceDetector.Feed`, `GetResult` | ✅ |
 | `BASS_ATTRIB_VOLDSP` to boost above 1.0 | Normalization gain is separate from `FA_PARAM_VOLUME` and boosts up to +12 dB; volume stays free for fades | automatic | ✅ |
 | Reading ReplayGain tags yourself (`BASS_ChannelGetTags` + parsing) | Read automatically: ID3v2 `TXXX` (also in WAV and AIFF), FLAC and Ogg Vorbis comments, OpusTags, APEv2, MP4 freeform atoms, ASF attributes; RG2 and R128. The raw values are also in `fa_tags_get_item` | automatic | ✅ |
+| Your own "measure first, then play" wait before a song's first play | `fa_engine_set_normalization_start_wait(engine, 200, 6.0)`: a first play waits up to 200 ms (the default) for the final loudness, then starts on the scan so far (`FA_LOUDNESS_PARTIAL`) with the boost capped; the clock waits too; `FA_EVENT_LOUDNESS_PROVISIONAL` says when a guess was used ([when playback starts](../features/normalization.md#when-playback-starts)) | `engine.SetNormalizationStartWait(TimeSpan.FromMilliseconds(200), 6)`, `stream.LoudnessProvisional` | ✅ |
 | BASSloud: `BASS_Loudness_Start` / `GetLevel` (integrated, range, true peak) | `fa_stream_get_loudness`, `fa_scan_loudness_path` (BS.1770-4 / R128) | `GetLoudness()`, `ScanLoudness()` | ✅ integrated, range, true peak |
 | BASSloud: `BASS_Loudness_GetLevel` with `BASS_LOUDNESS_CURRENT` (momentary) or a 3 s window (short-term), on a channel or the output | `fa_stream_get_loudness_meter`, `fa_device_get_loudness_meter`: momentary (400 ms) and short-term (3 s) LUFS of what is heard now ([loudness meters](../features/levels-spectrum.md#loudness-meters)) | `stream.GetLoudnessMeter()`, `output.GetLoudnessMeter()` | ✅ |
 | bass_fx `BASS_FX_BFX_DAMP` (dynamic amplification) on live streams | Running loudness estimate drives the gain for streams that can't be scanned | automatic | ✅ |
@@ -1217,7 +1219,7 @@ Every sync is an event on the stream's one event callback. In .NET each is a nor
 | `MIDI_*` | `FA_EVENT_MIDI_TEXT` | `MidiTextReached` | Lyrics and text |
 | `MIXTIME` (flag) | not needed | | Callbacks never run on the audio thread. Sample-exact actions are scheduled instead |
 | `ONETIME` (flag) | position events are always one-shot | | |
-| (new) | `FA_EVENT_LOOPED`, `_MARKER`, `_STARTED`, `_DECODE_ERROR`, `_LOUDNESS_FINAL`, `_SEEK_FAILED`, `_CDG_CHANGED` | | See [events](../features/events.md) |
+| (new) | `FA_EVENT_LOOPED`, `_MARKER`, `_STARTED`, `_DECODE_ERROR`, `_LOUDNESS_FINAL`, `_LOUDNESS_PROVISIONAL`, `_SEEK_FAILED`, `_CDG_CHANGED` | | See [events](../features/events.md) |
 
 ### Appendix G: positions (`BASS_POS_*`)
 

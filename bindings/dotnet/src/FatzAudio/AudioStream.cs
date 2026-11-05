@@ -33,6 +33,24 @@ public sealed class StreamEventArgs : EventArgs
     public long Value { get; }
 }
 
+/// <summary>Event data for <see cref="AudioStream.LoudnessProvisional"/>.</summary>
+public sealed class LoudnessProvisionalEventArgs : EventArgs
+{
+    internal LoudnessProvisionalEventArgs(LoudnessSource source, TimeSpan position, long frame)
+    {
+        Source = source;
+        Position = position;
+        Frame = frame;
+    }
+
+    /// <summary>The value playback started on: <see cref="LoudnessSource.Partial"/>, <see cref="LoudnessSource.Estimate"/> or <see cref="LoudnessSource.None"/>.</summary>
+    public LoudnessSource Source { get; }
+    /// <summary>Stream position where playback started.</summary>
+    public TimeSpan Position { get; }
+    /// <summary>Stream position where playback started, in frames.</summary>
+    public long Frame { get; }
+}
+
 /// <summary>Event data for <see cref="AudioStream.MetadataChanged"/>.</summary>
 public sealed class MetadataChangedEventArgs : EventArgs
 {
@@ -1988,7 +2006,7 @@ public unsafe partial class AudioStream : IDisposable
     /// <summary>
     /// The best loudness known for this stream right now and the gain normalization gives it. Starts the
     /// analysis if it has not run yet (also with normalization off), and never waits for it: until
-    /// <see cref="LoudnessFinal"/> is raised the value may be an estimate or unknown.
+    /// <see cref="LoudnessFinal"/> is raised the value may be partial, an estimate or unknown.
     /// </summary>
     /// <returns>The loudness.</returns>
     public Loudness GetLoudness()
@@ -2192,6 +2210,8 @@ public unsafe partial class AudioStream : IDisposable
     public event EventHandler<StreamEventArgs>? DecodeError;
     /// <summary>Raised when the stream's final loudness is known (from tags, the cache or a scan); <see cref="GetLoudness"/> then returns it. Raised on the engine's event thread (never the audio thread); handlers may call any FatzAudio method but should return quickly, since they delay later events.</summary>
     public event EventHandler? LoudnessFinal;
+    /// <summary>Raised when a normalized stream is first heard on a loudness that is not final yet (<see cref="LoudnessProvisionalEventArgs.Source"/> says which: <see cref="LoudnessSource.Partial"/>, <see cref="LoudnessSource.Estimate"/> or <see cref="LoudnessSource.None"/>); <see cref="LoudnessFinal"/> follows when the scan is done (never for live, web, disc and app-I/O streams, which are not scanned). See <see cref="AudioEngine.SetNormalizationStartWait"/>. Raised on the engine's event thread (never the audio thread); handlers may call any FatzAudio method but should return quickly, since they delay later events.</summary>
+    public event EventHandler<LoudnessProvisionalEventArgs>? LoudnessProvisional;
     /// <summary>Raised when a position requested with <see cref="AddPositionEvent"/> is reached (<see cref="StreamEventArgs.Frame"/> is that position, in frames). Raised on the engine's event thread (never the audio thread); handlers may call any FatzAudio method but should return quickly, since they delay later events.</summary>
     public event EventHandler<StreamEventArgs>? PositionReached;
     /// <summary>Raised when a scheduled, crossfaded or queued start happened (<see cref="PlayAt"/>, <see cref="CrossfadeTo"/>, <see cref="QueueNext"/>). Raised on the engine's event thread (never the audio thread); handlers may call any FatzAudio method but should return quickly, since they delay later events.</summary>
@@ -2350,6 +2370,9 @@ public unsafe partial class AudioStream : IDisposable
                 case NativeConstants.EventDecodeError: DecodeError?.Invoke(this, new StreamEventArgs(FramesToTime(frame), frame, value, error: ToError(value))); break;
                 case NativeConstants.EventDeviceChanged: DeviceChanged?.Invoke(this, new StreamEventArgs(FramesToTime(frame), frame, value)); break;
                 case NativeConstants.EventLoudnessFinal: LoudnessFinal?.Invoke(this, EventArgs.Empty); break;
+                case NativeConstants.EventLoudnessProvisional:
+                    LoudnessProvisional?.Invoke(this, new LoudnessProvisionalEventArgs((LoudnessSource)value, FramesToTime(frame), frame));
+                    break;
                 case NativeConstants.EventRampDone:
                     CompleteRamp(value);
                     RampCompleted?.Invoke(this, new StreamEventArgs(FramesToTime(frame), frame, value));

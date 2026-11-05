@@ -164,8 +164,10 @@ typedef struct fa_engine_config {
     uint32_t mix_sample_rate;     /* 0 = device native */
     uint32_t period_ms;           /* 0 = backend default */
     uint32_t worker_threads;      /* decode worker threads, 0 = number of cores (max 8) */
-    const char* cache_directory;  /* loudness scan cache (one small file per scanned
-                                     file, keyed by content), NULL = disabled.
+    const char* cache_directory;  /* loudness scan cache (one file, loudness.fac, of
+                                     48 bytes per song, at most 5 MB by default:
+                                     fa_engine_set_cache_size) and track analysis
+                                     results, keyed by content. NULL = disabled.
                                      Created if missing (one level).
                                      The string is copied */
     uint32_t flags;               /* fa_engine_flags */
@@ -1961,9 +1963,14 @@ FA_API fa_result FA_CALL fa_mixer_automix_now(fa_mixer* mixer);
  *      scanned on all cores at once, and the result is written to the cache,
  *   5. while none of those is known yet, and for live or app-I/O streams that
  *      cannot be scanned: a running estimate over the last 15 s of decoded audio.
- * Playback never waits for any of this. It starts at the best value known at that
- * moment and glides to the exact gain when the scan finishes (at most 12 dB/s
- * down, 6 dB/s up), so no jump is heard. FA_EVENT_LOUDNESS_FINAL is raised then.
+ * A first play waits briefly (200 ms by default) for a final value; otherwise playback
+ * never waits for any of this. It starts at the best value known at that moment and
+ * glides to the exact gain when the scan finishes (at most 12 dB/s down, 6 dB/s up),
+ * so no jump is heard. FA_EVENT_LOUDNESS_FINAL is raised then.
+ * While the scan runs, the best value is the loudness of the chunks scanned so far
+ * (FA_LOUDNESS_PARTIAL, spread over the whole file), else the running estimate.
+ * fa_engine_set_normalization_start_wait sets the first play's wait and can cap the
+ * boost of a value that is not final yet.
  *
  * Gain = target - loudness, limited to -30..+12 dB. A boost can push peaks over
  * full scale, so each device also runs a true-peak limiter (fa_engine_set_limiter). */
@@ -1981,7 +1988,8 @@ typedef enum fa_loudness_source {
     FA_LOUDNESS_CACHE,     /* an earlier scan of the same content */
     FA_LOUDNESS_SCAN,      /* a full scan */
     FA_LOUDNESS_APP,       /* fa_stream_set_loudness */
-    FA_LOUDNESS_DIALNORM   /* a Dolby stream's dialogue level (fa_engine_set_dialnorm) */
+    FA_LOUDNESS_DIALNORM,  /* a Dolby stream's dialogue level (fa_engine_set_dialnorm) */
+    FA_LOUDNESS_PARTIAL    /* the scan so far: the chunks finished, spread over the file */
 } fa_loudness_source;
 
 typedef struct fa_loudness {
@@ -1989,7 +1997,8 @@ typedef struct fa_loudness {
     double integrated_lufs;  /* integrated loudness; -INFINITY for digital silence */
     double range_lu;         /* loudness range (EBU Tech 3342) */
     double true_peak_dbtp;   /* true peak; from tags this is the sample peak */
-    int32_t is_final;        /* 1 = TAGS, CACHE, SCAN or APP; 0 = estimate or nothing yet */
+    int32_t is_final;        /* 1 = TAGS, CACHE, SCAN, APP or DIALNORM; 0 = PARTIAL,
+                                ESTIMATE or nothing yet */
     int32_t source;          /* fa_loudness_source */
     double gain_db;          /* gain normalization applies to this stream with the
                                 engine's current settings (0 when off or opted out) */
@@ -2000,6 +2009,47 @@ typedef struct fa_loudness {
  * EBU broadcast. Valid range -60..0. Takes effect on playing streams at once,
  * with the same glide. Starts the analysis of streams that are attached. */
 FA_API fa_result FA_CALL fa_engine_set_normalization(fa_engine* engine, fa_normalize_mode mode, double target_lufs);
+
+/* The loudness cache in fa_engine_config.cache_directory is one file ("loudness.fac",
+ * 48 bytes per song), read into memory once, on the first lookup (a scan thread),
+ * and appended to as songs are measured. Engines in one process on the same folder
+ * share one cache (the limit and a clear apply to all of them); several apps may
+ * share the folder too (a file lock, loudness.fac.lock, keeps their writes apart).
+ * When it outgrows max_bytes it is rewritten keeping the songs used most recently (a
+ * cache hit or a scan) within 3/4 of the limit, so songs played often are never
+ * dropped. max_bytes: 0 = default, 5 MB (about 109,000 songs); at least 16 KB.
+ * Without a cache directory these do nothing and return FA_OK. */
+FA_API fa_result FA_CALL fa_engine_set_cache_size(fa_engine* engine, uint64_t max_bytes);
+/* Deletes the cached loudness of every song and the cached track analysis
+ * (fa_analyze_*) in the cache directory, FatzAudio's own files only. Songs are
+ * measured again as they are played. */
+FA_API fa_result FA_CALL fa_engine_clear_cache(fa_engine* engine);
+
+/* Holds the first audio of a normalized stream until its loudness is final, for at
+ * most wait_ms (default 200; 0 starts at once). 200 ms still feels instant, and on a
+ * current desktop most songs are measured by then; tagged and cached songs start at
+ * once. If more than 75% of the audio is scanned when the wait runs out, it waits
+ * for the final value up to wait_ms longer, so a guess is not followed at once by
+ * the final value. Otherwise the stream starts on the best value so far
+ * (FA_LOUDNESS_PARTIAL, else the estimate) and glides to the final gain as usual.
+ * FA_EVENT_LOUDNESS_PROVISIONAL says it started on such a value.
+ *
+ * The wait applies to fa_stream_play of a stream that has not been heard since it was
+ * opened, while its scan is still running. It counts from the moment the stream would
+ * have started. Meanwhile the state is FA_STATE_PLAYING but nothing is mixed: the
+ * position and fa_stream_get_clock stay at the start, so CD+G and video wait with it.
+ * Never held: scheduled starts (fa_stream_play_at, crossfades, fa_stream_set_next,
+ * sync and auto-mix), streams faded or crossfaded away while held (they end as told),
+ * streams on a DJ mixer deck, streams opened with
+ * FA_OPEN_NO_NORMALIZE, and streams with nothing to wait for (live, web, disc and
+ * app-I/O streams, which are never scanned). Takes effect at the next start.
+ *
+ * max_provisional_boost_db caps the gain while the loudness is not final, with or
+ * without a wait: 0 allows only cuts until the value is final, 6 keeps a guess from
+ * boosting a quiet intro by the full 12 dB. Valid 0..12, default 12 (no extra cap).
+ * wait_ms: 0..10000. */
+FA_API fa_result FA_CALL fa_engine_set_normalization_start_wait(fa_engine* engine, uint32_t wait_ms,
+                                                                double max_provisional_boost_db);
 
 /* Dolby streams (AC-3, E-AC-3) state their dialogue level ("dialnorm", -1 to -31
  * dBFS), which broadcasters set to the programme's loudness (ATSC A/85). With this
@@ -3538,6 +3588,7 @@ FA_API fa_result FA_CALL fa_stream_get_tracker_orders(fa_stream* stream, uint32_
  * FA_EVENT_DECODE_ERROR    position               the fa_result of the error
  * FA_EVENT_DEVICE_CHANGED  position               0 = moved to the new default, 1 = device lost, reopened on the default
  * FA_EVENT_LOUDNESS_FINAL  position               0
+ * FA_EVENT_LOUDNESS_PROVISIONAL position          the fa_loudness_source it started on (PARTIAL, ESTIMATE, NONE)
  * FA_EVENT_RAMP_DONE       position               fa_ramp.tag of the finished ramp
  * FA_EVENT_STARTED         position               0
  * FA_EVENT_MIDI_TEXT       the text's frame       index for fa_stream_get_midi_text
@@ -3550,7 +3601,7 @@ FA_API fa_result FA_CALL fa_stream_get_tracker_orders(fa_stream* stream, uint32_
  * FA_EVENT_TRACKER_SYNC     the row's first frame  channel << 16 | the Zxx parameter (FA_TRACKER_CELL_EVENTS)
  *
  * Who raises what: ENDED, POSITION, MARKER, LOOPED, CDG_CHANGED (when asked for), LOUDNESS_FINAL,
- * RAMP_DONE, STARTED, SEEK_FAILED and DEVICE_CHANGED from streams of every kind; MIDI_TEXT from MIDI
+ * LOUDNESS_PROVISIONAL (normalized streams), RAMP_DONE, STARTED, SEEK_FAILED and DEVICE_CHANGED from streams of every kind; MIDI_TEXT from MIDI
  * streams played on a device (decode-only streams list them with fa_stream_get_midi_text);
  * TRACKER_ROW, TRACKER_INSTRUMENT and TRACKER_SYNC from tracker modules played on a device (when
  * asked for); METADATA from web streams; STALLED and RESUMED from push, packet and web streams;
@@ -3580,7 +3631,9 @@ typedef enum fa_event_type {
     FA_EVENT_AUTOMIX_DONE,    /* auto-mix: the transition is done */
     FA_EVENT_DECK_EMPTY,      /* auto-mix: the idle deck needs its next song */
     FA_EVENT_TRACKER_INSTRUMENT, /* a note with an instrument is heard in a tracker module (FA_TRACKER_CELL_EVENTS) */
-    FA_EVENT_TRACKER_SYNC     /* a tracker module's Zxx command is heard (FA_TRACKER_CELL_EVENTS) */
+    FA_EVENT_TRACKER_SYNC,    /* a tracker module's Zxx command is heard (FA_TRACKER_CELL_EVENTS) */
+    FA_EVENT_LOUDNESS_PROVISIONAL /* a normalized stream is first heard on a loudness that is not
+                                     final yet (value = its fa_loudness_source) */
 } fa_event_type;
 
 typedef struct fa_event {

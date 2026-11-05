@@ -222,6 +222,8 @@ static fa_result stream_create(fa_engine* engine, const fa_open_options* options
     fa_store_float(&s->norm_track, NAN);
     fa_store_float(&s->norm_album, NAN);
     fa_store_float(&s->norm_est, NAN);
+    fa_store_float(&s->norm_partial, NAN);
+    s->norm_hold_end = INT64_MIN;
     fa_store32(&s->state, FA_STATE_STOPPED);
     fa_store64(&s->meta_frame, INT64_MAX);
     for (i = 0; i < FA_MARKER_COUNT; i++) fa_store64(&s->markers[i], FA_FRAMES_UNSET);
@@ -302,8 +304,7 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
  * known before playback even starts. */
 static void stream_opened(struct fa_stream* s)
 {
-    if (fa_load32(&s->engine->norm_mode) != FA_NORMALIZE_OFF && !(s->flags & (FA_OPEN_NO_NORMALIZE | FA_OPEN_DECODE_ONLY)))
-        fa_stream_start_analysis(s);
+    if (fa_stream_norm_applies(s)) fa_stream_start_analysis(s);
 }
 
 
@@ -4698,6 +4699,30 @@ static void mix_steady(struct fa_stream* s, fa_device* dev, float* out, int64_t 
     fa_tmap_release(tmap_of(s), played + n);
 }
 
+/* fa_engine_set_normalization_start_wait: a first play of a stream whose scan still
+ * runs waits for the final loudness, for at most the engine's wait from the first
+ * callback it would have played in. A scan more than FA_NORM_SETTLE_PERMILLE done by
+ * then is waited for up to once more the wait, so a guess is not followed at once by
+ * the final value. Nothing is mixed meanwhile, so the position and the clock stay
+ * where they are. Returns 1 while held. */
+#define FA_NORM_SETTLE_PERMILLE 750
+static int norm_start_held(struct fa_stream* s)
+{
+    int64_t wait_ns, now;
+    struct fa_bus* bus;
+    const fa_param_voice* fade = &s->lanes[FA_LANE_FADE].v;
+    if (s->norm_heard) return 0;
+    wait_ns = (int64_t)(uint32_t)fa_load32(&s->engine->norm_start_wait_ms) * 1000000;
+    if (!wait_ns || !fa_load32(&s->norm_pending) || !fa_stream_norm_applies(s)) return 0;
+    bus = (struct fa_bus*)fa_load_ptr(&s->bus);
+    if (bus && bus->deck) return 0;          /* a DJ deck starts when told */
+    if (fade->active && (fade->flags & FA_LANE_END_STREAM)) return 0;  /* faded or crossfaded away meanwhile */
+    now = fa_monotonic_ns();
+    if (s->norm_hold_end == INT64_MIN) s->norm_hold_end = now + wait_ns;
+    if (now < s->norm_hold_end) return 1;
+    return fa_load32(&s->norm_progress) > FA_NORM_SETTLE_PERMILLE && now < s->norm_hold_end + wait_ns;
+}
+
 /* Mixes `s` into `out`; *mixed_off and *mixed_n say which frames of the callback
  * carried its audio. */
 static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t frames, int64_t* mixed_off,
@@ -4729,6 +4754,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
             fa_cas32(&s->state, FA_STATE_SCHEDULED, FA_STATE_PLAYING)) {
             off = start > clock ? start - clock : 0;
             state = FA_STATE_PLAYING;
+            s->norm_hold_end = INT64_MIN + 1;   /* a scheduled start never waits for loudness */
             push_event(dev, s, FA_EVENT_STARTED, 0);
         }
     }
@@ -4738,7 +4764,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         state = FA_STATE_PLAYING;
         if (s->stalled) { s->stalled = 0; push_event(dev, s, FA_EVENT_RESUMED, 0); }
     }
-    playing = state == FA_STATE_PLAYING;
+    playing = state == FA_STATE_PLAYING && !norm_start_held(s);
     audible = playing && s->was_audible;
     for (p = 0; p < FA_STREAM_LANES; p++) {
         int64_t tag = 0;
@@ -4752,6 +4778,12 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         for (p = 0; p < FA_STREAM_LANES; p++) fa_store_float(&s->lanes[p].current, s->lanes[p].v.value);
         s->was_audible = 0;
         return;
+    }
+    if (!s->norm_heard) {
+        /* First heard since open: on a loudness that is not final yet? */
+        int src = fa_stream_norm_applies(s) ? fa_stream_norm_provisional(s) : -1;
+        s->norm_heard = 1;
+        if (src >= 0) push_event(dev, s, FA_EVENT_LOUDNESS_PROVISIONAL, src);
     }
     norm_target = fa_stream_norm_target_db(s);
     if (!s->was_audible) s->norm_db = norm_target; /* nothing heard yet: start at the right gain */

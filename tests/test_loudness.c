@@ -471,10 +471,12 @@ static void test_tag_parsers(void)
 
 /* ---- playback ------------------------------------------------------------------------ */
 
+/* Up to a minute: an emulated arm64 Android scans a 20 s song in several seconds,
+ * and this returns as soon as the value is final. */
 static int wait_final(fa_stream* s, fa_loudness* l)
 {
     int i;
-    for (i = 0; i < 1000; i++) {
+    for (i = 0; i < 12000; i++) {
         fa_stream_get_loudness(s, l);
         if (l->is_final) return 1;
         fa_sleep_ms(5);
@@ -699,6 +701,663 @@ static void test_close_during_scan(void)
     t0 = fa_monotonic_ns();
     for (i = 5; i >= 0; i--) fa_stream_close(s[i]);
     CHECK((fa_monotonic_ns() - t0) / 1000000 < 2000);
+}
+
+/* ---- the loudness cache file ---------------------------------------------------------- */
+
+static fa_loudness lc_value(double lufs)
+{
+    fa_loudness l;
+    memset(&l, 0, sizeof(l));
+    l.struct_size = sizeof(l);
+    l.integrated_lufs = lufs;
+    l.range_lu = 3.5;
+    l.true_peak_dbtp = -1.25;
+    return l;
+}
+
+static long file_size(const char* path)
+{
+    FILE* f = fopen(path, "rb");
+    long n;
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    n = ftell(f);
+    fclose(f);
+    return n;
+}
+
+static void test_lcache_keeps_recently_used(void)
+{
+    fa_lcache* c;
+    fa_loudness l = lc_value(-9.0), got;
+    uint64_t k;
+    long size;
+    fa_mkdir_utf8("lcache-lru");
+    c = fa_lcache_new("lcache-lru");
+    CHECK(c != NULL);
+    fa_lcache_clear(c);
+    fa_lcache_set_limit(c, 16 * 1024);              /* 341 records; rewritten down to 255 */
+    for (k = 0; k < 300; k++) { l.integrated_lufs = -(double)k / 10.0; fa_lcache_put(c, k, 1000, -1, &l); }
+    CHECK(fa_lcache_get(c, 0, 1000, -1, &got));     /* the first song, played again */
+    CHECK_NEAR(got.integrated_lufs, 0.0, 1e-6);
+    CHECK_NEAR(got.range_lu, 3.5, 1e-6);
+    CHECK_NEAR(got.true_peak_dbtp, -1.25, 1e-6);
+    for (k = 300; k < 400; k++) fa_lcache_put(c, k, 1000, -1, &l);
+    size = file_size("lcache-lru/loudness.fac");
+    CHECK(size > 0 && size <= 16 * 1024);
+    CHECK(fa_lcache_get(c, 0, 1000, -1, &got));     /* used recently: kept */
+    CHECK(!fa_lcache_get(c, 1, 1000, -1, &got));    /* the least recently used went first */
+    CHECK(fa_lcache_get(c, 399, 1000, -1, &got));
+    CHECK(!fa_lcache_get(c, 0, 1001, -1, &got));    /* the size is part of the key */
+    CHECK(!fa_lcache_get(c, 0, 1000, 2, &got));     /* and the audio track */
+    fa_lcache_free(c);
+
+    /* A new reader (another run of the app) sees the same. */
+    c = fa_lcache_new("lcache-lru");
+    fa_lcache_set_limit(c, 16 * 1024);
+    CHECK(fa_lcache_get(c, 0, 1000, -1, &got));
+    CHECK(!fa_lcache_get(c, 1, 1000, -1, &got));
+    CHECK(fa_lcache_get(c, 399, 1000, -1, &got));
+    fa_lcache_clear(c);
+    CHECK_EQ(file_size("lcache-lru/loudness.fac"), -1);
+    CHECK(!fa_lcache_get(c, 399, 1000, -1, &got));
+    fa_lcache_free(c);
+}
+
+static void test_lcache_two_writers_and_a_torn_record(void)
+{
+    fa_lcache *a, *b;
+    fa_loudness l = lc_value(-11.0), got;
+    FILE* f;
+    fa_mkdir_utf8("lcache-share");
+    a = fa_lcache_new("lcache-share");
+    b = fa_lcache_new("lcache-share/.");               /* another spelling: as another process would */
+    CHECK(a && b && a != b);
+    fa_lcache_clear(a);
+    fa_lcache_put(a, 1, 10, -1, &l);
+    l.integrated_lufs = -12.0;
+    fa_lcache_put(b, 2, 10, -1, &l);                 /* b reads the file now, with a's song */
+    l.integrated_lufs = -13.0;
+    fa_lcache_put(a, 3, 10, -1, &l);
+    /* A crash halfway through an append: a cut record, then more appends after it. */
+    f = fopen("lcache-share/loudness.fac", "ab");
+    CHECK(f != NULL);
+    fwrite("FALR\1\2\3\4\5\6\7", 1, 11, f);
+    fclose(f);
+    l.integrated_lufs = -14.0;
+    fa_lcache_put(b, 4, 10, -1, &l);
+    fa_lcache_free(a);
+    fa_lcache_free(b);
+
+    a = fa_lcache_new("lcache-share");
+    CHECK(fa_lcache_get(a, 1, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -11.0, 1e-6);
+    CHECK(fa_lcache_get(a, 2, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -12.0, 1e-6);
+    CHECK(fa_lcache_get(a, 3, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -13.0, 1e-6);
+    CHECK(fa_lcache_get(a, 4, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -14.0, 1e-6);
+    /* The damaged file was rewritten clean on load. */
+    CHECK_EQ(file_size("lcache-share/loudness.fac"), 16 + 4 * 48);
+    fa_lcache_clear(a);
+    fa_lcache_free(a);
+}
+
+/* Engines on one folder share one cache, however the folder is spelled. */
+static void test_lcache_one_per_folder(void)
+{
+    fa_lcache *a, *b;
+    fa_engine_config cfg;
+    fa_engine *e1, *e2;
+    fa_loudness l = lc_value(-9.5), got;
+    fa_mkdir_utf8("lcache-one");
+    a = fa_lcache_new("lcache-one");
+    b = fa_lcache_new("lcache-one/");
+    CHECK(a && a == b);
+    fa_lcache_clear(a);
+    fa_lcache_put(a, 7, 10, -1, &l);
+    fa_lcache_free(a);                                /* b still holds it */
+    CHECK(fa_lcache_get(b, 7, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -9.5, 1e-6);
+    fa_lcache_free(b);
+
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.cache_directory = "lcache-one";
+    CHECK_EQ(fa_engine_create(&cfg, &e1), FA_OK);
+    cfg.cache_directory = "lcache-one/";
+    CHECK_EQ(fa_engine_create(&cfg, &e2), FA_OK);
+    CHECK(e1->lcache && e1->lcache == e2->lcache);
+    fa_engine_destroy(e1);
+    CHECK(fa_lcache_get(e2->lcache, 7, 10, -1, &got));   /* from the file, by the engine left */
+    CHECK_EQ(fa_engine_clear_cache(e2), FA_OK);
+    fa_engine_destroy(e2);
+}
+
+/* Two processes writing at once (two caches on one folder, spelled two ways), with
+ * enough rewrites in between: no song either one wrote is lost. */
+typedef struct lc_writer { fa_lcache* c; uint64_t first; } lc_writer;
+static void lc_write_many(void* arg)
+{
+    lc_writer* w = (lc_writer*)arg;
+    fa_loudness l = lc_value(-20.0);
+    uint64_t i;
+    int pass;
+    for (pass = 0; pass < 8; pass++) {          /* each pass makes the one before stale: rewrites */
+        for (i = 0; i < 400; i++) {
+            l.integrated_lufs = -20.0 - pass - (double)i / 1000.0;
+            fa_lcache_put(w->c, w->first + i, 10, -1, &l);
+        }
+    }
+}
+
+static void test_lcache_two_processes(void)
+{
+    lc_writer w[2];
+    fa_thread t[2];
+    fa_lcache* c;
+    fa_loudness got;
+    uint64_t i;
+    int k, lost = 0, wrong = 0;
+    fa_mkdir_utf8("lcache-race");
+    w[0].c = fa_lcache_new("lcache-race");
+    w[1].c = fa_lcache_new("lcache-race/.");
+    CHECK(w[0].c && w[1].c && w[0].c != w[1].c);
+    fa_lcache_clear(w[0].c);
+    fa_lcache_set_limit(w[0].c, 128 * 1024);       /* room for all 800 songs, not for all passes */
+    fa_lcache_set_limit(w[1].c, 128 * 1024);
+    w[0].first = 1000;
+    w[1].first = 5000;
+    for (k = 0; k < 2; k++) CHECK_EQ(fa_thread_create(&t[k], lc_write_many, &w[k]), 0);
+    for (k = 0; k < 2; k++) fa_thread_join(&t[k]);
+    for (k = 0; k < 2; k++) fa_lcache_free(w[k].c);
+
+    c = fa_lcache_new("lcache-race/./.");          /* a third process, later */
+    for (k = 0; k < 2; k++) {
+        for (i = 0; i < 400; i++) {
+            if (!fa_lcache_get(c, w[k].first + i, 10, -1, &got)) lost++;
+            else if (fabs(got.integrated_lufs - (-27.0 - (double)i / 1000.0)) > 1e-4) wrong++;
+        }
+    }
+    CHECK_EQ(lost, 0);
+    CHECK_EQ(wrong, 0);
+    CHECK(file_size("lcache-race/loudness.fac") <= 128 * 1024);
+    fa_lcache_clear(c);
+    fa_lcache_free(c);
+}
+
+/* A damaged file is never trusted: a bad header is dropped and the file written again,
+ * garbage between records is skipped. */
+static void test_lcache_damaged_file(void)
+{
+    fa_lcache* c;
+    fa_loudness l = lc_value(-8.0), got;
+    uint8_t junk[4096];
+    FILE* f;
+    size_t i;
+    uint32_t x = 12345;
+    for (i = 0; i < sizeof(junk); i++) { x = x * 1103515245u + 12345u; junk[i] = (uint8_t)(x >> 16); }
+    fa_mkdir_utf8("lcache-bad");
+
+    /* Cut inside the header. */
+    f = fopen("lcache-bad/loudness.fac", "wb");
+    CHECK(f != NULL);
+    fwrite("FatzA", 1, 5, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(!fa_lcache_get(c, 1, 10, -1, &got));
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16);   /* written again, empty */
+    fa_lcache_put(c, 1, 10, -1, &l);
+    fa_lcache_free(c);
+
+    /* Junk where the header should be: another program's file, or a damaged disk. */
+    f = fopen("lcache-bad/loudness.fac", "wb");
+    CHECK(f != NULL);
+    fwrite(junk, 1, sizeof(junk), f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(!fa_lcache_get(c, 1, 10, -1, &got));
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16);
+    fa_lcache_put(c, 2, 10, -1, &l);
+    fa_lcache_free(c);
+
+    /* A good header, junk, a good record, more junk with a stray marker in it. */
+    f = fopen("lcache-bad/loudness.fac", "ab");
+    CHECK(f != NULL);
+    fwrite(junk, 1, 1000, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad/.");
+    l.integrated_lufs = -7.0;
+    fa_lcache_put(c, 3, 10, -1, &l);
+    fa_lcache_free(c);
+    f = fopen("lcache-bad/loudness.fac", "ab");
+    CHECK(f != NULL);
+    memcpy(junk + 100, "FALR", 4);
+    fwrite(junk, 1, 2000, f);
+    fclose(f);
+    c = fa_lcache_new("lcache-bad");
+    CHECK(fa_lcache_get(c, 2, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -8.0, 1e-6);
+    CHECK(fa_lcache_get(c, 3, 10, -1, &got)); CHECK_NEAR(got.integrated_lufs, -7.0, 1e-6);
+    CHECK_EQ(file_size("lcache-bad/loudness.fac"), 16 + 2 * 48);   /* the junk is gone */
+    fa_lcache_clear(c);
+    fa_lcache_free(c);
+}
+
+/* A full 5 MB cache written as the format says, then read: how long the first lookup takes. */
+static void put32le(uint8_t* p, uint32_t v) { int i; for (i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (i * 8)); }
+static void test_lcache_load_time(void)
+{
+    const uint32_t n = (5u * 1024u * 1024u - 16u) / 48u;
+    uint8_t h[16], r[48];
+    uint32_t i;
+    float v;
+    fa_lcache* c;
+    fa_loudness got;
+    int64_t t0;
+    double first_ms;
+    FILE* f;
+    fa_mkdir_utf8("lcache-big");
+    f = fopen("lcache-big/loudness.fac", "wb");
+    CHECK(f != NULL);
+    memset(h, 0, sizeof(h));
+    memcpy(h, "FatzAudio-LC", 12);
+    put32le(h + 12, 3);
+    fwrite(h, 1, 16, f);
+    for (i = 0; i < n; i++) {
+        uint64_t key = 0x9E3779B97F4A7C15ULL * (i + 1);
+        memset(r, 0, sizeof(r));
+        memcpy(r, "FALR", 4);
+        put32le(r + 4, 29000000u + i / 100);
+        put32le(r + 8, (uint32_t)key); put32le(r + 12, (uint32_t)(key >> 32));
+        put32le(r + 16, 4000000u + i);
+        put32le(r + 24, 0xFFFFFFFFu);
+        v = -14.0f;
+        { uint32_t b; memcpy(&b, &v, 4); put32le(r + 28, b); }
+        put32le(r + 44, (uint32_t)fa_fnv1a(0xcbf29ce484222325ULL, r, 44));
+        fwrite(r, 1, 48, f);
+    }
+    fclose(f);
+    c = fa_lcache_new("lcache-big");
+    t0 = fa_monotonic_ns();
+    CHECK(fa_lcache_get(c, 0x9E3779B97F4A7C15ULL * 1000, 4000000 + 999, -1, &got));
+    first_ms = (double)(fa_monotonic_ns() - t0) / 1e6;
+    CHECK_NEAR(got.integrated_lufs, -14.0, 1e-6);
+    t0 = fa_monotonic_ns();
+    CHECK(fa_lcache_get(c, 0x9E3779B97F4A7C15ULL * 2000, 4000000 + 1999, -1, &got));
+    printf("  5 MB cache, %u songs: first lookup (reads the file) %.1f ms, the next %.3f ms\n", n, first_ms,
+           (double)(fa_monotonic_ns() - t0) / 1e6);
+    CHECK(first_ms < 2000.0);
+    fa_lcache_clear(c);
+    fa_lcache_free(c);
+}
+
+/* ---- content keys ------------------------------------------------------------------- */
+
+static int key_of(const uint8_t* p, size_t n, uint64_t* key, int64_t* size)
+{
+    fa_source src;
+    int ok;
+    if (fa_source_open_memory_ref(&src, p, n) != FA_OK) return 0;
+    ok = fa_content_key(&src, key, size);
+    fa_source_close(&src);
+    return ok;
+}
+
+/* Fake coded audio: bytes that change everywhere with `seed`. */
+static void fill_audio(uint8_t* p, size_t n, uint32_t seed)
+{
+    size_t i;
+    for (i = 0; i < n; i++) { seed = seed * 1664525u + 1013904223u; p[i] = (uint8_t)(seed >> 24); }
+}
+
+static void test_key_ignores_tags(void)
+{
+    enum { AUDIO = 300000 };
+    uint8_t* a = (uint8_t*)malloc(AUDIO + 4096);
+    uint8_t* b = (uint8_t*)malloc(AUDIO + 4096);
+    uint64_t ka, kb;
+    int64_t sa, sb;
+    size_t na, nb;
+    CHECK(a && b);
+    /* MP3: ID3v2 (10 + 20 bytes) + audio + ID3v1, retagged as ID3v2 (10 + 200) + audio + APEv2 + ID3v1. */
+    memcpy(a, "ID3\4\0\0\0\0\0\x14", 10);
+    memset(a + 10, 'x', 20);
+    fill_audio(a + 30, AUDIO, 7);
+    memcpy(a + 30 + AUDIO, "TAG", 3);
+    memset(a + 33 + AUDIO, 'y', 125);
+    na = 30 + AUDIO + 128;
+    memcpy(b, "ID3\4\0\0\0\0\x01\x48", 10);      /* 200 = 1 << 7 | 72 */
+    memset(b + 10, 'z', 200);
+    fill_audio(b + 210, AUDIO, 7);
+    memset(b + 210 + AUDIO, 'i', 40);                /* APEv2 items, then its 32-byte footer */
+    memcpy(b + 250 + AUDIO, "APETAGEX", 8);
+    put32le(b + 258 + AUDIO, 2000);
+    put32le(b + 262 + AUDIO, 72);                    /* items + footer */
+    put32le(b + 266 + AUDIO, 1);
+    put32le(b + 270 + AUDIO, 0);
+    memset(b + 274 + AUDIO, 0, 8);
+    memcpy(b + 282 + AUDIO, "TAG", 3);
+    memset(b + 285 + AUDIO, 'q', 125);
+    nb = 282 + AUDIO + 128;
+    CHECK(key_of(a, na, &ka, &sa));
+    CHECK(key_of(b, nb, &kb, &sb));
+    CHECK_EQ(sa, AUDIO);
+    CHECK_EQ(sb, AUDIO);
+    CHECK(ka == kb);                                 /* retagged: the same song */
+    fill_audio(b + 210, AUDIO, 8);                   /* encoded again: another song */
+    CHECK(key_of(b, nb, &kb, &sb));
+    CHECK(ka != kb);
+
+    /* FLAC: a bigger comment block does not matter. */
+    memcpy(a, "fLaC\x80\0\0\x08", 8);
+    memset(a + 8, 1, 8);
+    fill_audio(a + 16, AUDIO, 9);
+    memcpy(b, "fLaC\x04\0\0\x40", 8);
+    memset(b + 8, 2, 64);
+    memcpy(b + 72, "\x81\0\0\x08", 4);
+    memset(b + 76, 3, 8);
+    fill_audio(b + 84, AUDIO, 9);
+    CHECK(key_of(a, 16 + AUDIO, &ka, &sa));
+    CHECK(key_of(b, 84 + AUDIO, &kb, &sb));
+    CHECK(ka == kb);
+    free(a);
+    free(b);
+}
+
+static void test_key_hashes_all_of_a_wav(void)
+{
+    /* A WAV turned down in the middle, same length, the 16 sample points untouched:
+     * a new key (the samples are hashed whole). A new LIST chunk: the same key. */
+    int64_t n, sa, sb, sc;
+    size_t size, i;
+    segment seg = { 30.0, -10.0, 1 };
+    float* x = make_signal(44100, 2, &seg, 1, 440.0, &n);
+    uint8_t* wav = make_wav(44100, 2, x, n, NULL, 0, &size);
+    static const uint8_t list[] = { 'L', 'I', 'S', 'T', 12, 0, 0, 0, 'I', 'N', 'F', 'O', 'I', 'N', 'A', 'M', 2, 0, 0, 0, 'x', 0 };
+    uint8_t* tagged = (uint8_t*)malloc(size + sizeof(list));
+    uint64_t ka, kb, kc;
+    free(x);
+    CHECK(tagged != NULL);
+    CHECK(key_of(wav, size, &ka, &sa));
+    memcpy(tagged, wav, size);
+    memcpy(tagged + size, list, sizeof(list));
+    put32le(tagged + 4, (uint32_t)(size + sizeof(list) - 8));
+    CHECK(key_of(tagged, size + sizeof(list), &kb, &sb));
+    CHECK(ka == kb);
+    CHECK_EQ(sa, sb);
+    for (i = size / 2 + 100000; i < size / 2 + 100200; i++) wav[i] ^= 0x10;   /* between two sample points */
+    CHECK(key_of(wav, size, &kc, &sc));
+    CHECK(kc != ka);
+    free(wav);
+    free(tagged);
+}
+
+static void test_key_of_a_big_wav(void)
+{
+    /* Over 64 MB the samples are not read whole: 64 points (and, for a file, its time).
+     * The key is still stable and still ignores a LIST chunk. */
+    const size_t data = (size_t)65 << 20;
+    uint8_t* w = (uint8_t*)calloc(1, 44 + data + 22);
+    static const uint8_t list[] = { 'L', 'I', 'S', 'T', 12, 0, 0, 0, 'I', 'N', 'F', 'O', 'I', 'N', 'A', 'M', 2, 0, 0, 0, 'x', 0 };
+    uint64_t ka, kb;
+    int64_t sa, sb, t0;
+    double ms;
+    CHECK(w != NULL);
+    memcpy(w, "RIFF\0\0\0\0WAVEfmt \x10\0\0\0\1\0\2\0\x44\xac\0\0\x10\xb1\2\0\4\0\x10\0data", 40);
+    put32le(w + 40, (uint32_t)data);
+    fill_audio(w + 44, data, 5);
+    put32le(w + 4, (uint32_t)(36 + data));
+    t0 = fa_monotonic_ns();
+    CHECK(key_of(w, 44 + data, &ka, &sa));
+    ms = (double)(fa_monotonic_ns() - t0) / 1e6;
+    printf("  key of a 65 MB WAV: %.2f ms\n", ms);
+    CHECK_EQ(sa, (int64_t)data);
+    memcpy(w + 44 + data, list, sizeof(list));
+    put32le(w + 4, (uint32_t)(36 + data + sizeof(list)));
+    CHECK(key_of(w, 44 + data + sizeof(list), &kb, &sb));
+    CHECK(ka == kb);
+    free(w);
+}
+
+static void test_cache_api(void)
+{
+    CHECK_EQ(fa_engine_set_cache_size(g_engine, 0), FA_OK);            /* no cache directory: nothing to do */
+    CHECK_EQ(fa_engine_set_cache_size(g_engine, 1000), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_engine_clear_cache(g_engine), FA_OK);
+    CHECK_EQ(fa_engine_clear_cache(NULL), FA_ERROR_INVALID_ARG);
+}
+
+/* ---- start wait and provisional values ----------------------------------------------- */
+
+static void test_spread_order(void)
+{
+    int n, i;
+    for (n = 1; n <= 40; n++) {
+        int seen[40] = { 0 };
+        for (i = 0; i < n; i++) {
+            int k = fa_scan_spread_chunk(i, n);
+            CHECK(k >= 0 && k < n);
+            CHECK(!seen[k]);
+            seen[k] = 1;
+        }
+    }
+    /* The first chunks taken lie all over the file. */
+    CHECK_EQ(fa_scan_spread_chunk(0, 8), 0);
+    CHECK_EQ(fa_scan_spread_chunk(1, 8), 4);
+    CHECK_EQ(fa_scan_spread_chunk(2, 8), 2);
+    CHECK_EQ(fa_scan_spread_chunk(3, 8), 6);
+}
+
+static void test_partial_from_finished_chunks(void)
+{
+    /* A stream's scan hands over the loudness of the chunks finished so far before
+     * the final value; with 7 of 8 chunks it is already close to the final one. */
+    int64_t n;
+    size_t size;
+    float* x = make_signal(44100, 2, g_song, 6, 440.0, &n);
+    uint8_t* wav = make_wav(44100, 2, x, n, NULL, 0, &size);
+    fa_stream* s = NULL;
+    fa_loudness l = { .struct_size = sizeof(l) };
+    float partial;
+    free(x);
+    CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    CHECK_EQ(fa_stream_open_memory(g_engine, wav, size, NULL, &s), FA_OK);
+    CHECK(wait_final(s, &l));
+    CHECK_EQ(l.source, FA_LOUDNESS_SCAN);
+    partial = fa_load_float(&s->norm_partial);
+    CHECK(partial == partial);
+    CHECK_NEAR(partial, l.integrated_lufs, 3.0);
+    CHECK_EQ(fa_load32(&s->norm_pending), 0);
+    fa_stream_close(s);
+    free(wav);
+}
+
+typedef struct prov_events { fa_atomic32 count, source, finals; } prov_events;
+static void FA_CALL prov_cb(const fa_event* ev, void* user)
+{
+    prov_events* p = (prov_events*)user;
+    if (ev->type == FA_EVENT_LOUDNESS_PROVISIONAL) {
+        fa_store32(&p->source, (int32_t)ev->value);
+        fa_fetch_add32(&p->count, 1);
+    } else if (ev->type == FA_EVENT_LOUDNESS_FINAL) {
+        fa_fetch_add32(&p->finals, 1);
+    }
+}
+
+/* A stream whose scan is still running, made by hand so the test is not timing
+ * dependent: the measured value is put back as unknown and the scan as pending. */
+static fa_stream* open_unmeasured(double dbfs, fa_loudness* measured, prov_events* ev)
+{
+    fa_stream* s = open_sine(20.0, dbfs, 0, NULL, 0);
+    if (!s || !wait_final(s, measured)) return NULL;
+    fa_mutex_lock(&s->norm_lock);
+    s->loud.is_final = 0;
+    fa_store_float(&s->norm_track, NAN);
+    fa_store_float(&s->norm_est, NAN);
+    fa_store32(&s->norm_pending, 1);
+    fa_store32(&s->norm_progress, 0);
+    fa_mutex_unlock(&s->norm_lock);
+    memset(ev, 0, sizeof(*ev));
+    fa_stream_set_event_callback(s, prov_cb, ev);
+    return s;
+}
+
+static int wait_count(fa_atomic32* c, int32_t want)
+{
+    int i;
+    for (i = 0; i < 1000 && fa_load32(c) < want; i++) fa_sleep_ms(2);
+    return fa_load32(c) >= want;
+}
+
+static void test_start_wait_holds_until_final(void)
+{
+    fa_stream* s;
+    fa_loudness m = { .struct_size = sizeof(m) };
+    prov_events ev;
+    fa_frames pos = -1;
+    float out[2 * 480];
+    int i;
+    CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 5000, 12.0), FA_OK);
+    s = open_unmeasured(-10.0, &m, &ev);
+    CHECK(s != NULL);
+    CHECK_EQ(fa_stream_attach(s, g_dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    for (i = 0; i < 5; i++) {
+        render(s, out, 480);
+        CHECK(peak_of(out, 960) == 0.0);          /* held: nothing heard */
+    }
+    CHECK_EQ(fa_stream_get_position(s, &pos), FA_OK);
+    CHECK_EQ(pos, 0);                             /* the position and the clock wait too */
+    CHECK_EQ(fa_load64(&s->clock.count), 0);
+    {
+        fa_time t = -1;
+        CHECK_EQ(fa_stream_get_clock(s, &t), FA_OK);
+        CHECK_EQ(t, 0);
+    }
+    {
+        fa_stream_state st;
+        CHECK_EQ(fa_stream_get_state(s, &st), FA_OK);
+        CHECK_EQ(st, FA_STATE_PLAYING);
+    }
+    fa_stream_loudness_ready(s, &m, NAN);         /* the scan finishes */
+    render(s, out, 480);
+    /* Starts at once, at the exact gain from the first sample. */
+    CHECK_NEAR(peak_of(out, 960), pow(10.0, (-10.0 + (-23.0 - m.integrated_lufs)) / 20.0), 2e-3);
+    CHECK(wait_count(&ev.finals, 1));
+    fa_sleep_ms(20);
+    CHECK_EQ(fa_load32(&ev.count), 0);           /* started on a final value */
+    fa_stream_close(s);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 200, 12.0), FA_OK);
+}
+
+static void test_start_wait_runs_out(void)
+{
+    /* The scan is not done in time: the stream starts on the partial value, boosted by
+     * at most the provisional cap, says so, and glides once the value is final. */
+    fa_stream* s;
+    fa_loudness m = { .struct_size = sizeof(m) }, now = { .struct_size = sizeof(now) };
+    prov_events ev;
+    float out[2 * 480];
+    int64_t t0;
+    double first_db;
+    int i;
+    CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 60, 4.0), FA_OK);
+    s = open_unmeasured(-30.0, &m, &ev);          /* -33 LUFS: wants +10 dB */
+    CHECK(s != NULL);
+    fa_stream_loudness_partial(s, m.integrated_lufs);
+    CHECK_EQ(fa_stream_get_loudness(s, &now), FA_OK);
+    CHECK_EQ(now.source, FA_LOUDNESS_PARTIAL);
+    CHECK_EQ(now.is_final, 0);
+    CHECK_NEAR(now.gain_db, 4.0, 1e-4);           /* capped while provisional */
+    CHECK_EQ(fa_stream_attach(s, g_dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    t0 = fa_monotonic_ns();
+    render(s, out, 480);
+    CHECK(peak_of(out, 960) == 0.0);
+    while (fa_monotonic_ns() - t0 < 70000000) fa_sleep_ms(5);
+    render(s, out, 480);
+    first_db = 20.0 * log10(peak_of(out, 960));
+    CHECK_NEAR(first_db, -30.0 + 4.0, 0.05);
+    CHECK(wait_count(&ev.count, 1));
+    CHECK_EQ(fa_load32(&ev.source), FA_LOUDNESS_PARTIAL);
+    fa_stream_loudness_ready(s, &m, NAN);
+    for (i = 0; i < 150; i++) render(s, out, 480);   /* 1.5 s at 48 kHz: +6 dB at 6 dB/s */
+    CHECK_NEAR(20.0 * log10(peak_of(out, 960)), -30.0 + (-23.0 - m.integrated_lufs), 0.05);
+    CHECK_EQ(fa_load32(&ev.count), 1);
+    fa_stream_close(s);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 200, 12.0), FA_OK);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 10001, 12.0), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 0, 12.5), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 0, -1.0), FA_ERROR_INVALID_ARG);
+}
+
+static void test_start_wait_nearly_done_waits_longer(void)
+{
+    /* More than 75% scanned when the wait runs out: it waits on for the final value, at
+     * most once more the wait, and then starts on the partial value. */
+    fa_stream* s;
+    fa_loudness m = { .struct_size = sizeof(m) };
+    prov_events ev;
+    float out[2 * 480];
+    int64_t t0;
+    CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 60, 12.0), FA_OK);
+    s = open_unmeasured(-10.0, &m, &ev);
+    CHECK(s != NULL);
+    fa_stream_loudness_partial(s, m.integrated_lufs);
+    fa_store32(&s->norm_progress, 800);
+    CHECK_EQ(fa_stream_attach(s, g_dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    t0 = fa_monotonic_ns();
+    render(s, out, 480);
+    CHECK(peak_of(out, 960) == 0.0);
+    while (fa_monotonic_ns() - t0 < 80000000) fa_sleep_ms(5);
+    render(s, out, 480);
+    if (fa_monotonic_ns() - t0 < 115000000) CHECK(peak_of(out, 960) == 0.0);   /* still waiting at 80 ms */
+    while (fa_monotonic_ns() - t0 < 130000000) fa_sleep_ms(5);
+    render(s, out, 480);
+    CHECK(peak_of(out, 960) > 0.0);                 /* gave up at 120 ms */
+    CHECK(wait_count(&ev.count, 1));
+    CHECK_EQ(fa_load32(&ev.source), FA_LOUDNESS_PARTIAL);
+    fa_stream_close(s);
+
+    /* At 75% or less it starts when the wait runs out. */
+    s = open_unmeasured(-10.0, &m, &ev);
+    CHECK(s != NULL);
+    fa_store32(&s->norm_progress, 750);
+    CHECK_EQ(fa_stream_attach(s, g_dev, NULL), FA_OK);
+    CHECK_EQ(fa_stream_play(s), FA_OK);
+    t0 = fa_monotonic_ns();
+    render(s, out, 480);
+    while (fa_monotonic_ns() - t0 < 70000000) fa_sleep_ms(5);
+    render(s, out, 480);
+    CHECK(peak_of(out, 960) > 0.0);
+    fa_stream_close(s);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 200, 12.0), FA_OK);
+}
+
+static void test_scheduled_start_never_waits(void)
+{
+    fa_stream* s;
+    fa_loudness m = { .struct_size = sizeof(m) };
+    prov_events ev;
+    float out[2 * 480];
+    int64_t clock;
+    CHECK_EQ(fa_engine_set_normalization(g_engine, FA_NORMALIZE_TRACK, -23.0), FA_OK);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 5000, 12.0), FA_OK);
+    s = open_unmeasured(-10.0, &m, &ev);
+    CHECK(s != NULL);
+    CHECK_EQ(fa_stream_attach(s, g_dev, NULL), FA_OK);
+    clock = fa_load64(&g_dev->clock);
+    fa_mutex_lock(&s->api_lock);
+    fa_store64(&s->start_frame, clock);           /* due in the next callback */
+    fa_store32(&s->state, FA_STATE_SCHEDULED);
+    fa_mutex_unlock(&s->api_lock);
+    render(s, out, 480);
+    CHECK(peak_of(out, 960) > 0.0);
+    CHECK(wait_count(&ev.count, 1));
+    CHECK(fa_load32(&ev.source) == FA_LOUDNESS_NONE || fa_load32(&ev.source) == FA_LOUDNESS_ESTIMATE);
+    fa_stream_close(s);
+    CHECK_EQ(fa_engine_set_normalization_start_wait(g_engine, 200, 12.0), FA_OK);
 }
 
 /* ---- limiter ------------------------------------------------------------------------- */
@@ -934,6 +1593,22 @@ int main(void)
     RUN(test_opt_out_and_off);
     RUN(test_running_estimate_for_io);
     RUN(test_close_during_scan);
+    RUN(test_lcache_keeps_recently_used);
+    RUN(test_lcache_two_writers_and_a_torn_record);
+    RUN(test_lcache_one_per_folder);
+    RUN(test_lcache_two_processes);
+    RUN(test_lcache_damaged_file);
+    RUN(test_lcache_load_time);
+    RUN(test_cache_api);
+    RUN(test_key_ignores_tags);
+    RUN(test_key_hashes_all_of_a_wav);
+    RUN(test_key_of_a_big_wav);
+    RUN(test_spread_order);
+    RUN(test_partial_from_finished_chunks);
+    RUN(test_start_wait_holds_until_final);
+    RUN(test_start_wait_runs_out);
+    RUN(test_start_wait_nearly_done_waits_longer);
+    RUN(test_scheduled_start_never_waits);
     RUN(test_limiter);
     RUN(test_limiter_releases_to_unity);
     RUN(test_truepeak_block_matches_push);

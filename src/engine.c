@@ -317,8 +317,11 @@ static fa_result temp_folder_prepare(fa_engine* e)
     return FA_OK;
 }
 
+/* Also the loudness cache, which keeps a copy of cache_directory. */
 static void free_strings(fa_engine* e)
 {
+    fa_lcache_free(e->lcache);
+    e->lcache = NULL;
     free((char*)e->config.cache_directory);
     free((char*)e->config.temp_directory);
     free(e->temp_folder);
@@ -343,6 +346,7 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
     if (e->config.cache_directory) {
         e->config.cache_directory = fa_strdup(e->config.cache_directory);
         if (!e->config.cache_directory) { free(e); return FA_ERROR_OUT_OF_MEMORY; }
+        e->lcache = fa_lcache_new(e->config.cache_directory);   /* read on first use */
     }
     if (e->config.temp_directory && e->config.temp_directory[0]) {
         e->config.temp_directory = fa_strdup(e->config.temp_directory);
@@ -360,6 +364,8 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
     e->stats_at = fa_monotonic_ns();
     fa_store32(&e->norm_mode, FA_NORMALIZE_OFF);
     fa_store_float(&e->norm_target, -16.0f);
+    fa_store_float(&e->norm_prov_boost, 12.0f);
+    fa_store32(&e->norm_start_wait_ms, 200);
     fa_store32(&e->limiter_mode, FA_LIMITER_AUTO);
     fa_store_float(&e->limiter_ceiling, -1.0f);
     if (fa_mutex_init(&e->list_lock) != 0 || fa_mutex_init(&e->system_soundfont_lock) != 0 || fa_cond_init(&e->work_cond) != 0 ||
