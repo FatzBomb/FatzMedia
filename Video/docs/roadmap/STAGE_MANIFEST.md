@@ -25,8 +25,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   `updates/033A_2`).
 - `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
   the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
-  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux, pending the
-  owner's Windows smoke (`updates/037A_0`; CI package access granted). Slice 1 (seams for MIDI
+  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux; its Windows console-app smoke
+  is superseded by the slice 2 owner smoke (the real engine in the players; closed 2026-11-05). Slice 1 (seams for MIDI
   events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
   change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
   our blocking surface requests and silence detection (reply:

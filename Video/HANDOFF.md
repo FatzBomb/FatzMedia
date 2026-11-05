@@ -47,11 +47,17 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
 - The October code audit (ENG-039, round 2) is done: five batches implemented, each pending the
   owner's smoke (`updates/ENG-039/`). The old "next: code audit" item is closed.
-- **Owner smoke backlog** (implemented, waiting for a Windows run): ENG-039 batches 1, 2, 4a, 4b, 4c, 5;
-  037A slice 0 (Windows rerun) and normalization; ENG-043 (ALAC/M4R/audio-only MP4/TS); 039A_3;
-  026A slices 1-2 (Vulkan); 026B (BASS/player on Linux); 027A slices 2 and 5 (Avalonia);
-  033A slice 2; 042A slices 1-2 (HLG, HDR output); 043A slices 1-2 (modes); ENG-040 text on
-  Software/Vulkan. Stages move to `complete/` as these pass.
+- **Owner smoke backlog: `scripts/smoke-backlog.ps1`** (2026-11-05) runs it, 12 tests, mostly
+  automatic (it makes its own test media with FFmpeg, reads the players' logs for the expected lines,
+  measures CPU, serves a local web file; you answer only what needs eyes or ears): formats on both
+  engines (ENG-043, 033A_2), normalization (037A), network (039A_3), HDR (042A), modes (043A), Avalonia
+  paths and second screen (027A_2/5), Vulkan tests on the real GPU (026A), text on Software/Vulkan
+  (ENG-040, ENG-039 4c), missing natives (ENG-039), player set (ENG-039 4a), the audit script's GPU
+  reset/resize/memory tests (ENG-039 1, 2, 4b, 4c, 5) and the remaining guided checks. The test
+  players now trace their status and stats lines (`[Status]`, `[Stats]`) to the debug log for it.
+  Not covered: 026B steps 1-4 (a Linux desktop with BASS; the sandbox cannot download BASS, host
+  `www.un4seen.com` blocked). 037A slice 0's console smoke is closed (superseded by slice 2's).
+  Stages move to `complete/` as these pass.
 
 ## Decisions this session (owner)
 
