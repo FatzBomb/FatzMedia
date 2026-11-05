@@ -251,6 +251,18 @@ if(UNIX)
 endif()
 add_test(NAME cdg COMMAND fa_test_cdg WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(fa_test_archive test_archive.c)
+target_include_directories(fa_test_archive PRIVATE
+    ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party/miniaudio
+    ${PROJECT_SOURCE_DIR}/third_party/tinysoundfont)
+target_compile_definitions(fa_test_archive PRIVATE FA_STATIC)
+target_compile_options(fa_test_archive PRIVATE ${FA_WARNINGS})
+target_link_libraries(fa_test_archive PRIVATE Threads::Threads ${CMAKE_DL_LIBS} ${FA_NET_LIBS})
+if(UNIX)
+    target_link_libraries(fa_test_archive PRIVATE m)
+endif()
+add_test(NAME archive COMMAND fa_test_archive WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(fa_test_font test_font.c)
 target_include_directories(fa_test_font PRIVATE
     ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party/miniaudio
@@ -480,7 +492,7 @@ add_test(NAME midi_font_change COMMAND fa_test_midi_font_change)
 add_subdirectory(fuzz)
 
 foreach(t fa_test_internal fa_test_loudness fa_test_crossfade fa_test_sound fa_test_handoff fa_test_demux
-          fa_test_dolby fa_test_aac fa_test_net fa_test_cdg fa_test_disc fa_test_tempo fa_test_ogg
+          fa_test_dolby fa_test_aac fa_test_net fa_test_cdg fa_test_archive fa_test_disc fa_test_tempo fa_test_ogg
           fa_test_encode fa_test_midi fa_test_tracker fa_test_flac fa_test_asf fa_test_tags fa_test_font
           fa_test_lyric fa_test_shape fa_test_mixer fa_test_sync fa_test_mic fa_test_device fa_test_midi_fx
           fa_test_midi_efx fa_test_midi_live)
@@ -508,6 +520,7 @@ endif()
 # directory, so ctest -j must not run two of them at once. Everything else runs
 # in parallel.
 set_tests_properties(core loudness cdg disc encode midi internal tags analysis PROPERTIES RESOURCE_LOCK fa_scratch_files)
+set_tests_properties(archive PROPERTIES RESOURCE_LOCK fa_scratch_files)
 
 add_executable(fa_test_silence test_silence.c)
 target_compile_options(fa_test_silence PRIVATE ${FA_WARNINGS})
