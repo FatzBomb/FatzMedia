@@ -374,7 +374,7 @@ static fa_result pcm_open(fa_codec* c, const fa_codec_params* p, const pcm_layou
     return FA_OK;
 }
 
-/* ---- MP3 (minimp3 inside miniaudio) -------------------------------------------- */
+/* ---- MP3, MP2, MP1 (minimp3 inside miniaudio) -------------------------------------------- */
 
 typedef struct mp3_state {
     void* dec;
@@ -389,13 +389,6 @@ static const uint32_t mpa_rates[3] = { 44100, 48000, 32000 };
  * a valid header, -1 for free-format frames (length not in the header). */
 static long mpa_frame_len(const uint8_t* h)
 {
-    static const uint16_t br[2][3][15] = {
-        { { 0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448 },     /* MPEG-1 layer I */
-          { 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384 },        /* layer II */
-          { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320 } },       /* layer III */
-        { { 0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256 },        /* MPEG-2/2.5 layer I */
-          { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160 },
-          { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160 } } };
     int ver, layer, bri, sri, pad, v2;
     uint32_t rate, kbps;
     if (h[0] != 0xFF || (h[1] & 0xE0) != 0xE0) return 0;
@@ -408,7 +401,7 @@ static long mpa_frame_len(const uint8_t* h)
     if (bri == 0) return -1;
     v2 = ver != 3;
     rate = mpa_rates[sri] >> (ver == 3 ? 0 : ver == 2 ? 1 : 2);
-    kbps = br[v2][layer - 1][bri];
+    kbps = fa_mpa_kbps(!v2, layer, bri);
     if (layer == 1) return (long)((12 * kbps * 1000 / rate + pad) * 4);
     if (layer == 3 && v2) return (long)(72 * kbps * 1000 / rate + pad);
     return (long)(144 * kbps * 1000 / rate + pad);
@@ -574,11 +567,14 @@ fa_result fa_codec_open(fa_codec* c, const fa_codec_params* p)
     for (i = 0; i < sizeof(pcm_layouts) / sizeof(pcm_layouts[0]); i++)
         if (strcmp(p->codec, pcm_layouts[i].name) == 0) break;
     if (i < sizeof(pcm_layouts) / sizeof(pcm_layouts[0])) r = pcm_open(c, p, &pcm_layouts[i]);
-    else if (strcmp(p->codec, "mp3") == 0) r = mp3_open(c, p);
+    else if (strcmp(p->codec, "mp3") == 0 || strcmp(p->codec, "mp2") == 0 || strcmp(p->codec, "mp1") == 0)
+        r = mp3_open(c, p);   /* the one decoder takes MPEG audio Layers I, II and III */
     else if (strcmp(p->codec, "ac3") == 0 || strcmp(p->codec, "eac3") == 0) r = fa_ac3_codec_open(c, p);
     else if (strcmp(p->codec, "flac") == 0) r = fa_flac_codec_open(c, p);
     else if (strcmp(p->codec, "opus") == 0 || strcmp(p->codec, "vorbis") == 0) r = fa_xiph_codec_open(c, p);
     else if (strcmp(p->codec, "alac") == 0) r = fa_alac_codec_open(c, p);
+    else if (strcmp(p->codec, "pcm_mulaw") == 0 || strcmp(p->codec, "pcm_alaw") == 0) r = fa_g711_codec_open(c, p);
+    else if (strcmp(p->codec, "ima4") == 0) r = fa_ima4_codec_open(c, p);
     else {
         /* AAC is built in: AAC-LC, HE-AAC, HE-AAC v2, Main and LTP, in ADTS or after
          * an AudioSpecificConfig. */

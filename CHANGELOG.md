@@ -22,6 +22,16 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
   `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when
   present ([archives](docs/features/archives.md)).
+- MPEG audio Layers I and II (MP1, MP2) decode in files (`.mp2`, `.mpa`, `.mp1`; codec `mp2`/`mp1`, exact seeks, ID3v2 tags
+  skipped) and in packet streams, Matroska and MP4 (MediaControl request 14). Their decoder was already built in: only the
+  detection and framing were Layer III only. MPEG-2/2.5 Layer III and VBR files without a Xing header were already
+  covered.
+- Sun/NeXT `.au`/`.snd` files (PCM 8 to 32 bit, float, µ-law, A-law); µ-law and A-law in CAF and MP4/MOV; IMA 4:1 ADPCM
+  (`ima4`) in CAF and QuickTime `.mov`; `.3g2` is listed as an MP4 extension (request 15). New codec names `pcm_mulaw`,
+  `pcm_alaw`, `ima4` for `fa_stream_open_packets`.
+- Windows Media Audio on a Windows with no Media Foundation (N and KN editions without the Media Feature Pack) now
+  returns `FA_ERROR_PROVIDER_MISSING` (.NET `ErrorCode.ProviderMissing`) instead of `FA_ERROR_UNSUPPORTED_FORMAT`, so an app
+  can tell the user what to install. Off Windows, WMA still returns `FA_ERROR_UNSUPPORTED_FORMAT`.
 
 - Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
   directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.

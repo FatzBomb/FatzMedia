@@ -1735,6 +1735,230 @@ static void test_caf_unsupported(void)
     free(data);
 }
 
+/* ---- MPEG audio Layers I and II, AU, G.711 and IMA4 (dec_mp3.c, dec_au.c, codec_g711.c) ---- */
+
+#define TWO_PI 6.28318530717958647692
+
+static void check_sine2(const float* p, int64_t n, uint32_t ch, uint32_t rate, double a0, double a1, double tol, int64_t from)
+{
+    int64_t i;
+    double worst = 0;
+    for (i = from; i < n; i++) {
+        double d = fabs(p[i * ch] - a0 * sin(TWO_PI * 440.0 * (double)i / rate));
+        if (d > worst) worst = d;
+        if (ch > 1) {
+            d = fabs(p[i * ch + 1] - a1 * sin(TWO_PI * 660.0 * (double)i / rate));
+            if (d > worst) worst = d;
+        }
+    }
+    if (worst >= tol) fprintf(stderr, "  worst error %.6f (limit %.6f)\n", worst, tol);
+    g_failures += worst >= tol;
+}
+
+static void check_mp2_file(const char* name, const char* container, const char* codec, uint32_t rate, uint32_t ch,
+                           int64_t frames, int exact_seek)
+{
+    static const int64_t targets[] = { 0, 1, 1151, 1152, 20000, 31000, 10000, 2, 384 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, codec) == 0);
+    CHECK(strcmp(info.container, container) == 0);
+    CHECK_EQ(info.format.sample_rate, rate);
+    CHECK_EQ(info.format.channels, ch);
+    CHECK_EQ(info.seekable, 1);
+    full = read_all(s, ch, &n);
+    if (frames > 0) CHECK_EQ(info.length_frames, frames);
+    CHECK_NEAR((double)n, (double)info.length_frames, 1.0);
+    CHECK_NEAR(freq(full, n / 4, n * 3 / 4, ch, rate), 440.0, 3.0);
+    CHECK_NEAR(rms(full, n / 4, n * 3 / 4, ch), 0.5 / sqrt(2.0), 0.03);
+    if (exact_seek)
+        CHECK(seek_matches(s, full, n, ch, targets, (int)(sizeof(targets) / sizeof(targets[0])), 1e-6, &worst));
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_mp2_files(void)
+{
+    /* The length is the frames' count (1152 each): 77 frames of the 2 s tone. */
+    check_mp2_file("mp2/stereo.mp2", "mp2", "mp2", 44100, 2, 88704, 1);
+    check_mp2_file("mp2/mono22k.mp2", "mp2", "mp2", 22050, 1, 44928, 1);   /* MPEG-2 Layer II */
+}
+
+static void test_mp2_packets(void)
+{
+    check_mp2_file("mp2/stereo.mka", "matroska", "mp2", 44100, 2, 0, 0);   /* codec delay removed by the container */
+    check_mp2_file("mp2/stereo.mp4", "mp4", "mp3", 44100, 2, 0, 0);        /* MP4 names MPEG audio "mp3" for every layer */
+}
+
+/* A Layer II file wrapped in an ID3v2 tag and followed by junk is still found. */
+static void test_mp2_tag_and_probe(void)
+{
+    size_t size = 0, tag = 2048, i;
+    uint8_t* d = load_file("mp2/stereo.mp2", &size);
+    uint8_t* p;
+    fa_open_options o;
+    fa_stream* s = NULL;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    CHECK(d != NULL);
+    p = (uint8_t*)calloc(1, size + tag + 10);
+    memcpy(p, "ID3\4\0\0", 6);
+    p[6] = 0; p[7] = 0; p[8] = (uint8_t)((tag >> 7) & 0x7F); p[9] = (uint8_t)(tag & 0x7F);
+    memcpy(p + 10 + tag, d, size);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    CHECK_EQ(fa_stream_open_memory(g_engine, p, size + tag + 10, &o, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "mp2") == 0);
+    CHECK_EQ(info.length_frames, 88704);
+    fa_stream_close(s);
+    /* Bytes that are not MPEG audio are not claimed by the Layer I/II probe. */
+    for (i = 0; i < size; i++) p[i] = (uint8_t)(i * 2654435761u >> 13);
+    CHECK_EQ(fa_decoder_recognizes(p, 4096), 0);
+    free(p);
+    free(d);
+}
+
+static void check_au(const char* name, const char* codec, uint32_t bits, double tol)
+{
+    static const int64_t targets[] = { 0, 1, 4095, 5999, 3000, 17 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, codec) == 0);
+    CHECK(strcmp(info.container, "au") == 0);
+    CHECK_EQ(info.format.sample_rate, 8000);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.length_frames, 6000);
+    CHECK_EQ(info.bits_per_sample, bits);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, 6000);
+    check_sine2(full, n, 2, 8000, 0.5, 0.3, tol, 0);
+    CHECK(seek_matches(s, full, n, 2, targets, (int)(sizeof(targets) / sizeof(targets[0])), 0.0, &worst));
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_au_files(void)
+{
+    check_au("au/s8.au", "pcm", 8, 1.0 / 100);
+    check_au("au/s16.au", "pcm", 16, 1e-4);
+    check_au("au/s24.au", "pcm", 24, 1e-5);
+    check_au("au/s32.au", "pcm", 32, 1e-5);
+    check_au("au/f32.au", "pcm_float", 32, 1e-5);
+    check_au("au/f64.au", "pcm_float", 64, 1e-5);
+    check_au("au/ulaw.au", "pcm_mulaw", 8, 0.012);
+    check_au("au/alaw.au", "pcm_alaw", 8, 0.012);
+}
+
+/* G.711 against the standard's endpoints: code 0xFF is µ-law zero, 0x80 the most
+ * positive; A-law 0xD5 is the smallest positive step, 0x55 the smallest negative. */
+static void test_g711_values(void)
+{
+    static const uint8_t mu[] = { 0xFF, 0x7F, 0x80, 0x00 };
+    static const uint8_t al[] = { 0xD5, 0x55, 0xAA, 0x2A };
+    float out[4];
+    fa_g711_to_f32(mu, 0, 4, out);
+    CHECK(out[0] == 0.0f && out[1] == 0.0f);
+    CHECK_NEAR(out[2] * 32768.0, 32124.0, 0.5);
+    CHECK_NEAR(out[3] * 32768.0, -32124.0, 0.5);
+    fa_g711_to_f32(al, 1, 4, out);
+    CHECK_NEAR(out[0] * 32768.0, 8.0, 0.5);
+    CHECK_NEAR(out[1] * 32768.0, -8.0, 0.5);
+    CHECK_NEAR(out[2] * 32768.0, 32256.0, 0.5);
+    CHECK_NEAR(out[3] * 32768.0, -32256.0, 0.5);
+}
+
+static void check_pcm_sine_stereo(const char* name, const char* container, const char* codec, double tol, int64_t frames)
+{
+    static const int64_t targets[] = { 0, 1, 4095, 4096, 5999, 3000 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    if (!s) return;
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, codec) == 0);
+    CHECK(strcmp(info.container, container) == 0);
+    CHECK_EQ(info.format.sample_rate, 8000);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.length_frames, frames);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, frames);
+    /* ADPCM starts with a small step and takes about a block to catch up with a loud tone. */
+    check_sine2(full, n > 6000 ? 6000 : n, 2, 8000, 0.5, 0.3, tol, strcmp(codec, "ima4") == 0 ? 128 : 0);   /* the last packet of the CAF is padded to 64 frames */
+    /* IMA4 restarts from a block header after a seek: within 127 of 32768 of the running decode. */
+    CHECK(seek_matches(s, full, n, 2, targets, (int)(sizeof(targets) / sizeof(targets[0])), strcmp(codec, "ima4") == 0 ? 0.005 : 0.0, &worst));
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_caf_g711_and_ima4(void)
+{
+    check_pcm_sine_stereo("caf/ulaw.caf", "caf", "pcm_mulaw", 0.012, 6000);
+    check_pcm_sine_stereo("caf/alaw.caf", "caf", "pcm_alaw", 0.012, 6000);
+    check_pcm_sine_stereo("caf/ima4.caf", "caf", "ima4", 0.03, 6016);   /* 94 packets of 64 frames */
+}
+
+static void test_mov_ima4(void)
+{
+    check_pcm_sine_stereo("ima4.mov", "mov", "ima4", 0.03, 6000);
+}
+
+/* IMA4 packets decode to FFmpeg's samples bit for bit. The two packets are the first
+ * two of tests/data/caf/ima4.caf (stereo: 34 bytes per channel each), the expected
+ * values FFmpeg's decode of that file. The second packet's left block starts 68 off
+ * its header's predictor: the running predictor is kept when the header agrees. */
+static void test_ima4_known_values(void)
+{
+    static const uint8_t pk[136] = {
+        0x00, 0x00, 0x70, 0x77, 0x77, 0x77, 0xD7, 0xBC, 0x9B, 0x10, 0x53, 0x34, 0x24, 0x81, 0xB8, 0xCC, 0xCB, 0x9A, 0x18, 0x42,
+        0x34, 0x24, 0x01, 0xA8, 0xCC, 0xCB, 0x9A, 0x19, 0x32, 0x36, 0x33, 0x02, 0xB8, 0xDC, 0x00, 0x00, 0x70, 0x77, 0x77, 0xFA,
+        0xFF, 0x2E, 0x34, 0x12, 0xA9, 0xBD, 0x9B, 0x30, 0x45, 0x12, 0xA8, 0xCC, 0x9A, 0x20, 0x34, 0x14, 0xA8, 0xBC, 0x9C, 0x28,
+        0x44, 0x22, 0x98, 0xCC, 0xAA, 0x28, 0x34, 0x24, 0x0C, 0xC6, 0xCB, 0xAA, 0x08, 0x32, 0x45, 0x23, 0x12, 0xA8, 0xEB, 0xCB,
+        0xAA, 0x09, 0x41, 0x53, 0x33, 0x12, 0xA8, 0xDB, 0xCC, 0xAA, 0x88, 0x31, 0x44, 0x33, 0x23, 0x98, 0xCC, 0xBC, 0xBB, 0x8A,
+        0x41, 0x44, 0x26, 0x44, 0x98, 0xBC, 0xAC, 0x28, 0x53, 0x23, 0x90, 0xCC, 0xAB, 0x18, 0x44, 0x23, 0x90, 0xEB, 0xAB, 0x18,
+        0x53, 0x23, 0x91, 0xDB, 0xAC, 0x08, 0x43, 0x33, 0x81, 0xCC, 0xBB, 0x1A, 0x63, 0x33, 0x81, 0xDB };
+    static const int left0[8] = { 0, 11, 41, 104, 240, 533, 1164, 2521 };
+    static const int left64[8] = { -1888, -7915, -11967, -15650, -16319, -15711, -12944, -9422 };
+    fa_codec_params p;
+    fa_codec c;
+    int i;
+    fa_codec_params_init(&p);
+    p.codec = "ima4";
+    p.sample_rate = 8000;
+    p.channels = 2;
+    CHECK_EQ(fa_codec_open(&c, &p), FA_OK);
+    CHECK_EQ(c.vt->decode(&c, pk, 68), FA_OK);
+    CHECK_EQ(c.out_frames, 64);
+    CHECK_EQ(c.vt->decode(&c, pk + 68, 68), FA_OK);
+    CHECK_EQ(c.out_frames, 64);
+    for (i = 0; i < 8; i++) CHECK_NEAR(c.out[(i + 0) * 2] * 32768.0, left64[i], 0.01);
+    fa_codec_close(&c);
+    CHECK_EQ(fa_codec_open(&c, &p), FA_OK);
+    CHECK_EQ(c.vt->decode(&c, pk, 68), FA_OK);
+    for (i = 0; i < 8; i++) CHECK_NEAR(c.out[i * 2] * 32768.0, left0[i], 0.01);
+    CHECK_NEAR(c.out[6 * 2 + 1] * 32768.0, 323.0, 0.01);
+    CHECK_NEAR(c.out[7 * 2 + 1] * 32768.0, -251.0, 0.01);
+    /* A flush forgets the running predictor: the next block starts from its header. */
+    c.vt->flush(&c);
+    CHECK_EQ(c.vt->decode(&c, pk + 68, 68), FA_OK);
+    CHECK_NEAR(c.out[0] * 32768.0, -1956.0, 0.01);   /* the header's 9-bit predictor: 68 below the running one */
+    fa_codec_close(&c);
+}
+
 /* ---- MP3 files (dec_mp3.c) ---------------------------------------------------------- */
 
 /* `max` whole frames of an MP3 file from its first frame header (past any ID3v2
@@ -2017,6 +2241,14 @@ int main(void)
     RUN(test_mp3_no_header);
     RUN(test_mp3_junk);
     RUN(test_mp3_format_change_in_packet);
+    RUN(test_mp2_files);
+    RUN(test_mp2_packets);
+    RUN(test_mp2_tag_and_probe);
+    RUN(test_au_files);
+    RUN(test_g711_values);
+    RUN(test_caf_g711_and_ima4);
+    RUN(test_mov_ima4);
+    RUN(test_ima4_known_values);
 
     fa_engine_destroy(g_engine);
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }

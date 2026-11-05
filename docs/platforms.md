@@ -49,7 +49,7 @@ The binding checks the native library's major.minor version on first use and ref
 - **iOS.** Add the xcframework with "Embed & Sign". Configure the app's `AVAudioSession` yourself (category and activation) the way any audio app does. `https://` falls under App Transport Security.
 - **macOS and iOS microphone.** Add the usage description to the app, and request permission before opening input; otherwise you get `PermissionDenied`.
 - **Linux.** Build machines need the ALSA headers (`libasound2-dev`). Containers without a sound card use `NullOutput`.
-- **Windows.** Build with the "Visual Studio 18 2026" generator and keep old compilers off `PATH`. Windows N editions without the Media Feature Pack have no Media Foundation, so WMA reports unsupported.
+- **Windows.** Build with the "Visual Studio 18 2026" generator and keep old compilers off `PATH`. Windows N editions without the Media Feature Pack have no Media Foundation, so WMA reports `FA_ERROR_PROVIDER_MISSING` (install the Media Feature Pack).
 
 ## Library size
 

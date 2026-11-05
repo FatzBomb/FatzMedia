@@ -40,7 +40,9 @@ typedef struct caf {
     fa_pkt_index pk;          /* packets from 'pakt' */
     int has_pk;               /* else constant size */
     size_t cur;
-    uint32_t frame_bytes;     /* constant size: bytes per frame */
+    uint32_t frame_bytes;     /* constant size: bytes per packet */
+    uint32_t fpp;             /* constant size: frames per packet (1 for PCM, 64 for ima4) */
+    uint32_t grp;             /* constant size: packets handed on at a time */
     int64_t data_off, data_len;   /* the audio; data_len -1 = to the end of the source */
 } caf;
 
@@ -110,6 +112,17 @@ static fa_result codec_for(caf* c, const caf_desc* d, fa_codec_params* cp, int* 
         *constant = 1;
         break;
     }
+    case FA_FOURCC('u', 'l', 'a', 'w'):
+    case FA_FOURCC('a', 'l', 'a', 'w'):
+        if (d->bits != 8 || d->bytes_per_packet != d->channels || d->frames_per_packet != 1) return FA_ERROR_UNSUPPORTED_FORMAT;
+        name = d->format == FA_FOURCC('u', 'l', 'a', 'w') ? "pcm_mulaw" : "pcm_alaw";
+        *constant = 1;
+        break;
+    case FA_FOURCC('i', 'm', 'a', '4'):
+        if (d->bytes_per_packet != 34 * d->channels || d->frames_per_packet != 64) return FA_ERROR_UNSUPPORTED_FORMAT;
+        name = "ima4";
+        *constant = 1;
+        break;
     case FA_FOURCC('a', 'l', 'a', 'c'):
         if (!c->kuki) return FA_ERROR_UNSUPPORTED_FORMAT;
         name = "alac";
@@ -171,7 +184,7 @@ static fa_result caf_next(void* ctx, fa_demux_packet* out)
         c->cur++;
         return FA_OK;
     } else {
-        int64_t start = (int64_t)c->cur * CAF_PCM_FRAMES * c->frame_bytes, want = (int64_t)CAF_PCM_FRAMES * c->frame_bytes, got;
+        int64_t start = (int64_t)c->cur * c->grp * c->frame_bytes, want = (int64_t)c->grp * c->frame_bytes, got;
         if (c->data_len >= 0) {
             if (start >= c->data_len) return FA_ERROR_END_OF_STREAM;
             if (want > c->data_len - start) want = c->data_len - start;
@@ -184,8 +197,8 @@ static fa_result caf_next(void* ctx, fa_demux_packet* out)
         if (got <= 0) return FA_ERROR_END_OF_STREAM;
         out->data = c->data;
         out->size = (size_t)got;
-        out->pts = (int64_t)c->cur * CAF_PCM_FRAMES;
-        out->duration = got / c->frame_bytes;
+        out->pts = (int64_t)c->cur * c->grp * c->fpp;
+        out->duration = got / c->frame_bytes * c->fpp;
         c->cur++;
         return FA_OK;
     }
@@ -197,7 +210,7 @@ static fa_result caf_seek_packets(void* ctx, int64_t t, int packets_back, size_t
     if (c->has_pk) {
         c->cur = fa_pkt_seek_back(&c->pk, t, packets_back, bytes_back);
     } else {
-        int64_t j = t / CAF_PCM_FRAMES - packets_back;
+        int64_t j = t / ((int64_t)c->grp * c->fpp) - packets_back;
         c->cur = j > 0 ? (size_t)j : 0;
     }
     return FA_OK;
@@ -331,10 +344,12 @@ static fa_result caf_open(fa_decoder* dec)
     }
     if (constant) {
         c->frame_bytes = d.bytes_per_packet;
-        c->data = (uint8_t*)malloc((size_t)CAF_PCM_FRAMES * c->frame_bytes);
+        c->fpp = d.frames_per_packet ? d.frames_per_packet : 1;
+        c->grp = c->fpp >= CAF_PCM_FRAMES ? 1 : CAF_PCM_FRAMES / c->fpp;
+        c->data = (uint8_t*)malloc((size_t)c->grp * c->frame_bytes);
         if (!c->data) { r = FA_ERROR_OUT_OF_MEMORY; goto fail; }
-        c->data_cap = (size_t)CAF_PCM_FRAMES * c->frame_bytes;
-        if (c->data_len >= 0) total = c->data_len / c->frame_bytes;
+        c->data_cap = (size_t)c->grp * c->frame_bytes;
+        if (c->data_len >= 0) total = c->data_len / c->frame_bytes * c->fpp;
     } else {
         if (!pakt) { r = src->seekable ? FA_ERROR_UNSUPPORTED_FORMAT : FA_ERROR_NOT_SEEKABLE; goto fail; }
         r = build_table(c, &d, pakt, pakt_len, &total);
