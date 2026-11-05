@@ -680,7 +680,17 @@ public partial class PlayerViewModel : ObservableObject, IDisposable, IAsyncDisp
         => HandleDiagnosticOnUiThread(e.Level, e.Category, e.Message);
 
     private void OnPlayerError(object? sender, MediaErrorEventArgs e)
-        => HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
+    {
+        HandleDiagnosticOnUiThread(MediaDiagnosticLevel.Error, e.Code.ToString(), e.Message);
+        if (e.Code == MediaErrorCode.RendererDeviceLost)
+            RunOnUiThread(() => RendererDeviceLost?.Invoke(this, EventArgs.Empty));
+    }
+
+    /// <summary>
+    /// Raised on the UI thread when this player's renderer lost its GPU device for good (ENG-050): the
+    /// window rebuilds its players on the next renderer (<see cref="PlayerRendererRules.FallbackAfterDeviceLoss"/>).
+    /// </summary>
+    public event EventHandler? RendererDeviceLost;
 
     // Traced on the raising thread before the hop, so a frozen UI thread does not hide it from
     // the debug log (ENG-039: a GPU reset froze the UI and the log ended before it).

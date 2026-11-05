@@ -36,4 +36,11 @@ public enum MediaErrorCode
     /// be affected; the host should surface a user-visible diagnostic and decide how to recover.
     /// </summary>
     AudioDeviceLost,
+
+    /// <summary>
+    /// The renderer's GPU device was lost and could not be recovered (ENG-050; seen with Vulkan after a
+    /// GPU reset on Windows). The player shows no picture until it is recreated with another renderer
+    /// (for example Direct3D11 or the software renderer); sound continues. Raised once per loss.
+    /// </summary>
+    RendererDeviceLost,
 }

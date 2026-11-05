@@ -28,4 +28,15 @@ public interface IMediaPresentationCoordinator : IMediaRenderCoordinator, IDispo
         add { }
         remove { }
     }
+
+    /// <summary>
+    /// Raised once when the renderer's device was lost and every recovery attempt failed (ENG-050):
+    /// the renderer draws nothing until the player is recreated with another renderer, though it
+    /// keeps retrying. Coordinators without device recovery never raise it.
+    /// </summary>
+    event EventHandler? DeviceRecoveryFailed
+    {
+        add { }
+        remove { }
+    }
 }

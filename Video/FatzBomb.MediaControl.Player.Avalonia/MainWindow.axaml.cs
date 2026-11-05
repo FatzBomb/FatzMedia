@@ -130,6 +130,42 @@ public partial class MainWindow : Window, IPlayerSetHost<PlayerPanel>
 
     void IPlayerSetHost<PlayerPanel>.ReportFailure(string what, Exception exception) => ReportFailure(what, exception);
 
+    void IPlayerSetHost<PlayerPanel>.FallBackRenderer()
+    {
+        RendererKind current = RendererBox.SelectedItem is ComboBoxItem { Tag: RendererKind selected } ? selected : RendererKind.Software;
+        var options = _renderers.ToList();
+        PlayerRendererRequest? next = PlayerRendererRules.NextAvailableAfterDeviceLoss(
+            ToRequest(current),
+            OperatingSystem.IsWindows(),
+            request => ToKind(request) is { } kind && options.Exists(option => option.Kind == kind && option.IsAvailable));
+        if (next is null || ToKind(next.Value) is not { } nextKind)
+        {
+            InfoText.Text = "The renderer lost its GPU device and no other renderer is left.";
+            return;
+        }
+
+        System.Diagnostics.Trace.WriteLine($"[Player] The {current} renderer lost its GPU device for good; switching to {nextKind} (ENG-050).");
+        // The box's selection change switches the renderer and rebuilds the players.
+        RendererBox.SelectedIndex = options.FindIndex(option => option.Kind == nextKind);
+
+        static PlayerRendererRequest ToRequest(RendererKind kind) => kind switch
+        {
+            RendererKind.Vulkan => PlayerRendererRequest.Vulkan,
+            RendererKind.Direct3D11 => PlayerRendererRequest.Direct3D11,
+            RendererKind.Warp => PlayerRendererRequest.Warp,
+            _ => PlayerRendererRequest.Software,
+        };
+
+        static RendererKind? ToKind(PlayerRendererRequest request) => request switch
+        {
+            PlayerRendererRequest.Vulkan => RendererKind.Vulkan,
+            PlayerRendererRequest.Direct3D11 or PlayerRendererRequest.Gpu or PlayerRendererRequest.Auto => RendererKind.Direct3D11,
+            PlayerRendererRequest.Warp => RendererKind.Warp,
+            PlayerRendererRequest.Software => RendererKind.Software,
+            _ => null,
+        };
+    }
+
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.F11 && _players.HandleFullScreenKey())

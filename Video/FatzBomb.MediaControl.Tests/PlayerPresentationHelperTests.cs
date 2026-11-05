@@ -344,4 +344,21 @@ public sealed class PlayerPresentationHelperTests
         Assert.True(sample.WorkingSetMegabytes > 0);
         Assert.True(sample.ManagedMegabytes > 0);
     }
+
+    [Theory]
+    [InlineData(PlayerRendererRequest.Vulkan, true, PlayerRendererRequest.Direct3D11)]
+    [InlineData(PlayerRendererRequest.Direct3D11, true, PlayerRendererRequest.Warp)]
+    [InlineData(PlayerRendererRequest.Gpu, true, PlayerRendererRequest.Warp)]
+    [InlineData(PlayerRendererRequest.Auto, true, PlayerRendererRequest.Warp)]
+    [InlineData(PlayerRendererRequest.Warp, true, PlayerRendererRequest.Software)]
+    [InlineData(PlayerRendererRequest.Vulkan, false, PlayerRendererRequest.Software)]
+    [InlineData(PlayerRendererRequest.Gpu, false, PlayerRendererRequest.Software)]
+    public void FallbackAfterDeviceLoss_GoesToTheNextWorkingPath(PlayerRendererRequest current, bool windows, PlayerRendererRequest expected) =>
+        Assert.Equal(expected, PlayerRendererRules.FallbackAfterDeviceLoss(current, windows));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FallbackAfterDeviceLoss_EndsAtSoftware(bool windows) =>
+        Assert.Null(PlayerRendererRules.FallbackAfterDeviceLoss(PlayerRendererRequest.Software, windows));
 }

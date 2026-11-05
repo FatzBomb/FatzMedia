@@ -30,6 +30,25 @@ public sealed class PlayerSetControllerTests
     }
 
     [Fact]
+    public void RendererDeviceLost_AsksTheWindowToFallBackOncePerBuild()
+    {
+        // ENG-050: every player shares the window's renderer, so the first loss asks once; the
+        // rebuild that follows may ask again.
+        Inline();
+        var host = new FakeHost { RequestedPlayerCount = 2 };
+        PlayerSetController<FakeSlot> controller = host.CreateController();
+        Assert.True(controller.StartAsync().IsCompletedSuccessfully);
+
+        controller.Slots[0].RaiseRendererDeviceLost();
+        controller.Slots[1].RaiseRendererDeviceLost();
+        Assert.Equal(1, host.FallBackCount);
+
+        Assert.True(controller.RebuildAsync().IsCompletedSuccessfully);
+        controller.Slots[0].RaiseRendererDeviceLost();
+        Assert.Equal(2, host.FallBackCount);
+    }
+
+    [Fact]
     public void Rebuild_BeforeStart_DoesNothing()
     {
         Inline();
@@ -483,11 +502,23 @@ public sealed class PlayerSetControllerTests
         }
 
         public void ReportFailure(string what, Exception exception) => Failures.Add((what, exception));
+
+        public int FallBackCount { get; private set; }
+
+        public void FallBackRenderer()
+        {
+            FallBackCount++;
+            Log.Add("fall back");
+        }
     }
 
     private sealed class FakeSlot(FakeHost host, int index, bool atStartup, Task initGate) : IPlayerSlot
     {
         public event EventHandler? FullScreenToggleRequested;
+
+        public event EventHandler? RendererDeviceLost;
+
+        public void RaiseRendererDeviceLost() => RendererDeviceLost?.Invoke(this, EventArgs.Empty);
 
         public string Name { get; } = $"P{index}";
 

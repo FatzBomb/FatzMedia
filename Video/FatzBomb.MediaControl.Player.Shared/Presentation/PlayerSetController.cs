@@ -29,6 +29,7 @@ public sealed class PlayerSetController<TSlot>
     private bool _rebuilding;
     private bool _rebuildAgain;
     private bool _firstBuild = true;
+    private bool _rendererFallbackRequested;
     private TSlot? _fullScreen;
 
     /// <param name="host">The window.</param>
@@ -256,6 +257,7 @@ public sealed class PlayerSetController<TSlot>
             return;
 
         var count = Math.Clamp(_host.RequestedPlayerCount, 1, PlayerStartupOptions.MaxPlayers);
+        _rendererFallbackRequested = false;
         // Cleared before anything is created or initialized: a superseded first build still was the first.
         var atStartup = _firstBuild;
         _firstBuild = false;
@@ -263,6 +265,7 @@ public sealed class PlayerSetController<TSlot>
         {
             TSlot slot = _host.CreateSlot(index, atStartup);
             slot.FullScreenToggleRequested += OnFullScreenToggleRequested;
+            slot.RendererDeviceLost += OnRendererDeviceLost;
             _slots.Add(slot);
             _host.Attach(slot);
         }
@@ -282,6 +285,7 @@ public sealed class PlayerSetController<TSlot>
     private async Task DisposeSlotAsync(TSlot slot)
     {
         slot.FullScreenToggleRequested -= OnFullScreenToggleRequested;
+        slot.RendererDeviceLost -= OnRendererDeviceLost;
         try
         {
             await slot.DisposeAsync();
@@ -291,6 +295,17 @@ public sealed class PlayerSetController<TSlot>
             // One player's failed teardown must not keep the others alive or the window open.
             _host.ReportFailure("Closing a player failed", ex);
         }
+    }
+
+    // Every player of a window shares its renderer: the first loss asks the window once per build.
+    private void OnRendererDeviceLost(object? sender, EventArgs e)
+    {
+        if (IsShuttingDown || _rendererFallbackRequested || sender is not TSlot slot || !_slots.Contains(slot))
+            return;
+
+        _rendererFallbackRequested = true;
+        ExitFullScreen();
+        _host.FallBackRenderer();
     }
 
     private void OnFullScreenToggleRequested(object? sender, EventArgs e)
