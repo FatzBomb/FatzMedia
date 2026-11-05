@@ -410,7 +410,10 @@ public sealed class VulkanConformanceTests
         Assert.Equal(supported, availability.IsAvailable);
         Assert.False(string.IsNullOrWhiteSpace(availability.Detail));
         Assert.True(availability.RequiresFrameSinkSurface);
-        Assert.True(availability.RequiresSoftwareDecoding);
+        // Stage 045A slice 2: software decoding only when the device has no Vulkan Video decoder
+        // (lavapipe has none; a real GPU usually has one).
+        using VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        Assert.Equal(compositor?.VideoDecode is null, availability.RequiresSoftwareDecoding);
     }
 
     [Fact]
