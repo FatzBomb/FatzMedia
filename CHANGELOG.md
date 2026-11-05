@@ -27,6 +27,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   the bzip2 1.0.8 decompressor, no new library to ship ([archives](docs/features/archives.md)). New fuzz target `archive`.
 
 
+- No more clicks at seeks and loop wraps: a seek on a playing stream fades the old audio out and the new in (1.5 ms
+  each); a loop that jumps back with a step is smoothed over about 2 ms, a seamless loop is left exact.
+  `FA_ENGINE_NO_DECLICK` / .NET `AudioEngineOptions.NoDeclick` turn it off. Measured with sine tones: seeks went from a
+  residual of 0.4 to 0.5 (full-scale step) to 0.01; stepped loop wraps from 0.4 to 0.1 or less.
 - Loudness of audio your app feeds (MediaControl request 13): `fa_scan_open_packets` / `fa_scan_open_push`,
   `fa_scan_push_packet` / `fa_scan_push_frame`, `fa_scan_wants_more`, `fa_scan_finish`, `fa_scan_close` (new
   `fa_scan_options`, `fa_scan_feed`; .NET `AudioEngine.OpenLoudnessScan`, `LoudnessScan`, `LoudnessScanOptions`). The feed

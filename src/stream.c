@@ -1992,6 +1992,78 @@ static int keep_unheard(struct fa_stream* s, fa_frames unheard)
     return 1;
 }
 
+/* ---- declick: short fades at seeks, smoothing at loop wraps ------------------ */
+
+#define FA_DECLICK_PI 3.14159265358979f
+
+static int declick_on(const struct fa_stream* s) { return !(s->engine->config.flags & FA_ENGINE_NO_DECLICK); }
+
+/* 1.5 ms at the device rate. */
+static int64_t declick_frames(uint32_t rate)
+{
+    int64_t n = (int64_t)rate * 3 / 2000;
+    return n < 8 ? 8 : n;
+}
+
+/* 1 at k = 0 down to 0 at k = n (a raised cosine). */
+static float declick_w(int64_t k, int64_t n)
+{
+    return k >= n ? 0.0f : 0.5f * (1.0f + cosf(FA_DECLICK_PI * (float)k / (float)n));
+}
+
+/* The loop jumped back: the first frame of the new pass is compared with where the old one
+ * was heading (its last two frames, carried on in a straight line). A miss larger than the
+ * signal's own curvature (a loop point that is not on a zero crossing, or a phase that does
+ * not fit) is added to the new pass, inverted, and fades out over about 2 ms. A seamless
+ * loop misses by no more than the curvature and is left exactly as it is. `in` holds `got`
+ * frames. */
+static void smooth_splice(struct fa_stream* s, float* in, int64_t got, uint32_t ch)
+{
+    int64_t n = (int64_t)s->decoder.format.sample_rate * 2 / 1000, i;
+    uint32_t c;
+    if (!s->wrap_valid || ch > 16 || got < 3) return;
+    if (n > got) n = got;
+    for (c = 0; c < ch; c++) {
+        float f0 = s->wrap_f[0][c], f1 = s->wrap_f[1][c], f2 = s->wrap_f[2][c];
+        float miss = in[c] - (2.0f * f0 - f1);
+        float curve = fabsf(f0 - 2.0f * f1 + f2), c2 = fabsf(in[2 * ch + c] - 2.0f * in[ch + c] + in[c]);
+        if (c2 > curve) curve = c2;
+        if (fabsf(miss) <= 3.0f * curve + 0.002f) continue;
+        for (i = 0; i < n; i++) in[i * ch + c] -= miss * declick_w(i, n);
+    }
+}
+
+/* Remembers the last three frames of a read, for smooth_splice. */
+static void note_last_frames(struct fa_stream* s, const float* in, int64_t got, uint32_t ch)
+{
+    int64_t k;
+    if (ch > 16 || got < 1) { s->wrap_valid = 0; return; }
+    for (k = got > 3 ? got - 3 : 0; k < got; k++) {
+        memcpy(s->wrap_f[2], s->wrap_f[1], ch * sizeof(float));
+        memcpy(s->wrap_f[1], s->wrap_f[0], ch * sizeof(float));
+        memcpy(s->wrap_f[0], in + (size_t)k * ch, ch * sizeof(float));
+    }
+    s->wrap_valid = 1;
+}
+
+/* A restart that follows a fade-out begins with the same length of fade-in. The ring was just
+ * refilled and the mixer is kept out. */
+static void fade_in_ring(struct fa_stream* s)
+{
+    int64_t m = declick_frames(s->dev_rate), r = fa_ring_readable(&s->ring), k, total = m;
+    const float *p1, *p2;
+    int64_t n1, n2;
+    if (m > r) m = r;
+    if (m <= 0) return;
+    fa_ring_regions(&s->ring, m, &p1, &n1, &p2, &n2);
+    for (k = 0; k < m; k++) {
+        float* f = (float*)(k < n1 ? p1 + (size_t)k * FA_DEVICE_CHANNELS : p2 + (size_t)(k - n1) * FA_DEVICE_CHANNELS);
+        float g = 1.0f - declick_w(k, total);
+        f[0] *= g;
+        f[1] *= g;
+    }
+}
+
 /* Decodes, converts to the device format and appends to the ring until it is
  * full, `max_frames` were produced, or the source ended (at CUE_OUT, if set).
  * Caller holds decode_lock. */
@@ -2055,6 +2127,13 @@ void fa_stream_fill(struct fa_stream* s, int64_t max_frames)
                 ptimes_of(s)->anchor_pos[s->anchors % FA_SRC_ANCHORS] = s->src_pos;
                 ptimes_of(s)->anchor_pts[s->anchors % FA_SRC_ANCHORS] = s->decoder.anchor_pts;
                 s->anchors++;
+            }
+            if (got > 0 && declick_on(s)) {
+                if (from_carry || reversed(s)) s->wrap_valid = 0;   /* not a plain forward read: nothing to compare with */
+                else {
+                    if (just_looped) smooth_splice(s, s->in_buf, got, ch);
+                    note_last_frames(s, s->in_buf, got, ch);
+                }
             }
             if (s->hist) hist_write(s, s->in_buf, got);
             s->in_offset = 0;
@@ -2220,7 +2299,7 @@ static fa_result restart_expecting_locked(struct fa_stream* s, fa_frames frame, 
         if (frame != fa_stream_position_now(s) || s->in_count > 0 || fa_ring_readable(&s->ring) > 0 || fa_load32(&s->eof) ||
             reversed(s))
             r = fa_decoder_seek(&s->decoder, frame);
-        if (r != FA_OK) return r;
+        if (r != FA_OK) { fa_store32(&s->dk_in, 0); return r; }   /* the old audio plays on: no fade-in for a later restart */
         hold = (int64_t)((double)frame * 1e9 / (double)s->decoder.format.sample_rate + 0.5);
     }
     /* A seek past a deck loop's out point leaves the loop (reversed: before its in point). */
@@ -2239,6 +2318,7 @@ static fa_result restart_expecting_locked(struct fa_stream* s, fa_frames frame, 
         fa_net_meta_reset_frames(s->net, frame);
         fa_store64(&s->meta_frame, INT64_MAX);
     }
+    s->wrap_valid = 0;
     if (s->ring.data) {
         fa_ring_reset(&s->ring);
         s->in_count = s->in_offset = 0;
@@ -2248,8 +2328,10 @@ static fa_result restart_expecting_locked(struct fa_stream* s, fa_frames frame, 
         fa_store32(&s->eof, 0);
         /* Prefill so playback resumes without waiting for a worker. */
         fa_stream_fill(s, (int64_t)s->dev_rate * FA_PREFILL_MS / 1000);
+        if (fa_load32(&s->dk_in)) fade_in_ring(s);
     }
-    fa_cas64(&s->seek_pending, pending, -1);   /* done or replaced, unless a newer one came meanwhile */
+    /* A newer async target replaced this one: its restart fades in too, so the request stays. */
+    if (fa_cas64(&s->seek_pending, pending, -1)) fa_store32(&s->dk_in, 0);   /* done or replaced, unless a newer one came meanwhile */
     return FA_OK;
 }
 
@@ -2569,6 +2651,33 @@ static int64_t device_frame(struct fa_stream* s, fa_time t)
 /* ---- transport ----------------------------------------------------------- */
 
 /* Caller holds api_lock. */
+/* Does the mixer play this stream now, so that cutting it would click? */
+static int audible_now(struct fa_stream* s)
+{
+    return declick_on(s) && is_attached(s) && fa_load32(&s->state) == FA_STATE_PLAYING && fa_load32(&s->was_audible) &&
+           !fa_load32(&s->flushing);
+}
+
+/* Waits (up to 50 ms) for the mixer to finish a requested fade-out; it then keeps out of the
+ * stream (flushing), as the caller's own flush would. A device that no callback runs for just
+ * times out, and the stream is cut as before. */
+static void wait_fade_out(struct fa_stream* s)
+{
+    int64_t until = fa_monotonic_ns() + 50000000;
+    while (fa_load32(&s->dk_req) && fa_monotonic_ns() < until) fa_sleep_ms(1);
+    fa_store32(&s->dk_req, 0);
+}
+
+/* A playing stream fades out over 1.5 ms before it is flushed for a seek; the restart then
+ * fades the new audio in. Caller holds api_lock. */
+static void fade_out_audible(struct fa_stream* s)
+{
+    if (!audible_now(s)) return;
+    fa_store32(&s->dk_in, 1);
+    fa_store32(&s->dk_req, 1);
+    wait_fade_out(s);
+}
+
 /* `loop` >= 0 also sets looping, while neither the mixer nor a worker can see the
  * decode-ahead audio made for the old setting, and restarts at the position heard
  * (read once the mixer stopped, so nothing plays twice); `frame` is then ignored. */
@@ -2579,6 +2688,7 @@ static fa_result seek_loop_locked(struct fa_stream* s, fa_frames frame, int loop
     if (!s->decoder.seekable) return FA_ERROR_NOT_SEEKABLE;
     if (loop < 0 && (frame < 0 || (s->decoder.length >= 0 && frame > s->decoder.length))) return FA_ERROR_INVALID_ARG;
     if (is_attached(s)) {
+        fade_out_audible(s);
         fa_store32(&s->flushing, 1);
         fa_device_wait_quiescent(s->device);   /* the mixer now skips this stream */
     }
@@ -4649,7 +4759,7 @@ int fa_stream_check_queue(struct fa_stream* s, fa_device* dev, uint32_t frames)
         fa_shape shape;
         fa_shape_load(&s->xfade_shape, &shape);
         if (marker(s, FA_MARKER_FADE_OUT_START) == FA_FRAMES_UNSET) {
-            settle_fade_lane(s, dev, st == FA_STATE_PLAYING && s->was_audible);
+            settle_fade_lane(s, dev, st == FA_STATE_PLAYING && fa_load32(&s->was_audible));
             fa_lane_start_ramp(&s->lanes[FA_LANE_FADE], s->lanes[FA_LANE_FADE].v.value, 0.0f, xf, at, &shape,
                                FA_LANE_MIRROR | FA_LANE_END_STREAM);
         }
@@ -4857,7 +4967,8 @@ static int norm_start_held(struct fa_stream* s)
 static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t frames, int64_t* mixed_off,
                        int64_t* mixed_n)
 {
-    int64_t avail, n, done = 0, clock, off = 0, played0, hold;
+    int dk = 0;   /* a seek waits for a fade-out */
+    int64_t dk_n = 0, avail, n, done = 0, clock, off = 0, played0, hold;
     int p, playing, audible, ended = 0, at_cue_out = 0, looping;
     fa_frames loop_end, loop_back;
     loop_view lv;                /* the loop as read once for this mix */
@@ -4894,7 +5005,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         if (s->stalled) { s->stalled = 0; push_event(dev, s, FA_EVENT_RESUMED, 0); }
     }
     playing = state == FA_STATE_PLAYING && !norm_start_held(s);
-    audible = playing && s->was_audible;
+    audible = playing && fa_load32(&s->was_audible);
     for (p = 0; p < FA_STREAM_LANES; p++) {
         int64_t tag = 0;
         fa_param_voice* v = &s->lanes[p].v;
@@ -4905,7 +5016,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     }
     if (!playing) {
         for (p = 0; p < FA_STREAM_LANES; p++) fa_store_float(&s->lanes[p].current, s->lanes[p].v.value);
-        s->was_audible = 0;
+        fa_store32(&s->was_audible, 0);
         return;
     }
     if (!s->norm_heard) {
@@ -4915,8 +5026,8 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         if (src >= 0) push_event(dev, s, FA_EVENT_LOUDNESS_PROVISIONAL, src);
     }
     norm_target = fa_stream_norm_target_db(s);
-    if (!s->was_audible) s->norm_db = norm_target; /* nothing heard yet: start at the right gain */
-    s->was_audible = 1;
+    if (!fa_load32(&s->was_audible)) s->norm_db = norm_target; /* nothing heard yet: start at the right gain */
+    fa_store32(&s->was_audible, 1);
     norm_lin = db_to_gain(s->norm_db);
     load_markers(s, &mk);
     played0 = fa_load64(&s->played);
@@ -4928,6 +5039,12 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     {
         int64_t cut = frames_to_cue_out(s, played0);
         if (cut >= 0 && cut <= n) { n = cut; at_cue_out = 1; }
+    }
+    if (fa_load32(&s->dk_req)) {
+        dk = 1;
+        dk_n = declick_frames(dev->rate);
+        if (n > dk_n) n = dk_n;
+        else dk_n = n;   /* little buffered: the fade is quicker, but still reaches silence */
     }
     lv = loop_view_of(s);
     loop_end = lv.end;
@@ -4943,7 +5060,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     eq_on = eq && fa_eq_begin(&eq->st, &eq->shared, dev->rate,
                               (fa_load32(&s->eq_restart) && fa_exchange32(&s->eq_restart, 0)) | (s->mute_next != clock + off));
 
-    if (n > 0 && !fa_load32(&dev->mix_blockwise) && mute0 == mute_target && s->norm_db == norm_target &&
+    if (n > 0 && !dk && !fa_load32(&dev->mix_blockwise) && mute0 == mute_target && s->norm_db == norm_target &&
         steady_gain(s, &mk, bus, played0, n, looping, &lv)) {
         mix_steady(s, dev, out + off * 2, clock + off, off, played0, n, norm_lin, mute0, &mk, &lv, bus, eq_on ? eq : NULL, tap);
         done = n;
@@ -5008,6 +5125,10 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
             fa_bus_gains_at(bus, dev, off + done + blk, 0, &bl1, &br1);
             l0 *= bl0; r0 *= br0; l1 *= bl1; r1 *= br1;
         }
+        if (dk_n > 0) {   /* a seek is waiting: fade out */
+            float f0 = declick_w(done, dk_n), f1 = declick_w(done + blk, dk_n);
+            l0 *= f0; r0 *= f0; l1 *= f1; r1 *= f1;
+        }
         fa_ring_regions(&s->ring, blk, &p1, &n1, &p2, &n2);
         if (eq_on) {
             /* The equalizer works on a copy: the ring is read-only here. */
@@ -5044,6 +5165,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
     for (p = 0; p < FA_STREAM_LANES; p++) fa_store_float(&s->lanes[p].current, s->lanes[p].v.value);
     s->mute_level = mute0;
     s->mute_next = clock + off + done;
+    if (dk && fa_cas32(&s->dk_req, 1, 0)) fa_store32(&s->flushing, 1);   /* faded out: the seek takes over */
     *mixed_off = off;
     *mixed_n = done;
     if (done > 0) {
@@ -5064,7 +5186,7 @@ static void stream_mix(struct fa_stream* s, fa_device* dev, float* out, uint32_t
         end_stream(s, dev);
         return;
     }
-    if (n < (int64_t)frames - off) {
+    if (n < (int64_t)frames - off && !dk) {
         if (fa_load32(&s->eof) && fa_ring_readable(&s->ring) == 0) {
             marker_events(s, dev, &mk, played0, played0 + done, 1);
             heard_events(s, dev, played0, played0 + done, 1);
@@ -5180,9 +5302,19 @@ FA_API fa_result FA_CALL fa_stream_seek_async(fa_stream* stream, fa_frames frame
     /* While a target is pending, a newer one only replaces it, without the API lock:
      * a worker holds that lock while it seeks, which can take a network round trip. */
     old = fa_load64(&stream->seek_pending);
-    if (old >= 0 && frame <= fa_load64(&stream->seek_max) && fa_cas64(&stream->seek_pending, old, frame)) {
-        fa_store32(&stream->flushing, 1);
-        return FA_OK;
+    if (old >= 0 && frame <= fa_load64(&stream->seek_max)) {
+        /* The fade-out is asked for before the target changes: a worker that sees the new target
+         * must see the request too. */
+        int fade = audible_now(stream);   /* the earlier target's audio started playing meanwhile */
+        if (fade) {
+            fa_store32(&stream->dk_in, 1);
+            fa_store64(&stream->dk_deadline, fa_monotonic_ns() + 150000000);
+            fa_store32(&stream->dk_req, 1);
+        }
+        if (fa_cas64(&stream->seek_pending, old, frame)) {
+            if (!fade && !fa_load32(&stream->dk_req)) fa_store32(&stream->flushing, 1);   /* else the mixer is fading out, then stops */
+            return FA_OK;
+        }
     }
     fa_mutex_lock(&stream->api_lock);
     if (!stream->decoder.seekable) r = FA_ERROR_NOT_SEEKABLE;
@@ -5190,7 +5322,13 @@ FA_API fa_result FA_CALL fa_stream_seek_async(fa_stream* stream, fa_frames frame
     else if (!is_attached(stream)) r = seek_locked(stream, frame);   /* nothing plays: no wait to save */
     else {
         fa_store64(&stream->seek_max, stream->decoder.length >= 0 ? stream->decoder.length : INT64_MAX);
-        fa_store32(&stream->flushing, 1);   /* the mixer stops at its next callback */
+        if (audible_now(stream)) {
+            fa_store32(&stream->dk_in, 1);
+            fa_store64(&stream->dk_deadline, fa_monotonic_ns() + 150000000);
+            fa_store32(&stream->dk_req, 1);   /* the mixer fades out, then stops, at its next callback */
+        } else {
+            fa_store32(&stream->flushing, 1);   /* the mixer stops at its next callback */
+        }
         fa_store32(&stream->slip_active, 0);   /* a seek forgets the slip now, not when a worker carries it out */
         fa_store64(&stream->seek_pending, frame);
         fa_mutex_lock(&stream->engine->list_lock);
@@ -5266,6 +5404,18 @@ int fa_stream_work(struct fa_stream* s, int64_t max_frames)
         fa_result r = FA_OK;
         if (!fa_mutex_trylock(&s->api_lock)) return 0;
         if (is_attached(s)) {
+            /* A fade-out the seek asked for: the worker does other work until the mixer has
+             * played it (a blocked worker could starve the ring the mixer plays from). */
+            if (audible_now(s) && !fa_load32(&s->dk_req)) {   /* still playing and no fade asked for: ask now */
+                fa_store32(&s->dk_in, 1);
+                fa_store64(&s->dk_deadline, fa_monotonic_ns() + 150000000);
+                fa_store32(&s->dk_req, 1);
+            }
+            if (fa_load32(&s->dk_req) && fa_monotonic_ns() < fa_load64(&s->dk_deadline)) {
+                fa_mutex_unlock(&s->api_lock);
+                return 0;
+            }
+            fa_store32(&s->dk_req, 0);
             fa_store32(&s->flushing, 1);
             fa_device_wait_quiescent(s->device);   /* the mixer now skips this stream */
             /* Read after the wait: a newer target may have replaced it meanwhile. */
