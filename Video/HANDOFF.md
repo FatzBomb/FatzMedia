@@ -113,5 +113,6 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 > Read HANDOFF.md. Start queue item 1, stage 051A (first-frame-ready signal and the A/B swap pattern
 > for TriviaBomb): move `docs/roadmap/future/051A_IDEA_FirstFrameReadySignal.md` to `active/` with
 > bounded acceptance criteria, investigate how each adapter (WPF native and composited, Avalonia,
-> WinForms) learns that the first frame of a new load is on screen, propose the event's name and
-> exact timing before coding, then implement, validate, open a PR, and give me PowerShell smoke steps.
+> WinForms) learns that the first frame of a new load is on screen, and propose the event's name and
+> exact timing before coding. Include the composited UI-thread time counter (047A's before numbers).
+> Then implement, validate, open a PR, and give me PowerShell smoke steps.
