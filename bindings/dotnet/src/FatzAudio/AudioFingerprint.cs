@@ -14,7 +14,7 @@ namespace FatzAudio;
 /// up to 64 MB of samples are hashed whole. WAV and AIFF over 64 MB are sampled at 64 points plus the
 /// file's last-write time, so any write to such a file (a tag edit too) gives a new fingerprint, and the
 /// same bytes in memory give another one than the file. A ZIP gives the fingerprint of its audio entry,
-/// the same as that entry's bytes. No engine is needed and nothing is decoded; safe from any thread.
+/// the same as that entry's bytes; <see cref="Compute(string, string)"/> gives any named entry's. No engine is needed and nothing is decoded; safe from any thread.
 /// </remarks>
 /// <param name="Key">The hash.</param>
 /// <param name="AudioBytes">Bytes of audio it covers (tags and other chunks left out).</param>
@@ -54,6 +54,24 @@ public readonly record struct AudioFingerprint(ulong Key, long AudioBytes)
         int rc;
         fixed (byte* p = data) rc = NativeMethods.fa_fingerprint_memory(p, (nuint)data.Length, ref native);
         FatzAudioException.ThrowIfFailed(rc);
+        return new AudioFingerprint(native.Key, native.AudioBytes);
+    }
+
+    /// <summary>The fingerprint of one named entry of an archive (ZIP), without unpacking the others: the same as the
+    /// entry's bytes give.</summary>
+    /// <param name="archivePath">The archive.</param>
+    /// <param name="entryName">The entry's name as stored, '/'-separated, matched exactly (e.g. <c>"Disc 1/Song.mp3"</c>).</param>
+    /// <returns>Its fingerprint.</returns>
+    /// <exception cref="FatzAudioException">The archive or the entry is missing (<see cref="ErrorCode.NotFound"/>), the
+    /// file is not an archive this build reads or the entry is empty (<see cref="ErrorCode.UnsupportedFormat"/>), or a
+    /// compressed entry is over 256 MB (<see cref="ErrorCode.TooLarge"/>).</exception>
+    public static unsafe AudioFingerprint Compute(string archivePath, string entryName)
+    {
+        ArgumentNullException.ThrowIfNull(archivePath);
+        ArgumentNullException.ThrowIfNull(entryName);
+        NativeLoader.EnsureInitialized();
+        var native = new FaFingerprint { StructSize = (uint)sizeof(FaFingerprint) };
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_fingerprint_archive_entry(archivePath, entryName, ref native));
         return new AudioFingerprint(native.Key, native.AudioBytes);
     }
 

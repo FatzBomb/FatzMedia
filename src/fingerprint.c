@@ -324,3 +324,48 @@ FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa
     fa_source_close(&src);
     return r;
 }
+
+FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
+                                                      fa_fingerprint* out_fingerprint)
+{
+    fa_source src;
+    fa_zip_entry* e = NULL;
+    uint32_t count = 0, i;
+    uint8_t head[4];
+    fa_result r;
+    if (!archive_path || !entry_name || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t))
+        return FA_ERROR_INVALID_ARG;
+    r = fa_source_open_path(&src, archive_path);
+    if (r != FA_OK) return r;
+    if (!read_at(&src, 0, head, sizeof(head)) || !fa_zip_probe(head, sizeof(head))) {
+        fa_source_close(&src);
+        return FA_ERROR_UNSUPPORTED_FORMAT;
+    }
+    r = fa_zip_list(&src, &e, &count);
+    if (r != FA_OK) { fa_source_close(&src); return r; }
+    r = FA_ERROR_NOT_FOUND;
+    for (i = 0; i < count; i++) {
+        if (strcmp(e[i].name, entry_name) != 0) continue;
+        if (e[i].size == 0) { r = FA_ERROR_UNSUPPORTED_FORMAT; break; }
+        if (e[i].method == 0) {
+            int64_t offset;
+            r = fa_zip_entry_offset(&src, &e[i], &offset);
+            if (r == FA_OK) r = fa_source_set_window(&src, offset, (int64_t)e[i].size);
+            if (r == FA_OK) r = fingerprint_source(&src, out_fingerprint);
+        } else {
+            uint8_t* data = NULL;
+            fa_source mem;
+            r = fa_zip_extract(&src, &e[i], FA_ZIP_DEFAULT_MEMORY_LIMIT, NULL, &data);
+            if (r == FA_OK) {
+                fa_source_open_memory_ref(&mem, data, (size_t)e[i].size);
+                r = fingerprint_source(&mem, out_fingerprint);
+                fa_source_close(&mem);
+                free(data);
+            }
+        }
+        break;
+    }
+    free(e);
+    fa_source_close(&src);
+    return r;
+}

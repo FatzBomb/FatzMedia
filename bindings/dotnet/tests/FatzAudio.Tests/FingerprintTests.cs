@@ -35,6 +35,34 @@ public class FingerprintTests
     }
 
     [Fact]
+    public void Compute_ArchiveEntryMatchesItsBytes()
+    {
+        byte[] bytes = File.ReadAllBytes(FindTestFile("tests/data/tags/id3v23.mp3"));
+        string zip = Path.Combine(Path.GetTempPath(), $"fa-fp-{Guid.NewGuid():N}.zip");
+        try
+        {
+            using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                foreach (var level in new[] { System.IO.Compression.CompressionLevel.NoCompression, System.IO.Compression.CompressionLevel.Optimal })
+                {
+                    var entry = archive.CreateEntry(level == System.IO.Compression.CompressionLevel.Optimal ? "deflated/song.mp3" : "song.mp3", level);
+                    using var s = entry.Open();
+                    s.Write(bytes);
+                }
+            }
+            var expected = AudioFingerprint.Compute(bytes);
+            Assert.Equal(expected, AudioFingerprint.Compute(zip, "song.mp3"));
+            Assert.Equal(expected, AudioFingerprint.Compute(zip, "deflated/song.mp3"));
+            var ex = Assert.Throws<FatzAudioException>(() => AudioFingerprint.Compute(zip, "other.mp3"));
+            Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);
+        }
+        finally
+        {
+            File.Delete(zip);
+        }
+    }
+
+    [Fact]
     public void Compute_Errors()
     {
         var ex = Assert.Throws<FatzAudioException>(() => AudioFingerprint.Compute(Path.Combine(Path.GetTempPath(), "no-such-file.mp3")));

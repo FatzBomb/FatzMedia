@@ -166,12 +166,18 @@ bool sameAudio = AudioFingerprint.Compute(path) == before;
 string stored = before.ToString();                    // "00ab12...ef-4123456": key in hex, then the audio bytes
 ```
 
+For one entry of an archive, without unpacking the others, use `fa_fingerprint_archive_entry(archive_path, entry_name, &fp)` (.NET `AudioFingerprint.Compute(archivePath, entryName)`). The name is the entry's path as stored, `/`-separated, matched exactly. It gives the same fingerprint as the entry's bytes, so a song is recognised whether it is loose, in memory or in an archive. ZIP for now; other archive types join as FatzAudio learns to read them.
+
+```csharp
+var inZip = AudioFingerprint.Compute("pack.zip", "Disc 1/Song.mp3");   // == AudioFingerprint.Compute(songBytes)
+```
+
 Two fingerprints are equal when `key` and `audio_bytes` both are (the .NET value type compares both). A ZIP gives the fingerprint of its audio entry (chosen as an open chooses it), the same as that entry's bytes; compressed entries are unpacked in memory for it, up to 256 MB. What is read for each format is in [the cache's table](normalization.md#the-cache). Two limits:
 
 - **WAV and AIFF over 64 MB** are sampled at 64 points plus the file's last-write time (reading 600 MB on every lookup would be too slow). For those, any write to the file, a tag edit included, gives a new fingerprint, and the same bytes in memory give another one than the file. Smaller WAV and AIFF and every coded format are content only.
 - **MIDI**: the loudness cache adds the soundfont and rate to a MIDI file's key; the public fingerprint is the file's own.
 
-Errors: `FA_ERROR_NOT_FOUND` (missing file), `FA_ERROR_UNSUPPORTED_FORMAT` (an empty file, a ZIP without a readable audio entry), `FA_ERROR_IO` (a read failed). Any other file gets a fingerprint, audio or not: the format is not checked.
+Errors: `FA_ERROR_NOT_FOUND` (missing file or archive entry), `FA_ERROR_UNSUPPORTED_FORMAT` (an empty file, a ZIP without a readable audio entry), `FA_ERROR_IO` (a read failed), `FA_ERROR_TOO_LARGE` (a compressed archive entry over 256 MB). Any other file gets a fingerprint, audio or not: the format is not checked.
 
 ## Threads
 

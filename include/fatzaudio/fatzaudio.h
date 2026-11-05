@@ -1235,6 +1235,14 @@ typedef struct fa_fingerprint {
  * FA_ERROR_IO when it could not be read. */
 FA_API fa_result FA_CALL fa_fingerprint_path(const char* path, fa_fingerprint* out_fingerprint);
 FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa_fingerprint* out_fingerprint);
+/* One named entry of an archive (ZIP; the name as stored, '/'-separated, matched
+ * exactly), without unpacking the others: the same fingerprint as the entry's
+ * bytes. A stored entry is read in place, a compressed one is unpacked in memory
+ * (up to 256 MB, else FA_ERROR_TOO_LARGE). FA_ERROR_NOT_FOUND when the archive or
+ * the entry is missing, FA_ERROR_UNSUPPORTED_FORMAT when the file is not an
+ * archive this build reads or the entry is empty. */
+FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
+                                                      fa_fingerprint* out_fingerprint);
 
 /* ---- Transport and position -------------------------------------------- */
 

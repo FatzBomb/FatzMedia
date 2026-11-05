@@ -1231,6 +1231,28 @@ static void test_fingerprint(void)
     CHECK_EQ(fa_fingerprint_memory(zip.p, zip.n, &b), FA_OK);
     CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
 
+    /* One named entry of an archive file: the same key; errors. */
+    {
+        const char* zpath = "fa_test_fingerprint.zip";
+        FILE* z = fopen(zpath, "wb");
+        CHECK(z != NULL);
+        if (z) { fwrite(zip.p, 1, zip.n, z); fclose(z); }
+        memset(&b, 0, sizeof(b));
+        b.struct_size = sizeof(b);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "song.wav", &b), FA_OK);
+        CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "readme.txt", &b), FA_OK);   /* any entry, audio or not */
+        CHECK(a.key != b.key);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "SONG.WAV", &b), FA_ERROR_NOT_FOUND);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, NULL, &b), FA_ERROR_INVALID_ARG);
+        CHECK_EQ(fa_fingerprint_archive_entry("no-such.zip", "song.wav", &b), FA_ERROR_NOT_FOUND);
+        remove(zpath);
+        z = fopen(zpath, "wb");
+        if (z) { fwrite(tagged.p, 1, tagged.n, z); fclose(z); }
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "song.wav", &b), FA_ERROR_UNSUPPORTED_FORMAT);   /* not an archive */
+        remove(zpath);
+    }
+
     /* Changed samples: another key. */
     plain.p[plain.n - 10] ^= 0x40;
     CHECK_EQ(fa_fingerprint_memory(plain.p, plain.n, &b), FA_OK);

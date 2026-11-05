@@ -462,6 +462,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_fingerprint_memory(void* data, nuint size, ref FaFingerprint fingerprint);
 
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_fingerprint_archive_entry(string archivePath, string entryName, ref FaFingerprint fingerprint);
+
     // ---- Tags --------------------------------------------------------------
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int fa_tags_read_path(string path, uint flags, out nint tags);
