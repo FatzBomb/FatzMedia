@@ -2394,6 +2394,192 @@ static void test_flv_damaged(void)
     free(data);
 }
 
+/* ---- MPEG program and transport streams (demux_mpeg.c) -------------------------------------- */
+
+/* One audio stream of a muxed file: 2 s of the two sines (the frame count is the encoder's whole frames). */
+static void check_mpeg(const char* name, const char* container, const char* codec, uint32_t rate, int64_t frames, double seek_tol)
+{
+    static const int64_t targets[] = { 0, 1, 1151, 1152, 30000, 60000, 3, 85000 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, codec) == 0);
+    CHECK(strcmp(info.container, container) == 0);
+    CHECK_EQ(info.format.sample_rate, rate);
+    CHECK_EQ(info.format.channels, 2);
+    CHECK_EQ(info.seekable, 1);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, info.length_frames);
+    CHECK_EQ(n, frames);
+    CHECK_NEAR(freq(full, 8000, 80000, 2, rate), 440.0, 2.0);
+    CHECK_NEAR(freq(full + 1, 8000, 80000, 2, rate), 660.0, 3.0);
+    CHECK_NEAR(rms(full, 8000, 80000, 2), 0.5 * 0.7071, 0.03);
+    if (!seek_matches(s, full, n, 2, targets, (int)(sizeof(targets) / sizeof(targets[0])), seek_tol, &worst)) fprintf(stderr, "  in %s\n", name);
+    CHECK(worst <= seek_tol);
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_mpeg_ps(void)
+{
+    check_mpeg("mpeg/ps_mp2.mpg", "mpeg-ps", "mp2", 44100, 88704, 0.0);
+    check_mpeg("mpeg/ps_audio_only.mpg", "mpeg-ps", "mp2", 44100, 88704, 0.0);
+    check_mpeg("mpeg/vcd.dat", "mpeg-ps", "mp2", 44100, 88704, 0.0);       /* MPEG-1 system layer */
+    check_mpeg("mpeg/ps_ac3.vob", "mpeg-ps", "ac3", 48000, 96768, 1e-3);   /* private stream 1 */
+    check_mpeg("mpeg/ps_ac3_640.vob", "mpeg-ps", "ac3", 48000, 96768, 1e-3);   /* frames straddle PES packets */
+}
+
+static void test_mpeg_ts(void)
+{
+    check_mpeg("mpeg/ts_mp2.ts", "mpeg-ts", "mp2", 48000, 96768, 0.0);
+    check_mpeg("mpeg/ts_mp3.ts", "mpeg-ts", "mp3", 48000, 97920, 0.0);
+    check_mpeg("mpeg/ts_aac.ts", "mpeg-ts", "aac", 48000, 97280, AAC_SEEK_TOL);
+    check_mpeg("mpeg/ts_audio_only.ts", "mpeg-ts", "aac", 44100, 90112, AAC_SEEK_TOL);
+    check_mpeg("mpeg/ts_ac3.ts", "mpeg-ts", "ac3", 48000, 96768, 1e-3);
+    check_mpeg("mpeg/ts_eac3.ts", "mpeg-ts", "eac3", 48000, 96768, 1e-3);
+    check_mpeg("mpeg/m2ts_ac3.m2ts", "m2ts", "ac3", 48000, 96768, 1e-3);   /* 192-byte packets */
+}
+
+/* PTS that wrap past 2^33 inside the file. */
+static void test_mpeg_pts_wrap(void)
+{
+    check_mpeg("mpeg/ts_wrap.ts", "mpeg-ts", "mp2", 44100, 88704, 0.0);
+    check_mpeg("mpeg/ps_wrap.mpg", "mpeg-ps", "mp2", 44100, 88704, 0.0);
+}
+
+static void test_mpeg_tracks(void)
+{
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    CHECK_EQ(open_file("mpeg/ps_two_audio.vob", -1, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "ac3") == 0);
+    CHECK_EQ(info.audio_track_count, 2);
+    fa_stream_close(s);
+    CHECK_EQ(open_file("mpeg/ps_two_audio.vob", 1, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "mp2") == 0);
+    CHECK_EQ(info.format.sample_rate, 44100);
+    CHECK_EQ(info.length_frames, 88704);
+    fa_stream_close(s);
+    CHECK_EQ(open_file("mpeg/ps_two_audio.vob", 2, &s), FA_ERROR_NOT_FOUND);
+    CHECK_EQ(open_file("mpeg/ts_two_audio.ts", 0, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "aac") == 0);
+    CHECK_EQ(info.audio_track_count, 2);
+    fa_stream_close(s);
+    CHECK_EQ(open_file("mpeg/ts_two_audio.ts", 1, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.codec, "mp2") == 0);
+    CHECK_EQ(info.length_frames, 88704);
+    fa_stream_close(s);
+    CHECK_EQ(open_file("mpeg/ts_two_audio.ts", 2, &s), FA_ERROR_NOT_FOUND);
+}
+
+/* 12 s files with video bitrate, where a seek has to search: every target matches the full decode. */
+static void check_mpeg_long(const char* name, const char* container, const char* codec, double tol)
+{
+    static const int64_t targets[] = { 0, 441000, 100000, 264600, 520000, 300000, 529000, 12345, 100001 };
+    fa_stream* s;
+    fa_stream_info info = { .struct_size = sizeof(info) };
+    float* full;
+    int64_t n;
+    double worst;
+    CHECK_EQ(open_file(name, -1, &s), FA_OK);
+    CHECK_EQ(fa_stream_get_info(s, &info), FA_OK);
+    CHECK(strcmp(info.container, container) == 0);
+    CHECK(strcmp(info.codec, codec) == 0);
+    full = read_all(s, 2, &n);
+    CHECK_EQ(n, info.length_frames);
+    CHECK_NEAR((double)n, 12.0 * 44100, 2300.0);
+    CHECK(seek_matches(s, full, n, 2, targets, (int)(sizeof(targets) / sizeof(targets[0])), tol, &worst));
+    free(full);
+    fa_stream_close(s);
+}
+
+static void test_mpeg_long_seeks(void)
+{
+    check_mpeg_long("mpeg/ps_long.mpg", "mpeg-ps", "mp2", 0.0);
+    check_mpeg_long("mpeg/ts_long.ts", "mpeg-ts", "aac", AAC_SEEK_TOL);
+}
+
+/* Read as it comes: the same samples, no length, no seeking; a program stream has its first audio stream only. */
+static void test_mpeg_forward_only(void)
+{
+    int64_t n;
+    fa_result r;
+    int seekable;
+    compare_forward_only("mpeg/ps_mp2.mpg", -1, 2);
+    compare_forward_only("mpeg/ps_ac3.vob", -1, 2);
+    compare_forward_only("mpeg/vcd.dat", -1, 2);
+    compare_forward_only("mpeg/ts_aac.ts", -1, 2);
+    compare_forward_only("mpeg/ts_eac3.ts", -1, 2);
+    compare_forward_only("mpeg/m2ts_ac3.m2ts", -1, 2);
+    compare_forward_only("mpeg/ts_two_audio.ts", 1, 2);
+    if (g_failures) return;
+    CHECK(forward_only("mpeg/ps_two_audio.vob", 1, 2, &n, &r, &seekable) == NULL);
+    CHECK_EQ(r, FA_ERROR_NOT_SEEKABLE);
+}
+
+/* Windows Media Center recordings (ASF with MPEG audio or AC-3; here made by FFmpeg's ASF muxer). */
+static void test_mpeg_dvrms(void)
+{
+    check_mpeg("mpeg/dvrms_mp2.dvr-ms", "asf", "mp2", 48000, 96768, 0.0);
+    check_mpeg("mpeg/dvrms_ac3.dvr-ms", "asf", "ac3", 48000, 96768, 1e-3);
+}
+
+/* DTS is listed as a track but there is no decoder yet. */
+static void test_mpeg_unsupported(void)
+{
+    fa_stream* s;
+    CHECK_EQ(open_file("mpeg/ts_dts.ts", -1, &s), FA_ERROR_UNSUPPORTED_FORMAT);
+}
+
+/* Cut and damaged files never crash; a cut one plays what is there. */
+static void test_mpeg_damaged(void)
+{
+    static const char* const names[] = { "mpeg/ps_mp2.mpg", "mpeg/ts_aac.ts", "mpeg/ps_ac3.vob", "mpeg/m2ts_ac3.m2ts" };
+    size_t k;
+    for (k = 0; k < sizeof(names) / sizeof(names[0]); k++) {
+        size_t size = 0, cut, i;
+        uint8_t* data = load_file(names[k], &size);
+        CHECK(data != NULL);
+        for (cut = 0; cut < size; cut += size / 61 + 1) {
+            fa_open_options opt;
+            fa_stream* s = NULL;
+            fa_open_options_init(&opt);
+            opt.flags = FA_OPEN_DECODE_ONLY;
+            if (fa_stream_open_memory(g_engine, data, cut, &opt, &s) == FA_OK) {
+                int64_t n;
+                float* p = read_all(s, 2, &n);
+                free(p);
+                fa_stream_seek(s, n / 2);
+                fa_stream_close(s);
+            }
+        }
+        /* Every 97th byte flipped: the streams are found again after the damage. */
+        for (i = 40; i < size; i += 97) data[i] ^= 0xA5;
+        {
+            fa_open_options opt;
+            fa_stream* s = NULL;
+            fa_open_options_init(&opt);
+            opt.flags = FA_OPEN_DECODE_ONLY;
+            if (fa_stream_open_memory(g_engine, data, size, &opt, &s) == FA_OK) {
+                int64_t n;
+                float* p = read_all(s, 2, &n);
+                free(p);
+                fa_stream_seek(s, n / 3);
+                fa_stream_close(s);
+            }
+        }
+        free(data);
+    }
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -2459,6 +2645,15 @@ int main(void)
     RUN(test_flv_files);
     RUN(test_flv_forward_only);
     RUN(test_flv_damaged);
+    RUN(test_mpeg_ps);
+    RUN(test_mpeg_ts);
+    RUN(test_mpeg_pts_wrap);
+    RUN(test_mpeg_tracks);
+    RUN(test_mpeg_long_seeks);
+    RUN(test_mpeg_forward_only);
+    RUN(test_mpeg_dvrms);
+    RUN(test_mpeg_unsupported);
+    RUN(test_mpeg_damaged);
 
     fa_engine_destroy(g_engine);
     if (g_failures) { printf("%d failure(s)\n", g_failures); return 1; }

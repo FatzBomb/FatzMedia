@@ -74,6 +74,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   track only (MediaControl request 14): PCM, µ-law, A-law, MP3 (CBR and VBR), MP2, AC-3 and AAC in AVI; AAC, MP3 and PCM
   in FLV. Exact lengths and seeks; containers `avi` and `flv`; `audio_track` picks a track; forward-only sources play
   without seeking. DTS, ADPCM and Nellymoser return `FA_ERROR_UNSUPPORTED_FORMAT`.
+- MPEG program streams (`.mpg`, `.mpeg`, `.vob`, `.dat`, with the MPEG-1 system layer of Video CD) and transport streams (`.ts`,
+  `.mts`, `.m2ts` with 192-byte packets) open by path, memory and callbacks, audio track only (MediaControl request 14):
+  MPEG audio, AC-3, E-AC-3 and ADTS AAC. The length is exact (first and last time stamp, last frames counted) and seeks
+  search the file by time stamp; containers `mpeg-ps`, `mpeg-ts` and `m2ts`; `audio_track` picks a track; forward-only sources
+  play without seeking. Windows Media Center `.dvr-ms` recordings (ASF with MP2 or AC-3 audio) go through the ASF reader (tested with ASF files of the same audio formats, not a real recording). DTS, TrueHD, LPCM and LATM
+  AAC tracks return `FA_ERROR_UNSUPPORTED_FORMAT`.
 - Windows Media Audio on a Windows with no Media Foundation (N and KN editions without the Media Feature Pack) now
   returns `FA_ERROR_PROVIDER_MISSING` (.NET `ErrorCode.ProviderMissing`) instead of `FA_ERROR_UNSUPPORTED_FORMAT`, so an app
   can tell the user what to install. Off Windows, WMA still returns `FA_ERROR_UNSUPPORTED_FORMAT`.

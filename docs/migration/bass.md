@@ -364,6 +364,7 @@ AAC plays through the ordinary open calls, in MP4/M4A files, video files, CAF (`
 | BASS_AAC_StreamCreateFileUser (also MP4) | `fa_stream_open_io` | `engine.OpenStream` | ✅ |
 | AAC in CAF (Core Audio Format) files | Built in: `.caf` files open with the same calls, exact length and start from the packet table ([streams](../features/streams.md#supported-formats)) | `engine.OpenFile` | ✅ |
 | Audio of AVI and FLV video files (BASS opens neither) | Built in: `.avi` (PCM, MP3, MP2, AC-3, AAC, OpenDML) and `.flv` (AAC, MP3, PCM) open with the same calls, exact length and seeks; pick a track with `audio_track` ([streams](../features/streams.md#avi-and-flv)) | `engine.OpenFile` | ✅ |
+| Audio of MPEG program and transport streams (`.mpg`, `.vob`, `.ts`, `.m2ts`) and `.dvr-ms` (BASS opens none of them) | Built in: MPEG audio, AC-3, E-AC-3 and ADTS AAC open with the same calls, exact length and seeks; pick a track with `audio_track` ([streams](../features/streams.md#mpeg-program-and-transport-streams)) | `engine.OpenFile` | ✅ |
 | BASS_PluginLoad("bass_aac.dll") | Not needed: built in | — | ➖ (by design) |
 
 ### bass_ac3 (Dolby Digital and Dolby Digital Plus)

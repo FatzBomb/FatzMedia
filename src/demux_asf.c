@@ -12,6 +12,10 @@
  * Codecs: Windows Media Audio 1, 2, 9 Professional, 9 Lossless and Voice, plus
  * the PCM, MP3 and AC-3 that some ASF files carry. The codec decides by name
  * (codec.c): Media Foundation's decoder on Windows; elsewhere WMA is unsupported.
+ * Windows Media Center recordings (.dvr-ms) are ASF files whose audio is MPEG-1 Layer II
+ * or AC-3 (format tags 0x0050 and 0x2000), so they should play like any other (untested on a
+ * real Media Center recording: the tests use ASF files with the same audio formats). The media objects
+ * need not hold whole frames; the codecs join the pieces.
  *
  * Seeking needs a seekable source. The Simple Index Object (when the file has one
  * and is local) gives a packet at or before the target; a search over the packets'
@@ -1059,7 +1063,7 @@ static int asf_probe(const uint8_t* d, size_t n, size_t id3)
 }
 
 const fa_decoder_vtable fa_decoder_asf = {
-    "asf", "ASF and Windows Media Audio (.wma, .asf, .wmv; audio streams)", "wma;asf;wmv",
-    "audio/x-ms-wma;video/x-ms-asf;video/x-ms-wmv;application/vnd.ms-asf;audio/x-ms-asf",
+    "asf", "ASF and Windows Media Audio (.wma, .asf, .wmv, .dvr-ms; audio streams)", "wma;asf;wmv;dvr-ms",
+    "audio/x-ms-wma;video/x-ms-asf;video/x-ms-wmv;application/vnd.ms-asf;audio/x-ms-asf;video/x-ms-dvr",
     asf_probe, asf_open, asf_read, asf_seek, asf_close, 1, asf_lag, NULL
 };

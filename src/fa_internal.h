@@ -279,6 +279,9 @@ extern const fa_decoder_vtable fa_decoder_tracker;
 /* AVI (demux_avi.c) and Flash Video (demux_flv.c). */
 extern const fa_decoder_vtable fa_decoder_avi;
 extern const fa_decoder_vtable fa_decoder_flv;
+/* MPEG program streams and transport streams (demux_mpeg.c). */
+extern const fa_decoder_vtable fa_decoder_mpg;
+extern const fa_decoder_vtable fa_decoder_ts;
 /* Core Audio Format (demux_caf.c). */
 extern const fa_decoder_vtable fa_decoder_caf;
 /* ASF / Windows Media Audio (demux_asf.c). */

@@ -19,6 +19,8 @@ const fa_decoder_vtable* const fa_decoder_registry[] = {
     &fa_decoder_caf,
     &fa_decoder_avi,
     &fa_decoder_flv,
+    &fa_decoder_mpg,
+    &fa_decoder_ts,
     &fa_decoder_tracker,
     &fa_decoder_cdg,
 };
