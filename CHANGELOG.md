@@ -20,6 +20,8 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 - Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
   in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
+- Archives, step A5: details for files nobody decodes. `fa_tags_read_*` now fills `fa_stream_info` (codec, container, rate, channels, duration, size, bitrate) from the container for DTS, TrueHD, WMA off Windows and any other codec FatzAudio cannot decode, in Matroska, MP4, ASF, AVI and FLV, and for raw `.dts` core streams. New field `fa_stream_info.can_decode` at the end of the struct (.NET `StreamInfo.CanDecode`, `Tags.CanDecode`): 0 for those files, 1 otherwise. CAF `info` chunk tags (`FA_TAG_FORMAT_CAF`, .NET `TagFormat.Caf`). MediaControl can drop measuring these files with FFmpeg.
+
 - Archives, step A4: `tools/archive-bench` (`fa_archive_bench`, `run.py`) times the first audio of a song in every archive kind through
   the public API; the measured table and what to ship karaoke songs in are in [archives, "Speed"](docs/features/archives.md#speed).
   The pairing rules (a `.cdg` that matches no song is no longer attached when an archive holds several songs; names compared

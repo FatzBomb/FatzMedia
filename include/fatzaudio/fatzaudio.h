@@ -1120,6 +1120,11 @@ typedef struct fa_stream_info {
                                     else the codec's nominal rate; 0 if unknown */
     uint32_t bits_per_sample;    /* PCM and lossless sources (WAV, AIFF, FLAC, ALAC, CD):
                                     16, 24, ...; 0 for lossy codecs */
+    int32_t can_decode;          /* 1 when FatzAudio can play the file. 0 only in the details
+                                    fa_tags_get_info gives for a file whose codec nobody
+                                    decodes here (DTS, TrueHD, WMA off Windows, ...): codec,
+                                    container, format, duration and bitrate are what the file
+                                    says; opening a stream fails. */
 } fa_stream_info;
 
 FA_API fa_result FA_CALL fa_stream_get_info(fa_stream* stream, fa_stream_info* out_info);
@@ -1190,7 +1195,8 @@ typedef enum fa_tag_format {
     FA_TAG_FORMAT_MATROSKA,
     FA_TAG_FORMAT_MIDI,
     FA_TAG_FORMAT_TRACKER,   /* a tracker module's title, artist and song message */
-    FA_TAG_FORMAT_LYRICS3    /* Lyrics3 v1.00 and v2.00 at the end of an MP3 */
+    FA_TAG_FORMAT_LYRICS3,   /* Lyrics3 v1.00 and v2.00 at the end of an MP3 */
+    FA_TAG_FORMAT_CAF        /* CAF 'info' chunk: title, artist, album, comments, ... */
 } fa_tag_format;
 
 typedef enum fa_tags_flags {

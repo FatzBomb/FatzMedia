@@ -247,6 +247,7 @@ static fa_result stream_open_decoder(struct fa_stream* s, const char* name_hint,
 {
     fa_decoder_env env;
     fa_result r;
+    memset(&env, 0, sizeof(env));
     env.dynamic_range = &s->dynamic_range;
     env.dolby_mix = &s->dolby_mix;
     env.midi_lyrics_only = 0;

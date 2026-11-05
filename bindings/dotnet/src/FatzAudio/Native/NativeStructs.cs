@@ -156,6 +156,7 @@ internal unsafe struct FaStreamInfo
     public long AudioBytes;
     public uint Bitrate;
     public uint BitsPerSample;
+    public int CanDecode;
 }
 
 [StructLayout(LayoutKind.Sequential)]

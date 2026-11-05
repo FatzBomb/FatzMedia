@@ -946,6 +946,51 @@ static void read_aiff(fa_source* src, fa_tag_sink* sink)
     for (i = 0; i < nt; i++) text_chunk(src, FA_TAG_FORMAT_AIFF, ids[i], at[i], sz[i], sink);
 }
 
+/* ---- CAF ---------------------------------------------------------------------------- */
+
+/* Core Audio Format: an 'info' chunk (Core Audio Format Specification 1.0, "Information
+ * chunk") holds a 32-bit entry count and then that many key/value pairs of NUL-terminated
+ * UTF-8 strings ("title", "artist", "album", "comments", ...). Chunks are a 4-byte type and
+ * a signed 64-bit size, big-endian; a size of -1 (the 'data' chunk running to the end of
+ * the file) ends the walk. */
+static void read_caf(fa_source* src, fa_tag_sink* sink)
+{
+    int64_t pos = 8;
+    int n = 0;
+    while (pos + 12 <= src->length && n++ < 1000) {
+        uint8_t c[12];
+        int64_t size;
+        if (fa_source_seek(src, pos) != FA_OK || !read_exact(src, c, 12)) return;
+        size = (int64_t)(((uint64_t)fa_be32(c + 4) << 32) | fa_be32(c + 8));
+        if (size < 0 || size > src->length - pos - 12) return;
+        if (memcmp(c, "info", 4) == 0 && size >= 4 && size <= (1 << 20)) {
+            uint8_t* b = read_block(src, pos + 12, (size_t)size);
+            size_t i = 4, len = (size_t)size;
+            uint32_t entries, e;
+            if (!b) return;
+            entries = fa_be32(b);
+            for (e = 0; e < entries && i < len; e++) {
+                const char* key = (const char*)b + i;
+                const char* val;
+                const uint8_t* z = (const uint8_t*)memchr(key, 0, len - i);
+                size_t kl, vl;
+                if (!z) break;                            /* no NUL */
+                kl = (size_t)((const char*)z - key);
+                i += kl + 1;
+                val = (const char*)b + i;
+                z = (const uint8_t*)memchr(val, 0, len - i);
+                if (!z) break;
+                vl = (size_t)((const char*)z - val);
+                i += vl + 1;
+                if (kl && vl && vl <= sink->max_text) sink->text(sink, FA_TAG_FORMAT_CAF, key, val);
+            }
+            free(b);
+            return;
+        }
+        pos += 12 + size;
+    }
+}
+
 /* ---- Matroska ---------------------------------------------------------------------- */
 
 #define MKV_SEGMENT 0x18538067u
@@ -1218,6 +1263,9 @@ void fa_tags_collect(fa_source* src, fa_tag_sink* sink)
         read_riff(src, sink);
     } else if (n >= 12 && memcmp(head, "FORM", 4) == 0 && (memcmp(head + 8, "AIFF", 4) == 0 || memcmp(head + 8, "AIFC", 4) == 0)) {
         read_aiff(src, sink);
+    } else if (n >= 8 && memcmp(head, "caff", 4) == 0) {
+        read_caf(src, sink);
+        return;
     } else if (n >= 4 && memcmp(head, "OggS", 4) == 0) {
         fa_ogg_read_tags(src, sink);
         return;

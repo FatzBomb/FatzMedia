@@ -166,6 +166,11 @@ struct fa_decoder {
     uint32_t bitrate;                 /* nominal bits per second, 0 = unknown */
     uint32_t bits_per_sample;         /* PCM and lossless, 0 = lossy or unknown */
     int64_t file_size;                /* -1 = unknown */
+    /* fa_decoder_open with env->info_only: the container was read but no decoder
+     * opens the codec (DTS, TrueHD, WMA without Media Foundation, ...). The format,
+     * codec name, length and bitrate are what the container says; nothing can be read. */
+    int info_only;
+    int undecodable;
 };
 
 /* What a decoder may need from the stream that opens it. */
@@ -180,12 +185,17 @@ typedef struct fa_decoder_env {
     int32_t text_code_page;           /* MIDI: fa_open_options.text_code_page, 0 = detect */
     int32_t midi_lyrics_only;         /* MIDI: parse only (FA_OPEN_MIDI_LYRICS_ONLY) */
     int32_t no_cdg;                   /* FA_OPEN_NO_CDG */
+    int32_t info_only;                /* tags reader: a container whose codec nobody decodes opens
+                                         anyway with dec->undecodable = 1 (details only) */
 } fa_decoder_env;
 
 /* Could `data` (the start of a file, any length) be audio some decoder opens? The same
  * content probes as fa_decoder_open: 0 only when none of them claims the bytes (a text
  * file, a picture); 1 when one does or the bytes cannot tell (a tag that fills them). */
 int fa_decoder_recognizes(const uint8_t* data, size_t size);
+
+/* info_dts.c: details of a raw DTS core stream (.dts) that no decoder opens; 1 when `src` is one. */
+int fa_dts_core_info(fa_source* src, fa_stream_info* out);
 
 /* Detects the format of `src` and opens the matching decoder. `name_hint` (a path
  * or NULL) and `mime_hint` only break ties when the content is ambiguous.

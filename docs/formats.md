@@ -24,7 +24,7 @@ What FatzAudio can open, decode and write. The full detail, with how detection w
 | A lone `.cdg`, or a ZIP holding only one (plays as silence for the graphics' length) | Yes | ✅ | ✅ | ✅ | ✅ | [CD+G](features/cdg.md#graphics-with-no-audio) |
 | Archives: ZIP (stored, DEFLATE, Deflate64, bzip2, LZMA, xz), tar, `.tar.gz` / `.tar.bz2` / `.tar.xz`, a song or `.cdg` in a `.gz` / `.bz2` / `.xz`, 7z (Copy, LZMA, LZMA2; RAR is not read) | Yes | ✅ | ✅ | ✅ | ✅ | [archives](features/archives.md) |
 | Internet radio, HLS, HTTP and HTTPS streams | Yes | ✅ | ✅ | ✅ | ✅ | [web streams](features/web-streams.md) |
-| DTS, TrueHD, other codecs | No | ➖ | ➖ | ➖ | ➖ | Decode with your own FFmpeg and hand over frames ([FFmpeg](features/ffmpeg.md)) |
+| DTS, TrueHD, other codecs | No | ➖ | ➖ | ➖ | ➖ | Not decoded here. `fa_tags_read_*` still gives codec, rate, channels, duration and bitrate with `can_decode` 0 ([tags](features/tags.md)); decode with your own FFmpeg and hand over frames ([FFmpeg](features/ffmpeg.md)) |
 | Copy-protected media (WMA DRM, FairPlay, encrypted MP4/MKV, SAMPLE-AES) | Never decrypted | `ProtectedContent` | `ProtectedContent` | `ProtectedContent` | `ProtectedContent` | [streams](features/streams.md) |
 
 You can ask the library at run time: `fa_format_count` and `fa_format_get_info` in C, `AudioEngine.SupportedFormats` in .NET. Detection reads the content, not the file extension.
