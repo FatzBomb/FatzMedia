@@ -836,6 +836,7 @@ static fa_result parse_stsd(mp4* m, const fa_mp4_box* stbl, fa_codec_params* cp)
     case FA_FOURCC('m', 'l', 'p', 'a'): name = "truehd"; break;
     case FA_FOURCC('s', 'a', 'm', 'r'): name = "amrnb"; break;
     case FA_FOURCC('s', 'a', 'w', 'b'): name = "amrwb"; break;
+    case FA_FOURCC('i', 'm', 'a', '4'): name = "ima4"; break;   /* QuickTime IMA 4:1: a packet is 64 frames */
     case FA_FOURCC('u', 'l', 'a', 'w'): name = "pcm_mulaw"; m->frame_bytes = channels; break;
     case FA_FOURCC('a', 'l', 'a', 'w'): name = "pcm_alaw"; m->frame_bytes = channels; break;
     case FA_FOURCC('O', 'p', 'u', 's'): {
@@ -1234,7 +1235,7 @@ static int mp4_probe(const uint8_t* d, size_t n, size_t id3)
 }
 
 const fa_decoder_vtable fa_decoder_mp4 = {
-    "mp4", "MP4, M4A, MOV (audio tracks)", "mp4;m4a;m4b;m4v;mov;3gp",
+    "mp4", "MP4, M4A, MOV (audio tracks)", "mp4;m4a;m4b;m4v;mov;3gp;3g2",
     "audio/mp4;video/mp4;audio/x-m4a;video/quicktime",
     mp4_probe, mp4_open, mp4_read, mp4_seek, mp4_close, 1, NULL, NULL
 };

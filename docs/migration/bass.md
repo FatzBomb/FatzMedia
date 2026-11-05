@@ -67,8 +67,8 @@ On Android and iOS BASS also comes as the core library plus one library per add-
 
 | BASS | FatzAudio (C) | FatzAudio (.NET) | Status |
 |---|---|---|---|
-| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA) |
-| BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3)) | `new StreamOptions { Prescan = true }` | ✅ |
+| BASS_StreamCreateFile (path) | `fa_stream_open_path`; format detected from content ([streams](../features/streams.md)) | `engine.OpenFile(path)` | ✅ WAV/AIFF/MP3/MP2/MP1/FLAC/OGG/Opus so far (and the add-on formats below: MP4, MKV, AAC, AC-3, WMA). Also Sun `.au`, which BASS does not read |
+| BASS_STREAM_PRESCAN | `FA_OPEN_PRESCAN` in `fa_open_options.flags`: MP3 reads every frame header at open. Seeks are exact and fast without it; other formats are always exact ([MP3](../features/streams.md#mp3-mp2-and-mp1)) | `new StreamOptions { Prescan = true }` | ✅ |
 | BASS_StreamCreateFile (memory) | `fa_stream_open_memory` | `engine.OpenMemory(bytes)`, `await engine.OpenMemoryAsync(bytes, null, token)` | ✅ |
 | BASS_StreamCreateFileUser | `fa_stream_open_io`; `close` is called once by `fa_stream_close`, never on a failed open ([custom I/O](../features/streams.md#custom-io-your-own-reader)) | `engine.OpenStream(System.IO.Stream)` | ✅ |
 | BASS_StreamCreateURL | `fa_stream_open_url`: HTTP/HTTPS files with range seeking, Icecast/Shoutcast radio, HLS, `.pls`/`.m3u`; reconnects by itself ([web streams](../features/web-streams.md)) | `engine.OpenUrl(url)` | ✅ WAV/FLAC/MP3/OGG/Opus/AAC/AC-3/MP4/Matroska built in |
@@ -189,6 +189,7 @@ BASS has no normalization: apps measure each file themselves with a decode pass 
 | Your own analysis: decode stream (`BASS_STREAM_DECODE`) + `BASS_ChannelGetData`/`GetLevel` loop, compute a gain, then `BASS_ChannelSetAttribute(h, BASS_ATTRIB_VOL, gain)` | `fa_engine_set_normalization(engine, FA_NORMALIZE_TRACK, -16)` once. Tags, cache and a parallel audio-only background scan; playback starts at once and glides to the exact gain | `engine.SetNormalization(NormalizeMode.Track, -16)` | ✅ |
 | Storing your analysis result and reapplying it next time | `fa_stream_set_loudness` (wins over everything); results cached automatically in `fa_engine_config.cache_directory`: one file, 5 MB by default, songs used least recently dropped first, keyed by the audio so retagged files still hit ([the cache](../features/normalization.md#the-cache)) | `stream.SetLoudness(lufs)`, `AudioEngineOptions.CacheDirectory` | ✅ |
 | Limiting or clearing that stored data | `fa_engine_set_cache_size(engine, bytes)`, `fa_engine_clear_cache(engine)` | `SetCacheSize(bytes)` or `AudioEngineOptions.CacheMaxBytes`, `ClearCache()` | ✅ |
+| Analysing audio that BASS never saw as a file: a track your demuxer reads (FFmpeg) out of a video file, measured with your own decode loop | `fa_scan_open_packets` / `fa_scan_open_push`, `fa_scan_push_packet` / `_frame`, `fa_scan_finish`: measured on your thread, stored in the cache under the original file's `fa_fingerprint`; the playing stream names the song with `fa_open_options.source_identity` so the cache and the start wait apply ([streams you feed](../features/normalization.md#streams-you-feed-packets-and-decoded-frames)) | `engine.OpenLoudnessScan(...)`, `LoudnessScan`, `StreamOptions.SourceIdentity` | ✅ |
 | Analysing files ahead of playback (library import) | `fa_scan_loudness_path`: audio only, all cores, cached | `engine.ScanLoudness(path)` | ✅ |
 | Your own silence scan (BASS has none): a decode stream + `BASS_ChannelGetLevel`/`GetData` loop to find the first and last sound, then `BASS_ChannelSetPosition` and a `BASS_SYNC_POS` to stop there | `fa_stream_get_silence` between open and play (a few ms: the start and the end only; complete from the analysis cache), then `fa_stream_set_marker` `FA_MARKER_CUE_IN` / `CUE_OUT` ([silence](../features/analysis.md#silence)). `BASS_ChannelGetLevelEx` with `BASS_LEVEL_RMS` over 50 ms is the default mode (`FA_SILENCE_RMS`, clicks and ticks under 200 ms ignored); a peak loop is `FA_SILENCE_PEAK` | `stream.DetectSilence()`, `stream.Markers.CueIn` / `CueOut` | ✅ |
 | Silence regions of a whole song (gaps, a hidden track after minutes of silence) | `fa_analyze_path` / `fa_analyze_stream` with `FA_ANALYZE_SILENCE`, then `fa_analysis_get_silence`; cached | `AnalysisKinds.Silence`, `TrackAnalysis.Silence` | ✅ |
@@ -1140,7 +1141,7 @@ FatzAudio returns the error directly from the call that failed, so there is no `
 |---|---|---|
 | `STREAM_WAV`, `_WAV_PCM`, `_WAV_FLOAT`, `_WAV` (ADPCM) | `pcm` (µ-law, A-law and ADPCM are decoded; the codec name says which) | `wav`, `aiff` |
 | `STREAM_AIFF` | `pcm` | `aiff` |
-| `STREAM_MP1`, `STREAM_MP2` | not supported (`FA_ERROR_UNSUPPORTED_FORMAT`): only Layer III plays | |
+| `STREAM_MP1`, `STREAM_MP2` | `mp1`, `mp2` for `.mp1`/`.mp2`/`.mpa` files (a Layer I/II file reports the layer); inside MP4 and MPEG-1/2 system files the codec name is `mp3`, as the container does not say the layer | `mp2` (the file format for Layers I and II), `matroska`, `mp4` |
 | `STREAM_MP3` | `mp3` | `mp3` (also inside MP4, Matroska, ASF, CAF) |
 | `STREAM_OGG` | `vorbis` | `ogg` |
 | `STREAM_OPUS` | `opus` | `ogg`, `webm`, `matroska`, `mp4` |

@@ -81,9 +81,60 @@ engine.SetNormalizationStartWait(TimeSpan.FromMilliseconds(200), maxProvisionalB
 - The second value caps the boost while the loudness is not final, with or without a wait: `0` allows only cuts until the value is final, `6` keeps a guess from boosting a quiet intro by the full 12 dB. The default is 12, which adds no cap.
 - Defaults: a 200 ms wait and no extra cap. `0` turns the wait off (playback then starts at once, as in 1.0.0-rc.3 and before). A new wait applies from the next start.
 
+### Streams you feed: packets and decoded frames
+
+A [packet or push stream](ffmpeg.md) (video audio that your app demuxes, a codec you decode yourself) has no file for FatzAudio to read a second time, so it is not scanned by itself and uses the running estimate. Two additions give it the same treatment as a file:
+
+1. **Feed a scan.** Read the track once more in the background, faster than real time, and push it into a `fa_scan_feed`. FatzAudio measures it with the same meter as a scan by path and stores the result in the [cache](#the-cache).
+2. **Name the song on the stream.** Open the playing stream with `fa_open_options.source_identity` (.NET `StreamOptions.SourceIdentity`). Normalization then looks the song up in the cache, and takes part in a feed of the same song while it runs: the [start wait](#when-playback-starts) and the provisional value work as for a file.
+
+The identity of a song is the `fa_fingerprint` of the **original file** (`fa_fingerprint_path`, .NET `AudioFingerprint.Compute`) plus the audio track in it (`fa_open_options.audio_track` on the stream, `fa_scan_options.audio_track` on the feed; `-1` = the file's default track). Use `-1` when FatzAudio could also open the same file itself: a scan by path and a fed scan then share one cache entry.
+
+C:
+```c
+fa_fingerprint id = { .struct_size = sizeof(id) };
+fa_fingerprint_path(path, &id);                       /* the original file */
+
+/* In the background, before the song is played (library import, or the next item of a queue): */
+fa_scan_options so; fa_scan_options_init(&so);
+so.identity = &id;
+so.duration_seconds = duration;                       /* optional: gives the start wait a progress */
+fa_scan_feed* feed;
+fa_scan_open_packets(engine, &params, &so, &feed);    /* or fa_scan_open_push(engine, &format, &so, &feed) */
+while (fa_scan_wants_more(feed) && read_next_audio_packet(&pkt))
+    fa_scan_push_packet(feed, &pkt);                  /* or fa_scan_push_frame */
+fa_loudness l = { .struct_size = sizeof(l) };
+fa_scan_finish(feed, &l);                             /* stored in the cache; playing streams get it */
+fa_scan_close(feed);
+
+/* The playing stream names its song: */
+fa_open_options o; fa_open_options_init(&o);
+o.source_identity = &id;
+fa_stream_open_packets(engine, &params, &o, &stream);
+```
+
+C#:
+```csharp
+var id = AudioFingerprint.Compute(path);
+using (var scan = engine.OpenLoudnessScan(parameters, id, new LoudnessScanOptions { Duration = duration }))
+{
+    while (scan.WantsMore && ReadNextAudioPacket(out var packet))
+        scan.PushPacket(packet);
+    var loudness = scan.Finish();
+}
+using var audio = engine.OpenPackets(parameters, new StreamOptions { SourceIdentity = id });
+```
+
+- **Where it runs.** On the thread that feeds it: each push decodes and measures at once (far faster than real time: 180 s of PCM measure in 0.15 s on one core, plus the codec's decode time). FatzAudio starts no thread and buffers nothing for it. Feed the track from its start, in order, once; different feeds may run on different threads. Calls on one feed must not overlap.
+- **Skip what is known.** `fa_scan_wants_more` is 0 when the result is known before any audio: the song is in the cache, or (`fa_engine_set_dialnorm` on) the first unit of a Dolby stream gave its dialogue level. Check it after opening and now and then while feeding, and skip the rest of the file. `fa_scan_finish` still gives the result.
+- **The same numbers.** Packets or decoded frames of the same audio give the same result to the last digit, and within 0.02 LU of a scan by path (which cuts the file into chunks). A packet that cannot be decoded returns its error and is skipped; keep feeding.
+- **Start it before playback.** A scan that starts when the song starts playing only helps if it is already well on its way when the wait runs out; a 4-minute song takes a fraction of a second of CPU, a film takes minutes and a second read of the file. For long files prefer tags, the cache or the Dolby dialogue level.
+- **What a stream sees while the feed runs.** Its `norm_pending` is set, so the first play waits (at most the wait, plus once more when more than 75% is fed, which needs `duration_seconds`). The feed goes in order, so a value from its first minutes would lean on the intro: it is offered as `FA_LOUDNESS_PARTIAL` only after a quarter of the song (30 s when the duration is not given); before that the running estimate is used. `fa_scan_finish` hands the result to every open stream of the song, which glide to it; closing the feed without finishing it makes them stop waiting.
+- **Without a cache directory** a fed scan still gives its result to `fa_scan_finish` and to the streams open at that moment; nothing is stored.
+
 ### Live streams and app I/O
 
-Streams that can't be read a second time (`fa_stream_open_io` and [web streams](web-streams.md)) are never scanned. They use the running estimate, which adapts as the program changes. You can still give them a value with `fa_stream_set_loudness`.
+Streams that can't be read a second time (`fa_stream_open_io` and [web streams](web-streams.md)) are never scanned. (A [packet or push stream](#streams-you-feed-packets-and-decoded-frames) can be, if your app feeds a scan.) They use the running estimate, which adapts as the program changes. You can still give them a value with `fa_stream_set_loudness`.
 
 ## The cache
 
@@ -190,7 +241,7 @@ Values that aren't known are `NAN` (.NET: `double.NaN`), for example the range a
 
 ## Threads
 
-- Scans run on their own scan threads, never on the decode workers or the audio thread. `fa_scan_loudness_path` also uses the calling thread.
+- Scans run on their own scan threads, never on the decode workers or the audio thread. `fa_scan_loudness_path` also uses the calling thread. A fed scan (`fa_scan_feed`) runs only on the thread that pushes into it.
 - The running estimate is computed by the decode worker that fills the stream, on audio it decodes anyway, and only once something wants it: normalization on, or the app asking with `fa_stream_get_loudness`. With normalization off (the default) and no one asking, it costs nothing; the first `fa_stream_get_loudness` starts it, so its estimate covers the audio decoded from then on.
 - The audio thread only reads the gain (atomics) and moves it a little per block.
 - The partial value is computed by the scan thread that finished a chunk; the audio thread only reads it.

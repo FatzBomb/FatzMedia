@@ -26,10 +26,30 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   (`solid_offset` says how far); bzip2 and xz blocks decode on several cores. Vendored: LZMA SDK 25.01 (public domain) and
   the bzip2 1.0.8 decompressor, no new library to ship ([archives](docs/features/archives.md)). New fuzz target `archive`.
 
+
+- Loudness of audio your app feeds (MediaControl request 13): `fa_scan_open_packets` / `fa_scan_open_push`,
+  `fa_scan_push_packet` / `fa_scan_push_frame`, `fa_scan_wants_more`, `fa_scan_finish`, `fa_scan_close` (new
+  `fa_scan_options`, `fa_scan_feed`; .NET `AudioEngine.OpenLoudnessScan`, `LoudnessScan`, `LoudnessScanOptions`). The feed
+  runs on the caller's thread, measures with the same meter as a scan by path and stores the result in the cache under
+  the original file's `fa_fingerprint`. New field `fa_open_options.source_identity` (at the end of the struct; .NET
+  `StreamOptions.SourceIdentity`) lets a packet or push stream name its song, so the cache, the start wait and the
+  provisional value apply to it as to a file stream. A cached song or a Dolby dialogue level (`fa_engine_set_dialnorm`) is
+  reported by `fa_scan_wants_more` = 0 so the app can skip reading the file
+  ([normalization](docs/features/normalization.md#streams-you-feed-packets-and-decoded-frames)).
 - Archives: public `fa_archive_*` API (list, find, pick, read, seekable reader) and .NET `Archive`; ZIP reads Deflate64, flags,
   times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
   `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when
   present ([archives](docs/features/archives.md)).
+- MPEG audio Layers I and II (MP1, MP2) decode in files (`.mp2`, `.mpa`, `.mp1`; codec `mp2`/`mp1`, exact seeks, ID3v2 tags
+  skipped) and in packet streams, Matroska and MP4 (MediaControl request 14). Their decoder was already built in: only the
+  detection and framing were Layer III only. MPEG-2/2.5 Layer III and VBR files without a Xing header were already
+  covered.
+- Sun/NeXT `.au`/`.snd` files (PCM 8 to 32 bit, float, µ-law, A-law); µ-law and A-law in CAF and MP4/MOV; IMA 4:1 ADPCM
+  (`ima4`) in CAF and QuickTime `.mov`; `.3g2` is listed as an MP4 extension (request 15). New codec names `pcm_mulaw`,
+  `pcm_alaw`, `ima4` for `fa_stream_open_packets`.
+- Windows Media Audio on a Windows with no Media Foundation (N and KN editions without the Media Feature Pack) now
+  returns `FA_ERROR_PROVIDER_MISSING` (.NET `ErrorCode.ProviderMissing`) instead of `FA_ERROR_UNSUPPORTED_FORMAT`, so an app
+  can tell the user what to install. Off Windows, WMA still returns `FA_ERROR_UNSUPPORTED_FORMAT`.
 
 - Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
   directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.

@@ -9,13 +9,15 @@ What FatzAudio can open, decode and write. The full detail, with how detection w
 | WAV, RF64, Wave64, AIFF, AIFF-C | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | FLAC (native, Ogg, in MP4 and MKV) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | MP3 | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
+| MP2, MP1 (MPEG audio Layers I and II; `.mp2`, `.mpa`, and in Matroska, MP4) | Yes | ✅ | ✅ | ✅ | ✅ | [MP3, MP2 and MP1](features/streams.md#mp3-mp2-and-mp1) |
+| Sun/NeXT AU and SND (PCM, float, µ-law, A-law); µ-law and A-law in CAF and MP4; IMA 4:1 ADPCM (`ima4`) in CAF and QuickTime | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md#au-g711-and-ima4) |
 | AAC-LC, HE-AAC, HE-AAC v2, Main, LTP (ADTS, MP4, M4A, CAF, MKV, HLS) | Yes | ✅ | ✅ | ✅ | ✅ | [AAC](features/streams.md#aac) |
 | Opus, Vorbis (Ogg, WebM, MKV) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | ALAC (MP4, M4A, CAF) | Yes | ✅ | ✅ | ✅ | ✅ | [streams](features/streams.md) |
 | Dolby Digital, Dolby Digital Plus (up to 7.1) | Yes | ✅ | ✅ | ✅ | ✅ | [Dolby](features/dolby.md) |
 | MIDI, karaoke `.kar`, RMI | Needs a soundfont (yours or the system's) | ✅ | ✅ | ✅ | ✅ | [MIDI](features/midi.md) |
 | Tracker modules (MOD, XM, S3M, IT, MPTM and more) | Yes | ✅ | ✅ | ✅ | ✅ | [trackers](features/trackers.md) |
-| WMA, ASF audio | System decoder | ✅ | ➖ | ➖ | ➖ | [WMA](features/streams.md#wma) |
+| WMA, ASF audio | System decoder (Windows Media Foundation). On Windows N editions without the Media Feature Pack it returns `ProviderMissing`; off Windows, decode WMA in your app (FatzMedia.Video does) | ✅ | ➖ | ➖ | ➖ | [WMA](features/streams.md#wma) |
 | xHE-AAC | System decoder | If present | If present | If present | ➖ | [AAC](features/streams.md#aac) |
 | MP3+G, CD+G in ZIP, CD+G discs, audio CDs, `.cue` images | Yes | ✅ | ✅ | ✅ | ✅ | [CD+G](features/cdg.md), [discs](features/disc.md) |
 | A lone `.cdg`, or a ZIP holding only one (plays as silence for the graphics' length) | Yes | ✅ | ✅ | ✅ | ✅ | [CD+G](features/cdg.md#graphics-with-no-audio) |

@@ -138,6 +138,10 @@ audio.PushFrame(fmt, (nint)frame->extended_data, frame->nb_samples, frame->best_
 
 `FeedAudioStream.NoTimestamp` (`long.MinValue`, the same as `AV_NOPTS_VALUE`) means "right after the previous push". `Push(ReadOnlySpan<float>)` takes interleaved PCM in the stream's own format.
 
+## Loudness of fed audio
+
+Packet and push streams are not scanned by themselves. To normalize them like files, feed a background scan from your demuxer and name the song on the playing stream with `fa_open_options.source_identity`: see [streams you feed](normalization.md#streams-you-feed-packets-and-decoded-frames).
+
 ## Buffering, the end and seeking
 
 | Call | What happens |
