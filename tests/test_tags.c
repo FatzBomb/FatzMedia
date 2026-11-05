@@ -1180,6 +1180,93 @@ static void test_zip(void)
     buf_free(&cdg);
 }
 
+/* ---- Audio fingerprint -------------------------------------------------------------- */
+
+static buf zip_of(const char* n1, const buf* d1, const char* n2, const buf* d2)
+{
+    buf zip = { 0 }, cd = { 0 };
+    uint32_t count = 0, cd_off;
+    zip_add(&zip, &cd, n1, d1, &count);
+    if (n2) zip_add(&zip, &cd, n2, d2, &count);
+    cd_off = (uint32_t)zip.n;
+    put_buf(&zip, &cd);
+    put_le32(&zip, 0x06054b50u); put_le16(&zip, 0); put_le16(&zip, 0); put_le16(&zip, count); put_le16(&zip, count);
+    put_le32(&zip, (uint32_t)cd.n); put_le32(&zip, cd_off); put_le16(&zip, 0);
+    buf_free(&cd);
+    return zip;
+}
+
+static void test_fingerprint(void)
+{
+    buf plain = make_wav(0, 0), tagged = make_wav(1, 1), txt = { 0 }, cdg = { 0 }, zip, lone;
+    fa_fingerprint a = { .struct_size = sizeof(a) }, b = { .struct_size = sizeof(b) };
+    uint8_t pack[24 * 4];
+    const char* path = "fa_test_fingerprint.wav";
+    FILE* f;
+    memset(pack, 0, sizeof(pack));
+    put_str(&txt, "readme");
+    put(&cdg, pack, sizeof(pack));
+
+    /* Tags (LIST INFO, id3 chunk) are left out: the same key. */
+    CHECK_EQ(fa_fingerprint_memory(plain.p, plain.n, &a), FA_OK);
+    CHECK_EQ(fa_fingerprint_memory(tagged.p, tagged.n, &b), FA_OK);
+    CHECK_EQ(a.struct_size, (uint32_t)sizeof(a));
+    CHECK_EQ(a.audio_bytes, 400);
+    CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
+
+    /* A file gives the key its bytes give. */
+    f = fopen(path, "wb");
+    CHECK(f != NULL);
+    if (f) { fwrite(tagged.p, 1, tagged.n, f); fclose(f); }
+    memset(&b, 0, sizeof(b));
+    b.struct_size = sizeof(b);
+    CHECK_EQ(fa_fingerprint_path(path, &b), FA_OK);
+    CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
+    remove(path);
+
+    /* A ZIP: the key of its audio entry, past a text file. */
+    zip = zip_of("readme.txt", &txt, "song.wav", &tagged);
+    memset(&b, 0, sizeof(b));
+    b.struct_size = sizeof(b);
+    CHECK_EQ(fa_fingerprint_memory(zip.p, zip.n, &b), FA_OK);
+    CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
+
+    /* Changed samples: another key. */
+    plain.p[plain.n - 10] ^= 0x40;
+    CHECK_EQ(fa_fingerprint_memory(plain.p, plain.n, &b), FA_OK);
+    CHECK(a.key != b.key);
+
+    /* An older, smaller struct is filled up to its size. */
+    {
+        struct { uint32_t struct_size; uint32_t pad; uint64_t key; } small = { sizeof(small), 0, 0 };
+        CHECK_EQ(fa_fingerprint_memory(tagged.p, tagged.n, (fa_fingerprint*)&small), FA_OK);
+        CHECK_EQ(small.struct_size, (uint32_t)sizeof(small));
+        CHECK(small.key == a.key);
+    }
+
+    /* Errors. */
+    lone = zip_of("readme.txt", &txt, "song.cdg", &cdg);
+    CHECK_EQ(fa_fingerprint_memory(lone.p, lone.n, &b), FA_ERROR_UNSUPPORTED_FORMAT);
+    CHECK_EQ(fa_fingerprint_path("no-such-file.mp3", &b), FA_ERROR_NOT_FOUND);
+    CHECK_EQ(fa_fingerprint_path(NULL, &b), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_fingerprint_memory(plain.p, 0, &b), FA_ERROR_INVALID_ARG);
+    CHECK_EQ(fa_fingerprint_memory(plain.p, plain.n, NULL), FA_ERROR_INVALID_ARG);
+    b.struct_size = 0;
+    CHECK_EQ(fa_fingerprint_memory(plain.p, plain.n, &b), FA_ERROR_INVALID_ARG);
+    f = fopen(path, "wb");
+    if (f) fclose(f);
+    b.struct_size = sizeof(b);
+    CHECK_EQ(fa_fingerprint_path(path, &b), FA_ERROR_UNSUPPORTED_FORMAT);   /* empty */
+    remove(path);
+
+    buf_free(&plain);
+    buf_free(&tagged);
+    buf_free(&txt);
+    buf_free(&cdg);
+    buf_free(&zip);
+    buf_free(&lone);
+}
+
 /* ---- files written by FFmpeg -------------------------------------------------------- */
 
 static void data_path(char* out, size_t cap, const char* name) { snprintf(out, cap, "%s/tags/%s", FA_TEST_DATA_DIR, name); }
@@ -1431,6 +1518,7 @@ int main(void)
     RUN(test_sylt);
     RUN(test_lyrics3);
     RUN(test_zip);
+    RUN(test_fingerprint);
     RUN(test_ffmpeg_files);
     RUN(test_errors_and_empty);
     RUN(test_damaged);

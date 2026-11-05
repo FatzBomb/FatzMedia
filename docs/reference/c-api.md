@@ -1239,6 +1239,47 @@ FA_API fa_result FA_CALL fa_tags_get_info(const fa_tags* tags, fa_stream_info* o
 ```
 
 
+### Audio fingerprint
+
+```text
+A key for a file's audio that leaves out its tags and its name: the key the
+loudness cache files songs by. A file that is renamed, moved, copied or retagged
+keeps its fingerprint; audio that is encoded again or edited gets a new one. Use it
+to tell "same song, new tags" from "the audio changed" in a library.
+  - Coded audio (MP3, AAC, FLAC, Ogg, Opus, MP4/M4A, ...) is sampled at 16 points
+    plus its length; WAV and AIFF up to 64 MB of samples are hashed whole.
+  - WAV and AIFF over 64 MB are sampled at 64 points plus the file's last-write
+    time, so any write to such a file (a tag edit too) gives a new key, and the same
+    bytes in memory give another key than the file.
+  - A ZIP gives the key of its audio entry (the one an open plays), the same key
+    as that entry unpacked (except a WAV or AIFF over 64 MB, see above). Entries
+    are told apart as an open does, by opening a decoder on them; compressed ones
+    are unpacked in memory (up to 256 MB).
+  - Any other file gets a key of its content less the ID3/APE/Lyrics3 blocks; the
+    format is not checked. (The loudness cache adds the soundfont and the rate to a
+    MIDI file's key; this is the file's own.)
+No engine is needed and no audio is decoded: a few hundred KB of reads at most for
+most files, the samples of a WAV up to 64 MB. Safe from any thread.
+```
+
+Functions: `fa_fingerprint_path`, `fa_fingerprint_memory`
+
+```c
+typedef struct fa_fingerprint {
+    uint32_t struct_size;      /* set to sizeof before the call */
+    uint64_t key;              /* the hash; with audio_bytes, the fingerprint */
+    int64_t audio_bytes;       /* bytes of audio it covers (tags and other chunks left out) */
+} fa_fingerprint;
+
+/* `path` UTF-8; `data` is only read during the call. Two fingerprints are equal
+ * when key and audio_bytes both are. FA_ERROR_NOT_FOUND when the file is missing,
+ * FA_ERROR_UNSUPPORTED_FORMAT for an empty file or a ZIP without a readable audio entry,
+ * FA_ERROR_IO when it could not be read. */
+FA_API fa_result FA_CALL fa_fingerprint_path(const char* path, fa_fingerprint* out_fingerprint);
+FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa_fingerprint* out_fingerprint);
+```
+
+
 ### Transport and position
 
 Functions: `fa_stream_attach`, `fa_stream_detach`, `fa_stream_play`, `fa_stream_play_at`, `fa_stream_pause`, `fa_stream_stop`, `fa_stream_get_state`, `fa_stream_seek`, `fa_stream_seek_async`, `fa_stream_get_position`, `fa_stream_set_loop`, `fa_stream_get_loop`, `fa_stream_set_reverse`, `fa_stream_get_reverse`, `fa_stream_set_mute`, `fa_stream_get_mute`, `fa_stream_get_clock`, `fa_monotonic_time`, `fa_stream_get_clock_at`, `fa_stream_get_stats`, `fa_stream_read`

@@ -83,6 +83,25 @@ fa_stream_load_cdg_path(song, "other-name.cdg");          /* replaces what it ha
 fa_stream_load_cdg_path(song, NULL);                      /* removes the graphics */
 ```
 
+### Audio and graphics from your own archive
+
+Apps that open archives FatzAudio doesn't (7z, RAR, tar, gzip, ...) unpack the audio and the `.cdg` themselves and pass both blocks: open the audio from memory, then attach the graphics before playing. Everything works as with an MP3+G pair found on disk: surfaces, timing, change events, checkpoints, the offset, the lyric range in analysis and silent-karaoke detection.
+
+```c
+fa_stream* song;
+fa_stream_open_memory(engine, mp3_bytes, mp3_size, NULL, &song);   /* copied */
+fa_stream_load_cdg_memory(song, cdg_bytes, cdg_size);              /* copied */
+fa_stream_play(song);
+```
+
+```csharp
+using var song = engine.OpenMemory(mp3Bytes);
+song.LoadCdg(cdgBytes);
+song.Play();
+```
+
+A lone `.cdg` from an archive (no audio) opens on its own with `fa_stream_open_memory`: it is told by its packs, or by a `mime_hint` of `application/x-cdg` ([graphics with no audio](#graphics-with-no-audio)).
+
 ## C#
 
 ```csharp

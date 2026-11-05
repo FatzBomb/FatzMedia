@@ -19,6 +19,7 @@
  * evenly over it, 4 KB each, plus its length: a coded stream changes throughout when
  * it is encoded again. */
 #include "fa_internal.h"
+#include "cdg.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -251,4 +252,75 @@ int fa_content_key(fa_source* src, uint64_t* out_key, int64_t* out_size)
     *out_key = h;
     *out_size = n;
     return 1;
+}
+
+/* ---- Public calls ------------------------------------------------------------------- */
+
+typedef struct {
+    uint64_t key;
+    int64_t size;
+    int found;
+} zip_key_ctx;
+
+/* Takes the first entry a decoder opens, as an open and a tags read do. A definite
+ * answer that the entry is audio counts too (a MIDI file without a soundfont, a codec
+ * that needs a provider this build lacks, protected content), so the key does not
+ * depend on what this machine can play. */
+static int zip_key_visit(void* ctx, fa_source* entry, const char* name)
+{
+    zip_key_ctx* c = (zip_key_ctx*)ctx;
+    fa_decoder dec;
+    fa_result r;
+    if (fa_source_seek(entry, 0) != FA_OK) return 0;
+    r = fa_decoder_open(&dec, entry, name, NULL, -1, NULL);
+    if (r == FA_OK) fa_decoder_close(&dec);
+    else if (r != FA_ERROR_NO_SOUNDFONT && r != FA_ERROR_PROVIDER_MISSING && r != FA_ERROR_PROTECTED_CONTENT &&
+             r != FA_ERROR_NOT_SEEKABLE)
+        return 0;
+    c->found = fa_content_key(entry, &c->key, &c->size) ? 1 : -1;
+    return 1;
+}
+
+static fa_result fingerprint_source(fa_source* src, fa_fingerprint* out)
+{
+    fa_fingerprint fp;
+    uint8_t head[4];
+    if (src->length <= 0) return FA_ERROR_UNSUPPORTED_FORMAT;
+    memset(&fp, 0, sizeof(fp));
+    fp.struct_size = sizeof(fp);
+    if (read_at(src, 0, head, sizeof(head)) && fa_zip_probe(head, sizeof(head))) {
+        zip_key_ctx c = { 0, 0, 0 };
+        if (!fa_zip_visit_audio(src, zip_key_visit, &c, NULL)) return FA_ERROR_UNSUPPORTED_FORMAT;
+        if (c.found < 0) return FA_ERROR_IO;
+        fp.key = c.key;
+        fp.audio_bytes = c.size;
+    } else if (!fa_content_key(src, &fp.key, &fp.audio_bytes)) {
+        return FA_ERROR_IO;
+    }
+    fa_copy_sized(out, &fp, sizeof(fp));
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_fingerprint_path(const char* path, fa_fingerprint* out_fingerprint)
+{
+    fa_source src;
+    fa_result r;
+    if (!path || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    r = fa_source_open_path(&src, path);
+    if (r != FA_OK) return r;
+    r = fingerprint_source(&src, out_fingerprint);
+    fa_source_close(&src);
+    return r;
+}
+
+FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa_fingerprint* out_fingerprint)
+{
+    fa_source src;
+    fa_result r;
+    if (!data || size == 0 || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    r = fa_source_open_memory_ref(&src, data, size);
+    if (r != FA_OK) return r;
+    r = fingerprint_source(&src, out_fingerprint);
+    fa_source_close(&src);
+    return r;
 }

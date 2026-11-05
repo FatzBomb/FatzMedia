@@ -50,6 +50,16 @@ fa_result fa_zip_extract_prefix(fa_source* src, const fa_zip_entry* e, uint8_t* 
  * open or tags read: each one the decoder refuses costs a whole unpack, and a
  * karaoke archive has one or two candidates. */
 #define FA_ZIP_MAX_UNPACKS 4
+/* Calls visit(ctx, entry, name) for the archive's audio candidates in the order an
+ * open tries them: the entry named like the .cdg first, then the others (.cdg entries
+ * and empty ones are skipped). `entry` is a window on `src` for a stored entry, an
+ * unpacked copy for a compressed one (at most FA_ZIP_MAX_UNPACKS over
+ * FA_ZIP_PROBE_BYTES, and only ones whose first bytes a decoder recognizes); it is
+ * valid only during the call. visit returns 1 to stop (the entry was the audio).
+ * Returns 1 when visit stopped, 0 when nothing was taken or the archive is not
+ * readable. *out_has_cdg (may be NULL) is 1 when the archive holds a .cdg. */
+int fa_zip_visit_audio(fa_source* src, int (*visit)(void* ctx, fa_source* entry, const char* name), void* ctx,
+                       int* out_has_cdg);
 /* Raw DEFLATE (RFC 1951). FA_OK only when the stream ends exactly at out_size bytes. */
 fa_result fa_inflate(const uint8_t* in, size_t in_size, uint8_t* out, size_t out_size);
 uint32_t fa_crc32(const uint8_t* data, size_t size);
