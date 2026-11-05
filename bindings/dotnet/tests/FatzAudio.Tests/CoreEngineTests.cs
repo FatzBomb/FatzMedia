@@ -313,7 +313,8 @@ public class PlaybackTests
         Assert.True(pos > TimeSpan.Zero);
         await Task.Delay(100);
         Assert.Equal(pos, s.Position);
-        Assert.True(s.Clock <= pos);           // clock = position minus device latency
+        // clock = position minus device latency; Position is whole frames and the pause fade ends between two of them
+        Assert.True(s.Clock <= pos + TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
