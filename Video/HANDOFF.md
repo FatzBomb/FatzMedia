@@ -1,53 +1,82 @@
 # Handoff
 
-Updated: 2026-10-28. Branch `claude/wonderful-heisenberg-9x3p6a`. `main` holds everything through
-PR #30. PR #31 (docs only: 045A complete, 047A kept, this file) is waiting for the owner to merge.
+Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main` after each merge).
+`main` holds everything through PR #56.
 
 ## State
 
-- **046A adapter and player parity: complete** (`docs/roadmap/complete/046A_COMPLETED_AdapterParity.md`).
-  The WPF, Avalonia and WinForms adapters and test players share their features:
-  - Core: auto-hide, path reporting and the lightweight player controller;
-  - every adapter: the second-screen window, `KaraokeSurface` and `BackgroundSurface`;
-  - Player.Shared: the chrome controller, stats line, screen rule and renderer request;
-  - every player: the GPU-first `--renderer=auto` and a toolbar for player count (1-4) and
-    renderer.
-  The WinForms seek bar is drawn by the player (`Player.WinForms/SeekBar.cs`).
-- **045A GPU decoding on every path: complete** (`docs/roadmap/complete/045A_COMPLETED_GpuDecodingEveryPath.md`).
-  - Direct3D11: D3D11VA on every surface.
-  - Vulkan: Vulkan Video on the renderer's own device, Linux and Windows. FFmpeg must be built
-    with Vulkan.
-  - Avalonia: takes Vulkan frames as a shared GPU image on Windows (keyed-mutex Direct3D11
-    textures).
-  - Owner smoke passed on Windows (RTX 5090).
-  - Not run: Linux drivers and the GPU-reset step (ENG-038).
-- **047A WPF shared GPU surface: kept on the table** (`docs/roadmap/future/047A_IDEA_WpfSharedGpuSurface.md`).
-  - What it is: WPF composited mode from `D3DImage` instead of a CPU copy, for 4K.
-  - Done: the risk assessment (R1-R10; R1 frame hand-over without a keyed mutex and R5
-    front-buffer loss decide it).
-  - Next: the owner runs step 0 (CPU % and fps, native window vs `--surface=framesink`, 4K), then
-    decides on the opt-in spike.
-- Still active: 026A, 026B, 027A (WinUI 3 deferred), 033A, 041A, 042A, 043A, 044A.
-  - 037A FatzAudio remains a future idea: replace BASS once proven.
-  - All are listed in `docs/roadmap/STAGE_MANIFEST.md`.
+- **037A FatzAudio, normalization: done on the FatzAudio engine** (PR #55, #56;
+  `docs/roadmap/updates/037A_Normalization/StageUpdate.md`, pending the owner's Windows smoke).
+  - `MediaPlayerConfiguration.Normalization` (`NormalizationOptions`): `TargetLufs` -14,
+    `TruePeakCeilingDbtp` -1, `CacheDirectory` (null = per-user `AudioCache` folder, "" = off).
+  - FatzAudio measures, applies and limits; nothing on our side waits. Our peak rule and our own
+    peak measurement are gone from that engine (peaks come from FatzAudio's true peak). BASS unchanged.
+  - Pin: FatzAudio `1.0.0-rc.1`. rc.3 is on the feed (faster scan, K4/K6/K8); we wait for **rc.4**
+    (request 12 start wait, single shared cache file, lone .cdg fixes). The owner decides when it ships.
+- **FatzAudio threads** (the owner passes messages; our side is in `docs/fatzaudio/`):
+  - Request 12 (start a first play at a settled loudness) answered and in FatzAudio PR 203: start wait
+    200 ms with the 75% rule, `LoudnessSource.Partial`, `LoudnessProvisional` event, provisional boost
+    cap (default 12 = none; **we suggested 6 dB as our default**), `SetCacheSize` (5 MB), `ClearCache`,
+    a shared cache file safe across engines and processes, audio-only fingerprint.
+  - Answered: formats it cannot decode (037A doc), web-stream titles exist, `LoadCdg(bytes)` exists,
+    `Tags.Read(bytes)` = `Tags.Read(path)`, stream details in `tags.Info`, a neutral stream costs
+    ~0.3-0.5% of a core (no `NoEffects` option needed).
+  - Sent 2026-11-05: requests 13 (scan from fed audio, source identity on packet/push streams) and 14
+    (MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path, DTS core, WMA Standard everywhere) and 15
+    (every other audio codec FatzAudio can license: TrueHD, DTS-HD lossless, APE, WavPack, Musepack, TTA,
+    DSD, RealAudio, more containers; FFmpeg push stays only where licensing blocks FatzAudio):
+    `docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`; the 037A slice 5 plan uses them.
+  - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
+    fingerprint (owner decides), pairing rules, archive timings.
+- **Queue (owner-agreed 2026-11-05), each a roadmap idea in `docs/roadmap/future/`:**
+  1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **next**.
+  2. `047A` WPF shared GPU surface - **planned again** (owner 2026-11-05): the cost that matters is
+     UI-thread time per frame (1-2 ms per 1080p surface, estimated), for every host animating over
+     video; most shows run on laptops; venue displays are 4K. Slice 1: shared GPU image with the
+     R1/R5/R7 guards. Slice 2: composited video on its own dispatcher thread (`HostVisual`/`VisualTarget`),
+     so a busy app UI thread no longer pauses it. 051A adds the UI-thread time counter for before/after
+     numbers (desktop and laptop). Slice 3: `WpfPresentationMode.Auto` (one-way switch to composited
+     when the surface's own overlay content, opacity, transform or clip needs it; decided in the idea).
+  3. `052A` host image overlay layer + "change together" + `FadePictureAsync`.
+  4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
+  5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
+  6. `055A` `ReconfigureAsync`: extends 043A's existing `SetModeAsync` (mode on the fly, media kept at
+     its position) to the audio engine, renderer, device and other settings.
+  7. After rc.4: rc.4 pin move + start wait/cache size pass-through; `050A` tags and file info;
+     `056A` archives through FatzAudio's reader, SharpCompress and rar dropped.
+- Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
+- The October code audit (ENG-039, round 2) is done: five batches implemented, each pending the
+  owner's smoke (`updates/ENG-039/`). The old "next: code audit" item is closed.
+- **Owner smoke backlog: `scripts/smoke-backlog.ps1`** (2026-11-05) runs it, 12 tests, mostly
+  automatic (it makes its own test media with FFmpeg, reads the players' logs for the expected lines,
+  measures CPU, serves a local web file; you answer only what needs eyes or ears): formats on both
+  engines (ENG-043, 033A_2), normalization (037A), network (039A_3), HDR (042A), modes (043A), Avalonia
+  paths and second screen (027A_2/5), Vulkan tests on the real GPU (026A), text on Software/Vulkan
+  (ENG-040, ENG-039 4c), missing natives (ENG-039), player set (ENG-039 4a), the audit script's GPU
+  reset/resize/memory tests (ENG-039 1, 2, 4b, 4c, 5) and the remaining guided checks. The test
+  players now trace their status and stats lines (`[Status]`, `[Stats]`) to the debug log for it.
+  Not covered: 026B steps 1-4 (a Linux desktop with BASS; the sandbox cannot download BASS, host
+  `www.un4seen.com` blocked). 037A slice 0's console smoke is closed (superseded by slice 2's).
+  Stages move to `complete/` as these pass.
 
-## Decisions this session
+## Decisions this session (owner)
 
-- **Every player has the same features** (owner): no feature lives in only one player.
-- **Full compatibility** (owner): every GPU renderer decodes on the GPU on every platform it runs
-  on. Direct3D11 stays the Windows default.
-- **Vulkan on Windows with ANGLE: Direct3D11 creates the shared texture and Vulkan imports it.**
-  Direct3D11 cannot open Vulkan's opaque memory.
-- **WPF and WinForms on Vulkan keep the frame sink.** Direct3D11 covers their native window, and a
-  Vulkan swap chain is a later step.
-- **Shared-image consumers call `CompleteImport` only after the compositor's imports finish.**
-  This fixed fast resizes falling back to the frame sink.
-- **The WinForms frame-sink surface paints each published frame with `Update()`.**
-  `WM_PAINT` was starved during seek drags.
+- FatzAudio does all audio work; we pass settings through and add no waits of our own.
+- Loudness is the only normalization on FatzAudio; the target is a code setting (no player flag).
+- Tags and full file information are exposed (audio from FatzAudio, video from FFmpeg, hashes ours).
+- One archive reader, FatzAudio's; rar is dropped entirely, SharpCompress goes with it.
+- No `Simple` player mode; idle costs are fixed in `Full`.
+- TriviaBomb (a WPF trivia host replacing LibVLC) designs for `WpfComposited`; native mode cannot
+  switch overlay and video in the same frame (the overlay is a separate layered window).
+- `WpfPresentationMode.Auto` becomes the default once 047A has landed; apps overlaying from outside the
+  surface set `WpfComposited`.
+- Composited (with 047A) is the mode when WPF content goes over video; native stays the mode for HDR,
+  exact frame timing, or a heavy UI thread with nothing WPF on top (a UI stall pauses composited video).
 
 ## How to verify
 
-Linux sandbox:
+Linux sandbox (FatzAudio is a token-gated package: build its rc.1 from source and pack it locally, as
+in `updates/037A_2`, then restore with a `nuget.config` outside the repo mapping `FatzAudio` to it):
 
 ```bash
 EnableWindowsTargeting=true dotnet build FatzBomb.MediaControl.sln -c Release
@@ -61,52 +90,35 @@ for s in check-core-boundary check-adapter-boundary check-wpf-boundary check-pre
   DOTNET_ROOT=$(dirname $(readlink -f $(which dotnet))) ~/.dotnet/tools/pwsh -NoProfile -File scripts/$s.ps1; done
 ```
 
-- Run `scripts/setup-linux-native.sh` first if `/opt/fatzbomb-native` is missing.
-- Last results: Portable 1535, Linux 103, Vulkan 81, Avalonia 44 tests pass; 0 warnings.
+- Last results: Portable 1766, Linux 145, Vulkan 102, Avalonia 47; 0 warnings.
+- Tests set `CacheDirectory = ""` unless they use their own folder: no test writes to the user's cache.
 
-Windows (owner):
-- Repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`.
-- Hardware: RTX 5090, three monitors.
-- Smoke steps are in each stage's `docs/roadmap/updates/<stage>_<n>/StageUpdate.md`.
-- The owner works with full PowerShell command sets (pull, run, what to look for) and prefers a
-  dark UI.
+Windows (owner): repo at `C:\development\nuget\FatzbombMedia`, media in `C:\media`, RTX 5090, three
+monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command sets; dark UI.
 
 ## Next steps
 
-1. **Code audit (next session; the owner asked for it).**
-   - Look for bugs, performance and memory, redundant and reusable code, needless complication,
-     over-engineering, and dead or orphaned code.
-   - Plan:
-     - a read-only audit by area: Core playback and pipeline; renderers (Direct3D11, Vulkan);
-       the shared GPU image path; the adapters; the test players and Player.Shared; and a
-       repo-wide dead-code sweep;
-     - verify each finding against a real caller (XAML bindings, reflection and DI count as use);
-     - one prioritised report for the owner;
-     - fixes in separate batches (bugs, then dead code, then refactors), each validated with its
-       own PR.
-   - Known starting points:
-     - ENG-037 and ENG-038;
-     - the player rebuild loop, copied three times (WPF `MainWindow`, WinForms `MainForm`,
-       Avalonia `MainWindow`);
-     - `VideoDecoder`/coordinator downcasts to `RendererVideoDecodeServices`/`PipelineMediaEngine`;
-     - the duplicated "hardware decoding (Vulkan Video)" status string;
-     - the `Shared GPU images exported` Info line logged on every resize step (noisy).
-2. **047A:** the owner's step 0 numbers, then a decision on the spike. It needs approval for a
-   `Vortice.Direct3D9` package or a hand-written COM bridge.
-3. Later: 037A FatzAudio; a Vulkan swap chain on the native window; the WinUI 3 adapter.
+1. Owner: the normalization smoke (`updates/037A_Normalization`), and the 054A measurement
+   (`--mode=full` vs `--mode=background` on a plain 1080p clip). 047A's before numbers come after 051A
+   adds the UI-thread counter.
+2. Start `051A`: move it to `active/`, write acceptance criteria, then implement across WPF, Avalonia
+   and WinForms (WPF composited: raise in `WpfCompositedSurfaceHost.PublishPendingFrame`, same
+   dispatcher turn as the bitmap write, after the host is visible; check that a hidden surface is
+   still presented to). Also add the composited UI-thread time counter (047A's before numbers).
+3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
+   provisional start, rerun the timings.
 
 ## Open questions for the owner
 
-- 047A: step 0 results and go/no-go.
-- 047A: if go, `Vortice.Direct3D9` (new package) or about six hand-written COM calls?
-- WinForms overlay with smooth (per-pixel) transparency: wanted, or leave the colour-keyed overlay?
+
+- Provisional boost cap default: 6 dB (our suggestion) or FatzAudio's 12 (none)?
+- FatzAudio's public fingerprint: build it (half a day on their side)?
 
 ## Next-session prompt
 
-> Read HANDOFF.md. Run the code audit described in its "Next steps" item 1: a read-only,
-> area-by-area audit of FatzBomb.MediaControl for bugs, performance and memory, redundant and
-> reusable code, needless complication, over-engineering, and dead or orphaned code. Verify every
-> finding against a real caller before reporting it. Give me one prioritised report first. Do not
-> change code until I pick what to fix, then fix in separate validated batches (bugs, dead code,
-> refactors), each with its own PR. Keep 047A on the table: ask me for the step 0 numbers when the
-> audit is done.
+> Read HANDOFF.md. Start queue item 1, stage 051A (first-frame-ready signal and the A/B swap pattern
+> for TriviaBomb): move `docs/roadmap/future/051A_IDEA_FirstFrameReadySignal.md` to `active/` with
+> bounded acceptance criteria, investigate how each adapter (WPF native and composited, Avalonia,
+> WinForms) learns that the first frame of a new load is on screen, and propose the event's name and
+> exact timing before coding. Include the composited UI-thread time counter (047A's before numbers).
+> Then implement, validate, open a PR, and give me PowerShell smoke steps.

@@ -1,10 +1,61 @@
 # Idea 047A - WPF Composited Surface from a Shared GPU Image
 
 Prepared: 2026-10-27
-Status: **not pursued** (owner, 2026-10-28). The step 0 measurement found the WPF CPU copy costs
+Status: **planned, queue item 2 after 051A** (owner, 2026-11-05: the UI-thread cost matters for
+every WPF host that animates over video, TriviaBomb and the karaoke app alike, and most shows run on
+laptops). Earlier: not pursued (owner, 2026-10-28). The step 0 measurement found the WPF CPU copy costs
 well under 1% of the CPU at 4K on the owner's machine, with no dropped frames, so the spike's risks
 (R1, R5) are not worth taking. Results below. Kept here as the record; reopen only if a slower
 machine or a 4K60 source shows real cost.
+**Why it is planned again (2026-11-05).** Step 0 measured CPU % with 30 fps clips and an idle UI on a
+desktop. The cost that matters is UI-thread time: each composited frame is written into the
+`WriteableBitmap` on the UI thread (about 8 MB per 1080p frame, an estimated 1-2 ms), so two or three
+1080p60 surfaces can take 3-5 ms of every 16.7 ms UI frame from the host's animations. On laptops
+(shared memory, power limits) the copy costs more. This stage removes that per-frame UI-thread work.
+
+**Guards decided (2026-11-05):**
+- R1: `D3DImage.Lock()` blocks until WPF's render thread has copied the previous back buffer, so a
+  texture of the ring (2-3) is reused only after a later successful lock; the producer waits for its
+  GPU work (event query, off the UI thread) before announcing; `TryLock` with a short timeout skips a
+  frame instead of blocking the UI.
+- R5: `IsFrontBufferAvailableChanged` -> release and show the frame sink; on return recreate the
+  Direct3D 9Ex device and re-import; sticky frame sink after repeated failures (as Avalonia).
+- R7 (laptops, hybrid GPUs): create the renderer device on WPF's adapter, compare LUIDs, frame sink on
+  a mismatch. R8: hand-written COM calls (about six), not `Vortice.Direct3D9`.
+
+**Before and after numbers:** 051A adds a UI-thread time counter to `WpfCompositedSurfaceHost`; measure
+2-3 composited 1080p60 surfaces under an animated WPF screen, on the desktop and on a laptop, before
+and after.
+
+**Slice 2 (owner 2026-11-05): composited video on its own thread.** Each composited surface hosts its
+video element on a dedicated dispatcher thread (`HostVisual` in the main tree, `VisualTarget` on the
+video thread): the per-frame work (the `D3DImage` hand-over, or the bitmap write) runs there, and WPF's
+render thread composes both trees, so a busy or stalled app UI thread no longer pauses the video, while
+WPF content above it, layout, clipping and opacity keep working. The A/B pattern (051A) still gives
+same-frame switching (the new clip's first frame is shown before the host swaps). The surface tells the
+hosted tree its size and DPI; device-loss events arrive on the video thread. Remaining differences from
+the native window: WPF's composition beat (up to one frame later) and SDR only.
+
+**Slice 3 (owner 2026-11-05): `WpfPresentationMode.Auto`.** Starts native, and switches a surface to
+composited once, permanently (until the surface is recreated or the app sets a mode), when it sees
+content that needs it: `OverlayContent` set, or the surface's own opacity, transform or clip. Decided
+before the first frame when already known at load (no flash); a later first overlay may flash once.
+Per surface. HDR media plays tone-mapped once a surface is composited. Content the app places over the
+surface from elsewhere in its window cannot be detected: such apps set `WpfComposited`, and the docs
+recommend `OverlayContent` for content over video. A read-only `EffectivePresentationMode` and a change
+event report the mode in use. **`Auto` becomes the default once 047A has landed** (owner 2026-11-05;
+a behaviour change for existing apps, noted in that slice's update). Apps that overlay the surface from
+outside it set `WpfComposited`; XAML apps normally declare `OverlayContent` up front, so `Auto` decides
+at load with no flash.
+
+**Venues run 4K displays (owner 2026-11-05).** A full-screen composited surface is read back at the
+surface's size, not the source's: about 33 MB a frame at 4K, about 2 GB/s at 60 fps, whatever the clip's
+resolution. That is the case slice 1 removes.
+
+**What it does not change (slice 1 alone):** a UI-thread stall still pauses composited video (each frame needs a short
+UI-thread call); WPF still shows frames on its own beat (up to one frame later than the native window);
+SDR only. The native window stays the choice for HDR, exact frame timing, or a heavy UI thread with no
+WPF content over the video. Composited is the choice whenever WPF content goes over the video.
 
 ## What it changes
 

@@ -25,8 +25,8 @@ Stages with a slice pending the owner's smoke or planned slices still to do. A s
   `updates/033A_2`).
 - `active/037A_ACTIVE_FatzAudioEngine.md` - FatzAudio behind `IAudioEngine` (opt-in, BASS stays
   the default), with CD+G and MIDI lyrics drawn by FatzAudio's surfaces (owner decision
-  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux, pending the
-  owner's Windows smoke (`updates/037A_0`; CI package access granted). Slice 1 (seams for MIDI
+  2026-11-01). Slice 0 (verification spike and karaoke measurements) done on Linux; its Windows console-app smoke
+  is superseded by the slice 2 owner smoke (the real engine in the players; closed 2026-11-05). Slice 1 (seams for MIDI
   events, audio levels, fades, EQ and trim, so internal code needs no BASS handle; no behaviour
   change) merged, owner smoke passed 2026-11-02 (`updates/037A_1`). FatzAudio 1.0.0-rc.1 answers
   our blocking surface requests and silence detection (reply:
@@ -120,9 +120,24 @@ is explicitly selected and moved into `active/` with bounded acceptance criteria
   FatzMedia family (owner 2026-11-03); its own stage, after the 037A decision.
 - `future/049A_IDEA_PresentTimeFeedback.md` - **planned** (owner 2026-11-03): correct the
   present-time estimate with Direct3D11 present statistics, after 037A slice 3.
+- `future/050A_IDEA_TagsAndFileInformation.md` - **planned** (owner 2026-11-05): `player.Tags` and
+  `MediaInfo.ReadAsync` (tags, details, hashes, cover-art thumbnails); after FatzAudio rc.4 and 056A.
+- `future/051A_IDEA_FirstFrameReadySignal.md` - **planned, next** (owner 2026-11-05): a per-surface
+  first-frame-ready event on the UI thread and the A/B swap pattern (TriviaBomb).
+- `future/052A_IDEA_ImageOverlayAndPictureFade.md` - **planned**: a host image overlay layer on every
+  renderer, "change together" with a load, and `FadePictureAsync`.
+- `future/053A_IDEA_StreamMediaSource.md` - **planned**: `MediaInputSource.FromStream` through FFmpeg
+  custom I/O.
+- `future/054A_IDEA_FullIdleCostCheck.md` - **planned**: measure and fix idle-feature costs in `Full`
+  (no `Simple` mode, owner).
+- `future/055A_IDEA_ReconfigurePlayerInPlace.md` - **planned**: `ReconfigureAsync` keeps media,
+  position, events and surfaces.
+- `future/056A_IDEA_FatzAudioArchiveReader.md` - **planned**: archives through FatzAudio's reader,
+  SharpCompress and rar dropped; after FatzAudio's archive API.
 - `future/047A_IDEA_WpfSharedGpuSurface.md` - WPF composited mode from a shared GPU image
-  (`D3DImage`) instead of a CPU copy, for the 4K savings (owner 2026-10-27). **Not pursued**
-  (owner 2026-10-28): step 0 measured the CPU copy at 0.3-0.8% of the CPU at 4K, no drops.
+  (`D3DImage`) instead of a CPU copy: **planned, queue item 2 after 051A** (owner 2026-11-05; UI-thread
+  time per frame matters for hosts animating over video, and shows run on laptops). Guards for R1, R5
+  and R7 decided in the idea.
 - `future/040A_IDEA_OverlappingCrossfade.md` - two songs audible at once during a crossfade,
   deferred from 031B.
 
