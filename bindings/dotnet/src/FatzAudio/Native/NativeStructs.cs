@@ -461,6 +461,14 @@ internal struct FaLyricStyle
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct FaFingerprint
+{
+    public uint StructSize;
+    public ulong Key;
+    public long AudioBytes;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct FaCdgInfo
 {
     public uint StructSize;

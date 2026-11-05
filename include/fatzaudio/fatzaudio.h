@@ -1203,6 +1203,47 @@ FA_API fa_result FA_CALL fa_tags_get_cover(const fa_tags* tags, fa_tag_picture* 
  * with fa_stream_get_tags). */
 FA_API fa_result FA_CALL fa_tags_get_info(const fa_tags* tags, fa_stream_info* out_info);
 
+/* ---- Audio fingerprint -------------------------------------------------
+ *
+ * A key for a file's audio that leaves out its tags and its name: the key the
+ * loudness cache files songs by. A file that is renamed, moved, copied or retagged
+ * keeps its fingerprint; audio that is encoded again or edited gets a new one. Use it
+ * to tell "same song, new tags" from "the audio changed" in a library.
+ *   - Coded audio (MP3, AAC, FLAC, Ogg, Opus, MP4/M4A, ...) is sampled at 16 points
+ *     plus its length; WAV and AIFF up to 64 MB of samples are hashed whole.
+ *   - WAV and AIFF over 64 MB are sampled at 64 points plus the file's last-write
+ *     time, so any write to such a file (a tag edit too) gives a new key, and the same
+ *     bytes in memory give another key than the file.
+ *   - A ZIP gives the key of its audio entry (the one an open plays), the same key
+ *     as that entry unpacked (except a WAV or AIFF over 64 MB, see above). Entries
+ *     are told apart as an open does, by opening a decoder on them; compressed ones
+ *     are unpacked in memory (up to 256 MB).
+ *   - Any other file gets a key of its content less the ID3/APE/Lyrics3 blocks; the
+ *     format is not checked. (The loudness cache adds the soundfont and the rate to a
+ *     MIDI file's key; this is the file's own.)
+ * No engine is needed and no audio is decoded: a few hundred KB of reads at most for
+ * most files, the samples of a WAV up to 64 MB. Safe from any thread. */
+typedef struct fa_fingerprint {
+    uint32_t struct_size;      /* set to sizeof before the call */
+    uint64_t key;              /* the hash; with audio_bytes, the fingerprint */
+    int64_t audio_bytes;       /* bytes of audio it covers (tags and other chunks left out) */
+} fa_fingerprint;
+
+/* `path` UTF-8; `data` is only read during the call. Two fingerprints are equal
+ * when key and audio_bytes both are. FA_ERROR_NOT_FOUND when the file is missing,
+ * FA_ERROR_UNSUPPORTED_FORMAT for an empty file or a ZIP without a readable audio entry,
+ * FA_ERROR_IO when it could not be read. */
+FA_API fa_result FA_CALL fa_fingerprint_path(const char* path, fa_fingerprint* out_fingerprint);
+FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa_fingerprint* out_fingerprint);
+/* One named entry of an archive (ZIP; the name as stored, '/'-separated, matched
+ * exactly), without unpacking the others: the same fingerprint as the entry's
+ * bytes. A stored entry is read in place, a compressed one is unpacked in memory
+ * (up to 256 MB, else FA_ERROR_TOO_LARGE). FA_ERROR_NOT_FOUND when the archive or
+ * the entry is missing, FA_ERROR_UNSUPPORTED_FORMAT when the file is not an
+ * archive this build reads or the entry is empty. */
+FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
+                                                      fa_fingerprint* out_fingerprint);
+
 /* ---- Transport and position -------------------------------------------- */
 
 /* Routes a stream to a device, through `bus` (fa_bus_create) or straight into the

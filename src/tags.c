@@ -571,60 +571,28 @@ static int read_source(fa_tags* t, fa_source* src, const char* name, uint32_t fl
     return 1;
 }
 
+typedef struct {
+    fa_tags* t;
+    uint32_t flags;
+} zip_tags_ctx;
+
+static int zip_tags_visit(void* ctx, fa_source* entry, const char* name)
+{
+    zip_tags_ctx* c = (zip_tags_ctx*)ctx;
+    return read_source(c->t, entry, name, c->flags, 1);   /* not audio (a text file): the next entry */
+}
+
 /* A karaoke ZIP: the audio entry (the one named like the .cdg first). A stored
  * entry is read in place, through a window on `src`. */
 static fa_result read_zip(fa_tags* t, fa_source* src, uint32_t flags)
 {
-    fa_zip_entry* e;
-    uint32_t count, i, pass, unpacks = 0;
-    int cdg = -1, ok;
+    zip_tags_ctx c = { t, flags };
+    int has_cdg = 0;
     int64_t size = src->length;
-    fa_result r = fa_zip_list(src, &e, &count);
-    if (r != FA_OK) return FA_OK;        /* not readable: no tags */
-    for (i = 0; i < count && cdg < 0; i++) if (fa_cdg_is_cdg_name(e[i].name)) cdg = (int)i;
-    for (pass = 0; pass < 2; pass++) {
-        for (i = 0; i < count; i++) {
-            size_t stem = cdg >= 0 ? strlen(e[cdg].name) - 4 : 0;
-            int preferred = cdg >= 0 && strncmp(e[i].name, e[cdg].name, stem) == 0 && e[i].name[stem] == '.';
-            int64_t offset;
-            if ((int)i == cdg || fa_cdg_is_cdg_name(e[i].name) || preferred != (pass == 0) || e[i].size == 0) continue;
-            if (e[i].method == 0) {
-                if (fa_zip_entry_offset(src, &e[i], &offset) != FA_OK ||
-                    fa_source_set_window(src, offset, (int64_t)e[i].size) != FA_OK)
-                    continue;
-                /* Not audio (a text file in the archive): the next entry. */
-                ok = read_source(t, src, e[i].name, flags, 1);
-                fa_source_set_window(src, 0, size);
-            } else {
-                uint8_t* audio;
-                fa_source mem;
-                /* Not audio (a video, a PDF): told from a 64 KB prefix, not by unpacking it. */
-                if (e[i].size > FA_ZIP_PROBE_BYTES) {
-                    uint8_t* head;
-                    size_t got = 0;
-                    fa_result pr;
-                    if (unpacks >= FA_ZIP_MAX_UNPACKS) continue;   /* the unpack limit: only small or stored ones */
-                    head = (uint8_t*)malloc(FA_ZIP_PROBE_BYTES);
-                    if (!head) continue;
-                    pr = fa_zip_extract_prefix(src, &e[i], head, FA_ZIP_PROBE_BYTES, &got);
-                    ok = pr != FA_OK || fa_decoder_recognizes(head, got);
-                    free(head);
-                    if (!ok) continue;
-                    unpacks++;
-                }
-                if (fa_zip_extract(src, &e[i], FA_ZIP_DEFAULT_MEMORY_LIMIT, NULL, &audio) != FA_OK) continue;
-                fa_source_open_memory_ref(&mem, audio, (size_t)e[i].size);
-                ok = read_source(t, &mem, e[i].name, flags, 1);
-                fa_source_close(&mem);
-                free(audio);
-            }
-            if (!ok) continue;
-            if (t->have_info) { t->info.has_cdg = cdg >= 0; t->info.file_size = size; }
-            free(e);
-            return FA_OK;
-        }
+    if (fa_zip_visit_audio(src, zip_tags_visit, &c, &has_cdg) && t->have_info) {
+        t->info.has_cdg = has_cdg;
+        t->info.file_size = size;
     }
-    free(e);
     return FA_OK;
 }
 

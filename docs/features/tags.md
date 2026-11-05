@@ -149,6 +149,36 @@ var fromStream = song.GetTags();
 
 `fa_stream_get_tags` (.NET: `AudioStream.GetTags()`) reads the tags of the file a stream plays, opened from a path or from memory; the properties are the stream's own `fa_stream_info`. A MIDI stream also gets the title, artist and copyright of `fa_stream_get_midi_info` as `FA_TAG_FORMAT_MIDI` items (karaoke `@T` lines included). Streams of the app's own I/O callbacks, CD tracks and push streams give empty tags. Web streams have no file tags: their station name and song titles come from `fa_stream_get_metadata` and the metadata event ([web-streams.md](web-streams.md)).
 
+## Audio fingerprint
+
+`fa_fingerprint_path` / `fa_fingerprint_memory` (.NET `AudioFingerprint.Compute(path)` / `Compute(bytes)`) give a key for a file's audio that leaves out its tags and its name: the key the [loudness cache](normalization.md#the-cache) files songs by. A file that is renamed, moved, copied or retagged keeps its fingerprint; audio that is encoded again or edited gets a new one. A library can use it to tell "same song, new tags" (keep its play count, its cached analysis) from "the audio changed", and a tag editor's writes don't make it look like a new song. No engine is needed and no audio is decoded: most files cost a few 4 KB reads.
+
+```c
+fa_fingerprint fp = { .struct_size = sizeof(fp) };
+if (fa_fingerprint_path("song.mp3", &fp) == FA_OK)
+    printf("%016llx-%lld\n", (unsigned long long)fp.key, (long long)fp.audio_bytes);
+```
+
+```csharp
+var before = AudioFingerprint.Compute(path);          // or Compute(bytes) for an entry your app unpacked
+// ... the user edits the tags ...
+bool sameAudio = AudioFingerprint.Compute(path) == before;
+string stored = before.ToString();                    // "00ab12...ef-4123456": key in hex, then the audio bytes
+```
+
+For one entry of an archive, without unpacking the others, use `fa_fingerprint_archive_entry(archive_path, entry_name, &fp)` (.NET `AudioFingerprint.Compute(archivePath, entryName)`). The name is the entry's path as stored, `/`-separated, matched exactly. It gives the same fingerprint as the entry's bytes, so a song is recognised whether it is loose, in memory or in an archive. ZIP for now; other archive types join as FatzAudio learns to read them.
+
+```csharp
+var inZip = AudioFingerprint.Compute("pack.zip", "Disc 1/Song.mp3");   // == AudioFingerprint.Compute(songBytes)
+```
+
+Two fingerprints are equal when `key` and `audio_bytes` both are (the .NET value type compares both). A ZIP gives the fingerprint of its audio entry (chosen as an open chooses it), the same as that entry's bytes; compressed entries are unpacked in memory for it, up to 256 MB. What is read for each format is in [the cache's table](normalization.md#the-cache). Two limits:
+
+- **WAV and AIFF over 64 MB** are sampled at 64 points plus the file's last-write time (reading 600 MB on every lookup would be too slow). For those, any write to the file, a tag edit included, gives a new fingerprint, and the same bytes in memory give another one than the file. Smaller WAV and AIFF and every coded format are content only.
+- **MIDI**: the loudness cache adds the soundfont and rate to a MIDI file's key; the public fingerprint is the file's own.
+
+Errors: `FA_ERROR_NOT_FOUND` (missing file or archive entry), `FA_ERROR_UNSUPPORTED_FORMAT` (an empty file, a ZIP without a readable audio entry), `FA_ERROR_IO` (a read failed), `FA_ERROR_TOO_LARGE` (a compressed archive entry over 256 MB). Any other file gets a fingerprint, audio or not: the format is not checked.
+
 ## Threads
 
 Reading is synchronous and does file I/O on the calling thread, so a media library should scan on a worker thread. A tag object is immutable after it is read: any thread may read it, and its strings and pictures stay valid until `fa_tags_close`.

@@ -38,6 +38,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   cached by 1.0.0-rc.3 or earlier are not used: every song is measured once more the first time it plays, then cached
   again. This is expected, not a bug. The old per-song `.loudness` files stay until `fa_engine_clear_cache`.
 
+- Public audio fingerprint (MediaControl request): `fa_fingerprint_path` / `fa_fingerprint_memory` fill a
+  `fa_fingerprint` (`key`, `audio_bytes`) with the audio-only key the loudness cache uses, tags and name left out; a
+  ZIP gives its audio entry's key, and `fa_fingerprint_archive_entry` any named entry's (the same as its bytes). .NET
+  `AudioFingerprint.Compute(path)` / `Compute(bytes)` / `Compute(archivePath, entryName)`, a value type whose
+  `ToString()` is a fixed text form to store ([audio fingerprint](docs/features/tags.md#audio-fingerprint)).
+
 - CD+G with no audio (MediaControl request 10): a lone `.cdg`, or a ZIP whose only playable entry is a `.cdg`, opens
   with `fa_stream_open_path` / `_memory` / `_io` as a silent stream exactly as long as the graphics (pack count / 300 s,
   44,100 Hz stereo) that plays, pauses, seeks, loops and changes tempo like any file, so its clock drives the CD+G
