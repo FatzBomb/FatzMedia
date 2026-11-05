@@ -521,10 +521,16 @@ public sealed record AudioEngineOptions
     /// <summary>
     /// Where compressed songs in ZIP archives (MP3+G) too big for <see cref="ZipMemoryLimitMb"/> are
     /// unpacked, in a <c>fatzaudio-tmp</c> folder inside it. The files are deleted when the stream
-    /// closes, also if the app crashes. Null (the default) never writes temp files: such archives
-    /// fail with <see cref="ErrorCode.TooLarge"/>. Uncompressed entries always play straight from the archive.
+    /// closes, also if the app crashes. Null (the default) uses the OS temp directory, so a big song
+    /// just opens; set it to choose the drive. Uncompressed entries always play straight from the archive.
+    /// Too little free space throws <see cref="ErrorCode.DiskFull"/>.
     /// </summary>
     public string? TempDirectory { get; init; }
+    /// <summary>
+    /// Never write temp files: compressed ZIP songs past <see cref="ZipMemoryLimitMb"/> throw
+    /// <see cref="ErrorCode.TooLarge"/> when <see cref="TempDirectory"/> is null.
+    /// </summary>
+    public bool NoTempFiles { get; init; }
     /// <summary>Compressed ZIP entries up to this many MB are unpacked into memory; 0 uses 256.</summary>
     public int ZipMemoryLimitMb { get; init; }
     /// <summary>

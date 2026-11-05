@@ -19,6 +19,7 @@
 #include <time.h>
 #ifndef _WIN32
 #  include <dirent.h>
+#  include <unistd.h>
 #  include <utime.h>
 #endif
 
@@ -983,7 +984,7 @@ static void test_zip_over_limit(void)
     o.flags = FA_OPEN_DECODE_ONLY;
 
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_TEMP_FILES;
     cfg.zip_memory_limit_mb = 1;
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
     CHECK_EQ(fa_stream_open_path(e, "cdg_big.zip", &o, &s), FA_ERROR_TOO_LARGE);
@@ -1007,6 +1008,7 @@ static void test_zip_over_limit(void)
     }
 #endif
     cfg.temp_directory = "cdg_tmp";
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
 #ifndef _WIN32
     {
@@ -1081,6 +1083,74 @@ static int count_temp_files(void)
 #endif
     return n;
 }
+
+/* No temp_directory: a big compressed song goes to the OS temp directory (TMPDIR here),
+ * leaves nothing behind, and the old leftovers there are swept at engine start. */
+#ifndef _WIN32
+static void test_zip_default_temp(void)
+{
+    buf wav = make_long_wav(1500000), cdg = small_cdg(), zip;
+    zip_file files[2];
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_open_options o;
+    fa_stream* s = NULL;
+    FILE* stale;
+    struct utimbuf old;
+    char abs_dir[1024], folder[1100], stale_path[1200];
+    const char* saved = getenv("TMPDIR");
+    char* saved_copy = saved ? strdup(saved) : NULL;
+    files[0].name = "Big.cdg"; files[0].data = &cdg; files[0].deflate = 1; files[0].crc_xor = 0;
+    files[1].name = "Big.wav"; files[1].data = &wav; files[1].deflate = 1; files[1].crc_xor = 0;
+    zip = make_zip_lz(files, 2);
+    write_file("cdg_big2.zip", &zip);
+    fa_mkdir_utf8("cdg_ostmp");
+    CHECK(getcwd(abs_dir, sizeof(abs_dir) - 16) != NULL);
+    strcat(abs_dir, "/cdg_ostmp");
+    snprintf(folder, sizeof(folder), "%s/fatzaudio-tmp-%lu", abs_dir, (unsigned long)getuid());
+    snprintf(stale_path, sizeof(stale_path), "%s/fa-abc123", folder);
+    fa_mkdir_utf8(folder);
+    stale = fopen(stale_path, "wb");
+    CHECK(stale != NULL);
+    if (stale) fclose(stale);
+    old.actime = old.modtime = time(NULL) - 3600;
+    utime(stale_path, &old);
+    setenv("TMPDIR", abs_dir, 1);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.zip_memory_limit_mb = 1;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    {
+        FILE* gone = fopen(stale_path, "rb");
+        CHECK(gone == NULL);   /* swept at engine start */
+        if (gone) fclose(gone);
+    }
+    CHECK_EQ(fa_stream_open_path(e, "cdg_big2.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 1500000);
+    {
+        DIR* d = opendir(folder);
+        struct dirent* ent;
+        int files_left = 0;
+        CHECK(d != NULL);
+        while (d && (ent = readdir(d)) != NULL) if (ent->d_name[0] != '.') files_left++;
+        if (d) closedir(d);
+        CHECK_EQ(files_left, 0);
+    }
+    fa_stream_close(s);
+    fa_engine_destroy(e);
+    /* NO_TEMP_FILES turns the fallback off */
+    cfg.flags |= FA_ENGINE_NO_TEMP_FILES;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    CHECK_EQ(fa_stream_open_path(e, "cdg_big2.zip", &o, &s), FA_ERROR_TOO_LARGE);
+    fa_engine_destroy(e);
+    if (saved_copy) setenv("TMPDIR", saved_copy, 1); else unsetenv("TMPDIR");
+    free(saved_copy);
+    remove("cdg_big2.zip");
+    free(zip.p); free(wav.p); free(cdg.p);
+}
+#endif
 
 /* A bundled file that is no audio costs a 64 KB prefix, not its unpacking. */
 static void test_zip_prefix_probe(void)
@@ -4996,6 +5066,9 @@ int main(void)
     RUN(test_zip_unpack_cap);
     RUN(test_zip_cancel);
     RUN(test_zip_temp_song);
+#ifndef _WIN32
+    RUN(test_zip_default_temp);
+#endif
     RUN(test_zip_stored_crc);
     RUN(test_zip64_basic);
     RUN(test_zip64_many_entries);

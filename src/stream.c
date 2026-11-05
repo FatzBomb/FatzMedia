@@ -367,10 +367,13 @@ static fa_result unpack_to_temp(struct fa_stream* s, fa_archive* a, uint32_t i, 
     FILE* f;
     fa_result r;
     int64_t size = a->pub[i].size;
+    uint64_t avail;
     if (!engine->temp_folder || (uint64_t)size > FA_ZIP_TEMP_LIMIT) return FA_ERROR_TOO_LARGE;
     /* Made again here: the app may have created the directory after the engine. */
-    fa_mkdir_utf8(engine->config.temp_directory);
+    if (engine->config.temp_directory) fa_mkdir_utf8(engine->config.temp_directory);
     fa_mkdir_utf8(engine->temp_folder);
+    /* Fail before writing gigabytes: the song plus a margin for the OS and the app. */
+    if (fa_free_space(engine->temp_folder, &avail) && avail < (uint64_t)size + FA_ZIP_TEMP_RESERVE) return FA_ERROR_DISK_FULL;
     f = fa_temp_file_create(engine->temp_folder);
     if (!f) return FA_ERROR_IO;
     r = fa_archive_unpack_file(a, i, cancel, f);
@@ -521,8 +524,10 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
         if (opened != FA_OK) {
             /* Too big to unpack, out of memory or a temp file that failed is worth
              * telling the app, unless another entry plays. */
-            if (opened == FA_ERROR_TOO_LARGE || opened == FA_ERROR_OUT_OF_MEMORY || opened == FA_ERROR_IO || opened == FA_ERROR_PROTECTED_CONTENT)
-                if (skipped == FA_ERROR_UNSUPPORTED_FORMAT || opened == FA_ERROR_TOO_LARGE) skipped = opened;
+            if (opened == FA_ERROR_TOO_LARGE || opened == FA_ERROR_OUT_OF_MEMORY || opened == FA_ERROR_IO || opened == FA_ERROR_PROTECTED_CONTENT ||
+                opened == FA_ERROR_DISK_FULL)
+                if (skipped == FA_ERROR_UNSUPPORTED_FORMAT || opened == FA_ERROR_TOO_LARGE ||
+                    opened == FA_ERROR_DISK_FULL) skipped = opened;
             continue;
         }
         r = stream_open_decoder(s, a->pub[c->audio].name, options);

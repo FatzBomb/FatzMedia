@@ -25,6 +25,8 @@ typedef struct fa_zip_entry {
 /* The most unpacked into a temp file: a bigger entry (only a hostile archive
  * claims one) returns FA_ERROR_TOO_LARGE before anything is written. */
 #define FA_ZIP_TEMP_LIMIT ((uint64_t)4 << 30)
+/* Free space left over after a temp file, or the open fails with FA_ERROR_DISK_FULL. */
+#define FA_ZIP_TEMP_RESERVE ((uint64_t)64 << 20)
 
 /* 1 when `data` starts like a ZIP archive. */
 int fa_zip_probe(const uint8_t* data, size_t size);

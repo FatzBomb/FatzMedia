@@ -23,6 +23,13 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when
   present ([archives](docs/features/archives.md)).
 
+- Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
+  directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.
+  The free space is checked first (song size + 64 MB) and a short disk returns the new `FA_ERROR_DISK_FULL` (-23, .NET
+  `ErrorCode.DiskFull`) before anything is written. Leftovers of crashed runs in `fatzaudio-tmp` are swept at engine
+  start. `FA_ENGINE_NO_TEMP_FILES` (.NET `AudioEngineOptions.NoTempFiles`) turns the OS-directory fallback off (the old
+  behaviour, `FA_ERROR_TOO_LARGE`); a `temp_directory` the app sets still works. On Linux/macOS/Android the folder is
+  `fatzaudio-tmp-<uid>`, so users sharing `/tmp` do not collide. Before, such songs failed with `FA_ERROR_TOO_LARGE` unless the app set a folder.
 - Settled loudness on first play (MediaControl request 12): `fa_engine_set_normalization_start_wait(engine, wait_ms,
   max_provisional_boost_db)` (.NET `AudioEngine.SetNormalizationStartWait`). A first `fa_stream_play` of a normalized
   stream now waits up to `wait_ms` (default 200 ms; 0 = start at once, as before) for its final loudness, and up to
