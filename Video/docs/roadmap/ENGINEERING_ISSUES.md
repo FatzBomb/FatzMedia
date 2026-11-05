@@ -108,7 +108,18 @@ it as the real slots do. Also seen: after the reset, Vulkan stays unusable for t
 works. Direct3D11, picked by hand, showed the picture at once.
 Rechecked with the fix (2026-11-05, fresh process, `dxcap -forcetdr`): pass. The window switched to
 Direct3D11 by itself and recreated the player (surface #2 on the RTX 5090, shared GPU image); the file
-played again on Direct3D11. Still open: the 14 s stall before the first recovery attempt.
+played again on Direct3D11.
+
+Stall fix (2026-11-05, pending the owner's GPU-reset check): the 14 s was the compositor's close. A frame
+fence that misses its 2 s marks the device lost but not confirmed, and closing then called
+`vkDeviceWaitIdle`, which has no timeout and returned only when the driver finished the reset. Closing a
+device in that state now waits only for the compositor's own last submission (every submit is waited for,
+so it is the only one that can be in flight), for at most 2 s more, and a `VK_ERROR_DEVICE_LOST` from that
+wait confirms the loss. Windows resets a GPU that made no progress for 2 s, so work still pending after
+that is on a device being reset. A normal close still waits for the device to go idle. The close steps
+(`vkDeviceWaitIdle (close)`, `vkWaitForFences (close, device lost)`, `Vulkan device release (close)`) are
+logged when they take over 250 ms, so any time left shows where it goes. Test:
+`ClosingADeviceThatOnlyTimedOut_DoesNotWaitForTheWholeDevice` (lavapipe).
 
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 

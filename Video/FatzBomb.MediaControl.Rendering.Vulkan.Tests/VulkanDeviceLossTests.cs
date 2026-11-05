@@ -119,6 +119,21 @@ public sealed class VulkanDeviceLossTests
     }
 
     [Fact]
+    public void ClosingADeviceThatOnlyTimedOut_DoesNotWaitForTheWholeDevice()
+    {
+        // ENG-050: vkDeviceWaitIdle blocked recovery for 14 s after an NVIDIA GPU reset. A device
+        // marked lost by a timeout waits only for the compositor's own submission, bounded.
+        VulkanOffscreenCompositor? compositor = VulkanOffscreenCompositor.TryCreate(out _);
+        if (compositor is null)
+            return;
+
+        compositor.SharedDevice!.MarkLost("frame did not complete within 2 s", confirmed: false);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        compositor.Dispose();
+        Assert.True(watch.Elapsed < VulkanOffscreenCompositor.LostDeviceCloseWait, $"closing took {watch.Elapsed}");
+    }
+
+    [Fact]
     public void OutOfMemory_ThreeTimesInARow_CountsAsALostDevice()
     {
         VulkanOffscreenCompositor? compositor = null;

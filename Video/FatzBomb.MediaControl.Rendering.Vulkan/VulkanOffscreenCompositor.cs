@@ -57,6 +57,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
     private CommandPool _commandPool;
     private CommandBuffer _commandBuffer;
     private Fence _fence;
+    // A submission signalling _fence that no wait has seen complete yet.
+    private bool _submissionPending;
     private PhysicalDeviceMemoryProperties _memoryProperties;
     private VulkanOverlayPipelines? _overlay;
 
@@ -571,11 +573,21 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 _probeClosed = true;
 
             // A device the driver reported lost may never go idle (ENG-039), and destroying its
-            // objects is allowed; one that only timed out is waited for (a slow GPU still uses them).
+            // objects is allowed; one that only timed out is waited for (a slow GPU still uses them),
+            // but only for this compositor's own submission and for a bounded time (ENG-050).
             if (_device.Handle != 0 && _shared?.IsLossConfirmed != true)
             {
-                lock (QueueLock)
-                    _ = _vk.DeviceWaitIdle(_device);
+                if (_shared?.IsLost == true)
+                {
+                    WaitForPendingSubmissionBounded();
+                }
+                else
+                {
+                    var start = Stopwatch.GetTimestamp();
+                    lock (QueueLock)
+                        _ = _vk.DeviceWaitIdle(_device);
+                    VulkanStallMeter.Report(start, "vkDeviceWaitIdle (close)");
+                }
             }
 
             if (_device.Handle != 0)
@@ -608,8 +620,10 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
                 // The device, instance and loader go with the last reference: an FFmpeg decoder
                 // may still decode on them (Stage 045A slice 2).
                 _shared = null;
+                var start = Stopwatch.GetTimestamp();
                 shared.ReleaseFfmpegDeviceContext();
                 shared.Release();
+                VulkanStallMeter.Report(start, "Vulkan device release (close)");
                 return;
             }
 
@@ -1211,6 +1225,36 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
             result = _vk.QueueSubmit(_queue, 1, submit, _fence);
         VulkanStallMeter.Report(start, "vkQueueSubmit");
         VulkanResult.Check(result, "vkQueueSubmit");
+        _submissionPending = true;
+    }
+
+    /// <summary>How long closing waits for the last submission on a device that stopped completing work.</summary>
+    internal static readonly TimeSpan LostDeviceCloseWait = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Closing a device that stopped completing work but that the driver has not reported lost
+    /// (ENG-050). <c>vkDeviceWaitIdle</c> has no timeout: after an NVIDIA GPU reset it blocked
+    /// recovery for about 14 s, until the driver finished the reset. Each <see cref="Submit"/> is
+    /// waited for, so only this compositor's last submission can still be in flight; it is waited
+    /// for up to <see cref="LostDeviceCloseWait"/>, and the loss counts as confirmed as soon as the
+    /// driver reports it. Windows resets a GPU that made no progress for 2 s, so work still pending
+    /// after the 2 s fence timeout and this wait is on a device being reset, whose objects may be
+    /// destroyed. FFmpeg waits for its own submissions.
+    /// </summary>
+    private void WaitForPendingSubmissionBounded()
+    {
+        if (!_submissionPending || _fence.Handle == 0)
+            return;
+
+        Fence fence = _fence;
+        var start = Stopwatch.GetTimestamp();
+        Result result = _vk.WaitForFences(_device, 1, &fence, true, (ulong)LostDeviceCloseWait.Ticks * 100);
+        VulkanStallMeter.Report(start, "vkWaitForFences (close, device lost)");
+        if (result == Result.Timeout)
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, "Vulkan", $"The last submission did not complete within {LostDeviceCloseWait.TotalSeconds:0} s more; the lost device is closed without waiting for it.");
+        else if (result == Result.ErrorDeviceLost)
+            _shared?.MarkLost("vkWaitForFences reported VK_ERROR_DEVICE_LOST while closing");
+        _submissionPending = false;
     }
 
     /// <summary>How long a submission may take before the device counts as lost (ns): the Windows GPU-reset interval.</summary>
@@ -1227,6 +1271,8 @@ internal sealed unsafe partial class VulkanOffscreenCompositor : IDisposable
         var start = Stopwatch.GetTimestamp();
         Result result = _vk.WaitForFences(_device, 1, &fence, true, FenceTimeoutNanoseconds);
         VulkanStallMeter.Report(start, operation);
+        if (result != Result.Timeout)
+            _submissionPending = false;
         if (result == Result.Timeout)
         {
             _shared?.MarkLost($"{operation} did not complete within 2 s", confirmed: false);
