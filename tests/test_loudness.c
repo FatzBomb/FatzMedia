@@ -471,10 +471,12 @@ static void test_tag_parsers(void)
 
 /* ---- playback ------------------------------------------------------------------------ */
 
+/* Up to a minute: an emulated arm64 Android scans a 20 s song in several seconds,
+ * and this returns as soon as the value is final. */
 static int wait_final(fa_stream* s, fa_loudness* l)
 {
     int i;
-    for (i = 0; i < 1000; i++) {
+    for (i = 0; i < 12000; i++) {
         fa_stream_get_loudness(s, l);
         if (l->is_final) return 1;
         fa_sleep_ms(5);
