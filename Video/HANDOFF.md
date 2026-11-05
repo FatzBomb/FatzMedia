@@ -27,8 +27,10 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   1. `051A` first-frame-ready signal + A/B swap pattern (TriviaBomb) - **next**.
   2. `047A` WPF shared GPU surface - **planned again** (owner 2026-11-05): the cost that matters is
      UI-thread time per frame (1-2 ms per 1080p surface, estimated), for every host animating over
-     video; most shows run on laptops. Guards for R1/R5/R7 are in the idea; 051A adds the UI-thread
-     time counter for before/after numbers (desktop and laptop).
+     video; most shows run on laptops; venue displays are 4K. Slice 1: shared GPU image with the
+     R1/R5/R7 guards. Slice 2: composited video on its own dispatcher thread (`HostVisual`/`VisualTarget`),
+     so a busy app UI thread no longer pauses it. 051A adds the UI-thread time counter for before/after
+     numbers (desktop and laptop). Open: an `Auto` presentation mode (see the owner questions).
   3. `052A` host image overlay layer + "change together" + `FadePictureAsync`.
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
@@ -86,6 +88,10 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
    provisional start, rerun the timings.
 
 ## Open questions for the owner
+
+- `WpfPresentationMode.Auto` (composited when the surface has `OverlayContent`, opacity, a transform or
+  a clip; native for HDR or nothing over the video; switched when those change). Content the app places
+  over the surface elsewhere in its tree cannot be detected reliably, so the app says so (sets the mode).
 
 - Provisional boost cap default: 6 dB (our suggestion) or FatzAudio's 12 (none)?
 - FatzAudio's public fingerprint: build it (half a day on their side)?

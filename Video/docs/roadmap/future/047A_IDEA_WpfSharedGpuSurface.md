@@ -27,7 +27,20 @@ desktop. The cost that matters is UI-thread time: each composited frame is writt
 2-3 composited 1080p60 surfaces under an animated WPF screen, on the desktop and on a laptop, before
 and after.
 
-**What it does not change:** a UI-thread stall still pauses composited video (each frame needs a short
+**Slice 2 (owner 2026-11-05): composited video on its own thread.** Each composited surface hosts its
+video element on a dedicated dispatcher thread (`HostVisual` in the main tree, `VisualTarget` on the
+video thread): the per-frame work (the `D3DImage` hand-over, or the bitmap write) runs there, and WPF's
+render thread composes both trees, so a busy or stalled app UI thread no longer pauses the video, while
+WPF content above it, layout, clipping and opacity keep working. The A/B pattern (051A) still gives
+same-frame switching (the new clip's first frame is shown before the host swaps). The surface tells the
+hosted tree its size and DPI; device-loss events arrive on the video thread. Remaining differences from
+the native window: WPF's composition beat (up to one frame later) and SDR only.
+
+**Venues run 4K displays (owner 2026-11-05).** A full-screen composited surface is read back at the
+surface's size, not the source's: about 33 MB a frame at 4K, about 2 GB/s at 60 fps, whatever the clip's
+resolution. That is the case slice 1 removes.
+
+**What it does not change (slice 1 alone):** a UI-thread stall still pauses composited video (each frame needs a short
 UI-thread call); WPF still shows frames on its own beat (up to one frame later than the native window);
 SDR only. The native window stays the choice for HDR, exact frame timing, or a heavy UI thread with no
 WPF content over the video. Composited is the choice whenever WPF content goes over the video.
