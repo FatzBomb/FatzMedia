@@ -64,3 +64,11 @@ if(MSVC)
 elseif(NOT WIN32)
     target_link_libraries(fa_render_stress PRIVATE Threads::Threads m)
 endif()
+
+# Time to the first audio of a song inside an archive (tools/archive-bench/README.md).
+add_executable(fa_archive_bench archive-bench/fa_archive_bench.c)
+target_link_libraries(fa_archive_bench PRIVATE fatzaudio)
+target_compile_options(fa_archive_bench PRIVATE ${FA_WARNINGS})
+if(MSVC)
+    target_compile_definitions(fa_archive_bench PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()

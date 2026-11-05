@@ -256,9 +256,14 @@ public sealed record Spectrum(float[] Magnitudes, float BinHz);
 /// </param>
 /// <param name="Bitrate">Average bits per second (<see cref="AudioBytes"/> over the duration, else the codec's nominal rate); 0 when unknown.</param>
 /// <param name="BitsPerSample">Bit depth of PCM and lossless sources (WAV, AIFF, FLAC, ALAC, CD); 0 for lossy codecs.</param>
+/// <param name="CanDecode">
+/// True when FatzAudio can play the file. False only in the details <see cref="Tags.Info"/> gives for a file whose codec
+/// nobody decodes here (DTS, TrueHD, WMA off Windows, ...): the codec, container, format, duration and bitrate are what
+/// the file says, and opening a stream fails.
+/// </param>
 public sealed record StreamInfo(
     AudioFormat Format, string Codec, string Container, TimeSpan? Duration, long LengthFrames,
-    bool CanSeek, int AudioTrackCount, bool HasCdg, long? FileSize = null, long? AudioBytes = null, int Bitrate = 0, int BitsPerSample = 0)
+    bool CanSeek, int AudioTrackCount, bool HasCdg, long? FileSize = null, long? AudioBytes = null, int Bitrate = 0, int BitsPerSample = 0, bool CanDecode = true)
 {
     internal static unsafe StreamInfo FromNative(in Native.FaStreamInfo n)
     {
@@ -271,7 +276,7 @@ public sealed record StreamInfo(
                 NativeText.Read(container),
                 duration, n.LengthFrames, n.Seekable != 0, n.AudioTrackCount, n.HasCdg != 0,
                 n.FileSize >= 0 ? n.FileSize : null, n.AudioBytes >= 0 ? n.AudioBytes : null,
-                (int)Math.Min(n.Bitrate, int.MaxValue), (int)n.BitsPerSample);
+                (int)Math.Min(n.Bitrate, int.MaxValue), (int)n.BitsPerSample, n.CanDecode != 0);
     }
 }
 
@@ -548,8 +553,22 @@ public sealed record AudioEngineOptions
     /// <see cref="ErrorCode.TooLarge"/> when <see cref="TempDirectory"/> is null.
     /// </summary>
     public bool NoTempFiles { get; init; }
+    /// <summary>
+    /// Play seeks and loop wraps exactly as the file has them. By default a seek on a playing stream fades the old
+    /// audio out and the new in (1.5 ms each) and a loop that jumps back with a step is smoothed over about 2 ms, so
+    /// neither clicks.
+    /// </summary>
+    public bool NoDeclick { get; init; }
     /// <summary>Compressed ZIP entries up to this many MB are unpacked into memory; 0 uses 256.</summary>
     public int ZipMemoryLimitMb { get; init; }
+    /// <summary>
+    /// How long the engine keeps the last archive it opened (with a solid 7z or tar.gz decoder where it stopped) and the
+    /// last compressed song it unpacked, so opening the next entry or replaying costs next to nothing; 0 uses 30 seconds.
+    /// Each is held up to half of <see cref="ZipMemoryLimitMb"/>.
+    /// </summary>
+    public int ArchiveCacheSeconds { get; init; }
+    /// <summary>Keep nothing between opens: every open of an archive song unpacks it again.</summary>
+    public bool NoArchiveCache { get; init; }
     /// <summary>
     /// Output devices play into a silent output that still runs in real time. Use it for automated
     /// tests, build servers without audio hardware, and headless services.

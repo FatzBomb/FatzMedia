@@ -18,6 +18,25 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Pause and resume no longer click: pause fades the stream out over 1.5 ms before it pauses, and play after a pause fades it
+  in over 1.5 ms (`FA_ENGINE_NO_DECLICK` turns it off). Sine tones measured 0.35 to 0.5 before, 0.01 now.
+- Archives, step A5: details for files nobody decodes. `fa_tags_read_*` now fills `fa_stream_info` (codec, container, rate, channels, duration, size, bitrate) from the container for DTS, TrueHD, WMA off Windows and any other codec FatzAudio cannot decode, in Matroska, MP4, ASF, AVI and FLV, and for raw `.dts` core streams. New field `fa_stream_info.can_decode` at the end of the struct (.NET `StreamInfo.CanDecode`, `Tags.CanDecode`): 0 for those files, 1 otherwise. CAF `info` chunk tags (`FA_TAG_FORMAT_CAF`, .NET `TagFormat.Caf`). MediaControl can drop measuring these files with FFmpeg.
+
+- Archives, step A4: `tools/archive-bench` (`fa_archive_bench`, `run.py`) times the first audio of a song in every archive kind through
+  the public API; the measured table and what to ship karaoke songs in are in [archives, "Speed"](docs/features/archives.md#speed).
+  The pairing rules (a `.cdg` that matches no song is no longer attached when an archive holds several songs; names compared
+  without case; one `fa_archive_pick` for open, tags and fingerprint) were announced under steps A1-A3 and are collected in
+  "Behaviour changes from earlier versions" of that page.
+
+- Archives, step A3: 7z (`.7z`, plain or LZMA-packed header; Copy, LZMA and LZMA2 folders, with file names, times and
+  CRC-32; other methods listed as not readable, AES as encrypted) through the same `fa_archive_*` calls, stream opens, tags and
+  fingerprints. A solid folder is decoded once however many songs you open from it (the decoder stays where the
+  last read ended, in memory or through a window of the dictionary), jumps to LZMA2 dictionary resets to reach an
+  entry behind it, and unpacks a single-file folder straight into the buffer. New engine cache of the last archive
+  and the last compressed song for 30 s (`fa_engine_config.archive_cache_seconds`, `FA_ENGINE_NO_ARCHIVE_CACHE`; .NET
+  `ArchiveCacheSeconds`, `NoArchiveCache`), and a song and its `.cdg` that both need unpacking unpack on two threads.
+  `fa_engine_config` has a new last field. ([archives](docs/features/archives.md))
+
 - Archives, step A2: tar (ustar, GNU, pax, long names), tar inside gzip, bzip2 or xz (`.tar.gz`, `.tar.bz2`, `.tar.xz`), and
   one file in a `.gz`, `.bz2` or `.xz`, through the same `fa_archive_*` calls, `fa_open_options.archive_entry`, tags and
   fingerprints as ZIP; ZIP methods 12 (bzip2), 14 (LZMA) and 95 (xz) read too. New `fa_archive_get_filter` (.NET
@@ -27,6 +46,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   the bzip2 1.0.8 decompressor, no new library to ship ([archives](docs/features/archives.md)). New fuzz target `archive`.
 
 
+- No more clicks at seeks and loop wraps: a seek on a playing stream fades the old audio out and the new in (1.5 ms
+  each); a loop that jumps back with a step is smoothed over about 2 ms, a seamless loop is left exact.
+  `FA_ENGINE_NO_DECLICK` / .NET `AudioEngineOptions.NoDeclick` turn it off. Measured with sine tones: seeks went from a
+  residual of 0.4 to 0.5 (full-scale step) to 0.01; stepped loop wraps from 0.4 to 0.1 or less.
 - Loudness of audio your app feeds (MediaControl request 13): `fa_scan_open_packets` / `fa_scan_open_push`,
   `fa_scan_push_packet` / `fa_scan_push_frame`, `fa_scan_wants_more`, `fa_scan_finish`, `fa_scan_close` (new
   `fa_scan_options`, `fa_scan_feed`; .NET `AudioEngine.OpenLoudnessScan`, `LoudnessScan`, `LoudnessScanOptions`). The feed
@@ -129,6 +152,12 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   Filled from the analysis cache too; `fa_analysis_get_silence` and `fa_silence_detector_get` leave them unset. .NET:
   `SilenceInfo.HasDrawing`, `FirstDrawn`, `LastDrawn`, `FirstDrawnTime`, `LastDrawnTime`
   ([karaoke files](docs/features/analysis.md#karaoke-files-silence-and-drawing)).
+
+### Fixed
+
+- Opening a `.tar.bz2` (or a single `.bz2`) no longer decodes the file twice: the 512-byte look that tells a tar from other data
+  started the side-by-side block decoder, which decoded every block before the look stopped it. 10-song `.tar.bz2`: 2.7 s to
+  1.9 s; one song: 410 ms to 285 ms on 4 cores.
 
 ### Changed
 

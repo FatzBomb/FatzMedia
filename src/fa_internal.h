@@ -166,6 +166,11 @@ struct fa_decoder {
     uint32_t bitrate;                 /* nominal bits per second, 0 = unknown */
     uint32_t bits_per_sample;         /* PCM and lossless, 0 = lossy or unknown */
     int64_t file_size;                /* -1 = unknown */
+    /* fa_decoder_open with env->info_only: the container was read but no decoder
+     * opens the codec (DTS, TrueHD, WMA without Media Foundation, ...). The format,
+     * codec name, length and bitrate are what the container says; nothing can be read. */
+    int info_only;
+    int undecodable;
 };
 
 /* What a decoder may need from the stream that opens it. */
@@ -180,12 +185,17 @@ typedef struct fa_decoder_env {
     int32_t text_code_page;           /* MIDI: fa_open_options.text_code_page, 0 = detect */
     int32_t midi_lyrics_only;         /* MIDI: parse only (FA_OPEN_MIDI_LYRICS_ONLY) */
     int32_t no_cdg;                   /* FA_OPEN_NO_CDG */
+    int32_t info_only;                /* tags reader: a container whose codec nobody decodes opens
+                                         anyway with dec->undecodable = 1 (details only) */
 } fa_decoder_env;
 
 /* Could `data` (the start of a file, any length) be audio some decoder opens? The same
  * content probes as fa_decoder_open: 0 only when none of them claims the bytes (a text
  * file, a picture); 1 when one does or the bytes cannot tell (a tag that fills them). */
 int fa_decoder_recognizes(const uint8_t* data, size_t size);
+
+/* info_dts.c: details of a raw DTS core stream (.dts) that no decoder opens; 1 when `src` is one. */
+int fa_dts_core_info(fa_source* src, fa_stream_info* out);
 
 /* Detects the format of `src` and opens the matching decoder. `name_hint` (a path
  * or NULL) and `mime_hint` only break ties when the content is ambiguous.
@@ -1211,6 +1221,7 @@ struct fa_engine {
     fa_cond scan_cond;           /* work queued or a job finished */
     fa_scan_job* scan_queue;
     fa_lcache* lcache;           /* NULL without a cache directory */
+    struct fa_acache* acache;    /* recently unpacked archive songs (acache.c); NULL when turned off */
     int cache_default;           /* config.cache_directory is the OS one FatzAudio chose */
     int cache_dir_failed;        /* the cache folder could not be made when the engine was created */
     struct fa_idslot* id_slots;  /* streams with a source identity (scan_feed.c), under scan_lock */
@@ -1623,7 +1634,14 @@ struct fa_stream {
     /* Parameters */
     fa_lane lanes[FA_STREAM_LANES];      /* VOLUME, PAN, crossfade gain */
     uint32_t voice_rate;                 /* device rate the ramp counters are in */
-    int was_audible;                     /* audio thread only: mixed in the previous callback */
+    fa_atomic32 was_audible;             /* written by the audio thread: mixed in the previous callback */
+    fa_atomic32 dk_req;                  /* 1 = a seek asks the mixer to fade this stream out, then keep out (flushing); 2 = a pause asks it to fade out, then pause */
+    fa_atomic32 dk_resume;               /* play after a pause: the mixer fades the stream in */
+    fa_atomic32 dk_timeouts;             /* fades the mixer did not play in time (a seek then cuts as before) */
+    fa_atomic64 dk_deadline;             /* monotonic ns after which an async seek stops waiting for that fade */
+    fa_atomic32 dk_in;                         /* decode side: the next restart fades its first frames in */
+    int wrap_valid;                      /* decode side: wrap_last holds the last frames read */
+    float wrap_f[3][16];                 /* decode side: the last three source frames read, newest first (loop smoothing) */
 
     /* Scheduling and queues */
     fa_atomic64 start_frame;     /* FA_STATE_SCHEDULED: device frame to start at */

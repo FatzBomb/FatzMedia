@@ -10,6 +10,7 @@
 #include "cdg.h"
 #include "archive/solid.h"
 #include "archive/tar.h"
+#include "archive/sevenz.h"
 
 /* ---- Names (names.c) ------------------------------------------------------- */
 
@@ -43,6 +44,7 @@ struct fa_archive {
     int32_t filter;             /* FA_FILTER_*: gzip, bzip2 or xz around the tar (format TAR) or file (GZIP, BZIP2, XZ) */
     uint32_t count;
     fa_zip_entry* z;            /* the entries as the backends read them: count entries */
+    fa_7z* sz;                  /* a 7z archive: entries are read through it (method FA_AM_7Z) or stored (0) */
     fa_solid* sol;              /* entries are read out of a compressed stream (method FA_AM_SOLID), not stored */
     uint8_t** prefixes;         /* solid: the first bytes of each entry seen while listing (or NULL) */
     uint32_t* prefix_lens;
@@ -63,10 +65,21 @@ struct fa_archive {
 /* Entries read out of a compressed stream (tar.gz and friends too large to hold decoded) use this
  * as fa_zip_entry.method; the data_offset is in the decoded stream. */
 #define FA_AM_SOLID 1000
-/* 1 when `data` starts like an archive this build reads (ZIP, tar, gzip, bzip2, xz). */
+/* 1 when `data` starts like an archive this build reads (ZIP, tar, gzip, bzip2, xz, 7z). */
 int fa_archive_openable(const uint8_t* data, size_t size);
 /* 1 when entry `i` is stored plain in the archive's source (it plays in place). */
 int fa_archive_is_stored(const fa_archive* a, uint32_t i);
+
+/* What the archive holds in memory beyond its entries' own data (a decoded copy, a solid cursor); takes the lock. */
+uint64_t fa_archive_held_bytes(fa_archive* a);
+/* 1 when entry `i` is compressed on its own: another thread can unpack it with fa_archive_unpack_on and a source from
+ * fa_archive_clone_source while the archive is used for something else. */
+int fa_archive_independent(const fa_archive* a, uint32_t i);
+/* A source of its own on the archive's bytes (its path reopened, or the same memory), for a second thread; 0 when
+ * there is none (callbacks, a window, a temp file). The caller closes it. */
+int fa_archive_clone_source(const fa_archive* a, fa_source* out);
+fa_result fa_archive_unpack_on(const fa_archive* a, fa_source* src, uint32_t i, uint64_t limit, const volatile int32_t* cancel,
+                               uint8_t** out);
 
 /* Borrows `*src` (the caller keeps it, open and seekable, until fa_archive_release), lists it. */
 fa_result fa_archive_borrow(fa_source* src, const fa_archive_options* options, fa_archive** out);

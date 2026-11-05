@@ -972,7 +972,7 @@ int main(void)
 {
     fa_engine_config cfg;
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_DECLICK;   /* sample-exact splices are what these tests measure */
     cfg.worker_threads = 2;
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }

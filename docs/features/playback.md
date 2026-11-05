@@ -160,6 +160,18 @@ song.Muted = true;
 output.Muted = true;
 ```
 
+## Clicks at seeks and loop wraps
+
+A seek on a playing stream would cut one waveform and start another, which clicks, most on steady tones. FatzAudio
+fades the old audio out over 1.5 ms (the mixer plays it, so the seek waits up to a callback for it) and fades the
+new audio in over the same time. A loop that jumps back with a step in the signal (a loop point that is not on a
+zero crossing, or a loop that is not a whole number of periods) has the step removed over about 2 ms; a seamless
+loop is left exactly as the file has it. Pause fades the stream out over 1.5 ms and then pauses it (the call waits up
+to a callback for that), and play after a pause fades it in over 1.5 ms. Seeking a paused or stopped stream needs no fade.
+
+Set `FA_ENGINE_NO_DECLICK` (.NET `AudioEngineOptions.NoDeclick`) when you need seeks and wraps sample for sample, for
+example in a test that compares samples. Not covered: the join of a deck loop set while playing.
+
 ## Pitfalls
 
 - Resampling to the device rate (a 44.1 kHz file on a 48 kHz device, say) uses the same windowed-sinc resampler as rate and pitch ([tempo and pitch](tempo-pitch.md)): Kaiser window, about -90 dB of aliasing and imaging, 96 taps when converting up and wider by the ratio when converting down (192 for 96 kHz on a 48 kHz device). A 17 kHz tone played from 44.1 kHz on a 48 kHz device measures 108 dB signal-to-error (miniaudio's linear resampler, used before, measured 8 dB on the same test). It adds no delay, and its look-ahead is flushed at the end of the stream so the last frames are heard. It runs on a decode worker (one multiply-add per tap and sample), nothing on the audio thread. The usual pairs of rates (any whose ratio has at most 1024 phases, which covers 44.1, 48, 88.2, 96, 22.05, 32 kHz and the rest) use kernels worked out once per ratio and shared by every stream (about 60 KB for 44.1 to 48 kHz): about 0.1 µs per stereo output frame, so about half a percent of one core per stream at 48 kHz, five times less than working the kernel out for every frame. Ratios above 80 to 1 (a 768 kHz source on an 8 kHz device) fall back to a linear resampler.

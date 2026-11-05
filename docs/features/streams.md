@@ -175,6 +175,7 @@ using var fromStream = engine.OpenStream(File.OpenRead("track.wav"));
 | `audio_bytes` | Bytes of this audio stream's coded data, without tags, headers or other tracks; -1 if unknown. Exact for WAV, AIFF, CD and MP4; close for MP3, AAC, AC-3, E-AC-3, FLAC, Ogg and single-track Matroska/WebM. .NET: `Info.AudioBytes` |
 | `bitrate` | Average bits per second: `audio_bytes` over the duration, else the codec's nominal rate; 0 if unknown. An MP3's Xing/LAME header frame is not counted |
 | `bits_per_sample` | 16, 24, ... for PCM and lossless sources (WAV, AIFF, FLAC, ALAC, WMA Lossless, CD); 0 for lossy codecs |
+| `can_decode` | Always 1 for a stream you have open. 0 only in the details `fa_tags_get_info` gives for a file whose codec FatzAudio does not decode (DTS, TrueHD, WMA off Windows): [tags.md](tags.md) |
 
 The same properties come without opening a stream, together with the tags, from `fa_tags_read_path` (see [tags.md](tags.md)).
 

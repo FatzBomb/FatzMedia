@@ -7,11 +7,12 @@ FatzAudio reads these archives without an engine and without unpacking what you 
 | `.zip` (ZIP64; stored, DEFLATE, Deflate64, bzip2, LZMA and xz entries) | `FA_ARCHIVE_ZIP` | `FA_ARCHIVE_FILTER_NONE` |
 | `.tar` (ustar, GNU and pax headers, long names) | `FA_ARCHIVE_TAR` | `NONE` |
 | `.tar.gz` / `.tgz`, `.tar.bz2` / `.tbz2`, `.tar.xz` / `.txz` | `FA_ARCHIVE_TAR` | `GZIP`, `BZIP2`, `XZ` |
+| `.7z` (plain or LZMA-packed header; Copy, LZMA and LZMA2 folders) | `FA_ARCHIVE_7Z` | `NONE` |
 | one file in a `.gz`, `.bz2` or `.xz` (`song.mp3.gz`, a `.cdg.xz`) | `FA_ARCHIVE_GZIP`, `BZIP2`, `XZ` | the same value |
 
 The same code plays karaoke downloads (`song.mp3` + `song.cdg` in one archive) when you open them with
 `fa_stream_open_path`, so there is one set of rules for which entry plays. The file's kind comes from its first
-bytes, never from its name. 7z and RAR are recognised by `fa_archive_detect` / `Archive.Detect` but not read:
+bytes, never from its name. RAR is recognised by `fa_archive_detect` / `Archive.Detect` but not read:
 opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg` yourself, open the audio with
 `fa_stream_open_memory` and attach the graphics (see [CD+G](cdg.md)).
 
@@ -28,6 +29,23 @@ opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg`
   and of an `.xz` made with several blocks (`xz -T0`, pixz), or the start for a one-block `.xz`.
   `fa_archive_entry.solid_offset` says how many bytes must be decoded before the entry starts (0 at one of those points).
   Reading entries from last to first costs no more than first to last.
+- **`.7z`** lists from the header (read whole, and unpacked first when 7-Zip packed it, which it does by default), so
+  no song is decoded to list it. A folder (7z's name for one solid run of bytes) of Copy, LZMA or LZMA2 is read; a
+  stored (Copy) file plays straight from the archive. Entries of a folder with one file are decoded into the buffer
+  you get, nothing kept. Entries of a folder with several files are decoded in order: the decoder stays where the last
+  read ended, so opening the songs of a solid archive one after the other decodes the folder once in total, and a
+  read of an entry behind the decoder (a replay, the song's `.cdg` just before it) restarts at the nearest LZMA2
+  dictionary reset before it, or at the folder's start. A folder that fits `memory_limit_mb` decodes into one growing
+  buffer that is also the dictionary, so nothing is copied twice; a bigger one decodes through a window of the
+  dictionary's size. The first 64 KB of each entry is kept for pairing. `fa_archive_entry.solid_offset` is the bytes
+  that must be decoded before the entry starts (the offset in the folder, less what a LZMA2 reset before it saves;
+  7-Zip with several threads or `-ms=off` writes resets; a plain solid LZMA2 folder has none).
+  Other methods (PPMd, BCJ and the other filters, BCJ2, Deflate, BZip2) are listed without `FA_ENTRY_READABLE`
+  (the method is reported and `fa_archive_read` gives `FA_ERROR_UNSUPPORTED_FORMAT`); AES is listed
+  encrypted (`FA_ERROR_PROTECTED_CONTENT`, an encrypted header is refused the same way). The checksum of each file
+  is verified when it is read whole. Hostile sizes (more than 262,144 entries, a header over 256 MB, a folder asking for
+  a dictionary over 1 GiB) are refused with `FA_ERROR_TOO_LARGE`. Names are UTF-8 with `/`; folders, links and
+  "anti" items are skipped.
 - **A single file in a `.gz`, `.bz2`, `.xz`** is one entry. Its name is the name stored in the gzip header, else the
   archive's file name without `.gz`/`.bz2`/`.xz`, else `data`. A `.gz` and an `.xz` give the size from the trailer or
   the index, so the open reads only the end of the file; a `.bz2` has no size, so it is decoded once (like a tar).
@@ -41,6 +59,22 @@ opening one gives `FA_ERROR_UNSUPPORTED_FORMAT`; unpack the audio and the `.cdg`
 - Only regular files are listed; links, folders, devices and tar "global" records are skipped. Names are UTF-8 (a name that is not valid UTF-8 is read as CP437, as in ZIP), with `/`, and a leading `./`
   removed. Times are the tar header's (a pax `mtime` wins).
   Encrypted tar/gz/bz2/xz does not exist, so there is no `FA_ERROR_PROTECTED_CONTENT` for them.
+
+## Opening the same archive again (the recently-unpacked cache)
+
+An engine keeps, for 30 seconds after its last use (`fa_engine_config.archive_cache_seconds`, .NET
+`AudioEngineOptions.ArchiveCacheSeconds`), two things from archives opened by `fa_stream_open_path` and the other
+stream opens (not from `fa_archive_open_*`, which you hold yourself):
+
+- the **archive** with its decoder where the last read ended (a solid 7z, a `.tar.gz`), so the next song of a
+  playlist costs only its own decode and the listing is not read again;
+- the last **compressed song** that opened as a stream, as its unpacked bytes, so replaying or previewing it is a copy.
+
+Each is at most half of `memory_limit_mb`, so together they stay within it. The cache is keyed by the archive's file
+identity (device, file id, last write time) plus its path, so a changed or replaced archive is never served from it;
+archives opened from memory or callbacks are not cached. `FA_ENGINE_NO_ARCHIVE_CACHE` / `NoArchiveCache` turns it off.
+
+A song and its `.cdg` that both need unpacking are unpacked at the same time on two threads.
 
 ## Which entry plays
 
@@ -99,6 +133,46 @@ var print = AudioFingerprint.Compute(archive, audio);
 Open from a path, memory (`fa_archive_open_memory`, or `_memory_ref` for no copy) or I/O callbacks (needs `seek`
 and `length`, because the directory is at the end). An `fa_archive` may be used from several threads; calls wait
 for each other.
+
+## Speed
+
+Time from `fa_stream_open_path` to the first decoded audio of one 4-minute song (a 192 kbps MP3, 5.8 MB, with its
+1.7 MB `.cdg`) on a 4-core 2.1 GHz cloud Xeon, medians of 5 opens, measured through FatzAudio itself with
+[`tools/archive-bench`](../../tools/archive-bench/README.md). A current desktop is about 1.7-2x faster; a 320 kbps
+song is 1.7x the bytes. "Again" is the same song opened again after it closed, within the 30 seconds of the
+recently-unpacked cache.
+
+| Archive | First audio | Again | Notes |
+|---|---|---|---|
+| loose file | 1.2 ms | | |
+| stored zip | 0.7 ms | 0.5 ms | plays in place |
+| tar | 0.4 ms | 0.4 ms | plays in place |
+| DEFLATE zip | 36 ms | 2.6 ms | |
+| `.tar.gz` | 45 ms | 0.3 ms | listing decodes the stream once; the entries are slices of it |
+| `.tar.bz2` | 285 ms | 0.3 ms | blocks decoded on several cores (`bzip2 -d`: 440 ms) |
+| `.tar.xz`, one block | 375 ms | 0.3 ms | `xz -d`: 354-380 ms |
+| `.7z` (LZMA2, one song) | 330 ms | 0.4 ms | 7-Zip: 273-336 ms |
+| 10 songs in one `.tar.gz`, 10th | 405 ms | 0.3 ms | 56 MB archive, all of it decoded once |
+| 10 songs in one `.tar.bz2`, 10th | 1.9 s | 0.3 ms | `bzip2 -d`: 3.3 s |
+| 10 songs in one `.tar.xz` made with `xz -T`, 10th | 1.0 s | 0.3 ms | blocks on several cores; one block: 3.4 s |
+| 10 songs in one solid `.7z`, 1st | 316 ms | 0.5 ms | |
+| 10 songs in one solid `.7z`, 10th, opened first | 3.2 s | 0.5 ms | the nine before it must be decoded: the format's cost |
+| 10 songs in one solid `.7z`, played in order | 320-380 ms each | | the decoder stays where it stopped (cache); the 10th costs 342 ms, not 3.2 s |
+
+What the table says:
+
+- **Stored zip and tar are the fastest by 20-500 times.** MP3 is already compressed, so 7z, xz and bzip2 save only about 1% on it
+  (4.9 against 5.7 MB) and decode it at 17-30 MB/s. For a library of karaoke songs, use zip (stored or DEFLATE, which
+  costs 36 ms) or a non-solid 7z. A solid 7z, `.tar.xz` or `.tar.bz2` of many songs is for storage, and the further in a
+  song sits, the longer it takes to open it cold (about 0.1-0.2 s per earlier 4-minute song on a desktop).
+- **Opening in archive order is cheap.** A solid 7z opened song by song costs one pass in total, and an archive opened
+  a second time within 30 seconds is not listed or unpacked again.
+- **Memory** added over a process that has already opened a song: nothing for stored zip, tar and DEFLATE (the
+  unpacked song reuses freed memory), 7 MB for `.tar.bz2`, 15 MB for a one-song 7z. A solid archive that fits
+  `memory_limit_mb` is held whole while it is open: 72 MB for the 56 MB `.tar.gz` and the solid 7z, 120-150 MB
+  for the bzip2 and xz tars of ten songs (the listing buffer, the dictionary and the unpacked copy).
+- Not measured here: the 7z assembly decoder (not built yet), a `.tar.gz` bigger than the memory limit (restart every
+  4 MB), and Windows, macOS and ARM numbers. They are added to this table when someone runs `tools/archive-bench/run.py` there.
 
 ## Memory, temp files and cancelling
 

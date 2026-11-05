@@ -762,7 +762,7 @@ static void test_attach_rejects_other_engine(void)
     fa_stream* s = open_attached(1000, 0, 0);
     CHECK(s != NULL);
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_DECLICK;   /* sample-exact splices are what these tests measure */
     CHECK_EQ(fa_engine_create(&cfg, &other), FA_OK);
     CHECK_EQ(fa_device_open(other, NULL, &dev), FA_OK);
     CHECK_EQ(fa_stream_attach(s, dev, NULL), FA_ERROR_INVALID_ARG);
@@ -794,7 +794,7 @@ static void test_destroy_engine_inside_callback(void)
     float out[2 * 1024];
     int i;
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_DECLICK;   /* sample-exact splices are what these tests measure */
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
     CHECK_EQ(fa_device_open(e, NULL, &dev), FA_OK);
     wav = make_wav(dev->rate, 300, 0, &n);
@@ -2168,7 +2168,7 @@ static void test_engine_destroy_wakes(void)
     fa_engine* e = NULL;
     int64_t t0;
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_DECLICK;   /* sample-exact splices are what these tests measure */
     cfg.worker_threads = 1;
     CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
     if (!wait_asleep(&e->event_wake)) { fa_engine_destroy(e); CHECK(0); }
@@ -2343,7 +2343,7 @@ int main(void)
 {
     fa_engine_config cfg;
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_DECLICK;   /* sample-exact splices are what these tests measure */
     cfg.worker_threads = 2;
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }

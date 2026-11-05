@@ -12,6 +12,7 @@ was found (a PR, a review, or a thread).
 | 2026-11-05 | MPEG streams | `demux_mpeg.c` has its own transport-stream packet and PAT/PMT reader next to `fa_ts_demux` in `net_hls.c` (which reads the first audio PID of an HLS segment). Both could share one; the HLS one is a push parser over callbacks and the file one pulls with seeking, so they were kept apart for this change. | codecs step 3 |
 | 2026-11-05 | MPEG streams | A file whose PTS jump (a recording spliced from two programs, a DVD with several cells) is length- and seek-checked against the first and last PTS only; the search assumes the PTS grow with the file offset. A PTS reset in the middle makes a seek land in the wrong cell. Playing straight through is unaffected. | codecs step 3 |
 | 2026-11-05 | MPEG streams | Only the first program of a multi-program transport stream is listed, and a program stream's streams are looked for in the first 2 MiB (a second language that starts later is not listed). DTS, TrueHD and LPCM are listed but unsupported (DTS core arrives with codecs step 4). | codecs step 3 |
+| 2026-11-05 | Archives | Left by archives A4 (measuring): the side-by-side bzip2 decoder uses about 1.4x the CPU of `bzip2 -d` (610 against 440 ms for one song) and reaches 285 ms on 4 cores where about 130 ms was expected: the block-marker scan (bit by bit, one thread) and repacking each block into a stream of its own (`bz_pack_block`) are serial or extra work; a byte-aligned scan and decoding blocks from the bit position would help. The listing of a `.tar.gz`/`.bz2`/`.xz` decodes the whole archive once and holds it (72-150 MB for 56 MB of archive): fine under `memory_limit_mb`, but the peak is the listing buffer, the dictionary and the unpacked copy together. `tools/archive-bench` was run on the Linux cloud box only; Windows, macOS, ARM and the 7z assembly decoder are unmeasured. | Archives A4 thread |
 | 2026-11-03 | Loudness | True peak is now compute-bound (eight separate multiply and add steps per tap and sample group). FMA (AVX2/FMA on x86, `vfmaq` on ARM) would roughly halve it again, but changes the rounding, so peaks would differ from today's in the last bits and the cache magic would need a bump. A tighter skip test (exact centre taps plus a bound for the outer ones) could skip more blocks of loud masters. Neither is bit-identical, so both were left out. | Loudness scan speed thread |
 | 2026-11-01 | Clock | Left by final audit step 4: after a late audio callback, `fa_device_speaker_frame` extrapolates past the newest mixed frame. The meters now end their window at the mixed clock, but the stream position (`fa_stream_position_now`), the render-ahead "ahead" check, automix and sync still read the extrapolated frame, so on a late callback they run up to that lateness ahead of the audio actually mixed. Clamping inside `fa_device_speaker_frame` would fix all of them but changes position behaviour, so it wants its own change and tests. | Final audit step 4 |
 | 2026-11-01 | Sounds (.NET) | Left by final audit step 2: .NET `Sound.Play` learns that a voice is being disposed from a managed set filled before the voice's `SafeHandle` closes, and plays again (spinning, at most 1 s, then `Busy`) when the native pool hands such a voice out in the moment before its native close starts. If that voice's native close finishes and a new voice is made at the same address before the binding hears of it (a window of microseconds), that new copy plays on unwrapped and Play plays a second one. A native way to mark a voice as leaving when its wrapper's dispose begins (so the pool skips it itself) would remove both. Also still the app's job, as the header says: `fa_sound_close` must not run while one of its voices is being closed elsewhere. | Final audit step 2 |
@@ -124,7 +125,7 @@ was found (a PR, a review, or a thread).
   hundreds of thousands of entries. An index by stem would fix it.
 - `fa_name_same_stem` uses 512-byte buffers and `fa_zip_list` truncates names at 259 bytes, so very long names
   do not pair or lose their extension.
-- Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a are not built yet.
+- (Built in A3.) Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a.
 - The ARMv8 CRC-32 path is only compiled in CI, not run.
 
 ## Archives (A2) leftovers
@@ -151,3 +152,31 @@ was found (a PR, a review, or a thread).
   decoder and skips what was delivered; the xz dictionary cap is in the SDK allocator, so every block is covered; a `.gz` of
   4 MB or more of compressed data gets one pass to learn its true size). They have no test of their own: the first needs a
   crafted `.bz2`, the second a 2 GiB dictionary, the third a 4 GB file.
+
+## Archives (A3) leftovers
+
+- 7z reads Copy, LZMA and LZMA2 in a one-coder folder only. PPMd, BCJ/ARM/other filters, BCJ2, Deflate and BZip2 coders
+  are listed but unreadable; BCJ (x86) in front of LZMA2 would be the next to add if a real archive needs it.
+- The LZMA decoder is the SDK's C one (about 80 to 120 MB/s of output per core). The SDK's assembler decoder is not
+  built; a folder with several LZMA2 chunks that are independent (dictionary resets) is not decoded on several threads
+  yet, and nothing prefetches the next entry while the player is on the current one (an opt-in `Prefetch` would).
+- `fa_archive` keeps one `cancel` flag: for an archive in the recently-unpacked cache the last opener's flag wins.
+- `src/archive/sevenz.c` is about 1,400 lines (parser, cursor, window decoder, reset scan); splitting the parser from the
+  decoders would match the 500-line habit of the other files.
+- The parallel `.cdg` unpack has no assertion that the second thread started (the existing zip tests only prove the
+  result is right); the two caches hold one archive and one song each, not a list.
+- `tests/make_archive_fixtures.py` needs `py7zr` for three fixtures and its output is not byte-stable (timestamps), so
+  regenerating changes `archive_fixtures.h` even with no change in the script.
+- Left from /code-review: a cached archive keeps its file open for the cache time (30 s), so on Windows the archive cannot be
+  deleted or replaced right after a song from it played (a way to close the handle early, or to reopen per use, would fix it);
+  if the engine's event thread is stalled the entries are not dropped on time; the song and `.cdg` unpacked in parallel can
+  together use up to twice `zip_memory_limit_mb`; when the blob header allocation fails after an unpack the open fails with
+  `FA_ERROR_OUT_OF_MEMORY` instead of falling back to a plain copy; two concurrent opens of one cached archive share one
+  `cancel` flag (the last opener's).
+
+**Archives A5 (details for undecodable formats), left over:** a raw `.dts` file with a leading ID3v2 tag is not recognised (the
+sync word is looked for at offset 0 only); 14-bit DTS words and DTS-HD extension substreams are not read (the core's figures
+are given); raw `.thd`/`.mlp` are not read (TrueHD only inside a container); inside a ZIP/tar an entry whose codec is not
+decoded (DTS in MKV) is not taken as the song, so `Tags.Read(archive)` does not give its details (`Tags.Read(archive, entry)`
+does not either: the archive path keeps the "audio means decodable" rule); the CAF `info` chunk is read once, and not after a
+`data` chunk of size -1.
