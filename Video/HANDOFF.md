@@ -55,8 +55,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   (ENG-040, ENG-039 4c), missing natives (ENG-039), player set (ENG-039 4a), the audit script's GPU
   reset/resize/memory tests (ENG-039 1, 2, 4b, 4c, 5) and the remaining guided checks. The test
   players now trace their status and stats lines (`[Status]`, `[Stats]`) to the debug log for it.
-  Not covered: 026B steps 1-4 (a Linux desktop with BASS; the sandbox cannot download BASS, host
-  `www.un4seen.com` blocked). 037A slice 0's console smoke is closed (superseded by slice 2's).
+  026B steps 1-5 ran in the sandbox on 2026-11-05 (BASS for Linux + PulseAudio null sinks): pass, except
+  that no `AudioDeviceChanged` is raised on Linux (the sound server reroutes; noted in ENG-040);
+  repeatable as `LinuxBassNativeTests` (`FATZBOMB_LINUX_BASS_DIR`; `www.un4seen.com` is allowed now). 037A slice 0's console smoke is closed (superseded by slice 2's).
   Stages move to `complete/` as these pass.
 
 ## Decisions this session (owner)

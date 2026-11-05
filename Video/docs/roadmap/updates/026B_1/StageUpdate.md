@@ -3,7 +3,7 @@
 Stage: 026B.1 - Linux platform-services baseline
 Date: 2026-10-16
 
-## Status: IMPLEMENTED - native FFmpeg/decoder validated on Linux; BASS/player smoke pending
+## Status: IMPLEMENTED - Linux smoke with BASS passed 2026-11-05 (steps 1-3, 5); step 4 see below; step 6 pending on Windows
 
 Delivered:
 
@@ -57,3 +57,32 @@ were recorded with FFmpeg 8.1 and stay as measured.
 - Sidecar lookup lists the directory only on case-sensitive file systems (Linux); Windows
   and macOS keep the original exact-name probes, so large library folders load as fast as
   before there.
+
+## Linux smoke run (2026-11-05, sandbox, BASS 2.4 for Linux + FFmpeg 9.0)
+
+Run by Claude in the Linux sandbox once `www.un4seen.com` was allowed: BASS, BASS_FX and BASSFLAC for
+Linux x86_64, FFmpeg 9.0 LGPL, PulseAudio with two null sinks ("Speakers", "Headphones"), ALSA's default
+routed to PulseAudio (`libasound2-plugins`, `pcm.!default { type pulse }`). Repeatable as
+`LinuxBassNativeTests` (opt-in: `FATZBOMB_LINUX_BASS_DIR`, `FATZBOMB_LINUX_FFMPEG_DIR`;
+`scripts/setup-linux-native.sh` downloads BASS and makes the media).
+
+1. **Native load: pass.** "Native libraries loaded. BASS: /opt/fatzbomb-native/bass; FFmpeg:
+   /opt/fatzbomb-native/ffmpeg/lib."; audio available, required libraries loaded.
+2. **MP3 and FLAC through PulseAudio: pass.** Both play at 1.000x real time, pause holds the position,
+   seek to 6 s lands, resume and stop work. PulseAudio showed the player's stream on the "Speakers" sink
+   (float32, stereo, 44.1 kHz) while it played.
+3. **MP4 frames on the frame sink, on the audio clock: pass.** 30.0 frames per second presented, clock
+   rate 0.999x, frames not blank.
+4. **Output device change: playback is right, the event is not raised.** Switching PulseAudio's default
+   to "Headphones" and then removing "Speakers" while a song played: PulseAudio moved the stream itself,
+   playback continued without a gap to the natural end, and no `AudioDeviceChanged` was raised. Cause:
+   on Linux the sound server (PulseAudio, PipeWire) reroutes streams; BASS keeps seeing the same ALSA
+   default device, so the BASS device monitor sees no change (the same as FatzAudio, `updates/037A_2`).
+   The step's pass criterion assumed Windows-style device events. Users get the right behaviour; only
+   hosts that want to show "output moved" get nothing on Linux. Recorded in ENG-040 as a known gap.
+5. **Linux tests: pass** (145 earlier this day, plus the 4 new BASS tests).
+6. Windows sidecar backgrounds: in `scripts/smoke-backlog.ps1` test 12.
+
+Not covered: a real desktop with speakers (null sinks consume audio in real time but nothing is heard),
+and PipeWire (PulseAudio only). The result for steps 1-5 lets 026B move to complete once step 6 passes
+on Windows.
