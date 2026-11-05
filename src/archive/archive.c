@@ -83,6 +83,7 @@ static void archive_free(fa_archive* a)
     free(a->prefixes);
     free(a->prefix_lens);
     fa_solid_free(a->sol);
+    fa_7z_free(a->sz);
     if (a->owns_source) fa_source_close(&a->own);
     fa_mutex_destroy(&a->lock);
     free(a);
@@ -102,6 +103,11 @@ static fa_result list_zip(fa_archive* a, fa_source* src)
         if (!a->names[i]) return FA_ERROR_OUT_OF_MEMORY;
     }
     return FA_OK;
+}
+
+static fa_result list_7z(fa_archive* a, fa_source* src)
+{
+    return fa_7z_open(src, a->memory_limit, a->cancel, &a->sz, &a->z, &a->names, &a->count);
 }
 
 static fa_result take_tarlist(fa_archive* a, fa_tarlist* t)
@@ -382,7 +388,7 @@ static fa_result archive_make(fa_source* src, int owns, const char* path, const 
     if (n < 4) return src->error != FA_OK ? src->error : FA_ERROR_UNSUPPORTED_FORMAT;
     format = fa_archive_detect(head, n);
     if (format != FA_ARCHIVE_ZIP && format != FA_ARCHIVE_TAR && format != FA_ARCHIVE_GZIP && format != FA_ARCHIVE_BZIP2 &&
-        format != FA_ARCHIVE_XZ)
+        format != FA_ARCHIVE_XZ && format != FA_ARCHIVE_7Z)
         return FA_ERROR_UNSUPPORTED_FORMAT;
     a = (fa_archive*)calloc(1, sizeof(*a));
     if (!a) return FA_ERROR_OUT_OF_MEMORY;
@@ -396,6 +402,7 @@ static fa_result archive_make(fa_source* src, int owns, const char* path, const 
     if (o.temp_directory && !(a->temp_dir = fa_strdup(o.temp_directory))) { r = FA_ERROR_OUT_OF_MEMORY; goto fail; }
     if (path && !(a->path = fa_strdup(path))) { r = FA_ERROR_OUT_OF_MEMORY; goto fail; }
     if (format == FA_ARCHIVE_ZIP) r = list_zip(a, src);
+    else if (format == FA_ARCHIVE_7Z) r = list_7z(a, src);
     else if (format == FA_ARCHIVE_TAR) {
         fa_tarlist list;
         if (src->length < 0) r = FA_ERROR_NOT_SEEKABLE;
@@ -427,11 +434,19 @@ static fa_result archive_make(fa_source* src, int owns, const char* path, const 
         if (solid_like) e->flags |= FA_ENTRY_SOLID;
         if (z->flags & 1) e->flags |= FA_ENTRY_ENCRYPTED;
         else if (e->method != FA_METHOD_OTHER) e->flags |= FA_ENTRY_READABLE;
+        if (a->sz) {
+            e->method = fa_7z_public_method(a->sz, z);
+            e->compressed_size = fa_7z_packed_size(a->sz, z);
+            if (fa_7z_is_solid(a->sz, z)) e->flags |= FA_ENTRY_SOLID;
+            e->flags &= ~(uint32_t)FA_ENTRY_READABLE;
+            if (!(z->flags & 1) && (z->method == 0 || z->method == FA_AM_7Z)) e->flags |= FA_ENTRY_READABLE;
+            e->solid_offset = (int64_t)fa_7z_cost(a->sz, z);
+        }
         e->crc32 = z->crc32;
         e->modified_ns = z->mtime_ns != no_time ? z->mtime_ns : dos_to_ns(z->dos_date, z->dos_time);
         e->created_ns = z->ctime_ns;
         e->accessed_ns = z->atime_ns;
-        e->solid_offset = a->sol ? (int64_t)fa_solid_cost(a->sol, (uint64_t)z->data_offset) : 0;
+        if (!a->sz) e->solid_offset = a->sol ? (int64_t)fa_solid_cost(a->sol, (uint64_t)z->data_offset) : 0;
         e->kind = fa_name_kind(a->names[i]);
     }
     if (owns && !a->detached) { a->own = *src; a->srcp = &a->own; a->owns_source = 1; memset(src, 0, sizeof(*src)); }
@@ -447,7 +462,8 @@ fail:
 int fa_archive_openable(const uint8_t* data, size_t size)
 {
     int32_t f = fa_archive_detect(data, size);
-    return f == FA_ARCHIVE_ZIP || f == FA_ARCHIVE_TAR || f == FA_ARCHIVE_GZIP || f == FA_ARCHIVE_BZIP2 || f == FA_ARCHIVE_XZ;
+    return f == FA_ARCHIVE_ZIP || f == FA_ARCHIVE_TAR || f == FA_ARCHIVE_GZIP || f == FA_ARCHIVE_BZIP2 || f == FA_ARCHIVE_XZ ||
+           f == FA_ARCHIVE_7Z;
 }
 
 int fa_archive_is_stored(const fa_archive* a, uint32_t i)
@@ -555,6 +571,18 @@ static fa_result prefix_locked(fa_archive* a, uint32_t i, uint8_t* buf, size_t c
     *got = 0;
     if (z->flags & 1) return FA_ERROR_PROTECTED_CONTENT;
     if (z->method == FA_AM_SOLID) return solid_prefix(a, i, buf, cap, got);
+    if (z->method == FA_AM_7Z_BAD) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (z->method == FA_AM_7Z) {
+        collect c;
+        uint64_t want = z->size < cap ? z->size : cap;
+        fa_result r;
+        memset(&c, 0, sizeof(c));
+        c.buf = buf;
+        c.cap = (size_t)want;
+        r = fa_7z_read(a->sz, a->srcp, z, 0, want, collect_put, &c, a->cancel);
+        if (r == FA_OK) *got = c.pos;
+        return r;
+    }
     if (z->method == 0) {
         int64_t offset, n;
         fa_result r = fa_zip_entry_offset(a->srcp, z, &offset);
@@ -590,6 +618,8 @@ fa_result fa_archive_unpack(fa_archive* a, uint32_t i, uint64_t limit, const vol
     if (i >= a->count) return FA_ERROR_INVALID_ARG;
     if (a->z[i].flags & 1) return FA_ERROR_PROTECTED_CONTENT;
     if (a->z[i].method == FA_AM_SOLID) return solid_unpack(a, i, limit, cancel, out);
+    if (a->z[i].method == FA_AM_7Z) return fa_7z_unpack(a->sz, a->srcp, &a->z[i], limit, cancel, out);
+    if (a->z[i].method == FA_AM_7Z_BAD) return FA_ERROR_UNSUPPORTED_FORMAT;
     return fa_zip_extract(a->srcp, &a->z[i], limit, cancel, out);
 }
 
@@ -607,6 +637,18 @@ fa_result fa_archive_unpack_file(fa_archive* a, uint32_t i, const volatile int32
         if (r == FA_OK && fflush(f) != 0) r = FA_ERROR_IO;
         return r;
     }
+    if (a->z[i].method == FA_AM_7Z) {
+        collect c;
+        fa_result r;
+        if (a->z[i].size > FA_ZIP_TEMP_LIMIT) return FA_ERROR_TOO_LARGE;
+        memset(&c, 0, sizeof(c));
+        c.file = f;
+        r = fa_7z_extract(a->sz, a->srcp, &a->z[i], collect_put, &c, cancel);
+        if (c.io_error) return FA_ERROR_IO;
+        if (r == FA_OK && fflush(f) != 0) r = FA_ERROR_IO;
+        return r;
+    }
+    if (a->z[i].method == FA_AM_7Z_BAD) return FA_ERROR_UNSUPPORTED_FORMAT;
     return fa_zip_extract_file(a->srcp, &a->z[i], cancel, f);
 }
 
@@ -672,8 +714,12 @@ uint32_t fa_archive_choices(fa_archive* a, const char* entry_name, fa_archive_ch
     if (!used) { *error = FA_ERROR_OUT_OF_MEMORY; goto done; }
     for (i = 0; i < a->count; i++) {
         if (a->pub[i].kind == FA_ENTRY_CDG && a->pub[i].size != 0 && !fa_name_ignored(a->pub[i].name)) {
-            if (cdgs == 0) first_cdg = i;
-            cdgs++;
+            if (a->pub[i].flags & FA_ENTRY_ENCRYPTED) {
+                a->encrypted_candidates++;   /* graphics we cannot read are not graphics to play */
+            } else {
+                if (cdgs == 0) first_cdg = i;
+                cdgs++;
+            }
         } else if (is_candidate(a, i) && (a->pub[i].flags & FA_ENTRY_ENCRYPTED)) {
             a->encrypted_candidates++;
         }

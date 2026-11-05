@@ -10,6 +10,7 @@
 #include "cdg.h"
 #include "archive/solid.h"
 #include "archive/tar.h"
+#include "archive/sevenz.h"
 
 /* ---- Names (names.c) ------------------------------------------------------- */
 
@@ -43,6 +44,7 @@ struct fa_archive {
     int32_t filter;             /* FA_FILTER_*: gzip, bzip2 or xz around the tar (format TAR) or file (GZIP, BZIP2, XZ) */
     uint32_t count;
     fa_zip_entry* z;            /* the entries as the backends read them: count entries */
+    fa_7z* sz;                  /* a 7z archive: entries are read through it (method FA_AM_7Z) or stored (0) */
     fa_solid* sol;              /* entries are read out of a compressed stream (method FA_AM_SOLID), not stored */
     uint8_t** prefixes;         /* solid: the first bytes of each entry seen while listing (or NULL) */
     uint32_t* prefix_lens;
@@ -63,7 +65,7 @@ struct fa_archive {
 /* Entries read out of a compressed stream (tar.gz and friends too large to hold decoded) use this
  * as fa_zip_entry.method; the data_offset is in the decoded stream. */
 #define FA_AM_SOLID 1000
-/* 1 when `data` starts like an archive this build reads (ZIP, tar, gzip, bzip2, xz). */
+/* 1 when `data` starts like an archive this build reads (ZIP, tar, gzip, bzip2, xz, 7z). */
 int fa_archive_openable(const uint8_t* data, size_t size);
 /* 1 when entry `i` is stored plain in the archive's source (it plays in place). */
 int fa_archive_is_stored(const fa_archive* a, uint32_t i);

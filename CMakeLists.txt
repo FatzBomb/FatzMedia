@@ -157,6 +157,7 @@ set(FA_SOURCES
     src/archive/codec.c
     src/archive/solid.c
     src/archive/tar.c
+    src/archive/sevenz.c
     src/tempo.c
     src/resample.c
     src/resample_device.c
