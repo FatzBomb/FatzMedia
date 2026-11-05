@@ -714,6 +714,16 @@ static void test_tags_and_fingerprint_of_entries(void)
         CHECK(fa_.key == fc_.key && fa_.audio_bytes == fc_.audio_bytes);
         CHECK_EQ(fa_fingerprint_memory(z.p, z.n, &fc_), FA_OK);
         CHECK(fa_.key == fc_.key);
+        {
+            uint32_t two;
+            CHECK_EQ(fa_archive_open_memory(z.p, z.n, NULL, &a), FA_OK);
+            CHECK_EQ(fa_archive_find(a, "two.wav", &two), FA_OK);
+            CHECK_EQ(fa_fingerprint_archive(a, (int32_t)two, &fb_), FA_OK);
+            CHECK_EQ(fa_fingerprint_archive(a, -1, &fc_), FA_OK);
+            CHECK_EQ(fa_fingerprint_archive(a, 99, &fc_), FA_ERROR_NOT_FOUND);
+            CHECK(fa_.key == fb_.key && fa_.key == fc_.key);
+            fa_archive_close(a);
+        }
         remove("archive_test.zip");
         free(z.p);
     }

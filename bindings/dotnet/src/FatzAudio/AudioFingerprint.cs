@@ -60,7 +60,7 @@ public readonly record struct AudioFingerprint(ulong Key, long AudioBytes)
     /// <summary>The fingerprint of one named entry of an archive (ZIP), without unpacking the others: the same as the
     /// entry's bytes give.</summary>
     /// <param name="archivePath">The archive.</param>
-    /// <param name="entryName">The entry's name as stored, '/'-separated, matched exactly (e.g. <c>"Disc 1/Song.mp3"</c>).</param>
+    /// <param name="entryName">The entry's name, '/'-separated, matched exactly first, then ignoring case (e.g. <c>"Disc 1/Song.mp3"</c>).</param>
     /// <returns>Its fingerprint.</returns>
     /// <exception cref="FatzAudioException">The archive or the entry is missing (<see cref="ErrorCode.NotFound"/>), the
     /// file is not an archive this build reads or the entry is empty (<see cref="ErrorCode.UnsupportedFormat"/>), or a
@@ -72,6 +72,20 @@ public readonly record struct AudioFingerprint(ulong Key, long AudioBytes)
         NativeLoader.EnsureInitialized();
         var native = new FaFingerprint { StructSize = (uint)sizeof(FaFingerprint) };
         FatzAudioException.ThrowIfFailed(NativeMethods.fa_fingerprint_archive_entry(archivePath, entryName, ref native));
+        return new AudioFingerprint(native.Key, native.AudioBytes);
+    }
+
+    /// <summary>The fingerprint of one entry of an open archive: the same as the entry's bytes give.</summary>
+    /// <param name="archive">The archive.</param>
+    /// <param name="entry">The entry; null is the song the pairing rules pick (the same as the archive file's fingerprint).</param>
+    /// <returns>Its fingerprint.</returns>
+    /// <exception cref="FatzAudioException">The entry is empty or unreadable (<see cref="ErrorCode.UnsupportedFormat"/>), or a compressed
+    /// entry is over the archive's memory limit (<see cref="ErrorCode.TooLarge"/>).</exception>
+    public static unsafe AudioFingerprint Compute(Archives.Archive archive, Archives.ArchiveEntry? entry = null)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        var native = new FaFingerprint { StructSize = (uint)sizeof(FaFingerprint) };
+        FatzAudioException.ThrowIfFailed(NativeMethods.fa_fingerprint_archive(archive.Handle, entry?.Index ?? -1, ref native));
         return new AudioFingerprint(native.Key, native.AudioBytes);
     }
 

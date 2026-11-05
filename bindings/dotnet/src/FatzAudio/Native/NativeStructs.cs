@@ -83,6 +83,7 @@ internal unsafe struct FaOpenOptions
     public int TextCodePage;
     public int* Cancel;
     public int DolbyDownmix;
+    public byte* ArchiveEntry;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -992,4 +993,31 @@ internal struct FaSoundInfo
     public int Steal;
     public uint Voices;
     public uint Playing;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FaArchiveOptions
+{
+    public uint StructSize;
+    public uint MemoryLimitMb;
+    public byte* TempDirectory;
+    public int* Cancel;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FaArchiveEntry
+{
+    public uint StructSize;
+    public uint Index;
+    public byte* Name;
+    public long Size;
+    public long CompressedSize;
+    public int Method;
+    public uint Flags;
+    public uint Crc32;
+    public long ModifiedNs;
+    public long CreatedNs;
+    public long AccessedNs;
+    public long SolidOffset;
+    public int Kind;
 }

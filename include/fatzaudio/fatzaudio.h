@@ -1253,6 +1253,9 @@ FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa
  * pick, as fa_fingerprint_path of the archive gives. */
 FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
                                                       fa_fingerprint* out_fingerprint);
+/* The same for an entry of an open archive (see "Archives"); index -1 is the archive's pick. */
+typedef struct fa_archive fa_archive;
+FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* archive, int32_t index, fa_fingerprint* out_fingerprint);
 
 /* ---- Archives ------------------------------------------------------------
  *
@@ -1288,8 +1291,6 @@ FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, 
  * With a named entry (fa_open_options.archive_entry, fa_archive_find): the exact name
  * first, then ignoring case; the same-name .cdg is attached, else rule 2's pair.
  * "Archive order" is the order of the directory. */
-typedef struct fa_archive fa_archive;
-
 typedef enum fa_archive_format {
     FA_ARCHIVE_NONE = 0,
     FA_ARCHIVE_ZIP = 1,

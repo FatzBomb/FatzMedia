@@ -332,30 +332,40 @@ FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa
     return r;
 }
 
-FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
-                                                      fa_fingerprint* out_fingerprint)
+FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* a, int32_t index, fa_fingerprint* out_fingerprint)
 {
-    fa_archive* a;
     fa_source entry;
+    fa_result r = FA_OK;
     uint32_t idx;
-    fa_result r;
-    if (!archive_path || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
-    if (!entry_name) return fa_fingerprint_path(archive_path, out_fingerprint);   /* the pick, as a file */
-    r = fa_archive_open_path(archive_path, NULL, &a);
-    if (r != FA_OK) return r;
-    r = fa_archive_find(a, entry_name, &idx);
-    if (r == FA_OK && a->pub[idx].size == 0) r = FA_ERROR_UNSUPPORTED_FORMAT;
-    if (r == FA_OK && a->pub[idx].method == FA_METHOD_STORED) {
+    if (!a || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    if (index < 0) {
+        /* The archive's pick: the song an open plays, whether or not the decoder opens it. */
+        zip_key_ctx c = { 0, 0, 0 };
+        fa_fingerprint fp;
+        if (!fa_archive_visit(a, NULL, zip_key_visit, &c, NULL, NULL)) return FA_ERROR_UNSUPPORTED_FORMAT;
+        if (c.found < 0) return FA_ERROR_IO;
+        memset(&fp, 0, sizeof(fp));
+        fp.struct_size = sizeof(fp);
+        fp.key = c.key;
+        fp.audio_bytes = c.size;
+        fa_copy_sized(out_fingerprint, &fp, sizeof(fp));
+        return FA_OK;
+    }
+    idx = (uint32_t)index;
+    if (idx >= a->count) return FA_ERROR_NOT_FOUND;
+    if (a->pub[idx].size == 0) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (a->pub[idx].method == FA_METHOD_STORED) {
         int64_t offset;
         fa_mutex_lock(&a->lock);
         r = fa_archive_entry_offset(a, idx, &offset);
         if (r == FA_OK) r = fa_source_set_window(a->srcp, offset, a->pub[idx].size);
         if (r == FA_OK) r = fingerprint_source(a->srcp, out_fingerprint);
+        fa_source_set_window(a->srcp, 0, a->srcp->whole_length);
         fa_mutex_unlock(&a->lock);
-    } else if (r == FA_OK) {
+    } else {
         uint8_t* data = NULL;
         fa_mutex_lock(&a->lock);
-        r = fa_archive_unpack(a, idx, a->memory_limit, NULL, &data);
+        r = fa_archive_unpack(a, idx, a->memory_limit, a->cancel, &data);
         fa_mutex_unlock(&a->lock);
         if (r == FA_OK) {
             fa_source_open_memory_ref(&entry, data, (size_t)a->pub[idx].size);
@@ -364,6 +374,21 @@ FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, 
             free(data);
         }
     }
+    return r;
+}
+
+FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
+                                                      fa_fingerprint* out_fingerprint)
+{
+    fa_archive* a;
+    uint32_t idx = 0;
+    fa_result r;
+    if (!archive_path || !out_fingerprint || out_fingerprint->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    if (!entry_name) return fa_fingerprint_path(archive_path, out_fingerprint);   /* the pick, as a file */
+    r = fa_archive_open_path(archive_path, NULL, &a);
+    if (r != FA_OK) return r;
+    r = fa_archive_find(a, entry_name, &idx);
+    if (r == FA_OK) r = fa_fingerprint_archive(a, (int32_t)idx, out_fingerprint);
     fa_archive_close(a);
     return r;
 }
