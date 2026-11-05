@@ -372,6 +372,15 @@ typedef struct fa_open_options {
                                 opens ignore it */
     int32_t dolby_downmix;   /* fa_dolby_downmix (default AUTO); can be changed later
                                 with fa_stream_set_dolby_downmix */
+    const char* archive_entry; /* Opening an archive (fa_stream_open_path / _memory / _io of
+                                a ZIP): the entry to play, UTF-8, '/'-separated, matched
+                                exactly first, then ignoring case and the kind of slash
+                                (FA_ERROR_NOT_FOUND if there is none, FA_ERROR_INVALID_ARG
+                                if two differ only by case). NULL = the archive's song by
+                                the pairing rules (see "Archives"). A .cdg entry with the
+                                same name as its song is attached; naming a .cdg plays its
+                                song, or the graphics as silence. Copied by the call. Other
+                                sources ignore it */
 } fa_open_options;
 
 /* fa_open_options.text_code_page, and fa_midi_credits.code_page. */
@@ -1262,7 +1271,7 @@ No engine is needed and no audio is decoded: a few hundred KB of reads at most f
 most files, the samples of a WAV up to 64 MB. Safe from any thread.
 ```
 
-Functions: `fa_fingerprint_path`, `fa_fingerprint_memory`, `fa_fingerprint_archive_entry`
+Functions: `fa_fingerprint_path`, `fa_fingerprint_memory`, `fa_fingerprint_archive_entry`, `fa_fingerprint_archive`
 
 ```c
 typedef struct fa_fingerprint {
@@ -1277,14 +1286,187 @@ typedef struct fa_fingerprint {
  * FA_ERROR_IO when it could not be read. */
 FA_API fa_result FA_CALL fa_fingerprint_path(const char* path, fa_fingerprint* out_fingerprint);
 FA_API fa_result FA_CALL fa_fingerprint_memory(const void* data, size_t size, fa_fingerprint* out_fingerprint);
-/* One named entry of an archive (ZIP; the name as stored, '/'-separated, matched
- * exactly), without unpacking the others: the same fingerprint as the entry's
- * bytes. A stored entry is read in place, a compressed one is unpacked in memory
- * (up to 256 MB, else FA_ERROR_TOO_LARGE). FA_ERROR_NOT_FOUND when the archive or
+/* One named entry of an archive (ZIP; '/'-separated, matched as fa_archive_find does:
+ * exactly, else ignoring case), without unpacking the others: the same fingerprint as
+ * the entry's bytes. A stored entry is read in place, a compressed one is unpacked in
+ * memory (up to 256 MB, else FA_ERROR_TOO_LARGE). FA_ERROR_NOT_FOUND when the archive or
  * the entry is missing, FA_ERROR_UNSUPPORTED_FORMAT when the file is not an
- * archive this build reads or the entry is empty. */
+ * archive this build reads or the entry is empty. A NULL entry_name is the archive's
+ * pick, as fa_fingerprint_path of the archive gives. */
 FA_API fa_result FA_CALL fa_fingerprint_archive_entry(const char* archive_path, const char* entry_name,
                                                       fa_fingerprint* out_fingerprint);
+/* The same for an entry of an open archive (see "Archives"); index -1 is the archive's pick. */
+typedef struct fa_archive fa_archive;
+FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* archive, int32_t index, fa_fingerprint* out_fingerprint);
+```
+
+
+### Archives
+
+```text
+Reads the list of a ZIP archive (ZIP64, stored, DEFLATE and Deflate64 entries) and
+the entries in it, without an engine and without unpacking what you do not ask for.
+The same code opens karaoke downloads (song.mp3 + song.cdg) when you play them, so
+the rules for which entry plays are the ones of fa_archive_pick.
+
+Only the end of the file and the directory are read when an archive opens. A stored
+entry is read straight from the archive; a compressed one is unpacked once, into
+memory up to the memory limit (default 256 MB) and past it into the temp folder if
+you gave one (fa_archive_options.temp_directory), else FA_ERROR_TOO_LARGE. Every
+entry's CRC-32 is checked when it is unpacked. Encrypted entries are listed with
+FA_ENTRY_ENCRYPTED and give FA_ERROR_PROTECTED_CONTENT when read (no passwords).
+Multi-part archives are refused. A RAR, 7z, tar, gzip, bzip2 or xz file gives
+FA_ERROR_UNSUPPORTED_FORMAT (fa_archive_detect says which one it is).
+
+An fa_archive may be used from several threads: a call waits for the one before it.
+It stays valid until fa_archive_close; names and entries it returned stay valid until
+then. Streams opened from it (fa_stream_open_archive) keep it alive until they close.
+
+Which entry plays (fa_archive_pick, and every open, tags read and fingerprint of an
+archive without a named entry). Names compare with '/' and '\' alike and ignoring case
+(simple Unicode folding: Latin, Greek, Cyrillic). Ignored: folders, empty entries,
+__MACOSX/, ._* files, Thumbs.db and desktop.ini. A ".cdg" name is graphics; every other
+entry whose first 64 KB a decoder recognizes is audio. A song's graphics are the .cdg
+with the same folder and name before the last dot ("song.cdg" for "song.mp3" and for
+"song.mp3.cdg" alike).
+  1. Audio that has a same-name .cdg comes first, in archive order; the first plays with it.
+  2. Otherwise the first audio entry plays. Its graphics are the archive's only .cdg
+     when it holds exactly one song and one .cdg ("Track01.mp3" + "SC8125-01.cdg").
+  3. Only graphics: the first .cdg plays as silence for its length.
+With a named entry (fa_open_options.archive_entry, fa_archive_find): the exact name
+first, then ignoring case; the same-name .cdg is attached, else rule 2's pair.
+"Archive order" is the order of the directory.
+```
+
+Functions: `fa_archive_options_init`, `fa_archive_detect`, `fa_archive_open_path`, `fa_archive_open_memory`, `fa_archive_open_memory_ref`, `fa_archive_open_io`, `fa_archive_close`, `fa_archive_get_format`, `fa_archive_get_entry_count`, `fa_archive_get_entry`, `fa_archive_find`, `fa_archive_pick`, `fa_archive_read`, `fa_archive_open_reader`, `fa_archive_reader_read`, `fa_archive_reader_seek`, `fa_archive_reader_get_size`, `fa_archive_reader_close`, `fa_free`, `fa_stream_open_archive`, `fa_tags_read_archive`, `fa_tags_read_archive_entry`, `fa_tags_read_io`
+
+```c
+typedef enum fa_archive_format {
+    FA_ARCHIVE_NONE = 0,
+    FA_ARCHIVE_ZIP = 1,
+    FA_ARCHIVE_TAR = 2,        /* the next ones are recognized by fa_archive_detect only */
+    FA_ARCHIVE_GZIP = 3,
+    FA_ARCHIVE_BZIP2 = 4,
+    FA_ARCHIVE_XZ = 5,
+    FA_ARCHIVE_7Z = 6,
+    FA_ARCHIVE_RAR = 7
+} fa_archive_format;
+
+typedef enum fa_archive_method {
+    FA_METHOD_STORED = 0,
+    FA_METHOD_DEFLATE = 1,
+    FA_METHOD_DEFLATE64 = 2,
+    FA_METHOD_BZIP2 = 3,
+    FA_METHOD_LZMA = 4,
+    FA_METHOD_LZMA2 = 5,
+    FA_METHOD_PPMD = 6,
+    FA_METHOD_OTHER = 255
+} fa_archive_method;
+
+typedef enum fa_archive_entry_flags {
+    FA_ENTRY_HAS_CRC32 = 1 << 0,   /* crc32 is the archive's own checksum of the entry */
+    FA_ENTRY_ENCRYPTED = 1 << 1,
+    FA_ENTRY_SOLID = 1 << 2,       /* shares a compressed block with others */
+    FA_ENTRY_READABLE = 1 << 3     /* this build can unpack it (a supported method, not encrypted) */
+} fa_archive_entry_flags;
+
+typedef enum fa_entry_kind {
+    FA_ENTRY_OTHER = 0,
+    FA_ENTRY_AUDIO = 1,            /* by its name: a common audio, tracker or MIDI extension */
+    FA_ENTRY_CDG = 2,
+    FA_ENTRY_VIDEO = 3,
+    FA_ENTRY_IMAGE = 4,
+    FA_ENTRY_TEXT = 5
+} fa_entry_kind;
+
+typedef struct fa_archive_entry {
+    uint32_t struct_size;      /* set to sizeof before fa_archive_get_entry */
+    uint32_t index;
+    const char* name;          /* UTF-8, '/'-separated; valid until fa_archive_close */
+    int64_t size;              /* unpacked bytes, -1 unknown */
+    int64_t compressed_size;   /* -1 inside a solid block */
+    int32_t method;            /* fa_archive_method */
+    uint32_t flags;            /* fa_archive_entry_flags */
+    uint32_t crc32;            /* valid with FA_ENTRY_HAS_CRC32 */
+    int64_t modified_ns;       /* UTC, ns since 1970; INT64_MIN when unknown (the same below) */
+    int64_t created_ns;
+    int64_t accessed_ns;
+    int64_t solid_offset;      /* bytes to unpack before this entry can be read, 0 if not solid */
+    int32_t kind;              /* fa_entry_kind, from the name */
+} fa_archive_entry;
+
+typedef struct fa_archive_options {
+    uint32_t struct_size;      /* set by fa_archive_options_init */
+    uint32_t memory_limit_mb;  /* compressed entries are unpacked into memory up to this size; 0 = 256 */
+    const char* temp_directory; /* UTF-8; bigger ones are unpacked into a file in a folder of
+                                fatzaudio-tmp inside it, deleted when closed. NULL = no
+                                temp files (FA_ERROR_TOO_LARGE). Copied by the call */
+    const volatile int32_t* cancel; /* NULL = none. Set to non-zero from another thread to stop
+                                an unpack with FA_ERROR_CANCELLED. Must stay valid while the
+                                archive is used */
+} fa_archive_options;
+
+FA_API void FA_CALL fa_archive_options_init(fa_archive_options* options);
+
+/* Which archive format `data` starts like (fa_archive_format; FA_ARCHIVE_NONE when it is
+ * none), from its first bytes. At least 8 bytes are needed. A tar file is told by the
+ * "ustar" mark at byte 257, so give 512 bytes for it. */
+FA_API int32_t FA_CALL fa_archive_detect(const void* data, size_t size);
+
+/* Opens an archive (`path` UTF-8; fa_archive_open_memory copies the bytes). `options` may be NULL.
+ * FA_ERROR_NOT_FOUND for a missing file, FA_ERROR_UNSUPPORTED_FORMAT for anything
+ * that is not a readable ZIP. The I/O version needs seek and length callbacks and
+ * calls close(user) when the archive closes (also when this call fails). */
+FA_API fa_result FA_CALL fa_archive_open_path(const char* path, const fa_archive_options* options, fa_archive** out_archive);
+FA_API fa_result FA_CALL fa_archive_open_memory(const void* data, size_t size, const fa_archive_options* options, fa_archive** out_archive);
+/* Like fa_archive_open_memory, but `data` is not copied: it must stay valid until fa_archive_close. */
+FA_API fa_result FA_CALL fa_archive_open_memory_ref(const void* data, size_t size, const fa_archive_options* options, fa_archive** out_archive);
+FA_API fa_result FA_CALL fa_archive_open_io(const fa_io_callbacks* io, void* user, const fa_archive_options* options, fa_archive** out_archive);
+FA_API void FA_CALL fa_archive_close(fa_archive* archive);
+
+FA_API fa_result FA_CALL fa_archive_get_format(const fa_archive* archive, int32_t* out_format);
+FA_API uint32_t FA_CALL fa_archive_get_entry_count(const fa_archive* archive);
+FA_API fa_result FA_CALL fa_archive_get_entry(const fa_archive* archive, uint32_t index, fa_archive_entry* out_entry);
+/* The entry with this name: exact match first, then ignoring case and the kind of slash.
+ * FA_ERROR_NOT_FOUND, or FA_ERROR_INVALID_ARG when two entries match only by case. */
+FA_API fa_result FA_CALL fa_archive_find(const fa_archive* archive, const char* name, uint32_t* out_index);
+/* The song an open plays and its graphics (see above): *out_cdg is -1 for none.
+ * With only graphics, *out_audio is the .cdg's index and *out_cdg is -1.
+ * FA_ERROR_NOT_FOUND when there is neither. Reads the first 64 KB of the entries it
+ * tests. FA_ERROR_PROTECTED_CONTENT when the only candidates are encrypted. */
+FA_API fa_result FA_CALL fa_archive_pick(fa_archive* archive, uint32_t* out_audio, int32_t* out_cdg);
+
+/* The whole entry in memory (release it with fa_free), CRC checked. FA_ERROR_TOO_LARGE
+ * past the memory limit; empty entries give a one-byte block and size 0. */
+FA_API fa_result FA_CALL fa_archive_read(fa_archive* archive, uint32_t index, void** out_data, size_t* out_size);
+/* An entry read on demand, like a file: a stored entry straight from the archive, a
+ * compressed one unpacked on the first read (into memory or the temp folder) and read
+ * from there, so seeking is free. Close it before the archive. */
+typedef struct fa_archive_reader fa_archive_reader;
+FA_API fa_result FA_CALL fa_archive_open_reader(fa_archive* archive, uint32_t index, fa_archive_reader** out_reader);
+/* Bytes read (0 at the end), or a negative fa_result. */
+FA_API int64_t FA_CALL fa_archive_reader_read(fa_archive_reader* reader, void* buffer, size_t bytes);
+FA_API fa_result FA_CALL fa_archive_reader_seek(fa_archive_reader* reader, int64_t position);
+FA_API int64_t FA_CALL fa_archive_reader_get_size(const fa_archive_reader* reader);
+FA_API void FA_CALL fa_archive_reader_close(fa_archive_reader* reader);
+/* Releases memory returned by fa_archive_read. */
+FA_API void FA_CALL fa_free(void* data);
+
+/* Plays one entry of an open archive (index from fa_archive_find or fa_archive_pick), with
+ * its graphics as the pairing rules say; -1 for `index` is the archive's pick. The
+ * stream keeps the archive alive. Stored entries play in place from a path or memory
+ * archive, and are copied from one opened with fa_archive_open_io. */
+FA_API fa_result FA_CALL fa_stream_open_archive(fa_engine* engine, fa_archive* archive, int32_t index,
+                                                const fa_open_options* options, fa_stream** out_stream);
+/* The tags and file properties of one entry; index -1 is the archive's pick. */
+FA_API fa_result FA_CALL fa_tags_read_archive(fa_archive* archive, int32_t index, uint32_t flags, fa_tags** out_tags);
+/* The same by path and entry name (NULL = the archive's pick; the name matches as in
+ * fa_archive_find). */
+FA_API fa_result FA_CALL fa_tags_read_archive_entry(const char* archive_path, const char* entry_name, uint32_t flags,
+                                                    fa_tags** out_tags);
+/* Tags of a file read through your callbacks (seek and length needed), reading only the
+ * bytes the tags are in. close(user) is not called. */
+FA_API fa_result FA_CALL fa_tags_read_io(const fa_io_callbacks* io, void* user, uint32_t flags, fa_tags** out_tags);
 ```
 
 

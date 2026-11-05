@@ -18,6 +18,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Archives: public `fa_archive_*` API (list, find, pick, read, seekable reader) and .NET `Archive`; ZIP reads Deflate64, flags,
+  times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
+  `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when
+  present ([archives](docs/features/archives.md)).
+
 - Settled loudness on first play (MediaControl request 12): `fa_engine_set_normalization_start_wait(engine, wait_ms,
   max_provisional_boost_db)` (.NET `AudioEngine.SetNormalizationStartWait`). A first `fa_stream_play` of a normalized
   stream now waits up to `wait_ms` (default 200 ms; 0 = start at once, as before) for its final loudness, and up to
@@ -81,6 +86,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   ([karaoke files](docs/features/analysis.md#karaoke-files-silence-and-drawing)).
 
 ### Changed
+
+- Which entry of a ZIP plays is one shared rule now (`fa_archive_pick`): a `.cdg` that matches no song is no longer
+  attached when the archive holds several songs; names compare ignoring case; an archive with only encrypted
+  audio gives `FA_ERROR_PROTECTED_CONTENT`; `fa_fingerprint_archive_entry` with a `NULL` name means the pick.
 
 - Cache keys fingerprint the audio only: tag blocks (ID3, APE, Lyrics3, FLAC metadata, MP4 `moov`, Ogg comment pages,
   WAV/AIFF chunks other than the samples) are left out, so a retagged file keeps its cached loudness and analysis; WAV
