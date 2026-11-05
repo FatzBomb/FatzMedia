@@ -22,7 +22,9 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
     `Tags.Read(bytes)` = `Tags.Read(path)`, stream details in `tags.Info`, a neutral stream costs
     ~0.3-0.5% of a core (no `NoEffects` option needed).
   - Sent 2026-11-05: requests 13 (scan from fed audio, source identity on packet/push streams) and 14
-    (MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path, DTS core, WMA Standard everywhere):
+    (MP1/MP2, old-MP3 coverage, AVI/MPEG-PS/TS by path, DTS core, WMA Standard everywhere) and 15
+    (every other audio codec FatzAudio can license: TrueHD, DTS-HD lossless, APE, WavPack, Musepack, TTA,
+    DSD, RealAudio, more containers; FFmpeg push stays only where licensing blocks FatzAudio):
     `docs/fatzaudio/2026-11-05_MediaControl_Requests_13_14.md`; the 037A slice 5 plan uses them.
   - Pending from FatzAudio: the public archive API (zip, 7z, tar family; **no rar**), the public
     fingerprint (owner decides), pairing rules, archive timings.
