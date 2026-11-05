@@ -55,6 +55,14 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-053 - WinForms: other players stutter when one goes full screen
+
+Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,
+RTX 5090): when one player switches to full screen, the others stutter briefly. Not seen in WPF or
+Avalonia. Likely the layout change (the others hidden, the panel resized, the form made borderless)
+resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
+the other panels before the resize, or suspending layout around the switch, removes it.
+
 ### ENG-052 - Embedded subtitle scan reads a large MKV twice
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
@@ -90,6 +98,17 @@ Windows, a GPU Direct3D11 to WARP, WARP to software; elsewhere to software), onc
 are not kept, as with any renderer change. A deeper Vulkan clean-up was not tried: the decoder had already
 left the device and `vkCreateInstance` itself fails, so the driver's state in the process is gone. Still
 open: the 13 s stall before the failure is known. Check: `smoke-audit.ps1 -Steps 3` (3d).
+
+Owner check (2026-11-05, Avalonia, Vulkan, RTX 5090): the error was raised (`RendererDeviceLost` in the
+Log, sound continued) but the window did not switch: the slots forward their view model's event, so the
+sender was the view model and the controller's "is this one of my slots" check dropped it (the unit test
+raised it with the slot as sender). Fixed: the controller no longer checks the sender; the test now raises
+it as the real slots do. Also seen: after the reset, Vulkan stays unusable for the rest of the process
+(`vkCreateInstance ... ErrorIncompatibleDriver` even after picking Vulkan again by hand); a new process
+works. Direct3D11, picked by hand, showed the picture at once.
+Rechecked with the fix (2026-11-05, fresh process, `dxcap -forcetdr`): pass. The window switched to
+Direct3D11 by itself and recreated the player (surface #2 on the RTX 5090, shared GPU image); the file
+played again on Direct3D11. Still open: the 14 s stall before the first recovery attempt.
 
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 

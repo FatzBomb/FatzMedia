@@ -85,3 +85,26 @@ Different volumes between the generated test tones: to check on the rerun with t
 
 `powershell -ExecutionPolicy Bypass -File scripts\smoke-backlog.ps1 -Steps "1,2,4,7,9,10"` after pulling
 the fixes, with the HLG and HDR10 files picked the right way round.
+
+## Rerun of tests 4, 7, 9, 10 (2026-11-05 04:08, `main` at 463936b): 21 passed, 1 failed
+
+Tests 1 and 2 wait for FatzAudio's next release.
+
+- **4 HDR: pass** (all 11 checks, the files the right way round; the owner judged the pictures right).
+  GPU tone mapping at 1% CPU, `--hdr-tonemap-cpu` about 11%, Software renderer 7-10%.
+- **7 Vulkan on the RTX 5090: 101 of 102.** The two stale tests are fixed; the one failure is
+  `CdgOnly_MatchesSoftwareExactly(333x250)`, 99.1% exact (ENG-049, known).
+- **9 missing natives: pass** (two players without BASS, each with a warning; FLAC without BASSFLAC through
+  FFmpeg).
+- **10 player set, full screen, Escape: pass** in WPF, Avalonia and WinForms, including F11 on the clicked
+  player (ENG-044 fix confirmed). Notes: the second-screen window takes Escape only when it has focus,
+  and its second Escape closes it, by design (the script now says so). WinForms has no flyouts, so that step
+  is WPF and Avalonia only. Opening a file on another player takes under a second (the open and probe of a
+  large MKV). In WinForms the other players stutter briefly when one goes full screen: ENG-053 (minor).
+
+## GPU reset 3d (Avalonia, Vulkan), rechecked by hand (2026-11-05)
+
+First try: the error was raised but the window did not switch (the controller dropped the forwarded event;
+fixed in `4883556`). With the fix, in a fresh process: **pass**, the window switched to Direct3D11 by itself
+and the player came back empty, as a renderer change does. After a reset, Vulkan stays unusable for the
+rest of that process; a new process gets it back. 3a-3c were not rerun (unchanged, passed earlier).
