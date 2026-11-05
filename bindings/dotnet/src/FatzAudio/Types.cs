@@ -517,10 +517,19 @@ public sealed record AudioEngineOptions
     public int WorkerThreads { get; init; }
     /// <summary>
     /// Directory for the loudness cache (one file, <c>loudness.fac</c>, 48 bytes per song) and cached track analysis,
-    /// keyed by a fingerprint of the audio, so renamed, moved or retagged files still hit; created if missing. Null
-    /// disables the cache.
+    /// keyed by a fingerprint of the audio, so renamed, moved or retagged files still hit. Created with all its
+    /// parent folders if missing. Null (the default) uses the OS's per-user cache folder plus <c>FatzAudio</c>
+    /// (Windows <c>%LOCALAPPDATA%</c>, Linux <c>XDG_CACHE_HOME</c> or <c>~/.cache</c>, macOS and iOS
+    /// <c>~/Library/Caches</c>, Android the app's cache), so the cache works without any setup; a folder you set
+    /// always wins. If the folder cannot be made or written the engine still works without a cache:
+    /// <see cref="AudioEngine.GetCacheInfo"/> says so.
     /// </summary>
     public string? CacheDirectory { get; init; }
+    /// <summary>
+    /// No cache: with <see cref="CacheDirectory"/> null, do not use the OS cache folder either. Loudness is then
+    /// measured again every time and track analysis is not kept.
+    /// </summary>
+    public bool NoCache { get; init; }
     /// <summary>
     /// Largest size of the loudness cache file in bytes; null uses the default, 5 MB (about 109,000 songs). When it
     /// grows past this, the songs used least recently are dropped. At least 16 KB. See <see cref="AudioEngine.SetCacheSize"/>.

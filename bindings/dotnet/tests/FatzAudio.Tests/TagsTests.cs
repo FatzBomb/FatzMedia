@@ -141,7 +141,7 @@ public class TagsTests
     [Fact]
     public void Stream_GetTagsMatchesInfo()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var s = engine.OpenFile(FindTestFile("tests/data/tags/tags.flac"), new StreamOptions { DecodeOnly = true });
         var tags = s.GetTags();
         Assert.Equal("Song Title", tags.Title);

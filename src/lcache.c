@@ -68,6 +68,7 @@ struct fa_lcache {
     int64_t stale_bytes;  /* records in it that a newer one replaced, or garbage */
     double load_ms;
     uint64_t seq;         /* the last lc_entry.seq handed out */
+    int write_failed;     /* the last write of the file failed (folder or file not writable) */
 };
 
 /* One cache per folder in the process: engines on the same folder share it. */
@@ -273,10 +274,10 @@ static void rewrite_from(fa_lcache* c, int merge)
         c->n = keep;
         if (!rehash(c, c->n)) table_reset(c);      /* the old slots point at moved entries */
     }
-    fa_mkdir_utf8(c->dir);
+    fa_mkdirs_utf8(c->dir);
     snprintf(tmp, sizeof(tmp), "%s.%llx.tmp", c->path, (unsigned long long)fa_thread_current_id());
     f = fa_fopen_utf8(tmp, "wb");
-    if (!f) return;
+    if (!f) { c->write_failed = 1; return; }
     header(h);
     ok = fwrite(h, 1, LC_HDR, f) == LC_HDR;
     for (i = 0; ok && i < c->n; i++) {
@@ -286,8 +287,10 @@ static void rewrite_from(fa_lcache* c, int merge)
     }
     if (fclose(f) != 0 || !ok || fa_replace_file(tmp, c->path) != 0) {
         fa_remove_utf8(tmp);
+        c->write_failed = 1;
         return;
     }
+    c->write_failed = 0;
     c->file_bytes = LC_HDR + (int64_t)c->n * LC_REC;
     c->stale_bytes = 0;
 }
@@ -310,7 +313,7 @@ static void append(fa_lcache* c, const lc_entry* x)
 /* The lock other processes see, around every read and write of the file. */
 static void* file_lock(fa_lcache* c)
 {
-    fa_mkdir_utf8(c->dir);
+    fa_mkdirs_utf8(c->dir);
     return fa_file_lock(c->lock_path, LC_LOCK_WAIT_MS);
 }
 
@@ -506,6 +509,16 @@ void fa_lcache_clear(fa_lcache* c)
     fa_mutex_unlock(&c->lock);
 }
 
+int fa_lcache_write_failed(fa_lcache* c)
+{
+    int failed;
+    if (!c) return 0;
+    fa_mutex_lock(&c->lock);
+    failed = c->write_failed;
+    fa_mutex_unlock(&c->lock);
+    return failed;
+}
+
 double fa_lcache_load_ms(fa_lcache* c)
 {
     double ms;
@@ -522,6 +535,21 @@ FA_API fa_result FA_CALL fa_engine_set_cache_size(fa_engine* engine, uint64_t ma
 {
     if (!engine || (max_bytes != 0 && max_bytes < LC_MIN_LIMIT)) return FA_ERROR_INVALID_ARG;
     fa_lcache_set_limit(engine->lcache, max_bytes);
+    return FA_OK;
+}
+
+FA_API fa_result FA_CALL fa_engine_get_cache_info(fa_engine* engine, fa_cache_info* out_info)
+{
+    fa_cache_info info;
+    if (!engine || !out_info || out_info->struct_size < sizeof(uint32_t)) return FA_ERROR_INVALID_ARG;
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.directory = engine->config.cache_directory;
+    info.is_default = engine->cache_default ? 1 : 0;
+    if (!engine->config.cache_directory) info.status = FA_ERROR_NOT_FOUND;
+    else if (engine->cache_dir_failed || fa_lcache_write_failed(engine->lcache)) info.status = FA_ERROR_IO;
+    else info.status = FA_OK;
+    fa_copy_sized(out_info, &info, sizeof(info));
     return FA_OK;
 }
 

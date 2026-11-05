@@ -408,7 +408,7 @@ var t = engine.Analyze("song.mp3", AnalysisKinds.Beats, new AnalysisOptions { Mi
 
 ## The cache
 
-With `fa_engine_config.cache_directory` set (.NET `AudioEngineOptions.CacheDirectory`), results are stored in that directory next to the loudness cache, one small file per song and audio track. The key is a fingerprint of the song's audio, as for [loudness](normalization.md#the-cache), so a renamed, moved or retagged file is still found. `fa_engine_clear_cache` deletes these files too. For a MIDI file the soundfont and rate are part of the key, and for a module the rate.
+With the cache on (the default: `fa_engine_config.cache_directory`, .NET `AudioEngineOptions.CacheDirectory`, or the OS cache folder when unset; see [the loudness cache](normalization.md#the-cache)), results are stored in that directory next to the loudness cache, one small file per song and audio track. The key is a fingerprint of the song's audio, as for [loudness](normalization.md#the-cache), so a renamed, moved or retagged file is still found. `fa_engine_clear_cache` deletes these files too. For a MIDI file the soundfont and rate are part of the key, and for a module the rate.
 
 - The file holds the **union of the kinds measured so far**. Asking for beats, then the key, then the waveform measures only what is new and keeps what was there, so asking one at a time does not repeat work.
 - A result read from the cache is flagged `FA_ANALYSIS_FROM_CACHE` (.NET `FromCache`).

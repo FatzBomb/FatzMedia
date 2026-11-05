@@ -1042,6 +1042,7 @@ int fa_lcache_get(fa_lcache* c, uint64_t key, int64_t size, int32_t track, fa_lo
 void fa_lcache_put(fa_lcache* c, uint64_t key, int64_t size, int32_t track, const fa_loudness* l);
 void fa_lcache_set_limit(fa_lcache* c, uint64_t bytes);   /* 0 = default */
 void fa_lcache_clear(fa_lcache* c);
+int fa_lcache_write_failed(fa_lcache* c);       /* 1 when the last write of the file failed */
 double fa_lcache_load_ms(fa_lcache* c);         /* how long reading the file took; -1 before */
 /* Gain normalization gives a stream of loudness `lufs` with the engine's current settings. */
 float fa_engine_norm_gain_db(fa_engine* engine, double lufs);
@@ -1207,6 +1208,8 @@ struct fa_engine {
     fa_cond scan_cond;           /* work queued or a job finished */
     fa_scan_job* scan_queue;
     fa_lcache* lcache;           /* NULL without a cache directory */
+    int cache_default;           /* config.cache_directory is the OS one FatzAudio chose */
+    int cache_dir_failed;        /* the cache folder could not be made when the engine was created */
     struct fa_idslot* id_slots;  /* streams with a source identity (scan_feed.c), under scan_lock */
     struct fa_scan_feed* feeds;  /* fed scans that are running, under scan_lock */
     fa_thread* scan_threads;

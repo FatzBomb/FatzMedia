@@ -122,7 +122,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public void OpenUrl_DecodesLikeTheFile()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var web = engine.OpenUrl(Url("/tone.wav"), DecodeOnly);
         using var local = engine.OpenMemory(_wav, new StreamOptions { DecodeOnly = true });
         Assert.Equal(local.Info.LengthFrames, web.Info.LengthFrames);
@@ -156,7 +156,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public void Radio_AnnouncesSongTitles()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var radio = engine.OpenUrl(new Uri(Url("/radio")), DecodeOnly);
         var titles = new List<StreamMetadata>();
         radio.MetadataChanged += (_, e) => { lock (titles) titles.Add(e.Metadata); };
@@ -187,7 +187,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public void Downloaded_GetsTheBytesAsServed()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         var saved = new MemoryStream();
         var opts = DecodeOnly with { Network = DecodeOnly.Network! with { Downloaded = data => { lock (saved) saved.Write(data); } } };
         using var web = engine.OpenUrl(Url("/tone.wav"), opts);
@@ -200,7 +200,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public void SetDownloadHandler_StartsAndStops()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var radio = engine.OpenUrl(Url("/radio"), DecodeOnly);
         long bytes = 0;
         radio.SetDownloadHandler(data => Interlocked.Add(ref bytes, data.Length));
@@ -220,7 +220,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public async Task OpenUrlAsync_OpensAndCancels()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using (var web = await engine.OpenUrlAsync(Url("/tone.wav"), DecodeOnly))
             Assert.Equal(44100, web.Info.Format.SampleRate);
 
@@ -237,7 +237,7 @@ public sealed class WebStreamTests : IDisposable
     [Fact]
     public void OpenUrl_Errors()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         Assert.Throws<ArgumentException>(() => engine.OpenUrl("ftp://example.com/x.mp3"));
         Assert.Equal(ErrorCode.NotFound, Assert.Throws<FatzAudioException>(() => engine.OpenUrl(Url("/missing.mp3"), DecodeOnly)).ErrorCode);
         using var file = engine.OpenMemory(_wav, new StreamOptions { DecodeOnly = true });

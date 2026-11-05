@@ -6,7 +6,7 @@ namespace FatzAudio.Tests;
 /// <summary>Equalizer, presets and user DSP.</summary>
 public class EqualizerTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void Presets_HaveTenOctaveBandsAndNames()

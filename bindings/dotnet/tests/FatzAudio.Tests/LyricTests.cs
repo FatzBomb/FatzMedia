@@ -7,7 +7,7 @@ namespace FatzAudio.Tests;
 /// <summary>The MIDI lyric surface: styles and presets, layout, drawing, errors.</summary>
 public class LyricTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static string FindTestFile(string relative)
     {

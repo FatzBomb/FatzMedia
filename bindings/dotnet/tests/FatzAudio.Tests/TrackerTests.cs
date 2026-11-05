@@ -11,7 +11,7 @@ public class TrackerTests
     private const double RowSeconds = 0.06;   // speed 3 at tempo 125
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
     private static void Cell(byte[] pat, int row, int ch, int sample, int period, int fx, int param)
     {

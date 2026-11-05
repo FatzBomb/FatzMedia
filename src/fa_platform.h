@@ -179,6 +179,7 @@ FILE* fa_fopen_utf8(const char* path, const char* mode);
  * 0 when the OS gives none. */
 int fa_file_identity(FILE* fp, uint64_t id[4]);
 int fa_mkdir_utf8(const char* path);                     /* 0 if created or already there */
+int fa_mkdirs_utf8(const char* path);                    /* the same with every missing parent (mkdir -p) */
 int fa_replace_file(const char* from, const char* to);   /* rename over an existing file; 0 on success */
 /* Where the OS keeps its MIDI instruments (gm.dls, gs_instruments.dls, a GM .sf2),
  * in the order to try: the `index`th path in UTF-8, 0 past the last one. */
@@ -193,6 +194,9 @@ void fa_temp_folder_sweep(const char* folder);
  * TMPDIR, which iOS and the .NET Android runtime set to the app's own sandbox, then
  * /data/local/tmp on Android, then /tmp). 1 when one was found and fits in `cap`. */
 int fa_os_temp_dir(char* out, size_t cap);
+/* The OS's per-user cache directory in UTF-8, no trailing separator (Windows: %LOCALAPPDATA%; Linux: XDG_CACHE_HOME,
+ * else ~/.cache; macOS and iOS: ~/Library/Caches; Android: the app's TMPDIR). 1 when one was found and fits. */
+int fa_os_cache_dir(char* out, size_t cap);
 /* Bytes free to this process on the volume holding `path` (an existing directory); 1 when known. */
 int fa_free_space(const char* path, uint64_t* bytes);
 /* Appends `n` bytes to an existing file in one write that other processes

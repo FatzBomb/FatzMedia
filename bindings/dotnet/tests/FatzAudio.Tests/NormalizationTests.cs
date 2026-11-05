@@ -7,7 +7,7 @@ namespace FatzAudio.Tests;
 public class NormalizationTests
 {
     private static AudioEngine CreateHeadless(string? cache = null) =>
-        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = cache });
+        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
     private static async Task<Loudness> WaitFinalAsync(AudioStream s)
     {

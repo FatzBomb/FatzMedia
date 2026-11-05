@@ -529,3 +529,10 @@ if(UNIX)
     target_link_libraries(fa_test_silence PRIVATE m)
 endif()
 add_test(NAME silence COMMAND fa_test_silence)
+
+# Engines made without cache_directory use the OS's per-user cache folder. Tests must not touch the real
+# one: point it into the build directory (XDG_CACHE_HOME on Linux, HOME on macOS, LOCALAPPDATA on Windows).
+get_property(FA_ALL_TESTS DIRECTORY PROPERTY TESTS)
+set(FA_TEST_CACHE_HOME "${CMAKE_CURRENT_BINARY_DIR}/os-cache-home")
+set_property(TEST ${FA_ALL_TESTS} APPEND PROPERTY ENVIRONMENT
+    "XDG_CACHE_HOME=${FA_TEST_CACHE_HOME}" "LOCALAPPDATA=${FA_TEST_CACHE_HOME}" "FA_TEST_CACHE_HOME=${FA_TEST_CACHE_HOME}")

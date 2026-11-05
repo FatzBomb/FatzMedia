@@ -10,7 +10,7 @@ public class ArchiveTests
 {
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static byte[] Zip(params (string Name, byte[] Data, CompressionLevel Level)[] entries)
     {

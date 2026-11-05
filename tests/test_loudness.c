@@ -831,6 +831,59 @@ static void test_lcache_one_per_folder(void)
     fa_engine_destroy(e2);
 }
 
+/* The cache folder: every missing parent is made, a folder that cannot be made is reported (the engine
+ * still starts), an unset one is the OS cache folder, FA_ENGINE_NO_CACHE means none. */
+static void test_cache_folder_and_info(void)
+{
+    fa_engine_config cfg;
+    fa_engine* e;
+    fa_cache_info info;
+    FILE* f;
+    const char* blocker = "lcache-blocker";
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+
+    cfg.cache_directory = "lcache-deep/a/b/c";
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    memset(&info, 0, sizeof(info)); info.struct_size = sizeof(info);
+    CHECK_EQ(fa_engine_get_cache_info(e, &info), FA_OK);
+    CHECK_EQ(info.status, FA_OK);
+    CHECK(info.directory && strcmp(info.directory, "lcache-deep/a/b/c") == 0);
+    CHECK_EQ(info.is_default, 0);
+    f = fa_fopen_utf8("lcache-deep/a/b/c/probe.tmp", "wb");   /* the folder is there */
+    CHECK(f != NULL);
+    if (f) { fclose(f); remove("lcache-deep/a/b/c/probe.tmp"); }
+    fa_engine_destroy(e);
+
+    f = fopen(blocker, "wb");                      /* a file where a folder is needed */
+    CHECK(f != NULL);
+    if (f) fclose(f);
+    cfg.cache_directory = "lcache-blocker/sub/dir";
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);   /* only a cache: the engine starts */
+    memset(&info, 0, sizeof(info)); info.struct_size = sizeof(info);
+    CHECK_EQ(fa_engine_get_cache_info(e, &info), FA_OK);
+    CHECK_EQ(info.status, FA_ERROR_IO);
+    fa_engine_destroy(e);
+    remove(blocker);
+
+    cfg.cache_directory = NULL;                    /* the OS's per-user cache folder */
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    memset(&info, 0, sizeof(info)); info.struct_size = sizeof(info);
+    CHECK_EQ(fa_engine_get_cache_info(e, &info), FA_OK);
+    CHECK_EQ(info.is_default, 1);
+    CHECK_EQ(info.status, FA_OK);
+    CHECK(info.directory && strstr(info.directory, "FatzAudio"));
+    fa_engine_destroy(e);
+
+    cfg.flags |= FA_ENGINE_NO_CACHE;
+    CHECK_EQ(fa_engine_create(&cfg, &e), FA_OK);
+    memset(&info, 0, sizeof(info)); info.struct_size = sizeof(info);
+    CHECK_EQ(fa_engine_get_cache_info(e, &info), FA_OK);
+    CHECK_EQ(info.status, FA_ERROR_NOT_FOUND);
+    CHECK(info.directory == NULL);
+    fa_engine_destroy(e);
+}
+
 /* Two processes writing at once (two caches on one folder, spelled two ways), with
  * enough rewrites in between: no song either one wrote is lost. */
 typedef struct lc_writer { fa_lcache* c; uint64_t first; } lc_writer;
@@ -1929,7 +1982,7 @@ int main(void)
     if (getenv("FA_TEST_CWD") && chdir(getenv("FA_TEST_CWD")) != 0) return 1;
 #endif
     fa_engine_config_init(&cfg);
-    cfg.flags = FA_ENGINE_NULL_OUTPUT;
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | FA_ENGINE_NO_CACHE;
     cfg.worker_threads = 2;
     if (fa_engine_create(&cfg, &g_engine) != FA_OK) { fprintf(stderr, "engine create failed\n"); return 1; }
     if (fa_device_open(g_engine, NULL, &g_dev) != FA_OK) { fprintf(stderr, "device open failed\n"); return 1; }
@@ -1972,6 +2025,7 @@ int main(void)
     RUN(test_fed_scan_matches_path_scan);
     RUN(test_fed_scan_errors);
     RUN(test_fed_scan_reaches_streams_and_cache);
+    RUN(test_cache_folder_and_info);
     RUN(test_fed_scan_without_cache);
     RUN(test_limiter);
     RUN(test_limiter_releases_to_unity);

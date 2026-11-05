@@ -213,6 +213,17 @@ int fa_os_temp_dir(char* out, size_t cap)
     return len > 0;
 }
 
+int fa_os_cache_dir(char* out, size_t cap)
+{
+    wchar_t dir[MAX_PATH + 2];
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", dir, MAX_PATH + 1);
+    int len;
+    if (n == 0 || n > MAX_PATH) return 0;
+    while (n > 3 && (dir[n - 1] == L'\\' || dir[n - 1] == L'/')) dir[--n] = 0;
+    len = WideCharToMultiByte(CP_UTF8, 0, dir, -1, out, (int)cap, NULL, NULL);
+    return len > 0;
+}
+
 int fa_free_space(const char* path, uint64_t* bytes)
 {
     wchar_t* wp = widen(path);
@@ -701,6 +712,31 @@ int fa_os_temp_dir(char* out, size_t cap)
     return 0;
 }
 
+/* The per-user cache directory: XDG_CACHE_HOME or ~/.cache (Linux), ~/Library/Caches (macOS, iOS: HOME is
+ * the app's sandbox there), the app's TMPDIR on Android (the .NET runtime points it at the app's cache). */
+int fa_os_cache_dir(char* out, size_t cap)
+{
+#  if defined(__ANDROID__)
+    return fa_os_temp_dir(out, cap);
+#  else
+    const char* xdg = getenv("XDG_CACHE_HOME");
+    const char* home = getenv("HOME");
+    size_t n;
+#    if defined(__APPLE__)
+    (void)xdg;
+    if (!home || home[0] != '/') return 0;
+    n = snprintf(out, cap, "%s/Library/Caches", home);
+#    else
+    if (xdg && xdg[0] == '/') n = snprintf(out, cap, "%s", xdg);
+    else if (home && home[0] == '/') n = snprintf(out, cap, "%s/.cache", home);
+    else return 0;
+#    endif
+    if (n == 0 || n >= cap) return 0;
+    while (n > 1 && out[n - 1] == '/') out[--n] = 0;
+    return 1;
+#  endif
+}
+
 int fa_free_space(const char* path, uint64_t* bytes)
 {
     struct statvfs sv;
@@ -810,3 +846,28 @@ void fa_lazy_mutex_lock(fa_lazy_mutex* l)
 }
 
 void fa_lazy_mutex_unlock(fa_lazy_mutex* l) { fa_mutex_unlock(&l->m); }
+
+/* Every missing folder on the way, like mkdir -p. Only the last step decides: a parent we may not
+ * create (a drive root, a share) is fine when the folder under it is there. */
+int fa_mkdirs_utf8(const char* path)
+{
+    char* p;
+    size_t i, n;
+    int r;
+    if (!path || !path[0]) return -1;
+    n = strlen(path);
+    p = (char*)malloc(n + 1);
+    if (!p) return -1;
+    memcpy(p, path, n + 1);
+    for (i = 1; i < n; i++) {
+        if ((p[i] == '/' || p[i] == '\\') && p[i - 1] != '/' && p[i - 1] != '\\' && p[i - 1] != ':') {
+            char c = p[i];
+            p[i] = 0;
+            (void)fa_mkdir_utf8(p);
+            p[i] = c;
+        }
+    }
+    r = fa_mkdir_utf8(p);
+    free(p);
+    return r;
+}

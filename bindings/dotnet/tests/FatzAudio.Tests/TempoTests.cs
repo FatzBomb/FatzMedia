@@ -8,7 +8,7 @@ public class TempoTests
 {
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static long ReadAll(AudioStream s)
     {
