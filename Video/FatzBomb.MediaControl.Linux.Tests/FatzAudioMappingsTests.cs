@@ -95,7 +95,7 @@ public sealed class FatzAudioMappingsTests
             FatzAudioMappings.ResolveCacheDirectory(null, isWindows: false, static _ => "relative", "", "/home/u"));
         Assert.Null(FatzAudioMappings.ResolveCacheDirectory("", isWindows: true, Env, "C:/x", "C:/u"));
         Assert.Null(FatzAudioMappings.ResolveCacheDirectory("  ", isWindows: false, Env, "", "/home/u"));
-        Assert.Equal("/my/cache", FatzAudioMappings.ResolveCacheDirectory("/my/cache", isWindows: false, Env, "", "/home/u"));
+        Assert.Equal(Path.GetFullPath("/my/cache"), FatzAudioMappings.ResolveCacheDirectory("/my/cache", isWindows: false, Env, "", "/home/u"));
         Assert.Equal(Path.GetFullPath("cache"), FatzAudioMappings.ResolveCacheDirectory("cache", isWindows: false, Env, "", "/home/u"));
     }
 
