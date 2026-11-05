@@ -41,7 +41,10 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   4. `053A` `MediaInputSource.FromStream` (FFmpeg custom I/O; ask FatzAudio about re-openable I/O).
   5. `054A` Full idle-cost check (no `Simple` mode: fix idle costs in `Full`).
   6. `055A` `ReconfigureAsync`: extends 043A's existing `SetModeAsync` (mode on the fly, media kept at
-     its position) to the audio engine, renderer, device and other settings.
+     its position) to the audio engine, renderer, device and other settings. **Slice 1 (owner
+     2026-11-05): renderer fallback in place**: the swap in place, then the automatic switch after an
+     unrecoverable device loss (media kept at its position; moves out of the test players), then an
+     `Auto` renderer choice in the package.
   7. After rc.4: rc.4 pin move + start wait/cache size pass-through; `050A` tags and file info;
      `056A` archives through FatzAudio's reader, SharpCompress and rar dropped.
 - Still active from before: 026A, 026B, 027A, 033A, 041A, 042A, 043A, 044A (see the manifest).
