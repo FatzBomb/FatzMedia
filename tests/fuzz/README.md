@@ -13,6 +13,7 @@ simulated drive, CD+G and fonts.
 | `stream` | `fa_stream_open_memory`, read, seek, twice (all tracks, track 1); tracker cell and row events on; a MIDI file's first SysEx also sent live (`fa_stream_send_midi`) to a real-time synth | every audio and container reader and the decoders behind them; also fails on a non-finite sample. MIDI plays through a tiny built-in soundfont (a looped sine as a melodic and a drum preset), so notes, envelopes and effects run |
 | `tags` | `fa_tags_read_memory`, every item and picture, `fa_tags_read_loudness` | tag readers |
 | `zip` | `fa_zip_list`, `fa_zip_entry_offset`, `fa_zip_extract`, `fa_zip_extract_file` | ZIP reader and inflate |
+| `archive` | `fa_archive_open_memory` with a 1 MB limit, `fa_archive_pick`, `fa_archive_read`, a reader with seeks, on each of the first 8 entries | tar (ustar, GNU, pax), gzip, bzip2 and xz around a tar or one file, ZIP methods 12, 14 and 95, the bzip2 and xz block scans, checkpointed inflate, stream mode |
 | `hls` | `fa_hls_parse`, `fa_playlist_first_entry`, `fa_ts_feed`, `fa_aes128_cbc_decrypt` | playlist parser, `.pls` / `.m3u` first entry, TS demuxer |
 | `net` | first byte = mode. 0: URL, headers, URL as text (`fa_url_*`, `fa_http_cookies_*`, `fa_http_header`, `fa_playlist_first_entry`). 1 to 3: a server on 127.0.0.1 in the process and `fa_stream_open_url` on it: the input is its reply (1), a file it serves with byte ranges (2), or an HLS playlist, a NUL, the segment bytes (3); read, seek twice | Set-Cookie and dates, `net_http.c` replies (chunked, unframed, redirects, 206/416, ICY), MP4 sidx / tfra / mfra and Matroska Cues / last-block reads over their own range requests, HLS over the network. Modes 1 to 3 do nothing on Windows |
 | `sound` | byte 0 = script length, then the script (play, stop, voice limit and steal rule, list, close or detach a voice, render, info), then the file loaded as a sound (raw 16-bit PCM when it is no format) | `sound.c` voice pool, steal rules, voices closed while listed; the voices render on a null device |
@@ -30,7 +31,7 @@ inputs reaching new code, and saves the input that crashed or hung to `OUT/<targ
 ```sh
 cmake -B build-fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFA_FUZZ=ON -DFA_BUILD_TOOLS=OFF \
   -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer"
-cmake --build build-fuzz -j --target fuzz_stream fuzz_tags fuzz_zip fuzz_hls fuzz_net fuzz_sound fuzz_soundfont fuzz_cue fuzz_cdg fuzz_font
+cmake --build build-fuzz -j --target fuzz_stream fuzz_tags fuzz_zip fuzz_archive fuzz_hls fuzz_net fuzz_sound fuzz_soundfont fuzz_cue fuzz_cdg fuzz_font
 tests/fuzz/run.sh build-fuzz fuzz-out 1000000 stream_aac     # one run per format; no names = all
 ```
 

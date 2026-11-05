@@ -8,20 +8,33 @@ public enum ArchiveFormat
 {
     /// <summary>Not an archive.</summary>
     None = 0,
-    /// <summary>ZIP (including ZIP64): the format this build reads.</summary>
+    /// <summary>ZIP (including ZIP64).</summary>
     Zip = 1,
-    /// <summary>A tar file (recognized by <see cref="Archive.Detect"/> only).</summary>
+    /// <summary>A tar file, plain or inside gzip, bzip2 or xz (<see cref="Archive.Filter"/> says which).</summary>
     Tar = 2,
-    /// <summary>A gzip file (recognized only).</summary>
+    /// <summary>One file in a gzip file.</summary>
     GZip = 3,
-    /// <summary>A bzip2 file (recognized only).</summary>
+    /// <summary>One file in a bzip2 file.</summary>
     BZip2 = 4,
-    /// <summary>An xz file (recognized only).</summary>
+    /// <summary>One file in an xz file.</summary>
     Xz = 5,
     /// <summary>A 7-Zip archive (recognized only).</summary>
     SevenZip = 6,
     /// <summary>A RAR archive (recognized only: extract it yourself, then open the song from memory).</summary>
     Rar = 7,
+}
+
+/// <summary>What the files of an archive are wrapped in (<c>fa_archive_filter</c>).</summary>
+public enum ArchiveFilter
+{
+    /// <summary>Nothing: a ZIP or a plain tar.</summary>
+    None = 0,
+    /// <summary>gzip (a .tar.gz, or the single file of a .gz).</summary>
+    GZip = 1,
+    /// <summary>bzip2 (a .tar.bz2, or the single file of a .bz2).</summary>
+    BZip2 = 2,
+    /// <summary>xz (a .tar.xz, or the single file of an .xz).</summary>
+    Xz = 3,
 }
 
 /// <summary>How an archive entry is stored (<c>fa_archive_method</c>).</summary>
@@ -95,14 +108,16 @@ public sealed record ArchiveEntry(int Index, string Name, long Size, long Compre
     long SolidOffset, bool IsReadable, ArchiveEntryKind Kind);
 
 /// <summary>
-/// An archive (ZIP, with ZIP64, stored, DEFLATE and Deflate64 entries): its list, and its entries read or played
+/// An archive (ZIP with ZIP64 and its stored, DEFLATE, Deflate64, bzip2, LZMA and xz entries; tar; gzip, bzip2 or xz around a tar
+/// or one file): its list, and its entries read or played
 /// without unpacking the others. No engine is needed. The same code opens karaoke downloads (<c>song.mp3</c> +
 /// <c>song.cdg</c>) when you play them with <see cref="AudioEngine.OpenFile"/>, so <see cref="Pick"/> says which song
 /// they play and which graphics go with it.
 /// </summary>
 /// <remarks>
 /// <para>Only the end of the file and the directory are read when an archive opens. A stored entry is read straight from
-/// the archive; a compressed one is unpacked once, into memory up to <see cref="ArchiveOptions.MemoryLimitMb"/> and past it
+/// the archive; a compressed one is unpacked once (an entry of a .tar.gz, .tar.bz2 or .tar.xz is decoded out of the compressed stream:
+/// <see cref="ArchiveEntry.SolidOffset"/> says how far back it starts), into memory up to <see cref="ArchiveOptions.MemoryLimitMb"/> and past it
 /// into <see cref="ArchiveOptions.TempDirectory"/>, else <see cref="ErrorCode.TooLarge"/>. Every unpack checks the entry's
 /// CRC-32 (a mismatch is <see cref="ErrorCode.UnsupportedFormat"/>). Encrypted entries are listed and
 /// <see cref="ErrorCode.ProtectedContent"/> when read. Multi-part archives are refused.</para>
@@ -269,6 +284,17 @@ public sealed unsafe class Archive : IDisposable
         {
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_get_format(Handle, out int f));
             return (ArchiveFormat)f;
+        }
+    }
+
+    /// <summary>What the files are wrapped in: <see cref="ArchiveFilter.None"/> for a ZIP and a plain tar, else the compression of
+    /// a .tar.gz, .tar.bz2 or .tar.xz (<see cref="Format"/> is <see cref="ArchiveFormat.Tar"/>) or of the single file (gz, bz2, xz).</summary>
+    public ArchiveFilter Filter
+    {
+        get
+        {
+            FatzAudioException.ThrowIfFailed(NativeMethods.fa_archive_get_filter(Handle, out int f));
+            return (ArchiveFilter)f;
         }
     }
 

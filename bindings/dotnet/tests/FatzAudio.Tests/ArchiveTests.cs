@@ -45,6 +45,7 @@ public class ArchiveTests
             foreach (var a in new[] { fromPath, fromMemory, fromStream })
             {
                 Assert.Equal(ArchiveFormat.Zip, a.Format);
+                Assert.Equal(ArchiveFilter.None, a.Filter);
                 Assert.Equal(3, a.Entries.Count);
                 var song = a.Entries[0];
                 Assert.Equal("Song.wav", song.Name);

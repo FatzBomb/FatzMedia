@@ -591,7 +591,7 @@ static fa_result read_archive(fa_tags* t, fa_archive* a, const char* entry_name,
 {
     zip_tags_ctx c = { t, flags };
     int has_cdg = 0;
-    int64_t size = a->srcp->length;
+    int64_t size = a->length;
     fa_result why = FA_OK;
     int taken = fa_archive_visit(a, entry_name, zip_tags_visit, &c, &has_cdg, &why);
     if (taken && t->have_info) {
@@ -616,7 +616,7 @@ static fa_result read_any(fa_tags* t, fa_source* src, const char* path, uint32_t
 {
     const uint8_t* head;
     size_t n = fa_source_peek(src, &head);
-    if (fa_zip_probe(head, n)) return read_zip(t, src, flags);
+    if (fa_archive_openable(head, n)) return read_zip(t, src, flags);
     read_source(t, src, path, flags, 0);
     if (t->have_info && path) {
         fa_cdg_data* g = fa_cdg_find_sibling(path);

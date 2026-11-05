@@ -154,6 +154,9 @@ set(FA_SOURCES
     src/archive/crc32.c
     src/archive/names.c
     src/archive/archive.c
+    src/archive/codec.c
+    src/archive/solid.c
+    src/archive/tar.c
     src/tempo.c
     src/resample.c
     src/resample_device.c
@@ -216,8 +219,9 @@ endif()
 
 include(third_party/xiph.cmake)
 include(third_party/libopenmpt.cmake)
+include(third_party/archive.cmake)
 add_library(fatzaudio SHARED ${FA_SOURCES})
-target_link_libraries(fatzaudio PRIVATE fa_opus fa_vorbis fa_openmpt)
+target_link_libraries(fatzaudio PRIVATE fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
 set_source_files_properties(src/stretch.cpp PROPERTIES
     INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/signalsmith)
 # One self-contained binary: no compiler runtime DLLs next to fatzaudio.dll (the
@@ -250,7 +254,7 @@ endif()
 # About 460 KB off the Linux library. (The NDK's toolchain already compiles this way,
 # so it changes nothing on Android; Apple's linker splits by symbol already.)
 if(NOT MSVC AND NOT APPLE)
-    foreach(t fatzaudio fa_opus fa_vorbis)
+    foreach(t fatzaudio fa_opus fa_vorbis fa_lzma fa_bzip2)
         target_compile_options(${t} PRIVATE -ffunction-sections -fdata-sections)
     endforeach()
 endif()
@@ -263,7 +267,7 @@ if(FA_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT fa_ipo_ok OUTPUT fa_ipo_why LANGUAGES C CXX)
     if(fa_ipo_ok)
-        foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt)
+        foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
             set_target_properties(${t} PROPERTIES
                 INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
                 INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
@@ -278,7 +282,7 @@ if(FA_LTO)
     endif()
 endif()
 if(MSVC)
-    foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt)
+    foreach(t fatzaudio fa_opus fa_vorbis fa_openmpt fa_lzma fa_bzip2)
         target_compile_options(${t} PRIVATE $<$<CONFIG:Release,MinSizeRel,RelWithDebInfo>:/Gw>)
     endforeach()
 endif()

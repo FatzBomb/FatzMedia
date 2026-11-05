@@ -1339,19 +1339,31 @@ FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* archive, int32_t ind
 ### Archives
 
 ```text
-Reads the list of a ZIP archive (ZIP64, stored, DEFLATE and Deflate64 entries) and
-the entries in it, without an engine and without unpacking what you do not ask for.
+Reads the list of an archive and the entries in it, without an engine and without
+unpacking what you do not ask for. Formats: ZIP (ZIP64; stored, DEFLATE, Deflate64, bzip2,
+LZMA and xz entries), tar (ustar, GNU and pax headers, long names), and gzip, bzip2 and xz
+around a tar (.tar.gz, .tgz, .tar.bz2, .tar.xz) or around one file (song.mp3.gz); see
+fa_archive_get_filter. 7z is next; RAR is not read.
 The same code opens karaoke downloads (song.mp3 + song.cdg) when you play them, so
 the rules for which entry plays are the ones of fa_archive_pick.
 
-Only the end of the file and the directory are read when an archive opens. A stored
-entry is read straight from the archive; a compressed one is unpacked once, into
+A ZIP or a tar opens by reading only its directory (a tar's headers, one seek per entry).
+A stored entry (every tar entry) is read straight from the archive; a compressed one is unpacked once, into
 memory up to the memory limit (default 256 MB) and past it into the temp folder if
 you gave one (fa_archive_options.temp_directory), else FA_ERROR_TOO_LARGE. Every
 entry's CRC-32 is checked when it is unpacked. Encrypted entries are listed with
 FA_ENTRY_ENCRYPTED and give FA_ERROR_PROTECTED_CONTENT when read (no passwords).
-Multi-part archives are refused. A RAR, 7z, tar, gzip, bzip2 or xz file gives
-FA_ERROR_UNSUPPORTED_FORMAT (fa_archive_detect says which one it is).
+Multi-part archives are refused. A RAR or 7z file gives FA_ERROR_UNSUPPORTED_FORMAT
+(fa_archive_detect says which one it is).
+
+A tar inside gzip, bzip2 or xz has no directory: opening it unpacks the whole stream once
+(its entries are slices of that, FA_ENTRY_SOLID, and play in place) when it fits the memory
+limit, else it is read once to list it and again, from the nearest restart point (gzip: every
+4 MB; bzip2 and xz: block starts), for each entry you read. FA_ENTRY_SOLID entries with
+solid_offset > 0 therefore cost that many bytes of decoding: import such an archive in order, or
+use zip. A single file in a .bz2 is unpacked when it opens (its size is not stored); in a .gz or
+.xz it is unpacked when you ask for it, like a ZIP entry. bzip2 and xz files with several
+blocks (pbzip2, xz -T) decode on several cores. Several gzip members or xz streams are not read.
 
 An fa_archive may be used from several threads: a call waits for the one before it.
 It stays valid until fa_archive_close; names and entries it returned stay valid until
@@ -1373,18 +1385,18 @@ first, then ignoring case; the same-name .cdg is attached, else rule 2's pair.
 "Archive order" is the order of the directory.
 ```
 
-Functions: `fa_archive_options_init`, `fa_archive_detect`, `fa_archive_open_path`, `fa_archive_open_memory`, `fa_archive_open_memory_ref`, `fa_archive_open_io`, `fa_archive_close`, `fa_archive_get_format`, `fa_archive_get_entry_count`, `fa_archive_get_entry`, `fa_archive_find`, `fa_archive_pick`, `fa_archive_read`, `fa_archive_open_reader`, `fa_archive_reader_read`, `fa_archive_reader_seek`, `fa_archive_reader_get_size`, `fa_archive_reader_close`, `fa_free`, `fa_stream_open_archive`, `fa_tags_read_archive`, `fa_tags_read_archive_entry`, `fa_tags_read_io`
+Functions: `fa_archive_options_init`, `fa_archive_detect`, `fa_archive_open_path`, `fa_archive_open_memory`, `fa_archive_open_memory_ref`, `fa_archive_open_io`, `fa_archive_close`, `fa_archive_get_format`, `fa_archive_get_filter`, `fa_archive_get_entry_count`, `fa_archive_get_entry`, `fa_archive_find`, `fa_archive_pick`, `fa_archive_read`, `fa_archive_open_reader`, `fa_archive_reader_read`, `fa_archive_reader_seek`, `fa_archive_reader_get_size`, `fa_archive_reader_close`, `fa_free`, `fa_stream_open_archive`, `fa_tags_read_archive`, `fa_tags_read_archive_entry`, `fa_tags_read_io`
 
 ```c
 typedef enum fa_archive_format {
     FA_ARCHIVE_NONE = 0,
     FA_ARCHIVE_ZIP = 1,
-    FA_ARCHIVE_TAR = 2,        /* the next ones are recognized by fa_archive_detect only */
-    FA_ARCHIVE_GZIP = 3,
-    FA_ARCHIVE_BZIP2 = 4,
-    FA_ARCHIVE_XZ = 5,
-    FA_ARCHIVE_7Z = 6,
-    FA_ARCHIVE_RAR = 7
+    FA_ARCHIVE_TAR = 2,        /* also .tar.gz, .tar.bz2, .tar.xz: see fa_archive_get_filter */
+    FA_ARCHIVE_GZIP = 3,       /* one file in a .gz */
+    FA_ARCHIVE_BZIP2 = 4,      /* one file in a .bz2 */
+    FA_ARCHIVE_XZ = 5,         /* one file in a .xz */
+    FA_ARCHIVE_7Z = 6,         /* recognized by fa_archive_detect only */
+    FA_ARCHIVE_RAR = 7         /* recognized by fa_archive_detect only */
 } fa_archive_format;
 
 typedef enum fa_archive_method {
@@ -1460,6 +1472,16 @@ FA_API fa_result FA_CALL fa_archive_open_io(const fa_io_callbacks* io, void* use
 FA_API void FA_CALL fa_archive_close(fa_archive* archive);
 
 FA_API fa_result FA_CALL fa_archive_get_format(const fa_archive* archive, int32_t* out_format);
+/* What the files are wrapped in: FA_ARCHIVE_FILTER_NONE for ZIP and a plain tar, else the
+ * compression of a .tar.gz / .tar.bz2 / .tar.xz (format TAR) or of the single file (format
+ * GZIP, BZIP2, XZ: the same value). */
+typedef enum fa_archive_filter {
+    FA_ARCHIVE_FILTER_NONE = 0,
+    FA_ARCHIVE_FILTER_GZIP = 1,
+    FA_ARCHIVE_FILTER_BZIP2 = 2,
+    FA_ARCHIVE_FILTER_XZ = 3
+} fa_archive_filter;
+FA_API fa_result FA_CALL fa_archive_get_filter(const fa_archive* archive, int32_t* out_filter);
 FA_API uint32_t FA_CALL fa_archive_get_entry_count(const fa_archive* archive);
 FA_API fa_result FA_CALL fa_archive_get_entry(const fa_archive* archive, uint32_t index, fa_archive_entry* out_entry);
 /* The entry with this name: exact match first, then ignoring case and the kind of slash.

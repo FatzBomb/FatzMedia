@@ -12,6 +12,10 @@ The limits that are written down in the guides, in one place. Where the table na
 | Packets queued by an FFmpeg hand-off | 256 MB | `FA_ERROR_BUSY` (the push does not block) | [FFmpeg](features/ffmpeg.md) |
 | Sound (sample) loaded into memory | 1 GB of PCM | `FA_ERROR_TOO_LARGE` | [sounds](features/sounds.md) |
 | A compressed ZIP entry unpacked in memory | 256 MB, or `fa_engine_config.zip_memory_limit_mb` | unpacked to a temp file (`temp_directory`, else the OS temp directory; 4 GB max, else `FA_ERROR_TOO_LARGE`; `FA_ERROR_DISK_FULL` when the disk is short) | [CD+G](features/cdg.md#zip-archives) |
+| A `.tar.gz` / `.tar.bz2` / `.tar.xz` kept decoded in memory | `memory_limit_mb` (default 256) | not kept: each entry is decoded again from the nearest 4 MB checkpoint / block / start, and read through a temp file | [archives](features/archives.md#how-each-kind-is-read) |
+| Decoded size of one compressed stream (gz, bz2, xz, tar.*) | 64 GB | `FA_ERROR_TOO_LARGE` (a decompression bomb) | [archives](features/archives.md#how-each-kind-is-read) |
+| Entries in a tar | 262,144 | the archive is refused (`FA_ERROR_UNSUPPORTED_FORMAT`) | [archives](features/archives.md#how-each-kind-is-read) |
+| LZMA2 dictionary an xz block asks for | 1 GiB | the block is refused (`FA_ERROR_OUT_OF_MEMORY`), before anything is allocated | [archives](features/archives.md#how-each-kind-is-read) |
 | MIDI file size | 16 MB; events later than 6 hours are dropped (refused with `FA_ERROR_INVALID_ARG` in an event list) | See the guide | [MIDI](features/midi.md) |
 | Soundfont size | 1 GB | See the guide | [MIDI](features/midi.md) |
 | MIDI song length | Measured to where the sound dies away, at most 10 s after the last event | A never-ending note is cut | [MIDI](features/midi.md) |
@@ -27,4 +31,4 @@ The limits that are written down in the guides, in one place. Where the table na
 - **Latency.** The device buffer is the main factor; the microphone and DJ-mixer latency measurements and what to expect are in [DJ mixer](features/dj-mixer.md).
 - **Karaoke rendering.** Render-ahead on a CD+G or lyric surface moves frame drawing to worker threads; turn it off if the audio runs short ([CD+G](features/cdg.md)).
 
-Hostile input is handled: the file readers, the ZIP reader and the HLS and tag parsers are fuzz-tested and every size above is checked before memory is allocated.
+Hostile input is handled: the file readers, the ZIP, tar, gzip, bzip2 and xz readers and the HLS and tag parsers are fuzz-tested and every size above is checked before memory is allocated.

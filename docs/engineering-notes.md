@@ -123,3 +123,28 @@ was found (a PR, a review, or a thread).
   do not pair or lose their extension.
 - Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a are not built yet.
 - The ARMv8 CRC-32 path is only compiled in CI, not run.
+
+## Archives (A2) leftovers
+
+- The parallel `.cdg` unpack and the 30-second recently-unpacked cache from A1 are still not built: there is no real
+  workload yet (a karaoke library opened through a player), and a kept-in-memory tar already plays its `.cdg` in place.
+  In stream mode (a compressed tar over `memory_limit_mb`) every entry is decoded again from its nearest restart point;
+  a cache of the last entry's bytes would make a song and its `.cdg` cost one decode instead of two there.
+- A `.gz` restarts only at checkpoints every 4 MB (thinned past 512 of them), so reading the last entry of a huge `.tar.gz`
+  decodes up to 4 MB too much; a `.tar.bz2` or `.tar.xz` with one block decodes from its start every time.
+- Several-stream xz files (`xz` output concatenated) have no block table: they are decoded from the start and in one
+  thread; the stream's size is unknown, so a single-file `.xz` of that kind is not opened without decoding.
+- A hostile `.bz2` can decode to the 64 GB limit before it stops (minutes of CPU): the
+  limit is a bomb guard, not a speed guard. `fa_archive_options.cancel` ends it at once.
+- `third_party/lzma` and `third_party/bzip2` were fetched from the PyPI and crates mirrors (the project hosts
+  refuse the build machine); `sources.txt` and `PATCHES.md` list the exact files and the one change. Compare them with
+  the official 25.01 and 1.0.8 releases when there is a chance.
+- Not run here: the macOS, iOS, Android and Windows builds of the new code (the codec layer uses only the portable
+  thread and CPU-count helpers the other code already does).
+- (Found by /code-review, not fixed.) An empty `.gz`/`.xz` is refused rather than listed as an empty file; each partial read of a
+  multi-block `.tar.xz` from a file source reloads the compressed file (up to 96 MB); a parallel xz decode reserves a slot per
+  in-flight block sized from the index (64 MB at most each) before the block is checked.
+- The three edge cases the review found in PR 209 were fixed there (a bzip2 false block magic now falls back to the plain
+  decoder and skips what was delivered; the xz dictionary cap is in the SDK allocator, so every block is covered; a `.gz` of
+  4 MB or more of compressed data gets one pass to learn its true size). They have no test of their own: the first needs a
+  crafted `.bz2`, the second a 2 GiB dictionary, the third a 4 GB file.

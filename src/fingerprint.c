@@ -285,11 +285,12 @@ static int zip_key_visit(void* ctx, fa_source* entry, const char* name)
 static fa_result fingerprint_source(fa_source* src, fa_fingerprint* out)
 {
     fa_fingerprint fp;
-    uint8_t head[4];
+    uint8_t head[512];
+    size_t head_n = src->length < (int64_t)sizeof(head) ? (size_t)src->length : sizeof(head);
     if (src->length <= 0) return FA_ERROR_UNSUPPORTED_FORMAT;
     memset(&fp, 0, sizeof(fp));
     fp.struct_size = sizeof(fp);
-    if (read_at(src, 0, head, sizeof(head)) && fa_zip_probe(head, sizeof(head))) {
+    if (head_n >= 4 && read_at(src, 0, head, head_n) && fa_archive_openable(head, head_n)) {
         zip_key_ctx c = { 0, 0, 0 };
         fa_archive* a;
         fa_result r = fa_archive_borrow(src, NULL, &a);
@@ -354,7 +355,7 @@ FA_API fa_result FA_CALL fa_fingerprint_archive(fa_archive* a, int32_t index, fa
     idx = (uint32_t)index;
     if (idx >= a->count) return FA_ERROR_NOT_FOUND;
     if (a->pub[idx].size == 0) return FA_ERROR_UNSUPPORTED_FORMAT;
-    if (a->pub[idx].method == FA_METHOD_STORED) {
+    if (fa_archive_is_stored(a, idx)) {
         int64_t offset;
         fa_mutex_lock(&a->lock);
         r = fa_archive_entry_offset(a, idx, &offset);
