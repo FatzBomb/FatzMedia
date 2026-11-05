@@ -121,7 +121,7 @@ was found (a PR, a review, or a thread).
   hundreds of thousands of entries. An index by stem would fix it.
 - `fa_name_same_stem` uses 512-byte buffers and `fa_zip_list` truncates names at 259 bytes, so very long names
   do not pair or lose their extension.
-- Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a are not built yet.
+- (Built in A3.) Parallel `.cdg` unpack and the recently-unpacked cache from plan section 5a.
 - The ARMv8 CRC-32 path is only compiled in CI, not run.
 
 ## Archives (A2) leftovers
@@ -148,3 +148,24 @@ was found (a PR, a review, or a thread).
   decoder and skips what was delivered; the xz dictionary cap is in the SDK allocator, so every block is covered; a `.gz` of
   4 MB or more of compressed data gets one pass to learn its true size). They have no test of their own: the first needs a
   crafted `.bz2`, the second a 2 GiB dictionary, the third a 4 GB file.
+
+## Archives (A3) leftovers
+
+- 7z reads Copy, LZMA and LZMA2 in a one-coder folder only. PPMd, BCJ/ARM/other filters, BCJ2, Deflate and BZip2 coders
+  are listed but unreadable; BCJ (x86) in front of LZMA2 would be the next to add if a real archive needs it.
+- The LZMA decoder is the SDK's C one (about 80 to 120 MB/s of output per core). The SDK's assembler decoder is not
+  built; a folder with several LZMA2 chunks that are independent (dictionary resets) is not decoded on several threads
+  yet, and nothing prefetches the next entry while the player is on the current one (an opt-in `Prefetch` would).
+- `fa_archive` keeps one `cancel` flag: for an archive in the recently-unpacked cache the last opener's flag wins.
+- `src/archive/sevenz.c` is about 1,400 lines (parser, cursor, window decoder, reset scan); splitting the parser from the
+  decoders would match the 500-line habit of the other files.
+- The parallel `.cdg` unpack has no assertion that the second thread started (the existing zip tests only prove the
+  result is right); the two caches hold one archive and one song each, not a list.
+- `tests/make_archive_fixtures.py` needs `py7zr` for three fixtures and its output is not byte-stable (timestamps), so
+  regenerating changes `archive_fixtures.h` even with no change in the script.
+- Left from /code-review: a cached archive keeps its file open for the cache time (30 s), so on Windows the archive cannot be
+  deleted or replaced right after a song from it played (a way to close the handle early, or to reopen per use, would fix it);
+  if the engine's event thread is stalled the entries are not dropped on time; the song and `.cdg` unpacked in parallel can
+  together use up to twice `zip_memory_limit_mb`; when the blob header allocation fails after an unpack the open fails with
+  `FA_ERROR_OUT_OF_MEMORY` instead of falling back to a plain copy; two concurrent opens of one cached archive share one
+  `cancel` flag (the last opener's).

@@ -94,6 +94,8 @@ public sealed partial class AudioEngine : IDisposable
                     config.TempDirectory = (byte*)tempPtr;
                 }
                 config.ZipMemoryLimitMb = (uint)Math.Max(0, options.ZipMemoryLimitMb);
+                if (options.NoArchiveCache) config.Flags |= 16; // FA_ENGINE_NO_ARCHIVE_CACHE
+                config.ArchiveCacheSeconds = (uint)Math.Max(0, options.ArchiveCacheSeconds);
             }
 
             FatzAudioException.ThrowIfFailed(NativeMethods.fa_engine_create(&config, out var native));

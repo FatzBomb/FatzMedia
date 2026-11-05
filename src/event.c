@@ -7,6 +7,7 @@
  * user's callbacks in sequence order, so user code never runs on the audio
  * thread. It also frees closed streams, after their last event. */
 #include "fa_internal.h"
+#include "acache.h"
 #include "cdg.h"
 #include <stdlib.h>
 #include <string.h>
@@ -250,6 +251,7 @@ void fa_event_thread_main(void* arg)
             fa_stream_close(later);
             later = next;
         }
+        fa_acache_expire(e->acache);
         /* After delivering: a reopen can take a while and should not hold events up. */
         if (!quit) busy = fa_devices_service(e);
         while (grave) {

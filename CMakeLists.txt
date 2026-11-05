@@ -51,6 +51,7 @@ option(FA_LTO "Link-time optimization of the library in Release and MinSizeRel b
 
 set(FA_SOURCES
     src/engine.c
+    src/acache.c
     src/device.c
     src/stream.c
     src/source.c
@@ -157,6 +158,7 @@ set(FA_SOURCES
     src/archive/codec.c
     src/archive/solid.c
     src/archive/tar.c
+    src/archive/sevenz.c
     src/tempo.c
     src/resample.c
     src/resample_device.c

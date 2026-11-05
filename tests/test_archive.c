@@ -7,6 +7,7 @@
  * archives. Every archive is built here byte by byte. */
 #include "cdg.h"
 #include "archive/archive.h"
+#include "acache.h"
 #include "archive_fixtures.h"
 #include <math.h>
 #include <stdio.h>
@@ -1012,6 +1013,564 @@ static void test_damaged_streams(void)
     }
 }
 
+/* ---- 7z ---------------------------------------------------------------------------------- */
+
+typedef struct sz_fx {
+    const char* what;
+    const unsigned char* p;
+    size_t n;
+    uint32_t count;     /* entries */
+    int method;         /* of the song and its graphics */
+    int solid;
+    int dated;          /* the writer set the times the generator gives */
+} sz_fx;
+
+static const char* const k_7z_names[4] = { "songs/a/song.wav", "songs/a/song.cdg", "songs/other.wav", "notes.txt" };
+static const uint32_t k_7z_sizes[4] = { FX_7Z_SIZE_0, FX_7Z_SIZE_1, FX_7Z_SIZE_2, FX_7Z_SIZE_3 };
+static const uint32_t k_7z_crcs[4] = { FX_7Z_CRC_0, FX_7Z_CRC_1, FX_7Z_CRC_2, FX_7Z_CRC_3 };
+
+#define SZ_FIXTURES 6
+static const sz_fx k_7z[SZ_FIXTURES] = {
+    { "lzma2, solid, packed header, folder and empty file", fx_7z_solid, sizeof(fx_7z_solid), 5, FA_METHOD_LZMA2, 1, 1 },
+    { "lzma2, solid, plain header", fx_7z_plain_header, sizeof(fx_7z_plain_header), 4, FA_METHOD_LZMA2, 1, 1 },
+    { "copy", fx_7z_copy, sizeof(fx_7z_copy), 4, FA_METHOD_STORED, 0, 1 },
+    { "lzma, one file per folder", fx_7z_split, sizeof(fx_7z_split), 4, FA_METHOD_LZMA, 0, 1 },
+    { "lzma, solid", fx_7z_lzma1, sizeof(fx_7z_lzma1), 4, FA_METHOD_LZMA, 1, 1 },
+    { "lzma2 by py7zr", fx_7z_py, sizeof(fx_7z_py), 4, FA_METHOD_LZMA2, 1, 0 },
+};
+
+/* The first four entries of every small 7z are the same four files. */
+static void check_7z_entries(fa_archive* a, const sz_fx* x)
+{
+    uint32_t k;
+    int64_t offset = 0;
+    CHECK_EQ(fa_archive_get_entry_count(a), x->count);
+    for (k = 0; k < 4; k++) {
+        fa_archive_entry e = { .struct_size = sizeof(e) };
+        fa_archive_reader* r = NULL;
+        void* d = NULL;
+        size_t n = 0;
+        uint8_t* all;
+        int64_t got, total = 0;
+        uint32_t idx = 0;
+        CHECK_EQ(fa_archive_find(a, k_7z_names[k], &idx), FA_OK);
+        CHECK_EQ(idx, k);
+        CHECK_EQ(fa_archive_get_entry(a, k, &e), FA_OK);
+        CHECK_STR(e.name, k_7z_names[k]);
+        CHECK_EQ(e.size, k_7z_sizes[k]);
+        CHECK_EQ(e.method, x->method);
+        CHECK(e.flags & FA_ENTRY_HAS_CRC32);
+        CHECK(e.flags & FA_ENTRY_READABLE);
+        CHECK(!(e.flags & FA_ENTRY_ENCRYPTED));
+        CHECK_EQ(e.crc32, k_7z_crcs[k]);
+        CHECK_EQ((e.flags & FA_ENTRY_SOLID) != 0, x->solid);
+        CHECK_EQ(e.solid_offset, x->solid ? offset : 0);   /* what must be decoded before it */
+        if (x->solid) CHECK_EQ(e.compressed_size, -1);
+        else CHECK(e.compressed_size > 0);
+        if (x->dated) CHECK_EQ(e.modified_ns, (1700000000ll + k) * 1000000000ll);
+        CHECK_EQ(fa_archive_read(a, k, &d, &n), FA_OK);
+        CHECK_EQ(n, k_7z_sizes[k]);
+        CHECK_EQ(fa_crc32((const uint8_t*)d, n), k_7z_crcs[k]);
+        fa_free(d);
+        CHECK_EQ(fa_archive_open_reader(a, k, &r), FA_OK);
+        all = (uint8_t*)malloc(k_7z_sizes[k]);
+        CHECK(all != NULL);
+        while (total < (int64_t)k_7z_sizes[k] && (got = fa_archive_reader_read(r, all + total, 700)) > 0) total += got;
+        CHECK_EQ(total, k_7z_sizes[k]);
+        CHECK_EQ(fa_crc32(all, (size_t)total), k_7z_crcs[k]);
+        free(all);
+        fa_archive_reader_close(r);
+        offset += k_7z_sizes[k];
+    }
+    if (x->count == 5) {   /* the folder "songs" is not an entry; the empty file is */
+        fa_archive_entry e = { .struct_size = sizeof(e) };
+        uint32_t idx = 99;
+        void* d = NULL;
+        size_t n = 99;
+        CHECK_EQ(fa_archive_find(a, "songs", &idx), FA_ERROR_NOT_FOUND);
+        CHECK_EQ(fa_archive_get_entry(a, 4, &e), FA_OK);
+        CHECK_STR(e.name, "songs/empty.txt");
+        CHECK_EQ(e.size, 0);
+        CHECK_EQ(fa_archive_read(a, 4, &d, &n), FA_OK);
+        CHECK_EQ(n, 0);
+        fa_free(d);
+    }
+}
+
+static void test_7z_lists_and_reads(void)
+{
+    uint32_t i;
+    for (i = 0; i < SZ_FIXTURES; i++) {
+        const sz_fx* x = &k_7z[i];
+        int pass;
+        buf file;
+        int32_t f = -1, fl = -1;
+        printf("  %s\n", x->what);
+        CHECK_EQ(fa_archive_detect(x->p, x->n), FA_ARCHIVE_7Z);
+        file.p = (uint8_t*)x->p; file.n = x->n; file.cap = x->n;
+        write_file("archive_7z.bin", &file);
+        for (pass = 0; pass < 3; pass++) {
+            fa_archive_options o;
+            fa_archive* a = NULL;
+            fa_archive_options_init(&o);
+            if (pass == 2) o.memory_limit_mb = 1;
+            if (pass & 1) CHECK_EQ(fa_archive_open_path("archive_7z.bin", &o, &a), FA_OK);
+            else CHECK_EQ(fa_archive_open_memory(x->p, x->n, &o, &a), FA_OK);
+            CHECK_EQ(fa_archive_get_format(a, &f), FA_OK);
+            CHECK_EQ(fa_archive_get_filter(a, &fl), FA_OK);
+            CHECK_EQ(f, FA_ARCHIVE_7Z);
+            CHECK_EQ(fl, FA_ARCHIVE_FILTER_NONE);
+            check_7z_entries(a, x);
+            fa_archive_close(a);
+        }
+        remove("archive_7z.bin");
+    }
+}
+
+/* The song is picked, plays, is tagged and fingerprinted like the loose file. */
+static void test_7z_song(void)
+{
+    fa_fingerprint loose = { .struct_size = sizeof(loose) };
+    uint32_t i;
+    CHECK_EQ(fa_fingerprint_memory(fx_small_tar + 512, FX_SMALL_SIZE_0, &loose), FA_OK);
+    for (i = 0; i < SZ_FIXTURES; i++) {
+        const sz_fx* x = &k_7z[i];
+        fa_archive* a = NULL;
+        fa_stream* s = NULL;
+        fa_open_options oo;
+        fa_tags* t = NULL;
+        fa_stream_info info = { .struct_size = sizeof(info) };
+        fa_fingerprint fp = { .struct_size = sizeof(fp) };
+        uint32_t audio = 99;
+        int32_t cdg = 99;
+        buf file;
+        printf("  %s\n", x->what);
+        file.p = (uint8_t*)x->p; file.n = x->n; file.cap = x->n;
+        write_file("archive_7z.bin", &file);
+        CHECK_EQ(fa_archive_open_memory(x->p, x->n, NULL, &a), FA_OK);
+        CHECK_EQ(fa_archive_pick(a, &audio, &cdg), FA_OK);
+        CHECK_EQ(audio, 0);
+        CHECK_EQ(cdg, 1);
+        fa_archive_close(a);
+        fa_open_options_init(&oo);
+        oo.flags = FA_OPEN_DECODE_ONLY;
+        CHECK_EQ(fa_stream_open_memory(g_engine, x->p, x->n, &oo, &s), FA_OK);
+        CHECK_EQ(decode_all(s), 2000);
+        fa_stream_close(s);
+        s = NULL;
+        oo.archive_entry = "songs/other.wav";   /* a named entry */
+        CHECK_EQ(fa_stream_open_memory(g_engine, x->p, x->n, &oo, &s), FA_OK);
+        CHECK_EQ(decode_all(s), 500);
+        fa_stream_close(s);
+        CHECK_EQ(fa_fingerprint_archive_entry("archive_7z.bin", NULL, &fp), FA_OK);
+        CHECK(fp.key == loose.key && fp.audio_bytes == loose.audio_bytes);
+        CHECK_EQ(fa_tags_read_archive_entry("archive_7z.bin", NULL, 0, &t), FA_OK);
+        CHECK_EQ(fa_tags_get_info(t, &info), FA_OK);
+        CHECK_EQ(info.has_cdg, 1);
+        fa_tags_close(t);
+        remove("archive_7z.bin");
+    }
+}
+
+/* PPMd, filters (BCJ) and AES are listed with their real method but not decoded; encrypted ones say so. */
+static void test_7z_unreadable(void)
+{
+    static const struct { const char* what; const unsigned char* p; size_t n; int method; int encrypted; } fx[3] = {
+        { "ppmd", fx_7z_py_ppmd, sizeof(fx_7z_py_ppmd), FA_METHOD_PPMD, 0 },
+        { "bcj + lzma2", fx_7z_py_bcj, sizeof(fx_7z_py_bcj), FA_METHOD_OTHER, 0 },
+        { "aes", fx_7z_aes, sizeof(fx_7z_aes), FA_METHOD_OTHER, 1 },
+    };
+    uint32_t i;
+    for (i = 0; i < 3; i++) {
+        fa_archive* a = NULL;
+        fa_archive_entry e = { .struct_size = sizeof(e) };
+        fa_stream* s = NULL;
+        void* d = NULL;
+        size_t n = 0;
+        uint32_t audio = 0;
+        int32_t cdg = 0;
+        fa_result r;
+        printf("  %s\n", fx[i].what);
+        CHECK_EQ(fa_archive_open_memory(fx[i].p, fx[i].n, NULL, &a), FA_OK);
+        CHECK_EQ(fa_archive_get_entry_count(a), 4);
+        CHECK_EQ(fa_archive_get_entry(a, 0, &e), FA_OK);
+        CHECK_STR(e.name, "songs/a/song.wav");
+        CHECK_EQ(e.size, FX_7Z_SIZE_0);
+        CHECK_EQ(e.method, fx[i].method);
+        CHECK(!(e.flags & FA_ENTRY_READABLE));
+        CHECK_EQ((e.flags & FA_ENTRY_ENCRYPTED) != 0, fx[i].encrypted);
+        r = fa_archive_read(a, 0, &d, &n);
+        CHECK_EQ(r, fx[i].encrypted ? FA_ERROR_PROTECTED_CONTENT : FA_ERROR_UNSUPPORTED_FORMAT);
+        CHECK(d == NULL);
+        (void)audio; (void)cdg;
+        fa_archive_close(a);
+        r = fa_stream_open_memory(g_engine, fx[i].p, fx[i].n, NULL, &s);
+        CHECK_EQ(r, fx[i].encrypted ? FA_ERROR_PROTECTED_CONTENT : FA_ERROR_UNSUPPORTED_FORMAT);
+        CHECK(s == NULL);
+    }
+}
+
+/* LZMA2 keeps random data as uncompressed chunks; they are read, and in any order. */
+static void test_7z_uncompressed_chunks(void)
+{
+    static const uint32_t sizes[3] = { FX_7Z_NOISE_SIZE_0, FX_7Z_NOISE_SIZE_1, FX_7Z_NOISE_SIZE_2 };
+    static const uint32_t crcs[3] = { FX_7Z_NOISE_CRC_0, FX_7Z_NOISE_CRC_1, FX_7Z_NOISE_CRC_2 };
+    static const uint32_t order[6][3] = { { 0, 1, 2 }, { 2, 1, 0 }, { 1, 0, 2 }, { 2, 0, 1 }, { 1, 2, 0 }, { 0, 2, 1 } };
+    uint32_t o, k;
+    int small_limit;
+    for (small_limit = 0; small_limit < 2; small_limit++) {
+        for (o = 0; o < 6; o++) {
+            fa_archive_options opt;
+            fa_archive* a = NULL;
+            fa_archive_options_init(&opt);
+            opt.memory_limit_mb = small_limit ? 1 : 0;
+            CHECK_EQ(fa_archive_open_memory(fx_7z_noise, sizeof(fx_7z_noise), &opt, &a), FA_OK);
+            CHECK_EQ(fa_archive_get_entry_count(a), 3);
+            for (k = 0; k < 3; k++) {
+                uint32_t idx = order[o][k];
+                void* d = NULL;
+                size_t n = 0;
+                CHECK_EQ(fa_archive_read(a, idx, &d, &n), FA_OK);
+                CHECK_EQ(n, sizes[idx]);
+                CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[idx]);
+                fa_free(d);
+            }
+            fa_archive_close(a);
+        }
+    }
+}
+
+/* Reads one entry of a big archive through a reader and returns the CRC-32 of what came (0 on an error). */
+static int64_t read_crc(fa_archive* a, uint32_t idx, uint32_t* crc, int64_t* total_out)
+{
+    fa_archive_reader* r = NULL;
+    uint8_t* chunk = (uint8_t*)malloc(1 << 16);
+    int64_t got = 0, total = 0;
+    uint32_t c = 0;
+    fa_result open;
+    if (!chunk) return FA_ERROR_OUT_OF_MEMORY;
+    open = fa_archive_open_reader(a, idx, &r);
+    if (open != FA_OK) { free(chunk); return open; }
+    while ((got = fa_archive_reader_read(r, chunk, 1 << 16)) > 0) {
+        c = fa_crc32_update(c, chunk, (size_t)got);
+        total += got;
+    }
+    fa_archive_reader_close(r);
+    free(chunk);
+    *crc = c;
+    *total_out = total;
+    return got < 0 ? got : 0;
+}
+
+#define MB ((uint64_t)1 << 20)
+
+/* A 72 MB folder of three files with a dictionary reset every 20 MB (as 7-Zip's threaded encoder makes): reads jump
+ * to the reset before the entry, and the decoder stays where the last read ended. `decoded` is what the decoders
+ * produced, so these numbers are the cost. */
+static void test_7z_big_solid(void)
+{
+    static const uint32_t crcs[3] = { FX_7Z_BIG_CRC_0, FX_7Z_BIG_CRC_1, FX_7Z_BIG_CRC_2 };
+    fa_archive_options o;
+    fa_archive* a = NULL;
+    fa_archive_entry e = { .struct_size = sizeof(e) };
+    uint32_t crc = 0;
+    int64_t total = 0;
+    void* d = NULL;
+    size_t n = 0;
+    uint8_t head[65536];
+    volatile int32_t cancel = 0;
+
+    /* In memory: the folder fits the limit, so it decodes into one buffer. */
+    printf("  buffered\n");
+    fa_archive_options_init(&o);
+    o.cancel = &cancel;
+    CHECK_EQ(fa_archive_open_memory(fx_7z_big, sizeof(fx_7z_big), &o, &a), FA_OK);
+    CHECK_EQ(fa_archive_get_entry_count(a), 3);
+    CHECK_EQ(fa_archive_get_entry(a, 0, &e), FA_OK);
+    CHECK_EQ(e.solid_offset, 0);
+    CHECK_EQ(fa_archive_get_entry(a, 1, &e), FA_OK);
+    CHECK_EQ(e.solid_offset, 4 * MB);    /* 24 MB in, the reset at 20 MB */
+    CHECK_EQ(fa_archive_get_entry(a, 2, &e), FA_OK);
+    CHECK_EQ(e.solid_offset, 8 * MB);    /* 48 MB in, the reset at 40 MB */
+    CHECK_EQ(fa_7z_decoded(a->sz), 0);
+    CHECK_EQ(fa_archive_read(a, 2, &d, &n), FA_OK);
+    CHECK_EQ(n, FX_7Z_BIG_SIZE_2);
+    CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[2]);
+    fa_free(d);
+    CHECK_EQ(fa_7z_decoded(a->sz), 32 * MB);   /* from the reset at 40 MB, not from the start */
+    CHECK_EQ(fa_archive_read(a, 0, &d, &n), FA_OK);
+    CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[0]);
+    fa_free(d);
+    CHECK_EQ(fa_7z_decoded(a->sz), 56 * MB);   /* behind the buffer: started again */
+    CHECK_EQ(fa_archive_read(a, 1, &d, &n), FA_OK);
+    CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[1]);
+    fa_free(d);
+    CHECK_EQ(fa_7z_decoded(a->sz), 80 * MB);   /* the next entry in order: only its own 24 MB */
+    CHECK_EQ(fa_archive_read(a, 0, &d, &n), FA_OK);
+    CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[0]);
+    fa_free(d);
+    CHECK_EQ(fa_7z_decoded(a->sz), 80 * MB);   /* still in the buffer: nothing decoded */
+    CHECK_EQ(fa_archive_read(a, 2, &d, &n), FA_OK);
+    CHECK_EQ(fa_crc32((const uint8_t*)d, n), crcs[2]);
+    fa_free(d);
+    CHECK_EQ(fa_7z_decoded(a->sz), 104 * MB);
+    cancel = 1;
+    CHECK_EQ(fa_archive_read(a, 1, &d, &n), FA_OK);   /* cached: no decoding, so no stop */
+    fa_free(d);
+    fa_archive_close(a);
+    cancel = 0;
+
+    /* Past the limit: decoded through a window of the dictionary's size, written to a temp file. */
+    printf("  window\n");
+    fa_archive_options_init(&o);
+    o.memory_limit_mb = 4;
+    o.temp_directory = "archive-test-tmp";
+    o.cancel = &cancel;
+    CHECK_EQ(fa_archive_open_memory(fx_7z_big, sizeof(fx_7z_big), &o, &a), FA_OK);
+    CHECK_EQ(fa_archive_get_entry(a, 2, &e), FA_OK);
+    CHECK_EQ(e.solid_offset, 8 * MB);
+    CHECK_EQ(read_crc(a, 2, &crc, &total), 0);
+    CHECK_EQ(total, FX_7Z_BIG_SIZE_2);
+    CHECK_EQ(crc, crcs[2]);
+    CHECK_EQ(fa_7z_decoded(a->sz), 32 * MB);
+    CHECK_EQ(read_crc(a, 0, &crc, &total), 0);
+    CHECK_EQ(crc, crcs[0]);
+    CHECK_EQ(fa_7z_decoded(a->sz), 56 * MB);
+    CHECK_EQ(read_crc(a, 1, &crc, &total), 0);
+    CHECK_EQ(crc, crcs[1]);
+    CHECK_EQ(fa_7z_decoded(a->sz), 80 * MB);   /* in order: one pass */
+    CHECK_EQ(read_crc(a, 2, &crc, &total), 0);
+    CHECK_EQ(crc, crcs[2]);
+    CHECK_EQ(fa_7z_decoded(a->sz), 104 * MB);
+    cancel = 1;
+    CHECK_EQ(read_crc(a, 0, &crc, &total), FA_ERROR_CANCELLED);
+    cancel = 0;
+    fa_archive_close(a);
+
+    /* The start of an entry read to tell what it is, then the entry: the first 64 KB are not decoded twice. */
+    CHECK_EQ(fa_archive_open_memory(fx_7z_big, sizeof(fx_7z_big), &o, &a), FA_OK);
+    CHECK_EQ(fa_archive_prefix(a, 2, head, sizeof(head), &n), FA_OK);
+    CHECK_EQ(n, sizeof(head));
+    CHECK_EQ(fa_7z_decoded(a->sz), 8 * MB + sizeof(head));
+    CHECK_EQ(read_crc(a, 2, &crc, &total), 0);
+    CHECK_EQ(crc, crcs[2]);
+    CHECK_EQ(fa_7z_decoded(a->sz), 32 * MB);
+    fa_archive_close(a);
+
+    /* A dictionary bigger than the limit is refused before it is allocated. */
+    fa_archive_options_init(&o);
+    o.memory_limit_mb = 1;
+    o.temp_directory = "archive-test-tmp";
+    CHECK_EQ(fa_archive_open_memory(fx_7z_big, sizeof(fx_7z_big), &o, &a), FA_OK);
+    CHECK_EQ(read_crc(a, 1, &crc, &total), FA_ERROR_TOO_LARGE);
+    fa_archive_close(a);
+}
+
+/* Any damage ends in an error somewhere: at open (the start header and header have checksums) or when the entry is read
+ * (its checksum), never in wrong bytes passed as right. */
+static void test_7z_damaged(void)
+{
+    static const struct { const unsigned char* p; size_t n; } fx[3] = {
+        { fx_7z_solid, sizeof(fx_7z_solid) }, { fx_7z_plain_header, sizeof(fx_7z_plain_header) }, { fx_7z_copy, sizeof(fx_7z_copy) },
+    };
+    uint32_t i;
+    for (i = 0; i < 3; i++) {
+        size_t at;
+        int accepted = 0;
+        for (at = 0; at < fx[i].n + 16; at++) {
+            uint8_t* copy;
+            fa_archive* a = NULL;
+            size_t len = fx[i].n;
+            if (at == 7) continue;   /* the minor version: not checked by anything, and compatible by design */
+            copy = (uint8_t*)malloc(fx[i].n);
+            int bad = 0;
+            CHECK(copy != NULL);
+            memcpy(copy, fx[i].p, fx[i].n);
+            if (at < fx[i].n) copy[at] ^= 0x10;
+            else len = fx[i].n - (at - fx[i].n) - 1;   /* then the end cut off */
+            if (fa_archive_open_memory(copy, len, NULL, &a) != FA_OK) bad = 1;
+            else {
+                uint32_t k;
+                for (k = 0; k < fa_archive_get_entry_count(a); k++) {
+                    void* d = NULL;
+                    size_t n = 0;
+                    if (fa_archive_read(a, k, &d, &n) != FA_OK) bad = 1;
+                    else {
+                        fa_archive_entry e = { .struct_size = sizeof(e) };
+                        CHECK_EQ(fa_archive_get_entry(a, k, &e), FA_OK);
+                        if (n && fa_crc32((const uint8_t*)d, n) != e.crc32) { fa_free(d); fa_archive_close(a); free(copy); CHECK(0); }
+                        fa_free(d);
+                    }
+                }
+                fa_archive_close(a);
+            }
+            /* A few flips change nothing that is decoded (the unused tail of a range coder, a LZMA2 chunk's size field
+             * when the output ends first): those read the right bytes, which is all that matters. */
+            if (!bad) accepted++;
+            free(copy);
+        }
+        CHECK(accepted <= 16);
+    }
+}
+
+/* ---- The recently-unpacked cache --------------------------------------------------------------- */
+
+static char* cache_key_of(const char* path)
+{
+    fa_source src;
+    char* key;
+    if (fa_source_open_path(&src, path) != FA_OK) return NULL;
+    key = fa_acache_key(&src, path);
+    fa_source_close(&src);
+    return key;
+}
+
+static fa_engine* engine_with(uint32_t flags, uint32_t cache_seconds)
+{
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | flags;
+    cfg.worker_threads = 1;
+    cfg.archive_cache_seconds = cache_seconds;
+    return fa_engine_create(&cfg, &e) == FA_OK ? e : NULL;
+}
+
+/* A compressed song that opened and played is kept for the next open, which then plays from the same bytes. */
+static void test_cache_entry(void)
+{
+    buf song = make_wav(8000, 8000), song2 = make_wav(8000, 5000), cdg = make_cdg(), z;
+    zent e[2];
+    fa_stream* s = NULL;
+    fa_open_options o;
+    fa_blob* b;
+    char* key;
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    memset(e, 0, sizeof(e));
+    e[0].name = "Song.wav"; e[0].data = &song; e[0].method = 8;
+    e[1].name = "song.cdg"; e[1].data = &cdg; e[1].method = 8;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    key = cache_key_of("archive_cache.zip");
+    CHECK(key != NULL);
+    CHECK(fa_acache_get_entry(g_engine->acache, key, "Song.wav") == NULL);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    b = fa_acache_get_entry(g_engine->acache, key, "Song.wav");
+    CHECK(b != NULL);
+    CHECK_EQ(b->size, song.n);
+    CHECK(memcmp(b->data, song.p, song.n) == 0);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);   /* its graphics come from the archive again */
+    CHECK(((struct fa_stream*)s)->source.mem == b->data);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    fa_blob_release(b);
+    free(z.p);
+    /* The file replaced by another of the same name: the old bytes are not played. */
+    e[0].data = &song2;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 5000);
+    fa_stream_close(s);
+    free(key);
+    remove("archive_cache.zip");
+    free(z.p); free(song.p); free(song2.p); free(cdg.p);
+}
+
+/* A solid 7z stays open between opens with its decoder where it stopped: the next entry costs only itself. */
+static void test_cache_solid_archive(void)
+{
+    buf file;
+    fa_stream* s = NULL;
+    fa_open_options o;
+    fa_archive* a;
+    uint64_t before;
+    char* key;
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    file.p = (uint8_t*)fx_7z_solid; file.n = sizeof(fx_7z_solid); file.cap = file.n;
+    write_file("archive_cache.7z", &file);
+    key = cache_key_of("archive_cache.7z");
+    CHECK(key != NULL);
+    CHECK(fa_acache_get_archive(g_engine->acache, key) == NULL);
+    o.archive_entry = "songs/other.wav";
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 500);
+    fa_stream_close(s);
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz), FX_7Z_SIZE_0 + FX_7Z_SIZE_1 + FX_7Z_SIZE_2);   /* up to the end of that song, no further */
+    before = fa_7z_decoded(a->sz);
+    fa_archive_release(a);
+    o.archive_entry = "notes.txt";   /* the next one in the block: only its own bytes */
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);   /* not audio, but read */
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz) - before, FX_7Z_SIZE_3);
+    before = fa_7z_decoded(a->sz);
+    fa_archive_release(a);
+    o.archive_entry = "songs/a/song.wav";   /* an earlier one: still in the decoder's buffer */
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 2000);
+    fa_stream_close(s);
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz), before);
+    fa_archive_release(a);
+    free(key);
+    remove("archive_cache.7z");
+}
+
+/* What is kept goes after the time to live; with the cache off nothing is kept. */
+static void test_cache_expiry_and_off(void)
+{
+    buf song = make_wav(8000, 8000), cdg = make_cdg(), z, file;
+    zent e[2];
+    fa_engine* quick = engine_with(0, 1);
+    fa_engine* off = engine_with(FA_ENGINE_NO_ARCHIVE_CACHE, 0);
+    fa_stream* s = NULL;
+    fa_open_options o;
+    char* key;
+    int i;
+    CHECK(quick != NULL && off != NULL);
+    CHECK(quick->acache != NULL);
+    CHECK(off->acache == NULL);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    memset(e, 0, sizeof(e));
+    e[0].name = "song.wav"; e[0].data = &song; e[0].method = 8;
+    e[1].name = "song.cdg"; e[1].data = &cdg; e[1].method = 8;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    file.p = (uint8_t*)fx_7z_solid; file.n = sizeof(fx_7z_solid); file.cap = file.n;
+    write_file("archive_cache.7z", &file);
+    key = cache_key_of("archive_cache.zip");
+    CHECK(key != NULL);
+    CHECK_EQ(fa_stream_open_path(quick, "archive_cache.zip", &o, &s), FA_OK);
+    fa_stream_close(s);
+    {
+        fa_blob* b = fa_acache_get_entry(quick->acache, key, "song.wav");
+        CHECK(b != NULL);
+        fa_blob_release(b);
+    }
+    CHECK_EQ(fa_stream_open_path(quick, "archive_cache.7z", &o, &s), FA_OK);
+    fa_stream_close(s);
+    for (i = 0; i < 60 && !fa_acache_is_empty(quick->acache); i++) fa_sleep_ms(100);   /* the engine looks about once a second */
+    CHECK(fa_acache_is_empty(quick->acache));   /* the 7z went too */
+    CHECK_EQ(fa_stream_open_path(off, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    fa_engine_destroy(quick);
+    fa_engine_destroy(off);
+    free(key);
+    remove("archive_cache.zip");
+    remove("archive_cache.7z");
+    free(z.p); free(song.p); free(cdg.p);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1032,6 +1591,15 @@ int main(void)
     RUN(test_single_file_compressed);
     RUN(test_stream_mode);
     RUN(test_damaged_streams);
+    RUN(test_7z_lists_and_reads);
+    RUN(test_7z_song);
+    RUN(test_7z_unreadable);
+    RUN(test_7z_uncompressed_chunks);
+    RUN(test_7z_big_solid);
+    RUN(test_7z_damaged);
+    RUN(test_cache_entry);
+    RUN(test_cache_solid_archive);
+    RUN(test_cache_expiry_and_off);
     fa_engine_destroy(g_engine);
     remove("archive-test-tmp/fatzaudio-tmp");
     remove("archive-test-tmp");
