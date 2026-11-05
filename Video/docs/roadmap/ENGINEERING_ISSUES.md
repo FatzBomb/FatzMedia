@@ -55,6 +55,14 @@ These came out of the 2026-10-18 code audit (ENG-020). Each was verified by read
 but deferred: the fix is larger than the audit's bounded commits, needs a design decision, or
 needs Windows to verify.
 
+### ENG-053 - WinForms: other players stutter when one goes full screen
+
+Reported: 2026-11-05, owner smoke rerun (`smoke-backlog.ps1` test 10, WinForms test player, 2-4 players,
+RTX 5090): when one player switches to full screen, the others stutter briefly. Not seen in WPF or
+Avalonia. Likely the layout change (the others hidden, the panel resized, the form made borderless)
+resizing every surface's swap chain on the UI thread in one pass. Minor (test host); check whether hiding
+the other panels before the resize, or suspending layout around the switch, removes it.
+
 ### ENG-052 - Embedded subtitle scan reads a large MKV twice
 
 Reported: 2026-11-05, owner smoke (`smoke-audit.ps1` test 10): a 3,090 MB MKV with text subtitles
