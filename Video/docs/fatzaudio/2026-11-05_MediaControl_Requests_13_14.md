@@ -16,7 +16,7 @@ Packet and push streams are never scanned today, so they get only the running es
 2. **Source identity on packet and push streams:** the same identity on the playing stream, so the
    scan, the cache and the start wait (request 12) attach to it as for a file you opened yourself.
 
-## Request 14: MPEG audio layers, old video containers by path, DTS core
+## Request 14: MPEG audio layers, old video containers by path, DTS core, WMA Standard
 
 Many existing karaoke and trivia files are AVI/DivX, MPG/MPEG and TS; trivia clips are often cut from
 movie files. These items let FatzAudio play, scan and cache such files by itself, and keep request 13 for
@@ -30,7 +30,12 @@ the rare codecs only.
    and MPEG-TS (`.ts`, `.m2ts`, `.mts`; TS is already read for HLS). FLV optional.
 4. **DTS core decoding** (in MKV, MP4, AVI, TS and `.dts`): patents long expired; DTS-HD lossless
    extensions can stay out (the core inside them plays).
+5. **WMA Standard (v1/v2) decoding on every platform**, in `.wma` files and WMV/ASF soundtracks. Today WMA
+   decodes only through Windows' Media Foundation, which Windows "N" editions lack unless the Media
+   Feature Pack is installed, and which Linux and macOS do not have. WMA Standard is what nearly all WMA
+   files use; its patents date from about 1999 (please confirm they have expired). WMA Pro, Lossless and
+   Voice can stay on the system decoder (and FFmpeg push in MediaControl).
 
-Not requested (MediaControl covers them through FFmpeg push): TrueHD, WMA off Windows, WavPack, Monkey's
+Not requested (MediaControl covers them through FFmpeg push): TrueHD, WMA Pro/Lossless/Voice off Windows, WavPack, Monkey's
 Audio, Musepack, TTA, DSD, Speex, `.au`, µ-law/A-law in CAF, rare AAC profiles, xHE-AAC without an OS
 decoder. Please give effort and binary size for each item before building.
