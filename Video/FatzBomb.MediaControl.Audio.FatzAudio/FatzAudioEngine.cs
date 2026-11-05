@@ -67,7 +67,7 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         _silenceTrim = configuration.SilenceTrim;
         _normalization = configuration.Normalization;
         _diagnosticOwner = DiagnosticRouter.Owner;
-        var cacheDirectory = FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory);
+        var cacheDirectory = EnsureCacheDirectory(FatzAudioMappings.ResolveCacheDirectory(_normalization.CacheDirectory));
         _engine = Fa.AudioEngine.Create(new Fa.AudioEngineOptions { NullOutput = nullOutput, CacheDirectory = cacheDirectory });
         try
         {
@@ -693,6 +693,28 @@ internal sealed class FatzAudioEngine : IAudioEngine, IAudioLoopControl, IAudioA
         finally
         {
             stream.LoudnessFinal -= OnFinal;
+        }
+    }
+
+    /// <summary>
+    /// Creates the cache folder and its parents: FatzAudio creates only the last level, so the default
+    /// <c>%LOCALAPPDATA%\FatzBomb.MediaControl\AudioCache</c> was never written on a machine without the
+    /// parent folder (owner smoke 2026-11-05). Null (no cache) when it cannot be created.
+    /// </summary>
+    private static string? EnsureCacheDirectory(string? directory)
+    {
+        if (directory is null)
+            return null;
+
+        try
+        {
+            _ = Directory.CreateDirectory(directory);
+            return directory;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            DiagnosticRouter.Raise(MediaDiagnosticLevel.Warning, Category, $"Loudness cache folder '{directory}' could not be created ({ex.Message}); every song is measured on each run.", innerException: ex);
+            return null;
         }
     }
 

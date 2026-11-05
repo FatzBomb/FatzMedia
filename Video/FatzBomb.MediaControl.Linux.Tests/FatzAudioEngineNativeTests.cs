@@ -211,7 +211,8 @@ public sealed class FatzAudioEngineNativeTests : IDisposable
 
         // A 1 kHz sine at 0.1 in both channels measures about -20 LUFS: +6 dB (x2) to reach -14.
         var wav = FatzAudioTestMedia.WriteWav(_root, "quiet.wav", new FatzAudioTestMedia.Section(5, Hz: 1000, Amplitude: 0.1));
-        var cache = Path.Combine(_root, "cache");
+        // Two levels that do not exist yet, as the default per-user folder on a fresh machine.
+        var cache = Path.Combine(_root, "FatzBomb.MediaControl", "AudioCache");
         var configuration = new MediaPlayerConfiguration { Normalization = new NormalizationOptions { CacheDirectory = cache } };
         using (FatzAudioEngine engine = CreateEngine(configuration))
         {
