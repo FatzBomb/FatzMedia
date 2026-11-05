@@ -115,11 +115,24 @@ Reported: 2026-11-05, owner smoke (an MKV with embedded subtitles, WPF): choosin
 reverting to the default embedded track (ENG-039 P5-1 expected the choice to stick, also when made
 before the scan finishes).
 
+Engine checked (2026-11-05): with a real MKV of two embedded tracks, a chosen track and Off stay chosen
+after the scan, over time and across a seek, and Off chosen right after an open survives the scan
+(`LinuxSubtitleSelectionNativeTests`). So the engine keeps the choice; open questions for the owner: the
+exact steps (WPF picker, or a reopen: a reopen starts again from the file's default track by design).
+
 ### ENG-044 - F11 full screen picks player 1 and sometimes does nothing
 
 Reported: 2026-11-05, owner smoke (ENG-039 batch 4a, WPF and Avalonia): F11 always makes player 1 full
 screen instead of the focused player, and sometimes does nothing; double-click works as expected.
 WinForms passed.
+
+Cause and fix (2026-11-05, pending the owner's check): the picture's viewport cannot take keyboard focus,
+and the native video window passes clicks through, so a click on a picture never moved focus and F11 fell
+back to player 1; and the WPF window handled F11 in `KeyDown`, after child controls, so a control that
+handled the key swallowed it. Now a click on the picture focuses that player (WPF `PlayerView`, Avalonia
+`PlayerPanel`), and the WPF window handles F11 in `PreviewKeyDown` (Avalonia already handled it on the
+tunnel). Check: two players, click player 2's picture, F11: player 2 goes full screen; F11 again restores;
+repeat with focus in a drop-down or the seek bar.
 
 ### ENG-043 - Audio formats that fail on both engines, and a BASS crash on a WMA
 
