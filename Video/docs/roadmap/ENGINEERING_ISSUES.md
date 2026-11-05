@@ -106,6 +106,9 @@ raised it with the slot as sender). Fixed: the controller no longer checks the s
 it as the real slots do. Also seen: after the reset, Vulkan stays unusable for the rest of the process
 (`vkCreateInstance ... ErrorIncompatibleDriver` even after picking Vulkan again by hand); a new process
 works. Direct3D11, picked by hand, showed the picture at once.
+Rechecked with the fix (2026-11-05, fresh process, `dxcap -forcetdr`): pass. The window switched to
+Direct3D11 by itself and recreated the player (surface #2 on the RTX 5090, shared GPU image); the file
+played again on Direct3D11. Still open: the 14 s stall before the first recovery attempt.
 
 ### ENG-049 - Vulkan CD+G nearest sampling differs from Software at odd scales on NVIDIA
 

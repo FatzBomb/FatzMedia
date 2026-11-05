@@ -101,3 +101,10 @@ Tests 1 and 2 wait for FatzAudio's next release.
   and its second Escape closes it, by design (the script now says so). WinForms has no flyouts, so that step
   is WPF and Avalonia only. Opening a file on another player takes under a second (the open and probe of a
   large MKV). In WinForms the other players stutter briefly when one goes full screen: ENG-053 (minor).
+
+## GPU reset 3d (Avalonia, Vulkan), rechecked by hand (2026-11-05)
+
+First try: the error was raised but the window did not switch (the controller dropped the forwarded event;
+fixed in `4883556`). With the fix, in a fresh process: **pass**, the window switched to Direct3D11 by itself
+and the player came back empty, as a renderer change does. After a reset, Vulkan stays unusable for the
+rest of that process; a new process gets it back. 3a-3c were not rerun (unchanged, passed earlier).
