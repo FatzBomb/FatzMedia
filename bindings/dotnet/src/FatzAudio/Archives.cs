@@ -18,7 +18,7 @@ public enum ArchiveFormat
     BZip2 = 4,
     /// <summary>One file in an xz file.</summary>
     Xz = 5,
-    /// <summary>A 7-Zip archive (recognized only).</summary>
+    /// <summary>A 7-Zip archive (Copy, LZMA and LZMA2 folders are read).</summary>
     SevenZip = 6,
     /// <summary>A RAR archive (recognized only: extract it yourself, then open the song from memory).</summary>
     Rar = 7,
@@ -180,7 +180,7 @@ public sealed unsafe class Archive : IDisposable
     /// <param name="options">Memory limit, temp folder and cancellation; null = defaults.</param>
     /// <returns>The archive; dispose it when done.</returns>
     /// <exception cref="FatzAudioException">The file is missing (<see cref="ErrorCode.NotFound"/>) or not a ZIP this build reads
-    /// (<see cref="ErrorCode.UnsupportedFormat"/>; <see cref="Detect"/> tells a RAR or 7z from a damaged ZIP).</exception>
+    /// (<see cref="ErrorCode.UnsupportedFormat"/>; <see cref="Detect"/> tells a RAR from a damaged ZIP).</exception>
     public static Archive Open(string path, ArchiveOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(path);

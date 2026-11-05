@@ -128,7 +128,10 @@ typedef enum fa_engine_flags {
     FA_ENGINE_NO_TEMP_FILES = 1 << 2,
     /* No cache: with cache_directory NULL, FatzAudio does not use the OS's per-user cache folder either;
      * loudness is measured again every time and track analysis is not kept. */
-    FA_ENGINE_NO_CACHE = 1 << 3
+    FA_ENGINE_NO_CACHE = 1 << 3,
+    /* No recently-unpacked cache: every open of an archive song lists the archive and unpacks the song again
+     * (see fa_engine_config.archive_cache_seconds). */
+    FA_ENGINE_NO_ARCHIVE_CACHE = 1 << 4
 } fa_engine_flags;
 
 typedef struct fa_engine_config {
@@ -158,6 +161,11 @@ typedef struct fa_engine_config {
     const char* temp_directory;   /* NULL = the OS temp directory (TMPDIR, Windows temp
                                      path); FA_ENGINE_NO_TEMP_FILES = no temp files */
     uint32_t zip_memory_limit_mb;
+    /* Archives (ZIP, tar, 7z...): after a compressed song from an archive file closes, the engine keeps its unpacked
+     * bytes, and a solid archive (7z, .tar.gz...) with its decoder where it stopped, for this many seconds (0 = 30), so
+     * opening the song again or the next one in the same archive costs a copy instead of an unpack. Each is at most half
+     * of zip_memory_limit_mb, so both together stay within it. FA_ENGINE_NO_ARCHIVE_CACHE turns it off. */
+    uint32_t archive_cache_seconds;
 } fa_engine_config;
 
 FA_API void FA_CALL fa_engine_config_init(fa_engine_config* config);
@@ -189,12 +197,16 @@ typedef struct fa_engine_stats {
 
 FA_API fa_result FA_CALL fa_engine_get_stats(fa_engine* engine, fa_engine_stats* out_stats);
 
-/* Where the cache is and whether it works. Set struct_size (sizeof(fa_cache_info)) first. */
+/* Where the cache is and whether it works (see fa_engine_config.cache_directory). The cache is
+ * only an optimisation, so a folder that cannot be made or written never fails the engine or a
+ * scan: check this once after fa_engine_create, and again if loudness keeps being measured anew.
+ * Set struct_size (sizeof(fa_cache_info)) first. */
 typedef struct fa_cache_info {
     uint32_t struct_size;
     const char* directory;   /* the folder in use (valid until fa_engine_destroy); NULL = no cache */
     fa_result status;        /* FA_OK = works so far; FA_ERROR_IO = the folder could not be made, or the
-                                last write of the cache file failed; FA_ERROR_NOT_FOUND = no cache */
+                                last write of the cache file failed (read-only, full, no permission);
+                                FA_ERROR_NOT_FOUND = no cache (FA_ENGINE_NO_CACHE, or no OS cache folder) */
     uint32_t is_default;     /* 1 = FatzAudio chose the folder (cache_directory was NULL) */
 } fa_cache_info;
 
@@ -1343,7 +1355,8 @@ Reads the list of an archive and the entries in it, without an engine and withou
 unpacking what you do not ask for. Formats: ZIP (ZIP64; stored, DEFLATE, Deflate64, bzip2,
 LZMA and xz entries), tar (ustar, GNU and pax headers, long names), and gzip, bzip2 and xz
 around a tar (.tar.gz, .tgz, .tar.bz2, .tar.xz) or around one file (song.mp3.gz); see
-fa_archive_get_filter. 7z is next; RAR is not read.
+fa_archive_get_filter, and 7z (plain or LZMA-packed header; Copy, LZMA and LZMA2 folders, other
+methods are listed as not readable, AES as encrypted); RAR is not read.
 The same code opens karaoke downloads (song.mp3 + song.cdg) when you play them, so
 the rules for which entry plays are the ones of fa_archive_pick.
 
@@ -1353,8 +1366,10 @@ memory up to the memory limit (default 256 MB) and past it into the temp folder 
 you gave one (fa_archive_options.temp_directory), else FA_ERROR_TOO_LARGE. Every
 entry's CRC-32 is checked when it is unpacked. Encrypted entries are listed with
 FA_ENTRY_ENCRYPTED and give FA_ERROR_PROTECTED_CONTENT when read (no passwords).
-Multi-part archives are refused. A RAR or 7z file gives FA_ERROR_UNSUPPORTED_FORMAT
-(fa_archive_detect says which one it is).
+Multi-part archives are refused. A RAR file gives FA_ERROR_UNSUPPORTED_FORMAT
+(fa_archive_detect says which it is). A 7z folder with several files keeps its decoder where the last read
+ended, so entries read in archive order decode it once; solid_offset is the bytes to decode before an entry
+(less what an LZMA2 dictionary reset before it saves).
 
 A tar inside gzip, bzip2 or xz has no directory: opening it unpacks the whole stream once
 (its entries are slices of that, FA_ENTRY_SOLID, and play in place) when it fits the memory
@@ -1395,7 +1410,7 @@ typedef enum fa_archive_format {
     FA_ARCHIVE_GZIP = 3,       /* one file in a .gz */
     FA_ARCHIVE_BZIP2 = 4,      /* one file in a .bz2 */
     FA_ARCHIVE_XZ = 5,         /* one file in a .xz */
-    FA_ARCHIVE_7Z = 6,         /* recognized by fa_archive_detect only */
+    FA_ARCHIVE_7Z = 6,         /* Copy, LZMA and LZMA2 folders are read */
     FA_ARCHIVE_RAR = 7         /* recognized by fa_archive_detect only */
 } fa_archive_format;
 

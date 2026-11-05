@@ -77,6 +77,7 @@ typedef struct cursor {
     uint64_t in_pos;           /* packed bytes used so far, from the start of the folder's packed stream */
     uint8_t* bounce;           /* window mode */
     uint64_t* stat;            /* counts the bytes decoded (tests, tuning); may be NULL */
+    uint64_t dict_bytes;       /* window mode: the dictionary allocated */
 } cursor;
 
 struct fa_7z {
@@ -498,6 +499,7 @@ static fa_result cur_setup(cursor* c, const folder* f, uint32_t index, int windo
             uint64_t need = f->unpack < 4096 ? 4096 : f->unpack;
             if (lzma2_dict(p) > need) p = lzma2_prop_for(need);
             if (lzma2_dict(p) > memory_limit || lzma2_dict(p) > FA_CODEC_MAX_DICT) return FA_ERROR_TOO_LARGE;
+            c->dict_bytes = lzma2_dict(p);
         }
         Lzma2Dec_CONSTRUCT(&c->d2);
         r = window ? Lzma2Dec_Allocate(&c->d2, p, &g_alloc) : Lzma2Dec_AllocateProbs(&c->d2, p, &g_alloc);
@@ -512,6 +514,7 @@ static fa_result cur_setup(cursor* c, const folder* f, uint32_t index, int windo
                 props[1] = (uint8_t)dict; props[2] = (uint8_t)(dict >> 8); props[3] = (uint8_t)(dict >> 16); props[4] = (uint8_t)(dict >> 24);
             }
             if (dict > memory_limit || dict > FA_CODEC_MAX_DICT) return FA_ERROR_TOO_LARGE;
+            c->dict_bytes = dict;
         }
         LzmaDec_CONSTRUCT(&c->d1);
         r = window ? LzmaDec_Allocate(&c->d1, props, 5, &g_alloc) : LzmaDec_AllocateProbs(&c->d1, props, 5, &g_alloc);
@@ -1370,3 +1373,11 @@ fa_result fa_7z_unpack(fa_7z* z, fa_source* src, const fa_zip_entry* e, uint64_t
 }
 
 uint64_t fa_7z_decoded(const fa_7z* z) { return z->decoded; }
+
+uint64_t fa_7z_held_bytes(const fa_7z* z)
+{
+    const cursor* c = &z->cur;
+    uint64_t n = z->memo.data ? MEMO_BYTES : 0;
+    if (!c->live) return n;
+    return n + (c->window ? c->dict_bytes + STEP : (uint64_t)c->cap) + IN_CHUNK;
+}

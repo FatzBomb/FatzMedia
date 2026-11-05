@@ -7,6 +7,7 @@
  * archives. Every archive is built here byte by byte. */
 #include "cdg.h"
 #include "archive/archive.h"
+#include "acache.h"
 #include "archive_fixtures.h"
 #include <math.h>
 #include <stdio.h>
@@ -1412,6 +1413,164 @@ static void test_7z_damaged(void)
     }
 }
 
+/* ---- The recently-unpacked cache --------------------------------------------------------------- */
+
+static char* cache_key_of(const char* path)
+{
+    fa_source src;
+    char* key;
+    if (fa_source_open_path(&src, path) != FA_OK) return NULL;
+    key = fa_acache_key(&src, path);
+    fa_source_close(&src);
+    return key;
+}
+
+static fa_engine* engine_with(uint32_t flags, uint32_t cache_seconds)
+{
+    fa_engine_config cfg;
+    fa_engine* e = NULL;
+    fa_engine_config_init(&cfg);
+    cfg.flags = FA_ENGINE_NULL_OUTPUT | flags;
+    cfg.worker_threads = 1;
+    cfg.archive_cache_seconds = cache_seconds;
+    return fa_engine_create(&cfg, &e) == FA_OK ? e : NULL;
+}
+
+/* A compressed song that opened and played is kept for the next open, which then plays from the same bytes. */
+static void test_cache_entry(void)
+{
+    buf song = make_wav(8000, 8000), song2 = make_wav(8000, 5000), cdg = make_cdg(), z;
+    zent e[2];
+    fa_stream* s = NULL;
+    fa_open_options o;
+    fa_blob* b;
+    char* key;
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    memset(e, 0, sizeof(e));
+    e[0].name = "Song.wav"; e[0].data = &song; e[0].method = 8;
+    e[1].name = "song.cdg"; e[1].data = &cdg; e[1].method = 8;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    key = cache_key_of("archive_cache.zip");
+    CHECK(key != NULL);
+    CHECK(fa_acache_get_entry(g_engine->acache, key, "Song.wav") == NULL);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    b = fa_acache_get_entry(g_engine->acache, key, "Song.wav");
+    CHECK(b != NULL);
+    CHECK_EQ(b->size, song.n);
+    CHECK(memcmp(b->data, song.p, song.n) == 0);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);   /* its graphics come from the archive again */
+    CHECK(((struct fa_stream*)s)->source.mem == b->data);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    fa_blob_release(b);
+    free(z.p);
+    /* The file replaced by another of the same name: the old bytes are not played. */
+    e[0].data = &song2;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 5000);
+    fa_stream_close(s);
+    free(key);
+    remove("archive_cache.zip");
+    free(z.p); free(song.p); free(song2.p); free(cdg.p);
+}
+
+/* A solid 7z stays open between opens with its decoder where it stopped: the next entry costs only itself. */
+static void test_cache_solid_archive(void)
+{
+    buf file;
+    fa_stream* s = NULL;
+    fa_open_options o;
+    fa_archive* a;
+    uint64_t before;
+    char* key;
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    file.p = (uint8_t*)fx_7z_solid; file.n = sizeof(fx_7z_solid); file.cap = file.n;
+    write_file("archive_cache.7z", &file);
+    key = cache_key_of("archive_cache.7z");
+    CHECK(key != NULL);
+    CHECK(fa_acache_get_archive(g_engine->acache, key) == NULL);
+    o.archive_entry = "songs/other.wav";
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 500);
+    fa_stream_close(s);
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz), FX_7Z_SIZE_0 + FX_7Z_SIZE_1 + FX_7Z_SIZE_2);   /* up to the end of that song, no further */
+    before = fa_7z_decoded(a->sz);
+    fa_archive_release(a);
+    o.archive_entry = "notes.txt";   /* the next one in the block: only its own bytes */
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);   /* not audio, but read */
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz) - before, FX_7Z_SIZE_3);
+    before = fa_7z_decoded(a->sz);
+    fa_archive_release(a);
+    o.archive_entry = "songs/a/song.wav";   /* an earlier one: still in the decoder's buffer */
+    CHECK_EQ(fa_stream_open_path(g_engine, "archive_cache.7z", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 2000);
+    fa_stream_close(s);
+    a = fa_acache_get_archive(g_engine->acache, key);
+    CHECK(a != NULL);
+    CHECK_EQ(fa_7z_decoded(a->sz), before);
+    fa_archive_release(a);
+    free(key);
+    remove("archive_cache.7z");
+}
+
+/* What is kept goes after the time to live; with the cache off nothing is kept. */
+static void test_cache_expiry_and_off(void)
+{
+    buf song = make_wav(8000, 8000), cdg = make_cdg(), z, file;
+    zent e[2];
+    fa_engine* quick = engine_with(0, 1);
+    fa_engine* off = engine_with(FA_ENGINE_NO_ARCHIVE_CACHE, 0);
+    fa_stream* s = NULL;
+    fa_open_options o;
+    char* key;
+    int i;
+    CHECK(quick != NULL && off != NULL);
+    CHECK(quick->acache != NULL);
+    CHECK(off->acache == NULL);
+    fa_open_options_init(&o);
+    o.flags = FA_OPEN_DECODE_ONLY;
+    memset(e, 0, sizeof(e));
+    e[0].name = "song.wav"; e[0].data = &song; e[0].method = 8;
+    e[1].name = "song.cdg"; e[1].data = &cdg; e[1].method = 8;
+    z = make_zip(e, 2);
+    write_file("archive_cache.zip", &z);
+    file.p = (uint8_t*)fx_7z_solid; file.n = sizeof(fx_7z_solid); file.cap = file.n;
+    write_file("archive_cache.7z", &file);
+    key = cache_key_of("archive_cache.zip");
+    CHECK(key != NULL);
+    CHECK_EQ(fa_stream_open_path(quick, "archive_cache.zip", &o, &s), FA_OK);
+    fa_stream_close(s);
+    {
+        fa_blob* b = fa_acache_get_entry(quick->acache, key, "song.wav");
+        CHECK(b != NULL);
+        fa_blob_release(b);
+    }
+    CHECK_EQ(fa_stream_open_path(quick, "archive_cache.7z", &o, &s), FA_OK);
+    fa_stream_close(s);
+    for (i = 0; i < 60 && !fa_acache_is_empty(quick->acache); i++) fa_sleep_ms(100);   /* the engine looks about once a second */
+    CHECK(fa_acache_is_empty(quick->acache));   /* the 7z went too */
+    CHECK_EQ(fa_stream_open_path(off, "archive_cache.zip", &o, &s), FA_OK);
+    CHECK_EQ(decode_all(s), 8000);
+    fa_stream_close(s);
+    fa_engine_destroy(quick);
+    fa_engine_destroy(off);
+    free(key);
+    remove("archive_cache.zip");
+    remove("archive_cache.7z");
+    free(z.p); free(song.p); free(cdg.p);
+}
+
 int main(void)
 {
     fa_engine_config cfg;
@@ -1438,6 +1597,9 @@ int main(void)
     RUN(test_7z_uncompressed_chunks);
     RUN(test_7z_big_solid);
     RUN(test_7z_damaged);
+    RUN(test_cache_entry);
+    RUN(test_cache_solid_archive);
+    RUN(test_cache_expiry_and_off);
     fa_engine_destroy(g_engine);
     remove("archive-test-tmp/fatzaudio-tmp");
     remove("archive-test-tmp");

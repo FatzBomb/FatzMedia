@@ -62,6 +62,8 @@ fa_result fa_7z_unpack(fa_7z* z, fa_source* src, const fa_zip_entry* e, uint64_t
 fa_result fa_7z_unpack_alone(const fa_7z* z, fa_source* src, const fa_zip_entry* e, uint64_t limit, const volatile int32_t* cancel,
                              uint8_t** out);
 
+/* What the kept cursor holds in memory (its buffer or dictionary), for the engine's cache. */
+uint64_t fa_7z_held_bytes(const fa_7z* z);
 /* Bytes the decoders have produced for this archive so far (tests and tuning). */
 uint64_t fa_7z_decoded(const fa_7z* z);
 

@@ -70,6 +70,17 @@ int fa_archive_openable(const uint8_t* data, size_t size);
 /* 1 when entry `i` is stored plain in the archive's source (it plays in place). */
 int fa_archive_is_stored(const fa_archive* a, uint32_t i);
 
+/* What the archive holds in memory beyond its entries' own data (a decoded copy, a solid cursor); takes the lock. */
+uint64_t fa_archive_held_bytes(fa_archive* a);
+/* 1 when entry `i` is compressed on its own: another thread can unpack it with fa_archive_unpack_on and a source from
+ * fa_archive_clone_source while the archive is used for something else. */
+int fa_archive_independent(const fa_archive* a, uint32_t i);
+/* A source of its own on the archive's bytes (its path reopened, or the same memory), for a second thread; 0 when
+ * there is none (callbacks, a window, a temp file). The caller closes it. */
+int fa_archive_clone_source(const fa_archive* a, fa_source* out);
+fa_result fa_archive_unpack_on(const fa_archive* a, fa_source* src, uint32_t i, uint64_t limit, const volatile int32_t* cancel,
+                               uint8_t** out);
+
 /* Borrows `*src` (the caller keeps it, open and seekable, until fa_archive_release), lists it. */
 fa_result fa_archive_borrow(fa_source* src, const fa_archive_options* options, fa_archive** out);
 /* Takes over the source `*src` (zeroed on success; left alone on failure). */

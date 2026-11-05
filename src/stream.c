@@ -12,6 +12,7 @@
 #include "net.h"
 #include "cdg.h"
 #include "archive/archive.h"
+#include "acache.h"
 #include "disc.h"
 #include "encode.h"
 #include "ac3.h"
@@ -389,13 +390,28 @@ static fa_result unpack_to_temp(struct fa_stream* s, fa_archive* a, uint32_t i, 
 /* How an entry became the stream's source. */
 enum { ENTRY_COPY = 0, ENTRY_TOOK_ARCHIVE = 1, ENTRY_WINDOW = 2 };
 
+/* The recently-unpacked cache (acache.h) for one open: the archive's key, and the unpacked bytes of the entry that
+ * became the stream's source when they are worth keeping. `blob` is owned by the source (it is only valid while that
+ * source is open); the cache takes its own reference once the song has opened. */
+typedef struct entry_ref {
+    char* key;
+    fa_blob* blob;
+} entry_ref;
+
+static void blob_source(fa_source* src, fa_blob* b)
+{
+    fa_source_open_memory_ref(src, b->data, b->size ? b->size : 1);
+    src->release = (void (*)(void*))fa_blob_release;
+    src->release_ctx = b;
+}
+
 /* Makes s->source entry `i` of the archive `a`. A stored entry is a window: on the
  * archive's own source, which moves into s->source when `take` is set (*how =
  * ENTRY_TOOK_ARCHIVE), else on a source of its own (the path reopened, or the archive's
  * memory, which the archive then outlives: ENTRY_WINDOW). Any other entry is unpacked
  * into memory, or into a temp file past the memory limit (or when memory runs out). */
 static fa_result open_archive_entry(struct fa_stream* s, fa_archive* a, uint32_t i, int take,
-                                    const volatile int32_t* cancel, uint32_t* unpacks, int* how)
+                                    const volatile int32_t* cancel, uint32_t* unpacks, int* how, entry_ref* ref)
 {
     int64_t offset;
     uint8_t* data;
@@ -429,6 +445,14 @@ static fa_result open_archive_entry(struct fa_stream* s, fa_archive* a, uint32_t
         }
         /* App callbacks cannot be read from two places: a copy plays instead. */
     }
+    if (ref && s->engine->acache && !a->detached) {
+        /* Opened and played a moment ago: its bytes are still here. */
+        ref->key = fa_acache_key(a->srcp, a->path);
+        if (ref->key) {
+            fa_blob* hit = fa_acache_get_entry(s->engine->acache, ref->key, e->name);
+            if (hit) { blob_source(&s->source, hit); return FA_OK; }
+        }
+    }
     /* Not audio (a bundled video, a PDF) is told from the first 64 KB, not a full unpack. */
     if (e->size > FA_ZIP_PROBE_BYTES && !fa_archive_is_stored(a, i)) {
         uint8_t* head;
@@ -448,6 +472,13 @@ static fa_result open_archive_entry(struct fa_stream* s, fa_archive* a, uint32_t
     r = fa_archive_unpack(a, i, zip_memory_limit(s->engine), cancel, &data);
     if (r == FA_OK) {
         fa_mutex_unlock(&a->lock);
+        if (ref && ref->key && fa_acache_entry_fits(s->engine->acache, (size_t)e->size)) {
+            fa_blob* b = fa_blob_new(data, (size_t)e->size);   /* frees `data` when it fails */
+            if (!b) return FA_ERROR_OUT_OF_MEMORY;
+            blob_source(&s->source, b);
+            ref->blob = b;
+            return FA_OK;
+        }
         fa_source_open_memory_ref(&s->source, data, (size_t)e->size ? (size_t)e->size : 1);
         s->source.owned = data;
         return FA_OK;
@@ -474,6 +505,45 @@ static fa_result close_archive_entry(struct fa_stream* s, fa_archive* a, int how
     return r;
 }
 
+/* Graphics unpacked on a second thread (see open_archive_stream): the archive's bytes through a source of their own. */
+typedef struct cdg_job {
+    fa_archive* a;
+    uint32_t index;
+    uint64_t limit;
+    const volatile int32_t* cancel;
+    fa_source src;
+    fa_thread thread;
+    uint8_t* bytes;
+    fa_result result;
+} cdg_job;
+
+static void cdg_job_main(void* arg)
+{
+    cdg_job* j = (cdg_job*)arg;
+    j->result = fa_archive_unpack_on(j->a, &j->src, j->index, j->limit, j->cancel, &j->bytes);
+}
+
+/* 1 when entry `index` is unpacking on its own thread: it is compressed on its own and the archive's bytes can be
+ * read from a second place. Join with cdg_job_finish. */
+static int cdg_job_start(cdg_job* j, fa_archive* a, uint32_t index, uint64_t limit, const volatile int32_t* cancel)
+{
+    if (!fa_archive_independent(a, index) || !fa_archive_clone_source(a, &j->src)) return 0;
+    j->a = a;
+    j->index = index;
+    j->limit = limit;
+    j->cancel = cancel;
+    if (fa_thread_create(&j->thread, cdg_job_main, j) != 0) { fa_source_close(&j->src); return 0; }
+    return 1;
+}
+
+static fa_result cdg_job_finish(cdg_job* j, uint8_t** bytes)
+{
+    fa_thread_join(&j->thread);
+    fa_source_close(&j->src);
+    *bytes = j->bytes;
+    return j->result;
+}
+
 /* An archive's song becomes the stream: entry `entry_name` (NULL: the pairing rules,
  * see the header), its graphics the stream's .cdg. Only the directory and the entries
  * used are read. With `take` the archive's source (a->srcp) is the stream's own to use
@@ -484,11 +554,13 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
 {
     fa_archive_choice ch[FA_ARCHIVE_MAX_CHOICES];
     fa_cdg_data* graphics = NULL;
+    entry_ref ref;
     int32_t graphics_index = -1;
     uint32_t n, k, chosen = 0, unpacks = 0;
     int how = ENTRY_COPY, graphics_only = -1;
     const volatile int32_t* cancel = open_cancel(options);
     fa_result r, why = FA_OK, skipped = FA_ERROR_UNSUPPORTED_FORMAT;
+    memset(&ref, 0, sizeof(ref));
     *in_place = 0;
     s->zip_size = a->length;
     n = fa_archive_choices(a, entry_name, ch, FA_ARCHIVE_MAX_CHOICES, &why);
@@ -501,25 +573,45 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
         fa_result opened;
         const fa_archive_choice* c = &ch[k];
         if (c->graphics_only) { graphics_only = (int)k; continue; }
+        cdg_job job;
+        int par = 0;
+        memset(&job, 0, sizeof(job));
         if (c->cdg >= 0 && !(s->flags & FA_OPEN_NO_CDG) && graphics_index != c->cdg) {
             uint8_t* bytes;
             fa_result gr;
-            /* Read first: a stored audio entry takes the archive's source with it.
-             * Damaged graphics leave a playable song: the stream simply has none. */
+            /* Damaged graphics leave a playable song: the stream simply has none. */
             fa_cdg_data_free(graphics);
             graphics = NULL;
             graphics_index = c->cdg;
-            fa_mutex_lock(&a->lock);
-            gr = fa_archive_unpack(a, (uint32_t)c->cdg, zip_memory_limit(s->engine), cancel, &bytes);
-            fa_mutex_unlock(&a->lock);
-            if (gr == FA_ERROR_CANCELLED) { r = gr; break; }
-            if (gr == FA_OK && fa_cdg_data_adopt(bytes, (size_t)a->pub[c->cdg].size, &graphics) != FA_OK) graphics = NULL;
+            /* Compressed on its own, the graphics unpack on a second thread while the song does. Otherwise they are
+             * read first: a stored audio entry takes the archive's source with it. */
+            par = !fa_archive_is_stored(a, c->audio) &&
+                  cdg_job_start(&job, a, (uint32_t)c->cdg, zip_memory_limit(s->engine), cancel);
+            if (!par) {
+                fa_mutex_lock(&a->lock);
+                gr = fa_archive_unpack(a, (uint32_t)c->cdg, zip_memory_limit(s->engine), cancel, &bytes);
+                fa_mutex_unlock(&a->lock);
+                if (gr == FA_ERROR_CANCELLED) { r = gr; break; }
+                if (gr == FA_OK && fa_cdg_data_adopt(bytes, (size_t)a->pub[c->cdg].size, &graphics) != FA_OK) graphics = NULL;
+            }
         } else if (c->cdg < 0 && graphics) {
             fa_cdg_data_free(graphics);   /* this song has none */
             graphics = NULL;
             graphics_index = -1;
         }
-        opened = open_archive_entry(s, a, c->audio, take, cancel, &unpacks, &how);
+        free(ref.key);
+        memset(&ref, 0, sizeof(ref));
+        opened = open_archive_entry(s, a, c->audio, take, cancel, &unpacks, &how, &ref);
+        if (par) {
+            uint8_t* bytes;
+            fa_result gr = cdg_job_finish(&job, &bytes);
+            if (gr == FA_ERROR_CANCELLED) {
+                if (opened == FA_OK) fa_source_close(&s->source);   /* the song is an unpacked copy: nothing of the archive's */
+                r = gr;
+                break;
+            }
+            if (gr == FA_OK && fa_cdg_data_adopt(bytes, (size_t)a->pub[c->cdg].size, &graphics) != FA_OK) graphics = NULL;
+        }
         if (opened == FA_ERROR_CANCELLED) { r = opened; break; }
         if (opened != FA_OK) {
             /* Too big to unpack, out of memory or a temp file that failed is worth
@@ -534,8 +626,10 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
         if (r == FA_OK) {
             chosen = c->audio;
             snprintf(s->path_name, sizeof(s->path_name), "%s", a->pub[c->audio].name);
+            if (ref.blob) fa_acache_put_entry(s->engine->acache, ref.key, a->pub[c->audio].name, ref.blob);
             break;
         }
+        ref.blob = NULL;   /* closed with the source below */
         if (close_archive_entry(s, a, how) != FA_OK) { r = FA_ERROR_IO; how = ENTRY_COPY; break; }
         how = ENTRY_COPY;
         /* Audio that cannot play here (a codec provider missing, protected content):
@@ -569,7 +663,7 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
             opened = FA_OK;
         }
         if (graphics && fa_archive_is_stored(a, ci)) {
-            opened = open_archive_entry(s, a, ci, take, cancel, &unpacks, &how);
+            opened = open_archive_entry(s, a, ci, take, cancel, &unpacks, &how, NULL);
         } else if (graphics) {
             uint8_t* copy = (uint8_t*)malloc((size_t)e->size);
             if (!copy) opened = FA_ERROR_OUT_OF_MEMORY;
@@ -592,6 +686,7 @@ static fa_result open_archive_stream(struct fa_stream* s, const fa_open_options*
         }
     }
 finish:
+    free(ref.key);
     if (r == FA_ERROR_UNSUPPORTED_FORMAT) r = skipped;
     if (r != FA_OK) {
         fa_cdg_data_free(graphics);
@@ -621,7 +716,52 @@ finish:
 
 /* A ZIP archive in s->source (karaoke downloads: song.mp3 + song.cdg). The song becomes the
  * stream's source, the .cdg its graphics. On failure s->source is the archive again. */
-static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, int* in_place)
+/* 1 when the file in `src` is an archive whose reader is worth keeping between opens: one solid block (7z) or one
+ * compressed stream (.tar.gz, .tar.bz2, .tar.xz and single .gz/.bz2/.xz) that costs a pass to reach an entry. */
+static int source_is_solid_archive(fa_source* src)
+{
+    const uint8_t* p;
+    size_t n = fa_source_peek(src, &p);
+    int32_t f = fa_archive_detect(p, n);
+    return f == FA_ARCHIVE_7Z || f == FA_ARCHIVE_GZIP || f == FA_ARCHIVE_BZIP2 || f == FA_ARCHIVE_XZ;
+}
+
+/* The archive file in s->source, through the engine's recently-unpacked cache (acache.h): the archive object comes from
+ * the cache, or is opened with a source of its own, and goes back into it afterwards with its decoder where the read
+ * stopped. Its entries play through windows on the file, copies, or the decoded bytes it holds. */
+static fa_result open_cached_zip(struct fa_stream* s, const fa_open_options* options, const char* path, const char* key,
+                                 const fa_archive_options* ao, int* in_place)
+{
+    fa_engine* engine = s->engine;
+    fa_archive* a = fa_acache_get_archive(engine->acache, key);
+    fa_source arc;
+    fa_result r;
+    if (a) {
+        fa_mutex_lock(&a->lock);
+        a->cancel = ao->cancel;   /* the flag of this open: the last one to use the archive wins */
+        fa_mutex_unlock(&a->lock);
+    } else {
+        fa_source own;
+        r = fa_source_open_path(&own, path);
+        if (r != FA_OK) return r;
+        r = fa_archive_adopt(&own, path, ao, &a);
+        if (r != FA_OK) { fa_source_close(&own); return r; }
+    }
+    arc = s->source;                          /* the plain file the caller opened is not needed any more */
+    memset(&s->source, 0, sizeof(s->source));
+    r = open_archive_stream(s, options, a, options ? options->archive_entry : NULL, 0, in_place);
+    if (r == FA_OK) fa_source_close(&arc);
+    else s->source = arc;
+    if (a->detached) *in_place = 0;           /* the decoded copy has no place in the file to reopen by */
+    fa_mutex_lock(&a->lock);
+    a->cancel = NULL;                         /* the app's flag need not outlive this call */
+    fa_mutex_unlock(&a->lock);
+    fa_acache_put_archive(engine->acache, key, a);
+    fa_archive_release(a);
+    return r;
+}
+
+static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, const char* path, int* in_place)
 {
     fa_source arc;
     fa_archive* a;
@@ -629,8 +769,17 @@ static fa_result open_zip(struct fa_stream* s, const fa_open_options* options, i
     fa_result r;
     *in_place = 0;
     archive_options_of(s->engine, options, &ao);
+    if (path && s->engine->acache && source_is_solid_archive(&s->source)) {
+        char* key = fa_acache_key(&s->source, path);
+        if (key) {
+            r = open_cached_zip(s, options, path, key, &ao, in_place);
+            free(key);
+            return r;
+        }
+    }
     r = fa_archive_borrow(&s->source, &ao, &a);
     if (r != FA_OK) return r;
+    if (path && !a->detached) a->path = fa_strdup(path);   /* lets the graphics unpack from a source of their own */
     arc = s->source;                          /* the stream's source moves to `arc`, which `a` reads */
     memset(&s->source, 0, sizeof(s->source));
     if (a->detached) {
@@ -741,7 +890,7 @@ FA_API fa_result FA_CALL fa_stream_open_path(fa_engine* engine, const char* path
     r = fa_source_open_path(&s->source, path);
     if (r == FA_OK && source_is_zip(&s->source)) {
         zip = 1;
-        r = open_zip(s, options, &in_place);
+        r = open_zip(s, options, path, &in_place);
     } else if (r == FA_OK) {
         const uint8_t* head;
         size_t n = fa_source_peek(&s->source, &head);
@@ -786,7 +935,7 @@ FA_API fa_result FA_CALL fa_stream_open_memory(fa_engine* engine, const void* da
         int in_place;
         /* A stored entry plays from the copy of the archive, a compressed one
          * from its own unpacked copy (the archive's is then freed). */
-        r = open_zip(s, options, &in_place);
+        r = open_zip(s, options, NULL, &in_place);
     } else if (r == FA_OK) {
         r = stream_open_decoder(s, NULL, options);
         if (r == FA_OK) r = attach_own_graphics(s);
@@ -808,7 +957,7 @@ FA_API fa_result FA_CALL fa_stream_open_io(fa_engine* engine, const fa_io_callba
     fa_source_open_io(&s->source, io, user);
     if (source_is_zip(&s->source)) {
         int in_place;
-        r = open_zip(s, options, &in_place);
+        r = open_zip(s, options, NULL, &in_place);
     } else {
         r = stream_open_decoder(s, NULL, options);
         if (r == FA_OK) r = attach_own_graphics(s);

@@ -551,6 +551,14 @@ public sealed record AudioEngineOptions
     /// <summary>Compressed ZIP entries up to this many MB are unpacked into memory; 0 uses 256.</summary>
     public int ZipMemoryLimitMb { get; init; }
     /// <summary>
+    /// How long the engine keeps the last archive it opened (with a solid 7z or tar.gz decoder where it stopped) and the
+    /// last compressed song it unpacked, so opening the next entry or replaying costs next to nothing; 0 uses 30 seconds.
+    /// Each is held up to half of <see cref="ZipMemoryLimitMb"/>.
+    /// </summary>
+    public int ArchiveCacheSeconds { get; init; }
+    /// <summary>Keep nothing between opens: every open of an archive song unpacks it again.</summary>
+    public bool NoArchiveCache { get; init; }
+    /// <summary>
     /// Output devices play into a silent output that still runs in real time. Use it for automated
     /// tests, build servers without audio hardware, and headless services.
     /// </summary>

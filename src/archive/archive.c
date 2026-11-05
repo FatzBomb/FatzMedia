@@ -623,6 +623,49 @@ fa_result fa_archive_unpack(fa_archive* a, uint32_t i, uint64_t limit, const vol
     return fa_zip_extract(a->srcp, &a->z[i], limit, cancel, out);
 }
 
+uint64_t fa_archive_held_bytes(fa_archive* a)
+{
+    uint64_t n = 0;
+    fa_mutex_lock(&a->lock);
+    if (a->sz) n += fa_7z_held_bytes(a->sz);
+    if (a->detached && a->own.mem) n += a->own.mem_size;
+    fa_mutex_unlock(&a->lock);
+    return n;
+}
+
+int fa_archive_independent(const fa_archive* a, uint32_t i)
+{
+    const fa_zip_entry* z;
+    if (i >= a->count) return 0;
+    z = &a->z[i];
+    if (z->flags & 1) return 0;
+    if (a->sz) return fa_7z_independent(a->sz, z);
+    if (a->format != FA_ARCHIVE_ZIP || a->detached) return 0;
+    return z->method == 8 || z->method == 9 || z->method == 12 || z->method == 14 || z->method == 95;
+}
+
+int fa_archive_clone_source(const fa_archive* a, fa_source* out)
+{
+    const fa_source* s = a->srcp;
+    if (s->windowed || s->io.read) return 0;
+    if (s->kind == FA_SOURCE_FILE && !s->shared && a->path) {
+        if (fa_source_open_path(out, a->path) != FA_OK) return 0;
+        if (out->length != s->length) { fa_source_close(out); return 0; }   /* the file changed under us */
+        return 1;
+    }
+    if (s->kind == FA_SOURCE_MEMORY && s->mem) return fa_source_open_memory_ref(out, s->mem, s->mem_size) == FA_OK;
+    return 0;
+}
+
+fa_result fa_archive_unpack_on(const fa_archive* a, fa_source* src, uint32_t i, uint64_t limit, const volatile int32_t* cancel,
+                               uint8_t** out)
+{
+    *out = NULL;
+    if (!fa_archive_independent(a, i)) return FA_ERROR_UNSUPPORTED_FORMAT;
+    if (a->sz) return fa_7z_unpack_alone(a->sz, src, &a->z[i], limit, cancel, out);
+    return fa_zip_extract(src, &a->z[i], limit, cancel, out);
+}
+
 fa_result fa_archive_unpack_file(fa_archive* a, uint32_t i, const volatile int32_t* cancel, FILE* f)
 {
     if (i >= a->count) return FA_ERROR_INVALID_ARG;

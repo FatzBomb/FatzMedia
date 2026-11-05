@@ -1,4 +1,5 @@
 #include "fa_internal.h"
+#include "acache.h"
 #include "cdg.h"
 #include <stdlib.h>
 #include <string.h>
@@ -333,6 +334,8 @@ static void free_strings(fa_engine* e)
 {
     fa_lcache_free(e->lcache);
     e->lcache = NULL;
+    fa_acache_free(e->acache);
+    e->acache = NULL;
     free((char*)e->config.cache_directory);
     free((char*)e->config.temp_directory);
     free(e->temp_folder);
@@ -374,6 +377,10 @@ FA_API fa_result FA_CALL fa_engine_create(const fa_engine_config* config, fa_eng
         if (fa_mkdirs_utf8(e->config.cache_directory) != 0) e->cache_dir_failed = 1;
         e->lcache = fa_lcache_new(e->config.cache_directory);   /* read on first use */
     }
+    if (!(e->config.flags & FA_ENGINE_NO_ARCHIVE_CACHE))   /* out of memory: no cache, nothing else lost */
+        e->acache = fa_acache_new(e->config.archive_cache_seconds, e->config.zip_memory_limit_mb
+                                                                       ? (uint64_t)e->config.zip_memory_limit_mb << 20
+                                                                       : FA_ZIP_DEFAULT_MEMORY_LIMIT);
     if (e->config.temp_directory && e->config.temp_directory[0]) {
         e->config.temp_directory = fa_strdup(e->config.temp_directory);
         if (!e->config.temp_directory || temp_folder_prepare(e, e->config.temp_directory, 1) != FA_OK) { free_strings(e); free(e); return FA_ERROR_OUT_OF_MEMORY; }
