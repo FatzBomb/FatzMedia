@@ -73,7 +73,7 @@ public sealed class DiscTests : IDisposable
     [Fact]
     public void Image_TrackStreamReadsExactSamples()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var disc = Disc.Open(_cue, new DiscOptions { ReadOffset = 6 });
         using var track = engine.OpenDisc(disc, 2, DecodeOnly);
         Assert.Equal("cdda", track.Info.Codec);
@@ -108,7 +108,7 @@ public sealed class DiscTests : IDisposable
         var cue = Path.Combine(_dir, "karaoke.cue");
         File.WriteAllText(cue, "FILE \"karaoke.bin\" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n");
 
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var disc = Disc.Open(cue);
         using var track = engine.OpenDisc(disc, 1, DecodeOnly);
         using var surface = track.CreateCdgSurface();     // fine before the graphics are found
@@ -128,7 +128,7 @@ public sealed class DiscTests : IDisposable
     [Fact]
     public void Errors()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
         using var disc = Disc.Open(_cue);
         var ex = Assert.Throws<FatzAudioException>(() => engine.OpenDisc(disc, 3));
         Assert.Equal(ErrorCode.NotFound, ex.ErrorCode);

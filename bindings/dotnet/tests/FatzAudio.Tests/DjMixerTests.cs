@@ -6,7 +6,7 @@ namespace FatzAudio.Tests;
 /// <summary>The DJ mixer and its decks (the native white-box test checks the audio itself).</summary>
 public class DjMixerTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void Create_HasTwoDecksOnTheirSides()

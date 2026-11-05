@@ -8,7 +8,7 @@ public class LiveStreamTests
 {
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     /// <summary>Waits until the output has played <paramref name="duration"/> more (its clock, not the wall clock).</summary>
     private static async Task PlayFor(OutputDevice output, TimeSpan duration)

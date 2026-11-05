@@ -10,7 +10,7 @@ public class MidiEventTests
 {
     private const int Rate = 44100;
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
     private static float[] ReadAll(AudioStream s, long frames, int piece = 4096)
     {

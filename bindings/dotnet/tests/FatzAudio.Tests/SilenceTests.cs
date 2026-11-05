@@ -46,7 +46,7 @@ public class SilenceTests
     }
 
     private static AudioEngine CreateHeadless(string? cache = null) =>
-        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, CacheDirectory = cache });
+        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, CacheDirectory = cache });
 
     [Fact]
     public void NativeStructs_MatchTheCLayout()

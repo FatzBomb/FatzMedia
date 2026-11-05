@@ -6,7 +6,7 @@ namespace FatzAudio.Tests;
 /// <summary>Sounds: overlapping voices, the voice limit and steal rules, voice reuse, on the null output.</summary>
 public class SoundTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     private static float[] Tone(int frames, float level = 0.2f)
     {

@@ -8,7 +8,7 @@ public class CoreEngineTests
 {
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public void SupportedFormats_ListsBuiltInDecoders()
@@ -141,7 +141,7 @@ public class CoreEngineTests
 /// <summary>Decode-ahead playback, ramps and events on the silent null output.</summary>
 public class PlaybackTests
 {
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     [Fact]
     public async Task Ended_EventIsRaised()

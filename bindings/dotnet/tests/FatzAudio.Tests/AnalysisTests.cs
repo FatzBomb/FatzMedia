@@ -10,7 +10,7 @@ public class AnalysisTests
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
     private static AudioEngine CreateHeadless(string? cache = null) =>
-        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, CacheDirectory = cache });
+        AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = cache is null, MixSampleRate = Rate, CacheDirectory = cache });
 
     /// <summary>A mono 32-bit float WAV of kick drums: 150 Hz sweeping down to 60 Hz with a fast decay, every <paramref name="beatSeconds"/>.</summary>
     private static byte[] KickWav(double seconds, double beatSeconds = 0.5)

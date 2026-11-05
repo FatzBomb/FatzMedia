@@ -129,7 +129,7 @@ public class EncoderTests
         var path = TempFile("wav");
         try
         {
-            using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+            using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
             using var output = engine.OpenOutput();
             using var enc = AudioEncoder.Create(path);
             enc.Record(output);

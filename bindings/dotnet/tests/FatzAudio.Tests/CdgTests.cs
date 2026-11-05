@@ -9,7 +9,7 @@ public class CdgTests
 {
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true });
 
     /// <summary>Colour table (0 black, 1 red, 2 green), then a red screen and a green border.</summary>
     private static byte[] SimpleCdg(int emptyPacksFirst = 0)
@@ -209,11 +209,11 @@ public class CdgTests
                 using (var e = z.CreateEntry("Big.wav", CompressionLevel.Optimal).Open()) e.Write(wav);
             }
 
-            using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, ZipMemoryLimitMb = 1, NoTempFiles = true }))
+            using (var inMemory = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, NoTempFiles = true }))
                 Assert.Equal(ErrorCode.TooLarge, Assert.Throws<FatzAudioException>(() => inMemory.OpenFile(zip, DecodeOnly)).ErrorCode);
 
             string temp = Path.Combine(dir, "temp");
-            using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, ZipMemoryLimitMb = 1, TempDirectory = temp });
+            using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, TempDirectory = temp });
             using (var song = engine.OpenFile(zip, DecodeOnly))
             {
                 Assert.True(song.HasCdg);
@@ -277,7 +277,7 @@ public class CdgTests
 
             using var engine = AudioEngine.Create(new AudioEngineOptions
             {
-                NullOutput = true, ZipMemoryLimitMb = 1, TempDirectory = Path.Combine(dir, "temp"),
+                NullOutput = true, NoCache = true, ZipMemoryLimitMb = 1, TempDirectory = Path.Combine(dir, "temp"),
             });
             using var song = engine.OpenFile(zip);   // unpacked into a temp file
             var until = DateTime.UtcNow + TimeSpan.FromSeconds(15);
@@ -505,7 +505,7 @@ public class CdgTests
     [Fact]
     public void RenderAhead_NothingNewThenTheWorkersFrame_AndDisposeWhileUpdating()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, WorkerThreads = 2 });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, WorkerThreads = 2 });
         using var song = engine.OpenMemory(TestAudio.SineWav(), DecodeOnly);
         var tile = new byte[16];
         tile[0] = 1; tile[1] = 2; tile[2] = 4; tile[3] = 4;

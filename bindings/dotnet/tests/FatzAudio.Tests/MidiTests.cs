@@ -10,7 +10,7 @@ public class MidiTests
     private const int Rate = 44100;
     private static readonly StreamOptions DecodeOnly = new() { DecodeOnly = true };
 
-    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate });
+    private static AudioEngine CreateHeadless() => AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate });
 
     // ---- a one-instrument SoundFont: a looped 440 Hz sine on bank 0 and bank 128 ----
 
@@ -357,7 +357,7 @@ public class MidiTests
     [Fact]
     public void NoSoundFont_Throws()
     {
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
         var ex = Assert.Throws<FatzAudioException>(() => engine.OpenMemory(Song(), DecodeOnly));
         Assert.Equal(ErrorCode.NoSoundFont, ex.ErrorCode);
     }
@@ -373,12 +373,12 @@ public class MidiTests
             0x87, 0x40, 0xFF, 0x05, 0x02, (byte)'A', (byte)'B',
             0x87, 0x40, 0xFF, 0x2F, 0x00,
         };
-        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var engine = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
         using var s = engine.OpenMemory(song, DecodeOnly);
         Assert.False(s.MidiInfo!.HasNotes);
         Assert.Equal(1, s.MidiInfo.LyricCount);
         Assert.Equal(TimeSpan.FromSeconds(2), s.Info.Duration);
-        using var withNotes = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, MixSampleRate = Rate, NoSystemSoundFont = true });
+        using var withNotes = AudioEngine.Create(new AudioEngineOptions { NullOutput = true, NoCache = true, MixSampleRate = Rate, NoSystemSoundFont = true });
         using var font = SoundFont.FromMemory(SineSoundFont());
         using var played = withNotes.OpenMemory(Song(), DecodeOnly with { SoundFont = font });
         Assert.True(played.MidiInfo!.HasNotes);
