@@ -5,7 +5,7 @@
 
 set(FA_LZMA_FILES
     LzmaDec.c Lzma2Dec.c Xz.c XzDec.c XzIn.c XzCrc64.c XzCrc64Opt.c 7zCrc.c 7zCrcOpt.c
-    Sha256.c Sha256Opt.c Bra.c Bra86.c BraIA64.c Delta.c Bcj2.c CpuArch.c SwapBytes.c
+    Sha256.c Sha256Opt.c Bra.c Bra86.c BraIA64.c Delta.c Bcj2.c CpuArch.c
     7zStream.c Alloc.c)
 list(TRANSFORM FA_LZMA_FILES PREPEND ${CMAKE_CURRENT_LIST_DIR}/lzma/)
 add_library(fa_lzma STATIC ${FA_LZMA_FILES})
