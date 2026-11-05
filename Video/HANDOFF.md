@@ -117,8 +117,8 @@ monitors; smoke steps in each stage's `StageUpdate.md`; full PowerShell command 
 3. When rc.4 ships: pin move, start wait and cache size into `NormalizationOptions`, log the
    provisional start, rerun the timings.
    Cache (FatzAudio's 2026-11-05 answer, on its main after rc.3): unset `CacheDirectory` then means
-   FatzAudio's shared per-user default (one cache for every app; asked to name it `FatzMedia\Audio` with
-   the rename in mind), an empty string maps to `AudioEngineOptions.NoCache = true`, a path stays a
+   FatzAudio's shared per-user default (one cache for every app; its folder name follows the library
+   rename, which happens before release, so no user cache ever needs moving), an empty string maps to `AudioEngineOptions.NoCache = true`, a path stays a
    private folder; log `engine.GetCacheInfo()` after creating the engine (folder at Info, a warning when
    `Status` is not Ok); remove our own `EnsureCacheDirectory` (ENG-048) and per-user default folder.
 
