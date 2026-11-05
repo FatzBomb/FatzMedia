@@ -87,3 +87,29 @@ WAV-header problem. Fixed here:
 Extra manual smoke: prepare a fallback file over 9 minutes, then Clear in the Next panel:
 its WAV disappears from `%TEMP%\FatzBombMediaControl`.
 
+## Linux run (2026-11-05)
+
+Environment: Linux sandbox, BASS 2.4 for Linux (+ BASS_FX, BASSFLAC), FFmpeg 9.0 LGPL, FatzAudio 1.0.0-rc.1
+built from source (null output for the FatzAudio engine), PulseAudio null sinks with ALSA routed to it;
+media from `scripts/setup-linux-native.sh` (`/opt/fatzbomb-native/media/formats`). Opt-in tests:
+`FATZBOMB_LINUX_BASS_DIR`, `FATZBOMB_LINUX_FFMPEG_DIR` (see `LinuxNativeTestPlayer`).
+
+`LinuxFormatMatrixNativeTests`: all 24 files of `smoke-backlog.ps1` test 1 load and play (position advances)
+on both engines: 48 of 48 pass. The path each took:
+
+| File | BASS engine | FatzAudio engine |
+|---|---|---|
+| tone.mp3, tone.flac, tone.wav, tone.ogg | BASS decodes it | FatzAudio decodes it |
+| tone.aiff | BASS decodes it | FatzAudio decodes it |
+| tone-aac.m4a, tone-alac.m4a, tone-alac.caf, tone.m4r, tone.ac3, tone.mka, tone.opus | FFmpeg conversion, played by BASS | FatzAudio decodes it |
+| tone.mp2, tone.au, tone.dts, tone.tta, tone.wma, tone.wv | FFmpeg conversion, played by BASS | FFmpeg conversion, played by FatzAudio |
+| audio-only.mp4, audio-only.ts, cover-only.mp4 | video container without picture: FFmpeg soundtrack path | same |
+| divx-mp3.avi, mpeg2-mp2.mpg, video-aac.mp4 | video pipeline (FFmpeg picture and soundtrack) | same |
+
+- Step 4 (a file over 9 minutes): pass. A 10-minute WavPack is converted to a temp file ("temp file" in the
+  `AudioFallback` line) and its WAV is gone from `$TMPDIR/FatzBombMediaControl` after close.
+- Step 1 (no BASSFLAC): pass when run on its own (`--filter Flac_WithoutBassFlac`): the FLAC goes through the
+  FFmpeg conversion. In a full run it skips with a note once another test has loaded `libbassflac`: BASS
+  plug-ins stay loaded for the process.
+- Still Windows only: the Windows BASS plug-ins and Media Foundation (WMA through the system decoder), steps
+  2-3 and 5-8 in the players (open dialog filter, prepared next, `.ape` + `.cdg` pairing, WMA through BASS).

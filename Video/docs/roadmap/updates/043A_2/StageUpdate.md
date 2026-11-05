@@ -141,3 +141,23 @@ Keep the log open.
 8. **WPF host (Windows).** If the WPF player gains a mode switch, repeat step 1 with a native
    HWND surface and a WPF-composited surface. The surface comes back after Audio mode, with no
    black or stale swap chain.
+
+## Linux run (2026-11-05)
+
+Environment: Linux sandbox, BASS 2.4 for Linux (+ BASS_FX, BASSFLAC), FFmpeg 9.0 LGPL, FatzAudio 1.0.0-rc.1
+built from source (null output for the FatzAudio engine), PulseAudio null sinks with ALSA routed to it;
+media from `scripts/setup-linux-native.sh` (`/opt/fatzbomb-native/media/formats`). Opt-in tests:
+`FATZBOMB_LINUX_BASS_DIR`, `FATZBOMB_LINUX_FFMPEG_DIR` (see `LinuxNativeTestPlayer`).
+
+`LinuxPlayerModesNativeTests`, headless on a frame sink, 4 of 4 pass:
+- Background mode refuses an MP3 ("Background mode does not accept"), presents a picture, and loops a music
+  video silently with no "Global BASS initialized".
+- Audio mode refuses a picture ("Audio mode does not accept") and a silent video ("no playable audio
+  stream"), and plays a music video's sound with nothing presented.
+- `SetModeAsync` Full -> Audio while playing, Audio -> Full while paused: position (within 1.5 s playing,
+  0.5 s paused), state, volume 0.6, tempo 110 and pitch +2 kept; video returns in Full; stopped stays
+  stopped. "Audio mode has no presentation; surface 'primary' is kept ..." logged.
+- Full -> Background loops the video (Loop forced on); an MP3 switched to Background closes with "Background
+  mode could not reopen ...".
+- Still Windows only: the WPF and Avalonia surfaces during a switch (no black or stale frame), MP3+G graphics
+  after Audio and back, TransparentBackground and AutoBackground in the players, rapid switching under the UI.

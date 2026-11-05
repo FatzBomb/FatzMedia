@@ -1,8 +1,5 @@
 using FatzBomb.MediaControl.Core.Abstractions;
 using FatzBomb.MediaControl.Core.Configuration;
-using FatzBomb.MediaControl.Linux.Runtime;
-using FatzBomb.MediaControl.Rendering.Software;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Xunit.Abstractions;
 
@@ -20,15 +17,16 @@ namespace FatzBomb.MediaControl.Linux.Tests;
 [Collection("File type registry")]
 public sealed class LinuxBassNativeTests(ITestOutputHelper output)
 {
-    private const string MediaDir = "/opt/fatzbomb-native/media";
+    private const string MediaDir = LinuxNativeTestPlayer.MediaDir;
 
     [Fact]
     public void NativeLoad_ReportsBassAndFfmpeg()
     {
-        if (!TryGetFolders(out var bass, out var ffmpeg))
+        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg))
             return;
 
-        using var player = CreatePlayer(bass, ffmpeg, out _);
+        using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], attachSurface: false);
+        var player = session.Player;
         output.WriteLine(player.LastNativeLoadMessage);
         foreach (var line in player.NativeDependencies.Describe())
             output.WriteLine(line);
@@ -44,11 +42,12 @@ public sealed class LinuxBassNativeTests(ITestOutputHelper output)
     public void AudioFile_PlaysPausesSeeksAndStops(string name)
     {
         var file = Path.Combine(MediaDir, name);
-        if (!TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(file))
+        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(file))
             return;
 
-        using var player = CreatePlayer(bass, ffmpeg, out var errors);
-        Assert.True(player.Load(file), string.Join(" | ", errors));
+        using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg], attachSurface: false);
+        var player = session.Player;
+        Assert.True(player.Load(file), string.Join(" | ", session.Errors));
         Assert.True(player.Play());
         Assert.True(SpinWait.SpinUntil(() => player.Position > TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(10)), $"position {player.Position}");
 
@@ -74,27 +73,20 @@ public sealed class LinuxBassNativeTests(ITestOutputHelper output)
 
         Assert.True(player.Stop());
         Assert.True(SpinWait.SpinUntil(() => player.State == MediaPlayerState.Stopped, TimeSpan.FromSeconds(5)), $"state {player.State}");
-        Assert.Empty(errors);
+        Assert.Empty(session.Errors);
     }
 
     [Fact]
     public void Video_PresentsFramesOnTheAudioClock()
     {
         var sample = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_SAMPLE_VIDEO") is { Length: > 0 } configured ? configured : Path.Combine(MediaDir, "h264_1080p.mp4");
-        if (!TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(sample))
+        if (!LinuxNativeTestPlayer.TryGetFolders(out var bass, out var ffmpeg) || !File.Exists(sample))
             return;
 
-        using var player = CreatePlayer(bass, ffmpeg, out var errors);
-        var sink = new CountingFrameSink();
-        using var handle = new MediaPresentationFrameSinkHandle(sink);
-        Assert.True(player.AttachPresentationSurface(new MediaPresentationSurfaceDescriptor(
-            MediaPresentationSurfaceDescriptor.PrimarySurfaceId,
-            MediaPresentationSurfaceRole.Primary,
-            handle.CreateSurfaceDescriptor(),
-            640,
-            360)));
-
-        Assert.True(player.Load(sample), string.Join(" | ", errors));
+        using var session = LinuxNativeTestPlayer.Create([bass, ffmpeg]);
+        var player = session.Player;
+        var sink = session.Sink;
+        Assert.True(player.Load(sample), string.Join(" | ", session.Errors));
         Assert.True(player.Play());
         Assert.True(SpinWait.SpinUntil(() => sink.Frames >= 5 && player.Position > TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(15)), $"frames {sink.Frames}, position {player.Position}");
 
@@ -109,54 +101,7 @@ public sealed class LinuxBassNativeTests(ITestOutputHelper output)
         Assert.InRange(rate, 0.9, 1.1);
         Assert.True(fps > 10, $"only {fps:F1} frames per second");
         Assert.True(sink.LastFrameHasContent, "presented frame looks blank");
-        Assert.Empty(errors);
+        Assert.Empty(session.Errors);
         _ = player.Stop();
-        Assert.True(player.DetachPresentationSurface(MediaPresentationSurfaceDescriptor.PrimarySurfaceId));
-    }
-
-    private static bool TryGetFolders(out string bass, out string ffmpeg)
-    {
-        bass = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_BASS_DIR") ?? string.Empty;
-        ffmpeg = Environment.GetEnvironmentVariable("FATZBOMB_LINUX_FFMPEG_DIR") ?? string.Empty;
-        return OperatingSystem.IsLinux()
-            && Directory.Exists(bass) && File.Exists(Path.Combine(bass, "libbass.so"))
-            && Directory.Exists(ffmpeg);
-    }
-
-    private static MediaControlPlayer CreatePlayer(string bass, string ffmpeg, out ConcurrentQueue<string> errors)
-    {
-        // An empty application folder: the only search paths are the two given folders.
-        var appBase = Directory.CreateTempSubdirectory("fbm-bass-").FullName;
-        var bootstrapper = new LinuxNativeLibraryBootstrapper(new LinuxNativeOperations(), appBase, LinuxNativeLibraryLocator.CurrentRuntimeIdentifier);
-        var factory = new LinuxMediaControlPlatformFactory(new SoftwarePresentationCoordinatorFactory(), LinuxPlatformOptions.Default, bootstrapper);
-        var player = new MediaControlPlayer(factory, new MediaPlayerConfiguration(VideoDecodingMethod.Software), [bass, ffmpeg]);
-        var queue = new ConcurrentQueue<string>();
-        player.MediaError += (_, args) => queue.Enqueue(args.Message);
-        errors = queue;
-        return player;
-    }
-
-    private sealed class CountingFrameSink : IMediaPresentationFrameSink
-    {
-        private int _frames;
-        private volatile bool _lastFrameHasContent;
-
-        public int Frames => Volatile.Read(ref _frames);
-
-        public bool LastFrameHasContent => _lastFrameHasContent;
-
-        public void PresentFrame(ReadOnlySpan<byte> bgraPixels, int width, int height, int stride)
-        {
-            ReadOnlySpan<byte> row = bgraPixels.Slice(height / 2 * stride, width * 4);
-            var distinct = new HashSet<byte>();
-            foreach (var value in row)
-            {
-                if (distinct.Add(value) && distinct.Count > 8)
-                    break;
-            }
-
-            _lastFrameHasContent = distinct.Count > 8;
-            _ = Interlocked.Increment(ref _frames);
-        }
     }
 }

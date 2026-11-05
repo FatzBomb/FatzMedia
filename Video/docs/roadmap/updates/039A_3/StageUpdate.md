@@ -194,3 +194,22 @@ diagnostics/log panel.
    the faststart message, one attempt. `ffmpeg -i clip.mp4 -c copy -movflags +faststart fast.mp4`,
    `--url=http://localhost:8000/fast.mp4`: plays (not seekable).
 9. **CA file**: a local https server with its own certificate and `--net-ca-file=<pem>` plays.
+
+## Linux run (2026-11-05)
+
+Environment: Linux sandbox, BASS 2.4 for Linux (+ BASS_FX, BASSFLAC), FFmpeg 9.0 LGPL, FatzAudio 1.0.0-rc.1
+built from source (null output for the FatzAudio engine), PulseAudio null sinks with ALSA routed to it;
+media from `scripts/setup-linux-native.sh` (`/opt/fatzbomb-native/media/formats`). Opt-in tests:
+`FATZBOMB_LINUX_BASS_DIR`, `FATZBOMB_LINUX_FFMPEG_DIR` (see `LinuxNativeTestPlayer`). Internet through the sandbox's TLS-intercepting proxy (`http_proxy` for FFmpeg,
+`FATZBOMB_LINUX_NETWORK_CA_FILE` = the proxy's CA bundle, `FATZBOMB_LINUX_NETWORK=1`).
+
+`LinuxInternetStreamNativeTests`, 2 of 2 pass:
+- https radio (`https://stream.radioparadise.com/mp3-128`): plays on the live clock (5.00 s in 5 s) and
+  `StreamMetadataChanged` reported "Spoon - Everything Hits At Once".
+- Public HLS (`https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`) in Background mode: 149 frames in about
+  2.5 s, frames not blank.
+
+Not run here: the bad-certificate checks (step 1-2; behind a TLS-intercepting proxy a bad remote certificate
+never reaches the player; the local self-signed server cases in `LinuxNetworkVideoNativeTests` cover the
+logic), plain http radio through BASS (step 4; the sandbox proxy carries https only), `ice2.somafm.com`
+(answers 403 here), network unplug (step 5). These stay in `smoke-backlog.ps1` test 3 on Windows.

@@ -58,6 +58,11 @@ Updated: 2026-11-05. Branch `claude/modest-clarke-5i5piu` (restarted from `main`
   026B steps 1-5 ran in the sandbox on 2026-11-05 (BASS for Linux + PulseAudio null sinks): pass, except
   that no `AudioDeviceChanged` is raised on Linux (the sound server reroutes; noted in ENG-040);
   repeatable as `LinuxBassNativeTests` (`FATZBOMB_LINUX_BASS_DIR`; `www.un4seen.com` is allowed now). 037A slice 0's console smoke is closed (superseded by slice 2's).
+  Linux native tests added 2026-11-05 (opt-in; results in `updates/033A_2`, `043A_1`, `043A_2`, `039A_3`):
+  `LinuxFormatMatrixNativeTests` (24 formats x BASS and FatzAudio, 48/48 play; long-file temp WAV removed;
+  FLAC without BASSFLAC through FFmpeg), `LinuxPlayerModesNativeTests` (4/4), `LinuxInternetStreamNativeTests`
+  (https radio with titles, public HLS; `FATZBOMB_LINUX_NETWORK=1`). Windows still owns the players, the
+  Windows decoders and DLLs, certificates, and everything by eye or ear.
   Stages move to `complete/` as these pass.
 
 ## Decisions this session (owner)
