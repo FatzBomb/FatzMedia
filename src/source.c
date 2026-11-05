@@ -420,5 +420,6 @@ void fa_source_close(fa_source* src)
     if (src->io.close) src->io.close(src->io_user);
     free(src->owned);
     free(src->prefix_buf);
+    if (src->release) src->release(src->release_ctx);
     memset(src, 0, sizeof(*src));
 }

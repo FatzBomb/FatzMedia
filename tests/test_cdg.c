@@ -1233,7 +1233,7 @@ static void test_zip_shared_range(void)
  * whole unpack. */
 static void test_zip_unpack_cap(void)
 {
-    buf decoy = { 0 }, wav = make_wav(8000, 40000), zip;   /* over FA_ZIP_PROBE_BYTES: counted */
+    buf decoy = { 0 }, wav = make_wav(8000, 400000), zip;   /* over FA_ZIP_PROBE_BYTES: counted */
     zip_file files[FA_ZIP_MAX_UNPACKS + 2];
     const char* names[] = { "a.mp3", "b.mp3", "c.mp3", "d.mp3", "e.mp3", "f.mp3" };
     fa_open_options o;
@@ -1262,18 +1262,18 @@ static void test_zip_unpack_cap(void)
         m.b = &zip; m.seekable = 1;
         if (n < FA_ZIP_MAX_UNPACKS) {
             CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_OK);
-            if (s) { CHECK_EQ(decode_all(s), 40000); fa_stream_close(s); s = NULL; }
+            if (s) { CHECK_EQ(decode_all(s), 400000); fa_stream_close(s); s = NULL; }
         } else {
             buf alone;
             mem_io m2;
             CHECK_EQ(fa_stream_open_io(g_engine, &io, &m, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
-            /* The song was not unpacked, nor even probed: the archive costs what the
-             * decoys alone cost (give or take its directory entry). */
+            /* The song was not unpacked: the archive costs what the decoys alone cost, plus
+             * the first 64 KB the pairing reads of every entry to tell audio from the rest. */
             alone = make_zip(files, n);
             memset(&m2, 0, sizeof(m2));
             m2.b = &alone; m2.seekable = 1;
             CHECK_EQ(fa_stream_open_io(g_engine, &io, &m2, &o, &s), FA_ERROR_UNSUPPORTED_FORMAT);
-            CHECK(m.read_bytes - m2.read_bytes < 4096);
+            CHECK(m.read_bytes - m2.read_bytes < 4096 + 2 * FA_ZIP_PROBE_BYTES);
             free(alone.p);
         }
         CHECK_EQ(fa_tags_read_memory(zip.p, zip.n, 0, &t), FA_OK);

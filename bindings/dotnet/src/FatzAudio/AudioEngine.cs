@@ -384,6 +384,40 @@ public sealed partial class AudioEngine : IDisposable
         return AudioStream.Wrap(this, NativeMethods.fa_stream_open_disc(h, disc.Handle, track, opts.Pointer, out nint s), s, null);
     }
 
+    /// <summary>
+    /// Opens one entry of an open <see cref="Archives.Archive"/> as a stream, with its graphics as the pairing rules say
+    /// (see <see cref="Archives.Archive"/>). A stored entry plays straight from a file or memory archive; one in an archive
+    /// opened from a <see cref="Stream"/> is copied. The stream keeps what it needs, so the archive may be disposed first.
+    /// The engine's memory limit and temp folder apply, not the archive's.
+    /// </summary>
+    /// <param name="archive">The archive.</param>
+    /// <param name="entry">The entry to play; null plays <see cref="Archives.Archive.Pick"/>'s song.</param>
+    /// <param name="options">Optional open options (<see cref="StreamOptions.ArchiveEntry"/> is ignored).</param>
+    /// <returns>The stream; dispose it when done.</returns>
+    /// <exception cref="FatzAudioException">The entry cannot be played (<see cref="ErrorCode.UnsupportedFormat"/>,
+    /// <see cref="ErrorCode.ProtectedContent"/>, <see cref="ErrorCode.TooLarge"/>).</exception>
+    /// <example>
+    /// <code>
+    /// using var archive = Archives.Archive.Open("album.zip");
+    /// using var song = engine.OpenArchiveEntry(archive, archive.Find("Disc 1/Track 03.flac"));
+    /// </code>
+    /// </example>
+    public unsafe AudioStream OpenArchiveEntry(Archives.Archive archive, Archives.ArchiveEntry? entry = null, StreamOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        var h = Handle;
+        var a = archive.Handle;
+        using var opts = NativeOptions.Create(options);
+        bool ok = false;
+        a.DangerousAddRef(ref ok);
+        try
+        {
+            int rc = NativeMethods.fa_stream_open_archive(h, a, entry?.Index ?? -1, opts.Pointer, out nint s);
+            return AudioStream.Wrap(this, rc, s, null);
+        }
+        finally { a.DangerousRelease(); }
+    }
+
     /// <summary>Opens audio held in memory. The native library copies the data, so the buffer may be reused afterwards.</summary>
     /// <param name="data">Encoded audio file contents.</param>
     /// <param name="options">Optional open options.</param>
@@ -1077,6 +1111,7 @@ internal unsafe ref struct NativeOptions
 {
     private FaOpenOptions* _ptr;
     private byte* _mime;
+    private byte* _archiveEntry;
     private FaNetOptions* _net;
     private byte* _userAgent, _headers, _proxy;
     private SoundFontHandle? _font;
@@ -1119,6 +1154,11 @@ internal unsafe ref struct NativeOptions
         }
         if (options.BufferLength is { } buffer)
             o._ptr->BufferMs = (uint)Math.Clamp(buffer.TotalMilliseconds, 1, uint.MaxValue);
+        if (options.ArchiveEntry is { } archiveEntry)
+        {
+            o._archiveEntry = (byte*)Marshal.StringToCoTaskMemUTF8(archiveEntry);
+            o._ptr->ArchiveEntry = o._archiveEntry;
+        }
         if (options.MimeHint is { } mime)
         {
             o._mime = (byte*)Marshal.StringToCoTaskMemUTF8(mime);
@@ -1160,6 +1200,8 @@ internal unsafe ref struct NativeOptions
         if (_cancel != null) NativeMemory.Free(_cancel);
         _cancel = null;
         if (_mime != null) Marshal.FreeCoTaskMem((nint)_mime);
+        if (_archiveEntry != null) Marshal.FreeCoTaskMem((nint)_archiveEntry);
+        _archiveEntry = null;
         if (_userAgent != null) Marshal.FreeCoTaskMem((nint)_userAgent);
         if (_headers != null) Marshal.FreeCoTaskMem((nint)_headers);
         if (_proxy != null) Marshal.FreeCoTaskMem((nint)_proxy);

@@ -18,6 +18,11 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
 
 ### Added
 
+- Archives: public `fa_archive_*` API (list, find, pick, read, seekable reader) and .NET `Archive`; ZIP reads Deflate64, flags,
+  times and CP437/UTF-8 names; `fa_open_options.archive_entry`, `fa_stream_open_archive`, `fa_tags_read_archive*`,
+  `fa_tags_read_io` (`Tags.Read(Stream)`), `fa_fingerprint_archive`. CRC-32 uses PCLMULQDQ / ARMv8 instructions when
+  present ([archives](docs/features/archives.md)).
+
 - Big compressed ZIP songs no longer need a temp folder: past `zip_memory_limit_mb` they are unpacked into the OS temp
   directory (`TMPDIR`, Windows temp path) when `fa_engine_config.temp_directory` is NULL, which still wins when set.
   The free space is checked first (song size + 64 MB) and a short disk returns the new `FA_ERROR_DISK_FULL` (-23, .NET
@@ -88,6 +93,10 @@ version number (`FA_VERSION_*` in `include/fatzaudio/fatzaudio.h`; `fa_version()
   ([karaoke files](docs/features/analysis.md#karaoke-files-silence-and-drawing)).
 
 ### Changed
+
+- Which entry of a ZIP plays is one shared rule now (`fa_archive_pick`): a `.cdg` that matches no song is no longer
+  attached when the archive holds several songs; names compare ignoring case; an archive with only encrypted
+  audio gives `FA_ERROR_PROTECTED_CONTENT`; `fa_fingerprint_archive_entry` with a `NULL` name means the pick.
 
 - Cache keys fingerprint the audio only: tag blocks (ID3, APE, Lyrics3, FLAC metadata, MP4 `moov`, Ogg comment pages,
   WAV/AIFF chunks other than the samples) are left out, so a retagged file keeps its cached loudness and analysis; WAV

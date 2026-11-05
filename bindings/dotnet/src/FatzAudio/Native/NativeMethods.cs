@@ -463,7 +463,77 @@ internal static unsafe partial class NativeMethods
     public static partial int fa_fingerprint_memory(void* data, nuint size, ref FaFingerprint fingerprint);
 
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int fa_fingerprint_archive_entry(string archivePath, string entryName, ref FaFingerprint fingerprint);
+    public static partial int fa_fingerprint_archive_entry(string archivePath, string? entryName, ref FaFingerprint fingerprint);
+
+    // ---- Archives ----------------------------------------------------------
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_detect(void* data, nuint size);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_archive_options_init(FaArchiveOptions* options);
+
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_open_path(string path, FaArchiveOptions* options, out nint archive);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_open_memory(void* data, nuint size, FaArchiveOptions* options, out nint archive);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_open_io(FaIoCallbacks* io, void* user, FaArchiveOptions* options, out nint archive);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_archive_close(nint archive);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_get_format(ArchiveHandle archive, out int format);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial uint fa_archive_get_entry_count(ArchiveHandle archive);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_get_entry(ArchiveHandle archive, uint index, FaArchiveEntry* entry);
+
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_find(ArchiveHandle archive, string name, out uint index);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_pick(ArchiveHandle archive, out uint audio, out int cdg);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_read(ArchiveHandle archive, uint index, out void* data, out nuint size);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_free(void* data);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_open_reader(ArchiveHandle archive, uint index, out nint reader);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial long fa_archive_reader_read(nint reader, void* buffer, nuint bytes);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_archive_reader_seek(nint reader, long position);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial long fa_archive_reader_get_size(nint reader);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void fa_archive_reader_close(nint reader);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_stream_open_archive(EngineHandle engine, ArchiveHandle archive, int index, FaOpenOptions* options, out nint stream);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_tags_read_archive(ArchiveHandle archive, int index, uint flags, out nint tags);
+
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_tags_read_archive_entry(string archivePath, string? entryName, uint flags, out nint tags);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_tags_read_io(FaIoCallbacks* io, void* user, uint flags, out nint tags);
+
+    [LibraryImport(Lib)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int fa_fingerprint_archive(ArchiveHandle archive, int index, ref FaFingerprint fingerprint);
 
     // ---- Tags --------------------------------------------------------------
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

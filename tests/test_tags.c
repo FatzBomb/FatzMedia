@@ -1243,8 +1243,11 @@ static void test_fingerprint(void)
         CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
         CHECK_EQ(fa_fingerprint_archive_entry(zpath, "readme.txt", &b), FA_OK);   /* any entry, audio or not */
         CHECK(a.key != b.key);
-        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "SONG.WAV", &b), FA_ERROR_NOT_FOUND);
-        CHECK_EQ(fa_fingerprint_archive_entry(zpath, NULL, &b), FA_ERROR_INVALID_ARG);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "SONG.WAV", &b), FA_OK);   /* ignoring case, as an open does */
+        CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, "missing.wav", &b), FA_ERROR_NOT_FOUND);
+        CHECK_EQ(fa_fingerprint_archive_entry(zpath, NULL, &b), FA_OK);   /* the archive's pick */
+        CHECK(a.key == b.key && a.audio_bytes == b.audio_bytes);
         CHECK_EQ(fa_fingerprint_archive_entry("no-such.zip", "song.wav", &b), FA_ERROR_NOT_FOUND);
         remove(zpath);
         z = fopen(zpath, "wb");
